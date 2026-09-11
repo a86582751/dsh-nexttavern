@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 Preview - 2026-09-12
+
+- Protect author status templates at the native prompt boundary while preserving the original card source.
+- Accept filled dynamic status values without losing the author's HTML/CSS/JS structure.
+- Surface structured task-validation failures, failed timestamps and actionable retry diagnostics.
+- Synchronize the verified official UI chat/workspace fixes included in the maintenance release.
+
 ## 2026-09-11: Documentation Updates
 
 - Add four-step onboarding, illustrated feature descriptions and a public architecture guide with source references.

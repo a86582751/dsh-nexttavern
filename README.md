@@ -14,7 +14,7 @@
 
 Roleplay workspace for DeepSeek Harness: interactive character creation, on-demand worldbook reading, long-form memory, multi-model collaboration, character agents, branching stories and novel exports.
 
-**0.1.0 预览版** · Harness **0.1.2-alpha.3** · pi-ai **0.84.4** · 自有代码 **MIT**
+**0.1.1 预览版** · Harness **0.1.2-alpha.3** · pi-ai **0.84.4** · 自有代码 **MIT**
 
 按[安装说明](#安装)完成六项兼容补丁配置，即可开启完整体验。
 

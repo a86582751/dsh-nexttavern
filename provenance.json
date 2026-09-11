@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "audience": "public-nexttavern",
-  "version": "0.1.0",
-  "sourceCommit": "d6e5eb90d8376bf7c9916b88026f3f98a9008d5d",
+  "version": "0.1.1",
+  "sourceCommit": "70cf87c1c75a3cbfb59473a00e7859544c0e976a",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -60,8 +60,8 @@
       "artifact": "roleplay-core",
       "source": "runtime/alpha3/core/roleplay-core.js",
       "target": "preset/lib/roleplay-core.js",
-      "sourceSha256": "54cee8ec4425bc0abdee3facac83d5466d6a8193beb3b826f495f613806a7ac4",
-      "sha256": "076d888f7a33b70c6e637ad12accdd6237f4e875d4b2ad1753ef1b2997365ab8"
+      "sourceSha256": "3cd830674210d74b6e3260a0603c7cdfd7de5965127af9264553babddf5f460b",
+      "sha256": "5758f429ecfc283fc970f483b01a3b6c4652ee9fb38761a10873c65b0e5882d6"
     },
     {
       "artifact": "tavern-card-adapter",
@@ -95,8 +95,8 @@
       "artifact": "tavern-tasks",
       "source": "runtime/alpha3/core/tavern-tasks.js",
       "target": "preset/lib/tavern-tasks.js",
-      "sourceSha256": "9fa8ff28fc1feaa7a68466b28118895cc76648d0c9b92372cb09e53897782dc4",
-      "sha256": "9fa8ff28fc1feaa7a68466b28118895cc76648d0c9b92372cb09e53897782dc4"
+      "sourceSha256": "b872cbeb285ab868baccb97cdbd43f13cc2e66e78b317bcf0d26d1a690c96dd0",
+      "sha256": "b872cbeb285ab868baccb97cdbd43f13cc2e66e78b317bcf0d26d1a690c96dd0"
     },
     {
       "artifact": "tavern-telemetry",
@@ -194,7 +194,7 @@
       "source": "runtime/alpha3/ui/package.json",
       "target": "package.json",
       "sourceSha256": "024f0c666f91b7c1a472c53a82289dcaf63aa1eb78f67b59f5465e909dd83d76",
-      "sha256": "06b2b43a0e5f81090acef6706766e557a9dcb0a5eb60253c748f5d3701a857f1"
+      "sha256": "abff17440ed11ff2dadace02cfe68bffccef5696c0111641125fa340ebeb5b5d"
     },
     {
       "artifact": "roleplay-ui-bundle-patch",
@@ -284,8 +284,8 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "807afd4471dc9bfe65c31b00ed4c7f21da1bda0054e634df5bab99788240c778",
-      "sha256": "807afd4471dc9bfe65c31b00ed4c7f21da1bda0054e634df5bab99788240c778"
+      "sourceSha256": "dc6a062e5bbc32ad7926bb8a100fdfeb07c205ae55675790a28e6f8d76722736",
+      "sha256": "dc6a062e5bbc32ad7926bb8a100fdfeb07c205ae55675790a28e6f8d76722736"
     },
     {
       "artifact": "public-cover",
@@ -319,8 +319,8 @@
       "artifact": "public-changelog-draft",
       "source": "release/public/CHANGELOG.md",
       "target": "CHANGELOG.md",
-      "sourceSha256": "bf1daffbc902862273d87e3412158aac4527db1f7484130df43f0e5db831e033",
-      "sha256": "bf1daffbc902862273d87e3412158aac4527db1f7484130df43f0e5db831e033"
+      "sourceSha256": "4d568eb9907b57459529048e776810433846c5f13e13fbcadef0b58a537d3375",
+      "sha256": "4d568eb9907b57459529048e776810433846c5f13e13fbcadef0b58a537d3375"
     },
     {
       "artifact": "public-feedback",
@@ -561,8 +561,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "bf1daffbc902862273d87e3412158aac4527db1f7484130df43f0e5db831e033",
-      "bytes": 1614
+      "sha256": "4d568eb9907b57459529048e776810433846c5f13e13fbcadef0b58a537d3375",
+      "bytes": 2038
     },
     {
       "path": "FEEDBACK.md",
@@ -581,7 +581,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "807afd4471dc9bfe65c31b00ed4c7f21da1bda0054e634df5bab99788240c778",
+      "sha256": "dc6a062e5bbc32ad7926bb8a100fdfeb07c205ae55675790a28e6f8d76722736",
       "bytes": 20752
     },
     {
@@ -656,7 +656,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "06b2b43a0e5f81090acef6706766e557a9dcb0a5eb60253c748f5d3701a857f1",
+      "sha256": "abff17440ed11ff2dadace02cfe68bffccef5696c0111641125fa340ebeb5b5d",
       "bytes": 2369
     },
     {
@@ -696,8 +696,8 @@
     },
     {
       "path": "preset/lib/roleplay-core.js",
-      "sha256": "076d888f7a33b70c6e637ad12accdd6237f4e875d4b2ad1753ef1b2997365ab8",
-      "bytes": 463412
+      "sha256": "5758f429ecfc283fc970f483b01a3b6c4652ee9fb38761a10873c65b0e5882d6",
+      "bytes": 466602
     },
     {
       "path": "preset/lib/roleplay-memory-engine.js",
@@ -726,8 +726,8 @@
     },
     {
       "path": "preset/lib/tavern-tasks.js",
-      "sha256": "9fa8ff28fc1feaa7a68466b28118895cc76648d0c9b92372cb09e53897782dc4",
-      "bytes": 45347
+      "sha256": "b872cbeb285ab868baccb97cdbd43f13cc2e66e78b317bcf0d26d1a690c96dd0",
+      "bytes": 46988
     },
     {
       "path": "preset/lib/tavern-telemetry.js",

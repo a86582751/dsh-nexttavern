@@ -6,9 +6,24 @@ export const PURPOSES = Object.freeze([
   {id:'decision',label:'决策建议'}, {id:'novel-export',label:'小说整理'},
 ])
 const copy = value => value == null ? value : structuredClone(value)
+export class TaskValidationError extends Error {
+  constructor(message, issues = [], code = 'TASK_RESULT_INVALID') {
+    super(message)
+    this.code = code
+    this.failure = {schemaVersion:1,category:'validation',label:'任务结果校验失败',stage:'validate',code,status:null,issues:copy(issues)}
+  }
+}
+export function taskValidationFailure(job) {
+  if (job.failure?.schemaVersion===1 && job.failure.category==='validation') return copy(job.failure)
+  // Legacy jobs retained this local message but had no structured failure.
+  if (job.error==='状态结果没有保留作者模板') return new TaskValidationError(job.error,
+    [{path:'html',rule:'author-template',expected:'author-template',actual:'mismatch'}],'STATUS_TEMPLATE_MISMATCH').failure
+  return null
+}
 export const FAILURE_LABELS=Object.freeze({timeout:'任务超时',truncated:'输出达到上限，结果被截断','empty-response':'模型返回空结果',authentication:'认证失败',permission:'访问被拒绝',balance:'余额不足',quota:'配额不足','rate-limit':'请求限流','request-header':'请求头错误','invalid-request':'请求参数错误',overloaded:'模型服务繁忙',upstream:'服务端错误',cancelled:'请求已取消',unknown:'原因未提供'})
 // Classify locally; never persist provider response bodies or request headers.
 export function taskFailureDetails(raw) {
+  if (raw instanceof TaskValidationError) return copy(raw.failure)
   let f=raw??{}
   const seen=new Set()
   for(let depth=0;depth<8&&f&&typeof f==='object'&&!seen.has(f);depth++) {
@@ -158,7 +173,8 @@ export function inlineTaskInstruction(jobs,{sessionId,maxChars=128000}={}) {
   const tasks=[]
   for(const job of jobs) {
     if(job.execution!=='inline'||!['queued','running'].includes(job.status)||sessionId&&job.sessionId!==sessionId)continue
-    const task={id:job.id,kind:job.kind,generation:job.generation,branchId:job.branchId,sourceHash:job.sourceHash}
+    const task={id:job.id,kind:job.kind,generation:job.generation,branchId:job.branchId,sourceHash:job.sourceHash,
+      ...(taskValidationFailure(job)?{failure:taskValidationFailure(job),remainingValidationAttempts:Math.max(0,3-(job.validationFailures??0))}:{})}
     const text=JSON.stringify(job.input)
     if(['memory','status','decision'].includes(job.kind)&&typeof text==='string'&&text.length<=remaining) {
       task.input=job.input;task.completeSource=true;remaining-=text.length
@@ -516,10 +532,15 @@ export function createTavernTasks({table,policy,subagents,isCurrent=()=>true}) {
         if (result===undefined || result===null) throw new Error('任务结果没有通过校验')
       }catch(error){
         const failures=(job.validationFailures??0)+1
-        await table.put(keyOf(id),{...job,validationFailures:failures,status:failures>=3?'failed':job.status,error:String(error.message),updatedAt:Date.now()})
-        throw new Error(`${String(error.message)}${failures>=3?'；已保留检查点，请在酒馆管理中重试':'；请按 rp_task_read 中的结果契约修正，不要检查实现代码'}`)
+        const rejected=error instanceof TaskValidationError?error:new TaskValidationError(String(error.message),
+          [{path:'result',rule:'result-contract',expected:'valid-result',actual:'invalid-result'}])
+        const now=Date.now()
+        await table.put(keyOf(id),{...job,validationFailures:failures,failure:rejected.failure,status:failures>=3?'failed':job.status,
+          error:rejected.message,...(failures>=3?{failedAt:now}:{}),updatedAt:now})
+        throw new TaskValidationError(`${rejected.message}${failures>=3?'；已保留检查点，请在酒馆管理中重试':'；请按 rp_task_read 中的结果契约修正，不要检查实现代码'}`,
+          rejected.failure.issues,rejected.code)
       }
-      await table.put(keyOf(id),{...job,status:'completed',result:copy(result),resultHash:taskHash(result),progress:{done:1,total:1},completedAt:Date.now(),updatedAt:Date.now(),error:null})
+      await table.put(keyOf(id),{...job,status:'completed',result:copy(result),resultHash:taskHash(result),progress:{done:1,total:1},completedAt:Date.now(),updatedAt:Date.now(),error:null,failure:null,failedAt:null})
       return copy(result)
     })
   }
@@ -547,7 +568,7 @@ export function createTavernTasks({table,policy,subagents,isCurrent=()=>true}) {
     let job=await lock(id,async()=>{
       let found=copy(table.get(key))
       if(found?.background&&found.status==='failed'&&spec.retryBackground===true) {
-        found={...found,generation:randomUUID(),status:'queued',validationFailures:0,error:null,updatedAt:Date.now()}
+        found={...found,generation:randomUUID(),status:'queued',validationFailures:0,error:null,failure:null,failedAt:null,updatedAt:Date.now()}
         await table.put(key,found)
       }
       if(found?.execution==='spawn'&&found.status==='running'&&!running.has(id)&&!admissions.has(id)) {
@@ -654,21 +675,22 @@ export function createTavernTasks({table,policy,subagents,isCurrent=()=>true}) {
     },
     async fail(session,id,error) {
       return lock(id,async()=>{const job=owned(session,id);if(terminal.has(job.status))return job
-        const next={...job,status:'failed',error:String(error),updatedAt:Date.now()};await table.put(keyOf(id),next);return next})
+        const next={...job,status:'failed',error:String(error),failure:taskFailureDetails(error),failedAt:Date.now(),updatedAt:Date.now()};await table.put(keyOf(id),next);return next})
     },
     read(session,id,offset=0,maxChars=64000) {
       const job=owned(session,id), text=JSON.stringify(job.input)
       const start=Number(offset), cap=Math.max(256,Math.min(128000,Number(maxChars)||64000))
       if(!Number.isSafeInteger(start)||start<0||start>text.length)throw new Error('任务读取游标无效')
       const end=Math.min(text.length,start+cap)
-      return {id:job.id,generation:job.generation,kind:job.kind,branchId:job.branchId,sourceHash:job.sourceHash,offset:start,text:text.slice(start,end),nextOffset:end<text.length?end:null,totalChars:text.length}
+      return {id:job.id,generation:job.generation,kind:job.kind,branchId:job.branchId,sourceHash:job.sourceHash,offset:start,text:text.slice(start,end),nextOffset:end<text.length?end:null,totalChars:text.length,
+        failure:taskValidationFailure(job),validationFailures:job.validationFailures??0,remainingValidationAttempts:Math.max(0,3-(job.validationFailures??0))}
     },
     cancel:cancelJob,
     async retry(session,id) {
       const result=await lock(id,async()=>{const job=owned(session,id)
         if(job.status==='completed')return job
         if(!await isCurrent(session,job))throw new Error('来源已变化，需要新快照')
-        const next={...job,status:'queued',generation:randomUUID(),validationFailures:0,error:null,updatedAt:Date.now()};await table.put(keyOf(id),next);return next})
+        const next={...job,status:'queued',generation:randomUUID(),validationFailures:0,error:null,failure:null,failedAt:null,updatedAt:Date.now()};await table.put(keyOf(id),next);return next})
       if(result.status!=='completed') {
         const old=controllers.get(id)
         if(old&&old.generation!==result.generation)abortControl(session,id,old)

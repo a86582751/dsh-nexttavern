@@ -22,7 +22,7 @@ import { readCardSource, decodeTavernCard, projectTavernCard, fenceCardContent }
 import { boundedRegexMatch, worldbookRegex } from './bounded-regex.js'
 import {createCharacterCluster,CHARACTER_PERSONA,clusterSettings} from './character-cluster.js'
 import { registerCardExport } from './card-export.js'
-import { createModelPolicy, createTavernTasks, selectedMainRoute, withTavernLock, isInlinePending, taskPhaseMessage, taskStorySeqs, internalTaskSeqs, inlineTaskInstruction, inlineTaskMessages, retireCompletedTaskContexts, awaitTaskAdmissions, tavernTaskToolBoundary } from './tavern-tasks.js'
+import { createModelPolicy, createTavernTasks, selectedMainRoute, withTavernLock, isInlinePending, taskPhaseMessage, taskStorySeqs, internalTaskSeqs, inlineTaskInstruction, inlineTaskMessages, retireCompletedTaskContexts, awaitTaskAdmissions, tavernTaskToolBoundary, TaskValidationError, taskValidationFailure } from './tavern-tasks.js'
 import { createTavernLibrary } from './tavern-library.js'
 import { createNovelExports } from './novel-export.js'
 import { createTelemetry, aggregateUsage, timeRange, queryUsageRequests } from './tavern-telemetry.js'
@@ -343,12 +343,14 @@ function surfaceEvents(session) {
 // Keep identical author system sections byte-identical across requests. The
 // content-derived fence belongs to this exact content, not to a model step or
 // process. Bound memoization without changing rendered bytes on eviction.
+const promptSafeAuthorText = text => String(text).replace(/\{\{(?:user|user_gender|char)\}\}|\{\{|\}\}/g,
+  token => token==='{{'?'⟦':token==='}}'?'⟧':token)
 export function createStableRoleplayFence() {
   const entries=new Map();let size=0
   return (body,kind)=>{
     const key=sha256(`${kind}\0${body}`),cached=entries.get(key)
     if(cached){entries.delete(key);entries.set(key,cached);return cached}
-    const fenced=fenceCardContent(body,kind,{stable:true})
+    const fenced=fenceCardContent(promptSafeAuthorText(body),kind,{stable:true})
     entries.set(key,fenced);size+=fenced.length
     while(entries.size>64||size>8_000_000){const oldest=entries.keys().next().value;size-=entries.get(oldest).length;entries.delete(oldest)}
     return fenced
@@ -816,7 +818,7 @@ const STATUS_SYSTEM =
   '"options":[{"label":"选项文案（50字内）","heart":true}],"rawText":"纯文本状态栏（备用）"}\n' +
   '字段名必须写在 label，字段内容必须写在 value；下一步文案必须写在 options[].label，禁止把这些内容写进 reason/name/content 等其他键。' +
   '规则：严格遵守状态栏设定中的字段与格式（好感度数值规则、颜文字风格、选项规则）；' +
-  '若设定含 HTML 模板（内联样式 + {{user}} 占位符 + 状态项列表），按该模板结构输出完整 html 字段（保留内联样式与 {{user}} 占位符原样），' +
+  '若设定含 HTML 模板，按作者布局输出完整 html；保留静态 class/id、内联样式及 style/script。作者动态占位符可用双花括号或 ⟦字段⟧，两者等价，必须填入本轮真实状态值（包括 style 中的进度数值），不要逐字回抄动态占位符。{{user}} / {{user_gender}} 是保留给渲染层的玩家身份变量。' +
   '同时仍输出 fields/options 供系统拼接上下文与悬浮窗交互；选项按钮带 class="f" 的元素点击后会被填入输入框。' +
   '任何涉及主角姓名的位置（title/label/value/html）一律输出 {{user}} 或 {{user_gender}} 占位符：不要写真实名字，也不要写 user/用户 等字面量，渲染层会统一确定性替换。' +
   '只依据正文与场景中实际发生的内容填写，不编造；若设定含正则美化规则，按其意图生成。只输出 JSON。'
@@ -1340,19 +1342,54 @@ export async function apply(ctx, config = {}) {
     return /<(?:div|section|article|aside|table|details|ul|ol|p|span|h[1-6])\b[^>]*>[\s\S]*<\//i.test(body) ? template : ''
   }
 
-  const statusPanelForSpec = (raw, spec) => {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const statusPanelForSpec = (raw, spec, {strict=false}={}) => {
+    const reject=(path,rule,expected,actual)=>{
+      if(strict)throw new TaskValidationError(`状态结果没有保留作者模板：${path} (${rule})`,
+        [{path,rule,expected,actual}],'STATUS_TEMPLATE_MISMATCH')
+      return null
+    }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return reject('result','object-required','object',Array.isArray(raw)?'array':typeof raw)
     const template = authoredStatusTemplate(spec)
     let html = typeof raw.html === 'string' ? raw.html : ''
     if (template) {
       // A fields-only response must retry instead of silently selecting the
       // generic theme. Preserve author CSS/JS and structural hooks exactly.
-      if (!authoredStatusTemplate({ templateHtml: html })) return null
+      if (!authoredStatusTemplate({ templateHtml: html })) return reject('html','html-required','complete-author-html',html.trim()?'incomplete-html':'missing-html')
       const staticBlock = /<(style|script)\b[^>]*>[\s\S]*?<\/\1\s*>/gi
       const blocks = template.match(staticBlock) ?? []
       const body = html.replace(staticBlock, '')
-      const attributes = template.replace(staticBlock,'').match(/\b(?:style|class|id)\s*=\s*(?:"[^"]*"|'[^']*')/gi) ?? []
-      if (attributes.some(part => !body.includes(part))) return null
+      const attributes = source => [...source.matchAll(/\b(style|class|id)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)]
+        .map(([,name,double,single])=>({name:name.toLowerCase(),value:double??single}))
+      const actual=attributes(body)
+      const canonical=value=>value.replace(/⟦([^⟦⟧]+)⟧/g,'{{$1}}')
+      const matches=(expected,candidate)=>{
+        if(expected.name!==candidate.name)return false
+        const wanted=canonical(expected.value),got=canonical(candidate.value)
+        if(wanted===got)return true
+        // Only explicit author slots vary. A slot cannot swallow a new CSS
+        // declaration or HTML attribute; static hooks remain protected.
+        const slots=[...wanted.matchAll(/\{\{(?!(?:user|user_gender|char)\}\})([^{}]+)\}\}/g)]
+        let offset=0,position=0
+        for(let index=0;index<slots.length;index++) {
+          const slot=slots[index],prefix=wanted.slice(offset,slot.index)
+          if(!got.startsWith(prefix,position))return false
+          position+=prefix.length
+          const end=slot.index+slot[0].length,next=wanted.slice(end,slots[index+1]?.index??wanted.length)
+          if(got.startsWith(slot[0],position))position+=slot[0].length
+          else {
+            // Linear matching avoids constructing backtracking patterns from
+            // untrusted author templates. Adjacent dynamic slots share a value.
+            const boundary=next?got.indexOf(next,position):got.length
+            if(boundary<position||!/^[^;"'<>={}]*$/.test(got.slice(position,boundary)))return false
+            position=boundary
+          }
+          offset=end
+        }
+        return got.slice(position)===wanted.slice(offset)
+      }
+      const expected=attributes(template.replace(staticBlock,''))
+      for(let index=0;index<expected.length;index++)if(!actual.some(candidate=>matches(expected[index],candidate)))
+        return reject(`html.attributes[${index}].${expected[index].name}`,'author-static-attribute','author-value-with-dynamic-slots','missing-or-changed')
       // Keep exact author CSS/JS in code, not a paid model copying exercise.
       const remaining = [...blocks]
       html = html.replace(staticBlock, (_block, tag) => {
@@ -1572,7 +1609,7 @@ export async function apply(ctx, config = {}) {
               selection,
               onResult:task=>{executionProvenance={taskId:task.id,generation:task.generation,actualRoute:task.actualRoute,execution:task.execution}},
               generationKey:record.generationKey??undefined,
-              validate:value=>{if(!statusPanelForSpec(value,spec))throw new Error('状态结果没有保留作者模板');return value},
+              validate:value=>{if(!statusPanelForSpec(value,spec,{strict:true}))throw new TaskValidationError('状态结果没有可用内容',[{path:'result',rule:'nonempty-status',expected:'status-content',actual:'empty'}]);return value},
               user: `状态栏设定：\n${fenceCardContent(template && spec?.text?.trim() === template.trim() ? '设定与作者模板相同，完整内容见下方模板。' : spec?.text ?? '根据本轮正文展示已确认的位置、时间与人物状态。', 'status')}\n${template ? `\n作者原始状态栏模板（完整保留 HTML 结构、class/id、内联样式和 style/script 块；只更新动态状态值）：\n${fenceCardContent(template, 'status')}` : ''}\n\n当前分支状态依据、已提交前置状态及待结算剧情：\n${fenceCardContent(JSON.stringify(context), 'status')}\n\n以 previousStatus 为累计状态基线，按 selectedStorySinceStatus 中已经发生的剧情依次结算到本轮；最后一条 assistant 即本轮正文。基线已结算的历史不能重复扣除。没有有效基线时，根据提供的当前分支剧情从初始设定重建，不能把初始模板数值直接当成本轮值。数值与物品规则必须执行；只有剧情确实完成相应行为时才结算。不得因为本轮正文未重复数值就清空或重置累计状态。fields 与 html 必须一致。只提取状态，不续写剧情、不审阅整张角色卡。\n\n请生成状态栏 JSON。`,
               maxTokens: Math.max(6000, estimateTokens(template) * 2 + 2000), temperature: 0.4,
               timeoutMs: Number(cfg.statusWorkerTimeoutMs) || DEFAULT_CONFIG.statusWorkerTimeoutMs,
@@ -6896,8 +6933,9 @@ export async function apply(ctx, config = {}) {
           const started=attempts.length?Math.min(...attempts.map(r=>r.startedAt)):null
           const completed=attempts.filter(r=>Number.isFinite(r.durationMs)).map(r=>r.startedAt+r.durationMs)
           return {id:j.id,kind:j.kind,status:j.status,background:j.background===true,
-            createdAt:stamp(j.createdAt),completedAt:stamp(j.completedAt),execution:j.selection?.execution??null,
-            requested:route(j.selection?.actualRoute),errorCode:errorCode(j.error),
+            createdAt:stamp(j.createdAt),completedAt:stamp(j.completedAt),failedAt:stamp(j.failedAt??(j.status==='failed'?j.updatedAt:null)),execution:j.execution??j.selection?.execution??null,
+            requested:route(j.actualRoute??j.selection?.actualRoute),errorCode:taskValidationFailure(j)?.code??errorCode(j.error),
+            failure:taskValidationFailure(j),validationFailures:j.validationFailures??0,
             recordedCalls:attempts.length,failedCalls:attempts.filter(r=>r.status==='failed').length,
             callSpanSeconds:started!==null&&completed.length?Math.round((Math.max(...completed)-started)/10)/100:null,
             callStartedAtLocal:local(started),callCompletedAtLocal:completed.length?local(Math.max(...completed)):null,
@@ -7278,7 +7316,9 @@ export async function apply(ctx, config = {}) {
       .map(([,value])=>value).sort((a,b)=>(b.createdAt??0)-(a.createdAt??0))[0]
     return {id:job.id,parentJobId:job.source?.workflowId??null,kind:job.kind,status:job.status,progress:job.progress,
       execution:child?.execution??job.execution,actualRoute:child?.actualRoute??job.actualRoute,
-      error:job.error??null,resourceId:job.resourceId??job.result?.resourceId??null,createdAt:job.createdAt,completedAt:job.completedAt}
+      error:job.error??null,failure:taskValidationFailure(job)??job.failure??null,validationFailures:job.validationFailures??0,
+      resourceId:job.resourceId??job.result?.resourceId??null,createdAt:job.createdAt,completedAt:job.completedAt??null,
+      failedAt:job.failedAt??(job.status==='failed'?job.updatedAt??null:null)}
   }
   async function startExportJob(session,kind,agent,sourceFile) {
     const job=kind==='novel-export'?await novelExports.begin(session,await modelPolicy.resolve(session,kind,agent))
