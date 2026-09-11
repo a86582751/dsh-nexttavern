@@ -24,13 +24,14 @@
     "schemas",
     "screenshots",
     "screenshots.json",
-    "SCREENSHOTS.md",
     "provenance.json",
+    "LICENSE",
     "README.md",
     "NOTICE.md",
-    "LICENSE",
+    "ARCHITECTURE.md",
     "CHANGELOG.md",
     "FEEDBACK.md",
+    "SCREENSHOTS.md",
     "cordis.patch.yml"
   ],
   "dsh": {
