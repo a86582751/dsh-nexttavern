@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.1.0",
-  "sourceCommit": "ca08015d7e5519088140cb3a19bf887bfdd14d86",
+  "sourceCommit": "d6e5eb90d8376bf7c9916b88026f3f98a9008d5d",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -284,8 +284,15 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "2ad0573c1e41d40423fd69c46d362ffcb2d332ae656867287c3d727c36486cdf",
-      "sha256": "2ad0573c1e41d40423fd69c46d362ffcb2d332ae656867287c3d727c36486cdf"
+      "sourceSha256": "807afd4471dc9bfe65c31b00ed4c7f21da1bda0054e634df5bab99788240c778",
+      "sha256": "807afd4471dc9bfe65c31b00ed4c7f21da1bda0054e634df5bab99788240c778"
+    },
+    {
+      "artifact": "public-cover",
+      "source": "release/public/images/cover.png",
+      "target": "images/cover.png",
+      "sourceSha256": "9ad939d6107608e95db22fce1f90ddeff8d6114948a9d59295e7856322f3ac5e",
+      "sha256": "9ad939d6107608e95db22fce1f90ddeff8d6114948a9d59295e7856322f3ac5e"
     },
     {
       "artifact": "public-notice-draft",
@@ -574,8 +581,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "2ad0573c1e41d40423fd69c46d362ffcb2d332ae656867287c3d727c36486cdf",
-      "bytes": 20661
+      "sha256": "807afd4471dc9bfe65c31b00ed4c7f21da1bda0054e634df5bab99788240c778",
+      "bytes": 20752
     },
     {
       "path": "SCREENSHOTS.md",
@@ -606,6 +613,11 @@
       "path": "harness/package.json",
       "sha256": "d21416b40b528c098ab0d18b244ae5e159c30c9bdd75a835993ac7d57b53324a",
       "bytes": 12406
+    },
+    {
+      "path": "images/cover.png",
+      "sha256": "9ad939d6107608e95db22fce1f90ddeff8d6114948a9d59295e7856322f3ac5e",
+      "bytes": 3763381
     },
     {
       "path": "integrations/dependencies.json",

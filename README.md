@@ -1,3 +1,5 @@
+![dsh-NextTavern：创作一个世界，走进它，再把它带走。](images/cover.png)
+
 # dsh-NextTavern
 
 **让角色独立推演，让世界随你的选择展开。**
