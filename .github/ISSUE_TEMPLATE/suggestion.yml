@@ -1,0 +1,23 @@
+name: 体验建议
+description: 一般体验与新功能建议，进入下周评估。
+title: '[建议] '
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: 版本与使用环境
+      description: 插件/DSH/补丁版本、OS、安装渠道、操作类型、模型/供应商与思考强度、集群是否开启；无关项写“不适用”。
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 当前操作与期望结果
+      description: 描述实际场景、当前结果、期望结果和可验证的改善。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 例子与发生时间
+      description: 可附最小示例、时间/时区和脱敏错误；不要提供 key、完整角色卡、私密会话或整个 DSH_HOME。

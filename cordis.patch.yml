@@ -1,0 +1,26 @@
+- insert:
+    - id: roleplay-ui
+      name: dsh-nexttavern
+- insert:
+    - id: file-upload
+      name: dsh-file-upload
+      config:
+        uploadMaxBytes: 26214400
+        allowedExtensions: []
+        uploadTtlMs: 604800000
+        sweepIntervalMs: 3600000
+        maxConcurrentUploads: 4
+        maxFileBytes: 26214400
+        readLimit: 2000
+        sheetRowLimit: 200
+        maxSheets: 5
+        cacheEntries: 16
+        cacheMaxBytes: 67108864
+        inlineTextLimit: 8192
+        previewTextLimit: 2048
+        markitdownBin: ""
+        maxRecordSec: 60
+        asrEndpoint: ""
+        asrApiKeyEnv: OPENAI_API_KEY
+        asrModel: whisper-1
+        asrMaxBytes: 26214400

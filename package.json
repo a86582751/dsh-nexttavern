@@ -1,0 +1,84 @@
+{
+  "name": "dsh-nexttavern",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness long-form roleplay workspace with worldlines, memory, cards and exports.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    }
+  },
+  "files": [
+    "lib",
+    "src",
+    "preset",
+    "tools",
+    "build-tools",
+    "integrations",
+    "harness",
+    "licenses",
+    "schemas",
+    "screenshots",
+    "screenshots.json",
+    "SCREENSHOTS.md",
+    "provenance.json",
+    "README.md",
+    "NOTICE.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "FEEDBACK.md",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-api-workspace-controller",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-commands",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-modules",
+        "@deepseek-ai/dsh-client-ui-chat"
+      ]
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/a86582751/dsh-nexttavern.git"
+  },
+  "homepage": "https://github.com/a86582751/dsh-nexttavern",
+  "bugs": {
+    "url": "https://github.com/a86582751/dsh-nexttavern/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-session": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-api-workspace-controller": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-commands": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-locale": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-modules": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-chat": "0.1.2-alpha.3",
+    "@deepseek-ai/cordis": "^4.0.2"
+  },
+  "dependencies": {
+    "yaml": "2.8.1",
+    "dsh-file-upload": "https://github.com/a86582751/dsh-file-upload/releases/download/v0.4.3-nexttavern.1/dsh-file-upload-0.4.3-nexttavern.1.tgz"
+  },
+  "scripts": {
+    "build": "node src/build-client.mjs src/client.js lib/client.js dsh-nexttavern"
+  }
+}

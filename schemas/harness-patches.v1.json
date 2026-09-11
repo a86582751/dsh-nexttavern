@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dsh-roleplay/harness-patches/v1",
+  "type": "object",
+  "required": ["schemaVersion", "harnessLine", "patches"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "harnessLine": { "type": "string" },
+    "patches": { "type": "array", "items": { "type": "object", "required": ["unit", "package", "version", "file", "before", "after", "edits", "source", "upstreamIntegrity", "license"] } }
+  }
+}

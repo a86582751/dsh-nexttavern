@@ -1,0 +1,33 @@
+name: 功能缺陷
+description: 提交可以复现的角色扮演功能问题。
+title: '[缺陷] '
+body:
+  - type: markdown
+    attributes:
+      value: 使用自建的最小示例。不要提交 key、完整角色卡、私密会话或整个 DSH_HOME。
+  - type: textarea
+    id: environment
+    attributes:
+      label: 版本与环境
+      description: 插件/DSH/补丁版本、OS、安装渠道、模型/供应商、思考强度、集群是否开启。
+    validations:
+      required: true
+  - type: textarea
+    id: operation
+    attributes:
+      label: 操作类型与最小复现
+      description: 例如读取角色卡、正文、重新生成、修改后发送、显式克隆、笔记、导出；给出顺序和发生时间/时区。
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 期望与实际结果
+      description: 分别写明确定观察到的事实与尚待验证的推测。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏错误、截图或最小样例
+      description: 只提供重现所需内容；不要上传私密生产对话截图。

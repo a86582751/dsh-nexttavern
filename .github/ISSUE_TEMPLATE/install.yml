@@ -1,0 +1,45 @@
+name: 安装或补丁失败
+description: 安装、更新、补丁审计、回滚或卸载问题。
+title: '[安装] '
+body:
+  - type: markdown
+    attributes:
+      value: 请只提供脱敏错误和最小复现。不要提供 key、Cookie、完整角色卡、私密会话或整个 DSH_HOME。
+  - type: textarea
+    id: environment
+    attributes:
+      label: 版本与环境
+      description: 插件版本、DSH 精确版本、补丁版本/事务状态、OS、Node 版本和安装渠道。
+    validations:
+      required: true
+  - type: dropdown
+    id: operation
+    attributes:
+      label: 操作类型
+      options:
+        - 首次安装
+        - 重复安装或更新
+        - 补丁审计或应用
+        - 回滚
+        - 卸载
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 最小复现、期望与实际结果
+      description: 给出命令、操作顺序、发生时间与时区。注明 roleplay preset 是否已存在、是否编辑过配置。
+    validations:
+      required: true
+  - type: textarea
+    id: model
+    attributes:
+      label: 模型与集群
+      description: 模型/供应商、思考强度、是否启用角色集群；纯安装未运行模型时写“不适用”。不要提供 key 或私有端点。
+    validations:
+      required: true
+  - type: textarea
+    id: errors
+    attributes:
+      label: 脱敏错误与已有尝试
+      description: 仅保留相关错误及事务状态，遮去用户名、私有路径、令牌和会话标识。

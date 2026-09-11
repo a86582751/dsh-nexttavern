@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "forks": [
+    {
+      "id": "file-upload",
+      "package": "dsh-file-upload",
+      "upstream": "HongMing-Huang/dsh-file-upload",
+      "baseCommit": "79759cb31c9971706cb9a5fc71d30053f1b498c3",
+      "baseVersion": "0.4.3",
+      "version": "0.4.3-nexttavern.1",
+      "fork": "a86582751/dsh-file-upload",
+      "patchArtifacts": [
+        "third-party-file-upload-crash-replay",
+        "third-party-read-document-replay"
+      ],
+      "compatibilityCommit": "4226d1cc1e33aef402ddbfd7203df5b1b192d345"
+    },
+    {
+      "id": "anydoc",
+      "package": "dsh-plugin-anydoc",
+      "upstream": "beancookie/dsh-plugin-anydoc",
+      "baseCommit": "3af159ed06f62f3d2c61ab21c6a2475c71efbfa4",
+      "baseVersion": "0.1.0",
+      "version": "0.1.0-nexttavern.1",
+      "fork": "a86582751/dsh-plugin-anydoc",
+      "patchArtifacts": [
+        "third-party-read-document-replay"
+      ],
+      "compatibilityCommit": "640ea1644ba998676ac905ee24da9e8b46256000"
+    },
+    {
+      "id": "pi-ai",
+      "package": "@earendil-works/pi-ai",
+      "upstream": "earendil-works/pi",
+      "baseVersion": "0.84.4",
+      "version": "0.84.4",
+      "fork": "a86582751/pi",
+      "patchArtifacts": [
+        "pi-ai-google-terminal-replay",
+        "pi-ai-openai-terminal-replay",
+        "pi-ai-anthropic-terminal-replay"
+      ],
+      "baseCommit": "b79e4cc834970cca69daebffab7df1da7d1e52c4",
+      "compatibilityCommit": "e97be64b13e7d6ccdd6e5f404bc5a3566d582460"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "file-upload",
+      "package": "dsh-file-upload",
+      "version": "0.4.3-nexttavern.1",
+      "filename": "dsh-file-upload-0.4.3-nexttavern.1.tgz",
+      "sha256": "1727e4c52099274050ae4c52ef3ac83d082f6b1165e16aebdf84997612fbcaa7",
+      "files": [
+        "LICENSE",
+        "NOTICE.md",
+        "README.md",
+        "cordis.patch.yml",
+        "lib/asr.js",
+        "lib/client.js",
+        "lib/convert.js",
+        "lib/detect.js",
+        "lib/index.js",
+        "lib/tool.js",
+        "lib/upload.js",
+        "package.json"
+      ],
+      "patchFiles": [
+        "lib/client.js",
+        "lib/tool.js"
+      ]
+    },
+    {
+      "id": "anydoc",
+      "package": "dsh-plugin-anydoc",
+      "version": "0.1.0-nexttavern.1",
+      "filename": "dsh-plugin-anydoc-0.1.0-nexttavern.1.tgz",
+      "sha256": "e0b2f7b521e7f8ada5a9f791780fa21aac6d6acf0344574f77cc54dc2ee2302e",
+      "files": [
+        "LICENSE",
+        "NOTICE.md",
+        "README.md",
+        "cordis.patch.yml",
+        "lib/index.js",
+        "package.json"
+      ],
+      "patchFiles": [
+        "lib/index.js"
+      ]
+    }
+  ]
+}

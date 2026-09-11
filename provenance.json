@@ -1,0 +1,894 @@
+{
+  "schemaVersion": 1,
+  "audience": "public-nexttavern",
+  "version": "0.1.0",
+  "sourceCommit": "476ad73d94865fe51f53472a4febb99c29f9dff1",
+  "dirty": false,
+  "harnessLine": "0.1.2-alpha.3",
+  "node": "v24.16.0",
+  "compiler": "0.24.2",
+  "identity": {
+    "package": "dsh-nexttavern",
+    "browserModule": "dsh-nexttavern",
+    "internalService": "dsh-roleplay-ui",
+    "preset": "roleplay"
+  },
+  "sources": [
+    {
+      "artifact": "ask-user-decision-pr",
+      "source": "runtime/alpha3/core/ask-user-decision-pr.js",
+      "target": "preset/lib/ask-user-decision-pr.js",
+      "sourceSha256": "14cf06006bb21711040e856241959264a50b4824ae297ceaf3ffabc05458167d",
+      "sha256": "14cf06006bb21711040e856241959264a50b4824ae297ceaf3ffabc05458167d"
+    },
+    {
+      "artifact": "bounded-regex",
+      "source": "runtime/alpha3/core/bounded-regex.js",
+      "target": "preset/lib/bounded-regex.js",
+      "sourceSha256": "a921a67e03bcd48970d87527a93435b0105595be76ab6e08d636148afb0353ef",
+      "sha256": "a921a67e03bcd48970d87527a93435b0105595be76ab6e08d636148afb0353ef"
+    },
+    {
+      "artifact": "card-export",
+      "source": "runtime/alpha3/core/card-export.js",
+      "target": "preset/lib/card-export.js",
+      "sourceSha256": "1435d87aa9aab21c72d5e4c8f6707b84cb234c17025379f5e1c589ffb3d9df0c",
+      "sha256": "1435d87aa9aab21c72d5e4c8f6707b84cb234c17025379f5e1c589ffb3d9df0c"
+    },
+    {
+      "artifact": "character-cluster",
+      "source": "runtime/alpha3/core/character-cluster.js",
+      "target": "preset/lib/character-cluster.js",
+      "sourceSha256": "cc235e0f918c7fbd6db400fabd046dcf31202900f9e02bbe9f40430e8eae6e29",
+      "sha256": "cc235e0f918c7fbd6db400fabd046dcf31202900f9e02bbe9f40430e8eae6e29"
+    },
+    {
+      "artifact": "roleplay-host-index",
+      "source": "runtime/alpha3/core/host-index.js",
+      "target": "preset/lib/host-index.js",
+      "sourceSha256": "552595d1e9bd72d1233142959482c314aff5f23b012e0b273ff8992a78a49474",
+      "sha256": "552595d1e9bd72d1233142959482c314aff5f23b012e0b273ff8992a78a49474"
+    },
+    {
+      "artifact": "novel-export",
+      "source": "runtime/alpha3/core/novel-export.js",
+      "target": "preset/lib/novel-export.js",
+      "sourceSha256": "fcbbf8deb37a9e643a40c35616cd64206393df2c64f1e9598f63e5dcf76e235d",
+      "sha256": "fcbbf8deb37a9e643a40c35616cd64206393df2c64f1e9598f63e5dcf76e235d"
+    },
+    {
+      "artifact": "roleplay-core",
+      "source": "runtime/alpha3/core/roleplay-core.js",
+      "target": "preset/lib/roleplay-core.js",
+      "sourceSha256": "54cee8ec4425bc0abdee3facac83d5466d6a8193beb3b826f495f613806a7ac4",
+      "sha256": "076d888f7a33b70c6e637ad12accdd6237f4e875d4b2ad1753ef1b2997365ab8"
+    },
+    {
+      "artifact": "tavern-card-adapter",
+      "source": "runtime/alpha3/core/tavern-card.js",
+      "target": "preset/lib/tavern-card.js",
+      "sourceSha256": "be640023f54773edbaecc313c3c3163034856aaa9e1be738edfca0e2ce63dda4",
+      "sha256": "be640023f54773edbaecc313c3c3163034856aaa9e1be738edfca0e2ce63dda4"
+    },
+    {
+      "artifact": "tavern-conversations",
+      "source": "runtime/alpha3/core/tavern-conversations.js",
+      "target": "preset/lib/tavern-conversations.js",
+      "sourceSha256": "bd32db768f8cd9f3efeae891b4e4018f31e5149445171dd90cd047ef8fcf2296",
+      "sha256": "bd32db768f8cd9f3efeae891b4e4018f31e5149445171dd90cd047ef8fcf2296"
+    },
+    {
+      "artifact": "tavern-library",
+      "source": "runtime/alpha3/core/tavern-library.js",
+      "target": "preset/lib/tavern-library.js",
+      "sourceSha256": "bdb7adcde243e1800409afd020779c548bf0173006d38e0b5d02b2e637922e58",
+      "sha256": "170a3221371837a9bc686e09e521d27d300aa81ec38e9c6a8bbadc9cfaeeab24"
+    },
+    {
+      "artifact": "tavern-pricing",
+      "source": "runtime/alpha3/core/tavern-pricing.js",
+      "target": "preset/lib/tavern-pricing.js",
+      "sourceSha256": "f24b0e1ba8a8cae3b201f9de39b4e51b774ba6898d90150090760309875ab5ee",
+      "sha256": "f24b0e1ba8a8cae3b201f9de39b4e51b774ba6898d90150090760309875ab5ee"
+    },
+    {
+      "artifact": "tavern-tasks",
+      "source": "runtime/alpha3/core/tavern-tasks.js",
+      "target": "preset/lib/tavern-tasks.js",
+      "sourceSha256": "9fa8ff28fc1feaa7a68466b28118895cc76648d0c9b92372cb09e53897782dc4",
+      "sha256": "9fa8ff28fc1feaa7a68466b28118895cc76648d0c9b92372cb09e53897782dc4"
+    },
+    {
+      "artifact": "tavern-telemetry",
+      "source": "runtime/alpha3/core/tavern-telemetry.js",
+      "target": "preset/lib/tavern-telemetry.js",
+      "sourceSha256": "cf6fbb3f2e54fee373b2c433ac991f09fbb0ec76b23abe62f1d283f8ac9712ec",
+      "sha256": "cf6fbb3f2e54fee373b2c433ac991f09fbb0ec76b23abe62f1d283f8ac9712ec"
+    },
+    {
+      "artifact": "roleplay-memory",
+      "source": "runtime/alpha3/memory/roleplay-memory-engine.js",
+      "target": "preset/lib/roleplay-memory-engine.js",
+      "sourceSha256": "305547c5912de48218c489529534f551d7da129104250f8603e2ce35f2a3450b",
+      "sha256": "305547c5912de48218c489529534f551d7da129104250f8603e2ce35f2a3450b"
+    },
+    {
+      "artifact": "roleplay-preset",
+      "source": "runtime/alpha3/preset/agent.cordis.yml",
+      "target": "preset/agent.cordis.yml",
+      "sourceSha256": "7a560caf361c4018b1e02ce0006ccac76487f92ee38db446ca1f25a7149defaf",
+      "sha256": "a8a06d965c05419570fa713002894b7d42ae2a83ce90b270edf7105e928fcd5a"
+    },
+    {
+      "artifact": "roleplay-preset-metadata",
+      "source": "runtime/alpha3/preset/preset.yml",
+      "target": "preset/preset.yml",
+      "sourceSha256": "d2a4b333196fca411b74424e0ade9104805572ce08a20023333a27477650c14c",
+      "sha256": "d2a4b333196fca411b74424e0ade9104805572ce08a20023333a27477650c14c"
+    },
+    {
+      "artifact": "roleplay-card-authoring",
+      "source": "runtime/alpha3/preset/card-authoring.SKILL.md",
+      "target": "preset/skills/roleplay-card-authoring/SKILL.md",
+      "sourceSha256": "5caf7652f43d63c8fa261ec84cbc3a8ca8fcf30c0d3a386afc249d3dd872fa78",
+      "sha256": "d2a7d7120582d14c480e1388694d248b5cf92bab78d38e266832c22589ef5391"
+    },
+    {
+      "artifact": "roleplay-narrative-style",
+      "source": "runtime/alpha3/preset/narrative-style.SKILL.md",
+      "target": "preset/skills/roleplay-narrative-style/SKILL.md",
+      "sourceSha256": "b898969bdb9bacc0a62323a6f9fbc3b037252e6713c43044d54ae460fbd86588",
+      "sha256": "b898969bdb9bacc0a62323a6f9fbc3b037252e6713c43044d54ae460fbd86588"
+    },
+    {
+      "artifact": "roleplay-self-diagnosis",
+      "source": "runtime/alpha3/preset/self-diagnosis.SKILL.md",
+      "target": "preset/skills/roleplay-self-diagnosis/SKILL.md",
+      "sourceSha256": "7f6e9087790decddc832a4a683d01903320fb5277b798d72f67ac047841f9066",
+      "sha256": "7f6e9087790decddc832a4a683d01903320fb5277b798d72f67ac047841f9066"
+    },
+    {
+      "artifact": "roleplay-reference-full-card",
+      "source": "runtime/alpha3/preset/reference/steam-tide-full-card.md",
+      "target": "preset/reference/steam-tide-full-card.md",
+      "sourceSha256": "2e0afc21ade52744dc98f68f5b017d8d2404ed10ab18d33cb1782df9fb08414a",
+      "sha256": "2e0afc21ade52744dc98f68f5b017d8d2404ed10ab18d33cb1782df9fb08414a"
+    },
+    {
+      "artifact": "roleplay-reference-dragon-card",
+      "source": "runtime/alpha3/preset/reference/模块化卡格式示例-暴躁龙女皇.md",
+      "target": "preset/reference/模块化卡格式示例-暴躁龙女皇.md",
+      "sourceSha256": "da4c02fb8e1e7f866f7d412b45de17c7ecd1cf9a8d3a1face81fbae554e37578",
+      "sha256": "da4c02fb8e1e7f866f7d412b45de17c7ecd1cf9a8d3a1face81fbae554e37578"
+    },
+    {
+      "artifact": "roleplay-deescape",
+      "source": "runtime/alpha3/preset/deescape-md.mjs",
+      "target": "preset/scripts/deescape-md.mjs",
+      "sourceSha256": "681482efb4bef9a8f6963b0683877e649865411e2321dd69bde57a0e6c1536b0",
+      "sha256": "681482efb4bef9a8f6963b0683877e649865411e2321dd69bde57a0e6c1536b0"
+    },
+    {
+      "artifact": "roleplay-host-index",
+      "source": "runtime/alpha3/core/host-index.js",
+      "target": "lib/index.js",
+      "sourceSha256": "552595d1e9bd72d1233142959482c314aff5f23b012e0b273ff8992a78a49474",
+      "sha256": "552595d1e9bd72d1233142959482c314aff5f23b012e0b273ff8992a78a49474"
+    },
+    {
+      "artifact": "tavern-conversations",
+      "source": "runtime/alpha3/core/tavern-conversations.js",
+      "target": "lib/tavern-conversations.js",
+      "sourceSha256": "bd32db768f8cd9f3efeae891b4e4018f31e5149445171dd90cd047ef8fcf2296",
+      "sha256": "bd32db768f8cd9f3efeae891b4e4018f31e5149445171dd90cd047ef8fcf2296"
+    },
+    {
+      "artifact": "roleplay-ui-bundle",
+      "source": "runtime/alpha3/ui/client.bundle.js",
+      "target": "lib/client.js",
+      "sourceSha256": "24710e10ac6f361ab0801a204b16eb283ec6dbadc640ce960c4d638b8cc75015",
+      "sha256": "64eb3eb6d894573200515e7a6870578199671e4e217e898a08a59e871e89f9ae"
+    },
+    {
+      "artifact": "roleplay-ui-package",
+      "source": "runtime/alpha3/ui/package.json",
+      "target": "package.json",
+      "sourceSha256": "024f0c666f91b7c1a472c53a82289dcaf63aa1eb78f67b59f5465e909dd83d76",
+      "sha256": "a53a0bfdaee0de9a6506dd143e5b15d18b578da976134832c088acf96c7a546b"
+    },
+    {
+      "artifact": "roleplay-ui-bundle-patch",
+      "source": "runtime/alpha3/ui/cordis.patch.yml",
+      "target": "cordis.patch.yml",
+      "sourceSha256": "36ca093cf35d273a21dc3f09292f34deeda1063b4ddc1cd1ba4808d421d8e4f1",
+      "sha256": "08aa1424c3cb09d0790f0dd5eef7232309923fdea655bd6f1be8d3217236e9b6"
+    },
+    {
+      "artifact": "roleplay-ui-source",
+      "source": "runtime/alpha3/ui/client.js",
+      "target": "src/client.js",
+      "sourceSha256": "2f6d92b4db1ea7946cca1b51b65d74ecd43115f28acfb0d30c0f0f85d9911783",
+      "sha256": "2f6d92b4db1ea7946cca1b51b65d74ecd43115f28acfb0d30c0f0f85d9911783"
+    },
+    {
+      "artifact": "conversation-projection",
+      "source": "runtime/alpha3/ui/conversation-projection.js",
+      "target": "src/conversation-projection.js",
+      "sourceSha256": "99c7466a9fecd938e569d61d195f188e6ef4db40c6a1f0ae2bcd0af2dc24de58",
+      "sha256": "99c7466a9fecd938e569d61d195f188e6ef4db40c6a1f0ae2bcd0af2dc24de58"
+    },
+    {
+      "artifact": "debug-cli",
+      "source": "runtime/alpha3/operations/dsh-debug/dsh_debug.py",
+      "target": "tools/dsh-debug/dsh_debug.py",
+      "sourceSha256": "1f933d2b230f26a92018c80dca01f4c90d3792d5c3806c69b8b23b1e2a0c50be",
+      "sha256": "1f933d2b230f26a92018c80dca01f4c90d3792d5c3806c69b8b23b1e2a0c50be"
+    },
+    {
+      "artifact": "debug-cli-worker",
+      "source": "runtime/alpha3/operations/dsh-debug/http_worker.py",
+      "target": "tools/dsh-debug/http_worker.py",
+      "sourceSha256": "0257252d195cc35128775419f672cbffd74706611e1406ee25db04025d500840",
+      "sha256": "0257252d195cc35128775419f672cbffd74706611e1406ee25db04025d500840"
+    },
+    {
+      "artifact": "debug-cli-install",
+      "source": "runtime/alpha3/operations/dsh-debug/install.ps1",
+      "target": "tools/dsh-debug/install.ps1",
+      "sourceSha256": "26c4e33e1f9f1b7c13e96e6d21e245ab5b3cf3863019ef8b73441b67426ad4fc",
+      "sha256": "26c4e33e1f9f1b7c13e96e6d21e245ab5b3cf3863019ef8b73441b67426ad4fc"
+    },
+    {
+      "artifact": "inventory-runtime-alpha3-operations-dsh-debug-README-md",
+      "source": "runtime/alpha3/operations/dsh-debug/README.md",
+      "target": "tools/dsh-debug/README.md",
+      "sourceSha256": "271e724043fe6fbcaca18daa4e2b8e5f61328b3ced63316a4510d2edc3b310fa",
+      "sha256": "c7105a168854f79a6d8baa1e6f27024b5f92f7a020ebb11d030475ef12d69298"
+    },
+    {
+      "artifact": "debug-cli-skill",
+      "source": "runtime/alpha3/operations/dsh-debug/SKILL.md",
+      "target": "tools/dsh-debug/SKILL.md",
+      "sourceSha256": "e3e3647415a93fb72392702fd73fed561ee26bee371623fc107c74ecee040594",
+      "sha256": "1b53c6ab895a56e61f1f8b2a56e16c47a86ca6db03c7647357f645881fc88388"
+    },
+    {
+      "artifact": "qwen-reasoning-profile",
+      "source": "runtime/alpha3/operations/qwen-reasoning-profile.mjs",
+      "target": "integrations/qwen-reasoning-profile.mjs",
+      "sourceSha256": "1b58588380dfc815935f5ad1244cf790399cab867f377cba3b186b8ad63863ca",
+      "sha256": "1b58588380dfc815935f5ad1244cf790399cab867f377cba3b186b8ad63863ca"
+    },
+    {
+      "artifact": "build-client",
+      "source": "runtime/alpha3/ui/build-client.mjs",
+      "target": "src/build-client.mjs",
+      "sourceSha256": "985a71e8acc2623b361c3c54f75c551d51a69e14479aa6ccca29fa27e9d1d74a",
+      "sha256": "985a71e8acc2623b361c3c54f75c551d51a69e14479aa6ccca29fa27e9d1d74a"
+    },
+    {
+      "artifact": "inventory-runtime-alpha3-build-tools-package-lock-json",
+      "source": "runtime/alpha3/build-tools/package-lock.json",
+      "target": "build-tools/package-lock.json",
+      "sourceSha256": "cee4ebf199da127bd17a01821f65c08f610c64a031ff36b0f65964bf24acde1c",
+      "sha256": "cee4ebf199da127bd17a01821f65c08f610c64a031ff36b0f65964bf24acde1c"
+    },
+    {
+      "artifact": "inventory-runtime-alpha3-build-tools-package-json",
+      "source": "runtime/alpha3/build-tools/package.json",
+      "target": "build-tools/package.json",
+      "sourceSha256": "e2d29621c38f5eca44909a2159784b23f421c2899016bb9ac797a8fec77f2c87",
+      "sha256": "e2d29621c38f5eca44909a2159784b23f421c2899016bb9ac797a8fec77f2c87"
+    },
+    {
+      "artifact": "public-readme-draft",
+      "source": "release/public/README.md",
+      "target": "README.md",
+      "sourceSha256": "0a876746c9c923f2a9b8a7a62bcebacab1b010548acb697e90214b48a4b3b7bb",
+      "sha256": "0a876746c9c923f2a9b8a7a62bcebacab1b010548acb697e90214b48a4b3b7bb"
+    },
+    {
+      "artifact": "public-notice-draft",
+      "source": "release/public/NOTICE.md",
+      "target": "NOTICE.md",
+      "sourceSha256": "e13d796664f6401ec04cf4b11e92681433801d889e7f17ace31f2127fc211a12",
+      "sha256": "e13d796664f6401ec04cf4b11e92681433801d889e7f17ace31f2127fc211a12"
+    },
+    {
+      "artifact": "public-license",
+      "source": "release/public/LICENSE",
+      "target": "LICENSE",
+      "sourceSha256": "834a60339f8a47ef036f30723cea53ea30dd3088f9887664458efb116c533b70",
+      "sha256": "834a60339f8a47ef036f30723cea53ea30dd3088f9887664458efb116c533b70"
+    },
+    {
+      "artifact": "public-changelog-draft",
+      "source": "release/public/CHANGELOG.md",
+      "target": "CHANGELOG.md",
+      "sourceSha256": "b512503af21ccd682816467ba457957a9c9dc70c155758e0a7cbe6b482f301f8",
+      "sha256": "b512503af21ccd682816467ba457957a9c9dc70c155758e0a7cbe6b482f301f8"
+    },
+    {
+      "artifact": "public-feedback",
+      "source": "release/public/FEEDBACK.md",
+      "target": "FEEDBACK.md",
+      "sourceSha256": "277ae2e66cbf267468749a71150a33e70117b3dd3353dccc1b83e35fbd91e2f5",
+      "sha256": "277ae2e66cbf267468749a71150a33e70117b3dd3353dccc1b83e35fbd91e2f5"
+    },
+    {
+      "artifact": "public-install-issue",
+      "source": "release/public/.github/ISSUE_TEMPLATE/install.yml",
+      "target": ".github/ISSUE_TEMPLATE/install.yml",
+      "sourceSha256": "ff97fe131cdc153aaba7a4338f73191c42cb9f40fc54512a911b253045b0e42e",
+      "sha256": "ff97fe131cdc153aaba7a4338f73191c42cb9f40fc54512a911b253045b0e42e"
+    },
+    {
+      "artifact": "public-bug-issue",
+      "source": "release/public/.github/ISSUE_TEMPLATE/bug.yml",
+      "target": ".github/ISSUE_TEMPLATE/bug.yml",
+      "sourceSha256": "1ee631c953a298da5ef2a3d0483f68de49a65dd1628a7dbd546387c64c114d33",
+      "sha256": "1ee631c953a298da5ef2a3d0483f68de49a65dd1628a7dbd546387c64c114d33"
+    },
+    {
+      "artifact": "public-suggestion-issue",
+      "source": "release/public/.github/ISSUE_TEMPLATE/suggestion.yml",
+      "target": ".github/ISSUE_TEMPLATE/suggestion.yml",
+      "sourceSha256": "c2ee435601cad401a1fc82f2a1402c47380fed4edd4c0a1f8dd9009c9787cc70",
+      "sha256": "c2ee435601cad401a1fc82f2a1402c47380fed4edd4c0a1f8dd9009c9787cc70"
+    },
+    {
+      "artifact": "public-transaction",
+      "source": "runtime/alpha3/operations/public-transaction.mjs",
+      "target": "tools/public-transaction.mjs",
+      "sourceSha256": "8ee07595c7bb69c524e24d781b3309c2819714699326bc8597727e98f5d9dff2",
+      "sha256": "8ee07595c7bb69c524e24d781b3309c2819714699326bc8597727e98f5d9dff2"
+    },
+    {
+      "artifact": "public-patch-harness",
+      "source": "runtime/alpha3/operations/patch-harness.mjs",
+      "target": "tools/patch-harness.mjs",
+      "sourceSha256": "604132feddc595b09dc14f155220f1447a1d1ba80ab39dd3ffc96df3ca6f7e27",
+      "sha256": "604132feddc595b09dc14f155220f1447a1d1ba80ab39dd3ffc96df3ca6f7e27"
+    },
+    {
+      "artifact": "public-install",
+      "source": "runtime/alpha3/operations/install-public.mjs",
+      "target": "tools/install.mjs",
+      "sourceSha256": "2e4759f4f7c9dc4e36c547b7a85459a5db6e90413cbb5a44707b448d168d0145",
+      "sha256": "2e4759f4f7c9dc4e36c547b7a85459a5db6e90413cbb5a44707b448d168d0145"
+    },
+    {
+      "artifact": "public-transaction-schema",
+      "source": "schema/public-transaction.v1.json",
+      "target": "schemas/public-transaction.v1.json",
+      "sourceSha256": "53446f234293538b72b4ecf3140c095fc31bb53f6907b2d808de0cfc06487037",
+      "sha256": "53446f234293538b72b4ecf3140c095fc31bb53f6907b2d808de0cfc06487037"
+    },
+    {
+      "artifact": "public-install-schema",
+      "source": "schema/public-install.v1.json",
+      "target": "schemas/public-install.v1.json",
+      "sourceSha256": "22cebba2b23febf6c3a20fcbb831b5610ff08b73e54ddc1c09c40ee370b30e0e",
+      "sha256": "22cebba2b23febf6c3a20fcbb831b5610ff08b73e54ddc1c09c40ee370b30e0e"
+    },
+    {
+      "artifact": "harness-patches-schema",
+      "source": "schema/harness-patches.v1.json",
+      "target": "schemas/harness-patches.v1.json",
+      "sourceSha256": "2210c9fe45012719fca16a6afc62f0b370562cdde335399b6c9a27408ebe9c8e",
+      "sha256": "2210c9fe45012719fca16a6afc62f0b370562cdde335399b6c9a27408ebe9c8e"
+    },
+    {
+      "artifact": "public-harness-package",
+      "source": "release/public/harness/package.json",
+      "target": "harness/package.json",
+      "sourceSha256": "d21416b40b528c098ab0d18b244ae5e159c30c9bdd75a835993ac7d57b53324a",
+      "sha256": "d21416b40b528c098ab0d18b244ae5e159c30c9bdd75a835993ac7d57b53324a"
+    },
+    {
+      "artifact": "public-harness-lock",
+      "source": "release/public/harness/package-lock.json",
+      "target": "harness/package-lock.json",
+      "sourceSha256": "6fae99d6095c14467c263f18aabbbc63845dd0132006870b350b88b3bdc090c4",
+      "sha256": "6fae99d6095c14467c263f18aabbbc63845dd0132006870b350b88b3bdc090c4"
+    },
+    {
+      "artifact": "public-deepseek-license",
+      "source": "release/public/licenses/DeepSeek-MIT.txt",
+      "target": "licenses/DeepSeek-MIT.txt",
+      "sourceSha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+      "sha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be"
+    },
+    {
+      "artifact": "public-pi-license",
+      "source": "release/public/licenses/pi-MIT.txt",
+      "target": "licenses/pi-MIT.txt",
+      "sourceSha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+    },
+    {
+      "artifact": "public-screenshots-gallery",
+      "source": "release/public/SCREENSHOTS.md",
+      "target": "SCREENSHOTS.md",
+      "sourceSha256": "3b03a8e1f294994d038f5b59f2e6b3208ddc25d5bde5aed75e862b8f841be55b",
+      "sha256": "3b03a8e1f294994d038f5b59f2e6b3208ddc25d5bde5aed75e862b8f841be55b"
+    },
+    {
+      "artifact": "public-screenshots-index",
+      "source": "release/public/screenshots.json",
+      "target": "screenshots.json",
+      "sourceSha256": "62664089b3727892a8cfbc30530eca495e80c601f39147c4eafb171f9835a44d",
+      "sha256": "62664089b3727892a8cfbc30530eca495e80c601f39147c4eafb171f9835a44d"
+    },
+    {
+      "artifact": "screenshot-reading",
+      "source": "release/public/screenshots/reading.png",
+      "target": "screenshots/reading.png",
+      "sourceSha256": "f71784c9f0bbd593a7553dc41f05d2781fcaf1808107e96ed6df5e6bc8e00ae5",
+      "sha256": "f71784c9f0bbd593a7553dc41f05d2781fcaf1808107e96ed6df5e6bc8e00ae5"
+    },
+    {
+      "artifact": "screenshot-management",
+      "source": "release/public/screenshots/management.png",
+      "target": "screenshots/management.png",
+      "sourceSha256": "a09c925b0d25e61566ae4848eac0c1113f256058c5d4c0f0d50a9738850b29bb",
+      "sha256": "a09c925b0d25e61566ae4848eac0c1113f256058c5d4c0f0d50a9738850b29bb"
+    },
+    {
+      "artifact": "screenshot-worldlines",
+      "source": "release/public/screenshots/worldlines.png",
+      "target": "screenshots/worldlines.png",
+      "sourceSha256": "79986b4f3f240041882011151ef7cae01cf3aa427adbf81fbced1cc5fcffe6ca",
+      "sha256": "79986b4f3f240041882011151ef7cae01cf3aa427adbf81fbced1cc5fcffe6ca"
+    },
+    {
+      "artifact": "screenshot-authoring",
+      "source": "release/public/screenshots/authoring.png",
+      "target": "screenshots/authoring.png",
+      "sourceSha256": "cc31f4c2264c7f016d0b952abbdfeda55a497e2d857f7f07097c027467a90b20",
+      "sha256": "cc31f4c2264c7f016d0b952abbdfeda55a497e2d857f7f07097c027467a90b20"
+    },
+    {
+      "artifact": "screenshot-characters",
+      "source": "release/public/screenshots/characters.png",
+      "target": "screenshots/characters.png",
+      "sourceSha256": "b58a745db64005ab8ba743a3639b324cc6965e5d71e3ba8d512f9839e01ef163",
+      "sha256": "b58a745db64005ab8ba743a3639b324cc6965e5d71e3ba8d512f9839e01ef163"
+    },
+    {
+      "artifact": "screenshot-memory",
+      "source": "release/public/screenshots/memory.png",
+      "target": "screenshots/memory.png",
+      "sourceSha256": "9e8c24f2a124b1ca1b75879fcd8d7a87b239836c0ca67fd3d4913e0b5d4eafa0",
+      "sha256": "9e8c24f2a124b1ca1b75879fcd8d7a87b239836c0ca67fd3d4913e0b5d4eafa0"
+    },
+    {
+      "artifact": "screenshot-worldbook",
+      "source": "release/public/screenshots/worldbook.png",
+      "target": "screenshots/worldbook.png",
+      "sourceSha256": "09611e6b531afa274bcc3835d9f250a137b7a33ad3f91b3a92de2e05525b966d",
+      "sha256": "09611e6b531afa274bcc3835d9f250a137b7a33ad3f91b3a92de2e05525b966d"
+    },
+    {
+      "artifact": "screenshot-export",
+      "source": "release/public/screenshots/export.png",
+      "target": "screenshots/export.png",
+      "sourceSha256": "c08a5ae7bedf112120820fb2531991e46048f239380d83c8d9661b8acb487d19",
+      "sha256": "c08a5ae7bedf112120820fb2531991e46048f239380d83c8d9661b8acb487d19"
+    },
+    {
+      "artifact": "screenshot-rules",
+      "source": "release/public/screenshots/rules.png",
+      "target": "screenshots/rules.png",
+      "sourceSha256": "e32b83677108122b4d9a011bef2c49607fff90b920b2e9fa889381f0b3e9ed3e",
+      "sha256": "e32b83677108122b4d9a011bef2c49607fff90b920b2e9fa889381f0b3e9ed3e"
+    },
+    {
+      "artifact": "screenshot-models",
+      "source": "release/public/screenshots/models.png",
+      "target": "screenshots/models.png",
+      "sourceSha256": "92efc98e679b6702962c2ab6a32fe0db985e69b164b0087dc7729d3d8de82278",
+      "sha256": "92efc98e679b6702962c2ab6a32fe0db985e69b164b0087dc7729d3d8de82278"
+    },
+    {
+      "artifact": "screenshot-usage",
+      "source": "release/public/screenshots/usage.png",
+      "target": "screenshots/usage.png",
+      "sourceSha256": "ae713a10a650675fa52403a490e29b60dcbdcc63f2b6aa3f37945a407cbdee9c",
+      "sha256": "ae713a10a650675fa52403a490e29b60dcbdcc63f2b6aa3f37945a407cbdee9c"
+    },
+    {
+      "artifact": "screenshot-resources",
+      "source": "release/public/screenshots/resources.png",
+      "target": "screenshots/resources.png",
+      "sourceSha256": "db1941123150c48fe4a3230f719a23d19f1ce4c638fe0be682bf9747d51975bb",
+      "sha256": "db1941123150c48fe4a3230f719a23d19f1ce4c638fe0be682bf9747d51975bb"
+    },
+    {
+      "artifact": "public-git-attributes",
+      "source": "release/public/.gitattributes",
+      "target": ".gitattributes",
+      "sourceSha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+      "sha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da"
+    },
+    {
+      "artifact": "screenshot-immersive",
+      "source": "release/public/screenshots/immersive.png",
+      "target": "screenshots/immersive.png",
+      "sourceSha256": "7a8b126af67abe80369f025573d8e27acb26d23e72d0cc1e4f97896ab7e2e0e2",
+      "sha256": "7a8b126af67abe80369f025573d8e27acb26d23e72d0cc1e4f97896ab7e2e0e2"
+    }
+  ],
+  "files": [
+    {
+      "path": ".gitattributes",
+      "sha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+      "bytes": 8
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug.yml",
+      "sha256": "1ee631c953a298da5ef2a3d0483f68de49a65dd1628a7dbd546387c64c114d33",
+      "bytes": 1183
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/install.yml",
+      "sha256": "ff97fe131cdc153aaba7a4338f73191c42cb9f40fc54512a911b253045b0e42e",
+      "bytes": 1555
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/suggestion.yml",
+      "sha256": "c2ee435601cad401a1fc82f2a1402c47380fed4edd4c0a1f8dd9009c9787cc70",
+      "bytes": 857
+    },
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "b512503af21ccd682816467ba457957a9c9dc70c155758e0a7cbe6b482f301f8",
+      "bytes": 910
+    },
+    {
+      "path": "FEEDBACK.md",
+      "sha256": "277ae2e66cbf267468749a71150a33e70117b3dd3353dccc1b83e35fbd91e2f5",
+      "bytes": 1447
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "834a60339f8a47ef036f30723cea53ea30dd3088f9887664458efb116c533b70",
+      "bytes": 1084
+    },
+    {
+      "path": "NOTICE.md",
+      "sha256": "e13d796664f6401ec04cf4b11e92681433801d889e7f17ace31f2127fc211a12",
+      "bytes": 2293
+    },
+    {
+      "path": "README.md",
+      "sha256": "0a876746c9c923f2a9b8a7a62bcebacab1b010548acb697e90214b48a4b3b7bb",
+      "bytes": 9688
+    },
+    {
+      "path": "SCREENSHOTS.md",
+      "sha256": "3b03a8e1f294994d038f5b59f2e6b3208ddc25d5bde5aed75e862b8f841be55b",
+      "bytes": 1181
+    },
+    {
+      "path": "build-tools/package-lock.json",
+      "sha256": "cee4ebf199da127bd17a01821f65c08f610c64a031ff36b0f65964bf24acde1c",
+      "bytes": 14247
+    },
+    {
+      "path": "build-tools/package.json",
+      "sha256": "e2d29621c38f5eca44909a2159784b23f421c2899016bb9ac797a8fec77f2c87",
+      "bytes": 340
+    },
+    {
+      "path": "cordis.patch.yml",
+      "sha256": "08aa1424c3cb09d0790f0dd5eef7232309923fdea655bd6f1be8d3217236e9b6",
+      "bytes": 683
+    },
+    {
+      "path": "harness/package-lock.json",
+      "sha256": "6fae99d6095c14467c263f18aabbbc63845dd0132006870b350b88b3bdc090c4",
+      "bytes": 356221
+    },
+    {
+      "path": "harness/package.json",
+      "sha256": "d21416b40b528c098ab0d18b244ae5e159c30c9bdd75a835993ac7d57b53324a",
+      "bytes": 12406
+    },
+    {
+      "path": "integrations/dependencies.json",
+      "sha256": "4f1fc6ed469358380b4da877814f83c760950171c88c5c8981250993bccfe6e2",
+      "bytes": 2629
+    },
+    {
+      "path": "integrations/qwen-reasoning-profile.mjs",
+      "sha256": "1b58588380dfc815935f5ad1244cf790399cab867f377cba3b186b8ad63863ca",
+      "bytes": 1612
+    },
+    {
+      "path": "lib/client.js",
+      "sha256": "64eb3eb6d894573200515e7a6870578199671e4e217e898a08a59e871e89f9ae",
+      "bytes": 330551
+    },
+    {
+      "path": "lib/index.js",
+      "sha256": "552595d1e9bd72d1233142959482c314aff5f23b012e0b273ff8992a78a49474",
+      "bytes": 6222
+    },
+    {
+      "path": "lib/tavern-conversations.js",
+      "sha256": "bd32db768f8cd9f3efeae891b4e4018f31e5149445171dd90cd047ef8fcf2296",
+      "bytes": 5925
+    },
+    {
+      "path": "licenses/DeepSeek-MIT.txt",
+      "sha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+      "bytes": 1065
+    },
+    {
+      "path": "licenses/pi-MIT.txt",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
+      "bytes": 1069
+    },
+    {
+      "path": "package.json",
+      "sha256": "a53a0bfdaee0de9a6506dd143e5b15d18b578da976134832c088acf96c7a546b",
+      "bytes": 2346
+    },
+    {
+      "path": "preset/agent.cordis.yml",
+      "sha256": "a8a06d965c05419570fa713002894b7d42ae2a83ce90b270edf7105e928fcd5a",
+      "bytes": 34629
+    },
+    {
+      "path": "preset/lib/ask-user-decision-pr.js",
+      "sha256": "14cf06006bb21711040e856241959264a50b4824ae297ceaf3ffabc05458167d",
+      "bytes": 4803
+    },
+    {
+      "path": "preset/lib/bounded-regex.js",
+      "sha256": "a921a67e03bcd48970d87527a93435b0105595be76ab6e08d636148afb0353ef",
+      "bytes": 2076
+    },
+    {
+      "path": "preset/lib/card-export.js",
+      "sha256": "1435d87aa9aab21c72d5e4c8f6707b84cb234c17025379f5e1c589ffb3d9df0c",
+      "bytes": 13644
+    },
+    {
+      "path": "preset/lib/character-cluster.js",
+      "sha256": "cc235e0f918c7fbd6db400fabd046dcf31202900f9e02bbe9f40430e8eae6e29",
+      "bytes": 10011
+    },
+    {
+      "path": "preset/lib/host-index.js",
+      "sha256": "552595d1e9bd72d1233142959482c314aff5f23b012e0b273ff8992a78a49474",
+      "bytes": 6222
+    },
+    {
+      "path": "preset/lib/novel-export.js",
+      "sha256": "fcbbf8deb37a9e643a40c35616cd64206393df2c64f1e9598f63e5dcf76e235d",
+      "bytes": 10575
+    },
+    {
+      "path": "preset/lib/roleplay-core.js",
+      "sha256": "076d888f7a33b70c6e637ad12accdd6237f4e875d4b2ad1753ef1b2997365ab8",
+      "bytes": 463412
+    },
+    {
+      "path": "preset/lib/roleplay-memory-engine.js",
+      "sha256": "305547c5912de48218c489529534f551d7da129104250f8603e2ce35f2a3450b",
+      "bytes": 89257
+    },
+    {
+      "path": "preset/lib/tavern-card.js",
+      "sha256": "be640023f54773edbaecc313c3c3163034856aaa9e1be738edfca0e2ce63dda4",
+      "bytes": 13959
+    },
+    {
+      "path": "preset/lib/tavern-conversations.js",
+      "sha256": "bd32db768f8cd9f3efeae891b4e4018f31e5149445171dd90cd047ef8fcf2296",
+      "bytes": 5925
+    },
+    {
+      "path": "preset/lib/tavern-library.js",
+      "sha256": "170a3221371837a9bc686e09e521d27d300aa81ec38e9c6a8bbadc9cfaeeab24",
+      "bytes": 13624
+    },
+    {
+      "path": "preset/lib/tavern-pricing.js",
+      "sha256": "f24b0e1ba8a8cae3b201f9de39b4e51b774ba6898d90150090760309875ab5ee",
+      "bytes": 10444
+    },
+    {
+      "path": "preset/lib/tavern-tasks.js",
+      "sha256": "9fa8ff28fc1feaa7a68466b28118895cc76648d0c9b92372cb09e53897782dc4",
+      "bytes": 45347
+    },
+    {
+      "path": "preset/lib/tavern-telemetry.js",
+      "sha256": "cf6fbb3f2e54fee373b2c433ac991f09fbb0ec76b23abe62f1d283f8ac9712ec",
+      "bytes": 25295
+    },
+    {
+      "path": "preset/preset.yml",
+      "sha256": "d2a4b333196fca411b74424e0ade9104805572ce08a20023333a27477650c14c",
+      "bytes": 267
+    },
+    {
+      "path": "preset/reference/steam-tide-full-card.md",
+      "sha256": "2e0afc21ade52744dc98f68f5b017d8d2404ed10ab18d33cb1782df9fb08414a",
+      "bytes": 34036
+    },
+    {
+      "path": "preset/reference/模块化卡格式示例-暴躁龙女皇.md",
+      "sha256": "da4c02fb8e1e7f866f7d412b45de17c7ecd1cf9a8d3a1face81fbae554e37578",
+      "bytes": 40521
+    },
+    {
+      "path": "preset/scripts/deescape-md.mjs",
+      "sha256": "681482efb4bef9a8f6963b0683877e649865411e2321dd69bde57a0e6c1536b0",
+      "bytes": 3126
+    },
+    {
+      "path": "preset/skills/roleplay-card-authoring/SKILL.md",
+      "sha256": "d2a7d7120582d14c480e1388694d248b5cf92bab78d38e266832c22589ef5391",
+      "bytes": 26487
+    },
+    {
+      "path": "preset/skills/roleplay-narrative-style/SKILL.md",
+      "sha256": "b898969bdb9bacc0a62323a6f9fbc3b037252e6713c43044d54ae460fbd86588",
+      "bytes": 26544
+    },
+    {
+      "path": "preset/skills/roleplay-self-diagnosis/SKILL.md",
+      "sha256": "7f6e9087790decddc832a4a683d01903320fb5277b798d72f67ac047841f9066",
+      "bytes": 7648
+    },
+    {
+      "path": "schemas/harness-patches.v1.json",
+      "sha256": "2210c9fe45012719fca16a6afc62f0b370562cdde335399b6c9a27408ebe9c8e",
+      "bytes": 476
+    },
+    {
+      "path": "schemas/public-install.v1.json",
+      "sha256": "22cebba2b23febf6c3a20fcbb831b5610ff08b73e54ddc1c09c40ee370b30e0e",
+      "bytes": 474
+    },
+    {
+      "path": "schemas/public-transaction.v1.json",
+      "sha256": "53446f234293538b72b4ecf3140c095fc31bb53f6907b2d808de0cfc06487037",
+      "bytes": 568
+    },
+    {
+      "path": "screenshots.json",
+      "sha256": "62664089b3727892a8cfbc30530eca495e80c601f39147c4eafb171f9835a44d",
+      "bytes": 248
+    },
+    {
+      "path": "screenshots/authoring.png",
+      "sha256": "cc31f4c2264c7f016d0b952abbdfeda55a497e2d857f7f07097c027467a90b20",
+      "bytes": 2007977
+    },
+    {
+      "path": "screenshots/characters.png",
+      "sha256": "b58a745db64005ab8ba743a3639b324cc6965e5d71e3ba8d512f9839e01ef163",
+      "bytes": 353102
+    },
+    {
+      "path": "screenshots/export.png",
+      "sha256": "c08a5ae7bedf112120820fb2531991e46048f239380d83c8d9661b8acb487d19",
+      "bytes": 488817
+    },
+    {
+      "path": "screenshots/immersive.png",
+      "sha256": "7a8b126af67abe80369f025573d8e27acb26d23e72d0cc1e4f97896ab7e2e0e2",
+      "bytes": 3113897
+    },
+    {
+      "path": "screenshots/management.png",
+      "sha256": "a09c925b0d25e61566ae4848eac0c1113f256058c5d4c0f0d50a9738850b29bb",
+      "bytes": 744049
+    },
+    {
+      "path": "screenshots/memory.png",
+      "sha256": "9e8c24f2a124b1ca1b75879fcd8d7a87b239836c0ca67fd3d4913e0b5d4eafa0",
+      "bytes": 316333
+    },
+    {
+      "path": "screenshots/models.png",
+      "sha256": "92efc98e679b6702962c2ab6a32fe0db985e69b164b0087dc7729d3d8de82278",
+      "bytes": 184503
+    },
+    {
+      "path": "screenshots/reading.png",
+      "sha256": "f71784c9f0bbd593a7553dc41f05d2781fcaf1808107e96ed6df5e6bc8e00ae5",
+      "bytes": 2820534
+    },
+    {
+      "path": "screenshots/resources.png",
+      "sha256": "db1941123150c48fe4a3230f719a23d19f1ce4c638fe0be682bf9747d51975bb",
+      "bytes": 392067
+    },
+    {
+      "path": "screenshots/rules.png",
+      "sha256": "e32b83677108122b4d9a011bef2c49607fff90b920b2e9fa889381f0b3e9ed3e",
+      "bytes": 345760
+    },
+    {
+      "path": "screenshots/usage.png",
+      "sha256": "ae713a10a650675fa52403a490e29b60dcbdcc63f2b6aa3f37945a407cbdee9c",
+      "bytes": 299114
+    },
+    {
+      "path": "screenshots/worldbook.png",
+      "sha256": "09611e6b531afa274bcc3835d9f250a137b7a33ad3f91b3a92de2e05525b966d",
+      "bytes": 381423
+    },
+    {
+      "path": "screenshots/worldlines.png",
+      "sha256": "79986b4f3f240041882011151ef7cae01cf3aa427adbf81fbced1cc5fcffe6ca",
+      "bytes": 2537774
+    },
+    {
+      "path": "src/build-client.mjs",
+      "sha256": "985a71e8acc2623b361c3c54f75c551d51a69e14479aa6ccca29fa27e9d1d74a",
+      "bytes": 1082
+    },
+    {
+      "path": "src/client.js",
+      "sha256": "2f6d92b4db1ea7946cca1b51b65d74ecd43115f28acfb0d30c0f0f85d9911783",
+      "bytes": 304930
+    },
+    {
+      "path": "src/conversation-projection.js",
+      "sha256": "99c7466a9fecd938e569d61d195f188e6ef4db40c6a1f0ae2bcd0af2dc24de58",
+      "bytes": 4487
+    },
+    {
+      "path": "tools/dsh-debug/README.md",
+      "sha256": "c7105a168854f79a6d8baa1e6f27024b5f92f7a020ebb11d030475ef12d69298",
+      "bytes": 14345
+    },
+    {
+      "path": "tools/dsh-debug/SKILL.md",
+      "sha256": "1b53c6ab895a56e61f1f8b2a56e16c47a86ca6db03c7647357f645881fc88388",
+      "bytes": 5293
+    },
+    {
+      "path": "tools/dsh-debug/dsh_debug.py",
+      "sha256": "1f933d2b230f26a92018c80dca01f4c90d3792d5c3806c69b8b23b1e2a0c50be",
+      "bytes": 38461
+    },
+    {
+      "path": "tools/dsh-debug/http_worker.py",
+      "sha256": "0257252d195cc35128775419f672cbffd74706611e1406ee25db04025d500840",
+      "bytes": 14041
+    },
+    {
+      "path": "tools/dsh-debug/install.ps1",
+      "sha256": "26c4e33e1f9f1b7c13e96e6d21e245ab5b3cf3863019ef8b73441b67426ad4fc",
+      "bytes": 1474
+    },
+    {
+      "path": "tools/harness-patches.json",
+      "sha256": "9accc786de5b9aac4cf2efcf997e158b2dfdb1a6a40fcc0f9c965ba42e72dd65",
+      "bytes": 326073
+    },
+    {
+      "path": "tools/install.mjs",
+      "sha256": "2e4759f4f7c9dc4e36c547b7a85459a5db6e90413cbb5a44707b448d168d0145",
+      "bytes": 7472
+    },
+    {
+      "path": "tools/patch-harness.mjs",
+      "sha256": "604132feddc595b09dc14f155220f1447a1d1ba80ab39dd3ffc96df3ca6f7e27",
+      "bytes": 5114
+    },
+    {
+      "path": "tools/public-transaction.mjs",
+      "sha256": "8ee07595c7bb69c524e24d781b3309c2819714699326bc8597727e98f5d9dff2",
+      "bytes": 7216
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dsh-roleplay/public-install/v1",
+  "type": "object",
+  "required": ["schemaVersion", "version", "profile", "documents", "files"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "version": { "type": "string" },
+    "profile": { "type": "string" },
+    "documents": { "type": "boolean" },
+    "files": { "type": "array", "items": { "type": "object", "required": ["path", "sha256"] } }
+  }
+}

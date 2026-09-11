@@ -1,0 +1,214 @@
+# dsh-debug 1.3
+
+Python 3.14 stdlib CLI for the installed DSH alpha3 REST + Connection RPC.
+Install with PowerShell `-File runtime/alpha3/operations/dsh-debug/install.ps1`.
+This copies a durable command into `~/.local/bin`, adds it to the user PATH and
+keeps its worker in `~/.dsh-debug/lib`. Re-run after source changes.
+
+`dsh-debug --help` describes all commands. JSON is the default; `--json` is
+accepted before the command. No dependency installation or DSH restart needed.
+
+## Connection
+
+`dsh-debug init --ssh-host user@server --ssh-key C:/path/key.pem`
+
+Configuration is `~/.dsh-debug/config.json`, overridden by `DSH_DEBUG_SSH_HOST`,
+`DSH_DEBUG_SSH_KEY`, `DSH_DEBUG_PORT`, `DSH_DEBUG_REMOTE_PYTHON`,
+`DSH_DEBUG_SERVICE`, `DSH_DEBUG_DSH_HOME`, `DSH_DEBUG_HARNESS_ROOT`. The key file is referenced, not copied. SSH verifies the
+existing known_hosts entry; it never accepts a changed host key automatically.
+Run `dsh-debug doctor` first.
+
+An ephemeral Python process runs through SSH, exchanges the current native
+launch token when logged, or signs a 60-second loopback-only native browser
+cookie from the existing server credential. That fallback is tied to native
+browser-session grant v1 and fails on unsupported formats. Tokens, cookies and
+the signing secret stay on the server. No authentication configuration changes,
+new HTTP routes, service restart, installed remote daemon or extra public port.
+Set `--dsh-home` and `--harness-root` during init for a non-default installation.
+The adapter reads `.credentials.yaml` under the configured remote DSH_HOME
+(falling back to the remote environment or `~/.dsh`) and uses Node/yaml under
+the explicitly configured Harness root. It does not guess a server install path.
+
+## Workflows
+
+```powershell
+dsh-debug workspaces
+dsh-debug workspace-create --path /srv/roleplay
+dsh-debug create --workspace-id workspace-ID
+dsh-debug create --workspace-path /srv/roleplay
+dsh-debug create --cwd /srv/roleplay
+dsh-debug settings --session session-ID
+dsh-debug settings-set --session session-ID --target-context-tokens 0 --context-window-tokens 240000 --dry-run
+dsh-debug sessions --limit 10
+dsh-debug resolve --query session-b719
+dsh-debug conversations
+dsh-debug state --session session-ID
+dsh-debug activity --session session-ID
+dsh-debug models --session session-ID
+dsh-debug history --session session-ID --through-seq 10000 --limit 10
+dsh-debug send --session session-ID --text-file player.txt --dry-run
+dsh-debug send --session session-ID --text-file player.txt --request-id unique-id
+dsh-debug regenerate --session session-ID --user-seq 123 --dry-run
+dsh-debug edit-send --session session-ID --user-seq 123 --text-file edited.txt
+dsh-debug userinfo
+dsh-debug persona-set --body-file persona.json --dry-run
+dsh-debug edit-message --session session-ID --role assistant --message-id assistant-ID --text-file edited.txt
+dsh-debug edit-message --session session-ID --role user --seq 123 --text-file edited.txt
+dsh-debug delete-message --session session-ID --message-id assistant-ID --dry-run
+dsh-debug delete-user --session session-ID --message-id assistant-ID --dry-run
+dsh-debug upload-card --session session-ID --file card.json --dry-run
+dsh-debug upload-card --session session-ID --file card.json --import --request-id card-import-1
+dsh-debug clone --session session-ID --at-seq 456 --dry-run
+dsh-debug model-set --session session-ID --body-file policy.json --dry-run
+dsh-debug model-route --session session-ID --purpose status --provider qwen --model qwen3.8-flash --effort low --dry-run
+dsh-debug worldline --session session-ID --action operation-status --operation-id operation-ID
+dsh-debug jobs --session session-ID
+dsh-debug export --session session-ID --kind card-export --dry-run
+dsh-debug resources --session session-ID
+dsh-debug download --session session-ID --resource-id resource-ID --out book.md
+dsh-debug request /api/roleplay/state?sessionId=session-ID
+```
+
+`sessions` and `resolve` use native session metadata, projected on-server before
+SSH transfer: only IDs, title/preset/model, status, workspace and parent fields.
+Match titles or ID prefixes with `--query`; `--cursor` and `--limit` bound output.
+`sessions --source catalog` explicitly reads only registered Tavern families.
+Native full-text content search is disabled (`openAt: never`); title lookup does
+not require it. A measured native list was 8,990,755 bytes for 253 sessions,
+mostly context headers/timelines. The initial CLI timed out transferring that
+full body, although the API had already replied. The CLI now projects and pages
+before transfer; it does not modify the native server's list or browser payload.
+`workspaces` reads the first complete baseline from native `workspace/follow`.
+`workspace-create` calls native `workspace/create({path})` and adopts an
+existing directory idempotently. `create --workspace-id` binds a new session
+with native `session/create({workspaceId,agentPreset})`; `create --workspace-path`
+adopts/resolves the directory first and then binds to its returned ID. The
+legacy `--cwd` path creates an ungrouped session. Unknown IDs preserve the
+native `workspace/not-found` code/details, and existing sessions are never
+moved.
+`settings` reads the exact Session's global/session/effective memory settings
+through `/api/roleplay/memory-settings`. `settings-set` writes only supplied
+fields to the selected `--scope` with that scope's revision; `0` restores
+inheritance. Window/tail values are `0` or at least `1000`; target/archive are
+nonnegative and `autoNotesEveryTurns` is `0` or at least `1`. No model request
+is added.
+
+Model policy body is `{ "scope":"session", "settings":{...},
+"expectedRevision": 1 }`, using the revision returned by `models`.
+Set `settings:null` to clear the session override. Global scope is explicit.
+`model-route` reads the current policy, preserves `allMain` and every other
+route, replaces only the selected `status`, `decision`, or `memory` route, and
+writes with the revision it just read. Its default scope is `session`; use
+`--scope global` explicitly for global policy. The backend remains responsible
+for validating provider/model/effort capability (for example Qwen low/medium).
+
+Regeneration/edit-send mirrors existing UI prepare → create-worldline → wake →
+copy main selection → register → native queued prompt. It preserves operation
+and request IDs on uncertainty, never retries a paid write or aborts an uncertain
+accepted operation. Inspect `operation-status` before recovery. Native clone is
+a separate conversation; regenerate/edit-send uses the Tavern worldline family.
+An accepted prompt is admission, **not completed generation**. `activity` and
+`jobs` observe completion. `cancel` is an explicit native cancellation.
+
+`edit-send` edits a player turn by creating a new worldline and queueing the
+edited text. `persona-set` updates the global `/api/roleplay/userinfo` record
+and does not send a turn. `edit-message` uses branch `replace-message` for one
+durable user or assistant message. `delete-message` uses branch `delete` and
+retains the audit record. `delete-user` creates the existing truncated
+worldline and does not queue a prompt. These commands require exact session
+and message/seq anchors.
+
+Reads of Agent-owned routes explicitly wake only that named Agent (zero model
+requests). Resource listing can migrate legacy resource metadata using the
+existing route. No CLI writes directly to stories, memories or worldline files.
+`--dry-run` connects nowhere and shows the plan; multi-step plans list stages.
+
+## JSON / boundaries
+
+Success: `{"schemaVersion":1,"ok":true,"data":...}`.
+Error: `{"schemaVersion":1,"ok":false,"error":{"code":"...",
+"message":"...","details":...}}`, exit 1. Native server-response envelopes
+are unwrapped. API values otherwise retain their field names. Sensitive named
+credential/header fields are redacted. Exact story/history data may be private:
+keep captured output in ignored artifacts, not Git. Download writes a new file
+only, returning path, byte count, SHA-256; it does not overwrite.
+
+Each request has a bounded deadline (default 30 s, maximum 120), and response
+size is capped at 32 MiB. No automatic retry of writes. Raw request defaults
+to GET; POST and body-file must be explicit. Only local `/api/` paths allowed.
+The CLI does not reproduce CSS, browser rendering, toolbar clicks, hover or
+localStorage behavior; those still require browser verification.
+
+## Sanitized source map
+
+- `core/host-index.js`: GET conversations, POST wake; Host lifetime.
+- `core/roleplay-core.js`: GET state/activity/models/jobs/resources/logs/usage;
+  POST models `{sessionId,scope,settings,expectedRevision}`, jobs
+  `{sessionId,kind}` or `{sessionId,action,jobId}`, branch workflow actions.
+- Native Connection `/api/session/{prompt,fork,cancel,selectModel,page,list}`:
+  POST `{type:'client-request',rpcId,method,payload:{args:{request:...}}}`;
+  list uses `_request`. Page requires a durable throughSeq boundary.
+- Download GET `/api/roleplay/download?sessionId=...&resourceId=...` returns bytes.
+- `core/host-index.js`: GET/POST `/api/roleplay/userinfo` reads or updates the
+  global persona fields (`name`, `gender`).
+- Native cookie auth remains mandatory; no CSRF bypass/header changes.
+
+Role-card import has no direct upload RPC. Source audit found the
+official `session/attachment` RPC is read-only: it proves an existing image
+reference is present in a session and returns its bytes. `session/prompt`
+accepts already-admitted image attachment references, but no native upload or
+file-ingest RPC/HTTP route is registered. Role-card import is otherwise only
+the model tool sequence `rp_card_import_begin` → `rp_card_import_chunk` →
+`rp_card_import_stage` → `rp_card_import_finalize`.
+The CLI now supports staging a local `.md`, `.txt`, `.json`, or `.png` file
+under `roleplay/cli-imports` inside the configured remote DSH_HOME
+with a UUID filename, exclusive create, 20 MiB limit, SHA-256 verification,
+realpath containment, and mode 0600. Upload alone sends zero model requests.
+Only explicit `--import` queues one native prompt referring to the server path;
+it returns admission and requires `activity`/`jobs` verification for import
+completion and resource registration. It never embeds the card bytes in the
+prompt or treats the file as executable instructions.
+
+Design gate: “原本程序直接完成的步骤，现在需要模型推理；预计增加几次请求，为什么值得？”
+This change adds zero runtime model requests. Reads/dry-run add zero; explicit
+send/regenerate/export invoke exactly the existing pipeline, not an extra CLI
+model. No model-driven selector, warmup, cache padding or automatic retry.
+
+
+## Current settings and character cluster
+
+Memory settings use `settings` / `settings-set`: window size, complete-story tail budget and notes cadence are primary. Target/archive options are legacy compatibility controls. Preserve revisions and scope; `0` restores inheritance as documented above.
+
+Cluster is conversation-scoped, default off, with no global scope or dedicated CLI subcommand:
+
+```powershell
+dsh-debug request '/api/roleplay/character-cluster?sessionId=session-ID'
+dsh-debug request '/api/roleplay/character-cluster' --method POST --body-file cluster.json --dry-run
+```
+
+POST contains `sessionId`, GET's `expectedRevision`, and `settings: {enabled, defaultRoute, characters}`. Preserve returned character settings when changing one route. Null routes inherit; `{main:true}` follows the writer, optionally with `reasoningEffort`; explicit routes contain `provider`, `model` and optional `reasoningEffort`. Preference changes do not generate a story; future enabled stories may start paid children, even with the writer's model.
+
+See [cluster evidence](../../../../docs/character-cluster-20260910.md), [operations](../../../../docs/operations.md), and [current baseline](../../../../project.md). Admission, HTTP success, model completion and browser rendering remain separate observations.
+
+## Character-agent cluster
+
+These commands use the existing `/api/roleplay/character-cluster` endpoint. Settings belong to the current visible conversation (its worldlines share conversation settings); each run/context remains branch-owned. No global scope and no model request is created by changing settings.
+
+```powershell
+dsh-debug cluster --session session-ID
+dsh-debug cluster-set --session session-ID --enabled true
+dsh-debug cluster-route --session session-ID --provider google --model MODEL_FROM_CATALOG --effort low
+dsh-debug cluster-route --session session-ID --character CHARACTER_ID --main --effort medium
+dsh-debug cluster-route --session session-ID --character CHARACTER_ID --provider PROVIDER --model MODEL_FROM_CATALOG --effort low
+dsh-debug cluster-route --session session-ID --character CHARACTER_ID --inherit
+dsh-debug cluster-route --session session-ID --inherit
+dsh-debug cluster-set --session session-ID --enabled false --dry-run
+```
+
+`cluster` returns saved settings, revision and roster IDs/names. Obtain model IDs and supported effort values from `models`; the server validates them. Omitting `--character` selects the default character route. `--main` follows the writer dynamically; `--inherit` clears the override (character → default, default → main). Omitted effort uses the selected provider/model default; supply an explicit effort when required. Unknown roster IDs are rejected before writing.
+
+Writes read the current revision and preserve all untouched fields and other characters, then submit one revision-checked write. Conflicts/timeouts do not auto-retry. Refresh settings before deciding whether another write is needed. No browser, raw JSON or direct storage edits are needed.
+
+## Release archive
+
+The shared release manifest includes this tool in the main runtime `.tgz` under `tools/dsh-debug/`, and creates a standalone `dsh-debug.tgz`. Both contain only program/worker/installer/documentation. Connection config and credentials stay local. Run `python dsh_debug.py` directly on systems without PowerShell; Windows `install.ps1` installs the launcher. Codex is not required; `-InstallCodexSkill` is an optional installer flag. The current SSH credential adapter targets the documented alpha3 layout; configuring another host does not automatically adapt unsupported Harness authentication formats.

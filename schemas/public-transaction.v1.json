@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dsh-roleplay/public-transaction/v1",
+  "type": "object",
+  "required": ["schemaVersion", "state", "root", "purpose", "files"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "state": { "enum": ["prepared", "installed", "rolled-back", "recovery-required"] },
+    "root": { "type": "string" },
+    "purpose": { "type": "string" },
+    "files": { "type": "array", "items": { "type": "object", "required": ["path", "before", "after", "backup", "mode", "uid", "gid", "applied"] } }
+  }
+}
