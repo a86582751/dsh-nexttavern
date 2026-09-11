@@ -184,9 +184,9 @@ AI 会和你聊人物、关系、氛围与剧情方向，把你的回答逐步�
 
 ## 下载
 
-- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.0/dsh-nexttavern.tgz)，含预构建 UI、源码、preset、参考卡、补丁器及 CLI。
-- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.0/dsh-debug.tgz)。
-- [版本说明与 SHA-256](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.1.0)。未发布到 npm，不要使用 `npm install dsh-nexttavern`。
+- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.1/dsh-nexttavern.tgz)，含预构建 UI、源码、preset、参考卡、补丁器及 CLI。
+- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.1/dsh-debug.tgz)。
+- [版本说明与 SHA-256](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.1.1)。未发布到 npm，不要使用 `npm install dsh-nexttavern`。
 
 ## 安装
 

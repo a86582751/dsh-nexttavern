@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.1.1",
-  "sourceCommit": "70cf87c1c75a3cbfb59473a00e7859544c0e976a",
+  "sourceCommit": "37da51a7402b6a8a5144da9cbf62af45f7b379b7",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -284,8 +284,8 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "dc6a062e5bbc32ad7926bb8a100fdfeb07c205ae55675790a28e6f8d76722736",
-      "sha256": "dc6a062e5bbc32ad7926bb8a100fdfeb07c205ae55675790a28e6f8d76722736"
+      "sourceSha256": "4affbc7f21abca8dcc4854fb66f71159aa4130bd05af9cbca562336d5d886c1f",
+      "sha256": "4affbc7f21abca8dcc4854fb66f71159aa4130bd05af9cbca562336d5d886c1f"
     },
     {
       "artifact": "public-cover",
@@ -581,7 +581,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "dc6a062e5bbc32ad7926bb8a100fdfeb07c205ae55675790a28e6f8d76722736",
+      "sha256": "4affbc7f21abca8dcc4854fb66f71159aa4130bd05af9cbca562336d5d886c1f",
       "bytes": 20752
     },
     {
