@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.1.0",
-  "sourceCommit": "358975c5e889da5b835fd683048d34587fafc184",
+  "sourceCommit": "61ab93e65383c4c75af4e2be04dfd474759599c2",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -284,8 +284,8 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "6c94349a193977eee8d3ffa11a821c8feee39a13b9054051bb535ee1bf745a80",
-      "sha256": "6c94349a193977eee8d3ffa11a821c8feee39a13b9054051bb535ee1bf745a80"
+      "sourceSha256": "7a607696c25f34b4a89a66b9e00e68c4a002f06cda2f15f2803c8101c597a52e",
+      "sha256": "7a607696c25f34b4a89a66b9e00e68c4a002f06cda2f15f2803c8101c597a52e"
     },
     {
       "artifact": "public-notice-draft",
@@ -298,8 +298,8 @@
       "artifact": "public-architecture-guide",
       "source": "release/public/ARCHITECTURE.md",
       "target": "ARCHITECTURE.md",
-      "sourceSha256": "647d2f12f633fbf1049b088f98c534d6c4c8f1a86a3283500627635515049eb5",
-      "sha256": "647d2f12f633fbf1049b088f98c534d6c4c8f1a86a3283500627635515049eb5"
+      "sourceSha256": "c50413053ff69c311c45c3a678206a9e650d5a4abed164de2173147f5fbd0f3d",
+      "sha256": "c50413053ff69c311c45c3a678206a9e650d5a4abed164de2173147f5fbd0f3d"
     },
     {
       "artifact": "public-license",
@@ -312,8 +312,8 @@
       "artifact": "public-changelog-draft",
       "source": "release/public/CHANGELOG.md",
       "target": "CHANGELOG.md",
-      "sourceSha256": "b512503af21ccd682816467ba457957a9c9dc70c155758e0a7cbe6b482f301f8",
-      "sha256": "b512503af21ccd682816467ba457957a9c9dc70c155758e0a7cbe6b482f301f8"
+      "sourceSha256": "bf1daffbc902862273d87e3412158aac4527db1f7484130df43f0e5db831e033",
+      "sha256": "bf1daffbc902862273d87e3412158aac4527db1f7484130df43f0e5db831e033"
     },
     {
       "artifact": "public-feedback",
@@ -549,13 +549,13 @@
     },
     {
       "path": "ARCHITECTURE.md",
-      "sha256": "647d2f12f633fbf1049b088f98c534d6c4c8f1a86a3283500627635515049eb5",
-      "bytes": 11761
+      "sha256": "c50413053ff69c311c45c3a678206a9e650d5a4abed164de2173147f5fbd0f3d",
+      "bytes": 12467
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "b512503af21ccd682816467ba457957a9c9dc70c155758e0a7cbe6b482f301f8",
-      "bytes": 910
+      "sha256": "bf1daffbc902862273d87e3412158aac4527db1f7484130df43f0e5db831e033",
+      "bytes": 1614
     },
     {
       "path": "FEEDBACK.md",
@@ -574,8 +574,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "6c94349a193977eee8d3ffa11a821c8feee39a13b9054051bb535ee1bf745a80",
-      "bytes": 19311
+      "sha256": "7a607696c25f34b4a89a66b9e00e68c4a002f06cda2f15f2803c8101c597a52e",
+      "bytes": 20576
     },
     {
       "path": "SCREENSHOTS.md",

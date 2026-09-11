@@ -107,6 +107,10 @@ NextTavern 区分三类协作，避免把所有工作都变成同一种子代理
 
 读卡保存原始文件和分页来源，经过分类、覆盖检查后再激活；设定栏目分别管理核心、人设、世界书、剧情指引、文风与规则。未来路线与猜测不会自动成为已发生的正史。
 
+SillyTavern / TauriTavern 格式由自有适配器解析：PNG 读取 `chara`/`ccv3` 的 Base64 `tEXt` 数据，JSON 识别 v1/v2/v3。PNG 先校验结构、CRC 和尺寸，再解析卡片；两种块同时存在时优先 `ccv3`。内嵌 `character_book` 进入同一来源审阅流程。结构化字段的映射是分类建议，仍须审阅内容与检查覆盖。
+
+完整原始字节与哈希保留；未知扩展、替代开场和外部资源引用归档，不自动执行或下载。头像从 PNG 图像部分提取，不把卡片元数据混入头像输出。详见适配器 [tavern-card.js](preset/lib/tavern-card.js) 和首页[导入说明](README.md#导入-sillytavern--tauritavern-人物卡)。
+
 导出冻结当前卡片或选定世界线的来源。模型负责章节组织等创作判断，程序按来源引用物化正文并检查覆盖与顺序，不必让模型再逐段抄写原文和额外复核。完成文件进入资源库，保留主题名称、修改时间、哈希与下载入口。
 
 实现入口：[card-export.js](preset/lib/card-export.js)、[novel-export.js](preset/lib/novel-export.js)、[tavern-library.js](preset/lib/tavern-library.js)。
