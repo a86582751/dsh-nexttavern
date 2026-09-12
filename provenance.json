@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "audience": "public-nexttavern",
-  "version": "0.1.1",
-  "sourceCommit": "37da51a7402b6a8a5144da9cbf62af45f7b379b7",
+  "version": "0.1.2",
+  "sourceCommit": "f3783382c8808a957a722b38121db6c946bea11f",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -13,6 +13,28 @@
     "internalService": "dsh-roleplay-ui",
     "preset": "roleplay"
   },
+  "publicAccess": {
+    "packageName": "@isund/dsh-auth-webserver",
+    "version": "0.1.0-alpha.3.2",
+    "packagePath": "integrations/auth-webserver"
+  },
+  "archives": [
+    {
+      "name": "dsh-nexttavern.tgz",
+      "from": "",
+      "prefix": "package/"
+    },
+    {
+      "name": "dsh-debug.tgz",
+      "from": "tools/dsh-debug/",
+      "prefix": ""
+    },
+    {
+      "name": "dsh-auth-webserver.tgz",
+      "from": "integrations/auth-webserver/",
+      "prefix": "package/"
+    }
+  ],
   "sources": [
     {
       "artifact": "ask-user-decision-pr",
@@ -60,7 +82,7 @@
       "artifact": "roleplay-core",
       "source": "runtime/alpha3/core/roleplay-core.js",
       "target": "preset/lib/roleplay-core.js",
-      "sourceSha256": "3cd830674210d74b6e3260a0603c7cdfd7de5965127af9264553babddf5f460b",
+      "sourceSha256": "e69af3836a90062a51aba474c0cd477e4455302cb5c4cf960ad68bc5af96692a",
       "sha256": "5758f429ecfc283fc970f483b01a3b6c4652ee9fb38761a10873c65b0e5882d6"
     },
     {
@@ -81,7 +103,7 @@
       "artifact": "tavern-library",
       "source": "runtime/alpha3/core/tavern-library.js",
       "target": "preset/lib/tavern-library.js",
-      "sourceSha256": "bdb7adcde243e1800409afd020779c548bf0173006d38e0b5d02b2e637922e58",
+      "sourceSha256": "170a3221371837a9bc686e09e521d27d300aa81ec38e9c6a8bbadc9cfaeeab24",
       "sha256": "170a3221371837a9bc686e09e521d27d300aa81ec38e9c6a8bbadc9cfaeeab24"
     },
     {
@@ -193,8 +215,8 @@
       "artifact": "roleplay-ui-package",
       "source": "runtime/alpha3/ui/package.json",
       "target": "package.json",
-      "sourceSha256": "024f0c666f91b7c1a472c53a82289dcaf63aa1eb78f67b59f5465e909dd83d76",
-      "sha256": "abff17440ed11ff2dadace02cfe68bffccef5696c0111641125fa340ebeb5b5d"
+      "sourceSha256": "297dfbe98d3d2698ff291a2c79d82cfe63939aff5d514674bb01a123f8c34db5",
+      "sha256": "dd05087c76b2a9b7a1bdfcb3e7f2a0c5e34a2faa171205d42d004cc1f7e68b79"
     },
     {
       "artifact": "roleplay-ui-bundle-patch",
@@ -242,14 +264,14 @@
       "artifact": "inventory-runtime-alpha3-operations-dsh-debug-README-md",
       "source": "runtime/alpha3/operations/dsh-debug/README.md",
       "target": "tools/dsh-debug/README.md",
-      "sourceSha256": "271e724043fe6fbcaca18daa4e2b8e5f61328b3ced63316a4510d2edc3b310fa",
+      "sourceSha256": "c7105a168854f79a6d8baa1e6f27024b5f92f7a020ebb11d030475ef12d69298",
       "sha256": "c7105a168854f79a6d8baa1e6f27024b5f92f7a020ebb11d030475ef12d69298"
     },
     {
       "artifact": "debug-cli-skill",
       "source": "runtime/alpha3/operations/dsh-debug/SKILL.md",
       "target": "tools/dsh-debug/SKILL.md",
-      "sourceSha256": "e3e3647415a93fb72392702fd73fed561ee26bee371623fc107c74ecee040594",
+      "sourceSha256": "1b53c6ab895a56e61f1f8b2a56e16c47a86ca6db03c7647357f645881fc88388",
       "sha256": "1b53c6ab895a56e61f1f8b2a56e16c47a86ca6db03c7647357f645881fc88388"
     },
     {
@@ -258,6 +280,34 @@
       "target": "integrations/qwen-reasoning-profile.mjs",
       "sourceSha256": "1b58588380dfc815935f5ad1244cf790399cab867f377cba3b186b8ad63863ca",
       "sha256": "1b58588380dfc815935f5ad1244cf790399cab867f377cba3b186b8ad63863ca"
+    },
+    {
+      "artifact": "auth-webserver-source",
+      "source": "runtime/alpha3/auth/index.js",
+      "target": "integrations/auth-webserver/index.js",
+      "sourceSha256": "7c87abd75dba9d58e944ed0cf8e1f2abdb8da38b03b886a7c388a20c9842b5de",
+      "sha256": "7c87abd75dba9d58e944ed0cf8e1f2abdb8da38b03b886a7c388a20c9842b5de"
+    },
+    {
+      "artifact": "auth-webserver-package",
+      "source": "runtime/alpha3/auth/package.json",
+      "target": "integrations/auth-webserver/package.json",
+      "sourceSha256": "3fa6f70edac1164d45c4737201f9dfb81aec29f2502b5e5bb98ddc0c3c5726d7",
+      "sha256": "3fa6f70edac1164d45c4737201f9dfb81aec29f2502b5e5bb98ddc0c3c5726d7"
+    },
+    {
+      "artifact": "auth-webserver-lockfile",
+      "source": "runtime/alpha3/auth/package-lock.json",
+      "target": "integrations/auth-webserver/package-lock.json",
+      "sourceSha256": "d503f29eb6f754a8508dcc8dc35314e767e6cc5288e8412a33635f135a6797ad",
+      "sha256": "d503f29eb6f754a8508dcc8dc35314e767e6cc5288e8412a33635f135a6797ad"
+    },
+    {
+      "artifact": "auth-webserver-contract",
+      "source": "runtime/alpha3/auth/test.mjs",
+      "target": "integrations/auth-webserver/test.mjs",
+      "sourceSha256": "7d70b18fd552a6db8cfdd3c280d06dca16e7074cad1890c9e8177b44166a973a",
+      "sha256": "7d70b18fd552a6db8cfdd3c280d06dca16e7074cad1890c9e8177b44166a973a"
     },
     {
       "artifact": "build-client",
@@ -284,8 +334,8 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "4affbc7f21abca8dcc4854fb66f71159aa4130bd05af9cbca562336d5d886c1f",
-      "sha256": "4affbc7f21abca8dcc4854fb66f71159aa4130bd05af9cbca562336d5d886c1f"
+      "sourceSha256": "ec1ded08d9f39cfc2795fb7bbb3ffb43d7446e853faeabd0d2fa72565e0f0b33",
+      "sha256": "ec1ded08d9f39cfc2795fb7bbb3ffb43d7446e853faeabd0d2fa72565e0f0b33"
     },
     {
       "artifact": "public-cover",
@@ -319,8 +369,8 @@
       "artifact": "public-changelog-draft",
       "source": "release/public/CHANGELOG.md",
       "target": "CHANGELOG.md",
-      "sourceSha256": "4d568eb9907b57459529048e776810433846c5f13e13fbcadef0b58a537d3375",
-      "sha256": "4d568eb9907b57459529048e776810433846c5f13e13fbcadef0b58a537d3375"
+      "sourceSha256": "f6796195f7e81f10abbec609696c36664ba4808ae6943e95b7989093834e891b",
+      "sha256": "f6796195f7e81f10abbec609696c36664ba4808ae6943e95b7989093834e891b"
     },
     {
       "artifact": "public-feedback",
@@ -531,6 +581,69 @@
       "target": "screenshots/immersive.png",
       "sourceSha256": "7a8b126af67abe80369f025573d8e27acb26d23e72d0cc1e4f97896ab7e2e0e2",
       "sha256": "7a8b126af67abe80369f025573d8e27acb26d23e72d0cc1e4f97896ab7e2e0e2"
+    },
+    {
+      "artifact": "auth-webserver-bundle",
+      "source": "runtime/alpha3/auth/cordis.patch.yml",
+      "target": "integrations/auth-webserver/cordis.patch.yml",
+      "sourceSha256": "d04b6d8bbc35aa9581f9f8186681a58a8c6d27c094a8826d3140d62cb481c27e",
+      "sha256": "d04b6d8bbc35aa9581f9f8186681a58a8c6d27c094a8826d3140d62cb481c27e"
+    },
+    {
+      "artifact": "auth-webserver-env-template",
+      "source": "runtime/alpha3/auth/access.env.example",
+      "target": "integrations/auth-webserver/access.env.example",
+      "sourceSha256": "2e271fac80714c31b7777d0f2ef018380800bfcc1ac7f3e736cd1841e8bf93c3",
+      "sha256": "2e271fac80714c31b7777d0f2ef018380800bfcc1ac7f3e736cd1841e8bf93c3"
+    },
+    {
+      "artifact": "auth-webserver-readme",
+      "source": "runtime/alpha3/auth/README.md",
+      "target": "integrations/auth-webserver/README.md",
+      "sourceSha256": "82d912bf0144e5be4ee2eb4a9a41dd8ac679c07270e026cf35f23f0f9d1cb857",
+      "sha256": "82d912bf0144e5be4ee2eb4a9a41dd8ac679c07270e026cf35f23f0f9d1cb857"
+    },
+    {
+      "artifact": "auth-webserver-license",
+      "source": "runtime/alpha3/auth/LICENSE",
+      "target": "integrations/auth-webserver/LICENSE",
+      "sourceSha256": "834a60339f8a47ef036f30723cea53ea30dd3088f9887664458efb116c533b70",
+      "sha256": "834a60339f8a47ef036f30723cea53ea30dd3088f9887664458efb116c533b70"
+    },
+    {
+      "artifact": "public-access-cli",
+      "source": "runtime/alpha3/operations/public-access.mjs",
+      "target": "tools/public-access.mjs",
+      "sourceSha256": "5a8c51cdc128c5d35dc949cfb2a66629a52aa049de2d054c04f87f90612be44a",
+      "sha256": "5a8c51cdc128c5d35dc949cfb2a66629a52aa049de2d054c04f87f90612be44a"
+    },
+    {
+      "artifact": "public-access-recipes",
+      "source": "runtime/alpha3/operations/public-access-recipes.mjs",
+      "target": "tools/public-access-recipes.mjs",
+      "sourceSha256": "db4fbcb9a3bfc03c46a27da6c4dbb5d25b7b4f7a03331cdfd78c1725c573e723",
+      "sha256": "db4fbcb9a3bfc03c46a27da6c4dbb5d25b7b4f7a03331cdfd78c1725c573e723"
+    },
+    {
+      "artifact": "public-access-guide",
+      "source": "release/public/PUBLIC-ACCESS.md",
+      "target": "PUBLIC-ACCESS.md",
+      "sourceSha256": "4b0408de04be270a53bc34ab9f991d1c4215e3f3da664b8aafbf5e7c68c778d9",
+      "sha256": "4b0408de04be270a53bc34ab9f991d1c4215e3f3da664b8aafbf5e7c68c778d9"
+    },
+    {
+      "artifact": "auth-webserver-nginx-template",
+      "source": "runtime/alpha3/auth/nginx.conf.example",
+      "target": "integrations/auth-webserver/nginx.conf.example",
+      "sourceSha256": "67fdd6c2ff46692e7c88c73e2d99d20a863e68cdc41229f4662d71c52f23ed4c",
+      "sha256": "67fdd6c2ff46692e7c88c73e2d99d20a863e68cdc41229f4662d71c52f23ed4c"
+    },
+    {
+      "artifact": "auth-webserver-admin-template",
+      "source": "runtime/alpha3/auth/cloudflare-admin.env.example",
+      "target": "integrations/auth-webserver/cloudflare-admin.env.example",
+      "sourceSha256": "464786102e3b988611983d4a8361f2a8556ceb2a79cc8dd01f9ac927f5eb1ba3",
+      "sha256": "464786102e3b988611983d4a8361f2a8556ceb2a79cc8dd01f9ac927f5eb1ba3"
     }
   ],
   "files": [
@@ -561,8 +674,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "4d568eb9907b57459529048e776810433846c5f13e13fbcadef0b58a537d3375",
-      "bytes": 2038
+      "sha256": "f6796195f7e81f10abbec609696c36664ba4808ae6943e95b7989093834e891b",
+      "bytes": 2849
     },
     {
       "path": "FEEDBACK.md",
@@ -580,9 +693,14 @@
       "bytes": 2293
     },
     {
+      "path": "PUBLIC-ACCESS.md",
+      "sha256": "4b0408de04be270a53bc34ab9f991d1c4215e3f3da664b8aafbf5e7c68c778d9",
+      "bytes": 20002
+    },
+    {
       "path": "README.md",
-      "sha256": "4affbc7f21abca8dcc4854fb66f71159aa4130bd05af9cbca562336d5d886c1f",
-      "bytes": 20752
+      "sha256": "ec1ded08d9f39cfc2795fb7bbb3ffb43d7446e853faeabd0d2fa72565e0f0b33",
+      "bytes": 22071
     },
     {
       "path": "SCREENSHOTS.md",
@@ -618,6 +736,56 @@
       "path": "images/cover.png",
       "sha256": "9ad939d6107608e95db22fce1f90ddeff8d6114948a9d59295e7856322f3ac5e",
       "bytes": 3763381
+    },
+    {
+      "path": "integrations/auth-webserver/LICENSE",
+      "sha256": "834a60339f8a47ef036f30723cea53ea30dd3088f9887664458efb116c533b70",
+      "bytes": 1084
+    },
+    {
+      "path": "integrations/auth-webserver/README.md",
+      "sha256": "82d912bf0144e5be4ee2eb4a9a41dd8ac679c07270e026cf35f23f0f9d1cb857",
+      "bytes": 2065
+    },
+    {
+      "path": "integrations/auth-webserver/access.env.example",
+      "sha256": "2e271fac80714c31b7777d0f2ef018380800bfcc1ac7f3e736cd1841e8bf93c3",
+      "bytes": 216
+    },
+    {
+      "path": "integrations/auth-webserver/cloudflare-admin.env.example",
+      "sha256": "464786102e3b988611983d4a8361f2a8556ceb2a79cc8dd01f9ac927f5eb1ba3",
+      "bytes": 152
+    },
+    {
+      "path": "integrations/auth-webserver/cordis.patch.yml",
+      "sha256": "d04b6d8bbc35aa9581f9f8186681a58a8c6d27c094a8826d3140d62cb481c27e",
+      "bytes": 1130
+    },
+    {
+      "path": "integrations/auth-webserver/index.js",
+      "sha256": "7c87abd75dba9d58e944ed0cf8e1f2abdb8da38b03b886a7c388a20c9842b5de",
+      "bytes": 7839
+    },
+    {
+      "path": "integrations/auth-webserver/nginx.conf.example",
+      "sha256": "67fdd6c2ff46692e7c88c73e2d99d20a863e68cdc41229f4662d71c52f23ed4c",
+      "bytes": 941
+    },
+    {
+      "path": "integrations/auth-webserver/package-lock.json",
+      "sha256": "d503f29eb6f754a8508dcc8dc35314e767e6cc5288e8412a33635f135a6797ad",
+      "bytes": 9197
+    },
+    {
+      "path": "integrations/auth-webserver/package.json",
+      "sha256": "3fa6f70edac1164d45c4737201f9dfb81aec29f2502b5e5bb98ddc0c3c5726d7",
+      "bytes": 937
+    },
+    {
+      "path": "integrations/auth-webserver/test.mjs",
+      "sha256": "7d70b18fd552a6db8cfdd3c280d06dca16e7074cad1890c9e8177b44166a973a",
+      "bytes": 7852
     },
     {
       "path": "integrations/dependencies.json",
@@ -656,8 +824,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "abff17440ed11ff2dadace02cfe68bffccef5696c0111641125fa340ebeb5b5d",
-      "bytes": 2369
+      "sha256": "dd05087c76b2a9b7a1bdfcb3e7f2a0c5e34a2faa171205d42d004cc1f7e68b79",
+      "bytes": 2393
     },
     {
       "path": "preset/agent.cordis.yml",
@@ -908,6 +1076,21 @@
       "path": "tools/patch-harness.mjs",
       "sha256": "604132feddc595b09dc14f155220f1447a1d1ba80ab39dd3ffc96df3ca6f7e27",
       "bytes": 5114
+    },
+    {
+      "path": "tools/public-access-recipes.mjs",
+      "sha256": "db4fbcb9a3bfc03c46a27da6c4dbb5d25b7b4f7a03331cdfd78c1725c573e723",
+      "bytes": 1354
+    },
+    {
+      "path": "tools/public-access.json",
+      "sha256": "cce794f948894b9b2f9b3d560fb4c65c0348da68fa3531b56fb1880ffd6e24e2",
+      "bytes": 1911
+    },
+    {
+      "path": "tools/public-access.mjs",
+      "sha256": "5a8c51cdc128c5d35dc949cfb2a66629a52aa049de2d054c04f87f90612be44a",
+      "bytes": 2414
     },
     {
       "path": "tools/public-transaction.mjs",

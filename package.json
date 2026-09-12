@@ -1,6 +1,6 @@
 {
   "name": "dsh-nexttavern",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DeepSeek Harness long-form roleplay workspace with worldlines, memory, cards and exports.",
   "type": "module",
   "main": "lib/index.js",
@@ -32,6 +32,7 @@
     "CHANGELOG.md",
     "FEEDBACK.md",
     "SCREENSHOTS.md",
+    "PUBLIC-ACCESS.md",
     "cordis.patch.yml"
   ],
   "dsh": {

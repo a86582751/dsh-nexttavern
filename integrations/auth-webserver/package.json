@@ -1,0 +1,41 @@
+{
+  "name": "@isund/dsh-auth-webserver",
+  "version": "0.1.0-alpha.3.2",
+  "private": true,
+  "license": "MIT",
+  "description": "Opt-in Cloudflare Access JWT origin authentication for DeepSeek Harness alpha.3.",
+  "repository": "https://github.com/a86582751/dsh-nexttavern",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "access.env.example",
+    "cloudflare-admin.env.example",
+    "nginx.conf.example",
+    "test.mjs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "jose": "6.1.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-host-webserver": "0.1.2-alpha.3"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-host-webserver": "0.1.2-alpha.3"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  }
+}

@@ -8,13 +8,13 @@
 
 **创作一个世界，走进它，再把它带走。**
 
-[开始体验](#开始体验) · [架构设计](#为长篇角色扮演重新组织-agent-的工作方式) · [核心能力](#核心能力) · [下载安装](#下载) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
+[开始体验](#开始体验) · [架构设计](#为长篇角色扮演重新组织-agent-的工作方式) · [核心能力](#核心能力) · [下载安装](#下载) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
 ![沉浸式阅读体验](screenshots/immersive.png)
 
 Roleplay workspace for DeepSeek Harness: interactive character creation, on-demand worldbook reading, long-form memory, multi-model collaboration, character agents, branching stories and novel exports.
 
-**0.1.1 预览版** · Harness **0.1.2-alpha.3** · pi-ai **0.84.4** · 自有代码 **MIT**
+**0.1.2 预览版** · Harness **0.1.2-alpha.3** · pi-ai **0.84.4** · 自有代码 **MIT**
 
 按[安装说明](#安装)完成六项兼容补丁配置，即可开启完整体验。
 
@@ -184,9 +184,10 @@ AI 会和你聊人物、关系、氛围与剧情方向，把你的回答逐步�
 
 ## 下载
 
-- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.1/dsh-nexttavern.tgz)，含预构建 UI、源码、preset、参考卡、补丁器及 CLI。
-- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.1/dsh-debug.tgz)。
-- [版本说明与 SHA-256](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.1.1)。未发布到 npm，不要使用 `npm install dsh-nexttavern`。
+- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.2/dsh-nexttavern.tgz)，含预构建 UI、源码、preset、参考卡、补丁器、CLI 和可选公网鉴权源包。
+- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.2/dsh-debug.tgz)。
+- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.2/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
+- [版本说明与 SHA-256](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.1.2)。未发布到 npm，不要使用 `npm install dsh-nexttavern`。
 
 ## 安装
 
@@ -252,11 +253,11 @@ node "$PackageRoot/tools/install.mjs" --home $env:DSH_HOME --harness $HarnessRoo
 
 社区兼容包使用正式 fork，保留上游历史和署名，不能误认作原作者发布：
 
-- [dsh-file-upload](https://github.com/a86582751/dsh-file-upload)，上游 [HongMing-Huang/dsh-file-upload](https://github.com/HongMing-Huang/dsh-file-upload) 0.4.3。修复上传回调、稳定引用、附件关闭不删资源、完整分页和 Markdown 转义；保留原版 Host/origin 检查。
+- [dsh-file-upload](https://github.com/a86582751/dsh-file-upload)，上游 [HongMing-Huang/dsh-file-upload](https://github.com/HongMing-Huang/dsh-file-upload) 0.4.3。修复上传回调、稳定引用、附件关闭不删资源、完整分页和 Markdown 转义；基础包保留原版 Host 检查。显式安装公网兼容后，额外接受鉴权插件完成 JWT 与 Origin 校验后写入的服务器标记。
 - [anydoc](https://github.com/a86582751/dsh-plugin-anydoc)，上游 [beancookie/dsh-plugin-anydoc](https://github.com/beancookie/dsh-plugin-anydoc) 固定提交的 0.1.0，保守还原 Markdown 转义。
 - [pi-ai 差分](https://github.com/a86582751/pi/tree/codex/nexttavern-alpha3/nexttavern-compat)，上游 [earendil-works/pi](https://github.com/earendil-works/pi) 0.84.4。统一补丁器解析 Harness 实际使用的实例，不另装无效的 profile 副本。
 
-`better-sidebar` 不是必需依赖；隔离浏览器验证使用官方侧栏。个人 Access、systemd/Nginx、认证放行和私有模型路由不随包启用。通用 Qwen reasoning 配置辅助工具保留于 integrations，仅在明确配置匹配路由时使用。
+`better-sidebar` 不是必需依赖；隔离浏览器验证使用官方侧栏。公网玩家可按[手机电脑公网访问指南](PUBLIC-ACCESS.md)显式安装随包提供的 `@isund/dsh-auth-webserver`，配置自己的 Cloudflare Access、域名和登录身份。鉴权源码、脱敏模板、三个可回滚的公网兼容选项均已交付；默认本机安装不自动开放网络。个人密钥、地址、systemd/Nginx 实例配置和私有模型路由不随包分发。通用 Qwen reasoning 配置辅助工具保留于 integrations，仅在明确配置匹配路由时使用。
 
 ## 更新、卸载与回滚
 
@@ -287,6 +288,12 @@ npm run build
 同一源码和锁文件应重建相同的 lib/client.js。修改源码后需更新自己的版本与 provenance，不可冒充原始 Release。兼容 fork 各有无需维护仓库的独立重建命令和归档摘要。
 
 架构、源码入口与验证记录见[架构说明](ARCHITECTURE.md)。
+
+## 社区支持
+
+感谢 [@ljs1997sh](https://github.com/ljs1997sh) 在 NextTavern 发布后迅速带来 [dsh-nexttavern-qq-mobile](https://github.com/ljs1997sh/dsh-nexttavern-qq-mobile)，为手机玩家提供 QQ 风格界面、紧凑布局，以及手机、局域网和远程访问方案，让更多人能随时继续自己的故事。
+
+这是作者独立维护的社区项目，请按其仓库说明了解安装方式和兼容范围。本仓库未合并其皮肤或转发代码；这里提供的 CF Access 鉴权插件和[公网访问指南](PUBLIC-ACCESS.md)有自己的配置与验收步骤。
 
 ## 反馈与许可
 

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "kind": "nexttavern-public-access",
+  "packageName": "@isund/dsh-auth-webserver",
+  "version": "0.1.0-alpha.3.2",
+  "packagePath": "integrations/auth-webserver",
+  "patches": [
+    {
+      "group": "harness",
+      "recipe": "remote-settings",
+      "package": "@deepseek-ai/dsh-client-ui-settings",
+      "version": "0.1.2-alpha.3",
+      "file": "lib/client.js",
+      "unit": "remote-settings",
+      "before": "479002d654490d19cbc89ed4582198603eddf2a62e3d233bbd30748f1bc0d862",
+      "after": "9341c012e6959dd089844f122eed9ff525fb2cfb1969f233870dae0734dd2548",
+      "edits": [
+        {
+          "offset": 50930,
+          "delete": 46,
+          "insert": "Imhvc3Q="
+        }
+      ]
+    },
+    {
+      "group": "harness",
+      "recipe": "continuous-reconnect",
+      "package": "@deepseek-ai/dsh-client-connection",
+      "version": "0.1.2-alpha.3",
+      "file": "lib/client.js",
+      "unit": "continuous-reconnect",
+      "before": "5767c211d97d5f56be42620eec1567ddd6aa25eaaea02eb684c907b2b541f5b0",
+      "after": "80803b06063094bf360599429099c1004d1ee796c53e12e607a1953808e1f05f",
+      "edits": [
+        {
+          "offset": 4705,
+          "delete": 246,
+          "insert": "dGhpcy5hdHRlbXB0ID0gTWF0aC5tYXgoMCwgdGhpcy5hdHRlbXB0IC0gMSk="
+        }
+      ]
+    },
+    {
+      "group": "profile",
+      "recipe": "verified-upload",
+      "package": "dsh-file-upload",
+      "version": "0.4.3-nexttavern.1",
+      "file": "lib/upload.js",
+      "unit": "verified-upload",
+      "before": "008b71bedc2fe3e13e709459ff79a51bbf9f2ed11e7aedd495348f75a5db7a86",
+      "after": "1e35dd2e25aea723eb234ee142c8f25d8195db4d7b69270850649e62f6accbc4",
+      "edits": [
+        {
+          "offset": 10312,
+          "delete": 0,
+          "insert": "ICYmIHJlcVtTeW1ib2wuZm9yKCJAaXN1bmQvZHNoLWF1dGgtd2Vic2VydmVyL3ZlcmlmaWVkLWFjY2VzcyIpXSAhPT0gdHJ1ZQ=="
+        }
+      ]
+    }
+  ]
+}

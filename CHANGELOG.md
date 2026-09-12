@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2 Preview - 2026-09-12
+
+- Ship the optional `@isund/dsh-auth-webserver` source, installable archive, license, contract tests and sanitized environment template for Cloudflare Access public access.
+- Add explicit, fingerprint-checked and reversible compatibility for remote settings, continuous reconnect and JWT-authenticated uploads. Default local installation does not enable public access.
+- Add the beginner-oriented phone/computer public-access guide, including AI-assisted deployment, obtaining scoped Cloudflare tokens and SSH keys, historical connection tuning, verification and rollback.
+- Add a community-support section thanking @ljs1997sh for dsh-nexttavern-qq-mobile.
+- This release is based on public 0.1.1. Concurrent internal debugging and TypeScript migration are outside this release.
+
 ## 0.1.1 Preview - 2026-09-12
 
 - Protect author status templates at the native prompt boundary while preserving the original card source.

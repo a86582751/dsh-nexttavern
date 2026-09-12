@@ -1,0 +1,41 @@
+- id: webserver
+  disabled: true
+
+- insert:
+    - id: auth-webserver
+      name: '@isund/dsh-auth-webserver'
+      inject: [webStartup]
+      config:
+        host: !!js ctx.webStartup.host ?? '127.0.0.1'
+        port: !!js ctx.webStartup.port ?? 3510
+        compression: gzip
+        compressionLevel: 1
+        compressionThresholdBytes: 1024
+        teamDomain: !!js process.env.CLOUDFLARE_ACCESS_TEAM_DOMAIN
+        audience: !!js process.env.CLOUDFLARE_ACCESS_AUD
+        allowedEmail: !!js process.env.CLOUDFLARE_ACCESS_ALLOWED_EMAIL
+        publicHost: !!js process.env.DSH_PUBLIC_HOST
+        clockToleranceSeconds: 15
+
+- id: web-runtime
+  name: '@deepseek-ai/dsh-web-app'
+  inject: [webStartup]
+  config:
+    openBrowser: false
+    printUrl: false
+    surfaceContext: true
+    trustedHosts: !!js '[process.env.DSH_PUBLIC_HOST]'
+
+- id: connection
+  name: '@deepseek-ai/dsh-client-connection'
+  inject: [webRuntime]
+  config:
+    trustedHosts: !!js ctx.webRuntime.trustedHosts
+
+- id: client-hmr
+  disabled: true
+
+- id: typert-gateway
+  name: '@deepseek-ai/dsh-api-gateway'
+  config:
+    websocketHeartbeatIntervalMs: 15000

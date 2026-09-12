@@ -1,0 +1,36 @@
+map $http_upgrade $nexttavern_connection_upgrade {
+    default upgrade;
+    ''      '';
+}
+
+server {
+    listen 127.0.0.1:8184 default_server;
+    server_name _;
+    return 403;
+}
+
+server {
+    listen 127.0.0.1:8184;
+    server_name play.example.com;
+    client_max_body_size 320m;
+    client_body_timeout 300s;
+    keepalive_timeout 300s;
+    keepalive_requests 10000;
+
+    location / {
+        proxy_pass http://127.0.0.1:3510;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $nexttavern_connection_upgrade;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_cache off;
+        proxy_socket_keepalive on;
+        proxy_next_upstream off;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+}
