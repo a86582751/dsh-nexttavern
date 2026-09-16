@@ -55,7 +55,7 @@
       ]
     }
   },
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "https://github.com/a86582751/dsh-nexttavern.git"

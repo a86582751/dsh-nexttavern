@@ -14,7 +14,7 @@
 
 Roleplay workspace for DeepSeek Harness: interactive character creation, on-demand worldbook reading, long-form memory, multi-model collaboration, character agents, branching stories, novel exports and one-click installers.
 
-**0.2.5 预览版** · Harness **0.1.2-alpha.3** · pi-ai **0.84.4** · 自有代码 **MIT**
+**0.2.5 预览版** · Harness **0.1.2-alpha.3** · pi-ai **0.84.4** · 自有代码 **GPL-3.0**
 
 想快点开一章，用[一键安装](#一键安装)；想自己控制运行时和补丁，就按[手动安装](#安装)配好那六项兼容补丁。
 
@@ -497,4 +497,4 @@ npm run build
 
 带着你的世界来，也把体验和想法带回来。[分享反馈与建议](https://github.com/a86582751/dsh-nexttavern/issues)，一起打磨下一段更好的创作旅程。反馈问题时请附版本与复现步骤，并隐去密钥和私密内容。
 
-自有代码以 [MIT](LICENSE) 开源。
+自有代码以 **[GPL-3.0](LICENSE)** 开源。随包的上游补丁与社区改动各自保留原许可（DeepSeek 与 pi 的 MIT 条款、上传与 anydoc fork 的 MIT、office 的 Apache-2.0），逐项列在 [NOTICE](NOTICE.md) 里。

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "48e6ec4bbf3f0cd3a00a4e12f8f08fec762c6172",
+  "sourceCommit": "3b2f985a39dcf0f3824f4ca76537b5d96b0539bc",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -40,8 +40,8 @@
       "artifact": "skin-nexttavern-package",
       "source": "runtime/alpha3/preset/skins/nexttavern-amber/package.json",
       "target": "skins/dsh-nexttavern-amber/package.json",
-      "sourceSha256": "400c7aaba25ee322d6479a36430fe01e8d50ba6a10e0244db6c4ab213ace9f0a",
-      "sha256": "400c7aaba25ee322d6479a36430fe01e8d50ba6a10e0244db6c4ab213ace9f0a"
+      "sourceSha256": "8456204f25c796e53935ec9d8e6e7758c2b99981cd61e03c01adfb1563856b19",
+      "sha256": "8456204f25c796e53935ec9d8e6e7758c2b99981cd61e03c01adfb1563856b19"
     },
     {
       "artifact": "skin-nexttavern-cordis-patch",
@@ -1195,8 +1195,8 @@
       "artifact": "roleplay-ui-package",
       "source": "runtime/alpha3/ui/package.json",
       "target": "package.json",
-      "sourceSha256": "297dfbe98d3d2698ff291a2c79d82cfe63939aff5d514674bb01a123f8c34db5",
-      "sha256": "5682e124dabf74712f251ada094e0193fdf274e08706cb2c59b3f17f6c711802"
+      "sourceSha256": "d85084ea315bf5f2b1caa306a56df3928cd0b24d3a67a02ea4a96bbff196f9ba",
+      "sha256": "635dde94d79dcc4d57748c45b2df327af739f3dada27fd2cb898aa8db03088a4"
     },
     {
       "artifact": "roleplay-ui-bundle-patch",
@@ -3288,8 +3288,8 @@
       "artifact": "auth-webserver-package",
       "source": "runtime/alpha3/auth/package.json",
       "target": "integrations/auth-webserver/package.json",
-      "sourceSha256": "ccdd401868e67d7ee4de981cc3515cda87bdda9a1796673f676527ebb7a3ff4a",
-      "sha256": "ccdd401868e67d7ee4de981cc3515cda87bdda9a1796673f676527ebb7a3ff4a"
+      "sourceSha256": "3919bbe74ad4b75cb00cc88a9abf77e96f32612c20f14ff519c57e3ec5ad9313",
+      "sha256": "3919bbe74ad4b75cb00cc88a9abf77e96f32612c20f14ff519c57e3ec5ad9313"
     },
     {
       "artifact": "auth-webserver-lockfile",
@@ -3337,8 +3337,8 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "99b48502cc1719187816c8b451453f1c77277189d761c78c4386bf30ca58f133",
-      "sha256": "99b48502cc1719187816c8b451453f1c77277189d761c78c4386bf30ca58f133"
+      "sourceSha256": "45d5f3ef3a8a29a7c6cb9cc1c53c73392688f6b0bd63e48b378e743d33d1dc62",
+      "sha256": "45d5f3ef3a8a29a7c6cb9cc1c53c73392688f6b0bd63e48b378e743d33d1dc62"
     },
     {
       "artifact": "public-cover",
@@ -3351,8 +3351,8 @@
       "artifact": "public-notice-draft",
       "source": "release/public/NOTICE.md",
       "target": "NOTICE.md",
-      "sourceSha256": "e13d796664f6401ec04cf4b11e92681433801d889e7f17ace31f2127fc211a12",
-      "sha256": "e13d796664f6401ec04cf4b11e92681433801d889e7f17ace31f2127fc211a12"
+      "sourceSha256": "f23cbb314ddfd766218d9f396113d2b2052f292b565de2ad58c67d0e034c63fb",
+      "sha256": "f23cbb314ddfd766218d9f396113d2b2052f292b565de2ad58c67d0e034c63fb"
     },
     {
       "artifact": "public-architecture-guide",
@@ -3365,8 +3365,8 @@
       "artifact": "public-license",
       "source": "release/public/LICENSE",
       "target": "LICENSE",
-      "sourceSha256": "834a60339f8a47ef036f30723cea53ea30dd3088f9887664458efb116c533b70",
-      "sha256": "834a60339f8a47ef036f30723cea53ea30dd3088f9887664458efb116c533b70"
+      "sourceSha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
     },
     {
       "artifact": "public-changelog-draft",
@@ -3732,13 +3732,13 @@
     },
     {
       "path": "LICENSE",
-      "sha256": "834a60339f8a47ef036f30723cea53ea30dd3088f9887664458efb116c533b70",
-      "bytes": 1084
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "bytes": 35149
     },
     {
       "path": "NOTICE.md",
-      "sha256": "e13d796664f6401ec04cf4b11e92681433801d889e7f17ace31f2127fc211a12",
-      "bytes": 2293
+      "sha256": "f23cbb314ddfd766218d9f396113d2b2052f292b565de2ad58c67d0e034c63fb",
+      "bytes": 2979
     },
     {
       "path": "PUBLIC-ACCESS.md",
@@ -3747,8 +3747,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "99b48502cc1719187816c8b451453f1c77277189d761c78c4386bf30ca58f133",
-      "bytes": 41999
+      "sha256": "45d5f3ef3a8a29a7c6cb9cc1c53c73392688f6b0bd63e48b378e743d33d1dc62",
+      "bytes": 42202
     },
     {
       "path": "SCREENSHOTS.md",
@@ -3832,8 +3832,8 @@
     },
     {
       "path": "integrations/auth-webserver/package.json",
-      "sha256": "ccdd401868e67d7ee4de981cc3515cda87bdda9a1796673f676527ebb7a3ff4a",
-      "bytes": 953
+      "sha256": "3919bbe74ad4b75cb00cc88a9abf77e96f32612c20f14ff519c57e3ec5ad9313",
+      "bytes": 962
     },
     {
       "path": "integrations/auth-webserver/test.mjs",
@@ -3882,8 +3882,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "5682e124dabf74712f251ada094e0193fdf274e08706cb2c59b3f17f6c711802",
-      "bytes": 2443
+      "sha256": "635dde94d79dcc4d57748c45b2df327af739f3dada27fd2cb898aa8db03088a4",
+      "bytes": 2452
     },
     {
       "path": "preset/agent.cordis.yml",
@@ -4712,8 +4712,8 @@
     },
     {
       "path": "skins/dsh-nexttavern-amber/package.json",
-      "sha256": "400c7aaba25ee322d6479a36430fe01e8d50ba6a10e0244db6c4ab213ace9f0a",
-      "bytes": 607
+      "sha256": "8456204f25c796e53935ec9d8e6e7758c2b99981cd61e03c01adfb1563856b19",
+      "bytes": 595
     },
     {
       "path": "skins/dsh-nexttavern-amber/preview/dark.png",

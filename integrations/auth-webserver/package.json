@@ -2,7 +2,7 @@
   "name": "@isund/dsh-auth-webserver",
   "version": "0.1.0-alpha.3.2",
   "private": true,
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "description": "Opt-in Cloudflare Access JWT origin authentication for DeepSeek Harness alpha.3.",
   "repository": "https://github.com/a86582751/dsh-nexttavern",
   "type": "module",
