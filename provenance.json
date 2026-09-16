@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "3420591b07ba62abb18598d8d42bffc76a8c6971",
+  "sourceCommit": "478a2d0cb10fd5faa3719747916a06c6183e11c0",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -3337,8 +3337,8 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "7af026dfc55cf38ac63dba5d26388dcf06fe027c0df2eed4ea911f0a550c223a",
-      "sha256": "7af026dfc55cf38ac63dba5d26388dcf06fe027c0df2eed4ea911f0a550c223a"
+      "sourceSha256": "8add6a9ab422e36dcd2fedaa2a8170ef3c029f3c698d6334d7e38a0b1ae39741",
+      "sha256": "8add6a9ab422e36dcd2fedaa2a8170ef3c029f3c698d6334d7e38a0b1ae39741"
     },
     {
       "artifact": "public-cover",
@@ -3351,8 +3351,8 @@
       "artifact": "public-readme-english",
       "source": "release/public/README.en.md",
       "target": "README.en.md",
-      "sourceSha256": "5c7464040b4a2b60fbbbef9b7bdfa76036dac7ee34527e59c372fdf53b9e34b3",
-      "sha256": "5c7464040b4a2b60fbbbef9b7bdfa76036dac7ee34527e59c372fdf53b9e34b3"
+      "sourceSha256": "0bdccf0afcee7f2bf0290ee775a78ab1d7687f3cc1c7c35d440f58a2cd65aca3",
+      "sha256": "0bdccf0afcee7f2bf0290ee775a78ab1d7687f3cc1c7c35d440f58a2cd65aca3"
     },
     {
       "artifact": "public-notice-draft",
@@ -3816,13 +3816,13 @@
     },
     {
       "path": "README.en.md",
-      "sha256": "5c7464040b4a2b60fbbbef9b7bdfa76036dac7ee34527e59c372fdf53b9e34b3",
-      "bytes": 39868
+      "sha256": "0bdccf0afcee7f2bf0290ee775a78ab1d7687f3cc1c7c35d440f58a2cd65aca3",
+      "bytes": 39910
     },
     {
       "path": "README.md",
-      "sha256": "7af026dfc55cf38ac63dba5d26388dcf06fe027c0df2eed4ea911f0a550c223a",
-      "bytes": 42138
+      "sha256": "8add6a9ab422e36dcd2fedaa2a8170ef3c029f3c698d6334d7e38a0b1ae39741",
+      "bytes": 42183
     },
     {
       "path": "SCREENSHOTS.md",
