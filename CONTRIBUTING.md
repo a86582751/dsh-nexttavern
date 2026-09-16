@@ -34,6 +34,11 @@ test (`integrations/auth-webserver/test.mjs`). Generated files that do not match
 their sources fail the run: if you edited a `.js` by hand, edit the `.ts` and run
 `npm run build:modules` instead.
 
+An automated reviewer (CodeRabbit, configured in `.coderabbit.yaml`) also
+comments on pull requests, in Chinese. Its review is advice, not a gate: the
+checks above decide whether a change can merge, and a quiet reviewer is not the
+same as a passing run.
+
 ## What the checks cannot cover here
 
 The maintainer's tree holds further suites that need a running DeepSeek Harness,

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "7cebee8b10e2f72d5e282e15087693c80027c6bd",
-  "dirty": false,
+  "sourceCommit": "434ae6351434ee06d30da555c1e1fa56b0d131f2",
+  "dirty": true,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
   "compiler": "0.24.2",
@@ -3449,8 +3449,8 @@
       "artifact": "public-contributing",
       "source": "release/public/CONTRIBUTING.md",
       "target": "CONTRIBUTING.md",
-      "sourceSha256": "bdee7ec226ee40bd2d91ae43dbf207982d23049c53f4db0923ffc2e523a08a4a",
-      "sha256": "bdee7ec226ee40bd2d91ae43dbf207982d23049c53f4db0923ffc2e523a08a4a"
+      "sourceSha256": "7e15fe0d1a7f9df9308a2fb172d8f4f9cea15c29b5c1075371e2d8b97f9b955a",
+      "sha256": "7e15fe0d1a7f9df9308a2fb172d8f4f9cea15c29b5c1075371e2d8b97f9b955a"
     },
     {
       "artifact": "public-verify-workflow",
@@ -3465,6 +3465,13 @@
       "target": "tools/build-modules.mjs",
       "sourceSha256": "347031208f4bfbcb45b12657b339884ec667f81b28c84cdc2892ef81c8bcfc42",
       "sha256": "347031208f4bfbcb45b12657b339884ec667f81b28c84cdc2892ef81c8bcfc42"
+    },
+    {
+      "artifact": "public-review-bot-config",
+      "source": "release/public/.coderabbit.yaml",
+      "target": ".coderabbit.yaml",
+      "sourceSha256": "740efd1384a9ffbf01c87f123560814bd1362bed61946c4c43e12a69105b06be",
+      "sha256": "740efd1384a9ffbf01c87f123560814bd1362bed61946c4c43e12a69105b06be"
     },
     {
       "artifact": "public-test-runner",
@@ -3714,6 +3721,11 @@
   ],
   "files": [
     {
+      "path": ".coderabbit.yaml",
+      "sha256": "740efd1384a9ffbf01c87f123560814bd1362bed61946c4c43e12a69105b06be",
+      "bytes": 1697
+    },
+    {
       "path": ".gitattributes",
       "sha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
       "bytes": 8
@@ -3750,8 +3762,8 @@
     },
     {
       "path": "CONTRIBUTING.md",
-      "sha256": "bdee7ec226ee40bd2d91ae43dbf207982d23049c53f4db0923ffc2e523a08a4a",
-      "bytes": 2289
+      "sha256": "7e15fe0d1a7f9df9308a2fb172d8f4f9cea15c29b5c1075371e2d8b97f9b955a",
+      "bytes": 2544
     },
     {
       "path": "FEEDBACK.md",
