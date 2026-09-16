@@ -1,8 +1,12 @@
 # NextTavern amber tavern skin bundle patch: inserts its public dsh.client entry
 # into the web plugin roster. The bundle is the official dsh plugin shape, so
-# install it with `dsh plugin --profile <name> add <path-or-git-url>`. Mutual
-# exclusion between skins is handled by the skin manager's disabled rows in the
-# profile patch layer, never by this bundle layer.
+# install it with `dsh plugin --profile <name> add <path-or-git-url>`. The entry
+# ships disabled so a fresh profile stays on the factory look: it remains in the
+# loader roster (the host's read-only Plugin list shows it as stopped) and the
+# skin manager enables it by patching `disabled: false` onto this id from a
+# higher layer, the profile's own cordis.patch.yml. Mutual exclusion between
+# skins is handled by those disabled rows, never by this bundle layer.
 - insert:
     - id: ui-skin-nexttavern
       name: dsh-nexttavern-amber
+      disabled: true

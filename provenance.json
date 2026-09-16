@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "4b312391e7bca8d6a61c8b56b4137e4d272cc4ef",
+  "sourceCommit": "48e6ec4bbf3f0cd3a00a4e12f8f08fec762c6172",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -47,8 +47,8 @@
       "artifact": "skin-nexttavern-cordis-patch",
       "source": "runtime/alpha3/preset/skins/nexttavern-amber/cordis.patch.yml",
       "target": "skins/dsh-nexttavern-amber/cordis.patch.yml",
-      "sourceSha256": "cea0491ec52ec514762db1b4b6eba4bc3b0da5c521135d2d4d9cda66d2b2780d",
-      "sha256": "cea0491ec52ec514762db1b4b6eba4bc3b0da5c521135d2d4d9cda66d2b2780d"
+      "sourceSha256": "9a6db11aeed499fae1ab65c379e8d2af14a2325bbd184d921d5942d46b11a3e3",
+      "sha256": "9a6db11aeed499fae1ab65c379e8d2af14a2325bbd184d921d5942d46b11a3e3"
     },
     {
       "artifact": "skin-nexttavern-skin-json",
@@ -89,8 +89,8 @@
       "artifact": "skin-nexttavern-readme",
       "source": "runtime/alpha3/preset/skins/nexttavern-amber/README.md",
       "target": "skins/dsh-nexttavern-amber/README.md",
-      "sourceSha256": "aa4b46fc202513bb1b8b4f10a0f99d82022de88c42bb3884c66b013d8e1bf94e",
-      "sha256": "97a9cd1ecb3760d7a1fef830861871533306fa67fd49951b62e28086bafe7016"
+      "sourceSha256": "9b65887795c31d2b4d7d5e2f6db47446b40f9bba2627c69189df818105f28984",
+      "sha256": "a7b62805ab22e1e7cf9eed2b84a303e6f396d0c1498463f1149d100723450ab9"
     },
     {
       "artifact": "skin-nexttavern-index-typescript",
@@ -3337,8 +3337,8 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "4e62133dbccbd79d4459da0d5ef096a2acc1feed2fea16437ae3b2c0849c61b3",
-      "sha256": "4e62133dbccbd79d4459da0d5ef096a2acc1feed2fea16437ae3b2c0849c61b3"
+      "sourceSha256": "99b48502cc1719187816c8b451453f1c77277189d761c78c4386bf30ca58f133",
+      "sha256": "99b48502cc1719187816c8b451453f1c77277189d761c78c4386bf30ca58f133"
     },
     {
       "artifact": "public-cover",
@@ -3372,8 +3372,8 @@
       "artifact": "public-changelog-draft",
       "source": "release/public/CHANGELOG.md",
       "target": "CHANGELOG.md",
-      "sourceSha256": "6338bd8bf7dfd9613a4cd9f00c64d8912c70236f4fbb678a1016ffa67dfca11b",
-      "sha256": "6338bd8bf7dfd9613a4cd9f00c64d8912c70236f4fbb678a1016ffa67dfca11b"
+      "sourceSha256": "3e389dd3c162789f3ec5b40e36d68c5cd84e88ac5f7d50eae615dd7856555341",
+      "sha256": "3e389dd3c162789f3ec5b40e36d68c5cd84e88ac5f7d50eae615dd7856555341"
     },
     {
       "artifact": "public-feedback",
@@ -3712,7 +3712,7 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "6338bd8bf7dfd9613a4cd9f00c64d8912c70236f4fbb678a1016ffa67dfca11b",
+      "sha256": "3e389dd3c162789f3ec5b40e36d68c5cd84e88ac5f7d50eae615dd7856555341",
       "bytes": 12001
     },
     {
@@ -3747,8 +3747,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "4e62133dbccbd79d4459da0d5ef096a2acc1feed2fea16437ae3b2c0849c61b3",
-      "bytes": 40425
+      "sha256": "99b48502cc1719187816c8b451453f1c77277189d761c78c4386bf30ca58f133",
+      "bytes": 41999
     },
     {
       "path": "SCREENSHOTS.md",
@@ -4682,13 +4682,13 @@
     },
     {
       "path": "skins/dsh-nexttavern-amber/README.md",
-      "sha256": "97a9cd1ecb3760d7a1fef830861871533306fa67fd49951b62e28086bafe7016",
-      "bytes": 10510
+      "sha256": "a7b62805ab22e1e7cf9eed2b84a303e6f396d0c1498463f1149d100723450ab9",
+      "bytes": 10714
     },
     {
       "path": "skins/dsh-nexttavern-amber/cordis.patch.yml",
-      "sha256": "cea0491ec52ec514762db1b4b6eba4bc3b0da5c521135d2d4d9cda66d2b2780d",
-      "bytes": 440
+      "sha256": "9a6db11aeed499fae1ab65c379e8d2af14a2325bbd184d921d5942d46b11a3e3",
+      "bytes": 717
     },
     {
       "path": "skins/dsh-nexttavern-amber/lib/client.js",

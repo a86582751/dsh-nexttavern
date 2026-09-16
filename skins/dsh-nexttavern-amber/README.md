@@ -126,8 +126,10 @@ combo URL 获取，不能依赖同目录静态资源被单独服务。六张合�
 dsh plugin --profile web add <此目录>
 ```
 
-随后在皮肤管理器中切换，或在 profile 补丁层把 `ui-skin-nexttavern` 的 `disabled` 置为 `false`
-并重启服务。与其它整页皮肤互斥，一次只应启用一个。
+本 bundle 的 `cordis.patch.yml` 以 `disabled: true` 登记该条目：新 profile 装完仍走出厂外观，
+条目本身留在 roster 里（宿主的只读插件列表把它显示为已停用）。随后在皮肤管理器中切换，
+或在 profile 补丁层把 `ui-skin-nexttavern` 的 `disabled` 置为 `false` 并重启服务。
+与其它整页皮肤互斥，一次只应启用一个。
 
 **部署要写两处路径，并且必须重启服务。** combo 实际服务的是已安装 profile 副本
 （`$DSH_HOME/profiles/web/node_modules/dsh-nexttavern-amber/lib/`）；
