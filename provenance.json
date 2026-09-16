@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "757085aa4aff6d4fb6a54032d90f32bbca14c9f4",
+  "sourceCommit": "3420591b07ba62abb18598d8d42bffc76a8c6971",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -1196,7 +1196,7 @@
       "source": "runtime/alpha3/ui/package.json",
       "target": "package.json",
       "sourceSha256": "d85084ea315bf5f2b1caa306a56df3928cd0b24d3a67a02ea4a96bbff196f9ba",
-      "sha256": "b63f5c3166d67cb55a0dbb6c64a96b00fb525a76dd9f9df287ae1adb9d7658b0"
+      "sha256": "fa8e0f98aa40965121c78958b913fea8d4167c6d6ee5be80f3cb248945ece64c"
     },
     {
       "artifact": "roleplay-ui-bundle-patch",
@@ -3348,6 +3348,13 @@
       "sha256": "9ad939d6107608e95db22fce1f90ddeff8d6114948a9d59295e7856322f3ac5e"
     },
     {
+      "artifact": "public-readme-english",
+      "source": "release/public/README.en.md",
+      "target": "README.en.md",
+      "sourceSha256": "5c7464040b4a2b60fbbbef9b7bdfa76036dac7ee34527e59c372fdf53b9e34b3",
+      "sha256": "5c7464040b4a2b60fbbbef9b7bdfa76036dac7ee34527e59c372fdf53b9e34b3"
+    },
+    {
       "artifact": "public-notice-draft",
       "source": "release/public/NOTICE.md",
       "target": "NOTICE.md",
@@ -3808,6 +3815,11 @@
       "bytes": 20002
     },
     {
+      "path": "README.en.md",
+      "sha256": "5c7464040b4a2b60fbbbef9b7bdfa76036dac7ee34527e59c372fdf53b9e34b3",
+      "bytes": 39868
+    },
+    {
       "path": "README.md",
       "sha256": "7af026dfc55cf38ac63dba5d26388dcf06fe027c0df2eed4ea911f0a550c223a",
       "bytes": 42138
@@ -3944,8 +3956,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "b63f5c3166d67cb55a0dbb6c64a96b00fb525a76dd9f9df287ae1adb9d7658b0",
-      "bytes": 2653
+      "sha256": "fa8e0f98aa40965121c78958b913fea8d4167c6d6ee5be80f3cb248945ece64c",
+      "bytes": 2673
     },
     {
       "path": "preset/agent.cordis.yml",
