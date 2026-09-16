@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "1c1475bdf409c16d378a7508ccbd3abe783cd85a",
+  "sourceCommit": "757085aa4aff6d4fb6a54032d90f32bbca14c9f4",
   "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -3449,8 +3449,8 @@
       "artifact": "public-contributing",
       "source": "release/public/CONTRIBUTING.md",
       "target": "CONTRIBUTING.md",
-      "sourceSha256": "7e15fe0d1a7f9df9308a2fb172d8f4f9cea15c29b5c1075371e2d8b97f9b955a",
-      "sha256": "7e15fe0d1a7f9df9308a2fb172d8f4f9cea15c29b5c1075371e2d8b97f9b955a"
+      "sourceSha256": "9b3857def1f2cc825b8a63006598f03ba19bf02190d2941bbbc22e856aca7a65",
+      "sha256": "9b3857def1f2cc825b8a63006598f03ba19bf02190d2941bbbc22e856aca7a65"
     },
     {
       "artifact": "public-verify-workflow",
@@ -3470,8 +3470,8 @@
       "artifact": "public-agents-notes",
       "source": "release/public/AGENTS.md",
       "target": "AGENTS.md",
-      "sourceSha256": "44eeed7a9abcaf3cc1a2fb65222b82cc20cba8451747e6bacaf4f55029895f72",
-      "sha256": "44eeed7a9abcaf3cc1a2fb65222b82cc20cba8451747e6bacaf4f55029895f72"
+      "sourceSha256": "9da3a28e29515389d5c0cdc9e032604dd25d37304b4e6e61590f58a735f545b6",
+      "sha256": "9da3a28e29515389d5c0cdc9e032604dd25d37304b4e6e61590f58a735f545b6"
     },
     {
       "artifact": "public-review-bot-config",
@@ -3759,8 +3759,8 @@
     },
     {
       "path": "AGENTS.md",
-      "sha256": "44eeed7a9abcaf3cc1a2fb65222b82cc20cba8451747e6bacaf4f55029895f72",
-      "bytes": 1676
+      "sha256": "9da3a28e29515389d5c0cdc9e032604dd25d37304b4e6e61590f58a735f545b6",
+      "bytes": 1976
     },
     {
       "path": "ARCHITECTURE.md",
@@ -3774,8 +3774,8 @@
     },
     {
       "path": "CONTRIBUTING.md",
-      "sha256": "7e15fe0d1a7f9df9308a2fb172d8f4f9cea15c29b5c1075371e2d8b97f9b955a",
-      "bytes": 2544
+      "sha256": "9b3857def1f2cc825b8a63006598f03ba19bf02190d2941bbbc22e856aca7a65",
+      "bytes": 2832
     },
     {
       "path": "FEEDBACK.md",

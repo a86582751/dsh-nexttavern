@@ -10,6 +10,10 @@ next release sync.
 - `src/**/*.ts`, `preset/**/*.ts`, `integrations/**/*.ts` are the sources.
 - `src/**/*.js`, `preset/lib/**`, `lib/client.js` are generated from them.
   Change the TypeScript, run `npm run build:modules`, commit both.
+- The browser client is one step further: `npm run build:modules` produces
+  `src/client.js`, and `npm run build` bundles that into `lib/client.js`, which
+  is what `package.json` exports as `./client`. A change that reaches the client
+  needs both commands, and `lib/client.js` committed with them.
 - `package.json`, `provenance.json` and `tools/build-map.json` are written by
   the release build. Do not hand-edit them.
 
