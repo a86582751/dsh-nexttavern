@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict'
+import {characterOccurrenceMap} from '../src/core/card-character-map.ts'
+const chapters=Array.from({length:36},(_,i)=>'前文'.repeat(600)+(i%2?'云中客':'林青')+'这是不能进入分布回执的正文。'+'后文'.repeat(900))
+let start=0
+const segments=chapters.map((text,id)=>{const segment={id,start,end:start+text.length,chapter:`章${id}`};start=segment.end;return segment})
+const source={text:chapters.join(''),segments}
+const first=characterOccurrenceMap(source,['林青','云中客'],{limit:7,samples:10})
+assert.equal(first.occurrences,36)
+assert.equal(first.intervalCount,36)
+assert.equal(first.nextCursor,7)
+assert.equal(first.intervals.length,7)
+assert.equal(first.scannedCompletely,true)
+assert.ok(first.samples[0]!.start<segments[1]!.start)
+assert.ok(first.samples.at(-1)!.end>segments.at(-1)!.start,'last appearance is sampled despite more than ten earlier hits')
+assert.ok(first.samples.some(s=>s.start>source.text.length*.4&&s.start<source.text.length*.6),'middle life stages sampled')
+assert.ok(first.intervals.every(i=>i.deliveredChars===0&&i.acknowledgedChars===0),'coordinates are never treated as reading')
+assert.doesNotMatch(JSON.stringify(first),/这是不能进入分布回执的正文/)
+assert.equal(first.stages.length,3,'a recurring protagonist needs evidence across early, middle and late appearances')
+assert(first.stages.every(stage=>!stage.covered),'mapping and reading alone cannot satisfy a character evidence stage')
+const earlyOnly=characterOccurrenceMap(source,['林青','云中客'],{evidence:[{start:source.text.indexOf('林青'),end:source.text.indexOf('林青')+10}]})
+assert.deepEqual(earlyOnly.stages.map(stage=>stage.covered),[true,false,false],'many topic labels on one early quote cannot prove later growth')
+const allStages=characterOccurrenceMap(source,['林青','云中客'],{evidence:earlyOnly.stages.map(stage=>({start:stage.sample.start,end:stage.sample.end}))})
+assert(allStages.stages.every(stage=>stage.covered),'original evidence in each available stage satisfies the positional gate')
+let cursor:number|null=0,total=0
+const positions=new Set<number>()
+while(cursor!==null){const page=characterOccurrenceMap(source,['林青','云中客'],{cursor,limit:7});for(const r of page.intervals){assert.ok(!positions.has(r.start));positions.add(r.start);total++}cursor=page.nextCursor}
+assert.equal(total,36,'all occurrence windows can be paged without duplicating them')
+const target=first.intervals[0]!
+const covered=characterOccurrenceMap(source,['林青','云中客'],{delivered:[target,target],acknowledged:[{start:target.start,end:target.start+100}]})
+assert.equal(covered.intervals[0]!.deliveredChars,target.totalChars,'overlapping receipts count once')
+assert.equal(covered.intervals[0]!.acknowledgedChars,100,'delivery does not imply a saved note')
+const merged=characterOccurrenceMap({text:'空'.repeat(1000)+'林青与云中客相遇'+'空'.repeat(1000),segments:[{id:0,start:0,end:2010,chapter:'场景'}]},['林青','云中客'])
+assert.equal(merged.intervalCount,1,'nearby aliases produce one reading interval')
+assert.equal(characterOccurrenceMap(source,['不存在的人物']).occurrences,0)
+assert.throws(()=>characterOccurrenceMap(source,['林青'],{cursor:-1}))
+assert.throws(()=>characterOccurrenceMap(source,['林青'],{samples:1000}))
+const flood='林青'.repeat(20010),capped=characterOccurrenceMap({text:flood,segments:[{id:0,start:0,end:flood.length,chapter:'密集'}]},['林青'])
+assert.equal(capped.truncated,true);assert.equal(capped.scannedCompletely,false)
+assert.equal(capped.occurrences,20000,'unbounded common-name output is capped with explicit incomplete status')
+console.log('character map: whole-book distribution, bounded paging, first/middle/last, receipt coverage and truncation PASS')

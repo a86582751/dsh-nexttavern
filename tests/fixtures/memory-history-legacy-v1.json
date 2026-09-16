@@ -1,0 +1,1884 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "c7c4f12",
+  "cases": [
+    {
+      "name": "live",
+      "session": {
+        "id": "live",
+        "events": [
+          {
+            "seq": 0,
+            "type": "turn/start",
+            "data": {
+              "turn": 1
+            },
+            "time": 0
+          },
+          {
+            "seq": 1,
+            "type": "user/message",
+            "data": {
+              "id": "u1",
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Open the green door."
+                }
+              ]
+            },
+            "time": 1000
+          },
+          {
+            "seq": 2,
+            "type": "assistant/message",
+            "data": {
+              "turn": 1,
+              "message": {
+                "id": "a1",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The green door opens into a library."
+                  }
+                ]
+              }
+            },
+            "time": 2000
+          },
+          {
+            "seq": 3,
+            "type": "turn/end",
+            "data": {
+              "turn": 1,
+              "reason": {
+                "kind": "completed"
+              }
+            },
+            "time": 3000
+          },
+          {
+            "seq": 4,
+            "type": "turn/start",
+            "data": {
+              "turn": 2
+            },
+            "time": 4000
+          },
+          {
+            "seq": 5,
+            "type": "user/message",
+            "data": {
+              "id": "u2",
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Read the map."
+                }
+              ]
+            },
+            "time": 5000
+          },
+          {
+            "seq": 6,
+            "type": "assistant/message",
+            "data": {
+              "turn": 2,
+              "message": {
+                "id": "a2",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The map shows a green path through the library."
+                  }
+                ]
+              }
+            },
+            "time": 6000
+          },
+          {
+            "seq": 7,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "roleplay-tasks",
+                "form": "phase",
+                "stage": "after-story",
+                "storySeq": 6,
+                "turn": 2
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Maintenance phase"
+                }
+              ]
+            },
+            "time": 7000
+          },
+          {
+            "seq": 8,
+            "type": "turn/end",
+            "data": {
+              "turn": 2,
+              "reason": {
+                "kind": "aborted"
+              }
+            },
+            "time": 8000
+          },
+          {
+            "seq": 9,
+            "type": "compaction/summary",
+            "data": {
+              "compactionId": "archive",
+              "shadowedSeqs": [
+                1,
+                2,
+                5,
+                6
+              ]
+            },
+            "time": 9000
+          },
+          {
+            "seq": 10,
+            "type": "compaction/end",
+            "data": {
+              "compactionId": "archive"
+            },
+            "time": 10000
+          },
+          {
+            "seq": 11,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "compact",
+                "compactionId": "archive"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Visible checkpoint"
+                }
+              ]
+            },
+            "time": 11000
+          },
+          {
+            "seq": 12,
+            "type": "tool/result",
+            "data": {
+              "message": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Tool map evidence"
+                  }
+                ]
+              }
+            },
+            "time": 12000
+          },
+          {
+            "seq": 13,
+            "type": "turn/start",
+            "data": {
+              "turn": 3
+            },
+            "time": 13000
+          },
+          {
+            "seq": 14,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Export the card"
+                }
+              ]
+            },
+            "time": 14000
+          },
+          {
+            "seq": 15,
+            "type": "tool/call",
+            "data": {
+              "turn": 3,
+              "name": "rp_card_export_begin"
+            },
+            "time": 15000
+          },
+          {
+            "seq": 16,
+            "type": "assistant/message",
+            "data": {
+              "turn": 3,
+              "message": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Card exported"
+                  }
+                ]
+              }
+            },
+            "time": 16000
+          },
+          {
+            "seq": 17,
+            "type": "turn/end",
+            "data": {
+              "turn": 3,
+              "reason": {
+                "kind": "completed"
+              }
+            },
+            "time": 17000
+          }
+        ],
+        "surface": {
+          "nodes": [
+            1,
+            2,
+            5,
+            6,
+            7,
+            12,
+            14,
+            16
+          ]
+        },
+        "header": {}
+      },
+      "record": {
+        "directorNotes": {
+          "text": "Stale",
+          "sourceKeys": [
+            "bad"
+          ]
+        },
+        "directorCheckpoints": [
+          {
+            "text": "First prefix",
+            "sourceKeys": [
+              "1:11ae7083166bca22a633b5896f257dea5098d00a21c8dc7a79187f066484e987",
+              "2:030aa856a59506af88741d7454ee2059ef47776872f536742722e70074a56e9e"
+            ],
+            "validated": true,
+            "extension": "keep-first"
+          },
+          {
+            "text": "Equal prefix",
+            "sourceKeys": [
+              "1:11ae7083166bca22a633b5896f257dea5098d00a21c8dc7a79187f066484e987",
+              "2:030aa856a59506af88741d7454ee2059ef47776872f536742722e70074a56e9e"
+            ],
+            "validated": true,
+            "extension": "keep-second"
+          }
+        ]
+      },
+      "rows": [
+        {
+          "id": "live:1",
+          "seq": 1,
+          "turn": 1,
+          "role": "user",
+          "messageId": "u1",
+          "text": "Open the green door.",
+          "time": 1000
+        },
+        {
+          "id": "live:2",
+          "seq": 2,
+          "turn": 1,
+          "role": "assistant",
+          "messageId": "a1",
+          "text": "The green door opens into a library.",
+          "time": 2000
+        },
+        {
+          "id": "live:5",
+          "seq": 5,
+          "turn": 2,
+          "role": "user",
+          "messageId": "u2",
+          "text": "Read the map.",
+          "time": 5000
+        },
+        {
+          "id": "live:6",
+          "seq": 6,
+          "turn": 2,
+          "role": "assistant",
+          "messageId": "a2",
+          "text": "The map shows a green path through the library.",
+          "time": 6000
+        }
+      ],
+      "reads": [
+        {
+          "options": {
+            "seq": 1,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "live:1",
+            "seq": 1,
+            "turn": 1,
+            "role": "user",
+            "messageId": "u1",
+            "text": "n the green door.",
+            "time": 1000,
+            "textOffset": 3,
+            "totalChars": 20,
+            "nextOffset": null
+          }
+        },
+        {
+          "options": {
+            "seq": 2,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "live:2",
+            "seq": 2,
+            "turn": 1,
+            "role": "assistant",
+            "messageId": "a1",
+            "text": " green door opens into a library.",
+            "time": 2000,
+            "textOffset": 3,
+            "totalChars": 36,
+            "nextOffset": null
+          }
+        },
+        {
+          "options": {
+            "seq": 5,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "live:5",
+            "seq": 5,
+            "turn": 2,
+            "role": "user",
+            "messageId": "u2",
+            "text": "d the map.",
+            "time": 5000,
+            "textOffset": 3,
+            "totalChars": 13,
+            "nextOffset": null
+          }
+        },
+        {
+          "options": {
+            "seq": 6,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "live:6",
+            "seq": 6,
+            "turn": 2,
+            "role": "assistant",
+            "messageId": "a2",
+            "text": " map shows a green path through the library.",
+            "time": 6000,
+            "textOffset": 3,
+            "totalChars": 47,
+            "nextOffset": null
+          }
+        }
+      ],
+      "queries": [
+        {
+          "options": {},
+          "result": {
+            "sessionId": "live",
+            "totalEntries": 4,
+            "matchedEntries": 4,
+            "entries": [
+              {
+                "id": "live:1",
+                "seq": 1,
+                "turn": 1,
+                "role": "user",
+                "messageId": "u1",
+                "text": "Open the green door.",
+                "time": 1000,
+                "textOffset": 0,
+                "truncated": false
+              },
+              {
+                "id": "live:2",
+                "seq": 2,
+                "turn": 1,
+                "role": "assistant",
+                "messageId": "a1",
+                "text": "The green door opens into a library.",
+                "time": 2000,
+                "textOffset": 0,
+                "truncated": false
+              },
+              {
+                "id": "live:5",
+                "seq": 5,
+                "turn": 2,
+                "role": "user",
+                "messageId": "u2",
+                "text": "Read the map.",
+                "time": 5000,
+                "textOffset": 0,
+                "truncated": false
+              },
+              {
+                "id": "live:6",
+                "seq": 6,
+                "turn": 2,
+                "role": "assistant",
+                "messageId": "a2",
+                "text": "The map shows a green path through the library.",
+                "time": 6000,
+                "textOffset": 0,
+                "truncated": false
+              }
+            ],
+            "nextBeforeSeq": null
+          }
+        },
+        {
+          "options": {
+            "query": "green library",
+            "limit": 1
+          },
+          "result": {
+            "sessionId": "live",
+            "totalEntries": 4,
+            "matchedEntries": 2,
+            "entries": [
+              {
+                "id": "live:6",
+                "seq": 6,
+                "turn": 2,
+                "role": "assistant",
+                "messageId": "a2",
+                "text": "The map shows a green path through the library.",
+                "time": 6000,
+                "textOffset": 0,
+                "truncated": false
+              }
+            ],
+            "nextBeforeSeq": 6
+          }
+        },
+        {
+          "options": {
+            "scope": "tools",
+            "query": "map"
+          },
+          "result": {
+            "sessionId": "live",
+            "totalEntries": 1,
+            "matchedEntries": 1,
+            "entries": [
+              {
+                "id": "live:12",
+                "seq": 12,
+                "role": "tool",
+                "eventType": "tool/result",
+                "text": "[{\"type\":\"text\",\"text\":\"Tool map evidence\"}]",
+                "time": 12000,
+                "textOffset": 0,
+                "truncated": false
+              }
+            ],
+            "nextBeforeSeq": null
+          }
+        }
+      ],
+      "slots": [
+        {
+          "turn": 1,
+          "anchorSeq": 1
+        },
+        {
+          "turn": 2,
+          "anchorSeq": 5
+        }
+      ],
+      "legacySlots": [
+        {
+          "turn": 1,
+          "anchorSeq": 1
+        }
+      ],
+      "cadence": {
+        "schemaVersion": 1,
+        "branchId": "live",
+        "completedTurns": 2,
+        "coveredTurns": 1,
+        "pendingTurns": 1,
+        "validCoveredTurns": 1,
+        "rebuildRequired": false,
+        "due": false
+      },
+      "notes": {
+        "text": "First prefix",
+        "sourceKeys": [
+          "1:11ae7083166bca22a633b5896f257dea5098d00a21c8dc7a79187f066484e987",
+          "2:030aa856a59506af88741d7454ee2059ef47776872f536742722e70074a56e9e"
+        ],
+        "validated": true,
+        "extension": "keep-first",
+        "pendingEntries": 2
+      }
+    },
+    {
+      "name": "archived",
+      "session": {
+        "id": "archived",
+        "events": [
+          {
+            "seq": 0,
+            "type": "turn/start",
+            "data": {
+              "turn": 1
+            },
+            "time": 0
+          },
+          {
+            "seq": 1,
+            "type": "user/message",
+            "data": {
+              "id": "u1",
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Open the green door."
+                }
+              ]
+            },
+            "time": 1000
+          },
+          {
+            "seq": 2,
+            "type": "assistant/message",
+            "data": {
+              "turn": 1,
+              "message": {
+                "id": "a1",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The green door opens into a library."
+                  }
+                ]
+              }
+            },
+            "time": 2000
+          },
+          {
+            "seq": 3,
+            "type": "turn/end",
+            "data": {
+              "turn": 1,
+              "reason": {
+                "kind": "completed"
+              }
+            },
+            "time": 3000
+          },
+          {
+            "seq": 4,
+            "type": "turn/start",
+            "data": {
+              "turn": 2
+            },
+            "time": 4000
+          },
+          {
+            "seq": 5,
+            "type": "user/message",
+            "data": {
+              "id": "u2",
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Read the map."
+                }
+              ]
+            },
+            "time": 5000
+          },
+          {
+            "seq": 6,
+            "type": "assistant/message",
+            "data": {
+              "turn": 2,
+              "message": {
+                "id": "a2",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The map shows a green path through the library."
+                  }
+                ]
+              }
+            },
+            "time": 6000
+          },
+          {
+            "seq": 7,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "roleplay-tasks",
+                "form": "phase",
+                "stage": "after-story",
+                "storySeq": 6,
+                "turn": 2
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Maintenance phase"
+                }
+              ]
+            },
+            "time": 7000
+          },
+          {
+            "seq": 8,
+            "type": "turn/end",
+            "data": {
+              "turn": 2,
+              "reason": {
+                "kind": "aborted"
+              }
+            },
+            "time": 8000
+          },
+          {
+            "seq": 9,
+            "type": "compaction/summary",
+            "data": {
+              "compactionId": "archive",
+              "shadowedSeqs": [
+                1,
+                2,
+                5,
+                6
+              ]
+            },
+            "time": 9000
+          },
+          {
+            "seq": 10,
+            "type": "compaction/end",
+            "data": {
+              "compactionId": "archive"
+            },
+            "time": 10000
+          },
+          {
+            "seq": 11,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "compact",
+                "compactionId": "archive"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Visible checkpoint"
+                }
+              ]
+            },
+            "time": 11000
+          },
+          {
+            "seq": 12,
+            "type": "tool/result",
+            "data": {
+              "message": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Tool map evidence"
+                  }
+                ]
+              }
+            },
+            "time": 12000
+          },
+          {
+            "seq": 13,
+            "type": "turn/start",
+            "data": {
+              "turn": 3
+            },
+            "time": 13000
+          },
+          {
+            "seq": 14,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Export the card"
+                }
+              ]
+            },
+            "time": 14000
+          },
+          {
+            "seq": 15,
+            "type": "tool/call",
+            "data": {
+              "turn": 3,
+              "name": "rp_card_export_begin"
+            },
+            "time": 15000
+          },
+          {
+            "seq": 16,
+            "type": "assistant/message",
+            "data": {
+              "turn": 3,
+              "message": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Card exported"
+                  }
+                ]
+              }
+            },
+            "time": 16000
+          },
+          {
+            "seq": 17,
+            "type": "turn/end",
+            "data": {
+              "turn": 3,
+              "reason": {
+                "kind": "completed"
+              }
+            },
+            "time": 17000
+          }
+        ],
+        "surface": {
+          "nodes": [
+            11,
+            7,
+            12
+          ]
+        },
+        "header": {}
+      },
+      "record": {
+        "directorNotes": {
+          "text": "Stale",
+          "sourceKeys": [
+            "bad"
+          ]
+        },
+        "directorCheckpoints": [
+          {
+            "text": "First prefix",
+            "sourceKeys": [
+              "1:11ae7083166bca22a633b5896f257dea5098d00a21c8dc7a79187f066484e987",
+              "2:030aa856a59506af88741d7454ee2059ef47776872f536742722e70074a56e9e"
+            ],
+            "validated": true,
+            "extension": "keep-first"
+          },
+          {
+            "text": "Equal prefix",
+            "sourceKeys": [
+              "1:11ae7083166bca22a633b5896f257dea5098d00a21c8dc7a79187f066484e987",
+              "2:030aa856a59506af88741d7454ee2059ef47776872f536742722e70074a56e9e"
+            ],
+            "validated": true,
+            "extension": "keep-second"
+          }
+        ]
+      },
+      "rows": [
+        {
+          "id": "archived:1",
+          "seq": 1,
+          "turn": 1,
+          "role": "user",
+          "messageId": "u1",
+          "text": "Open the green door.",
+          "time": 1000
+        },
+        {
+          "id": "archived:2",
+          "seq": 2,
+          "turn": 1,
+          "role": "assistant",
+          "messageId": "a1",
+          "text": "The green door opens into a library.",
+          "time": 2000
+        },
+        {
+          "id": "archived:5",
+          "seq": 5,
+          "turn": 2,
+          "role": "user",
+          "messageId": "u2",
+          "text": "Read the map.",
+          "time": 5000
+        },
+        {
+          "id": "archived:6",
+          "seq": 6,
+          "turn": 2,
+          "role": "assistant",
+          "messageId": "a2",
+          "text": "The map shows a green path through the library.",
+          "time": 6000
+        }
+      ],
+      "reads": [
+        {
+          "options": {
+            "seq": 1,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "archived:1",
+            "seq": 1,
+            "turn": 1,
+            "role": "user",
+            "messageId": "u1",
+            "text": "n the green door.",
+            "time": 1000,
+            "textOffset": 3,
+            "totalChars": 20,
+            "nextOffset": null
+          }
+        },
+        {
+          "options": {
+            "seq": 2,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "archived:2",
+            "seq": 2,
+            "turn": 1,
+            "role": "assistant",
+            "messageId": "a1",
+            "text": " green door opens into a library.",
+            "time": 2000,
+            "textOffset": 3,
+            "totalChars": 36,
+            "nextOffset": null
+          }
+        },
+        {
+          "options": {
+            "seq": 5,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "archived:5",
+            "seq": 5,
+            "turn": 2,
+            "role": "user",
+            "messageId": "u2",
+            "text": "d the map.",
+            "time": 5000,
+            "textOffset": 3,
+            "totalChars": 13,
+            "nextOffset": null
+          }
+        },
+        {
+          "options": {
+            "seq": 6,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "archived:6",
+            "seq": 6,
+            "turn": 2,
+            "role": "assistant",
+            "messageId": "a2",
+            "text": " map shows a green path through the library.",
+            "time": 6000,
+            "textOffset": 3,
+            "totalChars": 47,
+            "nextOffset": null
+          }
+        }
+      ],
+      "queries": [
+        {
+          "options": {},
+          "result": {
+            "sessionId": "archived",
+            "totalEntries": 4,
+            "matchedEntries": 4,
+            "entries": [
+              {
+                "id": "archived:1",
+                "seq": 1,
+                "turn": 1,
+                "role": "user",
+                "messageId": "u1",
+                "text": "Open the green door.",
+                "time": 1000,
+                "textOffset": 0,
+                "truncated": false
+              },
+              {
+                "id": "archived:2",
+                "seq": 2,
+                "turn": 1,
+                "role": "assistant",
+                "messageId": "a1",
+                "text": "The green door opens into a library.",
+                "time": 2000,
+                "textOffset": 0,
+                "truncated": false
+              },
+              {
+                "id": "archived:5",
+                "seq": 5,
+                "turn": 2,
+                "role": "user",
+                "messageId": "u2",
+                "text": "Read the map.",
+                "time": 5000,
+                "textOffset": 0,
+                "truncated": false
+              },
+              {
+                "id": "archived:6",
+                "seq": 6,
+                "turn": 2,
+                "role": "assistant",
+                "messageId": "a2",
+                "text": "The map shows a green path through the library.",
+                "time": 6000,
+                "textOffset": 0,
+                "truncated": false
+              }
+            ],
+            "nextBeforeSeq": null
+          }
+        },
+        {
+          "options": {
+            "query": "green library",
+            "limit": 1
+          },
+          "result": {
+            "sessionId": "archived",
+            "totalEntries": 4,
+            "matchedEntries": 2,
+            "entries": [
+              {
+                "id": "archived:6",
+                "seq": 6,
+                "turn": 2,
+                "role": "assistant",
+                "messageId": "a2",
+                "text": "The map shows a green path through the library.",
+                "time": 6000,
+                "textOffset": 0,
+                "truncated": false
+              }
+            ],
+            "nextBeforeSeq": 6
+          }
+        },
+        {
+          "options": {
+            "scope": "tools",
+            "query": "map"
+          },
+          "result": {
+            "sessionId": "archived",
+            "totalEntries": 1,
+            "matchedEntries": 1,
+            "entries": [
+              {
+                "id": "archived:12",
+                "seq": 12,
+                "role": "tool",
+                "eventType": "tool/result",
+                "text": "[{\"type\":\"text\",\"text\":\"Tool map evidence\"}]",
+                "time": 12000,
+                "textOffset": 0,
+                "truncated": false
+              }
+            ],
+            "nextBeforeSeq": null
+          }
+        }
+      ],
+      "slots": [
+        {
+          "turn": 1,
+          "anchorSeq": 1
+        },
+        {
+          "turn": 2,
+          "anchorSeq": 5
+        }
+      ],
+      "legacySlots": [
+        {
+          "turn": 1,
+          "anchorSeq": 1
+        }
+      ],
+      "cadence": {
+        "schemaVersion": 1,
+        "branchId": "archived",
+        "completedTurns": 2,
+        "coveredTurns": 1,
+        "pendingTurns": 1,
+        "validCoveredTurns": 1,
+        "rebuildRequired": false,
+        "due": false
+      },
+      "notes": {
+        "text": "First prefix",
+        "sourceKeys": [
+          "1:11ae7083166bca22a633b5896f257dea5098d00a21c8dc7a79187f066484e987",
+          "2:030aa856a59506af88741d7454ee2059ef47776872f536742722e70074a56e9e"
+        ],
+        "validated": true,
+        "extension": "keep-first",
+        "pendingEntries": 2
+      }
+    },
+    {
+      "name": "fork-prefix",
+      "session": {
+        "id": "fork-prefix",
+        "events": [
+          {
+            "seq": 0,
+            "type": "turn/start",
+            "data": {
+              "turn": 1
+            },
+            "time": 0
+          },
+          {
+            "seq": 1,
+            "type": "user/message",
+            "data": {
+              "id": "u1",
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Open the green door."
+                }
+              ]
+            },
+            "time": 1000
+          },
+          {
+            "seq": 2,
+            "type": "assistant/message",
+            "data": {
+              "turn": 1,
+              "message": {
+                "id": "a1",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The green door opens into a library."
+                  }
+                ]
+              }
+            },
+            "time": 2000
+          },
+          {
+            "seq": 3,
+            "type": "turn/end",
+            "data": {
+              "turn": 1,
+              "reason": {
+                "kind": "completed"
+              }
+            },
+            "time": 3000
+          },
+          {
+            "seq": 4,
+            "type": "turn/start",
+            "data": {
+              "turn": 2
+            },
+            "time": 4000
+          },
+          {
+            "seq": 5,
+            "type": "user/message",
+            "data": {
+              "id": "u2",
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Read the map."
+                }
+              ]
+            },
+            "time": 5000
+          },
+          {
+            "seq": 6,
+            "type": "assistant/message",
+            "data": {
+              "turn": 2,
+              "message": {
+                "id": "a2",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The map shows a green path through the library."
+                  }
+                ]
+              }
+            },
+            "time": 6000
+          },
+          {
+            "seq": 7,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "roleplay-tasks",
+                "form": "phase",
+                "stage": "after-story",
+                "storySeq": 6,
+                "turn": 2
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Maintenance phase"
+                }
+              ]
+            },
+            "time": 7000
+          },
+          {
+            "seq": 8,
+            "type": "turn/end",
+            "data": {
+              "turn": 2,
+              "reason": {
+                "kind": "aborted"
+              }
+            },
+            "time": 8000
+          },
+          {
+            "seq": 9,
+            "type": "compaction/summary",
+            "data": {
+              "compactionId": "archive",
+              "shadowedSeqs": [
+                1,
+                2,
+                5,
+                6
+              ]
+            },
+            "time": 9000
+          },
+          {
+            "seq": 10,
+            "type": "compaction/end",
+            "data": {
+              "compactionId": "archive"
+            },
+            "time": 10000
+          },
+          {
+            "seq": 11,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "compact",
+                "compactionId": "archive"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Visible checkpoint"
+                }
+              ]
+            },
+            "time": 11000
+          },
+          {
+            "seq": 12,
+            "type": "tool/result",
+            "data": {
+              "message": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Tool map evidence"
+                  }
+                ]
+              }
+            },
+            "time": 12000
+          },
+          {
+            "seq": 13,
+            "type": "turn/start",
+            "data": {
+              "turn": 3
+            },
+            "time": 13000
+          },
+          {
+            "seq": 14,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Export the card"
+                }
+              ]
+            },
+            "time": 14000
+          },
+          {
+            "seq": 15,
+            "type": "tool/call",
+            "data": {
+              "turn": 3,
+              "name": "rp_card_export_begin"
+            },
+            "time": 15000
+          },
+          {
+            "seq": 16,
+            "type": "assistant/message",
+            "data": {
+              "turn": 3,
+              "message": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Card exported"
+                  }
+                ]
+              }
+            },
+            "time": 16000
+          },
+          {
+            "seq": 17,
+            "type": "turn/end",
+            "data": {
+              "turn": 3,
+              "reason": {
+                "kind": "completed"
+              }
+            },
+            "time": 17000
+          }
+        ],
+        "surface": {
+          "nodes": [
+            1,
+            2
+          ]
+        },
+        "header": {
+          "parentSession": "live",
+          "seedLength": 4
+        }
+      },
+      "record": {
+        "directorNotes": {
+          "text": "Stale",
+          "sourceKeys": [
+            "bad"
+          ]
+        },
+        "directorCheckpoints": [
+          {
+            "text": "First prefix",
+            "sourceKeys": [
+              "1:11ae7083166bca22a633b5896f257dea5098d00a21c8dc7a79187f066484e987",
+              "2:030aa856a59506af88741d7454ee2059ef47776872f536742722e70074a56e9e"
+            ],
+            "validated": true,
+            "extension": "keep-first"
+          },
+          {
+            "text": "Equal prefix",
+            "sourceKeys": [
+              "1:11ae7083166bca22a633b5896f257dea5098d00a21c8dc7a79187f066484e987",
+              "2:030aa856a59506af88741d7454ee2059ef47776872f536742722e70074a56e9e"
+            ],
+            "validated": true,
+            "extension": "keep-second"
+          }
+        ]
+      },
+      "rows": [
+        {
+          "id": "fork-prefix:1",
+          "seq": 1,
+          "turn": 1,
+          "role": "user",
+          "messageId": "u1",
+          "text": "Open the green door.",
+          "time": 1000
+        },
+        {
+          "id": "fork-prefix:2",
+          "seq": 2,
+          "turn": 1,
+          "role": "assistant",
+          "messageId": "a1",
+          "text": "The green door opens into a library.",
+          "time": 2000
+        }
+      ],
+      "reads": [
+        {
+          "options": {
+            "seq": 1,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "fork-prefix:1",
+            "seq": 1,
+            "turn": 1,
+            "role": "user",
+            "messageId": "u1",
+            "text": "n the green door.",
+            "time": 1000,
+            "textOffset": 3,
+            "totalChars": 20,
+            "nextOffset": null
+          }
+        },
+        {
+          "options": {
+            "seq": 2,
+            "offset": 3,
+            "maxChars": 256
+          },
+          "result": {
+            "id": "fork-prefix:2",
+            "seq": 2,
+            "turn": 1,
+            "role": "assistant",
+            "messageId": "a1",
+            "text": " green door opens into a library.",
+            "time": 2000,
+            "textOffset": 3,
+            "totalChars": 36,
+            "nextOffset": null
+          }
+        }
+      ],
+      "queries": [
+        {
+          "options": {},
+          "result": {
+            "sessionId": "fork-prefix",
+            "totalEntries": 2,
+            "matchedEntries": 2,
+            "entries": [
+              {
+                "id": "fork-prefix:1",
+                "seq": 1,
+                "turn": 1,
+                "role": "user",
+                "messageId": "u1",
+                "text": "Open the green door.",
+                "time": 1000,
+                "textOffset": 0,
+                "truncated": false
+              },
+              {
+                "id": "fork-prefix:2",
+                "seq": 2,
+                "turn": 1,
+                "role": "assistant",
+                "messageId": "a1",
+                "text": "The green door opens into a library.",
+                "time": 2000,
+                "textOffset": 0,
+                "truncated": false
+              }
+            ],
+            "nextBeforeSeq": null
+          }
+        },
+        {
+          "options": {
+            "query": "green library",
+            "limit": 1
+          },
+          "result": {
+            "sessionId": "fork-prefix",
+            "totalEntries": 2,
+            "matchedEntries": 1,
+            "entries": [
+              {
+                "id": "fork-prefix:2",
+                "seq": 2,
+                "turn": 1,
+                "role": "assistant",
+                "messageId": "a1",
+                "text": "The green door opens into a library.",
+                "time": 2000,
+                "textOffset": 0,
+                "truncated": false
+              }
+            ],
+            "nextBeforeSeq": null
+          }
+        },
+        {
+          "options": {
+            "scope": "tools",
+            "query": "map"
+          },
+          "result": {
+            "sessionId": "fork-prefix",
+            "totalEntries": 0,
+            "matchedEntries": 0,
+            "entries": [],
+            "nextBeforeSeq": null
+          }
+        }
+      ],
+      "slots": [
+        {
+          "turn": 1,
+          "anchorSeq": 1
+        }
+      ],
+      "legacySlots": [
+        {
+          "turn": 1,
+          "anchorSeq": 1
+        }
+      ],
+      "cadence": {
+        "schemaVersion": 1,
+        "branchId": "fork-prefix",
+        "completedTurns": 1,
+        "coveredTurns": 1,
+        "pendingTurns": 0,
+        "validCoveredTurns": 1,
+        "rebuildRequired": false,
+        "due": false
+      },
+      "notes": {
+        "text": "First prefix",
+        "sourceKeys": [
+          "1:11ae7083166bca22a633b5896f257dea5098d00a21c8dc7a79187f066484e987",
+          "2:030aa856a59506af88741d7454ee2059ef47776872f536742722e70074a56e9e"
+        ],
+        "validated": true,
+        "extension": "keep-first",
+        "pendingEntries": 0
+      }
+    },
+    {
+      "name": "hidden-proof",
+      "session": {
+        "id": "hidden-proof",
+        "events": [
+          {
+            "seq": 0,
+            "type": "turn/start",
+            "data": {
+              "turn": 1
+            },
+            "time": 0
+          },
+          {
+            "seq": 1,
+            "type": "user/message",
+            "data": {
+              "id": "u1",
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Open the green door."
+                }
+              ]
+            },
+            "time": 1000
+          },
+          {
+            "seq": 2,
+            "type": "assistant/message",
+            "data": {
+              "turn": 1,
+              "message": {
+                "id": "a1",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The green door opens into a library."
+                  }
+                ]
+              }
+            },
+            "time": 2000
+          },
+          {
+            "seq": 3,
+            "type": "turn/end",
+            "data": {
+              "turn": 1,
+              "reason": {
+                "kind": "completed"
+              }
+            },
+            "time": 3000
+          },
+          {
+            "seq": 4,
+            "type": "turn/start",
+            "data": {
+              "turn": 2
+            },
+            "time": 4000
+          },
+          {
+            "seq": 5,
+            "type": "user/message",
+            "data": {
+              "id": "u2",
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Read the map."
+                }
+              ]
+            },
+            "time": 5000
+          },
+          {
+            "seq": 6,
+            "type": "assistant/message",
+            "data": {
+              "turn": 2,
+              "message": {
+                "id": "a2",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "The map shows a green path through the library."
+                  }
+                ]
+              }
+            },
+            "time": 6000
+          },
+          {
+            "seq": 7,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "roleplay-tasks",
+                "form": "phase",
+                "stage": "after-story",
+                "storySeq": 6,
+                "turn": 2
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Maintenance phase"
+                }
+              ]
+            },
+            "time": 7000
+          },
+          {
+            "seq": 8,
+            "type": "turn/end",
+            "data": {
+              "turn": 2,
+              "reason": {
+                "kind": "aborted"
+              }
+            },
+            "time": 8000
+          },
+          {
+            "seq": 9,
+            "type": "compaction/summary",
+            "data": {
+              "compactionId": "archive",
+              "shadowedSeqs": [
+                1,
+                2,
+                5,
+                6
+              ]
+            },
+            "time": 9000
+          },
+          {
+            "seq": 10,
+            "type": "compaction/end",
+            "data": {
+              "compactionId": "archive"
+            },
+            "time": 10000
+          },
+          {
+            "seq": 11,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "compact",
+                "compactionId": "archive"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Visible checkpoint"
+                }
+              ]
+            },
+            "time": 11000
+          },
+          {
+            "seq": 12,
+            "type": "tool/result",
+            "data": {
+              "message": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Tool map evidence"
+                  }
+                ]
+              }
+            },
+            "time": 12000
+          },
+          {
+            "seq": 13,
+            "type": "turn/start",
+            "data": {
+              "turn": 3
+            },
+            "time": 13000
+          },
+          {
+            "seq": 14,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Export the card"
+                }
+              ]
+            },
+            "time": 14000
+          },
+          {
+            "seq": 15,
+            "type": "tool/call",
+            "data": {
+              "turn": 3,
+              "name": "rp_card_export_begin"
+            },
+            "time": 15000
+          },
+          {
+            "seq": 16,
+            "type": "assistant/message",
+            "data": {
+              "turn": 3,
+              "message": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Card exported"
+                  }
+                ]
+              }
+            },
+            "time": 16000
+          },
+          {
+            "seq": 17,
+            "type": "turn/end",
+            "data": {
+              "turn": 3,
+              "reason": {
+                "kind": "completed"
+              }
+            },
+            "time": 17000
+          }
+        ],
+        "surface": {
+          "nodes": [
+            5,
+            6
+          ]
+        },
+        "header": {}
+      },
+      "record": {
+        "directorNotes": {
+          "text": "Stale",
+          "sourceKeys": [
+            "bad"
+          ]
+        },
+        "directorCheckpoints": [
+          {
+            "text": "First prefix",
+            "sourceKeys": [],
+            "validated": true,
+            "extension": "keep-first"
+          },
+          {
+            "text": "Equal prefix",
+            "sourceKeys": [],
+            "validated": true,
+            "extension": "keep-second"
+          }
+        ]
+      },
+      "rows": [],
+      "reads": [],
+      "queries": [
+        {
+          "options": {},
+          "result": {
+            "sessionId": "hidden-proof",
+            "totalEntries": 0,
+            "matchedEntries": 0,
+            "entries": [],
+            "nextBeforeSeq": null
+          }
+        },
+        {
+          "options": {
+            "query": "green library",
+            "limit": 1
+          },
+          "result": {
+            "sessionId": "hidden-proof",
+            "totalEntries": 0,
+            "matchedEntries": 0,
+            "entries": [],
+            "nextBeforeSeq": null
+          }
+        },
+        {
+          "options": {
+            "scope": "tools",
+            "query": "map"
+          },
+          "result": {
+            "sessionId": "hidden-proof",
+            "totalEntries": 0,
+            "matchedEntries": 0,
+            "entries": [],
+            "nextBeforeSeq": null
+          }
+        }
+      ],
+      "slots": [],
+      "legacySlots": [],
+      "cadence": {
+        "schemaVersion": 1,
+        "branchId": "hidden-proof",
+        "completedTurns": 0,
+        "coveredTurns": 0,
+        "pendingTurns": 0,
+        "validCoveredTurns": 0,
+        "rebuildRequired": true,
+        "due": false
+      },
+      "notes": null
+    }
+  ]
+}

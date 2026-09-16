@@ -1,0 +1,359 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "0bcea35",
+  "cases": [
+    {
+      "manual": true,
+      "nodeReads": 4,
+      "expected": {
+        "result": {
+          "compactionId": "generated-1",
+          "sourceCommandId": "fixture-command",
+          "startSeq": 10,
+          "summarySeq": 11,
+          "endSeq": 13,
+          "summary": [
+            {
+              "type": "text",
+              "text": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无"
+            }
+          ],
+          "shadowedRange": {
+            "start": 1,
+            "end": 3
+          },
+          "shadowedSeqs": [
+            1,
+            2,
+            3
+          ],
+          "shadowedTokenCount": 90
+        },
+        "events": [
+          {
+            "type": "compaction/start",
+            "data": {
+              "compactionId": "generated-1",
+              "sourceCommandId": "fixture-command",
+              "turn": null
+            },
+            "seq": 10,
+            "time": 1000
+          },
+          {
+            "type": "compaction/summary",
+            "data": {
+              "compactionId": "generated-1",
+              "sourceCommandId": "fixture-command",
+              "summary": [
+                {
+                  "type": "text",
+                  "text": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无"
+                }
+              ],
+              "rawOutput": [
+                {
+                  "type": "text",
+                  "text": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无"
+                }
+              ],
+              "nativeTask": true,
+              "shadowedRange": {
+                "start": 1,
+                "end": 3
+              },
+              "shadowedSeqs": [
+                1,
+                2,
+                3
+              ],
+              "shadowedTokenCount": 90,
+              "provider": "actual-provider",
+              "model": "actual-model",
+              "maxTokens": 4096
+            },
+            "seq": 11,
+            "time": 1000
+          },
+          {
+            "type": "user/message",
+            "data": {
+              "id": "generated-2",
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "这是自动生成的剧情记忆检查点。请把它视为已发生的背景，只从后续消息继续剧情，不要复述或提及整理过程。\n\n<compacted-summary>"
+                },
+                {
+                  "type": "text",
+                  "text": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无"
+                },
+                {
+                  "type": "text",
+                  "text": "</compacted-summary>"
+                }
+              ],
+              "source": {
+                "kind": "plugin",
+                "plugin": "compact",
+                "compactionId": "generated-1",
+                "sourceCommandId": "fixture-command"
+              }
+            },
+            "seq": 12,
+            "time": 1000,
+            "surfaceOp": {
+              "op": "replace",
+              "start": 1,
+              "end": 3
+            },
+            "sourceEventSeqs": [
+              10,
+              11,
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "type": "compaction/end",
+            "data": {
+              "compactionId": "generated-1",
+              "sourceCommandId": "fixture-command",
+              "turn": null
+            },
+            "seq": 13,
+            "time": 1000
+          }
+        ],
+        "surface": [
+          12,
+          6,
+          7
+        ],
+        "head": {
+          "summary": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无",
+          "lastCompactedSeq": 3,
+          "surfaceCheckpointSeq": 12,
+          "summarySessionId": "legacy-compaction-true",
+          "summaryAtSeq": 12,
+          "archives": [
+            {
+              "compactionId": "generated-1",
+              "sessionId": "legacy-compaction-true",
+              "range": {
+                "start": 1,
+                "end": 3
+              },
+              "seqs": [
+                1,
+                2,
+                3
+              ],
+              "storySeqs": [
+                1,
+                3
+              ],
+              "atSeq": 11,
+              "checkpointSeq": 12,
+              "time": 1000
+            }
+          ]
+        },
+        "requests": [
+          {
+            "session": {
+              "id": "legacy-compaction-true"
+            },
+            "system": "你是角色扮演工作台的记忆整理员。基于既有记忆与待归档的原文区间，生成增量记忆摘要。**核心原则：详细保留，不以节约 tokens 为目的。目标是让 AI 拿到尽可能充分的故事信息，同时避免原文阻塞注意力窗口。**\n输出 Markdown，严格按以下 8 段组织，缺失内容写「无」：\n1. 用户锁定的剧情事实（必须一字不差地保留下方给定的用户锁定事实；这里不收录角色卡或世界书）\n2. 主角与用户边界（用户明确表达的偏好、底线、纠正）\n3. 角色簿（**详细记录**：姓名/别名/身份/外貌特征/穿搭细节/性格特质/口吻习惯/能力/动机/秘密/恐惧/软肋/目标/行为模式）\n4. 关系图（**详细记录关系演变**：有向关系类型/当前阶段/关键亲密节点/冲突与和解/嫉妒/秘密/承诺/未来约定 + 变化的具体证据与台词）\n5. 世界规则（**完整保留设定**：现实/平行边界、国家体制、城市地理、学校/组织架构、技术水平、经济政治规则、魔法/超能力系统、公开与秘密状态）\n6. 时间线与剧情账本（**详细剧情脉络**：精确日期/学期进度/地点转换/天气/在场人物/事件触发条件/行动细节/结果/长期后果/伏笔/已兑现与未兑现约定）\n7. 当前场景快照（**当前状态快照**：精确位置/每个角色的服装状态/道具持有/身体状态/情绪细节/进行中动作/环境氛围）\n8. 核心矛盾、伏笔、未解决问题、用户否定过的分支、待确认事项（**保留所有伏笔与未解决线索**）\n**记录要求**：\n- 每条信息末尾附 (seq:来源序号)\n- 保留专名、数字、具体地点、先后顺序、因果链、关键台词与用户明确更正\n- 剧情细节优先：人物重要行为、关系变化、势力动向、新增设定等全部详细记录\n- 一次性描写不得升级为永久规则\n- 宁可详细，不可精简：目标是高质量长流程 RP，不是节约 tokens\n- 只整理剧情。不得把角色卡、世界书、叙事规则、状态栏模板、工具输出或后台提示复制进摘要；这些材料由独立存储按需注入",
+            "user": "请把「既有剧情记忆」与「本次新增的连续剧情原文」做增量合并。既有条目除非被新原文明确纠正，否则不得删除；新原文中的独有细节必须逐项加入。\n不要续写，不要把后台材料当剧情，不要为了变短而合并不同事件。\n\n## 既有剧情记忆\n（首次整理）\n\n## 本次新增剧情原文\n\n[用户 · seq:1]\n玩家走进雨夜车站\n\n[叙事者 · seq:3]\n她收起伞，报出只有两人知道的暗号。\n\n## 用户显式锁定的剧情事实（逐字保留）\n（无）",
+            "kind": "memory",
+            "format": "text",
+            "timeoutMs": 300000,
+            "background": false,
+            "taskStage": "compaction",
+            "maxTokens": 4096,
+            "hasValidate": true,
+            "nativeTask": true
+          }
+        ],
+        "flushed": true
+      }
+    },
+    {
+      "manual": false,
+      "nodeReads": 4,
+      "expected": {
+        "result": {
+          "compactionId": "generated-1",
+          "startSeq": 11,
+          "summarySeq": 12,
+          "endSeq": 14,
+          "summary": [
+            {
+              "type": "text",
+              "text": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无"
+            }
+          ],
+          "shadowedRange": {
+            "start": 1,
+            "end": 3
+          },
+          "shadowedSeqs": [
+            1,
+            2,
+            3
+          ],
+          "shadowedTokenCount": 90
+        },
+        "events": [
+          {
+            "type": "compaction/start",
+            "data": {
+              "compactionId": "generated-1",
+              "turn": 3
+            },
+            "seq": 11,
+            "time": 1000
+          },
+          {
+            "type": "compaction/summary",
+            "data": {
+              "compactionId": "generated-1",
+              "summary": [
+                {
+                  "type": "text",
+                  "text": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无"
+                }
+              ],
+              "rawOutput": [
+                {
+                  "type": "text",
+                  "text": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无"
+                }
+              ],
+              "nativeTask": true,
+              "shadowedRange": {
+                "start": 1,
+                "end": 3
+              },
+              "shadowedSeqs": [
+                1,
+                2,
+                3
+              ],
+              "shadowedTokenCount": 90,
+              "provider": "actual-provider",
+              "model": "actual-model",
+              "maxTokens": 4096
+            },
+            "seq": 12,
+            "time": 1000
+          },
+          {
+            "type": "user/message",
+            "data": {
+              "id": "generated-2",
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "这是自动生成的剧情记忆检查点。请把它视为已发生的背景，只从后续消息继续剧情，不要复述或提及整理过程。\n\n<compacted-summary>"
+                },
+                {
+                  "type": "text",
+                  "text": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无"
+                },
+                {
+                  "type": "text",
+                  "text": "</compacted-summary>"
+                }
+              ],
+              "source": {
+                "kind": "plugin",
+                "plugin": "compact",
+                "compactionId": "generated-1"
+              }
+            },
+            "seq": 13,
+            "time": 1000,
+            "surfaceOp": {
+              "op": "replace",
+              "start": 1,
+              "end": 3
+            },
+            "sourceEventSeqs": [
+              11,
+              12,
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "type": "compaction/end",
+            "data": {
+              "compactionId": "generated-1",
+              "turn": 3
+            },
+            "seq": 14,
+            "time": 1000
+          }
+        ],
+        "surface": [
+          13,
+          6,
+          7
+        ],
+        "head": {
+          "summary": "## 1. 用户锁定的剧情事实\nUSER_LOCK（无）\n## 2. 主角与用户边界\n无\n## 3. 角色簿\n无\n## 4. 关系图\n无\n## 5. 世界规则\n无\n## 6. 时间线与剧情账本\n雨夜车站事件 (seq:1-3)\n## 7. 当前场景快照\n无\n## 8. 核心矛盾、伏笔、未解决问题\n无",
+          "lastCompactedSeq": 3,
+          "surfaceCheckpointSeq": 13,
+          "summarySessionId": "legacy-compaction-false",
+          "summaryAtSeq": 13,
+          "archives": [
+            {
+              "compactionId": "generated-1",
+              "sessionId": "legacy-compaction-false",
+              "range": {
+                "start": 1,
+                "end": 3
+              },
+              "seqs": [
+                1,
+                2,
+                3
+              ],
+              "storySeqs": [
+                1,
+                3
+              ],
+              "atSeq": 12,
+              "checkpointSeq": 13,
+              "time": 1000
+            }
+          ]
+        },
+        "requests": [
+          {
+            "session": {
+              "id": "legacy-compaction-false"
+            },
+            "system": "你是角色扮演工作台的记忆整理员。基于既有记忆与待归档的原文区间，生成增量记忆摘要。**核心原则：详细保留，不以节约 tokens 为目的。目标是让 AI 拿到尽可能充分的故事信息，同时避免原文阻塞注意力窗口。**\n输出 Markdown，严格按以下 8 段组织，缺失内容写「无」：\n1. 用户锁定的剧情事实（必须一字不差地保留下方给定的用户锁定事实；这里不收录角色卡或世界书）\n2. 主角与用户边界（用户明确表达的偏好、底线、纠正）\n3. 角色簿（**详细记录**：姓名/别名/身份/外貌特征/穿搭细节/性格特质/口吻习惯/能力/动机/秘密/恐惧/软肋/目标/行为模式）\n4. 关系图（**详细记录关系演变**：有向关系类型/当前阶段/关键亲密节点/冲突与和解/嫉妒/秘密/承诺/未来约定 + 变化的具体证据与台词）\n5. 世界规则（**完整保留设定**：现实/平行边界、国家体制、城市地理、学校/组织架构、技术水平、经济政治规则、魔法/超能力系统、公开与秘密状态）\n6. 时间线与剧情账本（**详细剧情脉络**：精确日期/学期进度/地点转换/天气/在场人物/事件触发条件/行动细节/结果/长期后果/伏笔/已兑现与未兑现约定）\n7. 当前场景快照（**当前状态快照**：精确位置/每个角色的服装状态/道具持有/身体状态/情绪细节/进行中动作/环境氛围）\n8. 核心矛盾、伏笔、未解决问题、用户否定过的分支、待确认事项（**保留所有伏笔与未解决线索**）\n**记录要求**：\n- 每条信息末尾附 (seq:来源序号)\n- 保留专名、数字、具体地点、先后顺序、因果链、关键台词与用户明确更正\n- 剧情细节优先：人物重要行为、关系变化、势力动向、新增设定等全部详细记录\n- 一次性描写不得升级为永久规则\n- 宁可详细，不可精简：目标是高质量长流程 RP，不是节约 tokens\n- 只整理剧情。不得把角色卡、世界书、叙事规则、状态栏模板、工具输出或后台提示复制进摘要；这些材料由独立存储按需注入",
+            "user": "请把「既有剧情记忆」与「本次新增的连续剧情原文」做增量合并。既有条目除非被新原文明确纠正，否则不得删除；新原文中的独有细节必须逐项加入。\n不要续写，不要把后台材料当剧情，不要为了变短而合并不同事件。\n\n## 既有剧情记忆\n（首次整理）\n\n## 本次新增剧情原文\n\n[用户 · seq:1]\n玩家走进雨夜车站\n\n[叙事者 · seq:3]\n她收起伞，报出只有两人知道的暗号。\n\n## 用户显式锁定的剧情事实（逐字保留）\n（无）",
+            "kind": "memory",
+            "format": "text",
+            "timeoutMs": 30000,
+            "background": false,
+            "taskStage": "compaction",
+            "maxTokens": 4096,
+            "hasValidate": true,
+            "nativeTask": true
+          }
+        ],
+        "flushed": false
+      }
+    }
+  ]
+}

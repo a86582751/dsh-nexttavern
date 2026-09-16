@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "legacyCommit": "1bdccde",
+  "primary": {
+    "provider": "fixture",
+    "model": "main"
+  },
+  "input": {
+    "session": {
+      "id": "legacy-cluster-branch"
+    },
+    "agent": {
+      "options": {
+        "provider": "fixture",
+        "model": "main"
+      }
+    },
+    "turn": 3,
+    "characters": [
+      {
+        "id": "a",
+        "name": "Legacy Character",
+        "content": "Synthetic character notes"
+      }
+    ],
+    "context": {
+      "core": "Synthetic world",
+      "stories": [
+        {
+          "seq": 2,
+          "kind": "assistant",
+          "text": "Synthetic preceding event"
+        }
+      ],
+      "notes": "Synthetic direction",
+      "lore": [
+        {
+          "text": "Synthetic lore"
+        }
+      ],
+      "userText": "Synthetic input"
+    }
+  },
+  "requests": [
+    {
+      "kind": "spawn",
+      "route": {
+        "provider": "fixture",
+        "model": "main",
+        "tavernTaskId": "05164fbd115d6c3564eee489f83b08e3762165043eefc8783d9e6a645283a190",
+        "maxTokens": 4096
+      },
+      "prompt": [
+        {
+          "type": "text",
+          "text": "{\"schemaVersion\":1,\"branchId\":\"legacy-cluster-branch\",\"turn\":3,\"character\":{\"id\":\"a\",\"name\":\"Legacy Character\",\"content\":\"Synthetic character notes\"},\"core\":\"Synthetic world\",\"stories\":[{\"seq\":2,\"kind\":\"assistant\",\"text\":\"Synthetic preceding event\"}],\"directorNotes\":\"Synthetic direction\",\"worldbook\":[\"Synthetic lore\"],\"playerInput\":\"Synthetic input\"}"
+        }
+      ]
+    }
+  ],
+  "records": [
+    [
+      "character-cluster-settings__legacy-cluster-branch",
+      {
+        "schemaVersion": 1,
+        "revision": 1,
+        "enabled": true,
+        "defaultRoute": null,
+        "characters": {},
+        "updatedAt": 1700000000000
+      }
+    ],
+    [
+      "tavern_job__05164fbd115d6c3564eee489f83b08e3762165043eefc8783d9e6a645283a190",
+      {
+        "schemaVersion": 1,
+        "id": "05164fbd115d6c3564eee489f83b08e3762165043eefc8783d9e6a645283a190",
+        "generation": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "legacy-cluster-branch",
+        "branchId": "legacy-cluster-branch",
+        "kind": "character",
+        "execution": "spawn",
+        "source": {
+          "turn": 3,
+          "events": [
+            {
+              "seq": 2,
+              "hash": "15efc9f9b90d0349a0d04127d628054c55246ab12e219e9c561015084b4ef4c2"
+            }
+          ],
+          "hashKind": "taskHash"
+        },
+        "sourceHash": "2967d209df222380249614cec1589111819ce9c13b5394dbb5dd8f4f9c8b3ef4",
+        "input": {
+          "taskStage": "character",
+          "schemaVersion": 1,
+          "branchId": "legacy-cluster-branch",
+          "turn": 3,
+          "character": {
+            "id": "a",
+            "name": "Legacy Character",
+            "content": "Synthetic character notes"
+          },
+          "core": "Synthetic world",
+          "stories": [
+            {
+              "seq": 2,
+              "kind": "assistant",
+              "text": "Synthetic preceding event"
+            }
+          ],
+          "directorNotes": "Synthetic direction",
+          "worldbook": [
+            "Synthetic lore"
+          ],
+          "playerInput": "Synthetic input"
+        },
+        "allowedTools": [
+          "rp_history"
+        ],
+        "main": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "actualRoute": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "requestedRoute": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "status": "completed",
+        "createdAt": 1700000000000,
+        "updatedAt": 1700000000000,
+        "progress": {
+          "done": 1,
+          "total": 1
+        },
+        "childSessionId": "legacy-child",
+        "startedAt": 1700000000000,
+        "attemptStartedAt": 1700000000000,
+        "childSessionIds": [
+          "legacy-child"
+        ],
+        "result": "Synthetic suggestion",
+        "error": null,
+        "completedAt": 1700000000000
+      }
+    ]
+  ],
+  "result": {
+    "ok": true,
+    "advisory": true,
+    "characters": [
+      {
+        "characterId": "a",
+        "name": "Legacy Character",
+        "status": "completed",
+        "suggestion": "Synthetic suggestion",
+        "taskId": "05164fbd115d6c3564eee489f83b08e3762165043eefc8783d9e6a645283a190"
+      }
+    ],
+    "instruction": "这些是人物的行动意向，不是已发生的事实。协调相互冲突的意向，结合玩家行动推进正文；不可用的角色由你自行塑造。临时新出场人物可自由发挥。"
+  }
+}

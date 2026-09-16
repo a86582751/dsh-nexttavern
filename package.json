@@ -17,6 +17,7 @@
     "src",
     "preset",
     "tools",
+    "tests",
     "build-tools",
     "integrations",
     "harness",
@@ -33,6 +34,7 @@
     "ARCHITECTURE.md",
     "CHANGELOG.md",
     "FEEDBACK.md",
+    "CONTRIBUTING.md",
     "SCREENSHOTS.md",
     "PUBLIC-ACCESS.md",
     "cordis.patch.yml"
@@ -83,6 +85,9 @@
     "dsh-file-upload": "https://github.com/a86582751/dsh-file-upload/releases/download/v0.4.3-nexttavern.1/dsh-file-upload-0.4.3-nexttavern.1.tgz"
   },
   "scripts": {
-    "build": "node src/build-client.mjs src/client.js lib/client.js dsh-nexttavern"
+    "build": "node src/build-client.mjs src/client.js lib/client.js dsh-nexttavern",
+    "build:modules": "node tools/build-modules.mjs --write",
+    "check": "node tools/build-modules.mjs --check",
+    "test": "node tests/run.mjs"
   }
 }

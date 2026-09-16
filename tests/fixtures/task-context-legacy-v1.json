@@ -1,0 +1,396 @@
+{
+  "schemaVersion": 1,
+  "legacyCommit": "2baec12",
+  "jobs": [
+    {
+      "id": "fixture",
+      "kind": "memory",
+      "sessionId": "fixture-session",
+      "branchId": "fixture-session",
+      "generation": "generation",
+      "sourceHash": "source-hash",
+      "execution": "inline",
+      "status": "queued",
+      "input": {
+        "system": "Synthetic memory contract",
+        "user": "Synthetic source",
+        "format": "json"
+      }
+    }
+  ],
+  "instruction": "当前是系统维护阶段，尚不能生成或续写剧情。下面 completeSource=true 的任务已经附带完整冻结来源与结果契约，不需要再次调用 rp_task_read，直接完成并用 rp_task_submit 分别提交结果。仅未附带 input 的任务需要 rp_task_read 分页完整读取。同一步可调用多个 rp_task_submit；每项按自己的 id、generation、system 与 format 校验。不要输出维护报告或复述任务资料，不改变模型、调用 spawn 或检查实现代码。\n待办：\n[{\"id\":\"fixture\",\"kind\":\"memory\",\"generation\":\"generation\",\"branchId\":\"fixture-session\",\"sourceHash\":\"source-hash\",\"input\":{\"system\":\"Synthetic memory contract\",\"user\":\"Synthetic source\",\"format\":\"json\"},\"completeSource\":true}]",
+  "scenarios": [
+    {
+      "kind": "export",
+      "input": {
+        "id": "fixture-session",
+        "events": [
+          {
+            "seq": 0,
+            "type": "turn/start",
+            "data": {
+              "turn": 1
+            }
+          },
+          {
+            "seq": 1,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Synthetic management request"
+                }
+              ]
+            }
+          },
+          {
+            "seq": 2,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "roleplay-tasks",
+                "form": "phase",
+                "stage": "management",
+                "jobKind": "card-export"
+              },
+              "content": []
+            }
+          },
+          {
+            "seq": 3,
+            "type": "assistant/message",
+            "data": {
+              "turn": 1,
+              "message": {
+                "content": [
+                  {
+                    "type": "tool-call",
+                    "id": "begin",
+                    "name": "rp_card_export_begin"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "seq": 4,
+            "type": "tool/result",
+            "data": {
+              "turn": 1,
+              "message": {
+                "source": {
+                  "callId": "begin"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Synthetic source response"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "seq": 5,
+            "type": "turn/end",
+            "data": {
+              "turn": 1,
+              "reason": {
+                "kind": "completed"
+              }
+            }
+          }
+        ],
+        "surface": {
+          "nodes": [
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      },
+      "currentTurn": 2,
+      "retired": 4,
+      "receipts": [
+        {
+          "type": "user/message",
+          "data": {
+            "role": "user",
+            "source": {
+              "schemaVersion": 1,
+              "kind": "plugin",
+              "plugin": "roleplay-tasks",
+              "form": "management-receipt",
+              "sessionId": "fixture-session",
+              "sourceTurn": 1,
+              "sourceSha256": "99acfe77ccfe29a02dc5bb696e5987d40eb60dc1277e706322a99ef441d1ef14",
+              "start": 1,
+              "end": 4
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "导出操作已结束。原始消息与工具结果保存在历史 seq 1–4，导出文件可在资源库查看。以下继续剧情。"
+              }
+            ]
+          },
+          "options": {
+            "surfaceOp": {
+              "op": "replace",
+              "start": 1,
+              "end": 4
+            },
+            "sourceEventSeqs": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        }
+      ],
+      "storySeqs": [],
+      "internalSeqs": [
+        3,
+        1
+      ]
+    },
+    {
+      "kind": "import",
+      "input": {
+        "id": "fixture-session",
+        "events": [
+          {
+            "seq": 0,
+            "type": "turn/start",
+            "data": {
+              "turn": 1
+            }
+          },
+          {
+            "seq": 1,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Synthetic management request"
+                }
+              ]
+            }
+          },
+          {
+            "seq": 2,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "roleplay-tasks",
+                "form": "phase",
+                "stage": "management"
+              },
+              "content": []
+            }
+          },
+          {
+            "seq": 3,
+            "type": "assistant/message",
+            "data": {
+              "turn": 1,
+              "message": {
+                "content": [
+                  {
+                    "type": "tool-call",
+                    "id": "begin",
+                    "name": "rp_card_import_begin"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "seq": 4,
+            "type": "tool/result",
+            "data": {
+              "turn": 1,
+              "message": {
+                "source": {
+                  "callId": "begin"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Synthetic source response"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "seq": 5,
+            "type": "assistant/message",
+            "data": {
+              "turn": 1,
+              "message": {
+                "content": [
+                  {
+                    "type": "tool-call",
+                    "id": "final",
+                    "name": "rp_card_import_finalize"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "seq": 6,
+            "type": "tool/result",
+            "data": {
+              "turn": 1,
+              "message": {
+                "source": {
+                  "callId": "final"
+                },
+                "content": [
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "final",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "{\"ok\":true,\"status\":true,\"activatedAt\":1234,\"normalizedSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"coverage\":1,\"importId\":\"synthetic-import\"}"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "seq": 7,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "roleplay-tasks",
+                "form": "phase",
+                "stage": "story"
+              },
+              "content": []
+            }
+          },
+          {
+            "seq": 8,
+            "type": "assistant/message",
+            "data": {
+              "turn": 1,
+              "message": {
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Synthetic opening"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "seq": 9,
+            "type": "user/message",
+            "data": {
+              "source": {
+                "kind": "plugin",
+                "plugin": "roleplay-tasks",
+                "form": "phase",
+                "stage": "after-story",
+                "storySeq": 8
+              },
+              "content": []
+            }
+          },
+          {
+            "seq": 10,
+            "type": "turn/end",
+            "data": {
+              "turn": 1,
+              "reason": {
+                "kind": "completed"
+              }
+            }
+          }
+        ],
+        "surface": {
+          "nodes": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ]
+        }
+      },
+      "currentTurn": 2,
+      "retired": 4,
+      "receipts": [
+        {
+          "type": "user/message",
+          "data": {
+            "role": "user",
+            "source": {
+              "schemaVersion": 1,
+              "kind": "plugin",
+              "plugin": "roleplay-tasks",
+              "form": "management-receipt",
+              "sessionId": "fixture-session",
+              "sourceTurn": 1,
+              "sourceSha256": "5279ab5031f54c2f427711829f8db35cb61fd7295dce74a7087644d2caf1dad4",
+              "start": 3,
+              "end": 6,
+              "jobKind": "card-import",
+              "importId": "synthetic-import"
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "读卡已完整激活。设定由当前角色扮演栏目提供，原始读卡消息与工具结果保存在历史 seq 3–6。以下继续剧情。"
+              }
+            ]
+          },
+          "options": {
+            "surfaceOp": {
+              "op": "replace",
+              "start": 3,
+              "end": 6
+            },
+            "sourceEventSeqs": [
+              3,
+              4,
+              5,
+              6
+            ]
+          }
+        }
+      ],
+      "storySeqs": [
+        8
+      ],
+      "internalSeqs": [
+        3,
+        5
+      ]
+    }
+  ]
+}

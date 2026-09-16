@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "3b2f985a39dcf0f3824f4ca76537b5d96b0539bc",
-  "dirty": false,
+  "sourceCommit": "8f1f82d03c9993838e1881ed9c812a5a5ddc2bd6",
+  "dirty": true,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
   "compiler": "0.24.2",
@@ -1196,7 +1196,7 @@
       "source": "runtime/alpha3/ui/package.json",
       "target": "package.json",
       "sourceSha256": "d85084ea315bf5f2b1caa306a56df3928cd0b24d3a67a02ea4a96bbff196f9ba",
-      "sha256": "635dde94d79dcc4d57748c45b2df327af739f3dada27fd2cb898aa8db03088a4"
+      "sha256": "15d209f5d2185391d5a31238012032a9a0f964e3477c24ae50800a3e4124e436"
     },
     {
       "artifact": "roleplay-ui-bundle-patch",
@@ -3337,8 +3337,8 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "45d5f3ef3a8a29a7c6cb9cc1c53c73392688f6b0bd63e48b378e743d33d1dc62",
-      "sha256": "45d5f3ef3a8a29a7c6cb9cc1c53c73392688f6b0bd63e48b378e743d33d1dc62"
+      "sourceSha256": "7af026dfc55cf38ac63dba5d26388dcf06fe027c0df2eed4ea911f0a550c223a",
+      "sha256": "7af026dfc55cf38ac63dba5d26388dcf06fe027c0df2eed4ea911f0a550c223a"
     },
     {
       "artifact": "public-cover",
@@ -3372,8 +3372,8 @@
       "artifact": "public-changelog-draft",
       "source": "release/public/CHANGELOG.md",
       "target": "CHANGELOG.md",
-      "sourceSha256": "3e389dd3c162789f3ec5b40e36d68c5cd84e88ac5f7d50eae615dd7856555341",
-      "sha256": "3e389dd3c162789f3ec5b40e36d68c5cd84e88ac5f7d50eae615dd7856555341"
+      "sourceSha256": "56df101016c701bd9764706b4c025704dc4e1fbbf68ec741d84aaecf9c5f6f5e",
+      "sha256": "56df101016c701bd9764706b4c025704dc4e1fbbf68ec741d84aaecf9c5f6f5e"
     },
     {
       "artifact": "public-feedback",
@@ -3444,6 +3444,34 @@
       "target": "tools/install.mts",
       "sourceSha256": "56b693e8ed4a0bc18c3f14e3c77b32b0aac8d4758890868c874141e5e7e4741f",
       "sha256": "56b693e8ed4a0bc18c3f14e3c77b32b0aac8d4758890868c874141e5e7e4741f"
+    },
+    {
+      "artifact": "public-contributing",
+      "source": "release/public/CONTRIBUTING.md",
+      "target": "CONTRIBUTING.md",
+      "sourceSha256": "bdee7ec226ee40bd2d91ae43dbf207982d23049c53f4db0923ffc2e523a08a4a",
+      "sha256": "bdee7ec226ee40bd2d91ae43dbf207982d23049c53f4db0923ffc2e523a08a4a"
+    },
+    {
+      "artifact": "public-verify-workflow",
+      "source": "release/public/.github/workflows/verify.yml",
+      "target": ".github/workflows/verify.yml",
+      "sourceSha256": "ff4eff049472b69e1c039fc6f32cf4e90f295bae7a99fc2bdd80a295f9fc506a",
+      "sha256": "ff4eff049472b69e1c039fc6f32cf4e90f295bae7a99fc2bdd80a295f9fc506a"
+    },
+    {
+      "artifact": "public-build-modules",
+      "source": "release/public/tools/build-modules.mjs",
+      "target": "tools/build-modules.mjs",
+      "sourceSha256": "347031208f4bfbcb45b12657b339884ec667f81b28c84cdc2892ef81c8bcfc42",
+      "sha256": "347031208f4bfbcb45b12657b339884ec667f81b28c84cdc2892ef81c8bcfc42"
+    },
+    {
+      "artifact": "public-test-runner",
+      "source": "release/public/tests/run.mjs",
+      "target": "tests/run.mjs",
+      "sourceSha256": "fe2a62a49866e0a61b7b7348f2b8c7b7bce46d3e1d4e676ace28404d8536bb57",
+      "sha256": "fe2a62a49866e0a61b7b7348f2b8c7b7bce46d3e1d4e676ace28404d8536bb57"
     },
     {
       "artifact": "public-transaction-schema",
@@ -3706,14 +3734,24 @@
       "bytes": 857
     },
     {
+      "path": ".github/workflows/verify.yml",
+      "sha256": "ff4eff049472b69e1c039fc6f32cf4e90f295bae7a99fc2bdd80a295f9fc506a",
+      "bytes": 1695
+    },
+    {
       "path": "ARCHITECTURE.md",
       "sha256": "ceff6077dfbb1c573ebf2c2034916b0172f795a7b99a5971d2c0522387638ee6",
       "bytes": 23746
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "3e389dd3c162789f3ec5b40e36d68c5cd84e88ac5f7d50eae615dd7856555341",
-      "bytes": 12001
+      "sha256": "56df101016c701bd9764706b4c025704dc4e1fbbf68ec741d84aaecf9c5f6f5e",
+      "bytes": 13351
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "sha256": "bdee7ec226ee40bd2d91ae43dbf207982d23049c53f4db0923ffc2e523a08a4a",
+      "bytes": 2289
     },
     {
       "path": "FEEDBACK.md",
@@ -3747,8 +3785,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "45d5f3ef3a8a29a7c6cb9cc1c53c73392688f6b0bd63e48b378e743d33d1dc62",
-      "bytes": 42202
+      "sha256": "7af026dfc55cf38ac63dba5d26388dcf06fe027c0df2eed4ea911f0a550c223a",
+      "bytes": 42138
     },
     {
       "path": "SCREENSHOTS.md",
@@ -3842,7 +3880,7 @@
     },
     {
       "path": "integrations/dependencies.json",
-      "sha256": "4f1fc6ed469358380b4da877814f83c760950171c88c5c8981250993bccfe6e2",
+      "sha256": "a7b951706372bf2856379028dd8e0d7fb5a7dcf8fd7219c0fc6160ba08233446",
       "bytes": 2629
     },
     {
@@ -3882,8 +3920,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "635dde94d79dcc4d57748c45b2df327af739f3dada27fd2cb898aa8db03088a4",
-      "bytes": 2452
+      "sha256": "15d209f5d2185391d5a31238012032a9a0f964e3477c24ae50800a3e4124e436",
+      "bytes": 2636
     },
     {
       "path": "preset/agent.cordis.yml",
@@ -6121,6 +6159,326 @@
       "bytes": 4872
     },
     {
+      "path": "tests/ask-user-decision-pr.test.mjs",
+      "sha256": "1e16cea94ece3eb191f462d465dd1f5fea700c404dc380d013a58eb6d96ee0cf",
+      "bytes": 1504
+    },
+    {
+      "path": "tests/author-save-ui.test.mjs",
+      "sha256": "f7a67ed7c9b69402ab96fb125f45fab455bf3e5a0ef35d7e306c88e5471c9f6c",
+      "bytes": 5010
+    },
+    {
+      "path": "tests/bounded-regex.test.mjs",
+      "sha256": "5a9f145b4089f050b24c1f84f26f15b3df08847eed358e0b30c657370a4466a1",
+      "bytes": 1077
+    },
+    {
+      "path": "tests/card-adaptation-management.test.mts",
+      "sha256": "15132ebf6fa7dedcb2f33da7edb110544d1cdab9d0fe6fdfbfa9c1cf7c5c8394",
+      "bytes": 16179
+    },
+    {
+      "path": "tests/card-adaptation-retrieval.test.mts",
+      "sha256": "422c1841d371bc01c3d6a05840b317a0720c0f42a7312b8a3f489e2c20376cd9",
+      "bytes": 28313
+    },
+    {
+      "path": "tests/card-adaptation-ui.test.mts",
+      "sha256": "5c728e1279e4aba196ee169e9b815e66b17b4ea664ac25fb4423e7a05cc36f49",
+      "bytes": 16255
+    },
+    {
+      "path": "tests/card-character-map.test.mts",
+      "sha256": "22213ae866d7a229406c50965e374c88b2164e7a7df54ec8252e495a8a9ab195",
+      "bytes": 3820
+    },
+    {
+      "path": "tests/card-export.test.mjs",
+      "sha256": "cce0b35270ea48ead4384a7c3d970eb8e5ef00b7a044cebcbc2051f9d1bcefa5",
+      "bytes": 8676
+    },
+    {
+      "path": "tests/card-research-integration.test.mts",
+      "sha256": "111b9363bfc3b9cfb05a39f5fab3dde604b21699b320f635982a17c8d3412e0c",
+      "bytes": 14914
+    },
+    {
+      "path": "tests/card-research-planner.test.mts",
+      "sha256": "70722777c1b0705099436147986e96d7676d8d13c2da3b40ed7b119b9eaed113",
+      "bytes": 20519
+    },
+    {
+      "path": "tests/character-cluster.test.mjs",
+      "sha256": "7d43d3b1b64924b17957c0e87a87413d0bc4e5d7786c7c81a27c912a747e0135",
+      "bytes": 13220
+    },
+    {
+      "path": "tests/context-supersession.test.mjs",
+      "sha256": "17d5c62fe167621c9e9af79e2994e2e1e8dc741df4437c90e59f87c89b90749f",
+      "bytes": 9184
+    },
+    {
+      "path": "tests/conversation-projection.test.mjs",
+      "sha256": "1182b61aef20e6b41a8edcec99c680d110e899d79009f4c5a368f9f74c043fa4",
+      "bytes": 12747
+    },
+    {
+      "path": "tests/conversation-view-state.test.mjs",
+      "sha256": "53bfca5f310c894ab680ba663c739fe845bf3ca1f2becb0b1a8b5833ffd2b6db",
+      "bytes": 11378
+    },
+    {
+      "path": "tests/decision-context.test.mjs",
+      "sha256": "f8aee5d96d74ef4ba2b9bed5d552e3e321ee6c102151b17bcee9f6cc582776d5",
+      "bytes": 6920
+    },
+    {
+      "path": "tests/fixtures/character-cluster-legacy-v1.json",
+      "sha256": "a73eaea26c6a00213249af2ce62c0bd1895e09b2759ca884646ec1f70ff93391",
+      "bytes": 4673
+    },
+    {
+      "path": "tests/fixtures/memory-compaction-legacy-v1.json",
+      "sha256": "6ca49a2ab1e2e5f312a7a810b35595b637992fae142aa5fa256dd183ed6a12ab",
+      "bytes": 17619
+    },
+    {
+      "path": "tests/fixtures/memory-history-legacy-v1.json",
+      "sha256": "052baab674ec33b228d92adc683d5586750205026bb5460d94b23dfed2d6b767",
+      "bytes": 46303
+    },
+    {
+      "path": "tests/fixtures/memory-notes-writer-legacy-v1.json",
+      "sha256": "2a5e0c317993b2445ab2dbd3ee92cd0de496eaae646f9b73f48d8bde52ed1f63",
+      "bytes": 7523
+    },
+    {
+      "path": "tests/fixtures/memory-summary-legacy-v1.json",
+      "sha256": "c70300147598baa16d83c1600e0b6984665276b1310bd09bc7a995b2bcf19622",
+      "bytes": 24902
+    },
+    {
+      "path": "tests/fixtures/novel-export-legacy-v1.json",
+      "sha256": "018f5b43c235200de272cc51acfdebf6cddec7d3bdde351d9bed84fdea0e4f64",
+      "bytes": 2888
+    },
+    {
+      "path": "tests/fixtures/task-context-legacy-v1.json",
+      "sha256": "fb71ab1497aad523e6a9f0554637cc75335c8ae375e7f85b250de5c053b6d30d",
+      "bytes": 10576
+    },
+    {
+      "path": "tests/fixtures/task-scheduler-legacy-v1.json",
+      "sha256": "79cc02a3ca1f42605781f51135496eb52b5b99a5dd61815f20dcef33df2d56f1",
+      "bytes": 8010
+    },
+    {
+      "path": "tests/fixtures/tavern-card-legacy-v1.json",
+      "sha256": "c6f0a72622e89a891eaa5ba29fe48a4d472a45a2d809b742ce79d9ed1c50fa3e",
+      "bytes": 37105
+    },
+    {
+      "path": "tests/inline-maintenance-retirement.test.mts",
+      "sha256": "a6daae5771244cb4152acc8752ec39d6bb61abd867f44bf6c9eef08ccd4bc3be",
+      "bytes": 31080
+    },
+    {
+      "path": "tests/inline-task-delivery.test.mjs",
+      "sha256": "bb5e3397cadb2bf5047a0e10a02052949a2483524490098d5846b6ccad18ca62",
+      "bytes": 7090
+    },
+    {
+      "path": "tests/management-fork-completion.test.mts",
+      "sha256": "d003e9d89b6509a04ec1567276279fff48af6bede435d9ae99effa57058367f6",
+      "bytes": 22343
+    },
+    {
+      "path": "tests/management-panels-ui.test.mjs",
+      "sha256": "93b9268d48153121d490db7e99a389463a1b3b103ef2ed258f88bb04894acbe3",
+      "bytes": 6954
+    },
+    {
+      "path": "tests/memory-entry.test.mjs",
+      "sha256": "fa84e7b5635ba66a8843415020d713f266d51a8e2bf19c669c0aac8ce8ad0ea7",
+      "bytes": 7024
+    },
+    {
+      "path": "tests/memory-model-policy.test.mjs",
+      "sha256": "4b7bb2f14a187914435b10cab3256aeb46dba168e542618221d61f6086658954",
+      "bytes": 7898
+    },
+    {
+      "path": "tests/memory-notes-writer.test.mjs",
+      "sha256": "92101e368eb14a5fdfef2cb8c7c98f2f2772182415c929320ee1dcfe39aa3b01",
+      "bytes": 8227
+    },
+    {
+      "path": "tests/memory-provenance.test.mjs",
+      "sha256": "affb1e4188c5b853927b44b34c565fa7abb8fe4e3f81ef6bfc7361da9d85204d",
+      "bytes": 3389
+    },
+    {
+      "path": "tests/memory-retrieval-ui.test.mjs",
+      "sha256": "e16d00142762edab211bda3acab6ef6a89306fb8c512e818745662dee76b45b2",
+      "bytes": 23995
+    },
+    {
+      "path": "tests/memory-scheduler.test.mjs",
+      "sha256": "465a4ff356e3db88341a976058b882addd954128a3383af5553258dbafbadcd1",
+      "bytes": 6820
+    },
+    {
+      "path": "tests/memory-summary.test.mjs",
+      "sha256": "62a981b37e9fc6aae3c6bb66ee8a5c4a65ce395d332e4c845eaae069c300b678",
+      "bytes": 4262
+    },
+    {
+      "path": "tests/narrative-presets-ui.test.mjs",
+      "sha256": "4102002e9767414fae65f2115ff3b084eb98037aadf2546084899556fd48f2d1",
+      "bytes": 7660
+    },
+    {
+      "path": "tests/novel-export.test.mjs",
+      "sha256": "947c7979004b3cd0ab9dd8c9665bbfdd3c91a69ef57d1bc01580affd3cef6ad5",
+      "bytes": 12014
+    },
+    {
+      "path": "tests/phase-a-memory.test.mjs",
+      "sha256": "855fedde47943f33f52e9128d0fd15b5f2139b3e1348a92b4d5bc9b08d7c6c45",
+      "bytes": 23617
+    },
+    {
+      "path": "tests/phase-b-memory.test.mjs",
+      "sha256": "a35fd786bfa8c6d88afeef7b8558cddb3b390f3529baee36c71425f9a9848c6d",
+      "bytes": 9430
+    },
+    {
+      "path": "tests/prompt-prefix-cache.test.mjs",
+      "sha256": "6b6dd4577005530dc9814871de065942f6c39fb21b85b82017f9bdd6a86e54cc",
+      "bytes": 2513
+    },
+    {
+      "path": "tests/reader-author-js.test.mjs",
+      "sha256": "95c71de7d2dff97dc56e30546ad4e71ba5d03abfa0f6c888283e3b21a431a7f7",
+      "bytes": 4373
+    },
+    {
+      "path": "tests/roleplay-activity.test.mjs",
+      "sha256": "836b60100e70a87fcca41bb06d10f13cf4a4824a322db9d3b6ebc301bd62a004",
+      "bytes": 9406
+    },
+    {
+      "path": "tests/roleplay-core-smoke.mjs",
+      "sha256": "8448df468f693582a00873d8cfaf022ef10c434d51880104424426689dca1155",
+      "bytes": 85110
+    },
+    {
+      "path": "tests/roleplay-memory-engine.test.mjs",
+      "sha256": "1482f250e2d09ab68116f1eefa5643943be9f2885f796443fb28b97a1ee24361",
+      "bytes": 67950
+    },
+    {
+      "path": "tests/run.mjs",
+      "sha256": "fe2a62a49866e0a61b7b7348f2b8c7b7bce46d3e1d4e676ace28404d8536bb57",
+      "bytes": 2827
+    },
+    {
+      "path": "tests/status-obligation.test.mjs",
+      "sha256": "1e8961e938f02b5d55a91b06cf5d6327ba957b03b52da74c5f62ccb65f29f438",
+      "bytes": 43812
+    },
+    {
+      "path": "tests/status-surface-refresh.test.mjs",
+      "sha256": "5668fc3a118847d08bd6e4dcf02395d776c1d5622c131c3358e66634321e5f00",
+      "bytes": 5044
+    },
+    {
+      "path": "tests/task-context-retirement.test.mjs",
+      "sha256": "8628f4b86798a398b5dd86e121d7b3ff956efc58a7da6232a24eeba42a2b5842",
+      "bytes": 12719
+    },
+    {
+      "path": "tests/tavern-card.test.mjs",
+      "sha256": "32179027f6de5f4e8198b774ea35e6581bbd5a86a08bb0c33148b14fde234295",
+      "bytes": 10782
+    },
+    {
+      "path": "tests/tavern-conversations.test.mjs",
+      "sha256": "09c635eaca0ec23b08bbb13cbcfaf9758265622912c7040190c4de62527999a4",
+      "bytes": 4587
+    },
+    {
+      "path": "tests/tavern-embedding-telemetry.test.mjs",
+      "sha256": "83eebbc773d60f2c04fa61f8908e3ab346d7653d8af179f2461270adbacfa162",
+      "bytes": 2726
+    },
+    {
+      "path": "tests/tavern-fallback-log.test.mjs",
+      "sha256": "64f18544b78457eae9cc83fcd1146a062173522c6f4d920f3fb86681278b5a36",
+      "bytes": 3450
+    },
+    {
+      "path": "tests/tavern-jobs-integration.test.mjs",
+      "sha256": "5e6505ab34c908f26ce77f01b8ed477af01d22b3508af6d8f62b21486d085d3f",
+      "bytes": 22852
+    },
+    {
+      "path": "tests/tavern-library-input.test.mjs",
+      "sha256": "3d3dd970b0f4f09bc5d0a6de9a0d6151d01be19959fb9b10303399797fc6571c",
+      "bytes": 1144
+    },
+    {
+      "path": "tests/tavern-library-record.test.mjs",
+      "sha256": "f758762774c39b8787c892d17ec367b65e20ade24d67a3a2bc37177d532a4e96",
+      "bytes": 1200
+    },
+    {
+      "path": "tests/tavern-library.test.mjs",
+      "sha256": "2fde67f34cdb0752f5615f21b69f298d8aab227395adc5d53cbdc950e1634100",
+      "bytes": 12358
+    },
+    {
+      "path": "tests/tavern-loop.test.mjs",
+      "sha256": "b21b00b9f99526c04a3ccd6a9498703c605770a05748a7c2c1fa8d5b877272ca",
+      "bytes": 95098
+    },
+    {
+      "path": "tests/tavern-pricing.test.mjs",
+      "sha256": "43351283864b78f385714a261bdf1d249b7180f928703c42580b2e689c4267ee",
+      "bytes": 9462
+    },
+    {
+      "path": "tests/tavern-task-lifecycle.test.mjs",
+      "sha256": "a9922cf49ab1ada6b945df34162b88f91f0133f3ae539b28f4b81acbc9cd69fa",
+      "bytes": 28756
+    },
+    {
+      "path": "tests/tavern-telemetry.test.mjs",
+      "sha256": "75cc797f2d78b4152e5fdc2687e4cdf052ec0f0c9c9ca9b2f21569eadb2785fc",
+      "bytes": 23094
+    },
+    {
+      "path": "tests/toast-confirm.test.mjs",
+      "sha256": "2c2dd1cb9590179a7d35738091c9e16230f7eb1dc907907992514a61f55decc0",
+      "bytes": 2734
+    },
+    {
+      "path": "tests/worldbook-passive.test.mjs",
+      "sha256": "7573c9a8dbfaed51448789aa69b65639e84409ba3483679bc4d8d6d3c9bf3b9d",
+      "bytes": 3210
+    },
+    {
+      "path": "tools/build-map.json",
+      "sha256": "cc1db58ed09b4e93889fdad867a52197952fd9bfdc3a36c1efb8ae59a4ac1790",
+      "bytes": 33883
+    },
+    {
+      "path": "tools/build-modules.mjs",
+      "sha256": "347031208f4bfbcb45b12657b339884ec667f81b28c84cdc2892ef81c8bcfc42",
+      "bytes": 3018
+    },
+    {
       "path": "tools/dsh-debug/README.md",
       "sha256": "b195bba8ad6f5851824fa822701786f15df58ebabf58e5e8897c74d3fd5b389a",
       "bytes": 17231
@@ -6204,6 +6562,16 @@
       "path": "tools/public-transaction.mts",
       "sha256": "94a7a9514bc1fd81bfb4be6ed3c98e9c4a4dbf216bb800e572450754727c8253",
       "bytes": 8129
+    },
+    {
+      "path": "tools/test-temp.mjs",
+      "sha256": "ae8790d2321c4b29f02daa28d6795e0e2dc691f8fd7fe2f63445644537c8ae23",
+      "bytes": 2202
+    },
+    {
+      "path": "tools/tool-resolution.mjs",
+      "sha256": "c22d89cf468430817f4ffddd630d4b4e67631e208ceb46a503d3146466d3dc2e",
+      "bytes": 6066
     }
   ]
 }

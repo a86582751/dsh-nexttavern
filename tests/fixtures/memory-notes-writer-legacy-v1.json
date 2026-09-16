@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "ef65971",
+  "session": {
+    "id": "notes-fixture",
+    "events": [
+      {
+        "seq": 0,
+        "type": "turn/start",
+        "data": {
+          "turn": 1
+        }
+      },
+      {
+        "seq": 1,
+        "type": "user/message",
+        "data": {
+          "source": {
+            "kind": "user"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Choice 1"
+            }
+          ]
+        }
+      },
+      {
+        "seq": 2,
+        "type": "assistant/message",
+        "data": {
+          "turn": 1,
+          "message": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Story 1"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "seq": 3,
+        "type": "turn/end",
+        "data": {
+          "turn": 1,
+          "reason": {
+            "kind": "completed"
+          }
+        }
+      },
+      {
+        "seq": 4,
+        "type": "turn/start",
+        "data": {
+          "turn": 2
+        }
+      },
+      {
+        "seq": 5,
+        "type": "user/message",
+        "data": {
+          "source": {
+            "kind": "user"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Choice 2"
+            }
+          ]
+        }
+      },
+      {
+        "seq": 6,
+        "type": "assistant/message",
+        "data": {
+          "turn": 2,
+          "message": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Story 2"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "seq": 7,
+        "type": "turn/end",
+        "data": {
+          "turn": 2,
+          "reason": {
+            "kind": "completed"
+          }
+        }
+      }
+    ],
+    "surface": {
+      "nodes": [
+        1,
+        2,
+        5,
+        6
+      ]
+    }
+  },
+  "initialHead": {
+    "version": 2,
+    "lockedFacts": [
+      {
+        "text": "Pinned",
+        "sessionId": "notes-fixture",
+        "atSeq": 1
+      }
+    ],
+    "directorCheckpoints": []
+  },
+  "response": {
+    "text": "## 1. Section\nPinned\n## 2. Section\nRecorded\n## 3. Section\nRecorded\n## 4. Section\nRecorded\n## 5. Section\nRecorded\n## 6. Section\nRecorded\n## 7. Section\nRecorded\n## 8. Section\nRecorded",
+    "deltas": [
+      {
+        "evidenceSeq": 2,
+        "summary": "Established",
+        "status": "established"
+      }
+    ],
+    "conflicts": [
+      {
+        "evidenceSeq": 6,
+        "claim": "New",
+        "canon": "Old",
+        "severity": "low"
+      }
+    ]
+  },
+  "refresh": {
+    "automatic": true,
+    "background": true
+  },
+  "requests": [
+    {
+      "previousSummary": "",
+      "sourceText": "[用户 · turn:1 · seq:1]\nChoice 1\n\n[叙事者 · turn:1 · seq:2]\nStory 1\n\n[用户 · turn:2 · seq:5]\nChoice 2\n\n[叙事者 · turn:2 · seq:6]\nStory 2",
+      "lockedText": "Pinned",
+      "maxTokens": 16384,
+      "timeoutMs": 300000,
+      "appendDelta": false,
+      "background": true,
+      "sourceSeqs": [
+        1,
+        2,
+        5,
+        6
+      ],
+      "taskStage": "background-notes",
+      "sessionId": "notes-fixture",
+      "signalForwarded": true
+    }
+  ],
+  "result": {
+    "kind": "notes",
+    "changed": true,
+    "entries": 4,
+    "batches": 1,
+    "chars": 181
+  },
+  "writes": [
+    {
+      "directorNotes": {
+        "schemaVersion": 1,
+        "generationId": "generation-1",
+        "branchId": "notes-fixture",
+        "projectionMode": "full",
+        "updateSourceKeys": [
+          "1:bc593861917e1b88808f87165a43562e02520d983bae2b6dac2234af090c1297",
+          "2:ccdd63101f3166f7bc530ab94ed43001c115fb405f71723f60f8f033df787d3d",
+          "5:2b94ac661064664f53db1ef24d35ba18dfb4e836857a33d0bab27f78b12c9828",
+          "6:c2a6226ea548819fcbde06f8eea17bbda74d6bfc34428c07330cdc74d82102aa"
+        ],
+        "text": "## 1. Section\nPinned\n## 2. Section\nRecorded\n## 3. Section\nRecorded\n## 4. Section\nRecorded\n## 5. Section\nRecorded\n## 6. Section\nRecorded\n## 7. Section\nRecorded\n## 8. Section\nRecorded",
+        "sourceKeys": [
+          "1:bc593861917e1b88808f87165a43562e02520d983bae2b6dac2234af090c1297",
+          "2:ccdd63101f3166f7bc530ab94ed43001c115fb405f71723f60f8f033df787d3d",
+          "5:2b94ac661064664f53db1ef24d35ba18dfb4e836857a33d0bab27f78b12c9828",
+          "6:c2a6226ea548819fcbde06f8eea17bbda74d6bfc34428c07330cdc74d82102aa"
+        ],
+        "sourceSeqs": [
+          1,
+          2,
+          5,
+          6
+        ],
+        "sessionId": "notes-fixture",
+        "sourceEntryCount": 4,
+        "throughSeq": 6,
+        "updatedAt": 1000,
+        "commandId": "command-fixture",
+        "validated": true
+      },
+      "directorCheckpoints": [
+        {
+          "schemaVersion": 1,
+          "generationId": "generation-1",
+          "branchId": "notes-fixture",
+          "projectionMode": "full",
+          "updateSourceKeys": [
+            "1:bc593861917e1b88808f87165a43562e02520d983bae2b6dac2234af090c1297",
+            "2:ccdd63101f3166f7bc530ab94ed43001c115fb405f71723f60f8f033df787d3d",
+            "5:2b94ac661064664f53db1ef24d35ba18dfb4e836857a33d0bab27f78b12c9828",
+            "6:c2a6226ea548819fcbde06f8eea17bbda74d6bfc34428c07330cdc74d82102aa"
+          ],
+          "text": "## 1. Section\nPinned\n## 2. Section\nRecorded\n## 3. Section\nRecorded\n## 4. Section\nRecorded\n## 5. Section\nRecorded\n## 6. Section\nRecorded\n## 7. Section\nRecorded\n## 8. Section\nRecorded",
+          "sourceKeys": [
+            "1:bc593861917e1b88808f87165a43562e02520d983bae2b6dac2234af090c1297",
+            "2:ccdd63101f3166f7bc530ab94ed43001c115fb405f71723f60f8f033df787d3d",
+            "5:2b94ac661064664f53db1ef24d35ba18dfb4e836857a33d0bab27f78b12c9828",
+            "6:c2a6226ea548819fcbde06f8eea17bbda74d6bfc34428c07330cdc74d82102aa"
+          ],
+          "sourceSeqs": [
+            1,
+            2,
+            5,
+            6
+          ],
+          "sessionId": "notes-fixture",
+          "sourceEntryCount": 4,
+          "throughSeq": 6,
+          "updatedAt": 1000,
+          "commandId": "command-fixture",
+          "validated": true
+        }
+      ],
+      "notesCadence": {
+        "schemaVersion": 1,
+        "branchId": "notes-fixture",
+        "slots": [
+          {
+            "turn": 1,
+            "anchorSeq": 1
+          },
+          {
+            "turn": 2,
+            "anchorSeq": 5
+          }
+        ],
+        "updatedAt": 1000,
+        "throughSeq": 6
+      },
+      "deltas": [
+        {
+          "evidenceSeq": 2,
+          "summary": "Established",
+          "status": "established",
+          "schemaVersion": 1,
+          "sessionId": "notes-fixture",
+          "atSeq": 2,
+          "turnId": 1,
+          "batchThroughSeq": 6,
+          "sourceGeneration": "generation-1",
+          "sourceKey": "2:ccdd63101f3166f7bc530ab94ed43001c115fb405f71723f60f8f033df787d3d"
+        }
+      ],
+      "pendingConfirmations": [
+        {
+          "evidenceSeq": 6,
+          "claim": "New",
+          "canon": "Old",
+          "severity": "low",
+          "schemaVersion": 1,
+          "sessionId": "notes-fixture",
+          "atSeq": 6,
+          "turnId": 2,
+          "batchThroughSeq": 6,
+          "sourceGeneration": "generation-1",
+          "sourceKey": "6:c2a6226ea548819fcbde06f8eea17bbda74d6bfc34428c07330cdc74d82102aa"
+        }
+      ],
+      "version": 3,
+      "updatedAtSeq": 6
+    }
+  ]
+}

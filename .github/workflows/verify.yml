@@ -1,0 +1,52 @@
+name: verify
+
+# Runs on every pull request. The package ships both the TypeScript sources and
+# the JavaScript generated from them, plus the pinned toolchain that generates
+# them, so a change can be checked here without the maintainer's tree.
+#
+# What this cannot cover: the suites that need a running DeepSeek Harness, a
+# Windows desktop or the maintainer's release chain. Those stay in the
+# maintainer's tree, and `CONTRIBUTING.md` says so.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: generated files and contract suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            build-tools/package-lock.json
+            integrations/auth-webserver/package-lock.json
+      - name: Install the pinned build toolchain
+        run: npm ci --prefix build-tools
+      - name: Generated JavaScript matches its TypeScript
+        run: node tools/build-modules.mjs --check
+      - name: Contract suites
+        run: node tests/run.mjs
+      - name: Client bundle rebuilds unchanged
+        run: |
+          npm run build
+          git diff --exit-code -- lib/client.js || {
+            echo "::error::lib/client.js is not what src/ builds; run npm run build and commit lib/client.js"
+            exit 1
+          }
+      - name: Optional Access integration
+        run: |
+          npm ci --prefix integrations/auth-webserver
+          node integrations/auth-webserver/test.mjs

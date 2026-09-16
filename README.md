@@ -89,7 +89,7 @@ Windows 安装器还没有代码签名，首次运行可能出现 SmartScreen �
 | **多模型协同** | 为正文与记忆、读写卡、状态、决策、小说导出等任务配置模型路由，按需要分工。 |
 | **多角色 Agent 集群** | 为主要角色启动独立推演，分别思考语言、行为与意图，再由主代理协调成最终故事；支持单角色模型覆盖。 |
 | **决策卡与状态栏** | 行动建议集中在独立决策卡，可折叠、可稍后处理、可拖动；作者的状态 HTML/CSS 在导入、生成与恢复路径上都被保留。 |
-| **自有皮肤** | 第一套自有皮肤，日间／夜间双主题，整套界面统一重绘。 |
+| **自有皮肤** | 第一套自有皮肤，日间／夜间双主题，整套界面统一重绘；随包安装，默认关闭。 |
 | **对话分支管理** | 重新生成、修改后发送、切换版本，在同一对话里探索不同世界线；也可显式分支到新对话。 |
 | **自定义创作规则** | 分别管理核心设定、人物、世界书、剧情指引、文风与规则，控制视角、节奏、人物知情边界和回复展开方式。 |
 | **主动读取世界书** | 主代理根据当前剧情按需查阅地点、势力和背景细节，让世界书作为可查询的设定库参与叙事。 |
@@ -255,13 +255,9 @@ flowchart TD
 
 ## 全新自有皮肤
 
-0.2.5 带来了项目**第一套自有皮肤 `dsh-nexttavern-amber`**。整套界面用同一套设计 token 重绘，**日间与夜间两套主题**都做了，切换一次就是完全不同的两种气氛。
+0.2.5 带来了项目**第一套自有皮肤 `dsh-nexttavern-amber`**：整套界面用同一套设计 token 重绘，**日间与夜间两套主题**切换一次就是两种气氛；侧栏坐着一位 Q 版酒馆看板娘，日夜各是一张不同的画；夜间主题下的酒馆阅读模式铺在陈旧羊皮纸上，作者自己写的墨色一点没动——喜欢安静地读完一篇长文的人，会喜欢这一版。
 
-侧栏里那位坐在 NextTavern 木牌上的 Q 版酒馆看板娘，日夜主题下是两张不同的画。夜间主题的酒馆阅读模式铺在陈旧羊皮纸的质感上，作者自己写的墨色一点没动。喜欢安静地把一篇长文读完的人，会喜欢这一版。
-
-这套皮肤随安装包一起装好，但**默认不开**，所以你的界面还是原来的样子。想换上它：打开 **设置 → 插件市场 → 已安装**，找到 `dsh-nexttavern-amber`，把开关打开。它写进 profile 的 `cordis.patch.yml`，热加载大约一秒生效，**不用重启**；看腻了拨回去就行，你的选择在重启后依然保留。
-
-插件市场是随包提供的第三方项目，见[补丁与依赖来源](#补丁与依赖来源)。
+皮肤随安装包一起装好，但**默认不开**，所以你的界面还是原来的样子。想换上它：打开 **设置 → 插件市场 → 已安装**，找到 `dsh-nexttavern-amber`，把开关打开。它写进 profile 的 `cordis.patch.yml`，热加载大约一秒生效，**不用重启**；看腻了拨回去就行，你的选择在重启后依然保留。这个开关由随包的第三方插件市场提供，来源、出站请求与关闭方法见[补丁与依赖来源](#补丁与依赖来源)。
 
 ![自有皮肤 · 日间主题](screenshots/skin-day.png)
 
@@ -443,10 +439,10 @@ node "$PackageRoot/tools/install.mjs" --home $env:DSH_HOME --harness $HarnessRoo
 - [anydoc](https://github.com/a86582751/dsh-plugin-anydoc)，上游 [beancookie/dsh-plugin-anydoc](https://github.com/beancookie/dsh-plugin-anydoc) 固定提交的 0.1.0，保守还原 Markdown 转义。
 - [pi-ai 差分](https://github.com/a86582751/pi/tree/codex/nexttavern-alpha3/nexttavern-compat)，上游 [earendil-works/pi](https://github.com/earendil-works/pi) 0.84.4。统一补丁器解析 Harness 实际使用的实例，不另装无效的 profile 副本。
 
-随包还装了一个第三方市场，用来提供上面那个皮肤开关：
+随包还装了一个第三方插件市场，[上面那套皮肤](#全新自有皮肤)的开关就由它提供：
 
-- [dsh-market](https://github.com/dsh-market/dsh-market)（npm 名 `dshmarket`）固定 **1.39.0**，MIT。[dshmarket.com](https://dshmarket.com) 的插件市场，在设置里浏览、搜索、一键装社区插件，并且带一个热切换开关——我们用它让你按需启用自带的琥珀酒馆皮肤。开关写进 profile 的 `cordis.patch.yml`，热加载约一秒生效，重启后依然保留。
-- 它是独立的第三方项目，由 [dsh-market](https://github.com/dsh-market/dsh-market) 维护，不是我们写的。打开市场会读取 [awesome-dsh-plugin.com](https://awesome-dsh-plugin.com) 的公共插件目录；打开评论会连 giscus 和 GitHub。我们固定版本、不跟随上游，也不改它的代码。
+- [dsh-market](https://github.com/dsh-market/dsh-market)（npm 名 `dshmarket`）固定 **1.39.0**，MIT，就是 [dshmarket.com](https://dshmarket.com) 的插件市场：在设置里浏览、搜索、一键安装社区插件。
+- 它是独立的第三方项目，由 [dsh-market](https://github.com/dsh-market/dsh-market) 维护，不是我们写的。打开市场会读取 [awesome-dsh-plugin.com](https://awesome-dsh-plugin.com) 的公共插件目录，打开评论会连 giscus 和 GitHub——这是我们「本地服务只监听 127.0.0.1」之外额外出站请求的来源。我们固定版本、不跟随上游，也不改它的代码。
 - 不想让它联网，可以在 **设置 → 插件 → 插件配置** 里把它关掉；那之后皮肤也能继续用，只是换肤要手动改 profile 的 `cordis.patch.yml`。
 
 `better-sidebar` 不是必需依赖，用官方侧栏就好。公网玩家可按[手机电脑公网访问指南](PUBLIC-ACCESS.md)显式安装随包提供的 `@isund/dsh-auth-webserver`（0.1.0-alpha.3.2），配置自己的 Cloudflare Access、域名和登录身份。鉴权源码、脱敏模板、三个可回滚的公网兼容选项都已交付；默认的本机安装不会自动开放网络。个人密钥、地址、systemd/Nginx 实例配置和私有模型路由不随包分发。通用 Qwen reasoning 配置辅助工具保留在 integrations 目录，只在你的路由确实需要时使用。
