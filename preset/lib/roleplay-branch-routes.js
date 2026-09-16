@@ -27,6 +27,12 @@ export function registerBranchRoutes({ ctx, T, resolveRoleplaySession, cloneBran
         fetch: async (request) => {
             try {
                 const body = await request.json();
+                if (body === null || typeof body !== 'object' || Array.isArray(body) ||
+                    Object.prototype.hasOwnProperty.call(body, '__proto__') ||
+                    Object.prototype.hasOwnProperty.call(body, 'constructor') ||
+                    Object.prototype.hasOwnProperty.call(body, 'prototype')) {
+                    return jsonResponse(400, { ok: false, error: '请求体格式无效' });
+                }
                 const action = String(body?.action ?? '');
                 if (action === 'select-worldline') {
                     const session = await resolveRoleplaySession(body.sessionId), catalog = ctx.get('tavernConversations');
