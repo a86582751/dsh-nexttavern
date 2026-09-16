@@ -460,7 +460,7 @@ Remove-Item Env:DSH_ALLOW_HARNESS_PATCH
 
 ## 源码与验证范围
 
-**TypeScript 是唯一维护源码。** 手写 `.ts` / `.mts`，`.js` / `.mjs` 由共享构建清单经 TypeScript 5.9.3 生成；本版发布包含 612 个构建产物、24 个 schema 和 156 个 TypeScript 模块，运行时整体已完成迁移（核心、UI、记忆、鉴权、读卡、任务、遥测、分支与世界线路由、发布与安装工具链）。
+**TypeScript 是唯一维护源码。** 手写 `.ts` / `.mts`，`.js` / `.mjs` 由共享构建清单经 TypeScript 5.9.3 生成；本版发布包含 637 个构建产物、24 个 schema 和 158 个 TypeScript 模块，运行时整体已完成迁移（核心、UI、记忆、鉴权、读卡、任务、遥测、分支与世界线路由、发布与安装工具链）。
 
 `provenance.json` 记录维护源码提交、逐文件来源、工具版本和 SHA-256。`tools/harness-patches.json` 记录上游固定来源及前后指纹。主仓库不携带完整官方补丁快照。重建 UI：
 
