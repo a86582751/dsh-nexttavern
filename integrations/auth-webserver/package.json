@@ -12,6 +12,7 @@
   },
   "files": [
     "index.js",
+    "index.ts",
     "cordis.patch.yml",
     "README.md",
     "LICENSE",

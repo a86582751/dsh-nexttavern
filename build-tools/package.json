@@ -11,8 +11,11 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@types/node": "24.3.1",
+    "@types/react": "19.1.12",
     "acorn": "8.15.0",
     "esbuild": "0.24.2",
+    "typescript": "5.9.3",
     "yaml": "2.8.1"
   }
 }

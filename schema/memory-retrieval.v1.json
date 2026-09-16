@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dsh-roleplay/memory-retrieval/v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "revision",
+    "globalMode",
+    "overrides",
+    "providers",
+    "activeProviderId",
+    "enabled"
+  ],
+  "properties": {
+    "chunkChars": {"type":"integer","minimum":128,"maximum":2048,"default":480,"description":"Global character target for story and novel research. Local inputs are further split using the pinned model tokenizer within provider localMaxTokens, including prefixes and special tokens, without truncation. Tokens are not characters. Changes alter the index fingerprint; no bulk rebuild."},
+    "conversationScopeSince": {"type":"integer","minimum":0},
+    "conversationIndex": {"type":"object","additionalProperties":{"type":"boolean"}},
+    "autoIndexNewConversations": {"type":"boolean","default":false},
+    "autoRebuildLocalOnRetrieval": {"type":"boolean","default":false,"description":"Only an active story semantic/hybrid query with stale model fingerprint may schedule a current-conversation rebuild. Requires ready local provider and existing conversation auto-index enrollment. No bulk, online, keyword-only, manual-pause or ordinary-error rebuild; current query falls back to keyword."},
+    "autoIndexNewSince": {"type":["integer","null"],"minimum":0},
+    "autoConversations": {"type":"object","additionalProperties":{"type":["string","null"],"pattern":"^[a-f0-9]{64}$"}},
+    "schemaVersion": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "globalMode": {
+      "enum": [
+        "keyword",
+        "semantic",
+        "hybrid"
+      ]
+    },
+    "overrides": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": [
+          "keyword",
+          "semantic",
+          "hybrid",
+          "inherit"
+        ]
+      }
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties":{"localMaxTokens":{"type":"integer","minimum":64,"maximum":32768,"default":512,"description":"Local total encoder token budget; also validated against the selected pinned model capability."}},
+        "required": [
+          "id",
+          "model",
+          "protocol",
+          "kind",
+          "revision",
+          "ready"
+        ],
+        "not": {
+          "required": [
+            "apiKey"
+          ]
+        }
+      }
+    },
+    "activeProviderId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "enabled": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "localChunkPlanV1":{"description":"Additive local_chunk_plans(workspace,space,session,rowid,version=1,sourceHash,ranges,error). Failed plans persist NULL ranges and a visible error, never covered; explicit backfill/retry recomputes them. Successful ranges contain original UTF-16 offset/end pairs on Unicode scalar boundaries, cover the complete source, and are computed by the pinned tokenizer including document prefix and special tokens with truncation disabled. No raw text stored. Source SHA256 and full embedding fingerprint must match before progress or query reuse. Status never loads tokenizer. Old fingerprints remain stale. Clear deletes plans for that workspace; in-flight plans fail epoch/config checks."},
+    "conversationScopeV1": {"description":"Shared SQLite uses story-conversation-v1:pathWorkspace:visibleConversationRoot namespaces for story vectors, queues, retry, pause and clear/rebuild. conversation_scope(version=1,legacyBlocked) records whether legacy workspace vector cache import is forbidden after a clear. Legacy import copies only chunks authorized by current source projection; exact recipes reuse vectors and incompatible recipes remain stale. Legacy shared cache stays available to other conversations. Birth cutoff and explicit per-conversation settings preserve old enrollment without opting future conversations in."},
+    "fingerprintRegistryV1": {
+      "description": "Additive space_metadata.version=1 and spaces(space PRIMARY KEY,workspace,family,recipe). recipe is a schemaVersion=1 JSON embedding identity with embedding_model, embedding_revision, dimensions, task=document, pooling, documentPrefix, query task/prefix, runtime, dtype and preprocessing. No matching fingerprint plus incompatible stored vectors yields stale: indexing pauses and semantic search falls back without a query API call. Clear removes all vector spaces/jobs for the current workspace, including legacy spaces located through workspace-owned jobs. Clear persists pause before deleting; rebuild resumes the active model. In-flight query/index output is rejected by epochs. Source provenance, call accounting and Session history remain."
+    },
+    "localArtifactsV2": {
+      "description": "local-state.json remains an array; each newly published row has schemaVersion=2 and may have artifactFingerprint=SHA256(repo,revision,files). Installed data becomes paused when a known fingerprint changes. Legacy entries without a fingerprint must verify cached files against pinned hashes before loading. Successful verified downloads record the artifact fingerprint."
+    },
+    "sqliteV1": {
+      "description": "metadata.version=1 remains compatible with the previous runtime. Vectors/sources/jobs/calls retain their original schema and raw Session history stays authoritative."
+    }
+  }
+}

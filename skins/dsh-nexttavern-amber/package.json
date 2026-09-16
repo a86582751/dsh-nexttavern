@@ -1,0 +1,24 @@
+{
+  "name": "dsh-nexttavern-amber",
+  "description": "NextTavern amber tavern skin for the dsh web GUI: amber lamplight, dark oak, warm glass panels and a whale-girl tavern keeper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./skin.json": "./skin.json",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "license": "SEE LICENSE IN README.md"
+}

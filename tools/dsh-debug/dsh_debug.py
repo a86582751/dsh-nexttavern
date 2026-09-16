@@ -13,7 +13,7 @@ import sys
 import uuid
 from urllib.parse import urlencode
 
-VERSION = '1.3.0'
+VERSION = '1.4.0'
 CONFIG = Path.home() / '.dsh-debug' / 'config.json'
 
 
@@ -61,7 +61,7 @@ def parse(argv):
         p.add_argument('--cursor')
         p.add_argument('--limit', type=int, default=20)
         if command == 'sessions': p.add_argument('--source', choices=['catalog', 'native'], default='native', help='Native summaries by default; catalog returns only registered Tavern worldline families')
-    for command in ['state', 'activity', 'models', 'jobs', 'resources', 'logs', 'usage', 'history', 'wake', 'cancel', 'clone', 'send', 'regenerate', 'edit-send', 'edit-message', 'delete-message', 'delete-user', 'worldline', 'model-set', 'model-route', 'upload-card', 'export', 'job-action', 'download', 'settings', 'settings-set', 'cluster', 'cluster-set', 'cluster-route']:
+    for command in ['state', 'activity', 'models', 'jobs', 'resources', 'logs', 'usage', 'history', 'wake', 'cancel', 'clone', 'send', 'regenerate', 'edit-send', 'edit-message', 'delete-message', 'delete-user', 'worldline', 'model-set', 'model-route', 'upload-card', 'upload', 'export', 'job-action', 'download', 'settings', 'settings-set', 'cluster', 'cluster-set', 'cluster-route']:
         p = sub.add_parser(command, help={
             'send': 'Queue player input using native requestId (text or UTF-8 file)',
             'regenerate': 'Prepare/register a worldline, then queue the original player input',
@@ -71,6 +71,7 @@ def parse(argv):
             'delete-user': 'Create a truncated worldline without one player turn',
             'model-route': 'Set one validated purpose route while preserving other policy routes',
             'upload-card': 'Upload a local role card to the server import staging directory',
+            'upload': 'Upload a local file into the exact session\'s registered workspace',
             'clone': 'Explicit native clone into a separate conversation',
             'worldline': 'Read a branch operation or select an existing worldline',
             'model-set': 'Save revision-checked Tavern policy from JSON file',
@@ -126,6 +127,9 @@ def parse(argv):
             p.add_argument('--file', required=True, help='Local .md/.txt/.json/.png role card, maximum 20 MiB')
             p.add_argument('--import', dest='import_card', action='store_true', help='Explicitly queue native role-card import after upload')
             p.add_argument('--request-id', help='Stable request ID for --import')
+        if command == 'upload':
+            p.add_argument('--file', required=True, help='Local regular file, maximum 20 MiB')
+            p.add_argument('--dir', required=True, help='Relative target directory inside the exact session\'s registered workspace')
         if command == 'export': p.add_argument('--kind', choices=['card-export', 'novel-export'], required=True)
         if command == 'job-action':
             p.add_argument('--job-id', required=True)
@@ -231,6 +235,29 @@ def card_file(args):
     return {'fileName': token + extension, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(), 'fileData': base64.b64encode(raw).decode('ascii')}
 
 
+def workspace_file(args):
+    """Read one bounded local file into a content-addressed workspace upload plan."""
+    path = Path(args.file)
+    if not path.is_file():
+        raise CliError('input', 'Upload file does not exist or is not a regular file')
+    size = path.stat().st_size
+    if size > 20 * 1024 * 1024:
+        raise CliError('input', 'Upload file exceeds 20 MiB')
+    raw = path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    suffix = path.suffix.lower()
+    # The extension is only a reader hint. Its narrow grammar keeps the
+    # server-side content-addressed filename independent from source paths.
+    if suffix and not re.fullmatch(r'\.[a-z0-9][a-z0-9._-]{0,31}', suffix):
+        suffix = ''
+    return {
+        'fileName': digest + suffix,
+        'bytes': len(raw),
+        'sha256': digest,
+        'fileData': base64.b64encode(raw).decode('ascii'),
+    }
+
+
 def build_plan(args):
     from urllib.parse import urlencode
     command = args.command
@@ -269,6 +296,8 @@ def build_plan(args):
         return rpc('session/prompt', {**body, 'requestId': args.request_id or str(uuid.uuid4()), 'mode': 'queue', 'content': [{'type': 'text', 'text': text_input(args)}], 'clientTimeZone': 'Asia/Hong_Kong'})
     if command == 'upload-card':
         return {'method': 'UPLOAD', 'action': 'upload-card', 'sessionId': sid, 'import': bool(args.import_card), 'requestId': (args.request_id or str(uuid.uuid4())) if args.import_card else None, **card_file(args)}
+    if command == 'upload':
+        return {'method': 'UPLOAD', 'action': 'upload-workspace', 'sessionId': sid, 'targetDirectory': args.dir, **workspace_file(args)}
     if command == 'edit-message':
         value = {'action': 'replace-message', **body, 'role': args.role, 'text': text_input(args)}
         if args.role == 'user': value['seq'] = args.seq
@@ -303,6 +332,28 @@ def cluster_change(args):
     return {'characters': {args.character: route}} if args.character else {'defaultRoute': route}
 
 
+def cluster_record(value, name, require_characters=False):
+    """Validate an unmerged cluster scope before using it as a write base."""
+    if not isinstance(value, dict) or value.get('schemaVersion') != 1 or type(value.get('revision')) is not int or value['revision'] < 0:
+        raise CliError('cluster-invalid-response', f'Missing supported {name} cluster settings/revision; no write sent')
+    if require_characters and (type(value.get('enabled')) is not bool or not isinstance(value.get('characters'), dict)):
+        raise CliError('cluster-invalid-response', f'Missing supported {name} cluster settings/characters; no write sent')
+    return value
+
+
+def cluster_write_scope(args):
+    if args.command == 'cluster-set':
+        return 'session'
+    return 'session' if args.character else 'global'
+
+
+def cluster_write_settings(args):
+    change = cluster_change(args)
+    if cluster_write_scope(args) == 'global':
+        return {'defaultRoute': change['defaultRoute']}
+    return {'preserve': 'enabled/defaultRoute/other characters', 'change': change}
+
+
 def load_config(path):
     file = Path(path)
     result = json.loads(file.read_text(encoding='utf-8-sig')) if file.exists() else {}
@@ -318,10 +369,12 @@ def transport(config, plan):
     python = config.get('remote_python', '/usr/bin/python3')
     if not re.fullmatch(r'/[a-zA-Z0-9_./-]+', python): raise CliError('config', 'Invalid remote Python path')
     code = base64.b64encode(Path(__file__).with_name('http_worker.py').read_bytes()).decode('ascii')
-    command = shlex.quote(python) + ' -c ' + shlex.quote("import base64;exec(base64.b64decode('" + code + "'))")
+    # Send worker code through stdin too: Windows CreateProcess has a small
+    # command-line limit, and worker growth must not break every CLI command.
+    command = shlex.quote(python) + ' -c ' + shlex.quote("import sys,base64;exec(compile(base64.b64decode(sys.stdin.readline()),'<dsh-worker>','exec'))")
     packet = {'plan': plan, 'port': config.get('port', 3081), 'service': config.get('service', 'deepseek-harness'), 'timeout': config.get('timeout', 30), 'dsh_home': config.get('dsh_home'), 'harness_root': config.get('harness_root')}
     try:
-        process = subprocess.run(['ssh', '-i', key, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'StrictHostKeyChecking=yes', host, command], input=json.dumps(packet, ensure_ascii=True), capture_output=True, text=True, encoding='utf-8', timeout=int(packet['timeout']) * 2 + 20)
+        process = subprocess.run(['ssh', '-i', key, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'StrictHostKeyChecking=yes', host, command], input=code+'\n'+json.dumps(packet, ensure_ascii=True), capture_output=True, text=True, encoding='utf-8', timeout=int(packet['timeout']) * 2 + 20)
     except subprocess.TimeoutExpired:
         raise CliError('transport-timeout', 'Request outcome unknown; inspect the request ID / operation before retrying') from None
     if process.returncode: raise CliError('ssh', 'SSH command failed; check host, key, known_hosts and remote Python')
@@ -332,12 +385,26 @@ def transport(config, plan):
 def execute(args, config, transport=transport):
     plan = build_plan(args)
     if getattr(args, 'dry_run', False):
-        if args.command == 'upload-card':
+        if args.command in ['upload-card', 'upload']:
             safe = {key: value for key, value in plan.items() if key != 'fileData'}
             safe['fileData'] = '<base64 omitted>'
-            return {'dryRun': True, 'plan': safe, 'workflow': ['validate local file', 'upload via SSH worker'] + (['queue native import prompt'] if args.import_card else [])}
+            if args.command == 'upload-card':
+                workflow = ['validate local file', 'upload via SSH worker'] + (['queue native import prompt'] if args.import_card else [])
+            else:
+                workflow = [
+                    'validate local regular file and SHA-256',
+                    'read exact native session metadata and registered workspace snapshot on the server',
+                    'resolve <registered workspace>/' + args.dir + '/' + plan['fileName'] + ' with symlink containment',
+                    'reuse an identical hash or exclusively create, then read back bytes and SHA-256',
+                ]
+            return {'dryRun': True, 'plan': safe, 'workflow': workflow}
         if args.command in ['cluster-set', 'cluster-route']:
-            return {'dryRun': True, 'plan': {'read': plan, 'write': rest('character-cluster', {'sessionId': args.session, 'expectedRevision': '<revision returned by read>', 'settings': {'preserve': 'enabled/defaultRoute/other characters', 'change': cluster_change(args)}})}, 'workflow': ['wake named session without prompt', 'read cluster settings and roster', 'merge selected setting', 'revision-checked write; no automatic retry']}
+            scope = cluster_write_scope(args)
+            revision = '<global revision returned by read>' if scope == 'global' else '<session revision returned by read>'
+            settings = cluster_write_settings(args)
+            if scope == 'session':
+                settings = {'enabled': '<session enabled>', 'defaultRoute': '<session defaultRoute>', 'characters': '<session characters>', 'change': settings['change']}
+            return {'dryRun': True, 'plan': {'read': plan, 'write': rest('character-cluster', {'sessionId': args.session, 'scope': scope, 'expectedRevision': revision, 'settings': settings})}, 'workflow': ['wake named session without prompt', 'read effective settings plus raw session/global scopes and roster', 'merge selected setting in its owning scope', 'revision-checked write; no automatic retry']}
         if args.command == 'model-route':
             preview = {'scope': args.scope, 'settings': {'preserve': 'existing allMain/routes', 'routes': {args.purpose: {'provider': args.provider, 'model': args.model, 'reasoningEffort': args.effort}}}, 'expectedRevision': '<revision returned by read>'}
             return {'dryRun': True, 'plan': {'read': plan, 'write': rest('models', {**{'sessionId': args.session}, 'scope': args.scope, **preview})}, 'workflow': ['read models', 'merge selected purpose route', 'write models']}
@@ -383,21 +450,26 @@ def execute(args, config, transport=transport):
     if args.command == 'download' and Path(args.out).exists(): raise CliError('exists', 'Download target already exists; choose a new --out path')
     # Agent-owned routes may be absent after a restart. Explicit wake resumes the
     # named Agent only; it sends no prompt. No retries of paid/writing requests.
-    if getattr(args, 'session', None) and args.command not in ['history', 'cancel', 'clone']:
+    if getattr(args, 'session', None) and args.command not in ['history', 'cancel', 'clone', 'upload']:
         call(rest('wake', {'sessionId': args.session}))
     if args.command in ['cluster-set', 'cluster-route']:
         try:
             current = call(plan)
-            settings = current.get('settings') if isinstance(current, dict) else None
-            if not isinstance(settings, dict) or settings.get('schemaVersion') != 1 or type(settings.get('revision')) is not int or settings['revision'] < 0 or type(settings.get('enabled')) is not bool or not isinstance(settings.get('characters'), dict):
-                raise CliError('cluster-invalid-response', 'Missing supported cluster settings/revision; no write sent')
-            selected = {key: settings.get(key) for key in ['enabled', 'defaultRoute', 'characters']}
+            if not isinstance(current, dict):
+                raise CliError('cluster-invalid-response', 'Missing supported cluster response; no write sent')
+            scope = cluster_write_scope(args)
+            session = cluster_record(current.get('session'), 'session', require_characters=True)
+            global_settings = cluster_record(current.get('global'), 'global')
             change = cluster_change(args)
             if 'characters' in change:
                 roster = {c.get('id') for c in current.get('characters', []) if isinstance(c, dict)}
                 if args.character not in roster: raise CliError('cluster-unknown-character', 'Character is not in the current roster; refresh cluster first')
-                change['characters'] = {**selected['characters'], **change['characters']}
-            return call(rest('character-cluster', {'sessionId': args.session, 'expectedRevision': settings['revision'], 'settings': {**selected, **change}}))
+                change['characters'] = {**session['characters'], **change['characters']}
+            if scope == 'global':
+                body = {'sessionId': args.session, 'scope': 'global', 'expectedRevision': global_settings['revision'], 'settings': {'defaultRoute': change['defaultRoute']}}
+            else:
+                body = {'sessionId': args.session, 'scope': 'session', 'expectedRevision': session['revision'], 'settings': {**{key: session[key] for key in ['enabled', 'defaultRoute', 'characters']}, **change}}
+            return call(rest('character-cluster', body))
         except CliError as error:
             raise CliError(error.code, str(error), {'sessionId': args.session, 'automaticRetry': False, 'cause': error.details}) from None
     if args.command in ['regenerate', 'edit-send']:
@@ -470,6 +542,22 @@ def execute(args, config, transport=transport):
         except CliError as error:
             error.details = {**(error.details or {}), 'requestId': request_id, 'targetFileName': plan.get('fileName'), 'path': (error.details or {}).get('path'), 'automaticRetry': False}
             raise
+    if args.command == 'upload':
+        try:
+            uploaded = call(plan)
+            if (not isinstance(uploaded, dict) or uploaded.get('sha256') != plan['sha256']
+                    or uploaded.get('bytes') != plan['bytes'] or not uploaded.get('path')
+                    or not uploaded.get('workspaceId')):
+                raise CliError('upload-verification', 'Workspace upload worker returned mismatched path, workspace, size or SHA-256', {
+                    'sessionId': args.session,
+                    'targetDirectory': args.dir,
+                    'path': uploaded.get('path') if isinstance(uploaded, dict) else None,
+                })
+            return {key: uploaded[key] for key in ['path', 'bytes', 'sha256', 'workspaceId', 'reused'] if key in uploaded}
+        except CliError:
+            raise
+        except Exception as error:
+            raise CliError('upload-workspace-failed', str(error), {'sessionId': args.session, 'targetDirectory': args.dir, 'automaticRetry': False}) from None
     try: result = call(plan)
     except CliError as error:
         if args.command == 'send': error.details = {'requestId': plan['body']['payload']['args']['request']['requestId'], 'sessionId': args.session, 'automaticRetry': False}

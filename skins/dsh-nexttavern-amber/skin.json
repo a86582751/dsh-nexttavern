@@ -1,0 +1,29 @@
+{
+  "id": "nexttavern-amber",
+  "name": "NextTavern 琥珀酒馆",
+  "nameEn": "NextTavern Amber Tavern",
+  "author": "NextTavern",
+  "tagline": "琥珀灯光 · 深木酒馆 · 鲸鱼娘老板娘",
+  "description": "NextTavern 自有酒馆皮肤：以琥珀灯光、深橡木与暖玻璃面板重绘整个界面，左上角品牌位替换为 NextTavern。侧栏与空态由一位提着琥珀提灯的鲸鱼娘老板娘驻守，日间版为晨光窗边、夜间版为烛火柜台；状态、决策与阅读区沿用暖调纸感，代码块与滚动条一并转为暖木色。整套配色由设计 token 驱动，明暗两套各自独立。",
+  "tags": [
+    "tavern",
+    "amber",
+    "wood",
+    "warm",
+    "anime",
+    "whale",
+    "glass"
+  ],
+  "accent": "#d9a441",
+  "bodyAttr": "data-dsh-nexttavern",
+  "package": "dsh-nexttavern-amber",
+  "wiring": {
+    "id": "ui-skin-nexttavern",
+    "bundleWired": false
+  },
+  "preview": {
+    "light": "preview/light.png",
+    "dark": "preview/dark.png"
+  },
+  "order": 1
+}

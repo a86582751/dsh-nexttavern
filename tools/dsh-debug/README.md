@@ -1,9 +1,14 @@
-# dsh-debug 1.3
+# dsh-debug 1.4
 
 Python 3.14 stdlib CLI for the installed DSH alpha3 REST + Connection RPC.
 Install with PowerShell `-File runtime/alpha3/operations/dsh-debug/install.ps1`.
 This copies a durable command into `~/.local/bin`, adds it to the user PATH and
 keeps its worker in `~/.dsh-debug/lib`. Re-run after source changes.
+
+The SSH worker source and request travel over stdin; the command line stays
+short on Windows even as the worker grows. Workspace uploads unwrap the native
+workspace baseline and open every registered path component without following
+symlinks. Existing directory permissions are reported without changing owners.
 
 `dsh-debug --help` describes all commands. JSON is the default; `--json` is
 accepted before the command. No dependency installation or DSH restart needed.
@@ -58,6 +63,8 @@ dsh-debug delete-message --session session-ID --message-id assistant-ID --dry-ru
 dsh-debug delete-user --session session-ID --message-id assistant-ID --dry-run
 dsh-debug upload-card --session session-ID --file card.json --dry-run
 dsh-debug upload-card --session session-ID --file card.json --import --request-id card-import-1
+dsh-debug upload --session session-ID --file original.txt --dir .dsh-uploads --dry-run
+dsh-debug upload --session session-ID --file original.txt --dir .dsh-uploads
 dsh-debug clone --session session-ID --at-seq 456 --dry-run
 dsh-debug model-set --session session-ID --body-file policy.json --dry-run
 dsh-debug model-route --session session-ID --purpose status --provider qwen --model qwen3.8-flash --effort low --dry-run
@@ -169,8 +176,38 @@ it returns admission and requires `activity`/`jobs` verification for import
 completion and resource registration. It never embeds the card bytes in the
 prompt or treats the file as executable instructions.
 
+`upload` is the general file path for an exact Session that is already a member
+of one registered native Workspace. `--dir` is required and is a relative
+POSIX-style directory below that Workspace; absolute paths, backslashes, empty
+components and `.`/`..` components are rejected. The worker reads native
+`session/list` continuation pages until it finds the exact ID, then reads the
+`workspace/follow` snapshot and checks that the Session's `cwd` matches its one
+registered Workspace. It does not accept a server root from the CLI packet. The
+Linux worker opens the registered root and every target-directory component
+through `dir_fd` with `O_DIRECTORY|O_NOFOLLOW`; a symlink, parent replacement
+race, or non-directory component fails closed.
+
+The final name is `<sha256><safe source extension>` inside the requested
+directory, so different content never overwrites a same-source-name file. An
+already-existing regular file is reused only after its bytes and SHA-256 match;
+otherwise the command reports a conflict. New files are exclusive-created,
+written by the actual service account, read back and hashed before the CLI
+returns the service-readable `path`, `bytes`, `sha256`, `workspaceId`, and
+`reused` flag. The SSH worker reads the configured unit's actual `MainPID` and
+its `/proc/<pid>/status` UID/GID/groups, then forks and drops to that identity
+before it opens or creates any Workspace path. It never changes ownership of an
+existing Workspace directory; an inaccessible directory reports a service-account
+permission error. A failed new-file write removes only the inode created by that
+invocation when it can prove the inode still matches. Generic uploads accept
+local regular files up to 20 MiB and do not queue an import prompt.
+
 Design gate: “原本程序直接完成的步骤，现在需要模型推理；预计增加几次请求，为什么值得？”
-This change adds zero runtime model requests. Reads/dry-run add zero; explicit
+This change adds zero runtime model requests. A normal `upload` has one SSH
+worker invocation, one or more native session metadata pages until the exact
+session is found, one registered-workspace baseline read, and one
+service-account file write/readback. It has no automatic retry; the existing
+short-lived credential fallback is authentication-only when no launch token is
+available. Reads/dry-run add zero; explicit
 send/regenerate/export invoke exactly the existing pipeline, not an extra CLI
 model. No model-driven selector, warmup, cache padding or automatic retry.
 
@@ -179,20 +216,33 @@ model. No model-driven selector, warmup, cache padding or automatic retry.
 
 Memory settings use `settings` / `settings-set`: window size, complete-story tail budget and notes cadence are primary. Target/archive options are legacy compatibility controls. Preserve revisions and scope; `0` restores inheritance as documented above.
 
-Cluster is conversation-scoped, default off, with no global scope or dedicated CLI subcommand:
+The character cluster is default off. The GET response exposes effective `settings`
+plus raw `session` and `global` records. The CLI writes the owning scope explicitly:
+session toggles and character overrides are conversation-scoped; a default route
+without `--character` is the global policy shared by conversations.
 
 ```powershell
 dsh-debug request '/api/roleplay/character-cluster?sessionId=session-ID'
 dsh-debug request '/api/roleplay/character-cluster' --method POST --body-file cluster.json --dry-run
 ```
 
-POST contains `sessionId`, GET's `expectedRevision`, and `settings: {enabled, defaultRoute, characters}`. Preserve returned character settings when changing one route. Null routes inherit; `{main:true}` follows the writer, optionally with `reasoningEffort`; explicit routes contain `provider`, `model` and optional `reasoningEffort`. Preference changes do not generate a story; future enabled stories may start paid children, even with the writer's model.
+Raw scope records carry the revision used by POST: session writes contain
+`enabled`, `defaultRoute` and `characters`; global writes contain only
+`defaultRoute`. Preserve returned character settings when changing one route.
+Null routes inherit; `{main:true}` follows the writer, optionally with
+`reasoningEffort`; explicit routes contain `provider`, `model` and optional
+`reasoningEffort`. Preference changes do not generate a story; future enabled
+stories may start paid children, even with the writer's model.
 
 See [cluster evidence](../../../../docs/character-cluster-20260910.md), [operations](../../../../docs/operations.md), and [current baseline](../../../../project.md). Admission, HTTP success, model completion and browser rendering remain separate observations.
 
 ## Character-agent cluster
 
-These commands use the existing `/api/roleplay/character-cluster` endpoint. Settings belong to the current visible conversation (its worldlines share conversation settings); each run/context remains branch-owned. No global scope and no model request is created by changing settings.
+These commands use the existing `/api/roleplay/character-cluster` endpoint. A
+session ID is always required, and no model request is created by changing
+settings. The CLI rejects an old response without raw `session`/`global`
+records before sending a write, so it cannot accidentally overwrite effective
+settings.
 
 ```powershell
 dsh-debug cluster --session session-ID
@@ -205,7 +255,12 @@ dsh-debug cluster-route --session session-ID --inherit
 dsh-debug cluster-set --session session-ID --enabled false --dry-run
 ```
 
-`cluster` returns saved settings, revision and roster IDs/names. Obtain model IDs and supported effort values from `models`; the server validates them. Omitting `--character` selects the default character route. `--main` follows the writer dynamically; `--inherit` clears the override (character → default, default → main). Omitted effort uses the selected provider/model default; supply an explicit effort when required. Unknown roster IDs are rejected before writing.
+`cluster` returns effective settings, raw scope revisions and roster IDs/names.
+Obtain model IDs and supported effort values from `models`; the server validates
+them. Omitting `--character` selects the global default route. `--main` follows
+the writer dynamically; `--inherit` clears the override (character → default,
+default → main). Omitted effort uses the selected provider/model default; supply
+an explicit effort when required. Unknown roster IDs are rejected before writing.
 
 Writes read the current revision and preserve all untouched fields and other characters, then submit one revision-checked write. Conflicts/timeouts do not auto-retry. Refresh settings before deciding whether another write is needed. No browser, raw JSON or direct storage edits are needed.
 

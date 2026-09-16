@@ -1,0 +1,10 @@
+{
+  "name": "@dsh/embedding-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "onnxruntime-node": "1.29.0"
+  },
+  "overrides": {"onnxruntime-node": "$onnxruntime-node"}
+}

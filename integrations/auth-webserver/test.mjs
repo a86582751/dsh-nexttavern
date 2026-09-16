@@ -124,6 +124,31 @@ assert.equal(forbiddenConnection.requestRejection(markedForbiddenRequest), 403)
 
 // Exercise the real wrapper: headers cannot forge the server-only upload marker.
 assert.equal(request('harness.example.com')[Symbol.for('@isund/dsh-auth-webserver/verified-access')], undefined)
+for (const method of ['register', 'registerFallback']) {
+  const original = WebServer.prototype[method]
+  let wrappedHandler, handled = 0, disposed = 0
+  WebServer.prototype[method] = value => {
+    wrappedHandler = method === 'register' ? value.handler : value
+    return () => { disposed++ }
+  }
+  try {
+    const handler = async () => { handled++ }
+    const dispose = method === 'register'
+      ? server.register({kind:'exact',path:'/fixture',handler})
+      : server.registerFallback(handler)
+    const response = {writeHead(status,headers){this.status=status;this.headers=headers},end(body){this.body=body}}
+    await wrappedHandler(request('harness.example.com'),response)
+    assert.equal(response.status,401)
+    assert.equal(response.headers['cache-control'],'no-store')
+    assert.equal(handled,0,'unauthenticated HTTP requests cannot invoke the route')
+    const incoming = request('harness.example.com',await token())
+    await wrappedHandler(incoming,response)
+    assert.equal(handled,1)
+    assert.equal(incoming[Symbol.for('@isund/dsh-auth-webserver/verified-access')],true)
+    dispose()
+    assert.equal(disposed,1,'wrapper preserves the native registration disposer')
+  } finally { WebServer.prototype[method] = original }
+}
 let wrapped, upgrades = 0
 const originalRegister = WebServer.prototype.registerUpgrade
 WebServer.prototype.registerUpgrade = function(route) { wrapped = route; return () => {} }
@@ -145,6 +170,12 @@ try {
   assert.equal(socket.destroyed, true)
   assert.equal(incoming[Symbol.for('@isund/dsh-auth-webserver/verified-access')], true)
   server.authorize = auth
+  const localSocket = new EventEmitter()
+  localSocket.destroy = () => { localSocket.destroyed = true }
+  await wrapped.handler(request('127.0.0.1:3081'), localSocket, Buffer.alloc(0))
+  assert.equal(localSocket.destroyed, undefined, 'loopback upgrades have no Access expiry')
+  assert.equal(localSocket.listenerCount('close'), 0, 'no expiry timer is attached to a loopback upgrade')
+  assert.equal(upgrades, 2)
 } finally {
   WebServer.prototype.registerUpgrade = originalRegister
 }

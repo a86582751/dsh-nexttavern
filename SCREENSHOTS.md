@@ -53,3 +53,35 @@
 ## 资源管理
 
 ![资源管理](screenshots/resources.png)
+
+## 自有皮肤 · 日间主题
+
+![自有皮肤 · 日间主题](screenshots/skin-day.png)
+
+## 自有皮肤 · 夜间主题
+
+![自有皮肤 · 夜间主题](screenshots/skin-night.png)
+
+## 沉浸式游玩（自有皮肤）
+
+![沉浸式游玩（自有皮肤）](screenshots/play.png)
+
+## 长文本转角色卡
+
+![长文本转角色卡](screenshots/novel.png)
+
+## 记忆检索方式与窗口设置
+
+![记忆检索方式与窗口设置](screenshots/retrieval.png)
+
+## 嵌入模型管理
+
+![嵌入模型管理](screenshots/embedding.png)
+
+## 预设系统
+
+![预设系统](screenshots/presets.png)
+
+## 自带文风预设库
+
+![自带文风预设库](screenshots/preset-catalog.png)

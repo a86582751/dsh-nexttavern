@@ -4,12 +4,14 @@ No service/plugin installation, credential copying or authentication changes.
 The launch token and browser cookie stay inside this remote process.
 """
 import base64
+import errno
 import http.cookiejar
 import json
 import hashlib
 import os
 import re
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -165,6 +167,315 @@ def stage_card(plan, root=UPLOAD_ROOT):
     return {'ok': True, 'path': target, 'bytes': len(check), 'sha256': digest}
 
 
+def workspace_relative_directory(value):
+    """Accept one portable relative directory, never an absolute or traversal path."""
+    if not isinstance(value, str) or not value or os.path.isabs(value) or value.startswith(('\\', '/')):
+        raise ValueError('workspace target directory must be a non-empty relative path')
+    if '\\' in value or ':' in value:
+        raise ValueError('workspace target directory must use relative POSIX components')
+    parts = value.split('/')
+    if any(not part or part in {'.', '..'} or '\x00' in part for part in parts):
+        raise ValueError('workspace target directory contains traversal or an empty component')
+    return parts
+
+
+def workspace_upload_bytes(plan):
+    """Validate the byte packet and its content-addressed reader hint."""
+    raw = base64.b64decode(str(plan.get('fileData', '')), validate=True)
+    if type(plan.get('bytes')) is not int or len(raw) != plan['bytes'] or len(raw) > 20 * 1024 * 1024:
+        raise ValueError('invalid workspace upload size')
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != str(plan.get('sha256', '')):
+        raise ValueError('workspace upload hash mismatch')
+    name = str(plan.get('fileName', ''))
+    suffix = name[len(digest):] if name.startswith(digest) else None
+    if suffix is None or name != digest + suffix or not re.fullmatch(r'(?:\.[a-z0-9][a-z0-9._-]{0,31})?', suffix):
+        raise ValueError('invalid content-addressed upload filename')
+    return raw, digest, name
+
+
+class WorkspaceUploadError(Exception):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+def read_regular_at(parent_fd, name, maximum):
+    flags = os.O_RDONLY | os.O_NOFOLLOW
+    fd = os.open(name, flags, dir_fd=parent_fd)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise WorkspaceUploadError('workspace-upload-target', 'Workspace upload target is not a regular file')
+        parts = []
+        total = 0
+        while True:
+            part = os.read(fd, min(1024 * 1024, maximum + 1 - total))
+            if not part:
+                break
+            parts.append(part)
+            total += len(part)
+            if total > maximum:
+                raise WorkspaceUploadError('workspace-upload-target', 'Workspace upload target exceeds maximum size')
+        return b''.join(parts)
+    finally:
+        os.close(fd)
+
+
+def resolve_workspace(session_id, session_value, workspace_value):
+    """Use only native metadata: no client-supplied server root is accepted."""
+    if isinstance(workspace_value, dict) and workspace_value.get('type') == 'baseline':
+        workspace_value = workspace_value.get('value')
+    sessions = session_value.get('items') if isinstance(session_value, dict) else None
+    workspaces = workspace_value.get('items') if isinstance(workspace_value, dict) else None
+    if not isinstance(sessions, list) or not isinstance(workspaces, list):
+        raise ValueError('native session/workspace metadata has an unsupported shape')
+    rows = [row for row in sessions if isinstance(row, dict) and row.get('sessionId') == session_id]
+    if len(rows) != 1 or not isinstance(rows[0].get('cwd'), str) or not os.path.isabs(rows[0]['cwd']):
+        raise ValueError('exact session is missing from native metadata or has no absolute cwd')
+    memberships = [row for row in workspaces if isinstance(row, dict) and isinstance(row.get('sessionIds'), list) and session_id in row['sessionIds']]
+    if len(memberships) != 1:
+        raise ValueError('exact session is not in exactly one registered workspace')
+    workspace = memberships[0]
+    if not isinstance(workspace.get('workspaceId'), str) or not isinstance(workspace.get('path'), str) or not os.path.isabs(workspace['path']):
+        raise ValueError('registered workspace metadata is invalid')
+    if workspace['path'] != rows[0]['cwd']:
+        raise ValueError('native session cwd does not match its registered workspace path')
+    return workspace
+
+
+def open_or_create_directory_at(parent_fd, name):
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        return os.open(name, flags, dir_fd=parent_fd)
+    except PermissionError:
+        raise
+    except OSError as error:
+        if error.errno != errno.ENOENT:
+            raise WorkspaceUploadError('workspace-upload-directory', 'Workspace target directory has a symlink or non-directory component') from error
+    try:
+        os.mkdir(name, 0o700, dir_fd=parent_fd)
+    except FileExistsError:
+        pass
+    try:
+        return os.open(name, flags, dir_fd=parent_fd)
+    except OSError as error:
+        raise WorkspaceUploadError('workspace-upload-directory', 'Workspace target directory changed or is not safely accessible') from error
+
+
+def unlink_created_at(parent_fd, name, expected):
+    """Remove only the inode created by this invocation after a failed write."""
+    try:
+        current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        if (current.st_dev, current.st_ino) == expected:
+            os.unlink(name, dir_fd=parent_fd)
+    except OSError:
+        pass
+
+
+def stage_workspace_upload(plan, workspace):
+    """Linux dirfd staging below one registered Workspace, safe from parent swaps."""
+    if os.name != 'posix':
+        raise WorkspaceUploadError('workspace-upload-platform', 'Workspace upload requires the Linux service worker')
+    raw, digest, name = workspace_upload_bytes(plan)
+    parts = workspace_relative_directory(plan.get('targetDirectory'))
+    root = workspace['path']
+    # O_NOFOLLOW protects one component, not an entire absolute path. Walk
+    # from / so even a registered workspace's parents cannot redirect writes.
+    if not isinstance(root, str) or not os.path.isabs(root) or '..' in root.split('/'):
+        raise WorkspaceUploadError('workspace-upload-root', 'Registered workspace path must be absolute without parent traversal')
+    root_real = os.path.normpath(root)
+    root_fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for component in root_real.split('/'):
+            if not component:
+                continue
+            next_fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+            os.close(root_fd)
+            root_fd = next_fd
+    except PermissionError:
+        os.close(root_fd)
+        raise
+    except OSError as error:
+        os.close(root_fd)
+        raise WorkspaceUploadError('workspace-upload-root', 'Registered workspace path changed, contains a symlink, or is unavailable') from error
+    directory_fd = root_fd
+    try:
+        for part in parts:
+            next_fd = open_or_create_directory_at(directory_fd, part)
+            if directory_fd != root_fd:
+                os.close(directory_fd)
+            directory_fd = next_fd
+        target_path = os.path.join(root_real, *parts, name)
+        try:
+            existing = read_regular_at(directory_fd, name, 20 * 1024 * 1024)
+        except FileNotFoundError:
+            existing = None
+        if existing is not None:
+            if len(existing) != len(raw) or hashlib.sha256(existing).hexdigest() != digest:
+                raise WorkspaceUploadError('workspace-upload-conflict', 'Content-addressed target exists with different bytes')
+            return {'ok': True, 'path': target_path, 'bytes': len(existing), 'sha256': digest, 'workspaceId': workspace['workspaceId'], 'reused': True}
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        fd = os.open(name, flags, 0o600, dir_fd=directory_fd)
+        created = os.fstat(fd)
+        try:
+            offset = 0
+            while offset < len(raw):
+                written = os.write(fd, raw[offset:])
+                if written <= 0:
+                    raise OSError('short write')
+                offset += written
+            os.fsync(fd)
+            os.fchmod(fd, 0o600)
+        except Exception:
+            os.close(fd)
+            unlink_created_at(directory_fd, name, (created.st_dev, created.st_ino))
+            fd = None
+            raise WorkspaceUploadError('workspace-upload-write', 'Workspace upload write failed; this invocation removed its partial file when safe') from None
+        finally:
+            if fd is not None:
+                os.close(fd)
+        try:
+            check = read_regular_at(directory_fd, name, 20 * 1024 * 1024)
+        except Exception:
+            unlink_created_at(directory_fd, name, (created.st_dev, created.st_ino))
+            raise WorkspaceUploadError('workspace-upload-verification', 'Workspace upload readback failed; this invocation removed its file when safe') from None
+        if len(check) != len(raw) or hashlib.sha256(check).hexdigest() != digest:
+            unlink_created_at(directory_fd, name, (created.st_dev, created.st_ino))
+            raise WorkspaceUploadError('workspace-upload-verification', 'Workspace upload hash verification failed; this invocation removed its file when safe')
+        return {'ok': True, 'path': target_path, 'bytes': len(check), 'sha256': digest, 'workspaceId': workspace['workspaceId'], 'reused': False}
+    finally:
+        if directory_fd != root_fd:
+            os.close(directory_fd)
+        os.close(root_fd)
+
+
+def native_rpc(opener, base, cookie, method, request, timeout):
+    key = '_request' if method == 'session/list' else 'request'
+    body = {'type': 'client-request', 'rpcId': str(uuid.uuid4()), 'method': method, 'payload': {'args': {key: request}}}
+    wire = urllib.request.Request(base + '/api/' + method, data=json.dumps(body, ensure_ascii=False).encode('utf-8'), method='POST', headers={'Content-Type': 'application/json', **({'Cookie': cookie} if cookie else {})})
+    try:
+        response = opener.open(wire, timeout=timeout)
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
+        raw = response.read(32 * 1024 * 1024 + 1)
+        if len(raw) > 32 * 1024 * 1024:
+            raise ValueError('native metadata response exceeds 32 MiB')
+        try:
+            data = json.loads(raw)
+        except (ValueError, UnicodeDecodeError) as error:
+            raise ValueError('native metadata response is not JSON') from error
+        if response.status >= 400:
+            raise ValueError('native metadata request failed')
+    result = data.get('result') if isinstance(data, dict) and data.get('type') == 'server-response' else data
+    if not isinstance(result, dict) or result.get('ok') is not True or 'value' not in result:
+        raise ValueError('native metadata request returned an error')
+    return result['value']
+
+
+def exact_session_metadata(opener, base, cookie, session_id, timeout, rpc_call=native_rpc):
+    """Walk native list continuation pages until the exact session is found."""
+    cursor = None
+    seen = set()
+    for _ in range(1024):
+        request = {} if cursor is None else {'cursor': cursor}
+        page = rpc_call(opener, base, cookie, 'session/list', request, timeout)
+        items = page.get('items') if isinstance(page, dict) else None
+        if not isinstance(items, list):
+            raise WorkspaceUploadError('workspace-upload-metadata', 'Native session metadata has an unsupported shape')
+        matches = [row for row in items if isinstance(row, dict) and row.get('sessionId') == session_id]
+        if len(matches) == 1:
+            return {'items': matches}
+        if len(matches) > 1:
+            raise WorkspaceUploadError('workspace-upload-metadata', 'Native session metadata returned duplicate exact session rows')
+        next_cursor = page.get('nextCursor')
+        if next_cursor is None:
+            raise WorkspaceUploadError('workspace-upload-session', 'Exact session was not found in native metadata')
+        if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen:
+            raise WorkspaceUploadError('workspace-upload-metadata', 'Native session metadata returned an invalid continuation cursor')
+        seen.add(next_cursor)
+        cursor = next_cursor
+    raise WorkspaceUploadError('workspace-upload-metadata', 'Native session metadata exceeded the continuation-page limit')
+
+
+def service_identity(service):
+    """Read the configured unit's actual MainPID credential from procfs."""
+    try:
+        main = subprocess.run(['systemctl', 'show', service, '--property=MainPID', '--value'], capture_output=True, text=True, timeout=8, check=True).stdout.strip()
+        if not re.fullmatch(r'[1-9][0-9]*', main):
+            raise ValueError('invalid MainPID')
+        status = open(os.path.join('/proc', main, 'status'), encoding='utf-8').read().splitlines()
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        raise WorkspaceUploadError('workspace-upload-service', 'Configured service MainPID/identity is unavailable; no workspace file was written') from error
+    values = {}
+    for line in status:
+        key, _, value = line.partition(':')
+        if key in {'Uid', 'Gid', 'Groups'}:
+            values[key] = value.split()
+    if len(values.get('Uid', [])) < 2 or len(values.get('Gid', [])) < 2:
+        raise WorkspaceUploadError('workspace-upload-service', 'Configured service proc identity is incomplete; no workspace file was written')
+    try:
+        groups = [int(value) for value in values.get('Groups', [])]
+        return {'uid': int(values['Uid'][1]), 'gid': int(values['Gid'][1]), 'groups': groups}
+    except ValueError as error:
+        raise WorkspaceUploadError('workspace-upload-service', 'Configured service proc identity is invalid; no workspace file was written') from error
+
+
+def stage_as_service_identity(plan, workspace, identity):
+    """Fork, drop to the running service's UID/GID/groups, then stage exactly once."""
+    if os.name != 'posix':
+        raise WorkspaceUploadError('workspace-upload-platform', 'Workspace upload requires the Linux service worker')
+    uid, gid, groups = identity.get('uid'), identity.get('gid'), identity.get('groups')
+    if type(uid) is not int or type(gid) is not int or not isinstance(groups, list) or any(type(group) is not int for group in groups):
+        raise WorkspaceUploadError('workspace-upload-service', 'Configured service identity is invalid; no workspace file was written')
+    identity_matches = (os.geteuid(), os.getegid()) == (uid, gid) and set(os.getgroups()) == set(groups)
+    if not identity_matches and os.geteuid() != 0:
+        raise WorkspaceUploadError('workspace-upload-service', 'SSH worker cannot switch to the configured service identity; no workspace file was written')
+    read_fd, write_fd = os.pipe()
+    child = os.fork()
+    if child == 0:
+        os.close(read_fd)
+        try:
+            if os.geteuid() == 0:
+                os.setgroups(groups)
+                os.setgid(gid)
+                os.setuid(uid)
+            result = {'ok': True, 'value': stage_workspace_upload(plan, workspace)}
+        except WorkspaceUploadError as error:
+            result = {'ok': False, 'error': {'code': error.code, 'message': str(error)}}
+        except PermissionError:
+            result = {'ok': False, 'error': {'code': 'workspace-upload-permission', 'message': 'Configured service account cannot write the requested existing workspace directory; no ownership was changed'}}
+        except Exception:
+            result = {'ok': False, 'error': {'code': 'workspace-upload-failed', 'message': 'Workspace upload failed under the configured service account'}}
+        wire = json.dumps(result, ensure_ascii=True).encode('ascii')
+        try:
+            os.write(write_fd, wire)
+        finally:
+            os.close(write_fd)
+        os._exit(0)
+    os.close(write_fd)
+    chunks = []
+    while True:
+        part = os.read(read_fd, 8192)
+        if not part:
+            break
+        chunks.append(part)
+        if sum(map(len, chunks)) > 65536:
+            break
+    os.close(read_fd)
+    _, status = os.waitpid(child, 0)
+    try:
+        result = json.loads(b''.join(chunks))
+    except (ValueError, UnicodeDecodeError) as error:
+        raise WorkspaceUploadError('workspace-upload-service', 'Configured service staging process returned no valid result') from error
+    if status != 0 or not isinstance(result, dict) or result.get('ok') is not True:
+        error = result.get('error') if isinstance(result, dict) else None
+        code = error.get('code') if isinstance(error, dict) else 'workspace-upload-service'
+        message = error.get('message') if isinstance(error, dict) else 'Configured service staging process failed'
+        raise WorkspaceUploadError(code, message)
+    return result['value']
+
+
 def project_response(data, plan):
     """Bound native list data before crossing SSH; never mutate API objects."""
     if plan.get('summary') != 'sessions' or data.get('result', {}).get('ok') is not True:
@@ -194,10 +505,13 @@ def run(value):
     if not 1 <= port <= 65535:
         raise ValueError('port')
     base = f'http://127.0.0.1:{port}'
-    path = plan['path']
-    decoded = urllib.parse.unquote(path)
-    if not path.startswith('/api/') or '..' in decoded.split('?')[0].split('/') or any(c in path for c in '\r\n\\'):
-        raise ValueError('API path')
+    path = plan.get('path')
+    if plan.get('action') != 'upload-workspace':
+        if not isinstance(path, str):
+            raise ValueError('API path')
+        decoded = urllib.parse.unquote(path)
+        if not path.startswith('/api/') or '..' in decoded.split('?')[0].split('/') or any(c in path for c in '\r\n\\'):
+            raise ValueError('API path')
     timeout = min(120, max(1, int(value.get('timeout', 30))))
     service = value.get('service', 'deepseek-harness')
     if not re.fullmatch(r'[a-zA-Z0-9_.@-]+', service):
@@ -207,11 +521,13 @@ def run(value):
         tokens = re.findall(r'[?&]token=([A-Za-z0-9_-]+)', journal.stdout)
     except (FileNotFoundError, subprocess.CalledProcessError):
         tokens = []
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(jar))
     cookie = None
     if tokens:
         with opener.open(base + '/?token=' + urllib.parse.quote(tokens[-1]), timeout=timeout) as response:
             response.read(4096)
+        cookie = '; '.join(f'{item.name}={item.value}' for item in jar)
     else:
         # Some installations never log launch tokens. A server administrator
         # already owns this native credential. Sign a 60-second loopback-only
@@ -239,6 +555,18 @@ process.stdout.write(name+'=v1.'+body+'.'+crypto.createHmac('sha256',secret).upd
             return {'ok': True, 'value': read_workspace_baseline(port, cookie or '', timeout)}
         except Exception as error:
             return {'ok': False, 'error': {'code': 'workspace-stream', 'message': str(error)}}
+    if plan.get('action') == 'upload-workspace':
+        try:
+            session_value = exact_session_metadata(opener, base, cookie, plan.get('sessionId'), timeout)
+            workspace_value = read_workspace_baseline(port, cookie or '', timeout)
+            workspace = resolve_workspace(plan.get('sessionId'), session_value, workspace_value)
+            return stage_as_service_identity(plan, workspace, service_identity(service))
+        except WorkspaceUploadError as error:
+            return {'ok': False, 'error': {'code': error.code, 'message': str(error)}}
+        except PermissionError:
+            return {'ok': False, 'error': {'code': 'workspace-upload-permission', 'message': 'Configured service account cannot write the requested existing workspace directory; no ownership was changed'}}
+        except (OSError, ValueError):
+            return {'ok': False, 'error': {'code': 'workspace-upload-metadata', 'message': 'Native workspace metadata could not safely resolve the requested upload target'}}
     body = plan.get('body')
     request = urllib.request.Request(base + path, data=None if body is None else json.dumps(body, ensure_ascii=False).encode('utf-8'), method=plan['method'], headers={'Content-Type': 'application/json', **({'Cookie': cookie} if cookie else {})})
     try:

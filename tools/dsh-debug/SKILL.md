@@ -61,6 +61,15 @@ stages a local .md/.txt/.json/.png into the fixed server import directory;
 only explicit `--import` queues one native prompt referring to that path.
 Never put card bytes in the prompt; verify completion through activity/jobs.
 
+Use `upload --session ID --file local-file --dir .dsh-uploads` for an ordinary
+file that the selected Session must read from its own registered Workspace.
+The worker follows native Session metadata pages, resolves the registered
+Workspace path, and stages through Linux dirfds as the configured service
+MainPID's UID/GID; do not supply a server root or an absolute/`..` target. It
+returns the readable path, byte count and SHA-256 after an exclusive
+content-addressed upload. Use `--dry-run` first to inspect the target strategy;
+it never contacts the server.
+
 Auth uses SSH settings from `~/.dsh-debug/config.json`, env overrides first.
 The launch token or short-lived native browser cookie stays on the server.
 Do not print credentials or copy them into a command line.
