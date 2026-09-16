@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "434ae6351434ee06d30da555c1e1fa56b0d131f2",
-  "dirty": true,
+  "sourceCommit": "757085aa4aff6d4fb6a54032d90f32bbca14c9f4",
+  "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
   "compiler": "0.24.2",
@@ -1196,7 +1196,7 @@
       "source": "runtime/alpha3/ui/package.json",
       "target": "package.json",
       "sourceSha256": "d85084ea315bf5f2b1caa306a56df3928cd0b24d3a67a02ea4a96bbff196f9ba",
-      "sha256": "15d209f5d2185391d5a31238012032a9a0f964e3477c24ae50800a3e4124e436"
+      "sha256": "b63f5c3166d67cb55a0dbb6c64a96b00fb525a76dd9f9df287ae1adb9d7658b0"
     },
     {
       "artifact": "roleplay-ui-bundle-patch",
@@ -3449,8 +3449,8 @@
       "artifact": "public-contributing",
       "source": "release/public/CONTRIBUTING.md",
       "target": "CONTRIBUTING.md",
-      "sourceSha256": "7e15fe0d1a7f9df9308a2fb172d8f4f9cea15c29b5c1075371e2d8b97f9b955a",
-      "sha256": "7e15fe0d1a7f9df9308a2fb172d8f4f9cea15c29b5c1075371e2d8b97f9b955a"
+      "sourceSha256": "9b3857def1f2cc825b8a63006598f03ba19bf02190d2941bbbc22e856aca7a65",
+      "sha256": "9b3857def1f2cc825b8a63006598f03ba19bf02190d2941bbbc22e856aca7a65"
     },
     {
       "artifact": "public-verify-workflow",
@@ -3465,6 +3465,13 @@
       "target": "tools/build-modules.mjs",
       "sourceSha256": "347031208f4bfbcb45b12657b339884ec667f81b28c84cdc2892ef81c8bcfc42",
       "sha256": "347031208f4bfbcb45b12657b339884ec667f81b28c84cdc2892ef81c8bcfc42"
+    },
+    {
+      "artifact": "public-agents-notes",
+      "source": "release/public/AGENTS.md",
+      "target": "AGENTS.md",
+      "sourceSha256": "9da3a28e29515389d5c0cdc9e032604dd25d37304b4e6e61590f58a735f545b6",
+      "sha256": "9da3a28e29515389d5c0cdc9e032604dd25d37304b4e6e61590f58a735f545b6"
     },
     {
       "artifact": "public-review-bot-config",
@@ -3751,6 +3758,11 @@
       "bytes": 2121
     },
     {
+      "path": "AGENTS.md",
+      "sha256": "9da3a28e29515389d5c0cdc9e032604dd25d37304b4e6e61590f58a735f545b6",
+      "bytes": 1976
+    },
+    {
       "path": "ARCHITECTURE.md",
       "sha256": "ceff6077dfbb1c573ebf2c2034916b0172f795a7b99a5971d2c0522387638ee6",
       "bytes": 23746
@@ -3762,8 +3774,8 @@
     },
     {
       "path": "CONTRIBUTING.md",
-      "sha256": "7e15fe0d1a7f9df9308a2fb172d8f4f9cea15c29b5c1075371e2d8b97f9b955a",
-      "bytes": 2544
+      "sha256": "9b3857def1f2cc825b8a63006598f03ba19bf02190d2941bbbc22e856aca7a65",
+      "bytes": 2832
     },
     {
       "path": "FEEDBACK.md",
@@ -3932,8 +3944,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "15d209f5d2185391d5a31238012032a9a0f964e3477c24ae50800a3e4124e436",
-      "bytes": 2636
+      "sha256": "b63f5c3166d67cb55a0dbb6c64a96b00fb525a76dd9f9df287ae1adb9d7658b0",
+      "bytes": 2653
     },
     {
       "path": "preset/agent.cordis.yml",

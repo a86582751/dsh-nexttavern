@@ -16,6 +16,11 @@ checked here.
 Every generated file starts with `// Generated from <source>; edit the TypeScript source.`
 Change the source, run the build, and commit both.
 
+The browser client needs both commands: `npm run build:modules` produces
+`src/client.js` from `src/client.ts`, and `npm run build` bundles that into
+`lib/client.js`, which is the `./client` export. A change that reaches the client
+is not finished until `lib/client.js` is committed too.
+
 ## Checks
 
 ```sh
