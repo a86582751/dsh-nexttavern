@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "8f1f82d03c9993838e1881ed9c812a5a5ddc2bd6",
+  "sourceCommit": "782a2c7ec665f7994623d2fd5989417f4b0a7f16",
   "dirty": true,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
@@ -3456,8 +3456,8 @@
       "artifact": "public-verify-workflow",
       "source": "release/public/.github/workflows/verify.yml",
       "target": ".github/workflows/verify.yml",
-      "sourceSha256": "ff4eff049472b69e1c039fc6f32cf4e90f295bae7a99fc2bdd80a295f9fc506a",
-      "sha256": "ff4eff049472b69e1c039fc6f32cf4e90f295bae7a99fc2bdd80a295f9fc506a"
+      "sourceSha256": "3f61f937d2f2e298b1ed8af9102dd0d7654c5eb48f52031fa5fc262efa3d685a",
+      "sha256": "3f61f937d2f2e298b1ed8af9102dd0d7654c5eb48f52031fa5fc262efa3d685a"
     },
     {
       "artifact": "public-build-modules",
@@ -3735,8 +3735,8 @@
     },
     {
       "path": ".github/workflows/verify.yml",
-      "sha256": "ff4eff049472b69e1c039fc6f32cf4e90f295bae7a99fc2bdd80a295f9fc506a",
-      "bytes": 1695
+      "sha256": "3f61f937d2f2e298b1ed8af9102dd0d7654c5eb48f52031fa5fc262efa3d685a",
+      "bytes": 2121
     },
     {
       "path": "ARCHITECTURE.md",

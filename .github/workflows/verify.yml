@@ -35,6 +35,13 @@ jobs:
             integrations/auth-webserver/package-lock.json
       - name: Install the pinned build toolchain
         run: npm ci --prefix build-tools
+      # Two suites assert DOM behaviour through jsdom, a test-only dependency
+      # this package does not ship. Install it outside the tree and point the
+      # resolver at it.
+      - name: Install the DOM test dependency
+        run: |
+          npm install --prefix "$RUNNER_TEMP/jsdom" --no-save --no-audit --no-fund jsdom@29.1.1
+          echo "NEXTTAVERN_JSDOM=$RUNNER_TEMP/jsdom/node_modules/jsdom" >> "$GITHUB_ENV"
       - name: Generated JavaScript matches its TypeScript
         run: node tools/build-modules.mjs --check
       - name: Contract suites
