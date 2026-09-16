@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "782a2c7ec665f7994623d2fd5989417f4b0a7f16",
-  "dirty": true,
+  "sourceCommit": "7cebee8b10e2f72d5e282e15087693c80027c6bd",
+  "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
   "compiler": "0.24.2",
@@ -6467,6 +6467,11 @@
       "path": "tests/worldbook-passive.test.mjs",
       "sha256": "7573c9a8dbfaed51448789aa69b65639e84409ba3483679bc4d8d6d3c9bf3b9d",
       "bytes": 3210
+    },
+    {
+      "path": "tests/worldline-fork-e2e.test.mjs",
+      "sha256": "97a17d8d211d9e0c794cd6dfe945343f831a149cce68ea085f1b3adf207158ae",
+      "bytes": 14782
     },
     {
       "path": "tools/build-map.json",
