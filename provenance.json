@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "audience": "public-nexttavern",
   "version": "0.2.5",
-  "sourceCommit": "434ae6351434ee06d30da555c1e1fa56b0d131f2",
-  "dirty": true,
+  "sourceCommit": "1c1475bdf409c16d378a7508ccbd3abe783cd85a",
+  "dirty": false,
   "harnessLine": "0.1.2-alpha.3",
   "node": "v24.16.0",
   "compiler": "0.24.2",
@@ -1196,7 +1196,7 @@
       "source": "runtime/alpha3/ui/package.json",
       "target": "package.json",
       "sourceSha256": "d85084ea315bf5f2b1caa306a56df3928cd0b24d3a67a02ea4a96bbff196f9ba",
-      "sha256": "15d209f5d2185391d5a31238012032a9a0f964e3477c24ae50800a3e4124e436"
+      "sha256": "b63f5c3166d67cb55a0dbb6c64a96b00fb525a76dd9f9df287ae1adb9d7658b0"
     },
     {
       "artifact": "roleplay-ui-bundle-patch",
@@ -3467,6 +3467,13 @@
       "sha256": "347031208f4bfbcb45b12657b339884ec667f81b28c84cdc2892ef81c8bcfc42"
     },
     {
+      "artifact": "public-agents-notes",
+      "source": "release/public/AGENTS.md",
+      "target": "AGENTS.md",
+      "sourceSha256": "44eeed7a9abcaf3cc1a2fb65222b82cc20cba8451747e6bacaf4f55029895f72",
+      "sha256": "44eeed7a9abcaf3cc1a2fb65222b82cc20cba8451747e6bacaf4f55029895f72"
+    },
+    {
       "artifact": "public-review-bot-config",
       "source": "release/public/.coderabbit.yaml",
       "target": ".coderabbit.yaml",
@@ -3751,6 +3758,11 @@
       "bytes": 2121
     },
     {
+      "path": "AGENTS.md",
+      "sha256": "44eeed7a9abcaf3cc1a2fb65222b82cc20cba8451747e6bacaf4f55029895f72",
+      "bytes": 1676
+    },
+    {
       "path": "ARCHITECTURE.md",
       "sha256": "ceff6077dfbb1c573ebf2c2034916b0172f795a7b99a5971d2c0522387638ee6",
       "bytes": 23746
@@ -3932,8 +3944,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "15d209f5d2185391d5a31238012032a9a0f964e3477c24ae50800a3e4124e436",
-      "bytes": 2636
+      "sha256": "b63f5c3166d67cb55a0dbb6c64a96b00fb525a76dd9f9df287ae1adb9d7658b0",
+      "bytes": 2653
     },
     {
       "path": "preset/agent.cordis.yml",
