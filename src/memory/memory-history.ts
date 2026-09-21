@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { durableSeq, textOf, adaptationTurns, importedStoryProjection } from './memory-provenance.js'
-import { projectStoryEvent, messageViewGeneration, type MessageViewSession } from '../core/roleplay-message-view.js'
+import { projectStoryEvent, messageViewGeneration, type MessageViewSession, type StorySurfaceOp } from '../core/roleplay-message-view.js'
 
 export interface StoryBlock { type?: string; [field: string]: unknown }
 export interface StoryEvent {
@@ -23,7 +23,7 @@ export interface StoryEvent {
     source?: { kind?: string; plugin?: string; stage?: string; form?: string; jobKind?: string; storySeq?: unknown; turn?: unknown; compactionId?: unknown }
   }
   sourceEventSeqs?: unknown
-  surfaceOp?: 'append' | { op?: string; start: number; end?: number }
+  surfaceOp?: StorySurfaceOp
 }
 export interface StorySession extends MessageViewSession<StoryEvent> {
   id: string
@@ -269,7 +269,7 @@ export function selectedStoryHistory(session: StorySession): StoryRow[] {
     seen.add(event.seq)
     const direct = Number.isSafeInteger(event.data?.turn) ? Number(event.data?.turn) : turnBySeq.get(event.seq)
     if (direct !== null && direct !== undefined) return direct
-    if (typeof event.surfaceOp === 'object' && event.surfaceOp.op === 'replace') return originalTurn(log[event.surfaceOp.start], seen)
+    if (typeof event.surfaceOp === 'object' && event.surfaceOp.op === 'replace') return originalTurn(log[event.surfaceOp.startSeq], seen)
     return null
   }
   const rows: StoryRow[] = expanded.map((seq) => {

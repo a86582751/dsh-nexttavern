@@ -2,6 +2,8 @@
 
 ## 0.3 development — 2026-09-22
 
+- Migrated owned surface replacement producers and readers to the alpha.6 `startSeq/endSeq` contract, covering compaction, context windows, card research and task retirement. Host-derived types replace duplicated loose field declarations. Four native cases verify successful/rejected/cancelled writes, JSONL replay and pricing; affected business regressions and strict compilation passed. Live Session history and inherited-boundary migration remain unfinished; loaded-view tests do not prove full Agent or product compatibility.
+
 - Rebased the owned Session Controller and browser client on alpha.6. Prepared forks reserve ownership before publication and inherit late edit metadata; ordinary forks retain native boundaries and model selection has one owner. The strict 31-module closure, browser bundle and 16 affected cases passed, including owned JSONL/meter integration and client reconnect/disposal. Full business/UI flows, formal fork sync and unified product assembly remain incomplete.
 
 - Rebased the owned token meter on alpha.6. Required edits now reprice current context and its breakdown without changing original usage or request anchors. Seven focused cases cover JSONL replay, inherited histories, versioned caches, compaction, attachments, retries and disposal; the strict 14-module closure passed. Removed obsolete replacement accounting. Full UI/product integration remains pending; the later Controller stage above adds prepared-fork integration evidence.

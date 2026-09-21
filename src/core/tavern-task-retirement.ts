@@ -196,7 +196,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 ]
             }, {
                 surfaceOp: {
-                    op: 'replace', start, end
+                    op: 'replace', startSeq: start, endSeq: end
                 },
                 sourceEventSeqs: selected
             });
@@ -413,7 +413,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                     }]
             }, {
                 surfaceOp: {
-                    op: 'replace', start: selected[0]!, end: selected.at(-1)!
+                    op: 'replace', startSeq: selected[0]!, endSeq: selected.at(-1)!
                 },
                 sourceEventSeqs: selected
             });
@@ -510,7 +510,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 ]
             }, {
                 surfaceOp: {
-                    op: 'replace', start, end
+                    op: 'replace', startSeq: start, endSeq: end
                 },
                 sourceEventSeqs: selected
             });

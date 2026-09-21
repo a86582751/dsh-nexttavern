@@ -1,13 +1,14 @@
 // Structural contracts for the native Session branch ledger. Host-owned data
 // retains unknown extension fields so replacements preserve the original record.
 import type { ContextSession, ContextEvent } from './roleplay-context.js'
+import type { StorySurfaceReplacement } from './roleplay-message-view.js'
 export type MessageData = NonNullable<ContextEvent['data']>
 export type StoryEvent = ContextEvent
 export interface ReadBranchSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & {parentSession?: string}
 }
 export interface BranchSession extends ReadBranchSession {
-  append(type: string, data: MessageData, options: { surfaceOp: { op: string; start: number; end: number }; sourceEventSeqs: number[] }): StoryEvent
+  append(type: string, data: MessageData, options: { surfaceOp: StorySurfaceReplacement; sourceEventSeqs: number[] }): StoryEvent
 }
 export interface ForkAnchor {
   sourceSessionId: string

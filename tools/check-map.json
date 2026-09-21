@@ -2457,6 +2457,10 @@
       "source": "development/token-meter/LICENSE.upstream"
     },
     {
+      "id": "plugin-owned-packages-fixture",
+      "source": "tests/plugin-owned-packages-fixture.mts"
+    },
+    {
       "id": "compat-llm-pi-ai-adapter-ts",
       "source": "development/llm-pi-ai/src/adapter.ts"
     },

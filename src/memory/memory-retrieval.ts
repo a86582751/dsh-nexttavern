@@ -105,7 +105,7 @@ const initial = (): Settings => ({
     conversationScopeSince: Date.now(),
     conversationIndex: {}
 });
-/** Read-only alpha.3 surface replay. Unsupported/corrupt provenance fails closed. */
+/** Metadata-only replay of the native surface contract; required edits need a host-prepared view. */
 export function retrievalColdSession(id: string, header: Session['header'], events: readonly unknown[]): Session {
     const nodes: number[] = [];
     for (const value of events) {
@@ -123,9 +123,9 @@ export function retrievalColdSession(id: string, header: Session['header'], even
         else if (e.surfaceOp && typeof e.surfaceOp === 'object') {
             const op = e.surfaceOp as {
                 op?: string;
-                start?: number;
-                end?: number;
-            }, start = nodes.indexOf(op.start!), end = nodes.indexOf(op.end!);
+                startSeq?: number;
+                endSeq?: number;
+            }, start = nodes.indexOf(op.startSeq!), end = nodes.indexOf(op.endSeq!);
             if (op.op !== 'replace' || start < 0 || end < start)
                 throw Error('无法确认归档世界线来源');
             nodes.splice(start, end - start + 1, e.seq);

@@ -48,7 +48,7 @@ const text = (value) => [{ type: 'text', text: value }]
  const result=session.append('tool/result',{message:{source:{callId:'lore-1'},content:text('档案原件：第三次泵冲后方可开门。')}},{surfaceOp:'append'})
  const other=session.append('tool/result',{message:{source:{callId:'discarded'},content:text('OTHER_WORLDLINE_RESULT')}})
  const checkpoint=session.append('user/message',{source:{kind:'plugin',plugin:'roleplay-context-window'},content:text('窗口回执')},
-  {surfaceOp:{op:'replace',start:result.seq,end:result.seq},sourceEventSeqs:[result.seq]})
+  {surfaceOp:{op:'replace',startSeq:result.seq,endSeq:result.seq},sourceEventSeqs:[result.seq]})
  checkpoint.sourceEventSeqs=[result.seq]
  assert.equal(queryStoryHistory(session,{query:'第三次泵冲'}).matchedEntries,0,'plot-only default never imports tool material into memory')
  const found=queryStoryHistory(session,{scope:'tools',query:'第三次泵冲'})
@@ -66,7 +66,7 @@ const text = (value) => [{ type: 'text', text: value }]
  assert.equal(memoryNotesCadence(session).completedTurns,2)
  assert.equal(memoryNotesCadence(session).due,false)
  for(let i=0;i<4;i++)session.append('assistant/message',{turn:2,message:{id:`reroll-${i}`,content:text(`第二回合版本 ${i}`)}},
-   {surfaceOp:{op:'replace',start:session.surface.nodes.at(-1),end:session.surface.nodes.at(-1)}})
+   {surfaceOp:{op:'replace',startSeq:session.surface.nodes.at(-1),endSeq:session.surface.nodes.at(-1)}})
  assert.equal(memoryNotesCadence(session).completedTurns,2,'regeneration replaces one canonical turn; four retries are not four new turns')
  assert.equal(memoryNotesCadence(session).due,false)
  session.append('turn/start',{turn:99})
@@ -80,7 +80,7 @@ const text = (value) => [{ type: 'text', text: value }]
  assert.equal(memoryNotesCadence(session,record).pendingTurns,0)
  assert.equal(memoryNotesCadence(session,record).due,false)
  const body=entries.at(-1)
- session.append('assistant/message',{turn:99,message:{id:'a3-edited',content:text('第三回合改为等待。')}},{surfaceOp:{op:'replace',start:body.seq,end:body.seq}})
+ session.append('assistant/message',{turn:99,message:{id:'a3-edited',content:text('第三回合改为等待。')}},{surfaceOp:{op:'replace',startSeq:body.seq,endSeq:body.seq}})
  assert.equal(memoryNotesCadence(session,record).completedTurns,3)
  assert.equal(memoryNotesCadence(session,record).rebuildRequired,true,'editing summarized canon invalidates notes without adding a turn')
  assert.equal(memoryNotesCadence(session,record).due,false,'an invalidated same-slot version does not bypass the three-new-slot cadence')
@@ -209,8 +209,8 @@ function makeSession(id, sourceEvents, surfaceIndexes, header = {}) {
       this.events.push(appended)
       if (options?.surfaceOp === 'append') nodes.push(seq)
       else if (options?.surfaceOp?.op === 'replace') {
-        const start = nodes.indexOf(options.surfaceOp.start)
-        const end = nodes.indexOf(options.surfaceOp.end)
+        const start = nodes.indexOf(options.surfaceOp.startSeq)
+        const end = nodes.indexOf(options.surfaceOp.endSeq)
         assert.ok(start >= 0 && end >= start, 'fake session received an invalid replacement')
         nodes.splice(start, end - start + 1, seq)
       }
@@ -686,7 +686,7 @@ async function testDirectorNotesDoNotNeedCompactionOrAlterSurface() {
   const repeated = await h.services.get('compaction').organizeNow({ session })
   assert.equal(repeated.changed, false)
   assert.equal(h.requests.length, 1)
-  session.append('user/message', { ...session.events[1].data, content: text('玩家改变了过去的行动') }, { surfaceOp: { op: 'replace', start: 1, end: 1 }, sourceEventSeqs: [1] })
+  session.append('user/message', { ...session.events[1].data, content: text('玩家改变了过去的行动') }, { surfaceOp: { op: 'replace', startSeq: 1, endSeq: 1 }, sourceEventSeqs: [1] })
   assert.equal(directorNotesForBranch(h.heads.get(session.id), session), null)
   await h.services.get('compaction').organizeNow({ session })
   assert.equal(h.requests.length, 2)
@@ -730,10 +730,10 @@ async function testHistoryOnlyExpandsSelectedCompaction() {
   session.append('compaction/start', { compactionId: 'c1', turn: null })
   session.append('compaction/summary', { compactionId: 'c1', shadowedSeqs: [1, 2, 3], shadowedRange: { start: 1, end: 3 } })
   session.append('user/message', { id: 'summary', role: 'user', content: text('SUMMARY_NOT_PLOT'), source: { kind: 'plugin', plugin: 'compact', compactionId: 'c1' } },
-    { surfaceOp: { op: 'replace', start: 1, end: 3 }, sourceEventSeqs: [1, 2, 3] })
+    { surfaceOp: { op: 'replace', startSeq: 1, endSeq: 3 }, sourceEventSeqs: [1, 2, 3] })
   session.append('compaction/end', { compactionId: 'c1', turn: null })
   session.append('assistant/message', { ...session.events[7].data, message: { ...session.events[7].data.message, content: text('修改后，怀表没有响。') } },
-    { surfaceOp: { op: 'replace', start: 7, end: 7 }, sourceEventSeqs: [7] })
+    { surfaceOp: { op: 'replace', startSeq: 7, endSeq: 7 }, sourceEventSeqs: [7] })
   const history = selectedStoryHistory(session)
   assert.equal(history.length, 4)
   assert.match(history.map((entry) => entry.text).join('\n'), /雨夜车站/)
@@ -855,7 +855,7 @@ async function testPrepareUsesOnlyVerifiedNotesWithoutWaitingForBackground() {
   await entered
   const replacement = session.append('assistant/message', { turn: 2,
     message:{id:'a2-new',role:'assistant',content:text('当前选中四号分支，留在车站，没有穿过检票口。')} },
-    {surfaceOp:{op:'replace',start:7,end:7}})
+    {surfaceOp:{op:'replace',startSeq:7,endSeq:7}})
   let settled = false
   const prepare = svc.prepareForTurn({session}).then(value=>{settled=true;return value})
   const result = await Promise.race([prepare,new Promise((_,reject)=>setTimeout(()=>reject(new Error('preparation waited on background notes')),100))])
@@ -887,7 +887,7 @@ async function testPostCompactionPreparationMatrix() {
     session.append('compaction/start',{compactionId:'selected-checkpoint',turn:null})
     session.append('compaction/summary',{compactionId:'selected-checkpoint',shadowedSeqs:[1,2,3],shadowedRange:{start:1,end:3}})
     session.append('user/message',{id:'checkpoint',content:text('VERIFIED_PREFIX'),source:{kind:'plugin',plugin:'compact',compactionId:'selected-checkpoint'}},
-      {surfaceOp:{op:'replace',start:1,end:3},sourceEventSeqs:[1,2,3]})
+      {surfaceOp:{op:'replace',startSeq:1,endSeq:3},sourceEventSeqs:[1,2,3]})
     session.append('compaction/end',{compactionId:'selected-checkpoint',turn:null})
     const h=makeHarness({session})
     await apply(h.ctx,defaultConfig)
@@ -895,11 +895,11 @@ async function testPostCompactionPreparationMatrix() {
     await svc.organizeNow({session})
     const auditBefore=structuredClone(session.events)
     if(operation==='regenerate') session.append('assistant/message',{turn:2,message:{id:'variant4',content:text('四号版本留在车站')}},
-      {surfaceOp:{op:'replace',start:7,end:7},sourceEventSeqs:[7]})
+      {surfaceOp:{op:'replace',startSeq:7,endSeq:7},sourceEventSeqs:[7]})
     if(operation==='delete') session.append('user/message',{id:'deleted-range',content:[],source:{kind:'plugin',plugin:'test-branch-tombstone'}},
-      {surfaceOp:{op:'replace',start:6,end:7},sourceEventSeqs:[6,7]})
+      {surfaceOp:{op:'replace',startSeq:6,endSeq:7},sourceEventSeqs:[6,7]})
     if(operation==='edit-save'||operation==='edit-send') session.append('user/message',{id:'edited-user',content:text('玩家改为留在原地'),source:{kind:'user'}},
-      {surfaceOp:{op:'replace',start:6,end:operation==='edit-send'?7:6},sourceEventSeqs:operation==='edit-send'?[6,7]:[6]})
+      {surfaceOp:{op:'replace',startSeq:6,endSeq:operation==='edit-send'?7:6},sourceEventSeqs:operation==='edit-send'?[6,7]:[6]})
     if(operation==='edit-send') session.append('assistant/message',{turn:2,message:{id:'edited-result',content:text('两人留在车站')}},{surfaceOp:'append'})
     session.append('turn/start',{turn:3})
     session.append('user/message',{id:'u3',source:{kind:'user'},content:text('继续当前选择')} ,{surfaceOp:'append'})
@@ -1044,7 +1044,7 @@ async function testThreeCanonicalTurnsRunAcrossForegroundTurns() {
  await svc.organizeIfNeeded({session})
  assert.equal(h.requests.length,1,'newer plot is coalesced until three more canonical turns')
  session.append('assistant/message',{turn:15,message:{id:'a15-reroll',content:text('第四回合重生成')}},
-   {surfaceOp:{op:'replace',start:fourth.seq,end:fourth.seq}})
+   {surfaceOp:{op:'replace',startSeq:fourth.seq,endSeq:fourth.seq}})
  await svc.organizeIfNeeded({session})
  assert.equal(h.requests.length,1,'regenerating the unsummarized fourth turn does not trigger a new batch')
 }
@@ -1071,7 +1071,7 @@ async function testWindowEvictionRequiresAllCanonicalEvidence() {
  assert.deepEqual(session.events,before,'persistence gate does not itself cut the window')
  await svc.ensureWindowCheckpoint({session})
  assert.equal(h.requests.length,1,'already saved source does not trigger another model review')
- const changed=session.append('assistant/message',{turn:2,message:{id:'changed',content:text('第二回合改写了结果')}},{surfaceOp:{op:'replace',start:7,end:7}})
+ const changed=session.append('assistant/message',{turn:2,message:{id:'changed',content:text('第二回合改写了结果')}},{surfaceOp:{op:'replace',startSeq:7,endSeq:7}})
  h.setNativeTaskHandler(()=>{throw new Error('provider unavailable')})
  await assert.rejects(svc.ensureWindowCheckpoint({session}),/检查点|未保存/)
  assert.ok(session.surface.nodes.includes(changed.seq),'failed save cannot evict the edited body')
@@ -1169,8 +1169,15 @@ await testAutomaticTimeoutIsActuallyBounded()
    const before=session.events.length
    const result=sample.manual?await h.services.get('compaction').compactNow({session},undefined,'fixture-command')
     :await h.services.get('compaction').compactIfNeeded({session},'context-overflow')
-   assert.deepEqual(normalize({result,events:session.events.slice(before),surface:session.surface.nodes,head:h.heads.get(session.id),requests:h.requests,flushed:Boolean(h.ctx.flushed)}),sample.expected,
-    'pre-TS compaction request, event protocol, surface replacement, provenance and ledger mirror')
+   // Preserve the historical golden file; only normalize expected wire fields.
+   // Production does not translate alpha.3 archives during this breaking upgrade.
+   const expected=structuredClone(sample.expected)
+   for(const event of expected.events) {
+    const op=event.surfaceOp
+    if(op?.op==='replace')event.surfaceOp={op:'replace',startSeq:op.start,endSeq:op.end}
+   }
+   assert.deepEqual(normalize({result,events:session.events.slice(before),surface:session.surface.nodes,head:h.heads.get(session.id),requests:h.requests,flushed:Boolean(h.ctx.flushed)}),expected,
+    'compaction request, provenance and ledger mirror survive the alpha.6 surface field rename')
    assert.equal(sample.nodeReads,4,'old selection recalculates the story surface for pressure')
    assert.equal(nodeReads,2,'typed selection reuses its existing surface projection')
   }

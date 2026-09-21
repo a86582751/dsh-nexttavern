@@ -93,8 +93,8 @@ const enableAppend = (session) => {
     }
     const op = opts.surfaceOp
     if (op && typeof op === 'object' && op.op === 'replace') {
-      const start = session.surface.nodes.indexOf(op.start)
-      const end = session.surface.nodes.indexOf(op.end)
+      const start = session.surface.nodes.indexOf(op.startSeq)
+      const end = session.surface.nodes.indexOf(op.endSeq)
       assert(start >= 0 && end >= start, 'invalid mock surface replacement')
       session.surface.nodes.splice(start, end - start + 1, event.seq)
     } else if (type === 'roleplay/message-edit') {

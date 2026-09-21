@@ -1,4 +1,13 @@
 /** Read current prose through the host projection without rewriting audit events. */
+import type { SurfaceOp } from '@deepseek-ai/dsh-session'
+
+type NativeReplacement = Exclude<SurfaceOp, 'append'>
+/** Keep host field names while accepting numeric seqs from serialized observations. */
+export type StorySurfaceReplacement = {
+  [Key in keyof NativeReplacement]: NativeReplacement[Key] extends number ? number : NativeReplacement[Key]
+}
+export type StorySurfaceOp = 'append' | StorySurfaceReplacement
+
 interface MessageEvent {
   seq: number
   type: string

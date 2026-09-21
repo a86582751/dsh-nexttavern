@@ -11,7 +11,14 @@ import { selectedStoryHistory } from '../lib/memory/roleplay-memory-engine.js'
    assert.deepEqual([...taskStorySeqs(session)],scenario.storySeqs)
    assert.deepEqual([...internalTaskSeqs(session)],scenario.internalSeqs)
    assert.equal(retireCompletedTaskContexts(session,scenario.currentTurn),scenario.retired)
-   assert.deepEqual(receipts,scenario.receipts,'legacy receipt provenance, spans and hashes remain identical')
+   // Compare historical business receipts under the alpha.6 wire field names.
+   // This test-only normalization is not an old-session migration path.
+   const expected=structuredClone(scenario.receipts)
+   for(const receipt of expected) {
+     const op=receipt.options?.surfaceOp
+     if(op?.op==='replace')receipt.options.surfaceOp={op:'replace',startSeq:op.start,endSeq:op.end}
+   }
+   assert.deepEqual(receipts,expected,'receipt provenance, spans and hashes survive the host field rename')
    assert.equal(JSON.stringify(session.events),raw)
  }
  let reads=0
@@ -25,8 +32,8 @@ s.append=(type,data,options={})=>{
  const e={seq:s.events.length,type,data:structuredClone(data),...options};s.events.push(e)
  if(options.surfaceOp==='append')s.surface.nodes.push(e.seq)
  if(options.surfaceOp?.op==='replace'){
-  assert.equal(options.surfaceOp.start,options.surfaceOp.end)
-  const i=s.surface.nodes.indexOf(options.surfaceOp.start);assert.ok(i>=0);s.surface.nodes.splice(i,1,e.seq)
+  assert.equal(options.surfaceOp.startSeq,options.surfaceOp.endSeq)
+  const i=s.surface.nodes.indexOf(options.surfaceOp.startSeq);assert.ok(i>=0);s.surface.nodes.splice(i,1,e.seq)
  }
  return e
 }
@@ -73,7 +80,7 @@ for(const scenario of [
  const t={id:scenario.name,events:[],surface:{nodes:[]},append(type,data,options={}){
   const e={seq:this.events.length,type,data,...options};this.events.push(e)
   if(options.surfaceOp==='append')this.surface.nodes.push(e.seq)
-  if(options.surfaceOp?.op==='replace')this.surface.nodes.splice(this.surface.nodes.indexOf(options.surfaceOp.start),1,e.seq)
+  if(options.surfaceOp?.op==='replace')this.surface.nodes.splice(this.surface.nodes.indexOf(options.surfaceOp.startSeq),1,e.seq)
   return e
  }}
  const put=(type,data,visible=true)=>t.append(type,data,visible?{surfaceOp:'append'}:{})
@@ -94,7 +101,7 @@ for(const variant of ['export','mixed-story','failed','unfinished','other-branch
   const e={seq:this.events.length,type,data:structuredClone(data),...options};this.events.push(e)
   if(options.surfaceOp==='append')this.surface.nodes.push(e.seq)
   if(options.surfaceOp?.op==='replace'){
-   const a=this.surface.nodes.indexOf(options.surfaceOp.start),b=this.surface.nodes.indexOf(options.surfaceOp.end)
+   const a=this.surface.nodes.indexOf(options.surfaceOp.startSeq),b=this.surface.nodes.indexOf(options.surfaceOp.endSeq)
    assert.ok(a>=0&&b>=a);this.surface.nodes.splice(a,b-a+1,e.seq)
   }return e
  }}
@@ -127,7 +134,7 @@ for(const variant of ['active','failed-import','failed-turn','current','foreign-
  const t={id:variant,events:[],surface:{nodes:[]},append(type,data,options={}){
   const e={seq:this.events.length,type,data:structuredClone(data),...options};this.events.push(e)
   if(options.surfaceOp==='append')this.surface.nodes.push(e.seq)
-  if(options.surfaceOp?.op==='replace'){const a=this.surface.nodes.indexOf(options.surfaceOp.start),b=this.surface.nodes.indexOf(options.surfaceOp.end);assert.ok(a>=0&&b>=a);this.surface.nodes.splice(a,b-a+1,e.seq)}return e
+  if(options.surfaceOp?.op==='replace'){const a=this.surface.nodes.indexOf(options.surfaceOp.startSeq),b=this.surface.nodes.indexOf(options.surfaceOp.endSeq);assert.ok(a>=0&&b>=a);this.surface.nodes.splice(a,b-a+1,e.seq)}return e
  }}
  const put=(type,data,visible=true)=>t.append(type,data,visible?{surfaceOp:'append'}:{})
  put('turn/start',{turn:1},false)

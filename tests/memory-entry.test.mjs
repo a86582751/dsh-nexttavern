@@ -10,7 +10,7 @@ function fixture(config = {}) {
     const event = { seq: session.events.length, type, data: structuredClone(data), ...structuredClone(options ?? {}) }
     session.events.push(event)
     if (options?.surfaceOp?.op === 'replace') {
-      const start = session.surface.nodes.indexOf(options.surfaceOp.start), end = session.surface.nodes.indexOf(options.surfaceOp.end)
+      const start = session.surface.nodes.indexOf(options.surfaceOp.startSeq), end = session.surface.nodes.indexOf(options.surfaceOp.endSeq)
       assert.ok(start >= 0 && end >= start)
       session.surface.nodes.splice(start, end - start + 1, event.seq)
     }

@@ -8,10 +8,10 @@ session.append=(type,data,options={})=>{
   session.events.push(e)
   if(options.surfaceOp==='append')session.surface.nodes.push(e.seq)
   else if(options.surfaceOp?.op==='replace') {
-    const i=session.surface.nodes.indexOf(options.surfaceOp.start)
+    const i=session.surface.nodes.indexOf(options.surfaceOp.startSeq)
     assert.ok(i>=0)
-    assert.deepEqual(options.sourceEventSeqs,[options.surfaceOp.start])
-    assert.equal(options.surfaceOp.start,options.surfaceOp.end,'never span across real story or tool events')
+    assert.deepEqual(options.sourceEventSeqs,[options.surfaceOp.startSeq])
+    assert.equal(options.surfaceOp.startSeq,options.surfaceOp.endSeq,'never span across real story or tool events')
     session.surface.nodes.splice(i,1,e.seq)
   }
   return e

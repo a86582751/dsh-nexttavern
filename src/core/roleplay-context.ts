@@ -4,7 +4,7 @@ import { internalTaskSeqs, taskStorySeqs } from './tavern-tasks.js'
 import { taskProjectionEvents } from './tavern-task-context.js'
 import { textOf, estimateTokens, sha256 } from './roleplay-data.js'
 import type { TaskBlock, TaskEvent, TaskMessage, TaskContextSession } from './tavern-task-context.js'
-import { projectStoryEvent, messageViewGeneration, type MessageViewSession } from './roleplay-message-view.js'
+import { projectStoryEvent, messageViewGeneration, type MessageViewSession, type StorySurfaceOp } from './roleplay-message-view.js'
 
 export interface ContextMessage extends TaskMessage {
   id?: unknown
@@ -14,7 +14,7 @@ export interface ContextMessage extends TaskMessage {
 }
 export interface ContextEvent extends TaskEvent {
   time?: number
-  surfaceOp?: 'append' | { op: string; start: number; end: number }
+  surfaceOp?: StorySurfaceOp
   sourceEventSeqs?: number[]
   data?: NonNullable<TaskEvent['data']> & {
     id?: unknown
@@ -208,7 +208,7 @@ export function retireRoleplayContexts(session: ContextSession & Pick<TaskContex
       if(event===backing)continue
       session.append('user/message',{id:randomUUID(),role:'user',source:{kind:'plugin',plugin:'roleplay-context',form:'retired',schemaVersion:1,
         retiredForm:form,retiredAtTurn:turn,branchId:session.id,sourceSeq:event.seq},content:[{type:'text',text:'[旧动态上下文已回收；以当前锚点为准。]'}]},
-        {surfaceOp:{op:'replace',start:event.seq,end:event.seq},sourceEventSeqs:[event.seq]})
+        {surfaceOp:{op:'replace',startSeq:event.seq,endSeq:event.seq},sourceEventSeqs:[event.seq]})
       retired++
     }
   }

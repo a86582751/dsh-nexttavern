@@ -36,15 +36,20 @@ const initial = () => ({
     conversationScopeSince: Date.now(),
     conversationIndex: {}
 });
-/** Read-only alpha.3 surface replay. Unsupported/corrupt provenance fails closed. */
+/** Metadata-only replay of the native surface contract; required edits need a host-prepared view. */
 export function retrievalColdSession(id, header, events) {
     const nodes = [];
     for (const value of events) {
+        // Legacy metadata-only callers cannot interpret required message edits.
+        // Current product reads supply a host-prepared view instead of this fallback.
+        if (value?.type === 'roleplay/message-edit') {
+            throw Error('消息编辑归档必须使用宿主投影读取');
+        }
         const e = value;
         if (e.surfaceOp === 'append')
             nodes.push(e.seq);
         else if (e.surfaceOp && typeof e.surfaceOp === 'object') {
-            const op = e.surfaceOp, start = nodes.indexOf(op.start), end = nodes.indexOf(op.end);
+            const op = e.surfaceOp, start = nodes.indexOf(op.startSeq), end = nodes.indexOf(op.endSeq);
             if (op.op !== 'replace' || start < 0 || end < start)
                 throw Error('无法确认归档世界线来源');
             nodes.splice(start, end - start + 1, e.seq);
@@ -382,7 +387,7 @@ export function createMemoryRetrieval(deps) {
                     }
                     const snapshot = await deps.read?.(header.id);
                     if (snapshot)
-                        await sync(retrievalColdSession(header.id, snapshot.session, snapshot.events));
+                        await sync(snapshot.view ?? retrievalColdSession(header.id, snapshot.session, snapshot.events));
                 }
                 catch { /* Invalid source remains absent; never guess its worldline. */
                 }
@@ -412,7 +417,8 @@ export function createMemoryRetrieval(deps) {
                 continue;
             try {
                 const live = deps.session(h.id), snapshot = live ? null : await deps.read?.(h.id);
-                const session = live ?? (snapshot ? retrievalColdSession(h.id, snapshot.session, snapshot.events) : null);
+                const session = live ?? (snapshot
+                    ? snapshot.view ?? retrievalColdSession(h.id, snapshot.session, snapshot.events) : null);
                 if (session) {
                     seen.add(ws);
                     await backfill(session);

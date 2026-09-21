@@ -34,7 +34,8 @@
         "plugin-story-edit-writes*",
         "runtime/alpha3/compat/session-format/*",
         "runtime/alpha3/compat/session-persistence-jsonl/*",
-        "plugin-public-compiler*"
+        "plugin-public-compiler*",
+        "plugin-surface-replacement*"
       ]
     },
     {
@@ -1284,6 +1285,19 @@
       ],
       "requires": [
         "compiler"
+      ],
+      "inputs": [
+        "plugin-owned-packages-fixture",
+        "compat-session-format-src-index-ts",
+        "compat-session-format-lib-index-js",
+        "compat-session-format-src-projection-ts",
+        "compat-session-format-lib-projection-js",
+        "compat-session-format-src-catalog-ts",
+        "compat-session-format-lib-catalog-js",
+        "compat-session-format-src-storage-contract-ts",
+        "compat-session-format-lib-storage-contract-js",
+        "compat-session-format-package-json",
+        "inventory-runtime-alpha3-build-tools-package-lock-json"
       ]
     },
     {
@@ -1582,6 +1596,19 @@
       ],
       "requires": [
         "compiler"
+      ],
+      "inputs": [
+        "plugin-owned-packages-fixture",
+        "compat-session-format-src-index-ts",
+        "compat-session-format-lib-index-js",
+        "compat-session-format-src-projection-ts",
+        "compat-session-format-lib-projection-js",
+        "compat-session-format-src-catalog-ts",
+        "compat-session-format-lib-catalog-js",
+        "compat-session-format-src-storage-contract-ts",
+        "compat-session-format-lib-storage-contract-js",
+        "compat-session-format-package-json",
+        "inventory-runtime-alpha3-build-tools-package-lock-json"
       ]
     },
     {
@@ -3191,6 +3218,24 @@
       "inputs": [],
       "modules": [
         "plugin-lifecycle"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-surface-replacement.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle",
+        "notes",
+        "retrieval"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
       ],
       "requires": [
         "compiler"

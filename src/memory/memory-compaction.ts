@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { estimateTokens, durableSeq, textOf } from './memory-provenance.js'
 import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistory, historySourceKeys, isCompactedStoryEvent, type StorySession, type StoryEvent, type NotesRecord } from './memory-history.js'
 import { validateDetailedSummary, type SummaryOptions, type SummaryResult } from './memory-summary.js'
-import { projectStoryEvent } from '../core/roleplay-message-view.js'
+import { projectStoryEvent, type StorySurfaceReplacement } from '../core/roleplay-message-view.js'
 
 export interface CompactionEvent extends StoryEvent {
   data?: NonNullable<StoryEvent['data']> & { shadowedRange?: unknown }
@@ -12,7 +12,7 @@ export interface CompactionSession extends StorySession {
   events?: readonly CompactionEvent[]
   log?: readonly CompactionEvent[]
   append: (type: string, data: Record<string, unknown>, options?: {
-    surfaceOp: { op: 'replace'; start: number; end: number }
+    surfaceOp: StorySurfaceReplacement
     sourceEventSeqs: number[]
   }) => { seq: number }
 }
@@ -495,7 +495,7 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
         'user/message',
         checkpointMessage,
         {
-          surfaceOp: { op: 'replace', start: range.start, end: range.end },
+          surfaceOp: { op: 'replace', startSeq: range.start, endSeq: range.end },
           sourceEventSeqs: [startEvent.seq, summaryEvent.seq, ...range.shadowedSeqs],
         }
       )

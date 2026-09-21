@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { apply } from '../lib/core/roleplay-core.js'
+import {ownedPackages} from './plugin-owned-packages-fixture.mts'
+
+const formatFixture = await ownedPackages(['session-format'])
+process.once('exit', () => formatFixture.close())
+const {appendMessageEdit, latestMessageEdit, currentMessageEdits} = await formatFixture.load('dsh-nexttavern-session-format')
 
 const text = value => [{ type: 'text', text: value }]
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return {promise, resolve} }
@@ -14,6 +19,7 @@ async function harness(memoryResult, config = {}) {
   const table = n => { if (!tables.has(n)) tables.set(n,new Table()); return tables.get(n) }
   const session = {id:'phase-a-fixture',header:{agentPreset:'roleplay'},events:[],surface:{nodes:[]},seq:0}
   const ctx = {
+    nexttavernMessageEdits: {append: appendMessageEdit, latest: latestMessageEdit, current: currentMessageEdits},
     storageDomain:{async open(){return {table,close(){}}}},
     sessions:{get:id=>id===session.id?session:null}, sessionController:{},
     tools:{register(tool){if(tool?.name&&tool?.execute)toolHandlers.set(tool.name,tool.execute);return ()=>{}}}, commands:{register(){return ()=>{}}},
@@ -40,7 +46,7 @@ async function harness(memoryResult, config = {}) {
     provide(n,s){services.set(n,s)},get:n=>services.get(n),
   }
   await apply(ctx,{workerProvider:'fixture-worker',workerModel:'worker',phaseAForegroundMs:1,memoryWorkerTimeoutMs:2000,sceneWorkerTimeoutMs:2000,...config})
-  const append=(type,data,surfaceOp)=>{const e={seq:session.seq++,type,data,surfaceOp};session.events.push(e);if(surfaceOp==='append')session.surface.nodes.push(e.seq);else if(surfaceOp?.op==='replace'){const start=session.surface.nodes.indexOf(surfaceOp.start),end=session.surface.nodes.indexOf(surfaceOp.end);assert.ok(start>=0&&end>=start,'fixture replacement range is visible and contiguous');session.surface.nodes.splice(start,end-start+1,e.seq)}return e}
+  const append=(type,data,surfaceOp)=>{const e={seq:session.seq++,type,data,surfaceOp};session.events.push(e);if(surfaceOp==='append')session.surface.nodes.push(e.seq);else if(surfaceOp?.op==='replace'){const start=session.surface.nodes.indexOf(surfaceOp.startSeq),end=session.surface.nodes.indexOf(surfaceOp.endSeq);assert.ok(start>=0&&end>=start,'fixture replacement range is visible and contiguous');session.surface.nodes.splice(start,end-start+1,e.seq)}return e}
   session.append=(type,data,options={})=>{const event=append(type,data,options.surfaceOp);event.sourceEventSeqs=options.sourceEventSeqs;return event}
   const begin=turn=>{append('turn/start',{turn});return append('user/message',{id:`u${turn}`,source:{kind:'user'},content:text(`选中行动${turn}`)},'append')}
   const prepare=async(turn,messages,signal)=>{
@@ -211,7 +217,7 @@ const anchor=(messages,form)=>messages.find(m=>m.source?.plugin==='roleplay-cont
   await h.prepare(2)
   const checkpoint=h.session.events.find(event=>event.data?.source?.plugin==='roleplay-context-window')
   assert.ok(checkpoint,'story pressure creates a real window checkpoint')
-  assert.equal(checkpoint.surfaceOp.start,notes.seq,'replacement starts at the first old-window anchor')
+  assert.equal(checkpoint.surfaceOp.startSeq,notes.seq,'replacement starts at the first old-window anchor')
   assert.deepEqual(checkpoint.sourceEventSeqs.slice(0,2),[notes.seq,state.seq],'replacement provenance includes both old anchors')
   assert.ok(h.session.surface.nodes.includes(oldStory.seq),'maintenance output does not evict the selected prose tail')
   assert.ok(!h.session.surface.nodes.includes(notes.seq)&&!h.session.surface.nodes.includes(state.seq)&&!h.session.surface.nodes.includes(oldUser.seq),'old anchors and their first player input leave the hard window together')

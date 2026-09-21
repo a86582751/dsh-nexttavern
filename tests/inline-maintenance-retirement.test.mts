@@ -11,10 +11,10 @@ import {importManagementInputs} from '../lib/memory/memory-history.js'
 import {createFirstResponseWatchdog} from '../lib/core/roleplay-loop.js'
 const native=process.env.DSH_NATIVE_SESSION_MODULE?await import(process.env.DSH_NATIVE_SESSION_MODULE):null
 function fixture(id:string){const events:TaskEvent[]=[],surface={nodes:[] as number[]};return {id,events,surface,
- append(type:string,data:TaskEvent['data'],options?:{surfaceOp:'append'|{op:string;start:number;end:number};sourceEventSeqs?:number[]}){
+ append(type:string,data:TaskEvent['data'],options?:{surfaceOp:'append'|{op:string;startSeq:number;endSeq:number};sourceEventSeqs?:number[]}){
   const e={seq:events.length,type,data,...options};events.push(e)
   if(options?.surfaceOp==='append')surface.nodes.push(e.seq)
-  else if(options?.surfaceOp){const a=surface.nodes.indexOf(options.surfaceOp.start),b=surface.nodes.indexOf(options.surfaceOp.end);assert.ok(a>=0&&b>=a);surface.nodes.splice(a,b-a+1,e.seq)}return e
+  else if(options?.surfaceOp){const a=surface.nodes.indexOf(options.surfaceOp.startSeq),b=surface.nodes.indexOf(options.surfaceOp.endSeq);assert.ok(a>=0&&b>=a);surface.nodes.splice(a,b-a+1,e.seq)}return e
  },deriveMessages(){return surface.nodes.map(seq=>{const e=events[seq]!;return e.type==='user/message'?e.data:e.data?.message})}}}
 const create=(id:string)=>native?native.Session.create(id):fixture(id)
 const model={kind:'model',provider:'fixture',model:'fixture'}

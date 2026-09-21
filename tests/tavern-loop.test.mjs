@@ -6,6 +6,11 @@ import {mkdtempSync,writeFileSync,rmSync} from 'node:fs'
 import {testTempRoot as tmpdir, createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
 import {join} from 'node:path'
 import { apply } from '../lib/core/roleplay-core.js'
+import {ownedPackages} from './plugin-owned-packages-fixture.mts'
+
+const formatFixture = await ownedPackages(['session-format'])
+process.once('exit', () => formatFixture.close())
+const {appendMessageEdit, latestMessageEdit, currentMessageEdits} = await formatFixture.load('dsh-nexttavern-session-format')
 import { internalTaskSeqs, InlinePending } from '../lib/core/tavern-tasks.js'
 import { inlineTaskInstruction } from '../lib/core/tavern-task-context.js'
 import { recordSha256, rollLogEntries, stableImportId } from '../lib/core/roleplay-data.js'
@@ -25,9 +30,10 @@ if(scenario==='background-memory')services.set('compaction',{backgroundMemory:tr
 const session={id:'loop-fixture',header:{agentPreset:'roleplay'},events:[],surface:{nodes:[]},seq:0}
 const text=t=>[{type:'text',text:t}], inbox=[]
 const agent={session,status:'running',options:{provider:'fixture',model:'main',reasoningEffort:'high'},steer:m=>inbox.push(m)}
-session.append=(type,data,options={})=>{const e={seq:session.seq++,type,data:structuredClone(data),surfaceOp:options.surfaceOp,sourceEventSeqs:options.sourceEventSeqs,time:Date.now()};session.events.push(e);if(options.surfaceOp==='append')session.surface.nodes.push(e.seq);else if(options.surfaceOp?.op==='replace'){const {start,end}=options.surfaceOp,a=session.surface.nodes.indexOf(start),b=session.surface.nodes.indexOf(end);assert.ok(a>=0&&b>=a);session.surface.nodes.splice(a,b-a+1,e.seq)}return e}
+session.append=(type,data,options={})=>{const e={seq:session.seq++,type,data:structuredClone(data),surfaceOp:options.surfaceOp,sourceEventSeqs:options.sourceEventSeqs,time:Date.now()};session.events.push(e);if(options.surfaceOp==='append')session.surface.nodes.push(e.seq);else if(options.surfaceOp?.op==='replace'){const {startSeq,endSeq}=options.surfaceOp,a=session.surface.nodes.indexOf(startSeq),b=session.surface.nodes.indexOf(endSeq);assert.ok(a>=0&&b>=a);session.surface.nodes.splice(a,b-a+1,e.seq)}return e}
 let spawns=0,direct=0
 const ctx={storageDomain:{async open(){return {table,close(){}}}},sessions:{get:id=>id===session.id?session:null},sessionController:{async resolveAgent(){return {agent}}},
+  nexttavernMessageEdits: {append: appendMessageEdit, latest: latestMessageEdit, current: currentMessageEdits},
   llm:{async *stream(){direct++;throw new Error('forbidden direct call')}},subagents:{async start(_name,request){spawns++;if(request.agentOptions.model==='status-special'){if(statusFallback)throw new Error('status provider failed');return {id:`status-${spawns}`,result:statusGate.then(()=>({stopReason:'completed',output:[{type:'text',text:'{"title":"庭院","fields":[{"label":"位置","value":"庭院"}],"options":[{"label":"专用状态建议"}]}'}]})),async dispose(){}}}assert.equal(request.agentOptions.model,'decision-special');return {id:`decision-${spawns}`,result:Promise.resolve({stopReason:'completed',output:[{type:'text',text:'{"options":[{"label":"专用决策"}]}'}]}),async dispose(){}}}},
   tokenMeter:{measure(){return {nodes:[]}}},agentDefaultModel:{currentSelection:()=>agent.options},
   systemPrompt:{variable:(name,value)=>{variables.set(name,value);return()=>{}},section:s=>{sections.set(s.name,s);return()=>{}}},tools:{guard:g=>{guards.push(g);return()=>{}},register:t=>{tools.set(t.name,t);return()=>{}}},commands:{register:c=>{commands.set(c.name,c);return()=>{}}},

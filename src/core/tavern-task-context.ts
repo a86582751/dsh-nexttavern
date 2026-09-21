@@ -4,6 +4,7 @@ import { createTaskRetirement, taskContextRecord } from './tavern-task-retiremen
 import { taskHash, isInlinePending } from './tavern-task-primitives.js';
 import { taskValidationFailure } from './tavern-task-support.js';
 import { fenceCardContent } from './tavern-card.js';
+import type { StorySurfaceReplacement } from './roleplay-message-view.js';
 /** Optional transport description; full frozen input remains the audit/retry source. */
 export interface MaintenancePromptContext {
     schemaVersion: 1;
@@ -212,11 +213,7 @@ export interface TaskContextSession {
         cwd?: string;
     };
     append?(type: 'user/message', data: TaskMessage, options: {
-        surfaceOp: {
-            op: 'replace';
-            start: number;
-            end: number;
-        };
+        surfaceOp: StorySurfaceReplacement;
         sourceEventSeqs: number[];
     }): unknown;
 }
