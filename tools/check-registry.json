@@ -15,7 +15,6 @@
         "plugin-fork*",
         "plugin-owned-controller*",
         "runtime/alpha3/compat/session-controller/*",
-        "plugin-owned-telemetry*",
         "plugin-native-projection*",
         "plugin-owned-protocol*",
         "plugin-thirdparty-scope*",
@@ -29,6 +28,7 @@
         "runtime/alpha3/compat/llm-pi-ai/*",
         "plugin-protocol-frames*",
         "plugin-native-meter*",
+        "plugin-edited-meter*",
         "plugin-owned-session-format*",
         "plugin-story-edit-readers*",
         "plugin-story-edit-writes*",
@@ -2991,22 +2991,6 @@
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
-      "id": "test:plugin-owned-telemetry.test.mts",
-      "action": "test",
-      "modules": [
-        "plugin-lifecycle"
-      ],
-      "inputs": [],
-      "depends": [
-        "generated"
-      ],
-      "requires": [
-        "compiler"
-      ],
-      "timeoutMs": 30000,
-      "unavailable": "Maintainer-only facility; not part of this public delivery"
-    },
-    {
       "heavy": true,
       "id": "test:plugin-owned-protocol.test.mts",
       "action": "test",
@@ -3129,6 +3113,22 @@
         "plugin-lifecycle"
       ],
       "inputs": [],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-edited-meter.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
       "requires": [
         "compiler"
       ],

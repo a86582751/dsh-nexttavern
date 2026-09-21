@@ -1792,6 +1792,96 @@
       ]
     },
     {
+      "artifact": "compat-token-meter-types-js",
+      "source": "development/token-meter/src/types.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/types.ts",
+      "primaryOutput": "development/token-meter/lib/types.js",
+      "outputs": [
+        "development/token-meter/lib/types.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-projection-js",
+      "source": "development/token-meter/src/projection.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/projection.ts",
+      "primaryOutput": "development/token-meter/lib/projection.js",
+      "outputs": [
+        "development/token-meter/lib/projection.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-client-js",
+      "source": "development/token-meter/src/client.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/client.ts",
+      "primaryOutput": "development/token-meter/lib/client.js",
+      "outputs": [
+        "development/token-meter/lib/client.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-index-js",
+      "source": "development/token-meter/src/index.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/index.ts",
+      "primaryOutput": "development/token-meter/lib/index.js",
+      "outputs": [
+        "development/token-meter/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-breakdown-projection-js",
+      "source": "development/token-meter/src/breakdown-projection.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/breakdown-projection.ts",
+      "primaryOutput": "development/token-meter/lib/breakdown-projection.js",
+      "outputs": [
+        "development/token-meter/lib/breakdown-projection.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-estimate-js",
+      "source": "development/token-meter/src/estimate.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/estimate.ts",
+      "primaryOutput": "development/token-meter/lib/estimate.js",
+      "outputs": [
+        "development/token-meter/lib/estimate.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-route-pricing-js",
+      "source": "development/token-meter/src/route-pricing.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/route-pricing.ts",
+      "primaryOutput": "development/token-meter/lib/route-pricing.js",
+      "outputs": [
+        "development/token-meter/lib/route-pricing.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-surface-fold-js",
+      "source": "development/token-meter/src/surface-fold.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/surface-fold.ts",
+      "primaryOutput": "development/token-meter/lib/surface-fold.js",
+      "outputs": [
+        "development/token-meter/lib/surface-fold.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-surface-projection-js",
+      "source": "development/token-meter/src/surface-projection.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/surface-projection.ts",
+      "primaryOutput": "development/token-meter/lib/surface-projection.js",
+      "outputs": [
+        "development/token-meter/lib/surface-projection.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-usage-projection-js",
+      "source": "development/token-meter/src/usage-projection.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/usage-projection.ts",
+      "primaryOutput": "development/token-meter/lib/usage-projection.js",
+      "outputs": [
+        "development/token-meter/lib/usage-projection.js"
+      ]
+    },
+    {
       "artifact": "compat-llm-pi-ai-adapter-js",
       "source": "development/llm-pi-ai/src/adapter.ts",
       "banner": "runtime/alpha3/compat/llm-pi-ai/src/adapter.ts",

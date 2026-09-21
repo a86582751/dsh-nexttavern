@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "package": "dsh-nexttavern-token-meter",
+  "upstreamPackage": "@deepseek-ai/dsh-token-meter",
+  "upstreamVersion": "0.1.6-alpha.2",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "ddefc45fbc7f8e46dd73185e68295696d1297887",
+  "license": "MIT",
+  "files": [
+    {
+      "source": "src/index.ts",
+      "upstream": "packages/llm/token-meter/src/index.ts",
+      "upstreamSha256": "9d399314121785154296af650c6059bfd967a4ba6fc72299aadf8a2dce3f7ce1"
+    },
+    {
+      "source": "src/breakdown-projection.ts",
+      "upstream": "packages/llm/token-meter/src/breakdown-projection.ts",
+      "upstreamSha256": "7b2bee9b2d30ac128bddba1c1cd182180fcd7268a5bcef51381c8123876600dc"
+    },
+    {
+      "source": "src/estimate.ts",
+      "upstream": "packages/llm/token-meter/src/estimate.ts",
+      "upstreamSha256": "cba6d6e5d5ef6736a166a26736998a294606986514d28a8e0258bc8a4759f236"
+    },
+    {
+      "source": "src/route-pricing.ts",
+      "upstream": "packages/llm/token-meter/src/route-pricing.ts",
+      "upstreamSha256": "4201c430b66e12fd40dcf264034bbc517cb73867f4b31a68b90c8a3ff3210840"
+    },
+    {
+      "source": "src/surface-fold.ts",
+      "upstream": "packages/llm/token-meter/src/surface-fold.ts",
+      "upstreamSha256": "f521ae83a4818cbc01f17778e2d5ee4d799345fffc12df86455f0c72ac0e5f51"
+    },
+    {
+      "source": "src/surface-projection.ts",
+      "upstream": "packages/llm/token-meter/src/surface-projection.ts",
+      "upstreamSha256": "1d1429b390a2b35247b481e7255f27b927db1878f02e1c3dd0ca1f07297cb6e9"
+    },
+    {
+      "source": "src/usage-projection.ts",
+      "upstream": "packages/llm/token-meter/src/usage-projection.ts",
+      "upstreamSha256": "0126f8ee5c63c2ee848f732a28ed6c7e31f6adcdb43271d6cd0a6f260d0d3465"
+    }
+  ],
+  "changes": [
+    "Relative .js imports; reuse pinned public types/client exports and shared Cordis identity",
+    "Native cursor replay, embedded streams, retries, image offload and file request pricing retained",
+    "Required message edits reprice current nodes in event order without rewriting usage or completed request anchors",
+    "Compact retained-node prices support pure context pressure/breakdown checkpoint replay; no retained story text",
+    "Native tokenUsage state v2 retained; pressure v7 and breakdown v6 invalidate older incompatible caches"
+  ],
+  "formalForkSynchronized": false
+}

@@ -2125,6 +2125,102 @@
       "source": ".gitignore"
     },
     {
+      "id": "compat-token-meter-types-ts",
+      "source": "development/token-meter/src/types.ts"
+    },
+    {
+      "id": "compat-token-meter-types-js",
+      "source": "development/token-meter/lib/types.js"
+    },
+    {
+      "id": "compat-token-meter-projection-ts",
+      "source": "development/token-meter/src/projection.ts"
+    },
+    {
+      "id": "compat-token-meter-projection-js",
+      "source": "development/token-meter/lib/projection.js"
+    },
+    {
+      "id": "compat-token-meter-client-ts",
+      "source": "development/token-meter/src/client.ts"
+    },
+    {
+      "id": "compat-token-meter-client-js",
+      "source": "development/token-meter/lib/client.js"
+    },
+    {
+      "id": "compat-token-meter-index-ts",
+      "source": "development/token-meter/src/index.ts"
+    },
+    {
+      "id": "compat-token-meter-index-js",
+      "source": "development/token-meter/lib/index.js"
+    },
+    {
+      "id": "compat-token-meter-breakdown-projection-ts",
+      "source": "development/token-meter/src/breakdown-projection.ts"
+    },
+    {
+      "id": "compat-token-meter-breakdown-projection-js",
+      "source": "development/token-meter/lib/breakdown-projection.js"
+    },
+    {
+      "id": "compat-token-meter-estimate-ts",
+      "source": "development/token-meter/src/estimate.ts"
+    },
+    {
+      "id": "compat-token-meter-estimate-js",
+      "source": "development/token-meter/lib/estimate.js"
+    },
+    {
+      "id": "compat-token-meter-route-pricing-ts",
+      "source": "development/token-meter/src/route-pricing.ts"
+    },
+    {
+      "id": "compat-token-meter-route-pricing-js",
+      "source": "development/token-meter/lib/route-pricing.js"
+    },
+    {
+      "id": "compat-token-meter-surface-fold-ts",
+      "source": "development/token-meter/src/surface-fold.ts"
+    },
+    {
+      "id": "compat-token-meter-surface-fold-js",
+      "source": "development/token-meter/lib/surface-fold.js"
+    },
+    {
+      "id": "compat-token-meter-surface-projection-ts",
+      "source": "development/token-meter/src/surface-projection.ts"
+    },
+    {
+      "id": "compat-token-meter-surface-projection-js",
+      "source": "development/token-meter/lib/surface-projection.js"
+    },
+    {
+      "id": "compat-token-meter-usage-projection-ts",
+      "source": "development/token-meter/src/usage-projection.ts"
+    },
+    {
+      "id": "compat-token-meter-usage-projection-js",
+      "source": "development/token-meter/lib/usage-projection.js"
+    },
+    {
+      "id": "compat-token-meter-package-json",
+      "source": "development/token-meter/package.json"
+    },
+    {
+      "id": "compat-token-meter-origin-json",
+      "source": "development/token-meter/ORIGIN.json"
+    },
+    {
+      "id": "compat-token-meter-license",
+      "source": "development/token-meter/LICENSE"
+    },
+    {
+      "id": "compat-token-meter-license-upstream",
+      "source": "development/token-meter/LICENSE.upstream"
+    },
+    {
       "id": "compat-llm-pi-ai-adapter-ts",
       "source": "development/llm-pi-ai/src/adapter.ts"
     },
@@ -6996,6 +7092,146 @@
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-projection.mts"
+      ]
+    },
+    {
+      "id": "compat-token-meter-types-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-types-js",
+      "entry": "development/token-meter/src/types.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/types.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-projection-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-projection-js",
+      "entry": "development/token-meter/src/projection.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/projection.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-client-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-client-js",
+      "entry": "development/token-meter/src/client.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/client.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-index-js",
+      "entry": "development/token-meter/src/index.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-breakdown-projection-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-breakdown-projection-js",
+      "entry": "development/token-meter/src/breakdown-projection.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/breakdown-projection.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-estimate-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-estimate-js",
+      "entry": "development/token-meter/src/estimate.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/estimate.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-route-pricing-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-route-pricing-js",
+      "entry": "development/token-meter/src/route-pricing.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/route-pricing.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-surface-fold-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-surface-fold-js",
+      "entry": "development/token-meter/src/surface-fold.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/surface-fold.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-surface-projection-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-surface-projection-js",
+      "entry": "development/token-meter/src/surface-projection.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/surface-projection.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-usage-projection-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-usage-projection-js",
+      "entry": "development/token-meter/src/usage-projection.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/usage-projection.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     },
     {
