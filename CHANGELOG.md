@@ -2,7 +2,9 @@
 
 ## 0.3 development — 2026-09-22
 
-- Rebased the owned token meter on alpha.6. Required edits now reprice current context and its breakdown without changing original usage or request anchors. Seven focused cases cover JSONL replay, inherited histories, versioned caches, compaction, attachments, retries and disposal; the strict 14-module closure passed. Removed obsolete replacement accounting. Full UI/product integration and Controller prepared-fork acceptance remain pending.
+- Rebased the owned Session Controller and browser client on alpha.6. Prepared forks reserve ownership before publication and inherit late edit metadata; ordinary forks retain native boundaries and model selection has one owner. The strict 31-module closure, browser bundle and 16 affected cases passed, including owned JSONL/meter integration and client reconnect/disposal. Full business/UI flows, formal fork sync and unified product assembly remain incomplete.
+
+- Rebased the owned token meter on alpha.6. Required edits now reprice current context and its breakdown without changing original usage or request anchors. Seven focused cases cover JSONL replay, inherited histories, versioned caches, compaction, attachments, retries and disposal; the strict 14-module closure passed. Removed obsolete replacement accounting. Full UI/product integration remains pending; the later Controller stage above adds prepared-fork integration evidence.
 
 - Migrated assistant/player edit writes to required edit events with native durability barriers and versioned effect receipts. Original message anchors and usage stay unchanged; shared branches converge after partial failure, cold activation and restart. Nine native Agent/JSONL cases plus existing business smoke and fork-completion regressions passed. Retired alpha.3 replacement-repair code; UI, metering, real storage-domain crash recovery and full installation remain pending.
 

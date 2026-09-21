@@ -1792,6 +1792,249 @@
       ]
     },
     {
+      "artifact": "compat-session-controller-agent-js",
+      "source": "development/session-controller/src/agent.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/agent.ts",
+      "primaryOutput": "development/session-controller/lib/agent.js",
+      "outputs": [
+        "development/session-controller/lib/agent.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-commands-js",
+      "source": "development/session-controller/src/commands.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/commands.ts",
+      "primaryOutput": "development/session-controller/lib/commands.js",
+      "outputs": [
+        "development/session-controller/lib/commands.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-control-js",
+      "source": "development/session-controller/src/control.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/control.ts",
+      "primaryOutput": "development/session-controller/lib/control.js",
+      "outputs": [
+        "development/session-controller/lib/control.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-fork-reservation-js",
+      "source": "development/session-controller/src/fork-reservation.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/fork-reservation.ts",
+      "primaryOutput": "development/session-controller/lib/fork-reservation.js",
+      "outputs": [
+        "development/session-controller/lib/fork-reservation.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-history-js",
+      "source": "development/session-controller/src/history.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/history.ts",
+      "primaryOutput": "development/session-controller/lib/history.js",
+      "outputs": [
+        "development/session-controller/lib/history.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-index-js",
+      "source": "development/session-controller/src/index.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/index.ts",
+      "primaryOutput": "development/session-controller/lib/index.js",
+      "outputs": [
+        "development/session-controller/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-list-js",
+      "source": "development/session-controller/src/list.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/list.ts",
+      "primaryOutput": "development/session-controller/lib/list.js",
+      "outputs": [
+        "development/session-controller/lib/list.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-model-selection-projection-js",
+      "source": "development/session-controller/src/model-selection-projection.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/model-selection-projection.ts",
+      "primaryOutput": "development/session-controller/lib/model-selection-projection.js",
+      "outputs": [
+        "development/session-controller/lib/model-selection-projection.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-types-js",
+      "source": "development/session-controller/src/types.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/types.ts",
+      "primaryOutput": "development/session-controller/lib/types.js",
+      "outputs": [
+        "development/session-controller/lib/types.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-typert-js",
+      "source": "development/session-controller/src/typert.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/typert.ts",
+      "primaryOutput": "development/session-controller/lib/typert.js",
+      "outputs": [
+        "development/session-controller/lib/typert.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-contract-events-js",
+      "source": "development/session-controller/src/client/contract/events.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/contract/events.ts",
+      "primaryOutput": "development/session-controller/lib/client/contract/events.js",
+      "outputs": [
+        "development/session-controller/lib/client/contract/events.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-contract-session-js",
+      "source": "development/session-controller/src/client/contract/session.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/contract/session.ts",
+      "primaryOutput": "development/session-controller/lib/client/contract/session.js",
+      "outputs": [
+        "development/session-controller/lib/client/contract/session.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-contract-sessions-js",
+      "source": "development/session-controller/src/client/contract/sessions.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/contract/sessions.ts",
+      "primaryOutput": "development/session-controller/lib/client/contract/sessions.js",
+      "outputs": [
+        "development/session-controller/lib/client/contract/sessions.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-contract-snapshot-js",
+      "source": "development/session-controller/src/client/contract/snapshot.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/contract/snapshot.ts",
+      "primaryOutput": "development/session-controller/lib/client/contract/snapshot.js",
+      "outputs": [
+        "development/session-controller/lib/client/contract/snapshot.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-index-js",
+      "source": "development/session-controller/src/client/index.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/index.ts",
+      "primaryOutput": "development/session-controller/lib/client/index.js",
+      "outputs": [
+        "development/session-controller/lib/client/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-ordered-baseline-js",
+      "source": "development/session-controller/src/client/ordered-baseline.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/ordered-baseline.ts",
+      "primaryOutput": "development/session-controller/lib/client/ordered-baseline.js",
+      "outputs": [
+        "development/session-controller/lib/client/ordered-baseline.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-scope-js",
+      "source": "development/session-controller/src/client/scope.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/scope.ts",
+      "primaryOutput": "development/session-controller/lib/client/scope.js",
+      "outputs": [
+        "development/session-controller/lib/client/scope.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-sessions-history-records-js",
+      "source": "development/session-controller/src/client/sessions/history-records.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/sessions/history-records.ts",
+      "primaryOutput": "development/session-controller/lib/client/sessions/history-records.js",
+      "outputs": [
+        "development/session-controller/lib/client/sessions/history-records.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-sessions-lineage-js",
+      "source": "development/session-controller/src/client/sessions/lineage.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/sessions/lineage.ts",
+      "primaryOutput": "development/session-controller/lib/client/sessions/lineage.js",
+      "outputs": [
+        "development/session-controller/lib/client/sessions/lineage.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-sessions-manager-js",
+      "source": "development/session-controller/src/client/sessions/manager.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/sessions/manager.ts",
+      "primaryOutput": "development/session-controller/lib/client/sessions/manager.js",
+      "outputs": [
+        "development/session-controller/lib/client/sessions/manager.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-sessions-notifier-js",
+      "source": "development/session-controller/src/client/sessions/notifier.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/sessions/notifier.ts",
+      "primaryOutput": "development/session-controller/lib/client/sessions/notifier.js",
+      "outputs": [
+        "development/session-controller/lib/client/sessions/notifier.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-sessions-projection-store-js",
+      "source": "development/session-controller/src/client/sessions/projection-store.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/sessions/projection-store.ts",
+      "primaryOutput": "development/session-controller/lib/client/sessions/projection-store.js",
+      "outputs": [
+        "development/session-controller/lib/client/sessions/projection-store.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-sessions-remotes-js",
+      "source": "development/session-controller/src/client/sessions/remotes.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/sessions/remotes.ts",
+      "primaryOutput": "development/session-controller/lib/client/sessions/remotes.js",
+      "outputs": [
+        "development/session-controller/lib/client/sessions/remotes.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-sessions-service-js",
+      "source": "development/session-controller/src/client/sessions/service.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/sessions/service.ts",
+      "primaryOutput": "development/session-controller/lib/client/sessions/service.js",
+      "outputs": [
+        "development/session-controller/lib/client/sessions/service.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-sessions-session-js",
+      "source": "development/session-controller/src/client/sessions/session.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/sessions/session.ts",
+      "primaryOutput": "development/session-controller/lib/client/sessions/session.js",
+      "outputs": [
+        "development/session-controller/lib/client/sessions/session.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-time-zone-js",
+      "source": "development/session-controller/src/client/time-zone.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/time-zone.ts",
+      "primaryOutput": "development/session-controller/lib/client/time-zone.js",
+      "outputs": [
+        "development/session-controller/lib/client/time-zone.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-transport-js",
+      "source": "development/session-controller/src/client/transport.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/transport.ts",
+      "primaryOutput": "development/session-controller/lib/client/transport.js",
+      "outputs": [
+        "development/session-controller/lib/client/transport.js"
+      ]
+    },
+    {
       "artifact": "compat-token-meter-types-js",
       "source": "development/token-meter/src/types.ts",
       "banner": "runtime/alpha3/compat/token-meter/src/types.ts",
@@ -2174,6 +2417,42 @@
         "development/session-persistence-jsonl/lib/zstd.js"
       ],
       "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-controller-assistant-stream-js",
+      "source": "development/session-controller/src/assistant-stream.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/assistant-stream.ts",
+      "primaryOutput": "development/session-controller/lib/assistant-stream.js",
+      "outputs": [
+        "development/session-controller/lib/assistant-stream.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-media-references-js",
+      "source": "development/session-controller/src/media-references.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/media-references.ts",
+      "primaryOutput": "development/session-controller/lib/media-references.js",
+      "outputs": [
+        "development/session-controller/lib/media-references.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-session-wire-event-js",
+      "source": "development/session-controller/src/client/session-wire-event.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/session-wire-event.ts",
+      "primaryOutput": "development/session-controller/lib/client/session-wire-event.js",
+      "outputs": [
+        "development/session-controller/lib/client/session-wire-event.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-controller-client-sessions-assistant-stream-js",
+      "source": "development/session-controller/src/client/sessions/assistant-stream.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/client/sessions/assistant-stream.ts",
+      "primaryOutput": "development/session-controller/lib/client/sessions/assistant-stream.js",
+      "outputs": [
+        "development/session-controller/lib/client/sessions/assistant-stream.js"
+      ]
     }
   ],
   "bundles": [

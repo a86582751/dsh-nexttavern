@@ -2907,6 +2907,7 @@
     {
       "id": "bundle:owned-controller",
       "action": "bundle",
+      "artifact": "compat-session-controller-browser",
       "modules": [
         "plugin-lifecycle"
       ],
@@ -2921,8 +2922,9 @@
         "network": false,
         "service": false
       },
-      "inputs": [],
-      "unavailable": "Maintainer-only facility; not part of this public delivery"
+      "inputs": [
+        "inventory-runtime-alpha3-build-tools-package-lock-json"
+      ]
     },
     {
       "id": "mechanics:typescript-host-and-client-contexts-remain-strict-and-explicit",

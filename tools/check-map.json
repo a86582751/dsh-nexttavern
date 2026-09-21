@@ -2125,6 +2125,242 @@
       "source": ".gitignore"
     },
     {
+      "id": "compat-session-controller-agent-ts",
+      "source": "development/session-controller/src/agent.ts"
+    },
+    {
+      "id": "compat-session-controller-agent-js",
+      "source": "development/session-controller/lib/agent.js"
+    },
+    {
+      "id": "compat-session-controller-commands-ts",
+      "source": "development/session-controller/src/commands.ts"
+    },
+    {
+      "id": "compat-session-controller-commands-js",
+      "source": "development/session-controller/lib/commands.js"
+    },
+    {
+      "id": "compat-session-controller-control-ts",
+      "source": "development/session-controller/src/control.ts"
+    },
+    {
+      "id": "compat-session-controller-control-js",
+      "source": "development/session-controller/lib/control.js"
+    },
+    {
+      "id": "compat-session-controller-fork-reservation-ts",
+      "source": "development/session-controller/src/fork-reservation.ts"
+    },
+    {
+      "id": "compat-session-controller-fork-reservation-js",
+      "source": "development/session-controller/lib/fork-reservation.js"
+    },
+    {
+      "id": "compat-session-controller-history-ts",
+      "source": "development/session-controller/src/history.ts"
+    },
+    {
+      "id": "compat-session-controller-history-js",
+      "source": "development/session-controller/lib/history.js"
+    },
+    {
+      "id": "compat-session-controller-index-ts",
+      "source": "development/session-controller/src/index.ts"
+    },
+    {
+      "id": "compat-session-controller-index-js",
+      "source": "development/session-controller/lib/index.js"
+    },
+    {
+      "id": "compat-session-controller-list-ts",
+      "source": "development/session-controller/src/list.ts"
+    },
+    {
+      "id": "compat-session-controller-list-js",
+      "source": "development/session-controller/lib/list.js"
+    },
+    {
+      "id": "compat-session-controller-model-selection-projection-ts",
+      "source": "development/session-controller/src/model-selection-projection.ts"
+    },
+    {
+      "id": "compat-session-controller-model-selection-projection-js",
+      "source": "development/session-controller/lib/model-selection-projection.js"
+    },
+    {
+      "id": "compat-session-controller-types-ts",
+      "source": "development/session-controller/src/types.ts"
+    },
+    {
+      "id": "compat-session-controller-types-js",
+      "source": "development/session-controller/lib/types.js"
+    },
+    {
+      "id": "compat-session-controller-package-json",
+      "source": "development/session-controller/package.json"
+    },
+    {
+      "id": "compat-session-controller-license",
+      "source": "development/session-controller/LICENSE"
+    },
+    {
+      "id": "compat-session-controller-origin-json",
+      "source": "development/session-controller/ORIGIN.json"
+    },
+    {
+      "id": "compat-session-controller-upstream-license",
+      "source": "development/session-controller/LICENSE.upstream"
+    },
+    {
+      "id": "compat-session-controller-typert-ts",
+      "source": "development/session-controller/src/typert.ts"
+    },
+    {
+      "id": "compat-session-controller-typert-js",
+      "source": "development/session-controller/lib/typert.js"
+    },
+    {
+      "id": "compat-session-controller-client-contract-events-ts",
+      "source": "development/session-controller/src/client/contract/events.ts"
+    },
+    {
+      "id": "compat-session-controller-client-contract-events-js",
+      "source": "development/session-controller/lib/client/contract/events.js"
+    },
+    {
+      "id": "compat-session-controller-client-contract-session-ts",
+      "source": "development/session-controller/src/client/contract/session.ts"
+    },
+    {
+      "id": "compat-session-controller-client-contract-session-js",
+      "source": "development/session-controller/lib/client/contract/session.js"
+    },
+    {
+      "id": "compat-session-controller-client-contract-sessions-ts",
+      "source": "development/session-controller/src/client/contract/sessions.ts"
+    },
+    {
+      "id": "compat-session-controller-client-contract-sessions-js",
+      "source": "development/session-controller/lib/client/contract/sessions.js"
+    },
+    {
+      "id": "compat-session-controller-client-contract-snapshot-ts",
+      "source": "development/session-controller/src/client/contract/snapshot.ts"
+    },
+    {
+      "id": "compat-session-controller-client-contract-snapshot-js",
+      "source": "development/session-controller/lib/client/contract/snapshot.js"
+    },
+    {
+      "id": "compat-session-controller-client-index-ts",
+      "source": "development/session-controller/src/client/index.ts"
+    },
+    {
+      "id": "compat-session-controller-client-index-js",
+      "source": "development/session-controller/lib/client/index.js"
+    },
+    {
+      "id": "compat-session-controller-client-ordered-baseline-ts",
+      "source": "development/session-controller/src/client/ordered-baseline.ts"
+    },
+    {
+      "id": "compat-session-controller-client-ordered-baseline-js",
+      "source": "development/session-controller/lib/client/ordered-baseline.js"
+    },
+    {
+      "id": "compat-session-controller-client-scope-ts",
+      "source": "development/session-controller/src/client/scope.ts"
+    },
+    {
+      "id": "compat-session-controller-client-scope-js",
+      "source": "development/session-controller/lib/client/scope.js"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-history-records-ts",
+      "source": "development/session-controller/src/client/sessions/history-records.ts"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-history-records-js",
+      "source": "development/session-controller/lib/client/sessions/history-records.js"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-lineage-ts",
+      "source": "development/session-controller/src/client/sessions/lineage.ts"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-lineage-js",
+      "source": "development/session-controller/lib/client/sessions/lineage.js"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-manager-ts",
+      "source": "development/session-controller/src/client/sessions/manager.ts"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-manager-js",
+      "source": "development/session-controller/lib/client/sessions/manager.js"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-notifier-ts",
+      "source": "development/session-controller/src/client/sessions/notifier.ts"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-notifier-js",
+      "source": "development/session-controller/lib/client/sessions/notifier.js"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-projection-store-ts",
+      "source": "development/session-controller/src/client/sessions/projection-store.ts"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-projection-store-js",
+      "source": "development/session-controller/lib/client/sessions/projection-store.js"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-remotes-ts",
+      "source": "development/session-controller/src/client/sessions/remotes.ts"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-remotes-js",
+      "source": "development/session-controller/lib/client/sessions/remotes.js"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-service-ts",
+      "source": "development/session-controller/src/client/sessions/service.ts"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-service-js",
+      "source": "development/session-controller/lib/client/sessions/service.js"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-session-ts",
+      "source": "development/session-controller/src/client/sessions/session.ts"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-session-js",
+      "source": "development/session-controller/lib/client/sessions/session.js"
+    },
+    {
+      "id": "compat-session-controller-client-time-zone-ts",
+      "source": "development/session-controller/src/client/time-zone.ts"
+    },
+    {
+      "id": "compat-session-controller-client-time-zone-js",
+      "source": "development/session-controller/lib/client/time-zone.js"
+    },
+    {
+      "id": "compat-session-controller-client-transport-ts",
+      "source": "development/session-controller/src/client/transport.ts"
+    },
+    {
+      "id": "compat-session-controller-client-transport-js",
+      "source": "development/session-controller/lib/client/transport.js"
+    },
+    {
+      "id": "compat-session-controller-browser",
+      "source": "development/session-controller/lib/client.js"
+    },
+    {
       "id": "compat-token-meter-types-ts",
       "source": "development/token-meter/src/types.ts"
     },
@@ -2503,6 +2739,38 @@
     {
       "id": "message-edit-application-schema",
       "source": "schemas/message-edit-application.v1.json"
+    },
+    {
+      "id": "compat-session-controller-assistant-stream-ts",
+      "source": "development/session-controller/src/assistant-stream.ts"
+    },
+    {
+      "id": "compat-session-controller-assistant-stream-js",
+      "source": "development/session-controller/lib/assistant-stream.js"
+    },
+    {
+      "id": "compat-session-controller-media-references-ts",
+      "source": "development/session-controller/src/media-references.ts"
+    },
+    {
+      "id": "compat-session-controller-media-references-js",
+      "source": "development/session-controller/lib/media-references.js"
+    },
+    {
+      "id": "compat-session-controller-client-session-wire-event-ts",
+      "source": "development/session-controller/src/client/session-wire-event.ts"
+    },
+    {
+      "id": "compat-session-controller-client-session-wire-event-js",
+      "source": "development/session-controller/lib/client/session-wire-event.js"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-assistant-stream-ts",
+      "source": "development/session-controller/src/client/sessions/assistant-stream.ts"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-assistant-stream-js",
+      "source": "development/session-controller/lib/client/sessions/assistant-stream.js"
     },
     {
       "id": "quality-registry",
@@ -7095,6 +7363,459 @@
       ]
     },
     {
+      "id": "compat-session-controller-agent-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-agent-js",
+      "entry": "development/session-controller/src/agent.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/agent.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-commands-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-commands-js",
+      "entry": "development/session-controller/src/commands.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/commands.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-control-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-control-js",
+      "entry": "development/session-controller/src/control.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/control.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-fork-reservation-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-fork-reservation-js",
+      "entry": "development/session-controller/src/fork-reservation.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/fork-reservation.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-history-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-history-js",
+      "entry": "development/session-controller/src/history.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/history.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-index-js",
+      "entry": "development/session-controller/src/index.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/index.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-list-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-list-js",
+      "entry": "development/session-controller/src/list.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/list.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-model-selection-projection-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-model-selection-projection-js",
+      "entry": "development/session-controller/src/model-selection-projection.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/model-selection-projection.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-types-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-types-js",
+      "entry": "development/session-controller/src/types.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/types.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-typert-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-typert-js",
+      "entry": "development/session-controller/src/typert.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/typert.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-client-contract-events-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-contract-events-js",
+      "entry": "development/session-controller/src/client/contract/events.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/contract/events.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-contract-session-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-contract-session-js",
+      "entry": "development/session-controller/src/client/contract/session.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/contract/session.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-contract-sessions-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-contract-sessions-js",
+      "entry": "development/session-controller/src/client/contract/sessions.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/contract/sessions.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-contract-snapshot-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-contract-snapshot-js",
+      "entry": "development/session-controller/src/client/contract/snapshot.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/contract/snapshot.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-index-js",
+      "entry": "development/session-controller/src/client/index.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/index.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-ordered-baseline-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-ordered-baseline-js",
+      "entry": "development/session-controller/src/client/ordered-baseline.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/ordered-baseline.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-scope-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-scope-js",
+      "entry": "development/session-controller/src/client/scope.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/scope.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-history-records-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-sessions-history-records-js",
+      "entry": "development/session-controller/src/client/sessions/history-records.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/sessions/history-records.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-lineage-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-sessions-lineage-js",
+      "entry": "development/session-controller/src/client/sessions/lineage.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/sessions/lineage.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-manager-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-sessions-manager-js",
+      "entry": "development/session-controller/src/client/sessions/manager.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/sessions/manager.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-notifier-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-sessions-notifier-js",
+      "entry": "development/session-controller/src/client/sessions/notifier.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/sessions/notifier.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-projection-store-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-sessions-projection-store-js",
+      "entry": "development/session-controller/src/client/sessions/projection-store.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/sessions/projection-store.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-remotes-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-sessions-remotes-js",
+      "entry": "development/session-controller/src/client/sessions/remotes.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/sessions/remotes.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-service-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-sessions-service-js",
+      "entry": "development/session-controller/src/client/sessions/service.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/sessions/service.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-session-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-sessions-session-js",
+      "entry": "development/session-controller/src/client/sessions/session.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/sessions/session.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-time-zone-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-time-zone-js",
+      "entry": "development/session-controller/src/client/time-zone.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/time-zone.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-transport-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-transport-js",
+      "entry": "development/session-controller/src/client/transport.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/transport.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-browser",
+      "artifact": "compat-session-controller-browser",
+      "entry": "development/session-controller/lib/client/index.js",
+      "builder": "lib/ui/build-client.mjs",
+      "browser": {
+        "moduleId": "dsh-nexttavern-session-controller",
+        "external": [
+          "@deepseek-ai/cordis",
+          "@deepseek-ai/dsh-client-store",
+          "@deepseek-ai/dsh-api-gateway/client"
+        ]
+      },
+      "inputs": [
+        "development/session-controller/src/agent.ts",
+        "development/session-controller/lib/agent.js",
+        "development/session-controller/src/commands.ts",
+        "development/session-controller/lib/commands.js",
+        "development/session-controller/src/control.ts",
+        "development/session-controller/lib/control.js",
+        "development/session-controller/src/fork-reservation.ts",
+        "development/session-controller/lib/fork-reservation.js",
+        "development/session-controller/src/history.ts",
+        "development/session-controller/lib/history.js",
+        "development/session-controller/src/index.ts",
+        "development/session-controller/lib/index.js",
+        "development/session-controller/src/list.ts",
+        "development/session-controller/lib/list.js",
+        "development/session-controller/src/model-selection-projection.ts",
+        "development/session-controller/lib/model-selection-projection.js",
+        "development/session-controller/src/types.ts",
+        "development/session-controller/lib/types.js",
+        "development/session-controller/package.json",
+        "development/session-controller/LICENSE",
+        "development/session-controller/ORIGIN.json",
+        "development/session-controller/LICENSE.upstream",
+        "development/session-controller/src/typert.ts",
+        "development/session-controller/lib/typert.js",
+        "development/session-controller/src/client/contract/events.ts",
+        "development/session-controller/lib/client/contract/events.js",
+        "development/session-controller/src/client/contract/session.ts",
+        "development/session-controller/lib/client/contract/session.js",
+        "development/session-controller/src/client/contract/sessions.ts",
+        "development/session-controller/lib/client/contract/sessions.js",
+        "development/session-controller/src/client/contract/snapshot.ts",
+        "development/session-controller/lib/client/contract/snapshot.js",
+        "development/session-controller/src/client/index.ts",
+        "development/session-controller/lib/client/index.js",
+        "development/session-controller/src/client/ordered-baseline.ts",
+        "development/session-controller/lib/client/ordered-baseline.js",
+        "development/session-controller/src/client/scope.ts",
+        "development/session-controller/lib/client/scope.js",
+        "development/session-controller/src/client/sessions/history-records.ts",
+        "development/session-controller/lib/client/sessions/history-records.js",
+        "development/session-controller/src/client/sessions/lineage.ts",
+        "development/session-controller/lib/client/sessions/lineage.js",
+        "development/session-controller/src/client/sessions/manager.ts",
+        "development/session-controller/lib/client/sessions/manager.js",
+        "development/session-controller/src/client/sessions/notifier.ts",
+        "development/session-controller/lib/client/sessions/notifier.js",
+        "development/session-controller/src/client/sessions/projection-store.ts",
+        "development/session-controller/lib/client/sessions/projection-store.js",
+        "development/session-controller/src/client/sessions/remotes.ts",
+        "development/session-controller/lib/client/sessions/remotes.js",
+        "development/session-controller/src/client/sessions/service.ts",
+        "development/session-controller/lib/client/sessions/service.js",
+        "development/session-controller/src/client/sessions/session.ts",
+        "development/session-controller/lib/client/sessions/session.js",
+        "development/session-controller/src/client/time-zone.ts",
+        "development/session-controller/lib/client/time-zone.js",
+        "development/session-controller/src/client/transport.ts",
+        "development/session-controller/lib/client/transport.js",
+        "lib/ui/build-client.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-controller/src/assistant-stream.ts",
+        "development/session-controller/lib/assistant-stream.js",
+        "development/session-controller/src/media-references.ts",
+        "development/session-controller/lib/media-references.js",
+        "development/session-controller/src/client/session-wire-event.ts",
+        "development/session-controller/lib/client/session-wire-event.js",
+        "development/session-controller/src/client/sessions/assistant-stream.ts",
+        "development/session-controller/lib/client/sessions/assistant-stream.js"
+      ]
+    },
+    {
       "id": "compat-token-meter-types-build",
       "kind": "typescript-module",
       "artifact": "compat-token-meter-types-js",
@@ -7843,6 +8564,60 @@
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-controller-assistant-stream-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-assistant-stream-js",
+      "entry": "development/session-controller/src/assistant-stream.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/assistant-stream.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-media-references-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-media-references-js",
+      "entry": "development/session-controller/src/media-references.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/media-references.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-controller-client-session-wire-event-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-session-wire-event-js",
+      "entry": "development/session-controller/src/client/session-wire-event.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/session-wire-event.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
+    },
+    {
+      "id": "compat-session-controller-client-sessions-assistant-stream-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-client-sessions-assistant-stream-js",
+      "entry": "development/session-controller/src/client/sessions/assistant-stream.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/client/sessions/assistant-stream.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "client"
     }
   ],
   "typeScript": {
