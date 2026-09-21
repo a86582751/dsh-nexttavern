@@ -883,17 +883,8 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
   }
 
   async function nativeBranchGroupsFor(session: ReadBranchSession, lookup: ForkLookup | null = null) {
-    // Old in-place regeneration replaced the original assistant on the same
-    // Session surface.  If that Session was later enrolled in the native fork
-    // index, repair only its navigation pointer: the append-only audit log stays
-    // untouched, while Chat/Reader can present the visible reply as one k/N slot.
-    await repairLegacyRootForkPointer(session, lookup)
     await reconcileNativeFork(session)
-    // repairLegacyRootForkPointer/reconcileNativeFork may create or retarget
-    // the anchor pointer and settle a pending member.  Do not continue with
-    // the pre-repair lookup index: a first state read after a regeneration
-    // must expose the complete k/N group immediately, rather than only after
-    // a later refresh happens to rebuild the index.
+    // A recovered pending member can change navigation; rebuild its lookup.
     lookup = buildForkLookupIndex(session)
     const result: Record<string, BranchProjection> = {}
     for (const event of surfaceEvents(session)) {
@@ -970,9 +961,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
   }
 
   const {
-    repairLegacyRootForkPointer,
     nativePlayerGroupsFor,
-    repairLegacyUserReplacementIdentities,
     replaceAssistantText,
     reconcileCanonicalPlayerVariants,
     userForkContext,
@@ -991,7 +980,6 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     buildForkLookupIndex,
     reconcileNativeFork,
     failPendingNativeFork,
-    repairLegacyUserReplacementIdentities,
     nativeBranchGroupsFor,
     nativePlayerGroupsFor,
     assistantMessageId,

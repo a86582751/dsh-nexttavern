@@ -31,6 +31,7 @@
         "plugin-native-meter*",
         "plugin-owned-session-format*",
         "plugin-story-edit-readers*",
+        "plugin-story-edit-writes*",
         "runtime/alpha3/compat/session-format/*",
         "runtime/alpha3/compat/session-persistence-jsonl/*",
         "plugin-public-compiler*"
@@ -3152,6 +3153,22 @@
     },
     {
       "id": "test:plugin-story-edit-readers.test.mts",
+      "action": "test",
+      "inputs": [],
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-story-edit-writes.test.mts",
       "action": "test",
       "inputs": [],
       "modules": [

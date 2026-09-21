@@ -122,6 +122,8 @@ const DSH_ROLEPLAY_CORE_PATCH = 'dsh-roleplay-status-obligation-v1'
 
 export const inject = [
   'sessions',
+  'nexttavernMessageEdits',
+  'sessionPersistence',
   'sessionQuery',
   'sessionController',
   'llm',
@@ -569,7 +571,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     buildForkLookupIndex,
     reconcileNativeFork,
     failPendingNativeFork,
-    repairLegacyUserReplacementIdentities,
     nativeBranchGroupsFor,
     nativePlayerGroupsFor,
     assistantMessageId,
@@ -596,6 +597,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     replaceAssistantText,
     replaceUserText
   } = createRoleplayWorldlines({
+    messageEdits: ctx.nexttavernMessageEdits,
+    flushEdits: async session => {
+      if (!await ctx.sessions.flush(session)) throw new Error('会话编辑尚无持久化提供者，未提交派生状态')
+    },
     ctx,
     safeId,
     keyOf,
@@ -1052,7 +1057,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     T,
     awaitImportBarrier,
     ensureBranch,
-    repairLegacyUserReplacementIdentities,
     buildForkLookupIndex,
     reconcileCanonicalPlayerVariants,
     statusRecoveredSessions,

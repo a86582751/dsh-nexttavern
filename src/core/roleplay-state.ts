@@ -12,7 +12,7 @@ export const jsonResponse = (status: number, value: unknown) =>
       headers: { 'content-type': 'application/json; charset=utf-8' },
     })
 
-export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, repairLegacyUserReplacementIdentities, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, importSummary, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession}: StateDependencies) {
+export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, importSummary, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession}: StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
     const prefix = `${session.id}__`
     const cards = []
@@ -31,7 +31,6 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, r
   const readRoleplayState = async (session: StateSession) => {
     await awaitImportBarrier(session.id)
     await ensureBranch(session)
-    await repairLegacyUserReplacementIdentities(session)
     let forkLookup = buildForkLookupIndex(session)
     await reconcileCanonicalPlayerVariants(session, forkLookup)
     if (!statusRecoveredSessions.has(session.id)) {

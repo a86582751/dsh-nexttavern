@@ -2,7 +2,9 @@
 
 ## 0.3 development — 2026-09-22
 
-- Routed story windows, recall, note provenance and cold retrieval through native edited-message projections. Novel snapshots now follow edits; stale exports and summaries cannot commit old prose. Seven native reader cases and five affected regression suites passed. Edit-writing routes, UI/meter integration and full product lifecycle remain unfinished.
+- Migrated assistant/player edit writes to required edit events with native durability barriers and versioned effect receipts. Original message anchors and usage stay unchanged; shared branches converge after partial failure, cold activation and restart. Nine native Agent/JSONL cases plus existing business smoke and fork-completion regressions passed. Retired alpha.3 replacement-repair code; UI, metering, real storage-domain crash recovery and full installation remain pending.
+
+- Routed story windows, recall, note provenance and cold retrieval through native edited-message projections. Novel snapshots now follow edits; stale exports and summaries cannot commit old prose. Seven native reader cases and five affected regression suites passed. UI/meter integration and full product lifecycle remain unfinished; server edit writes are covered above.
 
 - Implemented a versioned required message-edit format and an owned alpha.6 JSONL provider. Six focused checks cover plain/compressed storage, verification workers, cold observation, native Agent resume and rejection before invalid writes; original message identities and usage remain unchanged. Product routing, metering/UI integration, safe disable/uninstall and formal fork synchronization remain pending. Removed residual file-upload assembly and sidebar injection from the actual public build inputs.
 

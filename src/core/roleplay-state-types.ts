@@ -23,7 +23,7 @@ export interface StateContext {
 }
 type Worldlines = ReturnType<typeof createRoleplayWorldlines>
 type Status = ReturnType<typeof createRoleplayStatus>
-type StateWorldlines = Pick<Worldlines, 'repairLegacyUserReplacementIdentities' | 'buildForkLookupIndex' | 'reconcileCanonicalPlayerVariants' | 'nativeBranchGroupsFor' | 'nativePlayerGroupsFor' | 'assistantMessageId' | 'userForkContext' | 'locatePlayerRecoveryTarget' | 'failedForkMembership' | 'isRecoverySourceMember' | 'backfillRecoverySourceMember' | 'deletedBranchMessageIdsFor' | 'inheritedAssistantMessageIdsFor'>
+type StateWorldlines = Pick<Worldlines, 'buildForkLookupIndex' | 'reconcileCanonicalPlayerVariants' | 'nativeBranchGroupsFor' | 'nativePlayerGroupsFor' | 'assistantMessageId' | 'userForkContext' | 'locatePlayerRecoveryTarget' | 'failedForkMembership' | 'isRecoverySourceMember' | 'backfillRecoverySourceMember' | 'deletedBranchMessageIdsFor' | 'inheritedAssistantMessageIdsFor'>
 export interface StateDependencies extends StateWorldlines {
   ctx: StateContext
   T: Record<'cards' | 'worldbook' | 'memory' | 'branch' | 'status' | 'rules' | 'opening' | 'scene' | 'drafts' | 'decision', StateTable>

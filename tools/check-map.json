@@ -2405,6 +2405,10 @@
       "source": "schemas/message-edit.v1.json"
     },
     {
+      "id": "message-edit-application-schema",
+      "source": "schemas/message-edit-application.v1.json"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -6440,6 +6444,7 @@
         "src/core/tavern-tasks.ts",
         "src/core/tavern-model-policy.ts",
         "src/core/roleplay-data.ts",
+        "src/core/roleplay-message-view.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",

@@ -1,5 +1,5 @@
 import type { ContextEvent } from './roleplay-context.js'
-import type { BranchSession } from './roleplay-worldline-types.js'
+import type { BranchSession, WorldlineMessageEdits } from './roleplay-worldline-types.js'
 import type { LoopSession, LoopAgent, LoopState } from './roleplay-loop-types.js'
 import type { InheritanceState } from './roleplay-inheritance-types.js'
 import type { createTelemetry } from './tavern-telemetry.js'
@@ -57,8 +57,9 @@ export interface CoreState extends LoopState, InheritanceState {
 type Telemetry = ReturnType<typeof createTelemetry>
 type NativeTask = ReturnType<typeof createRoleplayTaskHost>['nativeTask']
 export type CoreContext = {
+  nexttavernMessageEdits: WorldlineMessageEdits
   userQuestions: {ask(input:{agent:NonNullable<import('./roleplay-task-tools-types.js').TaskToolExecution['agent']>;signal?:AbortSignal;questions:{id:string;question:string;header?:string;detail?:string;options?:{label:string;description:string}[]}[]}):Promise<{answers:{id:string;selected:string[];custom?:string}[]}>}
-  sessions: {get(id: string): CoreSession | undefined}
+  sessions: {get(id: string): CoreSession | undefined; flush(session: BranchSession): Promise<boolean>}
   sessionController: {resolveAgent(id: string): Promise<{agent?: CoreAgent; error?: Error} | undefined>}
   storageDomain: {open(options: unknown): Promise<{table<K extends keyof CoreTables>(name: K): CoreTables[K]; close(): unknown}>}
   sessionQuery: Parameters<typeof createTelemetry>[0]['query']

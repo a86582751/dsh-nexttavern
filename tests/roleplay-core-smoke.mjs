@@ -33,6 +33,21 @@ const services = new Map()
 const sessions = new Map()
 const persistedSessions = new Map()
 const sessionEventObservers = []
+const nexttavernMessageEdits = {
+  append(session, targetSeq, identity, textValue) {
+    return session.append('roleplay/message-edit', {
+      schemaVersion: 1, targetSeq, ...identity, text: textValue,
+    }, {surfaceOp: 'append'})
+  },
+  latest(events, targetSeq) {
+    return [...events].reverse().find((event) =>
+      event.type === 'roleplay/message-edit' && event.data?.targetSeq === targetSeq) ?? null
+  },
+  current(session, events) {
+    const history = Array.isArray(session) ? session : events ?? session.events
+    return history.filter((event) => event.type === 'roleplay/message-edit')
+  },
+}
 const ctx = {
   storageDomain: { async open(options) {
     for (const [name, definition] of Object.entries(options?.tables ?? {})) {
@@ -43,7 +58,8 @@ const ctx = {
     }
     return domain
   } },
-  sessions: { get(id) { return sessions.get(id) } },
+  sessions: { get(id) { return sessions.get(id) }, async flush() { return true } },
+  nexttavernMessageEdits,
   sessionController: {
     async resolveAgent(id) {
       const session = sessions.get(id) ?? persistedSessions.get(id)
@@ -69,7 +85,8 @@ const ctx = {
 
 const text = (value) => [{ type: 'text', text: value }]
 const enableAppend = (session) => {
-  session.append = (type, data, opts) => {
+  session.surface.contentGeneration ??= 0
+  session.append = (type, data, opts = {}) => {
     const event = {
       type, seq: session.events.length, time: Date.now(), data: structuredClone(data),
       surfaceOp: structuredClone(opts.surfaceOp), sourceEventSeqs: [...(opts.sourceEventSeqs ?? [])],
@@ -80,12 +97,20 @@ const enableAppend = (session) => {
       const end = session.surface.nodes.indexOf(op.end)
       assert(start >= 0 && end >= start, 'invalid mock surface replacement')
       session.surface.nodes.splice(start, end - start + 1, event.seq)
+    } else if (type === 'roleplay/message-edit') {
+      session.surface.contentGeneration++
     } else {
       session.surface.nodes.push(event.seq)
     }
     session.events.push(event)
     session.seq = session.events.length
     return event
+  }
+  session.deriveEventMessage = (event) => {
+    const edit = nexttavernMessageEdits.latest(session.events, event.seq)
+    const message = event.type === 'assistant/message' ? event.data?.message : event.data
+    if (!edit || !message || typeof message !== 'object') return message
+    return {...message, content: text(edit.data.text)}
   }
   return session
 }
@@ -460,14 +485,14 @@ assert.equal(savedUser.status, 200)
 assert.equal(savedUser.body.changed, 1)
 assert.equal(savedUser.body.matched, 1)
 assert.equal(root.events[root.surface.nodes[0]].data.content[0].text, '原始玩家消息')
-assert.equal(child.events[child.surface.nodes[0]].data.content[0].text, '原地修改后的玩家消息')
+assert.equal(child.deriveEventMessage(child.events[child.surface.nodes[0]]).content[0].text, '原地修改后的玩家消息')
 assert.equal(child.events[child.surface.nodes[0]].data.id, 'u2')
-assert.equal(child.events[child.surface.nodes[0]].data.source.roleplayRevision, 1)
+assert.deepEqual(child.events[child.surface.nodes[0]].data.source, { kind: 'user', rpcId: 'req-regen-1' })
 assert.equal(child.surface.nodes[1], 2, 'saving the player message must retain the following Agent surface')
 sessions.set(root.id, root)
 const coldRootStateResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-root'))
 assert.equal(coldRootStateResponse.status, 200)
-assert.equal(root.events[root.surface.nodes[0]].data.content[0].text, '原地修改后的玩家消息')
+assert.equal(root.deriveEventMessage(root.events[root.surface.nodes[0]]).content[0].text, '原地修改后的玩家消息')
 assert.equal(root.events[root.surface.nodes[0]].data.id, 'u1')
 assert.notEqual(root.events[root.surface.nodes[0]].data.id, child.events[child.surface.nodes[0]].data.id)
 const editedChildStateResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-child'))
@@ -486,7 +511,7 @@ const editedAssistant = await callRoute('/api/roleplay/branch', {
   action: 'replace-message', sessionId: child.id, role: 'assistant', messageId: 'a2', text: '人工修订后的回复',
 })
 assert.equal(editedAssistant.status, 200)
-assert.equal(child.events[child.surface.nodes[1]].data.message.content[0].text, '人工修订后的回复')
+assert.equal(child.deriveEventMessage(child.events[child.surface.nodes[1]]).content[0].text, '人工修订后的回复')
 
 // A later descendant inherits this reply without becoming a direct member of
 // its group. Canonical player text must reconcile onto that cold projection;
@@ -503,7 +528,7 @@ const descendant = enableAppend({
 sessions.set(descendant.id, descendant)
 const descendantStateResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-descendant'))
 const descendantState = await descendantStateResponse.json()
-assert.equal(descendant.events[descendant.surface.nodes[0]].data.content[0].text, '原地修改后的玩家消息')
+assert.equal(descendant.deriveEventMessage(descendant.events[descendant.surface.nodes[0]]).content[0].text, '原地修改后的玩家消息')
 assert.deepEqual(descendantState.inheritedAssistantMessageIds, ['a2'])
 const descendantUserSeq = descendant.surface.nodes[0]
 const descendantSave = await callRoute('/api/roleplay/branch', {
@@ -511,9 +536,9 @@ const descendantSave = await callRoute('/api/roleplay/branch', {
   text: '继承分支再次修改的玩家消息',
 })
 assert.equal(descendantSave.status, 200)
-assert.equal(descendant.events[descendant.surface.nodes[0]].data.content[0].text, '继承分支再次修改的玩家消息')
-assert.equal(root.events[root.surface.nodes[0]].data.content[0].text, '继承分支再次修改的玩家消息')
-assert.equal(child.events[child.surface.nodes[0]].data.content[0].text, '继承分支再次修改的玩家消息')
+assert.equal(descendant.deriveEventMessage(descendant.events[descendant.surface.nodes[0]]).content[0].text, '继承分支再次修改的玩家消息')
+assert.equal(root.deriveEventMessage(root.events[root.surface.nodes[0]]).content[0].text, '继承分支再次修改的玩家消息')
+assert.equal(child.deriveEventMessage(child.events[child.surface.nodes[0]]).content[0].text, '继承分支再次修改的玩家消息')
 const childMemberBeforeInheritedEdit = [...table('branch').values()]
   .find((value) => value?.groupId && value?.members?.some((member) => member.sessionId === child.id))?.members
   .find((member) => member.sessionId === child.id)
@@ -543,29 +568,6 @@ assert.equal(replayedDelete.body.nextSessionId, root.id)
 const deletedStateResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-child'))
 const deletedState = await deletedStateResponse.json()
 assert.deepEqual(deletedState.deletedBranchMessageIds, ['a2'])
-
-// A legacy in-place regeneration shadows the root assistant with a plugin
-// context plus a later assistant on the same Session. The native branch index
-// must repoint that root member to the currently visible reply so Chat/Reader
-// can render it as one k/N slot instead of an unrelated second chapter.
-root.append('user/message', {
-  id: 'legacy-superseded', role: 'user', content: text('旧版回复已替换'),
-  source: { kind: 'plugin', plugin: 'roleplay', form: 'superseded' },
-}, { surfaceOp: { op: 'replace', start: root.surface.nodes[1], end: root.surface.nodes[1] }, sourceEventSeqs: [root.surface.nodes[1]] })
-root.append('user/message', {
-  id: 'legacy-regenerate', role: 'user', content: text('重新生成'),
-  source: { kind: 'plugin', plugin: 'roleplay', form: 'regenerate' },
-}, { surfaceOp: 'append' })
-root.append('assistant/message', {
-  turn: 2, message: { id: 'a1-legacy-visible', content: text('旧版原地重生后的可见回复') },
-}, { surfaceOp: 'append' })
-const legacyStateResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-root'))
-const legacyState = await legacyStateResponse.json()
-assert.equal(legacyState.branchGroupsByMessageId['a1-legacy-visible'].currentOrdinal, 1)
-assert.equal(legacyState.branchGroupsByMessageId['a1-legacy-visible'].total, 1)
-const repairedGroup = [...table('branch').entries()].map(([, value]) => value)
-  .find((value) => value?.members?.some((member) => member.legacyAssistantMessageId === 'a1'))
-assert.equal(repairedGroup.members[0].assistantMessageId, 'a1-legacy-visible')
 
 // A later-turn native fork must cut at the previous turn/end and inherit only
 // memory facts at or before the child's seedLength.
@@ -788,38 +790,6 @@ assert.equal(savedRegenState.branchGroupsByMessageId['save-a2'].total, 2)
     branches.put = originalPut
   }
 }
-
-// Migrate an already persisted random-id player replacement without rewriting
-// the immutable audit log. The old event remains, while a tagged stable-id
-// revision becomes authoritative and every historical UI seq stays actionable.
-const legacyIdentity = enableAppend({
-  id: 'session-legacy-user-id', header: { agentPreset: 'roleplay' }, seq: 5,
-  events: [
-    { type: 'turn/start', seq: 0, data: { turn: 1 } },
-    { type: 'user/message', seq: 1, data: { id: 'legacy-u1', content: text('旧文本'), source: { kind: 'user' } }, surfaceOp: 'append' },
-    { type: 'assistant/message', seq: 2, data: { turn: 1, message: { id: 'legacy-a1', content: text('回复仍在') } }, surfaceOp: 'append' },
-    { type: 'turn/end', seq: 3, data: { turn: 1, reason: { kind: 'completed' } } },
-    {
-      type: 'user/message', seq: 4,
-      data: { id: 'random-legacy-id', content: text('历史编辑文本'), source: { kind: 'user' } },
-      surfaceOp: { op: 'replace', start: 1, end: 1 }, sourceEventSeqs: [1],
-    },
-  ],
-  surface: { nodes: [4, 2] },
-})
-sessions.set(legacyIdentity.id, legacyIdentity)
-persistedSessions.set(legacyIdentity.id, legacyIdentity)
-const migratedIdentityResponse = await stateRoute.fetch(new Request('https://example.test/api/roleplay/state?sessionId=session-legacy-user-id'))
-const migratedIdentityState = await migratedIdentityResponse.json()
-const migratedIdentityEvent = legacyIdentity.events[legacyIdentity.surface.nodes[0]]
-assert.equal(migratedIdentityEvent.data.id, 'legacy-u1')
-assert.equal(migratedIdentityEvent.data.source.roleplayRevision, 1)
-assert.equal(migratedIdentityEvent.data.content[0].text, '历史编辑文本')
-assert.equal(legacyIdentity.events[4].data.id, 'random-legacy-id', 'immutable legacy audit event must remain untouched')
-assert.equal(legacyIdentity.events[legacyIdentity.surface.nodes[1]].data.message.id, 'legacy-a1')
-assert.equal(migratedIdentityState.userActionsBySeq['1'].assistantMessageId, 'legacy-a1')
-assert.equal(migratedIdentityState.userActionsBySeq['4'].assistantMessageId, 'legacy-a1')
-assert.equal(migratedIdentityState.userActionsBySeq[String(legacyIdentity.surface.nodes[0])].assistantMessageId, 'legacy-a1')
 
 // Native fork retains metadata between turn/end and next turn/start.
 const metadataRoot = enableAppend({ id: 'session-metadata-root', header: { agentPreset: 'roleplay' }, events: [
