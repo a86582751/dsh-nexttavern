@@ -39,6 +39,69 @@ class PointQuery extends SessionQueryEngine {
   async searchEvents() { throw Error('Search is outside the cold-activation fixture') }
 }
 
+export async function prepareControllerHost(ctx: any, options: {
+  directory: string
+  Projection?: any
+  Format?: any
+  Persistence?: any
+  workspaces?: any[]
+  deferPersistence?: boolean
+}) {
+  const presetRoot = path.join(options.directory, 'presets')
+  const presetDir = path.join(presetRoot, 'probe')
+  const uploadResolvers = new Set<unknown>()
+
+  async function writePreset(duplicate = false) {
+    await mkdir(presetDir, {recursive: true})
+    const row = {id: 'persona', name: '@deepseek-ai/dsh-persona', config: {
+      prefix: 'Cold probe {{provider}}/{{model}}', complete: true, includeRuntimeContext: false,
+    }}
+    const rows = duplicate ? [row, {...row, id: 'conflicting-persona'}] : [row]
+    await writeFile(path.join(presetDir, COMPOSITION_FILE), JSON.stringify(rows), 'utf8')
+  }
+
+  await writePreset()
+  await ctx.plugin(SessionStore)
+  if (options.Format) await ctx.plugin(options.Format)
+  await ctx.plugin(options.Projection ?? SessionProjectionRegistry)
+  if (!options.deferPersistence) {
+    await ctx.plugin(options.Persistence ?? JsonlSessionPersistence, {
+      root: path.join(options.directory, 'sessions'), compression: 'none',
+    })
+  }
+  await ctx.plugin(PointQuery)
+  await ctx.plugin(TypertRegistry)
+  await ctx.plugin(MemorySettings)
+  await ctx.plugin(SystemPrompt, {includeHarnessIdentity: false, includeRuntimeContext: false, persona: ''})
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(AgentRegistry)
+  await ctx.plugin(AgentDefaultModel, {provider: 'fixture-default', model: 'before'})
+  await ctx.plugin(AgentLoop, {agents: []})
+  await ctx.plugin(AgentPresets, {
+    default: 'probe', roots: [{path: presetRoot, trust: 'user'}], includeShippedRoot: false, includeUserRoot: false,
+  })
+  // Cold projection reads image policy, but this fixture must never touch
+  // attachment bytes or workspace operations.
+  const peripheral = (values: Record<string, unknown> = {}) => new Proxy(values, {get: (target, key) => {
+    if (typeof key === 'symbol') return undefined // Cordis checks optional tracing metadata.
+    if (key === 'typertRemote') return undefined // Gateway scans optional Remote service markers.
+    if (Object.hasOwn(target, key)) return target[key]
+    throw Error(`Unexpected peripheral access: ${key}`)
+  }})
+  ctx.provide('attachments', peripheral({imageLimits: {
+    maxImageBytes: 1024, maxImagesPerMessage: 1, maxMessageImageBytes: 1024,
+    maxImagePixels: 1024, maxImageDimension: 32, mediaTypes: ['image/png'],
+  }}))
+  ctx.provide('fileUploads', peripheral({registerAgentResolver(resolver: unknown) {
+    uploadResolvers.add(resolver)
+    return () => {uploadResolvers.delete(resolver)}
+  }}))
+  ctx.provide('workspaceRegistry', peripheral({list: () => options.workspaces ?? []}))
+
+  return {writePreset, uploadResolverCount: () => uploadResolvers.size}
+}
+
 export async function controllerFixture(options: {
   Controller?: any
   Projection?: any
@@ -51,11 +114,10 @@ export async function controllerFixture(options: {
   const dir = createTestDirectory('plugin-fork-controller-')
   const ctx = new Context()
   ctx.baseUrl = options.controllerPackage?.baseUrl ?? new URL('../build-tools/', import.meta.url).href
-  const presetRoot = path.join(dir, 'presets')
-  const presetDir = path.join(presetRoot, 'probe')
   const published: string[] = []
   const registrations: {event: string}[] = []
-  const uploadResolvers = new Set<unknown>()
+  let writePreset: (duplicate?: boolean) => Promise<void>
+  let uploadResolverCount = () => 0
   let controllerFiber: any
 
   async function startController() {
@@ -74,17 +136,7 @@ export async function controllerFixture(options: {
     else await controllerFiber.dispose()
   }
 
-  async function writePreset(duplicate = false) {
-    await mkdir(presetDir, {recursive: true})
-    const row = {id: 'persona', name: '@deepseek-ai/dsh-persona', config: {
-      prefix: 'Cold probe {{provider}}/{{model}}', complete: true, includeRuntimeContext: false,
-    }}
-    const rows = duplicate ? [row, {...row, id: 'conflicting-persona'}] : [row]
-    await writeFile(path.join(presetDir, COMPOSITION_FILE), JSON.stringify(rows), 'utf8')
-  }
-
   try {
-    await writePreset()
     ctx.on('agent/created', ({agent}: any) => published.push(agent.id))
     // Observe registrations forward through Cordis's event, without reading
     // private hook arrays or reaching through a dispatch context's inject scope.
@@ -94,39 +146,15 @@ export async function controllerFixture(options: {
       registrations.push({event})
     })
     await ctx.plugin(Loader)
-    await ctx.plugin(SessionStore)
-    if (options.Format) await ctx.plugin(options.Format)
-    await ctx.plugin(options.Projection ?? SessionProjectionRegistry)
-    await ctx.plugin(options.Persistence ?? JsonlSessionPersistence, {root: path.join(dir, 'sessions'), compression: 'none'})
-    await ctx.plugin(PointQuery)
-    await ctx.plugin(TypertRegistry)
-    await ctx.plugin(MemorySettings)
-    await ctx.plugin(SystemPrompt, {includeHarnessIdentity: false, includeRuntimeContext: false, persona: ''})
-    await ctx.plugin(ToolRuntime)
-    await ctx.plugin(LlmRuntime)
-    await ctx.plugin(AgentRegistry)
-    await ctx.plugin(AgentDefaultModel, {provider: 'fixture-default', model: 'before'})
-    await ctx.plugin(AgentLoop, {agents: []})
-    await ctx.plugin(AgentPresets, {
-      default: 'probe', roots: [{path: presetRoot, trust: 'user'}], includeShippedRoot: false, includeUserRoot: false,
+    const preparedHost = await prepareControllerHost(ctx, {
+      directory: dir,
+      Projection: options.Projection,
+      Format: options.Format,
+      Persistence: options.Persistence,
+      workspaces: options.workspaces,
     })
-    // Cold projection reads image policy, but this fixture must never touch
-    // attachment bytes or workspace operations.
-    const peripheral = (values: Record<string, unknown> = {}) => new Proxy(values, {get: (target, key) => {
-      if (typeof key === 'symbol') return undefined // Cordis checks optional tracing metadata.
-      if (key === 'typertRemote') return undefined // Gateway scans optional Remote service markers.
-      if (Object.hasOwn(target, key)) return target[key]
-      throw Error(`Unexpected peripheral access: ${key}`)
-    }})
-    ctx.provide('attachments', peripheral({imageLimits: {
-      maxImageBytes: 1024, maxImagesPerMessage: 1, maxMessageImageBytes: 1024,
-      maxImagePixels: 1024, maxImageDimension: 32, mediaTypes: ['image/png'],
-    }}))
-    ctx.provide('fileUploads', peripheral({registerAgentResolver(resolver: unknown) {
-      uploadResolvers.add(resolver)
-      return () => {uploadResolvers.delete(resolver)}
-    }}))
-    ctx.provide('workspaceRegistry', peripheral({list: () => options.workspaces ?? []}))
+    writePreset = preparedHost.writePreset
+    uploadResolverCount = preparedHost.uploadResolverCount
     await startController()
     registrations.length = 0
   } catch (error) {
@@ -147,7 +175,7 @@ export async function controllerFixture(options: {
   }
 
   return {ctx, dir, published, registrations, writePreset, stageFrom,
-    uploadResolverCount: () => uploadResolvers.size,
+    uploadResolverCount,
     stopController, startController,
     async stage(id: string, selection?: {provider: string; model: string; reasoningEffort?: string}) {
       const source = ctx.sessions.prepare(`source-${id}`, {meta: {cwd: dir, agentPreset: 'probe'}})

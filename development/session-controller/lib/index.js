@@ -162,6 +162,8 @@ let SessionController = (() => {
             if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
         }
         static inject = [
+            // Create/resume must not race registration of required edit interpreters.
+            'nexttavernMessageEdits',
             'agentDefaultModel',
             'agents',
             'attachments',

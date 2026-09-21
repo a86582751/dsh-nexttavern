@@ -2865,6 +2865,10 @@
       "source": "tests/plugin-product-preset.test.mts"
     },
     {
+      "id": "plugin-product-sessions-contract",
+      "source": "tests/plugin-product-sessions.test.mts"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },

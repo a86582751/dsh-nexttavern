@@ -233,6 +233,10 @@ function waitWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<
  * flush, and never existed if the process crashes before that.
  */
 class JsonlSessionPersistence extends SessionPersistence {
+  // Cold query replay uses the shared SessionStore's registered projections.
+  // Publish persistence only after our required edit vocabulary is installed.
+  static inject = ['nexttavernMessageEdits']
+
   static Config: z<Config> = z.object({
     root: z.string().required(),
     compression: JsonlCompressionSchema,

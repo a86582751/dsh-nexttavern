@@ -38,8 +38,12 @@ export async function nativeCase(title: string, testUrl: string) {
 
 interface FixtureOptions {
   disabled?: boolean; fail?: boolean; slowRelease?: boolean; failingAddon?: boolean; missingOwned?: boolean
+  pendingNestedAddon?: boolean
   prepareProvider?: (productRoot: string, profileRoot: string) => Promise<{
     original: string; replacement: string; config: object; initialize(ctx: any): Promise<void>
+    id?: string
+    additional?: {id: string; original: string; replacement: string; config: object}[]
+    addons?: {id: string; name: string; disabled?: boolean}[]
   }>
 }
 
@@ -89,7 +93,7 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   const releaseGate = Promise.withResolvers<void>()
   const ownedReady = Promise.withResolvers<void>()
   const packages: string[] = []
-  if (custom) packages.push(fileURLToPath(custom.original))
+  if (custom) packages.push(...[custom, ...(custom.additional ?? [])].map(row=>fileURLToPath(row.original)))
   function provider(name: string, owner: string) {
     const pkg = path.join(owner === 'owned' && !options.missingOwned ? productDir : dir, 'node_modules', name)
     const host = path.join(pkg, 'index.mjs')
@@ -110,22 +114,37 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   const original = custom?.original ?? provider('fixture-official-provider', 'official')
   if (!custom) provider('fixture-owned-provider', 'owned')
   const replacement = custom?.replacement ?? 'fixture-owned-provider'
+  const providers = [{id:custom?.id ?? 'meter',original,replacement,
+    config:custom?.config ?? {service:'entryProbe',value:'original'}}, ...(custom?.additional ?? [])]
   const addon = path.join(productDir, 'failing-addon.mjs')
   write(addon, 'export default async function(ctx) {await ctx.productProbe.ownedReady; throw Error("addon failed") }')
+  const nestedAddon=path.join(productDir,'nested-addon.mjs')
+  if(options.pendingNestedAddon) {
+    write(path.join(productDir,'pending-child.mjs'),"export const inject=['missingNestedService']; export function apply() {}")
+    write(nestedAddon, `import {Service} from '@deepseek-ai/cordis';
+      import {EntryTree} from '@deepseek-ai/cordis-plugin-loader';
+      export default class Nested extends EntryTree {
+        async *[Service.init]() {
+          yield ()=>this.root.stop();
+          await this.root.update([{id:'waiting',name:new URL('./pending-child.mjs',import.meta.url).href}]);
+          await this.await();
+        }
+      }`)
+  }
   write(installAnchor, {private: true})
   const manifest = path.join(dir, 'package.json')
   write(manifest, {private: true, dsh: {profile: {bundles: ['fixture-base','dsh-nexttavern']}}})
   write(path.join(dir, 'node_modules/fixture-base/package.json'), {name: 'fixture-base',
     dsh: {bundle: {patch: './patch.json'}}})
-  write(path.join(dir, 'node_modules/fixture-base/patch.json'), [{insert: [
-    {id: 'meter', name: original, disabled: options.disabled ?? false,
-      config: custom?.config ?? {service: 'entryProbe', value: 'original'}},
-  ]}])
+  write(path.join(dir, 'node_modules/fixture-base/patch.json'), [{insert: providers.map(row=>({
+    id:row.id,name:row.original,disabled:options.disabled ?? false,config:row.config,
+  }))}])
   write(path.join(productDir, 'patch.json'), [
-    {id: 'meter', name: original, disabled: {__jsExpr: policy.providerDisabledExpression}},
+    ...providers.map(row=>({id:row.id,name:row.original,disabled:{__jsExpr:policy.providerDisabledExpression}})),
     {insert: [{id: 'nexttavern', name: pathToFileURL(path.join(productDir, 'lib/operations/nexttavern-entry.mjs')).href,
-      config: {providers: [{id: 'meter', original, replacement}],
-        addons: options.failingAddon ? [{id:'addon',name:pathToFileURL(addon).href}] : []}}]},
+      config: {providers: providers.map(({config,...row})=>row),
+        addons: options.failingAddon ? [{id:'addon',name:pathToFileURL(addon).href}]
+          : options.pendingNestedAddon ? [{id:'nested',name:pathToFileURL(nestedAddon).href}] : custom?.addons ?? []}}]},
   ])
   const patchPath = path.join(dir, 'cordis.patch.yml')
   write(patchPath, [])

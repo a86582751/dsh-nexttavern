@@ -129,6 +129,9 @@ function waitWithAbort(operation, signal) {
  */
 class JsonlSessionPersistence extends SessionPersistence {
     config;
+    // Cold query replay uses the shared SessionStore's registered projections.
+    // Publish persistence only after our required edit vocabulary is installed.
+    static inject = ['nexttavernMessageEdits'];
     static Config = z.object({
         root: z.string().required(),
         compression: JsonlCompressionSchema,

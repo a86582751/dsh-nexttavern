@@ -82,6 +82,8 @@ export interface SessionControllerInternals {
 /** Host service backing the generated `ctx.remote.session` namespace. */
 export class SessionController extends TypertRemoteService {
   static inject = [
+    // Create/resume must not race registration of required edit interpreters.
+    'nexttavernMessageEdits',
     'agentDefaultModel',
     'agents',
     'attachments',

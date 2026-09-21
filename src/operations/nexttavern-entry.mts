@@ -1,5 +1,5 @@
 /** Product-owned Loader subtree. Native and replacement providers never overlap. */
-import {Service, type Context} from '@deepseek-ai/cordis'
+import {Service, type FiberState, type Context} from '@deepseek-ai/cordis'
 import {EntryTree, type EntryOptions} from '@deepseek-ai/cordis-plugin-loader'
 import {createRequire} from 'node:module'
 import {realpathSync} from 'node:fs'
@@ -10,6 +10,9 @@ import {capture, composition, loaderEntry, productWanted, providerDisabledExpres
 
 const productRoot = fileURLToPath(new URL('../../', import.meta.url))
 const productRequire = createRequire(new URL('../../package.json', import.meta.url))
+// Cordis publishes this as an ambient const enum, with no runtime export.
+// The member type verifies the numeric value against the pinned declaration.
+const ACTIVE_FIBER_STATE: FiberState.ACTIVE = 2
 
 function ownedModule(specifier: string): string {
   const resolved = realpathSync(specifier.startsWith('file:')
@@ -132,6 +135,13 @@ export default class NextTavernEntry extends EntryTree {
     try {
       await this.root.update(rows)
       await this.await()
+      // await() drains work but also returns for PENDING fibers whose hard
+      // dependencies never appeared. Do not report a half-active takeover.
+      for (const entry of this.entries()) {
+        if (!entry.disabled && entry.fiber?.state !== ACTIVE_FIBER_STATE) {
+          throw Error(`NextTavern enabled entry is not active: ${entry.id}`)
+        }
+      }
     } catch (error) {
       // A hot reconfiguration failure does not dispose the main entry. Its
       // init-generator cleanup alone cannot restore services in this path.

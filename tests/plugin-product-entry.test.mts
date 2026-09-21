@@ -3,6 +3,11 @@ import assert from 'node:assert/strict'
 import {test} from 'node:test'
 import {fixture, nativeCase, causedBy} from './plugin-product-entry-fixture.mts'
 
+test('an active addon tree with a pending nested dependency cannot complete takeover', async t => {
+  if (await nativeCase(t.name, import.meta.url)) return
+  await assert.rejects(fixture({pendingNestedAddon:true}),causedBy('enabled entry is not active'))
+})
+
 test('product entry mounts real child entries and restores original provider on disable', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
   const f = await fixture()
