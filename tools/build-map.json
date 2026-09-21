@@ -898,6 +898,15 @@
       ]
     },
     {
+      "artifact": "protected-packages",
+      "source": "src/operations/protected-packages.mts",
+      "banner": "runtime/alpha3/src/operations/protected-packages.mts",
+      "primaryOutput": "lib/operations/protected-packages.mjs",
+      "outputs": [
+        "lib/operations/protected-packages.mjs"
+      ]
+    },
+    {
       "artifact": "public-patch-harness",
       "source": "src/operations/patch-harness.mts",
       "banner": "runtime/alpha3/src/operations/patch-harness.mts",

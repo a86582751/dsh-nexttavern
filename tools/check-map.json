@@ -1661,6 +1661,14 @@
       "source": "src/operations/public-transaction.mts"
     },
     {
+      "id": "protected-packages",
+      "source": "lib/operations/protected-packages.mjs"
+    },
+    {
+      "id": "protected-packages-typescript",
+      "source": "src/operations/protected-packages.mts"
+    },
+    {
       "id": "public-patch-harness",
       "source": "lib/operations/patch-harness.mjs"
     },
@@ -1703,6 +1711,10 @@
     {
       "id": "worldline-fork-e2e",
       "source": "tests/worldline-fork-e2e.test.mjs"
+    },
+    {
+      "id": "protected-packages-test",
+      "source": "tests/protected-packages.test.mts"
     },
     {
       "id": "public-transaction-schema",
@@ -4580,6 +4592,20 @@
       "entry": "src/operations/public-transaction.mts",
       "builder": "tools/build-modules.mjs",
       "inputs": [
+        "src/operations/public-transaction.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "protected-packages-typed-build",
+      "kind": "typescript-module",
+      "artifact": "protected-packages",
+      "entry": "src/operations/protected-packages.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/operations/protected-packages.mts",
         "src/operations/public-transaction.mts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",

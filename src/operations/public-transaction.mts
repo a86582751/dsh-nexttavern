@@ -14,7 +14,12 @@ interface TransactionJournal {
   purpose?: string
   files: JournalMember[]
 }
-interface TransactionOptions { root: string; backup: string; files: TransactionFile[]; purpose?: string; failAfter?: number; crashAfter?: number }
+interface TransactionOptions {
+  root: string; backup: string; files: TransactionFile[]; purpose?: string
+  failAfter?: number; crashAfter?: number
+  /** Read-only assertions for reused files outside the write set, under the home lock. */
+  assertUnchanged?: () => void
+}
 
 
 export const digest = (bytes: crypto.BinaryLike) => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -36,19 +41,33 @@ export function contained(root: string, relative: string) {
   }
   return target;
 }
-function locked(root: string, backup: string, recover = false) {
+interface LockOwner {schemaVersion?: 1; backup: string; pid: number; purpose?: string; phase?: 'preparing' | 'writing'}
+function requireDeadOwner(owner: LockOwner) {
+  if (owner.schemaVersion !== undefined && owner.schemaVersion !== 1) throw Error('Unsupported transaction lock version');
+  if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0) throw Error('Invalid transaction owner');
+  let alive = true;
+  try {process.kill(owner.pid, 0);} catch (error) {if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false;}
+  if (alive) throw Error('Transaction process is still running');
+}
+function locked(root: string, backup: string, recover = false, purpose?: string, phase: LockOwner['phase'] = 'writing') {
   const lock = path.join(root, '.nexttavern-transaction.lock');
   if (recover && fs.existsSync(lock)) {
-    const owner = JSON.parse(read(lock).toString('utf8')) as {backup?: string; pid: number};
+    const owner = JSON.parse(read(lock).toString('utf8')) as LockOwner;
     if (owner.backup !== backup || !Number.isSafeInteger(owner.pid)) throw Error('Another transaction owns this target');
-    let alive = true;
-    try {process.kill(owner.pid, 0);} catch (error) {if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false;}
-    if (alive) throw Error('Transaction process is still running');
+    requireDeadOwner(owner);
     fs.unlinkSync(lock);
   }
   const fd = fs.openSync(lock, 'wx', 0o600);
-  fs.writeFileSync(fd, JSON.stringify({pid: process.pid, backup}));
-  return () => {fs.closeSync(fd); fs.unlinkSync(lock);};
+  const owner: LockOwner = {schemaVersion: 1, pid: process.pid, backup, purpose, phase};
+  // Exclusivity comes from the wx-created pathname. Close the handle so
+  // Windows can atomically replace its phase metadata without deleting the lock.
+  try {fs.writeFileSync(fd, JSON.stringify(owner));} finally {fs.closeSync(fd);}
+  const release = () => {fs.unlinkSync(lock);};
+  return Object.assign(release, {beginWrites() {
+    // Atomic phase promotion happens only after the complete journal exists.
+    // A dead 'preparing' owner therefore cannot have changed a target file.
+    save(lock, {...owner, phase: 'writing'});
+  }});
 }
 function restore(root: string, backup: string, journal: TransactionJournal) {
   for (const item of journal.files) {
@@ -71,7 +90,8 @@ function restore(root: string, backup: string, journal: TransactionJournal) {
   journal.state = 'rolled-back';
   save(path.join(backup, 'transaction.json'), journal);
 }
-export function applyTransaction({root, backup, files, purpose, failAfter = Infinity, crashAfter = Infinity}: TransactionOptions) {
+export function applyTransaction({root, backup, files, purpose, assertUnchanged,
+  failAfter = Infinity, crashAfter = Infinity}: TransactionOptions) {
   root = fs.realpathSync(root);
   backup = path.resolve(backup);
   if (backup === root || backup.startsWith(root + path.sep) || root.startsWith(backup + path.sep) || fs.existsSync(backup)) throw Error('Backup must be a new directory outside target');
@@ -82,10 +102,11 @@ export function applyTransaction({root, backup, files, purpose, failAfter = Infi
     seen.add(file.path);
     if (hashAt(target) !== file.before) throw Error('Drift since audit: ' + file.path);
   }
-  const release = locked(root, backup);
+  const release = locked(root, backup, false, purpose, 'preparing');
   const journal: TransactionJournal = {schemaVersion: 1, state: 'prepared', root, purpose, files: []};
   try {
     fs.mkdirSync(backup, {recursive: true, mode: 0o700});
+    assertUnchanged?.();
     for (const [index, file] of files.entries()) {
       const target = contained(root, file.path);
       const stat = file.before === null ? null : fs.statSync(target);
@@ -97,6 +118,7 @@ export function applyTransaction({root, backup, files, purpose, failAfter = Infi
       journal.files.push({path: file.path, before: file.before, after: file.bytes === null ? null : digest(file.bytes), backup: name, mode: stat ? stat.mode & 0o777 : 0o644, uid: stat?.uid ?? null, gid: stat?.gid ?? null, applied: false});
     }
     save(path.join(backup, 'transaction.json'), journal);
+    release.beginWrites();
     for (const [index, file] of files.entries()) {
       const target = contained(root, file.path), item = journal.files[index]!;
       if (hashAt(target) !== file.before) throw Error('Target changed before write: ' + file.path);
@@ -128,6 +150,26 @@ export function applyTransaction({root, backup, files, purpose, failAfter = Infi
     throw error;
   } finally {release();}
 }
+/** Discover a dead owner's journal; never recover a live or differently owned operation. */
+export function recoverInterruptedTransaction(root: string, purpose: string) {
+  root = fs.realpathSync(root);
+  const lock = path.join(root, '.nexttavern-transaction.lock');
+  if (!fs.existsSync(lock)) return null;
+  const owner = JSON.parse(read(lock).toString('utf8')) as LockOwner;
+  requireDeadOwner(owner);
+  if (typeof owner.backup !== 'string' || !path.isAbsolute(owner.backup)) throw Error('Invalid recovery backup');
+  if (owner.phase === 'preparing') {
+    if (owner.purpose !== purpose) throw Error('Another transaction owns this target');
+    // No target writes are possible before phase promotion. Retain partial
+    // backups for inspection; release only the same dead owner's home lock.
+    const release = locked(root, owner.backup, true, purpose, 'preparing');
+    release();
+    return {schemaVersion: 1, state: 'rolled-back', files: 0, backup: owner.backup};
+  }
+  const journal = JSON.parse(read(path.join(owner.backup, 'transaction.json')).toString('utf8')) as TransactionJournal;
+  if (journal.root !== root || journal.purpose !== purpose) throw Error('Another transaction owns this target');
+  return {...rollbackTransaction(owner.backup), backup: owner.backup};
+}
 export function rollbackTransaction(backup: string) {
   backup = fs.realpathSync(backup);
   const journal = JSON.parse(read(path.join(backup, 'transaction.json')).toString('utf8')) as TransactionJournal;
@@ -140,7 +182,7 @@ export function rollbackTransaction(backup: string) {
     if (item.backup) contained(backup, item.backup);
     if ((item.before === null) !== (item.backup === null)) throw Error('Invalid backup reference');
   }
-  const release = locked(root, backup, true);
+  const release = locked(root, backup, true, journal.purpose);
   try {restore(root, backup, journal);} finally {release();}
   return {schemaVersion: 1, state: journal.state, files: journal.files.length};
 }

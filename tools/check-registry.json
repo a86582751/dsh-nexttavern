@@ -308,6 +308,7 @@
         "build-*",
         "release-*",
         "public-*",
+        "protected-packages*",
         "test-temp*",
         "tool-resolution*",
         "qwen-*",
@@ -592,6 +593,34 @@
       "heavy": true,
       "inputs": [],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:protected-packages.test.mts",
+      "action": "test",
+      "artifact": "protected-packages-test",
+      "modules": [
+        "operations"
+      ],
+      "inputs": [
+        "protected-packages-typescript",
+        "public-transaction-typescript",
+        "test-temp-helper-typescript",
+        "inventory-runtime-alpha3-build-tools-package-lock-json"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "timeoutMs": 90000
     },
     {
       "id": "test:public-install.test.mjs",
