@@ -1,4 +1,5 @@
 // Generated from runtime/alpha3/src/core/roleplay-core.ts; edit the TypeScript source.
+import { readProjectedStory } from './roleplay-message-view.js';
 import { keyOf, textOf, durableSeq, provenanceSeq, sha256, safeId, cloneRecord, passthroughSchema, rollsSchema, } from './roleplay-data.js';
 import { eventsOf, surfaceEvents, surfaceEntries, isCompletedTurnEnd, canonicalAssistantForTurn, recentWindowSince, roleplayWindowCutStartIndex, assertWorkspaceSession, } from './roleplay-context.js';
 import { decodeTaskSelection } from './tavern-task-primitives.js';
@@ -36,6 +37,7 @@ import { createRoleplayInheritance } from './roleplay-inheritance.js';
 import { createResourceBridge } from './roleplay-resource-bridge.js';
 import { createCardWorkflows } from './roleplay-card-workflow.js';
 import { createRoleplayService } from './roleplay-service.js';
+import { createSessionHistory, ensureSessionHistory } from './session-history.js';
 import { createRoleplayTaskHost } from './roleplay-task-host.js';
 import { registerRoleplayLoop } from './roleplay-loop.js';
 import { retrieveWorldbook, taskDependenciesCurrent, buildDecisionContext, lockedFactsOf, authorUserValues, registerAuthorPrompts, residentAuthorContext, } from './roleplay-author-context.js';
@@ -72,6 +74,8 @@ const CARD_CLASSIFICATION_GUIDE = `【按创作语义分拆，不按标题或文
 const DSH_ROLEPLAY_CORE_PATCH = 'dsh-roleplay-status-obligation-v1';
 export const inject = [
     'sessions',
+    'nexttavernMessageEdits',
+    'sessionPersistence',
     'sessionQuery',
     'sessionController',
     'llm',
@@ -149,6 +153,19 @@ const DECISION_SYSTEM = '你是角色扮演工作台的轮末建议生成器。�
 // ── 插件主体 ────────────────────────────────────────────────────────────────
 export async function apply(ctx, config = {}) {
     const cfg = { ...DEFAULT_CONFIG, ...(config ?? {}) };
+    const history = createSessionHistory({
+        get: id => ctx.sessions.get(id),
+        observe: (id, options) => ctx.sessionQuery.observeSession(id, options),
+    });
+    // Register the feed before any asynchronous observation. session/created is
+    // fire-and-forget; agent/created is the awaited gate before the first step.
+    ctx.on('session/event', history.accept, { global: true, prepend: true });
+    ctx.on('session/disposed', history.disposeSession, { global: true });
+    ctx.on('agent/created', async ({ agent, signal }) => {
+        await history.ready(agent.session, signal);
+        return undefined;
+    }, { global: true, prepend: true });
+    ctx.effect(() => history.dispose, 'roleplay: session history');
     // `sessions` contains only Agents currently retained by the Host. Opening a
     // persisted conversation directly into Reader after a service restart does
     // not necessarily retain its Agent first, so REST callers must use the Host
@@ -174,6 +191,8 @@ export async function apply(ctx, config = {}) {
                 return null;
             }
         }
+        if (session)
+            await ensureSessionHistory(session);
         return session && isRoleplaySession(session) ? session : null;
     }
     // per-session 运行时状态（standing mount 被同一 preset 的多个会话共享）
@@ -421,7 +440,7 @@ export async function apply(ctx, config = {}) {
     const isRoleplaySession = (session) => {
         if (!session)
             return false;
-        if (eventsOf(session).some(e => e?.type === 'subagent/descriptor' && Number(e.seq) >= Number(session.header?.seedLength ?? 0)))
+        if (eventsOf(session).some(e => e?.type === 'subagent/descriptor' && Number(e.seq) >= Number(session.inheritedEventCount ?? 0)))
             return false;
         let preset = session.header?.agentPreset;
         for (const e of eventsOf(session)) {
@@ -434,7 +453,12 @@ export async function apply(ctx, config = {}) {
     // 每个候选回复都是一个独立 Session；分支分页只保存很小的导航元数据，
     // 不复制兄弟分支正文。Harness 因而仍按当前 Session 尾页懒加载，模型、
     // 世界书检索和记忆也天然只看到当前选择的正史。
-    const { storyBranchIsActive, assertStoryBranchActive, reconcileCanonicalPlayerVariants, buildForkLookupIndex, reconcileNativeFork, failPendingNativeFork, repairLegacyUserReplacementIdentities, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, withForkMutationLock, forkOperationKey, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, replaceAssistantText, replaceUserText } = createRoleplayWorldlines({
+    const { storyBranchIsActive, assertStoryBranchActive, reconcileCanonicalPlayerVariants, buildForkLookupIndex, reconcileNativeFork, failPendingNativeFork, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, withForkMutationLock, forkOperationKey, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, replaceAssistantText, replaceUserText } = createRoleplayWorldlines({
+        messageEdits: ctx.nexttavernMessageEdits,
+        flushEdits: async (session) => {
+            if (!await ctx.sessions.flush(session))
+                throw new Error('会话编辑尚无持久化提供者，未提交派生状态');
+        },
         ctx,
         safeId,
         keyOf,
@@ -481,8 +505,8 @@ export async function apply(ctx, config = {}) {
         scopeOf: session => ctx.get('tavernConversations')?.rootOf(session.id) ?? session.id,
         list: async () => await ctx.sessionQuery?.listSessions?.() ?? [],
         read: async (id) => {
-            const value = await ctx.sessionQuery.readSession(id);
-            return { session: value.session, events: value.events };
+            const view = await readProjectedStory(ctx, id);
+            return { session: view.header, events: view.events, view };
         },
         // Both live and cold inputs are native session logs; preserve their surface for tombstone checks.
         active: session => storyBranchIsActive(session),
@@ -490,9 +514,9 @@ export async function apply(ctx, config = {}) {
     Object.assign(svc, { retrieval });
     ctx.effect(() => () => retrieval.dispose(), 'roleplay: retrieval lifetime');
     ctx.on('session/created', session => retrieval.created(session), { global: true });
-    ctx.on('session/event', (session, event) => {
-        if (['turn/end', 'user/message', 'compaction/end'].includes(event.type)) {
-            retrieval.changed(session);
+    ctx.on('session/event', async (session, event) => {
+        if (['turn/end', 'user/message', 'compaction/end', 'roleplay/message-edit'].includes(event.type)) {
+            await retrieval.changed(session);
         }
     }, { global: true });
     ctx.provide('roleplay', svc);
@@ -854,7 +878,6 @@ export async function apply(ctx, config = {}) {
         T,
         awaitImportBarrier,
         ensureBranch,
-        repairLegacyUserReplacementIdentities,
         buildForkLookupIndex,
         reconcileCanonicalPlayerVariants,
         statusRecoveredSessions,

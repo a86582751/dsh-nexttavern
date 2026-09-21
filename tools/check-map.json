@@ -1173,6 +1173,14 @@
       "source": "lib/core/roleplay-message-view.js"
     },
     {
+      "id": "session-history-typescript",
+      "source": "src/core/session-history.ts"
+    },
+    {
+      "id": "session-history",
+      "source": "lib/core/session-history.js"
+    },
+    {
       "id": "roleplay-worldlines-typescript",
       "source": "src/core/roleplay-worldlines.ts"
     },
@@ -2125,6 +2133,10 @@
       "source": ".gitignore"
     },
     {
+      "id": "plugin-fork-controller-fixture-test",
+      "source": "tests/plugin-fork-controller-fixture.mts"
+    },
+    {
       "id": "compat-session-controller-agent-ts",
       "source": "development/session-controller/src/agent.ts"
     },
@@ -2775,6 +2787,10 @@
     {
       "id": "compat-session-controller-client-sessions-assistant-stream-js",
       "source": "development/session-controller/lib/client/sessions/assistant-stream.js"
+    },
+    {
+      "id": "plugin-session-history-contract",
+      "source": "tests/plugin-session-history.test.mts"
     },
     {
       "id": "quality-registry",
@@ -6484,6 +6500,20 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "session-history-js-build",
+      "kind": "typescript-module",
+      "artifact": "session-history",
+      "entry": "src/core/session-history.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/session-history.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/tavern-task-primitives.ts"
       ]
     },
     {

@@ -1,5 +1,6 @@
 import { selectedStoryHistory, importManagementInputs, type StorySession, type StoryRow, type StoryEvent, type StoryBlock } from './memory-history.js'
 import { projectStoryEvent } from '../core/roleplay-message-view.js'
+import {sessionEvents} from '../core/session-history.js'
 
 export interface SourceSpan { start: number; end: number }
 export interface CleanStoryText { text: string; spans: SourceSpan[]; unresolved: boolean }
@@ -14,7 +15,7 @@ const voidTag = /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|
 const inlineTag = /^(?:p|div|section|article|li|blockquote|h[1-6]|pre)$/i
 
 function eventFor(session: StorySession, seq: number): StoryEvent | null {
-  const events = Array.isArray(session?.events) ? session.events : Array.isArray(session?.log) ? session.log : []
+  const events = sessionEvents(session)
   return events.find(event => Number(event?.seq) === seq) ?? null
 }
 
@@ -112,7 +113,7 @@ export function cleanStoryText(text: string): CleanStoryText {
 }
 
 export function selectedRetrievalRows(session: StorySession): RetrievalRow[] {
-  const events = Array.isArray(session?.events) ? session.events : Array.isArray(session?.log) ? session.log : []
+  const events = sessionEvents(session)
   const bySeq = new Map(events.map(event => [Number(event?.seq), event]))
   const selected = selectedStoryHistory(session).flatMap(row => {
     const source = rawTextFor(session, row, bySeq.get(row.seq) ?? null)

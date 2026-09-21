@@ -1459,6 +1459,16 @@
       ]
     },
     {
+      "artifact": "session-history",
+      "source": "src/core/session-history.ts",
+      "banner": "runtime/alpha3/src/core/session-history.ts",
+      "primaryOutput": "lib/core/session-history.js",
+      "outputs": [
+        "lib/core/session-history.js",
+        "preset/lib/core/session-history.js"
+      ]
+    },
+    {
       "artifact": "roleplay-worldline-types-js",
       "source": "src/core/roleplay-worldline-types.ts",
       "banner": "runtime/alpha3/src/core/roleplay-worldline-types.ts",

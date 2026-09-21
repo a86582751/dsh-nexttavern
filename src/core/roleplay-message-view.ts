@@ -25,8 +25,9 @@ export interface StoryViewHeader {
 
 export interface StoryObservationServices<E extends MessageEvent> {
   sessionQuery: {
-    observeSession(id: string, options: {projectionMode: 'none'}): Promise<Disposable & {
+    observeSession(id: string, options: {projectionMode: 'none'; signal?: AbortSignal}): Promise<Disposable & {
       header: StoryViewHeader; events: readonly E[]; inheritedEventCount: number
+      source: 'live' | 'prepared'; cursor: number
     }>
   }
   sessions: {
@@ -52,6 +53,7 @@ export async function readProjectedStory<E extends MessageEvent>(ctx: StoryObser
   })
   return {
     id, header: observation.header, events: observation.events, surface: prepared.surface,
+    inheritedEventCount: observation.inheritedEventCount,
     deriveEventMessage: prepared.deriveEventMessage.bind(prepared),
   }
 }

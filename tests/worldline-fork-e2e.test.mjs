@@ -14,6 +14,12 @@ import assert from 'node:assert/strict'
 import { createConversationCatalog } from '../lib/core/tavern-conversations.js'
 import { directorNotesForBranch } from '../lib/memory/roleplay-memory-engine.js'
 import { apply } from '../lib/core/roleplay-core.js'
+import {ownedPackages} from './plugin-owned-packages-fixture.mts'
+import {after} from 'node:test'
+
+const owned = await ownedPackages(['session-format'])
+after(() => owned.close())
+const {appendMessageEdit, latestMessageEdit, currentMessageEdits} = await owned.load('dsh-nexttavern-session-format')
 
 class Table extends Map {
   async put(key, value) { this.set(key, structuredClone(value)) }
@@ -51,6 +57,7 @@ async function bench() {
     return session
   }
   const ctx = {
+    nexttavernMessageEdits: {append: appendMessageEdit, latest: latestMessageEdit, current: currentMessageEdits},
     storageDomain: { async open() { return { table, close() {} } } },
     sessions: { get: id => sessions.get(id) },
     sessionController: {
@@ -151,7 +158,7 @@ const checked = async (name, fn) => { await fn(); checks.push(name); console.log
       await beforePublish({ sourceSessionId: request.sessionId, childSessionId: childId, seedLength: request.atSeq + 1 })
       assert(catalogDisk.value.worldlines[childId], 'worldline ownership commits before native publication')
       const seed = root.events.slice(0, request.atSeq + 1)
-      const child = b.enableAppend({ id: childId, header: { agentPreset: 'roleplay', parentSession: root.id, seedLength: seed.length }, events: structuredClone(seed), seq: seed.length, surface: { nodes: [1] } })
+      const child = b.enableAppend({ id: childId, inheritedEventCount: seed.length, header: { agentPreset: 'roleplay', parentSession: root.id }, events: structuredClone(seed), seq: seed.length, surface: { nodes: [1] } })
       b.sessions.set(childId, child)
       return { sessionId: childId }
     }
@@ -215,7 +222,7 @@ const checked = async (name, fn) => { await fn(); checks.push(name); console.log
       assert.equal(recovery.body.promptText, '试探庭院 5')
       const recoveredId = 'session-world-recovered'
       const seedLength = (recovery.body.previousTurnEndSeq ?? -1) + 1
-      b.sessions.set(recoveredId, b.enableAppend({ id: recoveredId, header: { agentPreset: 'roleplay', parentSession: childId, seedLength }, events: [], seq: seedLength, surface: { nodes: [] } }))
+      b.sessions.set(recoveredId, b.enableAppend({ id: recoveredId, inheritedEventCount: seedLength, header: { agentPreset: 'roleplay', parentSession: childId }, events: [], seq: seedLength, surface: { nodes: [] } }))
       const recovered = await b.callRoute('/api/roleplay/branch', { action: 'register', operationId: recovery.body.operationId, childSessionId: recoveredId, requestId: 'worldline-recovery', promptText: '试探庭院 5' })
       assert.equal(recovered.status, 200, JSON.stringify(recovered.body))
       assert(b.sessions.get(recoveredId), 'the recovery publishes a usable child')

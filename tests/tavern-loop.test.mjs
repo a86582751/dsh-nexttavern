@@ -404,7 +404,7 @@ if(scenario==='diagnosis'){
 }
 if(scenario==='task-tools'){
  const branch=table('branch'),id='a'.repeat(64),generation='b'.repeat(36),workflowId='fixture-card',workflowKey='tavern_cardjob__'+workflowId,taskKey='tavern_job__'+id
- const child={options:{subagentDepth:1},session:{id:'card-child',header:{origin:'subagent',parentSession:session.id,seedLength:1},events:[
+ const child={options:{subagentDepth:1},session:{id:'card-child',inheritedEventCount:1,header:{origin:'subagent',parentSession:session.id},events:[
   {seq:0,type:'subagent/descriptor',data:{label:'ignored seeded descriptor'}},
   {seq:1,type:'subagent/descriptor',data:{label:`Tavern:${id}:${generation}`}},
  ]}}
@@ -431,7 +431,7 @@ if(scenario==='task-tools'){
  await assert.rejects(history(wrongParent),/授权已失效/)
  const invalidLabel={...child,session:{...child.session,events:[{seq:1,type:'subagent/descriptor',data:{label:'invalid'}}]}}
  await assert.rejects(history(invalidLabel),/授权已失效/)
- const seeded={...agent,session:{...session,header:{agentPreset:'roleplay',seedLength:2},events:child.session.events}}
+ const seeded={...agent,session:{...session,inheritedEventCount:2,header:{agentPreset:'roleplay'},events:child.session.events}}
  assert.deepEqual(await history(seeded),{owner:session.id,action:'search'},'seeded descriptors do not authorize or reject a later ordinary roleplay session')
  await assert.rejects(history({session:{id:'other',header:{agentPreset:'other'},events:[]}}),/roleplay 工具需要/)
  const settings=routes.get('/api/roleplay/character-cluster')
@@ -808,7 +808,7 @@ assert.deepEqual(Object.keys(diagnostic.window),['contextWindowTokens','continui
 {
   const id='a'.repeat(64),key=`tavern_job__${id}`
   table('branch').set(key,{id,sessionId:session.id,allowedTools:['rp_history','subagent']})
-  const child={options:{subagentDepth:1},session:{id:'child-tool-boundary',header:{seedLength:0},events:[{seq:1,type:'subagent/descriptor',data:{label:`Tavern:${id}:generation`}}]}}
+  const child={options:{subagentDepth:1},session:{id:'child-tool-boundary',inheritedEventCount:0,header:{},events:[{seq:1,type:'subagent/descriptor',data:{label:`Tavern:${id}:generation`}}]}}
   const assembly={sections:[
     {name:'harness:identity',text:'runtime identity'},
     {name:'deployment:persona',text:'task persona'},

@@ -1,3 +1,4 @@
+import {ensureSessionHistory, sessionEvents} from './session-history.js'
 import { createHash, randomUUID } from 'node:crypto';
 import { withTavernLock, taskFailureDetails, FAILURE_LABELS } from './tavern-tasks.js';
 import {
@@ -15,18 +16,19 @@ export { foldSessionCalls, aggregateUsage, queryUsageRequests };
 export { timeRange } from './tavern-telemetry-time-range.js';
 import type { TelemetryCallRecord, TelemetryUsage } from './tavern-telemetry-normalize.js';
 import type { TelemetryEvent, TelemetryChunk } from './tavern-telemetry-fold.js';
+import type { StoryObservationServices } from './roleplay-message-view.js';
 import type { EmbeddingCall } from '../memory/memory-retrieval-types.js';
-// Alpha.3 adapter shapes, not declarations of the incompatible GA session format.
+// Narrow business views of the alpha.6 live and corpus-query contracts.
 interface SessionHeader {
     cwd?: string;
     id?: string | null;
-    seedLength?: unknown;
     agentPreset?: string;
     origin?: string;
     parentSession?: string;
 }
 interface RuntimeSession {
     id: string;
+    inheritedEventCount?: unknown;
     header?: SessionHeader;
     events?: readonly TelemetryEvent[];
     log?: readonly TelemetryEvent[];
@@ -92,10 +94,7 @@ interface TelemetryOptions {
         }[] | Promise<{
             header?: SessionHeader;
         }[]>;
-        readSession?(id: string): Promise<{
-            session: SessionHeader;
-            events: TelemetryEvent[];
-        }>;
+        observeSession?: StoryObservationServices<TelemetryEvent>['sessionQuery']['observeSession'];
     };
     jobs?(): unknown[];
 }
@@ -218,9 +217,8 @@ interface ObserveOptions {
 }
 const PREFIX = 'tavern_usage__', LOG = 'tavern_log__', PRICE = 'tavern_prices', META = 'tavern_usage_session__';
 const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
-// Alpha.3 adapter: upstream c291e796 deprecates synchronous history readers.
-// Migrate telemetry to committed-event projections; see docs/migration-ga.md.
-const events = (s: Pick<RuntimeSession, 'events' | 'log'> | null | undefined): readonly TelemetryEvent[] => s?.events ?? s?.log ?? [];
+// Live reads use the ready incremental ledger; cold corpus reads supply a cut.
+const events = (s: Pick<RuntimeSession, 'events' | 'log'> | null | undefined): readonly TelemetryEvent[] => sessionEvents(s);
 const publicFallback = (j: TelemetryJob) => {
     if (!j.fallback)
         return null;
@@ -301,6 +299,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
     // The event-count fingerprint lets ingest reuse append-only history while the per-session lock
     // prevents concurrent readers from publishing a partial fold or duplicate persistence.
     async function ingestUnlocked(s: RuntimeSession) {
+        await ensureSessionHistory(s);
         meta(s);
         if (!eligible(s))
             return;
@@ -358,7 +357,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
         }
         if (events(s).length !== fingerprint)
             attempts = foldSessionCalls(s);
-        const seed = Number(s.header?.seedLength ?? 0), toolStarts = new Map<unknown, TelemetryEvent>();
+        const seed = Number(s.inheritedEventCount ?? 0), toolStarts = new Map<unknown, TelemetryEvent>();
         for (const e of events(s)) {
             if (typeof e.time !== 'number' || !Number.isFinite(e.time))
                 continue;
@@ -449,9 +448,11 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
                     if (!s) {
                         if (coldRead.has(id))
                             continue;
-                        const snapshot = await query!.readSession!(id);
+                        using snapshot = await query!.observeSession!(id, {projectionMode: 'none'});
                         s = {
-                            id, header: snapshot.session, events: snapshot.events
+                            id, header: snapshot.header,
+                            inheritedEventCount: snapshot.inheritedEventCount,
+                            events: snapshot.events
                         };
                         await ingest(s);
                         coldRead.add(id);
@@ -603,6 +604,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
         return row;
     }
     async function* observe<C extends TelemetryChunk>(options: ObserveOptions, next: () => AsyncIterable<C>): AsyncGenerator<C> {
+        if (options.sessionId) await ensureSessionHistory(sessions.get(options.sessionId));
         const liveSession = options.sessionId ? sessions.get(options.sessionId) : undefined, s: SessionView = liveSession ?? {
             id: options.sessionId ?? null, header: {
                 id: options.sessionId ?? null

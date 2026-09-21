@@ -81,7 +81,7 @@ const calls=foldSessionCalls(session)
 assert.equal(calls.length,3)
 assert.equal(calls[0].status,'failed')
 assert.equal(calls[2].usage.inputTokens,100)
-assert.equal(foldSessionCalls({...session,id:'fork',header:{...session.header,seedLength:7}}).length,1,'fork history is not a second charge')
+assert.equal(foldSessionCalls({...session,id:'fork',inheritedEventCount:7}).length,1,'fork history is not a second charge')
 const prices={currency:'USD',rates:[{provider:'p',model:'m',input:1,output:2,cacheRead:.1,cacheWrite:null}]}
 let stats=aggregateUsage(calls,{from:0,to:10000},prices)
 assert.equal(stats.totals.calls,3)
@@ -161,7 +161,7 @@ assert.equal(telemetry.prices().defaultMode,'manual','legacy USD settings retain
 // Archived/cold children remain attributed to their owner and original charges
 // survive restart and deletion from the live corpus.
 const cold={id:'child',header:{id:'child',agentPreset:'roleplay',origin:'subagent',parentSession:'rp-a'},events:session.events}
-const coldTable=new Table(), coldApi={listSessions:async()=>[{header:session.header},{header:cold.header}],readSession:async id=>({session:cold.header,events:cold.events})}
+const coldTable=new Table(), coldApi={listSessions:async()=>[{header:session.header},{header:cold.header}],observeSession:async id=>({header:cold.header,inheritedEventCount:0,events:cold.events,[Symbol.dispose](){}})}
 const recovered=createTelemetry({table:coldTable,sessions:{get:id=>id===session.id?session:null,list:()=>[session]},query:coldApi})
 await recovered.sync()
 assert.equal(recovered.calls().length,6)

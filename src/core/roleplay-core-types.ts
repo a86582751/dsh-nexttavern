@@ -66,6 +66,8 @@ export type CoreContext = {
   get(name: 'roleplay'): {nativeTask: NativeTask}
   provide(name: 'roleplay', service: unknown): unknown
   on(name: 'llm/stream', hook: Telemetry['observe'], options: {global: boolean}): unknown
-  on(name: 'session/event', hook: (session: CoreSession, event: ContextEvent) => void, options: {global: boolean}): unknown
-  on(name: 'session/created', hook: (session: CoreSession) => Promise<void>, options: {global: boolean}): unknown
+  on(name: 'session/event', hook: (session: CoreSession, event: ContextEvent) => void, options: {global: boolean; prepend?: boolean}): unknown
+  on(name: 'session/created', hook: (session: CoreSession) => void, options: {global: boolean}): unknown
+  on(name: 'session/disposed', hook: (session: CoreSession) => void, options: {global: boolean}): unknown
+  on(name: 'agent/created', hook: (payload: {agent: CoreAgent; signal?: AbortSignal}) => Promise<undefined>, options: {global: boolean; prepend: boolean}): unknown
 } & StoryObservationServices<ContextEvent> & Intersection<ContextOf<ModuleDependencies>>

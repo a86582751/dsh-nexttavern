@@ -1,3 +1,4 @@
+import {sessionEvents, ensureSessionHistory} from '../core/session-history.js'
 // roleplay-memory-engine.js — roleplay preset 的记忆/压缩引擎。
 //
 // 提供本 preset isolate group 内的 `compaction` 服务（command-compact 与
@@ -52,6 +53,7 @@ export interface MemoryEvent extends CompactionEvent {
   data?: NonNullable<CompactionEvent['data']> & { agentPreset?: unknown }
 }
 export interface MemorySession extends CompactionSession {
+  inheritedEventCount?: number
   header?: { agentPreset?: unknown; seedLength?: unknown; parentSession?: string }
   events?: readonly MemoryEvent[]
   log?: readonly MemoryEvent[]
@@ -96,12 +98,8 @@ export type MemoryConfig = Partial<typeof DEFAULT_CONFIG & { autoTimeoutMs: numb
 const errorMessage = (error: unknown): string =>
   String(error !== null && typeof error === 'object' && 'message' in error ? error.message ?? error : error)
 
-// Pinned alpha.3 history adapter. GA needs projections/async pages and revised
-// event shapes, not snapshotEvents (docs/migration-ga.md).
 function eventsOf(session: MemorySession): readonly MemoryEvent[] {
-  if (Array.isArray(session?.events)) return session.events
-  if (Array.isArray(session?.log)) return session.log
-  return []
+  return sessionEvents(session)
 }
 export const filterMemoryRecordForBranch = typedFilterMemoryRecordForBranch
 
@@ -148,7 +146,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
   const isRoleplaySession = (session: MemorySession | null | undefined): session is MemorySession => {
     if (!session) return false
     let preset = session.header?.agentPreset
-    const seed = Number(session.header?.seedLength ?? 0)
+    const seed = Number(session.inheritedEventCount ?? 0)
     for (const event of eventsOf(session)) {
       const type = event?.type
       if (type === 'subagent/descriptor' && Number(event.seq) >= seed) return false
@@ -211,6 +209,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     },
     async ensureWindowCheckpoint(agent: MemoryAgent, signal?: AbortSignal) {
       const session = agent?.session
+      await ensureSessionHistory(session, signal)
       if (!session || !isRoleplaySession(session)) throw new Error('当前会话不是角色扮演会话')
       signal?.throwIfAborted?.()
       const wait = async (job: Promise<unknown>) => {
@@ -252,6 +251,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     },
     async finishTurn(agent: MemoryAgent, signal?: AbortSignal) {
       const session=agent?.session
+      await ensureSessionHistory(session, signal)
       if(cfg.autoNotes===false||!session||!isRoleplaySession(session))return null
       scheduleNotes(agent)
       return memoryNotesCadence(session,getEngine()?.memoryHead?.(session.id),Number(getEngine()?.settings?.(session.id)?.autoNotesEveryTurns)||cfg.autoNotesEveryTurns)
@@ -259,6 +259,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     settingsDefaults(){return {autoNotesEveryTurns:cfg.autoNotesEveryTurns,targetContextTokens:cfg.targetContextTokens,archiveTokens:cfg.archiveTokens}},
     async resumeTask(agent: MemoryAgent, signal?: AbortSignal, stage?: string) {
       const session=agent?.session
+      await ensureSessionHistory(session, signal)
       if(!session||!isRoleplaySession(session))throw new Error('当前会话不是角色扮演会话')
       // Already inside the main loop. Never enter agent.runMaintenance here.
       return stage==='compaction'?compact(session,agent,signal,undefined,{force:true,manual:false})
@@ -288,6 +289,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     },
     async prepareForTurn(agent: MemoryAgent, signal?: AbortSignal) {
       const session = agent?.session
+      await ensureSessionHistory(session, signal)
       if (!session || !isRoleplaySession(session)) return null
       await getEngine()?.awaitCommitted?.(session.id)
       // These are live promise handles, not a persisted 'busy' flag. A stale
@@ -321,6 +323,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     },
     async organizeNow(agent: MemoryAgent, signal?: AbortSignal, commandId?: unknown) {
       const session = agent?.session
+      await ensureSessionHistory(session, signal)
       if (!session || !isRoleplaySession(session)) throw new Error('当前会话不是角色扮演会话')
       const task = (maintenanceSignal?: AbortSignal) => refreshDirectorNotes(session, agent,
         signal && maintenanceSignal ? AbortSignal.any([signal, maintenanceSignal]) : signal ?? maintenanceSignal, commandId)
@@ -329,6 +332,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     organizeIfNeeded: organizeAutomatically,
     async rebuildDirectorNotes(agent: MemoryAgent, signal?: AbortSignal, commandId?: unknown) {
       const session = agent?.session
+      await ensureSessionHistory(session, signal)
       if (!session || !isRoleplaySession(session)) throw new Error('当前会话不是角色扮演会话')
       const task = (maintenanceSignal?: AbortSignal) => refreshDirectorNotes(session, agent,
         signal && maintenanceSignal ? AbortSignal.any([signal, maintenanceSignal]) : signal ?? maintenanceSignal,
@@ -337,6 +341,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     },
     async compactNow(agent: MemoryAgent, signal?: AbortSignal, commandId?: unknown) {
       const session = agent?.session
+      await ensureSessionHistory(session, signal)
       if (!session || !isRoleplaySession(session)) throw new Error('当前会话不是角色扮演会话')
       signal?.throwIfAborted?.()
       if (typeof agent.runMaintenance !== 'function') {
@@ -351,6 +356,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     },
     async compactIfNeeded(agent: MemoryAgent, trigger: string | AbortSignal = 'pressure', signal?: AbortSignal) {
       const session = agent?.session
+      await ensureSessionHistory(session, typeof trigger === 'string' ? signal : trigger)
       if (!session || !isRoleplaySession(session)) return null
       if (busy.has(session.id)) return null
       // Compatibility with the early local draft which accepted
@@ -387,8 +393,9 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
   }
 
   if (cfg.auto !== false) {
-    ctx.on('agent/pre-step', (payload, next) => {
+    ctx.on('agent/pre-step', async (payload, next) => {
       const session = payload?.agent?.session
+      await ensureSessionHistory(session, payload.signal)
       if (!session || !isRoleplaySession(session)) return next()
       if (payload.step !== 1) return next()
       const hasUser = payload.messages.some((m) => m.role === 'user' && m.source?.kind === 'user')
@@ -408,10 +415,16 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
 
   if (cfg.autoNotes !== false) {
     ctx.on('session/event', (session, event) => {
-      if (isCompletedTurnEnd(event)) scheduleNotes({ session })
+      if (!isCompletedTurnEnd(event)) return
+      // Notifications must not block native append or start background work
+      // before its history is ready. Observation failures leave work retryable.
+      void ensureSessionHistory(session).then(() => scheduleNotes({ session }))
+        .catch(error => ctx.logger?.warn?.(`roleplay-memory: history unavailable: ${String(error)}`))
     }, { global: true })
     ctx.on('agent/status', (payload) => {
-      if (payload?.status === 'idle') scheduleNotes(payload.agent)
+      if (payload?.status !== 'idle') return
+      void ensureSessionHistory(payload.agent?.session).then(() => scheduleNotes(payload.agent))
+        .catch(error => ctx.logger?.warn?.(`roleplay-memory: history unavailable: ${String(error)}`))
     })
   }
 
@@ -424,6 +437,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
           input: { hint: 'view | organize | compact | history | search <关键词> | lock <事实> | unlock <编号> | note <事实>' },
           handler: async (invocation) => {
             const session = invocation.agent?.session
+            await ensureSessionHistory(session)
             if (!session || !isRoleplaySession(session)) return { kind: 'error', text: '当前会话不是角色扮演会话' }
             const raw = (invocation.rawInput ?? '').trim()
             const [verb, ...rest] = raw.split(/\s+/)

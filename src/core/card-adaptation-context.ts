@@ -1,3 +1,4 @@
+import {sessionEvents} from './session-history.js'
 import { createHash, randomUUID } from 'node:crypto'
 import type { TaskContextSession, TaskEvent } from './tavern-task-context.js'
 import { adaptationToolResult } from '../memory/memory-provenance.js'
@@ -6,7 +7,7 @@ import { readCardSource } from './tavern-card.js'
 /** A delivered, checked MD is the checkpoint for research/authoring, before card import begins. */
 export function retireDeliveredDraft(session:TaskContextSession,currentTurn:number) {
   if(!session.append)return 0
-  const events=session.events??session.log??[],lookup=new Map(events.map(e=>[e.seq,e]))
+  const events=sessionEvents(session),lookup=new Map(events.map(e=>[e.seq,e]))
   const calls=new Map<string,{name:string;seq:number}>(),ended=new Set<number>()
   const drafts:{start:number;end:number;turn:number;path:string;sha256:string}[]=[]
   let start:number|null=null,turn=-1
@@ -59,7 +60,7 @@ export function retireDeliveredDraft(session:TaskContextSession,currentTurn:numb
  * the authoritative card has committed and the entire raw audit remains. */
 export function retireFinishedAdaptation(session:TaskContextSession,currentTurn:number,activeImport?:{importId:string;normalizedSha256:string}) {
   if(!session.append)return 0
-  const events=session.events??session.log??[],lookup=new Map(events.map(e=>[e.seq,e]))
+  const events=sessionEvents(session),lookup=new Map(events.map(e=>[e.seq,e]))
   const calls=new Map<string,{name:string;seq:number}>(),ended=new Set<number>()
   const spans:{start:number;end:number;turn:number;sourceId:string;importId:string;normalizedSha256:string}[]=[]
   let turn=-1,researchStart:number|null=null,sourceId='',finished=false,importId:string|null=null,importHash:string|null=null
@@ -142,7 +143,7 @@ export interface AdaptationProgress {sourceId:string;segments:number;read:number
  * The visible native call/result chain supplies provenance, never model prose. */
 export function retireCoarseResearchReads(session:TaskContextSession,owner:string) {
   if(!session.append)return 0
-  const events=session.events??session.log??[],bySeq=new Map(events.map(e=>[e.seq,e])),nodes=[...(session.surface?.nodes??[])]
+  const events=sessionEvents(session),bySeq=new Map(events.map(e=>[e.seq,e])),nodes=[...(session.surface?.nodes??[])]
   type Envelope={schemaVersion:1;owner:string;sourceId:string;textSha256:string;generation:string;packetIds:string[];revision?:number}
   const envelope=(value:unknown):Envelope|null=>{
     if(!value||typeof value!=='object')return null
@@ -226,7 +227,7 @@ export function retireCoarseResearchReads(session:TaskContextSession,owner:strin
 
 export function retireAdaptationReads(session:TaskContextSession,notes:{sourceId:string;segment:number;seq:number;progress?:AdaptationProgress}[]) {
   if(!session.append||!notes.length)return 0
-  const events=session.events??session.log??[],lookup=new Map(events.map(e=>[e.seq,e])),nodes=[...(session.surface?.nodes??[])]
+  const events=sessionEvents(session),lookup=new Map(events.map(e=>[e.seq,e])),nodes=[...(session.surface?.nodes??[])]
   const researchCalls=new Set<string>()
   for(const e of events)if(e.type==='assistant/message')for(const block of e.data?.message?.content??[])if(block.type==='tool-call'&&/^rp_source_/.test(block.name??'')&&block.id)researchCalls.add(block.id)
   const successful=(e:TaskEvent)=>{const result=adaptationToolResult(e.data?.message);return result!==null&&!result.failed}
@@ -276,7 +277,7 @@ export function retireAdaptationReads(session:TaskContextSession,notes:{sourceId
     retired+=selected.length;i=j-1
   }
   // Keep adjacent receipts bounded too; their nested sourceEventSeqs retain the full append-only audit chain.
-  const current=session.events??session.log??[],bySeq=new Map(current.map(e=>[e.seq,e])),visible=[...(session.surface?.nodes??[])]
+  const current=sessionEvents(session),bySeq=new Map(current.map(e=>[e.seq,e])),visible=[...(session.surface?.nodes??[])]
   for(let i=0;i<visible.length;i++){
     const group:number[]=[]
     while(i<visible.length){const e=bySeq.get(visible[i]!),source=e?.data?.source

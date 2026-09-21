@@ -8,11 +8,14 @@ import { readUserInfo as readUserInfoFile, writeUserInfo } from './roleplay-user
 
 type UserInfo = Record<string, unknown>
 type SessionEvent = { type?: string; data?: { agentPreset?: unknown } }
-type Session = { id: string; header?: { agentPreset?: unknown }; events?: readonly SessionEvent[] }
+type Session = { id: string; header?: { agentPreset?: unknown } }
+type SessionObservation = Disposable & { events: readonly SessionEvent[] }
 type ResolvedAgent = { agent?: { session?: Session }; error?: unknown }
 type HostContext = {
   connection: { fetch: { register: (route: Route) => unknown } }
   sessionController: { resolveAgent: (id: string) => Promise<ResolvedAgent | null | undefined> }
+  sessionQuery: { observeSession: (id: string, options: { projectionMode: 'none' }) => Promise<SessionObservation> }
+  sessions: { get: (id: string) => Session | null | undefined }
   effect: (work: () => unknown, description?: string) => unknown
   provide?: (name: string, value: unknown) => unknown
   logger?: { warn?: (message: string) => unknown }
@@ -32,7 +35,7 @@ const errorText = (error: unknown): string =>
   String(error !== null && typeof error === 'object' && 'message' in error ? error.message ?? error : error)
 
 export const name = 'dsh-roleplay-ui'
-export const inject = ['connection', 'sessionController']
+export const inject = ['connection', 'sessionController', 'sessionQuery', 'sessions']
 
 export function apply(ctx: HostContext): void {
   const home = process.env.DSH_HOME ?? join(process.env.HOME ?? '.', '.dsh')
@@ -90,10 +93,12 @@ export function apply(ctx: HostContext): void {
       if (!sessionId || sessionId.length > 200 || /[\u0000-\u001f]/.test(sessionId)) return jsonResponse(400, { ok: false, error: 'sessionId 无效' })
       const found = await ctx.sessionController.resolveAgent(sessionId)
       if (!found || 'error' in found || !found.agent?.session) return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' })
-      const session = found.agent.session; let preset = session.header?.agentPreset
-      // Pinned alpha.3 synchronous history adapter. GA needs an upstream
-      // projection/async reader (docs/migration-ga.md), not snapshotEvents.
-      const events = session.events ?? []
+      const session = found.agent.session
+      if (ctx.sessions.get(sessionId) !== session) return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' })
+      let preset = session.header?.agentPreset
+      using observation = await ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+      if (ctx.sessions.get(sessionId) !== session) return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' })
+      const events = observation.events
       for (let index = events.length - 1; index >= 0; index -= 1) {
         const event = events[index]
         if (event?.type === 'agent-preset/selected' && event.data?.agentPreset) {

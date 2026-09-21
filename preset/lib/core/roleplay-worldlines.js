@@ -330,7 +330,7 @@ export function createRoleplayWorldlines(deps) {
             throw new Error('新会话与分支锚点不匹配');
         if (isNativeFork) {
             const expectedSeedLength = Number(operation.anchor.expectedSeedLength ?? (Number(operation.anchor.previousTurnEndSeq) + 1));
-            const actualSeedLength = Number(child.header?.seedLength);
+            const actualSeedLength = Number(child.inheritedEventCount);
             if (!Number.isSafeInteger(expectedSeedLength) || !Number.isSafeInteger(actualSeedLength)
                 || actualSeedLength !== expectedSeedLength) {
                 throw new Error('新分支的 seed 边界与操作锚点不一致');
@@ -546,7 +546,7 @@ export function createRoleplayWorldlines(deps) {
         // Some old forks used a different transport ID when submitting the first
         // post-seed input. Their explicit child membership is still authoritative
         // for navigation, but never binds an arbitrary later reply to that fork.
-        const seed = durableSeq(session.header?.seedLength);
+        const seed = durableSeq(session.inheritedEventCount);
         if (!session.header?.parentSession || seed === null)
             return null;
         const first = surfaceEvents(session).find(event => event.seq >= seed && event.type === 'user/message' && event.data?.source?.kind === 'user');
@@ -869,17 +869,8 @@ export function createRoleplayWorldlines(deps) {
         }
     }
     async function nativeBranchGroupsFor(session, lookup = null) {
-        // Old in-place regeneration replaced the original assistant on the same
-        // Session surface.  If that Session was later enrolled in the native fork
-        // index, repair only its navigation pointer: the append-only audit log stays
-        // untouched, while Chat/Reader can present the visible reply as one k/N slot.
-        await repairLegacyRootForkPointer(session, lookup);
         await reconcileNativeFork(session);
-        // repairLegacyRootForkPointer/reconcileNativeFork may create or retarget
-        // the anchor pointer and settle a pending member.  Do not continue with
-        // the pre-repair lookup index: a first state read after a regeneration
-        // must expose the complete k/N group immediately, rather than only after
-        // a later refresh happens to rebuild the index.
+        // A recovered pending member can change navigation; rebuild its lookup.
         lookup = buildForkLookupIndex(session);
         const result = {};
         for (const event of surfaceEvents(session)) {
@@ -958,7 +949,7 @@ export function createRoleplayWorldlines(deps) {
         }
         return inherited;
     }
-    const { repairLegacyRootForkPointer, nativePlayerGroupsFor, repairLegacyUserReplacementIdentities, replaceAssistantText, reconcileCanonicalPlayerVariants, userForkContext, locatePlayerRecoveryTarget, replaceUserText, } = createWorldlineSurface(deps, {
+    const { nativePlayerGroupsFor, replaceAssistantText, reconcileCanonicalPlayerVariants, userForkContext, locatePlayerRecoveryTarget, replaceUserText, } = createWorldlineSurface(deps, {
         forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock,
         hydrateForkGroup, forkPointerFor, groupMemberForSession,
         assistantMessageId, currentSurfaceUserBefore, turnForEvent,
@@ -970,7 +961,6 @@ export function createRoleplayWorldlines(deps) {
         buildForkLookupIndex,
         reconcileNativeFork,
         failPendingNativeFork,
-        repairLegacyUserReplacementIdentities,
         nativeBranchGroupsFor,
         nativePlayerGroupsFor,
         assistantMessageId,

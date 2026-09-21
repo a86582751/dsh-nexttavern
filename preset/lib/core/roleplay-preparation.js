@@ -125,7 +125,7 @@ export function createRoleplayPreparation(deps) {
         const stored = T.memory.get(keyOf(session.id, 'head')) ?? null;
         if (!stored || typeof session?.header?.parentSession !== 'string')
             return stored;
-        const seedLength = durableSeq(session.header?.seedLength);
+        const seedLength = durableSeq(session.inheritedEventCount);
         const proven = (items) => (Array.isArray(items) ? items : []).filter((item) => {
             if (!item || typeof item !== 'object')
                 return false;

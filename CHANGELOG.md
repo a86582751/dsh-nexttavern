@@ -2,7 +2,9 @@
 
 ## 0.3 development — 2026-09-22
 
-- Migrated owned surface replacement producers and readers to the alpha.6 `startSeq/endSeq` contract, covering compaction, context windows, card research and task retirement. Host-derived types replace duplicated loose field declarations. Four native cases verify successful/rejected/cancelled writes, JSONL replay and pricing; affected business regressions and strict compilation passed. Live Session history and inherited-boundary migration remain unfinished; loaded-view tests do not prove full Agent or product compatibility.
+- Migrated live business history to public observations plus an incremental event ledger, with awaited readiness, cancellation, instance isolation and shared-mount disposal. Fork ownership uses `inheritedEventCount`; cold telemetry observes restored histories without recharging inherited calls. Seven native cases, one affected Controller case and thirteen business suites passed within their recorded limits. Full roleplay Agent, browser, unified installation and lifecycle acceptance remain pending.
+
+- Migrated owned surface replacement producers and readers to the alpha.6 `startSeq/endSeq` contract, covering compaction, context windows, card research and task retirement. Host-derived types replace duplicated loose field declarations. Four native cases verify successful/rejected/cancelled writes, JSONL replay and pricing; affected business regressions and strict compilation passed. These loaded-view tests do not prove full Agent or product compatibility; the subsequent live-history stage is recorded above.
 
 - Rebased the owned Session Controller and browser client on alpha.6. Prepared forks reserve ownership before publication and inherit late edit metadata; ordinary forks retain native boundaries and model selection has one owner. The strict 31-module closure, browser bundle and 16 affected cases passed, including owned JSONL/meter integration and client reconnect/disposal. Full business/UI flows, formal fork sync and unified product assembly remain incomplete.
 

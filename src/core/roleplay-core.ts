@@ -76,6 +76,7 @@ import { createRoleplayInheritance } from './roleplay-inheritance.js'
 import { createResourceBridge } from './roleplay-resource-bridge.js'
 import { createCardWorkflows } from './roleplay-card-workflow.js'
 import { createRoleplayService } from './roleplay-service.js'
+import {createSessionHistory, ensureSessionHistory} from './session-history.js'
 import { createRoleplayTaskHost } from './roleplay-task-host.js'
 import { registerRoleplayLoop } from './roleplay-loop.js'
 import {
@@ -223,6 +224,19 @@ const DECISION_SYSTEM =
 
 export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CONFIG> = {}) {
   const cfg = { ...DEFAULT_CONFIG, ...(config ?? {}) }
+  const history = createSessionHistory({
+    get: id => ctx.sessions.get(id),
+    observe: (id, options) => ctx.sessionQuery.observeSession(id, options),
+  })
+  // Register the feed before any asynchronous observation. session/created is
+  // fire-and-forget; agent/created is the awaited gate before the first step.
+  ctx.on('session/event', history.accept, {global: true, prepend: true})
+  ctx.on('session/disposed', history.disposeSession, {global: true})
+  ctx.on('agent/created', async ({agent, signal}) => {
+    await history.ready(agent.session, signal)
+    return undefined
+  }, {global: true, prepend: true})
+  ctx.effect(() => history.dispose, 'roleplay: session history')
 
   // `sessions` contains only Agents currently retained by the Host. Opening a
   // persisted conversation directly into Reader after a service restart does
@@ -246,6 +260,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         return null
       }
     }
+    if (session) await ensureSessionHistory(session)
     return session && isRoleplaySession(session) ? session : null
   }
 
@@ -551,7 +566,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
 
   const isRoleplaySession = (session: ContextSession | null | undefined) => {
     if (!session) return false
-    if(eventsOf(session).some(e=>e?.type==='subagent/descriptor'&&Number(e.seq)>=Number(session.header?.seedLength??0)))return false
+    if(eventsOf(session).some(e=>e?.type==='subagent/descriptor'&&Number(e.seq)>=Number(session.inheritedEventCount??0)))return false
     let preset = session.header?.agentPreset
     for (const e of eventsOf(session)) {
       if (e && e.type === 'agent-preset/selected' && e.data?.agentPreset) preset = e.data.agentPreset
@@ -658,9 +673,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   Object.assign(svc,{retrieval})
   ctx.effect(() => () => retrieval.dispose(), 'roleplay: retrieval lifetime')
   ctx.on('session/created', session => retrieval.created(session), { global: true })
-  ctx.on('session/event', (session, event) => {
+  ctx.on('session/event', async (session, event) => {
     if (['turn/end', 'user/message', 'compaction/end', 'roleplay/message-edit'].includes(event.type)) {
-      retrieval.changed(session)
+      await retrieval.changed(session)
     }
   }, { global: true })
   ctx.provide('roleplay', svc)

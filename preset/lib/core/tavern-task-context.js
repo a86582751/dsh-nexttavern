@@ -5,6 +5,7 @@ import { createTaskRetirement, taskContextRecord } from './tavern-task-retiremen
 import { taskHash, isInlinePending } from './tavern-task-primitives.js';
 import { taskValidationFailure } from './tavern-task-support.js';
 import { fenceCardContent } from './tavern-card.js';
+import { sessionEvents } from './session-history.js';
 export function maintenancePrompt(context, before, after, domain = 'status') {
     const promptContext = {
         schemaVersion: 1, before, context, after, domain
@@ -98,7 +99,7 @@ export function isSettingManagementCall(data) {
 // repeatedly computed projections. Mutable legacy/test snapshots are rebuilt.
 const eventProjectionCache = new WeakMap();
 export function taskProjectionEvents(session) {
-    const raw = session.events ?? session.log ?? [], immutable = Object.isFrozen(raw), prior = immutable ? eventProjectionCache.get(session) : undefined;
+    const raw = sessionEvents(session), immutable = Object.isFrozen(raw), prior = immutable ? eventProjectionCache.get(session) : undefined;
     const appendOnly = !!prior && raw.length >= prior.length && raw[0] === prior.first
         && (prior.length === 0 || raw[prior.length - 1] === prior.last);
     if (appendOnly && raw.length === prior.length)
@@ -233,7 +234,7 @@ export function inlineTaskMessages(session, stage, jobs, { force = false, maxCha
         stage, content
     });
     // alpha.3 history adapter: inspect the current tail without copying the full log.
-    const events = force ? [] : session.events ?? session.log ?? [];
+    const events = force ? [] : sessionEvents(session);
     for (let index = events.length - 1; index >= 0; index--) {
         const event = events[index];
         if (event.type === 'turn/start' || event.type === 'turn/end')
@@ -323,10 +324,8 @@ export function tavernTaskToolBoundary(table, agent) {
         return null;
     if (!(Number(agent.options?.subagentDepth) > 0) && session.header?.origin !== 'subagent')
         return null;
-    const descriptor = (session.events
-        ?? session.log
-        ?? []).findLast(event => event.type === 'subagent/descriptor'
-        && Number(event.seq) >= Number(session.header?.seedLength
+    const descriptor = sessionEvents(session).findLast(event => event.type === 'subagent/descriptor'
+        && Number(event.seq) >= Number(session.inheritedEventCount
             ?? 0));
     const match = /^Tavern:([a-f0-9]{64}):/.exec(descriptor?.data?.label ?? '');
     const earlyId = Number(agent.options?.subagentDepth) > 0 && /^[a-f0-9]{64}$/.test(agent.options?.tavernTaskId ?? '') ? agent.options?.tavernTaskId : null;

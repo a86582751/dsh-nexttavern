@@ -35,7 +35,8 @@
         "runtime/alpha3/compat/session-format/*",
         "runtime/alpha3/compat/session-persistence-jsonl/*",
         "plugin-public-compiler*",
-        "plugin-surface-replacement*"
+        "plugin-surface-replacement*",
+        "plugin-session-history*"
       ]
     },
     {
@@ -3242,6 +3243,80 @@
       ],
       "timeoutMs": 30000,
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-session-history.test.mts",
+      "action": "test",
+      "artifact": "plugin-session-history-contract",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [
+        "plugin-fork-controller-fixture-test",
+        "test-temp-helper-typescript",
+        "typescript-config",
+        "inventory-runtime-alpha3-build-tools-package-json",
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "session-history-typescript",
+        "session-history",
+        "tavern-telemetry-fold-typescript",
+        "tavern-telemetry-fold-js",
+        "tavern-telemetry-normalize-typescript",
+        "tavern-telemetry-normalize-js",
+        "roleplay-context-typescript",
+        "roleplay-context",
+        "tavern-task-primitives-typescript",
+        "tavern-task-primitives-js",
+        "tavern-telemetry-typescript",
+        "tavern-telemetry",
+        "tavern-telemetry-aggregate-typescript",
+        "tavern-telemetry-aggregate-js",
+        "tavern-telemetry-query-typescript",
+        "tavern-telemetry-query-js",
+        "tavern-telemetry-time-range-typescript",
+        "tavern-telemetry-time-range-js",
+        "tavern-tasks-typescript",
+        "tavern-tasks",
+        "tavern-task-types-typescript",
+        "tavern-task-types-js",
+        "tavern-task-support-typescript",
+        "tavern-task-support-js",
+        "tavern-model-policy-typescript",
+        "tavern-model-policy-js",
+        "tavern-task-context-typescript",
+        "tavern-task-context-js",
+        "tavern-pricing-typescript",
+        "tavern-pricing",
+        "tavern-card-typescript",
+        "tavern-card-adapter",
+        "tavern-card-crc-typescript",
+        "tavern-card-crc-js",
+        "roleplay-data-typescript",
+        "roleplay-data",
+        "memory-retrieval-types-source",
+        "memory-retrieval-types-generated",
+        "tavern-pricing-data-typescript",
+        "tavern-pricing-data",
+        "tavern-price-catalog-typescript",
+        "tavern-price-catalog",
+        "tavern-exchange-rates-typescript",
+        "tavern-exchange-rates",
+        "roleplay-userinfo-typescript",
+        "roleplay-userinfo",
+        "memory-provenance-typescript",
+        "memory-provenance-js",
+        "tavern-task-retirement-typescript",
+        "tavern-task-retirement",
+        "card-adaptation-context-typescript",
+        "card-adaptation-context"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000
     }
   ]
 }

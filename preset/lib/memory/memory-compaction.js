@@ -4,6 +4,7 @@ import { estimateTokens, durableSeq, textOf } from './memory-provenance.js';
 import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistory, historySourceKeys, isCompactedStoryEvent } from './memory-history.js';
 import { validateDetailedSummary } from './memory-summary.js';
 import { projectStoryEvent } from '../core/roleplay-message-view.js';
+import { sessionEvents } from '../core/session-history.js';
 function errorText(error) {
     if (error instanceof Error)
         return error.stack || error.message;
@@ -12,14 +13,8 @@ function errorText(error) {
 function errorMessage(error) {
     return String(error !== null && typeof error === 'object' && 'message' in error ? error.message ?? error : error);
 }
-// Pinned alpha.3 positional history adapter; GA requires asynchronous history
-// and revised event shapes (docs/migration-ga.md), not snapshotEvents.
 function eventsOf(session) {
-    if (Array.isArray(session?.events))
-        return session.events;
-    if (Array.isArray(session?.log))
-        return session.log;
-    return [];
+    return sessionEvents(session);
 }
 export function checkpointSummaryFromSurface(session) {
     const events = eventsOf(session);

@@ -1,4 +1,56 @@
 // Generated from runtime/alpha3/src/core/host-index.ts; edit the TypeScript source.
+var __addDisposableResource = (this && this.__addDisposableResource) || function (env, value, async) {
+    if (value !== null && value !== void 0) {
+        if (typeof value !== "object" && typeof value !== "function") throw new TypeError("Object expected.");
+        var dispose, inner;
+        if (async) {
+            if (!Symbol.asyncDispose) throw new TypeError("Symbol.asyncDispose is not defined.");
+            dispose = value[Symbol.asyncDispose];
+        }
+        if (dispose === void 0) {
+            if (!Symbol.dispose) throw new TypeError("Symbol.dispose is not defined.");
+            dispose = value[Symbol.dispose];
+            if (async) inner = dispose;
+        }
+        if (typeof dispose !== "function") throw new TypeError("Object not disposable.");
+        if (inner) dispose = function() { try { inner.call(this); } catch (e) { return Promise.reject(e); } };
+        env.stack.push({ value: value, dispose: dispose, async: async });
+    }
+    else if (async) {
+        env.stack.push({ async: true });
+    }
+    return value;
+};
+var __disposeResources = (this && this.__disposeResources) || (function (SuppressedError) {
+    return function (env) {
+        function fail(e) {
+            env.error = env.hasError ? new SuppressedError(e, env.error, "An error was suppressed during disposal.") : e;
+            env.hasError = true;
+        }
+        var r, s = 0;
+        function next() {
+            while (r = env.stack.pop()) {
+                try {
+                    if (!r.async && s === 1) return s = 0, env.stack.push(r), Promise.resolve().then(next);
+                    if (r.dispose) {
+                        var result = r.dispose.call(r.value);
+                        if (r.async) return s |= 2, Promise.resolve(result).then(next, function(e) { fail(e); return next(); });
+                    }
+                    else s |= 1;
+                }
+                catch (e) {
+                    fail(e);
+                }
+            }
+            if (s === 1) return env.hasError ? Promise.reject(env.error) : Promise.resolve();
+            if (env.hasError) throw env.error;
+        }
+        return next();
+    };
+})(typeof SuppressedError === "function" ? SuppressedError : function (error, suppressed, message) {
+    var e = new Error(message);
+    return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+});
 // Host-wide routes exist before any roleplay Agent has been mounted.
 // Userinfo shares the preset's roleplay-userinfo.json storage.
 import { join } from 'node:path';
@@ -12,7 +64,7 @@ const jsonResponse = (status, value) => new Response(JSON.stringify(value), { st
 const requestBody = (value) => value && typeof value === 'object' ? value : {};
 const errorText = (error) => String(error !== null && typeof error === 'object' && 'message' in error ? error.message ?? error : error);
 export const name = 'dsh-roleplay-ui';
-export const inject = ['connection', 'sessionController'];
+export const inject = ['connection', 'sessionController', 'sessionQuery', 'sessions'];
 export function apply(ctx) {
     const home = process.env.DSH_HOME ?? join(process.env.HOME ?? '.', '.dsh');
     const catalogPath = process.env.DSH_ROLEPLAY_CONVERSATIONS_PATH ?? join(home, 'roleplay-conversations.json');
@@ -89,28 +141,41 @@ export function apply(ctx) {
     // wake is issued; agent-owned routes become available through native resume.
     ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/wake', methods: ['POST'], fetch: async (request) => {
             try {
-                const body = requestBody(await request.json().catch(() => null));
-                const sessionId = String(body.sessionId ?? '').trim();
-                if (!sessionId || sessionId.length > 200 || /[\u0000-\u001f]/.test(sessionId))
-                    return jsonResponse(400, { ok: false, error: 'sessionId 无效' });
-                const found = await ctx.sessionController.resolveAgent(sessionId);
-                if (!found || 'error' in found || !found.agent?.session)
-                    return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' });
-                const session = found.agent.session;
-                let preset = session.header?.agentPreset;
-                // Pinned alpha.3 synchronous history adapter. GA needs an upstream
-                // projection/async reader (docs/migration-ga.md), not snapshotEvents.
-                const events = session.events ?? [];
-                for (let index = events.length - 1; index >= 0; index -= 1) {
-                    const event = events[index];
-                    if (event?.type === 'agent-preset/selected' && event.data?.agentPreset) {
-                        preset = event.data.agentPreset;
-                        break;
+                const env_1 = { stack: [], error: void 0, hasError: false };
+                try {
+                    const body = requestBody(await request.json().catch(() => null));
+                    const sessionId = String(body.sessionId ?? '').trim();
+                    if (!sessionId || sessionId.length > 200 || /[\u0000-\u001f]/.test(sessionId))
+                        return jsonResponse(400, { ok: false, error: 'sessionId 无效' });
+                    const found = await ctx.sessionController.resolveAgent(sessionId);
+                    if (!found || 'error' in found || !found.agent?.session)
+                        return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' });
+                    const session = found.agent.session;
+                    if (ctx.sessions.get(sessionId) !== session)
+                        return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' });
+                    let preset = session.header?.agentPreset;
+                    const observation = __addDisposableResource(env_1, await ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' }), false);
+                    if (ctx.sessions.get(sessionId) !== session)
+                        return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' });
+                    const events = observation.events;
+                    for (let index = events.length - 1; index >= 0; index -= 1) {
+                        const event = events[index];
+                        if (event?.type === 'agent-preset/selected' && event.data?.agentPreset) {
+                            preset = event.data.agentPreset;
+                            break;
+                        }
                     }
+                    if (preset !== 'roleplay')
+                        return jsonResponse(409, { ok: false, error: '目标不是角色扮演会话' });
+                    return jsonResponse(200, { ok: true, sessionId: session.id, preset: 'roleplay' });
                 }
-                if (preset !== 'roleplay')
-                    return jsonResponse(409, { ok: false, error: '目标不是角色扮演会话' });
-                return jsonResponse(200, { ok: true, sessionId: session.id, preset: 'roleplay' });
+                catch (e_1) {
+                    env_1.error = e_1;
+                    env_1.hasError = true;
+                }
+                finally {
+                    __disposeResources(env_1);
+                }
             }
             catch (error) {
                 return jsonResponse(500, { ok: false, error: errorText(error) });

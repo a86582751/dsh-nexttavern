@@ -1,8 +1,9 @@
+import {sessionEvents} from '../core/session-history.js'
 export interface BranchScope { isFork: boolean; seedLength: number | null }
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 const eventsOf = (session: unknown): readonly Record<string, unknown>[] => {
   if (!record(session)) return []
-  const events = Array.isArray(session.events) ? session.events : Array.isArray(session.log) ? session.log : []
+  const events = sessionEvents<Record<string, unknown>>(session)
   return events.filter(record)
 }
 export function lastSeqOf(session: unknown): number {
@@ -19,7 +20,7 @@ export function branchScope(session: unknown): BranchScope {
   const header = record(session) && record(session.header) ? session.header : null
   const parent = typeof header?.parentSession === 'string' ? header.parentSession.trim() : ''
   if (!parent) return { isFork: false, seedLength: null }
-  const raw = header?.seedLength
+  const raw = record(session) ? session.inheritedEventCount : undefined
   return { isFork: true, seedLength: Number.isSafeInteger(raw) && Number(raw) >= 0 ? Number(raw) : null }
 }
 export function durableSeq(value: unknown): number | null { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null }

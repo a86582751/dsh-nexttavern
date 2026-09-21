@@ -3,6 +3,7 @@ import { estimateTokens, durableSeq, textOf } from './memory-provenance.js'
 import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistory, historySourceKeys, isCompactedStoryEvent, type StorySession, type StoryEvent, type NotesRecord } from './memory-history.js'
 import { validateDetailedSummary, type SummaryOptions, type SummaryResult } from './memory-summary.js'
 import { projectStoryEvent, type StorySurfaceReplacement } from '../core/roleplay-message-view.js'
+import {sessionEvents} from '../core/session-history.js'
 
 export interface CompactionEvent extends StoryEvent {
   data?: NonNullable<StoryEvent['data']> & { shadowedRange?: unknown }
@@ -96,12 +97,8 @@ function errorText(error: unknown): string {
 function errorMessage(error: unknown): string {
   return String(error !== null && typeof error === 'object' && 'message' in error ? error.message ?? error : error)
 }
-// Pinned alpha.3 positional history adapter; GA requires asynchronous history
-// and revised event shapes (docs/migration-ga.md), not snapshotEvents.
 function eventsOf(session: CompactionSession): readonly CompactionEvent[] {
-  if (Array.isArray(session?.events)) return session.events
-  if (Array.isArray(session?.log)) return session.log
-  return []
+  return sessionEvents(session)
 }
 
 export function checkpointSummaryFromSurface(session: CompactionSession) {

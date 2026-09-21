@@ -1,3 +1,4 @@
+import {sessionEvents} from './session-history.js'
 import { randomUUID } from 'node:crypto';
 import { taskHash } from './tavern-task-primitives.js';
 import { retireFinishedAdaptation, retireDeliveredDraft } from './card-adaptation-context.js';
@@ -91,9 +92,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
         if (typeof session?.append !== 'function')
             return 0;
         const retiredResearch = retireDeliveredDraft(session, currentTurn) + retireFinishedAdaptation(session, currentTurn, activeImport);
-        const events = session.events
-            ?? session.log
-            ?? [],
+        const events = sessionEvents(session),
              groups: TurnGroup[] = [],
              bySeq = new Map<number,
              TurnGroup>(),
@@ -209,9 +208,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
     function retireSettledInlineContexts(session: TaskContextSession, currentTurn: number, jobs: readonly InlineContextJob[]) {
         if (!session.append)
             return 0;
-        const events = session.events
-            ?? session.log
-            ?? [],
+        const events = sessionEvents(session),
              lookup = new Map(events.map(e => [e.seq,
              e])),
              owners = new Map<number,
@@ -426,9 +423,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
     function retireUsedStoryReads(session: TaskContextSession, currentTurn: number) {
         if (!session.append)
             return 0;
-        const events = session.events
-            ?? session.log
-            ?? [],
+        const events = sessionEvents(session),
              lookup = new Map(events.map(e => [e.seq,
              e])),
              nodes = [...(session.surface?.nodes

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { durableSeq, textOf, adaptationTurns, importedStoryProjection } from './memory-provenance.js'
 import { projectStoryEvent, messageViewGeneration, type MessageViewSession, type StorySurfaceOp } from '../core/roleplay-message-view.js'
+import {sessionEvents} from '../core/session-history.js'
 
 export interface StoryBlock { type?: string; [field: string]: unknown }
 export interface StoryEvent {
@@ -57,12 +58,8 @@ export interface NotesRecord {
 interface HistoryOptions { query?: unknown; beforeSeq?: unknown; limit?: unknown; maxChars?: unknown; scope?: string }
 interface ReadOptions { seq?: unknown; offset?: unknown; maxChars?: unknown; scope?: string }
 
-// Pinned alpha.3 positional history adapter. GA requires projections/async
-// pages and changed event shapes, not snapshotEvents (docs/migration-ga.md).
 function eventsOf(session: StorySession): readonly StoryEvent[] {
-  if (Array.isArray(session?.events)) return session.events
-  if (Array.isArray(session?.log)) return session.log
-  return []
+  return sessionEvents(session)
 }
 
 export function surfaceSeqsOf(session: StorySession): number[] {

@@ -21,8 +21,8 @@ export function createRoleplayInheritance(deps) {
                     // A previous process can die after writing a provisional marker.
                     // Existence alone is not an inheritance commit: only the explicit
                     // ready marker permits skipping the copy/replay pass.
-                    const expectedSeedLength = Number.isSafeInteger(session.header?.seedLength)
-                        ? Number(session.header.seedLength)
+                    const expectedSeedLength = Number.isSafeInteger(session.inheritedEventCount)
+                        ? Number(session.inheritedEventCount)
                         : null;
                     const inheritanceReady = meta?.inheritanceState === 'ready'
                         && String(meta?.inheritedFrom ?? '') === String(parent)
@@ -30,8 +30,8 @@ export function createRoleplayInheritance(deps) {
                     if (!inheritanceReady) {
                         const pPrefix = `${parent}__`;
                         const cP = `${session.id}__`;
-                        const seedLength = Number.isSafeInteger(session.header?.seedLength)
-                            ? Number(session.header.seedLength)
+                        const seedLength = Number.isSafeInteger(session.inheritedEventCount)
+                            ? Number(session.inheritedEventCount)
                             : Number.POSITIVE_INFINITY;
                         const beforeSeed = (seq) => {
                             const value = durableSeq(seq);
@@ -210,7 +210,7 @@ export function createRoleplayInheritance(deps) {
                 // verbatim; no model call or parent-state mutation is needed.
                 const inheritedPanel = T.status.get(keyOf(session.id, 'panel'));
                 if (parent && inheritedPanel?.sessionId === parent && inheritedPanel.provenance && !inheritedPanel.stale
-                    && Number.isSafeInteger(session.header?.seedLength) && Number(inheritedPanel.atSeq) < Number(session.header?.seedLength)) {
+                    && Number.isSafeInteger(session.inheritedEventCount) && Number(inheritedPanel.atSeq) < Number(session.inheritedEventCount)) {
                     const event = eventsOf(session).find(item => item.seq === inheritedPanel.atSeq);
                     const source = statusSource(session, event);
                     const history = (ctx.get('compaction')?.storyEvidence?.(session) ?? surfaceEntries(session))

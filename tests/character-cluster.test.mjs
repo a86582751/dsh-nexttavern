@@ -15,7 +15,7 @@ class Table extends Map {async put(k,v){this.set(k,structuredClone(v))}}
  const table=new Table(),routes=new Map(),primary={provider:'fixture',model:'main'}
  const cluster=createCharacterCluster({table,main:()=>primary,subagents:{start(){throw Error('settings must not generate')}}})
  registerSettingsRoutes({ctx:{effect:fn=>fn(),connection:{fetch:{register:route=>routes.set(route.path,route.fetch)}},get:()=>null,agentDefaultModel:{currentSelection:()=>primary},llm:{resolveModelInfo:async()=>({})}},
-   T:{branch:table},resolveRoleplaySession:async id=>({id}),ensureBranch:async()=>{},taskAgents:new Map(),characterCluster:cluster,characterRoster:()=>[],memorySettingFields:[]})
+   T:{branch:table},resolveRoleplaySession:async id=>({id,events:[]}),ensureBranch:async()=>{},taskAgents:new Map(),characterCluster:cluster,characterRoster:()=>[],memorySettingFields:[]})
  const post=async body=>{const response=await routes.get('/api/roleplay/character-cluster')(new Request('http://fixture/api/roleplay/character-cluster',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));return {status:response.status,body:await response.json()}}
  const changed=await post({sessionId:'a',scope:'global',settings:{enabled:false,defaultRoute:{provider:'fixture',model:'shared'},characters:{}},expectedRevision:0})
  assert.equal(changed.status,200)

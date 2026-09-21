@@ -1,5 +1,6 @@
 // Generated from runtime/alpha3/src/core/roleplay-loop.ts; edit the TypeScript source.
 import { randomUUID } from 'node:crypto';
+import { ensureSessionHistory } from './session-history.js';
 import { retireSettledInlineContexts, retireUsedStoryReads, isSettingManagementCall } from './tavern-task-context.js';
 import { createAdaptationStore } from './card-adaptation.js';
 import { retireAdaptationReads, retireCoarseResearchReads, retireDeliveredDraft } from './card-adaptation-context.js';
@@ -48,6 +49,7 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
     ctx.effect(() => () => firstResponse.dispose(), 'roleplay: first model output deadline');
     ctx.on('agent/request', async (payload, next) => {
         const config = await next(), agent = payload.agent;
+        await ensureSessionHistory(agent.session, payload.signal);
         if (isRoleplaySession(agent.session) && !(Number(agent.options?.subagentDepth) > 0) && agent.cancel)
             firstResponse.begin({ session: agent.session, cancel: agent.cancel.bind(agent) }, payload.turn, payload.step, payload.signal);
         return config;
@@ -55,7 +57,7 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
     ctx.on('session/event', (session, event) => firstResponse.observe(session, event), { global: true });
     const authorPrompts = new WeakMap();
     const currentTurn = (session) => {
-        const events = session.events ?? session.log ?? [];
+        const events = eventsOf(session);
         for (let i = events.length - 1; i >= 0; i--)
             if (events[i]?.type === 'turn/start')
                 return events[i]?.data?.turn;
@@ -76,6 +78,7 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
     // inherited toolFilter restrictions. Apply the actual task allowlist to
     // both the assembled request and execution, including those own-scope tools.
     ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
+        await ensureSessionHistory(context.agent?.session);
         const assembly = await next(), allowed = tavernTaskToolBoundary(T.branch, context.agent);
         if (clusterJob(context.agent))
             return { ...assembly, contexts: assembly.contexts.filter(s => /^(sandbox|approval):/.test(s.name)), tools: assembly.tools.filter(t => t.name === 'rp_history'),
@@ -147,6 +150,7 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
     const taskInstruction = (session) => inlineTaskInstruction(tavernTasks.pending(session), { sessionId: session.id, resident: residentContext(session) });
     ctx.on('agent/pre-step', async (payload, next) => {
         const session = payload?.agent?.session;
+        await ensureSessionHistory(session, payload.signal);
         if (!session || !isRoleplaySession(session) || Number(payload.agent?.options?.subagentDepth) > 0)
             return next();
         taskAgents.set(session.id, payload.agent);
@@ -250,6 +254,7 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
     });
     ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
         const session = agent?.session;
+        await ensureSessionHistory(session, signal);
         if (!session || !isRoleplaySession(session) || Number(agent.options?.subagentDepth) > 0)
             return;
         taskAgents.set(session.id, agent);

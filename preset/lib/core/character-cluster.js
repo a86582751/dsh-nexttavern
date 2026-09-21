@@ -142,6 +142,7 @@ export function createCharacterCluster({ table, subagents, rootOf = s => s.id, m
                         }, () => {
                         });
                         child = await bounded(starting);
+                        await ensureSessionHistory(child.localAgent?.session, ac.signal);
                         if (!current() || signal?.aborted)
                             break;
                         job = {
@@ -153,7 +154,7 @@ export function createCharacterCluster({ table, subagents, rootOf = s => s.id, m
                         const response = await bounded(child.result);
                         if (response.stopReason !== 'completed') {
                             // alpha.3 child-history adapter: GA async history/terminal events require a separate contract migration.
-                            const end = child.localAgent?.session?.events?.findLast(e => e.type === 'turn/end');
+                            const end = sessionEvents(child.localAgent?.session).findLast(e => e.type === 'turn/end');
                             throw Object.assign(new Error('角色推演未完成'), {
                                 failure: clusterRecord(end?.data?.reason)?.failure ?? end?.data?.reason ?? {
                                     code: response.stopReason
@@ -266,3 +267,4 @@ export function createCharacterCluster({ table, subagents, rootOf = s => s.id, m
         read, readLocal, readGlobal, save, saveGlobal, run
     };
 }
+import { ensureSessionHistory, sessionEvents } from './session-history.js';

@@ -5,6 +5,7 @@ import { taskProjectionEvents } from './tavern-task-context.js'
 import { textOf, estimateTokens, sha256 } from './roleplay-data.js'
 import type { TaskBlock, TaskEvent, TaskMessage, TaskContextSession } from './tavern-task-context.js'
 import { projectStoryEvent, messageViewGeneration, type MessageViewSession, type StorySurfaceOp } from './roleplay-message-view.js'
+import {sessionEvents} from './session-history.js'
 
 export interface ContextMessage extends TaskMessage {
   id?: unknown
@@ -41,6 +42,7 @@ export interface ContextEvent extends TaskEvent {
 export interface ContextSession extends MessageViewSession<ContextEvent> {
   id: string
   seq?: number
+  inheritedEventCount?: number
   events?: readonly ContextEvent[]
   log?: readonly ContextEvent[]
   surface?: { nodes?: readonly number[]; contentGeneration?: number }
@@ -76,9 +78,7 @@ export interface StoryEntry {
 
 
 export function eventsOf(session: ContextSession | null | undefined): readonly ContextEvent[] {
-  if (Array.isArray(session?.events)) return session.events
-  if (Array.isArray(session?.log)) return session.log
-  return []
+  return sessionEvents(session)
 }
 
 export function lastSeq(session: ContextSession) {

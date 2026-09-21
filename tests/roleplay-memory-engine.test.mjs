@@ -190,11 +190,13 @@ function event(type, data, surfaceOp) {
 }
 
 function makeSession(id, sourceEvents, surfaceIndexes, header = {}) {
+  const {inheritedEventCount = 0, ...metadata} = header
   const events = sourceEvents.map((item, seq) => ({ ...item, seq, time: seq + 1 }))
   const nodes = surfaceIndexes.map(Number)
   return {
     id,
-    header: { id, agentPreset: 'roleplay', ...header },
+    inheritedEventCount,
+    header: { id, agentPreset: 'roleplay', ...metadata },
     events,
     get seq() { return this.events.length },
     surface: { nodes },
@@ -341,7 +343,7 @@ const defaultConfig = {
 }
 
 async function testForkLedgerProjectionIsFailClosed() {
-  const session = makeSession('child', [], [], { parentSession: 'parent', seedLength: 10 })
+  const session = makeSession('child', [], [], { parentSession: 'parent', inheritedEventCount: 10 })
   const arrays = ['archives', 'archiveDigests', 'deltas', 'pendingConfirmations', 'lockedFacts', 'styleNotes', 'userPrefs']
   const record = {
     summary: 'PARENT_FUTURE_SUMMARY',
@@ -406,7 +408,7 @@ async function testForkLedgerProjectionIsFailClosed() {
   assert.equal(visible.summary, 'VISIBLE_CHECKPOINT', 'surface checkpoint is authoritative over a stale ledger')
   assert.equal(visible.surfaceCheckpointSeq, 4)
 
-  const malformed = makeSession('malformed-child', [], [], { parentSession: 'parent', seedLength: 'not-a-number' })
+  const malformed = makeSession('malformed-child', [], [], { parentSession: 'parent', inheritedEventCount: 'not-a-number' })
   const malformedProjection = filterMemoryRecordForBranch({
     summary: 'SHOULD_NOT_LEAK',
     inheritedFrom: 'parent',
@@ -511,7 +513,7 @@ async function testForkIgnoresCopiedFutureSummary() {
     'child',
     completedStoryEvents({ cardText: 'CHILD_CONTEXT', oldBranchText: 'SIBLING_ONLY' }),
     [1, 2, 3, 6, 7],
-    { parentSession: 'parent', seedLength: 5 },
+    { parentSession: 'parent', inheritedEventCount: 5 },
   )
   const h = makeHarness({
     session,

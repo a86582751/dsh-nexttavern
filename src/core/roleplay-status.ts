@@ -653,7 +653,7 @@ export function createRoleplayStatus(deps: StatusDependencies) {
             return;
         // A new worldline is about to replay its player input. Do not separately
         // backfill the inherited tail while its new story will settle that prefix.
-        if (session.header?.parentSession && Number(latest?.seq) < Number(session.header.seedLength))
+        if (session.header?.parentSession && Number(latest?.seq) < Number(session.inheritedEventCount))
             return;
         const runStart = statusRunStartSeq.get(session.id) ?? Infinity;
         // Recover pending durable work and this run's completed turns. A cold

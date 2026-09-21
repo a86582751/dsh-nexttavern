@@ -1,3 +1,4 @@
+import {sessionEvents} from './session-history.js'
 import {withTavernLock} from './tavern-task-support.js'
 
 export const PURPOSES = Object.freeze([
@@ -69,8 +70,8 @@ function decodePolicy(value: unknown): PolicyRecord {
 
 export function selectedMainRoute(session: PolicySession | null | undefined,agent: PolicyAgent | null | undefined,fallback: unknown): ModelRoute {
   let pending: Record<string, unknown> | undefined,used: Record<string, unknown> | undefined
-  // alpha.3 selection history adapter; GA projections/async history need a separate migration.
-  for(const event of session?.events??session?.log??[]) {
+  // Read the prepared public history cut, including a selection not yet used by a request.
+  for(const event of sessionEvents(session)) {
     if(event?.type==='model/selection')pending=object(event.data)
     if(event?.type==='request/header') {
       used=object(object(object(event.data)?.header)?.config)??used

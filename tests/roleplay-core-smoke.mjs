@@ -390,19 +390,19 @@ assert.equal(state.failedTurnBranchGroupByTurn?.['7']?.members[0]?.sessionId,fai
  const retry=await callRoute('/api/roleplay/branch',{action:'prepare',sessionId:failed.id,userSeq:1,kind:'regenerate'})
  assert.equal(retry.status,200,JSON.stringify(retry.body))
  assert.equal(retry.body.recoveryOnly,true,'partial failure replays its player input in a clean worldline')
- failed.header={...failed.header,parentSession:root.id,seedLength:1}
+ failed.header={...failed.header,parentSession:root.id};failed.inheritedEventCount=1
  const legacy=table('branch').get('fork-group-failed-pager')
  Object.assign(legacy.members[1],{requestId:'old-transport-id',pending:true,failed:false,deleted:false})
  await table('branch').put('fork-group-failed-pager',legacy)
  const legacyState=await (await routes.get('/api/roleplay/state').fetch(new Request('https://local.test/api/roleplay/state?sessionId='+failed.id))).json()
 assert.equal(legacyState.failedTurnBranchGroupByTurn?.['7']?.total,1,'first post-seed failed edited input keeps only its own pager despite an old transport ID')
- const recoveredChild=enableAppend({id:'recovered-legacy-pending',header:{agentPreset:'roleplay',parentSession:failed.id,seedLength:0},events:[],seq:0,surface:{nodes:[]}})
+ const recoveredChild=enableAppend({id:'recovered-legacy-pending',header: {agentPreset:'roleplay',parentSession:failed.id}, inheritedEventCount: 0,events:[],seq:0,surface:{nodes:[]}})
  sessions.set(recoveredChild.id,recoveredChild)
  const registeredRetry=await callRoute('/api/roleplay/branch',{action:'register',operationId:retry.body.operationId,childSessionId:recoveredChild.id,requestId:'new-retry-rpc',promptText:'编辑后的失败输入'})
  assert.equal(registeredRetry.status,200,JSON.stringify(registeredRetry.body))
  assert.equal(registeredRetry.body.groupId,'failed-pager','retry preserves existing alternate worldlines')
  assert.equal(registeredRetry.body.total,3,'a failed child already in the group is never copied as a new original member')
- const editedRecoveredChild=enableAppend({id:'recovered-legacy-edit',header:{agentPreset:'roleplay',parentSession:failed.id,seedLength:0},events:[],seq:0,surface:{nodes:[]}})
+ const editedRecoveredChild=enableAppend({id:'recovered-legacy-edit',header: {agentPreset:'roleplay',parentSession:failed.id}, inheritedEventCount: 0,events:[],seq:0,surface:{nodes:[]}})
  sessions.set(editedRecoveredChild.id,editedRecoveredChild)
  const editRetry=await callRoute('/api/roleplay/branch',{action:'prepare',sessionId:failed.id,userSeq:1,kind:'player-edit'})
  assert.equal(editRetry.status,200,JSON.stringify(editRetry.body))
@@ -414,7 +414,7 @@ assert.equal(legacyState.failedTurnBranchGroupByTurn?.['7']?.total,1,'first post
  const editRecoveryMember=editedRecoveryGroup.members.find(member=>member.operationId===editRetry.body.operationId)
  assert.equal(editedRecoveryGroup.playerVariants[sourceRecoveryMember.playerVariantId].text,'编辑后的失败输入')
  assert.equal(editedRecoveryGroup.playerVariants[editRecoveryMember.playerVariantId].text,'改写后的失败输入')
- const secondRecoveredChild=enableAppend({id:'recovered-legacy-pending-2',header:{agentPreset:'roleplay',parentSession:failed.id,seedLength:0},events:[],seq:0,surface:{nodes:[]}})
+ const secondRecoveredChild=enableAppend({id:'recovered-legacy-pending-2',header: {agentPreset:'roleplay',parentSession:failed.id}, inheritedEventCount: 0,events:[],seq:0,surface:{nodes:[]}})
  sessions.set(secondRecoveredChild.id,secondRecoveredChild)
  const retryAgain=await callRoute('/api/roleplay/branch',{action:'prepare',sessionId:failed.id,userSeq:1,kind:'regenerate'})
  assert.equal(retryAgain.status,200,JSON.stringify(retryAgain.body))
@@ -520,7 +520,7 @@ assert.equal(child.deriveEventMessage(child.events[child.surface.nodes[1]]).cont
 // user switches to its owning branch Session.
 const descendant = enableAppend({
   id: 'session-descendant',
-  header: { agentPreset: 'roleplay', parentSession: child.id, seedLength: 4 },
+  header: { agentPreset: 'roleplay', parentSession: child.id}, inheritedEventCount: 4,
   events: structuredClone(child.events.slice(0, 4)),
   seq: 4,
   surface: { nodes: [1, 2] },
@@ -582,7 +582,7 @@ const laterEvents = [
   { type: 'turn/end', seq: 7, data: { turn: 2, reason: { kind: 'completed' } } },
 ]
 const later = enableAppend({ id: 'session-later', header: { agentPreset: 'roleplay' }, events: laterEvents, seq: 8, surface: { nodes: [1, 2, 5, 6] } })
-const laterChild = enableAppend({ id: 'session-later-child', header: { agentPreset: 'roleplay', parentSession: later.id, seedLength: 4 }, events: [], seq: 0, surface: { nodes: [] } })
+const laterChild = enableAppend({ id: 'session-later-child', header: { agentPreset: 'roleplay', parentSession: later.id}, inheritedEventCount: 4, events: [], seq: 0, surface: { nodes: [] } })
 sessions.set(later.id, later)
 sessions.set(laterChild.id, laterChild)
 await table('cards').put('session-later__user', { id: 'user', name: '玩家', content: '设定' })
@@ -628,7 +628,7 @@ const regenAfterPlayerEdit = await callRoute('/api/roleplay/branch', {
 })
 const laterRegen = enableAppend({
   id: 'session-later-regen',
-  header: { agentPreset: 'roleplay', parentSession: laterChild.id, seedLength: 4 },
+  header: { agentPreset: 'roleplay', parentSession: laterChild.id}, inheritedEventCount: 4,
   events: structuredClone(laterChild.events.slice(0, 4)), seq: 4, surface: { nodes: [1, 2] },
 })
 sessions.set(laterRegen.id, laterRegen)
@@ -655,7 +655,7 @@ assert.equal(regenState.branchGroupsByMessageId['la2-regen'].total, 2)
 
 const truncatedChild = enableAppend({
   id: 'session-truncated-child',
-  header: { agentPreset: 'roleplay', parentSession: later.id, seedLength: 4 },
+  header: { agentPreset: 'roleplay', parentSession: later.id}, inheritedEventCount: 4,
   events: [], seq: 0, surface: { nodes: [] },
 })
 sessions.set(truncatedChild.id, truncatedChild)
@@ -805,13 +805,13 @@ const metadataRoot = enableAppend({ id: 'session-metadata-root', header: { agent
   { seq: 9, type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } },
 ], seq: 10, surface: { nodes: [1, 2, 7, 8] } })
 sessions.set(metadataRoot.id, metadataRoot)
-const metadataChild = enableAppend({ id: 'session-metadata-child', header: { agentPreset: 'roleplay', parentSession: metadataRoot.id, seedLength: 6 }, events: structuredClone(metadataRoot.events.slice(0, 6)), seq: 6, surface: { nodes: [1, 2] } })
+const metadataChild = enableAppend({ id: 'session-metadata-child', header: { agentPreset: 'roleplay', parentSession: metadataRoot.id}, inheritedEventCount: 6, events: structuredClone(metadataRoot.events.slice(0, 6)), seq: 6, surface: { nodes: [1, 2] } })
 sessions.set(metadataChild.id, metadataChild)
 const metadataPrepare = await callRoute('/api/roleplay/branch', { action: 'prepare', sessionId: metadataRoot.id, messageId: 'meta-a2', kind: 'regenerate' })
 const metadataRegister = await callRoute('/api/roleplay/branch', { action: 'register', operationId: metadataPrepare.body.operationId, childSessionId: metadataChild.id, requestId: 'meta-request', promptText: 'metadata prompt' })
 assert.equal(metadataRegister.status, 200, JSON.stringify(metadataRegister.body))
 const badPrepare = await callRoute('/api/roleplay/branch', { action: 'prepare', sessionId: metadataRoot.id, messageId: 'meta-a2', kind: 'regenerate' })
-const badChild = enableAppend({ id: 'session-bad-seed', header: { agentPreset: 'roleplay', parentSession: metadataRoot.id, seedLength: 4 }, events: [], seq: 0, surface: { nodes: [] } })
+const badChild = enableAppend({ id: 'session-bad-seed', header: { agentPreset: 'roleplay', parentSession: metadataRoot.id}, inheritedEventCount: 4, events: [], seq: 0, surface: { nodes: [] } })
 sessions.set(badChild.id, badChild)
 const badRegister = await callRoute('/api/roleplay/branch', { action: 'register', operationId: badPrepare.body.operationId, childSessionId: badChild.id, requestId: 'bad-request', promptText: 'metadata prompt' })
 assert.equal(badRegister.status, 500, 'async registration error must return JSON instead of escaping HTTP bridge')
@@ -883,7 +883,7 @@ assert.equal(table('status').get('session-metadata-root__panel').stale, true)
     const childId='world-internal'
     await beforePublish({sourceSessionId:request.sessionId,childSessionId:childId,seedLength:4})
     assert.equal(catalogDisk.worldlines[childId].conversationId,worldRoot.id,'book ownership commits before native publication')
-    const child=enableAppend({id:childId,header:{agentPreset:'roleplay',parentSession:worldRoot.id,seedLength:4,cwd:'/fiction'},events:structuredClone(worldRoot.events.slice(0,4)),seq:4,surface:{nodes:[1,2]}})
+    const child=enableAppend({id:childId,header: {agentPreset:'roleplay',parentSession:worldRoot.id,cwd:'/fiction'}, inheritedEventCount: 4,events:structuredClone(worldRoot.events.slice(0,4)),seq:4,surface:{nodes:[1,2]}})
     sessions.set(childId,child);return {sessionId:childId}
   }
   const preparation=await callRoute('/api/roleplay/branch',{action:'prepare',sessionId:worldRoot.id,messageId:'world-a2',kind:'regenerate'})
@@ -925,7 +925,7 @@ assert.equal(table('status').get('session-metadata-root__panel').stale, true)
   ctx.sessionController.forkPrepared=async(request,beforePublish)=>{
     const childId='world-register-failure'
     await beforePublish({sourceSessionId:request.sessionId,childSessionId:childId,seedLength:4})
-    sessions.set(childId,enableAppend({id:childId,header:{agentPreset:'roleplay',parentSession:worldRoot.id,seedLength:2},events:structuredClone(worldRoot.events.slice(0,2)),seq:2,surface:{nodes:[1]}}))
+    sessions.set(childId,enableAppend({id:childId,header: {agentPreset:'roleplay',parentSession:worldRoot.id}, inheritedEventCount: 2,events:structuredClone(worldRoot.events.slice(0,2)),seq:2,surface:{nodes:[1]}}))
     return {sessionId:childId}
   }
   const badPrep=await callRoute('/api/roleplay/branch',{action:'prepare',sessionId:worldRoot.id,messageId:'world-a2',kind:'regenerate'})
@@ -1005,7 +1005,7 @@ assert.equal(table('status').get('session-metadata-root__panel').stale, true)
   ctx.sessionController.forkPrepared=async(request,beforePublish)=>{
     const childId='cadence-player-edit'
     await beforePublish({sourceSessionId:request.sessionId,childSessionId:childId,seedLength:8})
-    sessions.set(childId,enableAppend({id:childId,header:{agentPreset:'roleplay',parentSession:parent.id,seedLength:8},events:structuredClone(parent.events.slice(0,8)),seq:8,surface:{nodes:[1,2,5,6]}}))
+    sessions.set(childId,enableAppend({id:childId,header: {agentPreset:'roleplay',parentSession:parent.id}, inheritedEventCount: 8,events:structuredClone(parent.events.slice(0,8)),seq:8,surface:{nodes:[1,2,5,6]}}))
     return {sessionId:childId}
   }
   const prepared=await callRoute('/api/roleplay/branch',{action:'prepare',sessionId:parent.id,messageId:'ca3',kind:'player-edit'})
@@ -1083,7 +1083,7 @@ function inheritanceFixture(seedLength=5) {
   table.put=async(key,value)=>{await put(key,value);writes.push({table:name,key,value:structuredClone(value)})}
   return [name,table]
  }))
- const child={id:'inherit-child',header:{parentSession:'inherit-parent',seedLength},events:[],surface:{nodes:[]}}
+ const child={id:'inherit-child',header:{parentSession:'inherit-parent'},inheritedEventCount:seedLength,events:[],surface:{nodes:[]}}
  const deps={T:rows,ensureState(id){if(!states.has(id))states.set(id,{branchReady:false,branchPreparing:null});return states.get(id)},
   cloneBranchRecord:structuredClone,clusterLoreVisible:()=>true,contextWindowKey:id=>`${id}__context-window`,cloneContextWindow:structuredClone,
   ctx:{get:()=>undefined,sessions:{get:()=>undefined},logger:{warn(){}}},statusSource:()=>null,
@@ -1159,7 +1159,7 @@ for(const startSeq of [2,5]) {
  assert.equal(window.windowNumber,startSeq>=5?1:3)
  assert.equal(window.throughSeq,4)
  assert.equal(rows.branch.get(`${c}__meta`).inheritedAtSeedLength,5,'wrong seed ready marker must replay')
- const grandchild={...child,id:`${c}-grandchild`,header:{parentSession:c,seedLength:5}}
+ const grandchild={...child,id:`${c}-grandchild`,header: {parentSession:c}, inheritedEventCount: 5}
  await h.api.ensureBranch(grandchild)
  assert.equal(rows.branch.get(`${grandchild.id}__import-active`).sourceRecordSessionId,p,'grandchild retains the original import record owner')
 }
@@ -1232,7 +1232,7 @@ for(const startSeq of [2,5]) {
  assert.equal(question.options.length,4);assert.equal(question.header.length,60)
  assert.equal(question.options[0].label.length,60);assert.equal(question.options[0].description.length,120)
  assert.equal(question.options[0].custom,'retained');assert.equal(question.answered,false)
- for(let i=0;i<70;i++)registered.set(String(i),{id:String(i),header:{parentSession:String(i+1),seedLength:i}})
+ for(let i=0;i<70;i++)registered.set(String(i),{id:String(i),header: {parentSession:String(i+1)}, inheritedEventCount: i})
  assert.equal(svc.branchLineage(registered.get('0')).length,64)
  registered.delete('3')
  assert.deepEqual(svc.branchLineage(registered.get('0')).map(entry=>entry.sessionId),['0','1','2'])

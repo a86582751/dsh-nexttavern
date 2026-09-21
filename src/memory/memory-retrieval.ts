@@ -1,3 +1,4 @@
+import {sessionEvents, ensureSessionHistory} from '../core/session-history.js'
 import { fork, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from 'node:fs';
@@ -82,7 +83,7 @@ const MODE = ['keyword', 'semantic', 'hybrid'];
 const SETTINGS = 'memory-retrieval-settings-v1';
 function eligible(session: Session) {
     let preset = session.header?.agentPreset;
-    for (const e of session.events ?? session.log ?? [])
+    for (const e of sessionEvents(session))
         if (e.type === 'agent-preset/selected')
             preset = e.data?.agentPreset as string | undefined;
     return preset === 'roleplay' && session.header?.origin !== 'subagent';
@@ -325,6 +326,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
     }
     /** Native announce also fires on load: use durable birth time and decisions, never first observation. */
     async function created(session: Session) {
+        await ensureSessionHistory(session);
         const run = mutation.catch(() => {
         }).then(async () => {
             await migration;
@@ -428,6 +430,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         id: row.id, sessionId: session.id, seq: row.seq, role: row.role, text: row.text, hash: hash(row.text)
     })) : [];
     async function configure(session: Session) {
+        await ensureSessionHistory(session);
         await migration;
         const cfg = settings(),
             ws = workspace(session),
@@ -454,6 +457,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         };
     }
     async function sync(session: Session) {
+        await ensureSessionHistory(session);
         if (disposed || !eligible(session) || !deps.active(session))
             return;
         const cfg = settings(), ws = workspace(session);
@@ -465,8 +469,13 @@ export function createMemoryRetrieval(deps: Dependencies) {
             action: 'sync', workspace: ws, legacyWorkspace: pathWorkspace(session), sources: vectorSources(session, rows)
         }, 30000);
     }
-    function changed(session: Session) {
-        if (disposed || !session.header?.cwd || !sessionEnabled(settings(), session) || !eligible(session))
+    async function changed(session: Session) {
+        // Most notifications cannot be indexed. Keep this cheap gate ahead of
+        // history readiness so disabled/irrelevant streams never read a log.
+        if (disposed || !session.header?.cwd || !sessionEnabled(settings(), session))
+            return;
+        await ensureSessionHistory(session);
+        if (disposed || !eligible(session))
             return;
         if (delayed.has(session.id))
             clearTimeout(delayed.get(session.id));
@@ -543,6 +552,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         }
     }
     async function view(session: Session) {
+        await ensureSessionHistory(session);
         await migration;
         const cfg = settings(), ws = workspace(session);
         let status: {
@@ -606,6 +616,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
     }
     /** Diagnosis never starts/configures a worker, imports legacy vectors, tests a model or enqueues work. */
     async function diagnose(session: Session) {
+        await ensureSessionHistory(session);
         await migration;
         const cfg = settings(),
             ws = workspace(session),
@@ -653,6 +664,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         };
     }
     async function mutate(session: Session, body: Record<string, unknown>) {
+        await ensureSessionHistory(session);
         const run = mutation.catch(() => {
         }).then(async () => {
             await migration;
@@ -985,6 +997,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         return true;
     }
     async function search(session: Session, options: Record<string, unknown> = {}) {
+        await ensureSessionHistory(session);
         if (options.scope && options.scope !== 'story')
             throw Error('剧情检索只允许玩家输入和有效正文');
         if (!eligible(session) || !deps.active(session))

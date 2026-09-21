@@ -122,7 +122,7 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     if (typeof projection === 'function') return projection(session)
     const stored = T.memory.get(keyOf(session.id, 'head')) ?? null
     if (!stored || typeof session?.header?.parentSession !== 'string') return stored
-    const seedLength = durableSeq(session.header?.seedLength)
+    const seedLength = durableSeq(session.inheritedEventCount)
     const proven = (items: unknown) => (Array.isArray(items) ? items as unknown[] : []).filter((item): item is Record<string, unknown> => {
       if (!item || typeof item !== 'object') return false
       const record = item as Record<string, unknown>

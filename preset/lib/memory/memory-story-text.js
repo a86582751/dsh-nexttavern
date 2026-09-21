@@ -1,16 +1,19 @@
 // Generated from runtime/alpha3/src/memory/memory-story-text.ts; edit the TypeScript source.
 import { selectedStoryHistory, importManagementInputs } from './memory-history.js';
+import { projectStoryEvent } from '../core/roleplay-message-view.js';
+import { sessionEvents } from '../core/session-history.js';
 const knownContainers = /^(?:status|state|details|decision|rp-status|rp-state|rp-decision)(?:$|[-_:])/i;
 const closing = /^(\/)?\s*([a-z][\w:-]*)/i;
 const voidTag = /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
 const inlineTag = /^(?:p|div|section|article|li|blockquote|h[1-6]|pre)$/i;
 function eventFor(session, seq) {
-    const events = Array.isArray(session?.events) ? session.events : Array.isArray(session?.log) ? session.log : [];
+    const events = sessionEvents(session);
     return events.find(event => Number(event?.seq) === seq) ?? null;
 }
 function blockType(block) { return typeof block?.type === 'string' ? block.type.toLowerCase() : ''; }
 function blockText(block) { return typeof block?.text === 'string' ? block.text : ''; }
-function rawTextFor(row, event) {
+function rawTextFor(session, row, original) {
+    const event = original ? projectStoryEvent(session, original) : null;
     const content = event?.type === 'user/message'
         ? event.data?.content
         : event?.type === 'assistant/message' ? (event.data?.message?.content ?? event.data?.content) : undefined;
@@ -141,10 +144,10 @@ export function cleanStoryText(text) {
     return { text: out.join(''), spans, unresolved };
 }
 export function selectedRetrievalRows(session) {
-    const events = Array.isArray(session?.events) ? session.events : Array.isArray(session?.log) ? session.log : [];
+    const events = sessionEvents(session);
     const bySeq = new Map(events.map(event => [Number(event?.seq), event]));
     const selected = selectedStoryHistory(session).flatMap(row => {
-        const source = rawTextFor(row, bySeq.get(row.seq) ?? null);
+        const source = rawTextFor(session, row, bySeq.get(row.seq) ?? null);
         if (!source.raw)
             return [];
         const cleaned = cleanStoryText(source.raw);
@@ -162,7 +165,7 @@ export function selectedRetrievalRows(session) {
         && visibleIndex.has(event.seq)).flatMap(event => {
         const row = { id: `${session.id}:${event.seq}`, seq: event.seq, turn: Number(event.data?.turn), role: 'user',
             messageId: event.data?.id ?? null, text: '', time: event.time ?? null };
-        const source = rawTextFor(row, event);
+        const source = rawTextFor(session, row, event);
         if (!source.raw)
             return [];
         const cleaned = cleanStoryText(source.raw);

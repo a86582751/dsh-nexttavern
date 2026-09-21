@@ -1,4 +1,5 @@
 // Generated from runtime/alpha3/src/core/tavern-task-retirement.ts; edit the TypeScript source.
+import { sessionEvents } from './session-history.js';
 import { randomUUID } from 'node:crypto';
 import { taskHash } from './tavern-task-primitives.js';
 import { retireFinishedAdaptation, retireDeliveredDraft } from './card-adaptation-context.js';
@@ -73,9 +74,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
         if (typeof session?.append !== 'function')
             return 0;
         const retiredResearch = retireDeliveredDraft(session, currentTurn) + retireFinishedAdaptation(session, currentTurn, activeImport);
-        const events = session.events
-            ?? session.log
-            ?? [], groups = [], bySeq = new Map(), lookup = new Map();
+        const events = sessionEvents(session), groups = [], bySeq = new Map(), lookup = new Map();
         let group = null;
         for (const e of events) {
             if (!e)
@@ -186,9 +185,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
     function retireSettledInlineContexts(session, currentTurn, jobs) {
         if (!session.append)
             return 0;
-        const events = session.events
-            ?? session.log
-            ?? [], lookup = new Map(events.map(e => [e.seq,
+        const events = sessionEvents(session), lookup = new Map(events.map(e => [e.seq,
             e])), owners = new Map(), ended = new Set();
         let turn;
         for (const e of events) {
@@ -385,9 +382,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
     function retireUsedStoryReads(session, currentTurn) {
         if (!session.append)
             return 0;
-        const events = session.events
-            ?? session.log
-            ?? [], lookup = new Map(events.map(e => [e.seq,
+        const events = sessionEvents(session), lookup = new Map(events.map(e => [e.seq,
             e])), nodes = [...(session.surface?.nodes
                 ?? [])], owners = new Map(), completed = new Set(), bodies = new Map();
         let turn;

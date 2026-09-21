@@ -1,12 +1,13 @@
 // Generated from runtime/alpha3/src/core/tavern-telemetry-fold.ts; edit the TypeScript source.
+import { sessionEvents } from './session-history.js';
 import { createHash } from 'node:crypto';
 import { normalizeUsage as usageOf, failureText as reasonText, telemetryOutcome as outcome } from './tavern-telemetry-normalize.js';
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const events = (session) => session.events ?? session.log ?? [];
+const events = (session) => sessionEvents(session);
 /** Fold raw attempts, never the selected story surface. Seeded parent events
  * only establish lifecycle state; they never create a second charge. */
 export function foldSessionCalls(session) {
-    const out = [], seed = Number(session.header?.seedLength ?? 0);
+    const out = [], seed = Number(session.inheritedEventCount ?? 0);
     let current = null, route = {}, phase = 'narrative';
     const finish = (time, status, error) => { if (!current)
         return; if (time != null) {

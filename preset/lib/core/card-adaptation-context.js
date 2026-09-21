@@ -1,4 +1,5 @@
 // Generated from runtime/alpha3/src/core/card-adaptation-context.ts; edit the TypeScript source.
+import { sessionEvents } from './session-history.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { adaptationToolResult } from '../memory/memory-provenance.js';
 import { readCardSource } from './tavern-card.js';
@@ -6,7 +7,7 @@ import { readCardSource } from './tavern-card.js';
 export function retireDeliveredDraft(session, currentTurn) {
     if (!session.append)
         return 0;
-    const events = session.events ?? session.log ?? [], lookup = new Map(events.map(e => [e.seq, e]));
+    const events = sessionEvents(session), lookup = new Map(events.map(e => [e.seq, e]));
     const calls = new Map(), ended = new Set();
     const drafts = [];
     let start = null, turn = -1;
@@ -90,7 +91,7 @@ export function retireDeliveredDraft(session, currentTurn) {
 export function retireFinishedAdaptation(session, currentTurn, activeImport) {
     if (!session.append)
         return 0;
-    const events = session.events ?? session.log ?? [], lookup = new Map(events.map(e => [e.seq, e]));
+    const events = sessionEvents(session), lookup = new Map(events.map(e => [e.seq, e]));
     const calls = new Map(), ended = new Set();
     const spans = [];
     let turn = -1, researchStart = null, sourceId = '', finished = false, importId = null, importHash = null;
@@ -208,7 +209,7 @@ export function retireFinishedAdaptation(session, currentTurn, activeImport) {
 export function retireCoarseResearchReads(session, owner) {
     if (!session.append)
         return 0;
-    const events = session.events ?? session.log ?? [], bySeq = new Map(events.map(e => [e.seq, e])), nodes = [...(session.surface?.nodes ?? [])];
+    const events = sessionEvents(session), bySeq = new Map(events.map(e => [e.seq, e])), nodes = [...(session.surface?.nodes ?? [])];
     const envelope = (value) => {
         if (!value || typeof value !== 'object')
             return null;
@@ -323,7 +324,7 @@ export function retireCoarseResearchReads(session, owner) {
 export function retireAdaptationReads(session, notes) {
     if (!session.append || !notes.length)
         return 0;
-    const events = session.events ?? session.log ?? [], lookup = new Map(events.map(e => [e.seq, e])), nodes = [...(session.surface?.nodes ?? [])];
+    const events = sessionEvents(session), lookup = new Map(events.map(e => [e.seq, e])), nodes = [...(session.surface?.nodes ?? [])];
     const researchCalls = new Set();
     for (const e of events)
         if (e.type === 'assistant/message')
@@ -388,7 +389,7 @@ export function retireAdaptationReads(session, notes) {
         i = j - 1;
     }
     // Keep adjacent receipts bounded too; their nested sourceEventSeqs retain the full append-only audit chain.
-    const current = session.events ?? session.log ?? [], bySeq = new Map(current.map(e => [e.seq, e])), visible = [...(session.surface?.nodes ?? [])];
+    const current = sessionEvents(session), bySeq = new Map(current.map(e => [e.seq, e])), visible = [...(session.surface?.nodes ?? [])];
     for (let i = 0; i < visible.length; i++) {
         const group = [];
         while (i < visible.length) {
