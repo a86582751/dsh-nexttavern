@@ -309,6 +309,7 @@
         "release-*",
         "public-*",
         "protected-packages*",
+        "bundled-package-bootstrap*",
         "test-temp*",
         "tool-resolution*",
         "qwen-*",
@@ -3085,6 +3086,9 @@
       ],
       "inputs": [
         "test-temp-helper-typescript",
+        "bundled-package-bootstrap-typescript",
+        "protected-packages-typescript",
+        "public-transaction-typescript",
         "inventory-runtime-alpha3-build-tools-package-lock-json"
       ],
       "requires": [

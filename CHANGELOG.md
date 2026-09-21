@@ -2,7 +2,7 @@
 
 ## 0.3 development — 2026-09-21
 
-- Added a fixed-package preparation library: independently named child packages are verified into content-addressed directories, with owned profile references and a versioned receipt in one file transaction. Ten focused cases and the existing transaction regression passed locally, including interrupted-upgrade recovery. This prepares references only; the product entry, pnpm relinking and dependency-graph recovery are still incomplete.
+- Added fixed-package preparation and a bundled-runtime bootstrap candidate. Independently named private dependencies are verified before loading, share host peers and prepare versioned file references without running pnpm inside the loading host. Ten preparation cases, the existing transaction regression and a real npm/pnpm bootstrap lifecycle case passed locally. The latter covers later skin installation, root upgrade, relinking and retained inactive libraries on root removal. Alpha.3 CLI lacks the cooperative profile lock, so automatic startup wiring and complete target-host acceptance remain pending; this is not a complete one-command product installer.
 
 - Added an explicit offline npm/pnpm packaging test with three synthetic-package cases: tarball-relative `file:` fails as a portable dependency; bundled children survive unrelated installs, forced relinking and explicit downgrade; existing external fixed-package references retain their hashes, shared peer and lock resolution. These are packaging mechanism checks, not full DSH installation or failed-upgrade rollback acceptance. The test requires existing npm/pnpm JavaScript CLI paths and does not install Harness.
 

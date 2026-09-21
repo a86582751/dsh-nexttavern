@@ -1669,6 +1669,14 @@
       "source": "src/operations/protected-packages.mts"
     },
     {
+      "id": "bundled-package-bootstrap",
+      "source": "lib/operations/bundled-package-bootstrap.mjs"
+    },
+    {
+      "id": "bundled-package-bootstrap-typescript",
+      "source": "src/operations/bundled-package-bootstrap.mts"
+    },
+    {
       "id": "public-patch-harness",
       "source": "lib/operations/patch-harness.mjs"
     },
@@ -4605,6 +4613,21 @@
       "entry": "src/operations/protected-packages.mts",
       "builder": "tools/build-modules.mjs",
       "inputs": [
+        "src/operations/protected-packages.mts",
+        "src/operations/public-transaction.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "bundled-package-bootstrap-typed-build",
+      "kind": "typescript-module",
+      "artifact": "bundled-package-bootstrap",
+      "entry": "src/operations/bundled-package-bootstrap.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/operations/bundled-package-bootstrap.mts",
         "src/operations/protected-packages.mts",
         "src/operations/public-transaction.mts",
         "build-tools/tsconfig.json",

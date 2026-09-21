@@ -6,6 +6,7 @@ import {createHash} from 'node:crypto'
 import {execFileSync} from 'node:child_process'
 import {createRequire} from 'node:module'
 import {after, test} from 'node:test'
+import {fileURLToPath} from 'node:url'
 import {createTestDirectory, cleanupTestDirectory} from '../src/operations/test-temp.mts'
 
 const pnpm = process.env.NEXTTAVERN_PNPM_CLI
@@ -36,22 +37,28 @@ const pack = (root: string, target: string) => {
   const output = JSON.parse(cli(npm!, ['pack', '--json', '--offline', '--ignore-scripts', '--pack-destination', target], root))
   return {file: path.join(target, output[0].filename), members: output[0].files.map((item: any) => item.path) as string[]}
 }
-function setup(name: string) {
+function setup(name: string, protectedProfile = false) {
   const root = path.join(temp, name)
-  const profile = path.join(root, 'profile')
+  const profile = path.join(root, protectedProfile ? 'home/profiles/web' : 'profile')
   const host = path.join(root, 'host-peer')
   const original = path.join(root, 'user-anydoc')
   pkg(host, 'fixture-host-peer', '1.0.0', {}, 'export const singleton = {}')
   pkg(original, 'dsh-plugin-anydoc', '1.0.0', {}, 'export const owner = "user-original"')
   write(path.join(profile, 'package.json'), {name: 'fixture-profile', private: true, type: 'module',
-    dependencies: {'fixture-host-peer': 'file:../host-peer', 'dsh-plugin-anydoc': 'file:../user-anydoc'}})
+    dependencies: {'fixture-host-peer': 'file:' + path.relative(profile, host).replaceAll('\\', '/'),
+      'dsh-plugin-anydoc': 'file:' + path.relative(profile, original).replaceAll('\\', '/'),
+      // Reuse the installed host helper and its own peer tree; do not construct
+      // another framework installation in this small package fixture.
+      ...(protectedProfile ? {'@deepseek-ai/dsh-atomic-write': 'link:' + path.relative(profile,
+        path.dirname(require.resolve('@deepseek-ai/dsh-atomic-write/package.json'))).replaceAll('\\', '/')} : {}),
+    }})
   const run = (...args: string[]) => cli(pnpm!, ['--config.offline=true', '--config.ignore-scripts=true', '--reporter=append-only',
     '--store-dir', path.join(root, 'store'), '--config.manage-package-manager-versions=false',
     '--config.auto-install-peers=false', '--config.strict-peer-dependencies=true',
     '--config.registry=http://127.0.0.1:9', ...args], profile)
   return {root, profile, run}
 }
-function product(root: string, version: string, kind: 'bundled' | 'relative-file') {
+function product(root: string, version: string, kind: 'bundled' | 'relative-file', bootstrap = false) {
   const source = path.join(root, 'source-' + version)
   const member = kind === 'bundled' ? 'node_modules/dsh-nexttavern-anydoc' : 'vendor/anydoc'
   pkg(path.join(source, member), 'dsh-nexttavern-anydoc', version, {peerDependencies: {'fixture-host-peer': '1.0.0'}},
@@ -59,7 +66,25 @@ function product(root: string, version: string, kind: 'bundled' | 'relative-file
   pkg(source, 'dsh-nexttavern', version, {
     dependencies: {'dsh-nexttavern-anydoc': kind === 'bundled' ? version : 'file:vendor/anydoc'},
     ...(kind === 'bundled' ? {bundleDependencies: ['dsh-nexttavern-anydoc']} : {}),
+    ...(bootstrap ? {peerDependencies: {'@deepseek-ai/dsh-atomic-write': '0.1.2-alpha.3'}} : {}),
   }, 'export {singleton, owner} from "dsh-nexttavern-anydoc"')
+  if (bootstrap) {
+    require('esbuild').buildSync({
+      entryPoints: [fileURLToPath(new URL('../src/operations/bundled-package-bootstrap.mts', import.meta.url))],
+      outfile: path.join(source, 'bootstrap.mjs'), bundle: true, platform: 'node', format: 'esm', logLevel: 'silent',
+      external: ['@deepseek-ai/dsh-atomic-write'],
+    })
+    write(path.join(source, 'nexttavern.dependencies.json'), {schemaVersion: 1, productVersion: version, packages: [{
+      name: 'dsh-nexttavern-anydoc', version,
+      files: ['package.json', 'index.js'].map(file => ({path: file, sha256: hash(path.join(source, member, file))})),
+    }]})
+    write(path.join(source, 'index.js'), [
+      'import {bootstrapBundledPackages} from "./bootstrap.mjs";',
+      'import {fileURLToPath} from "node:url";',
+      'export function bootstrap(options) {return bootstrapBundledPackages({...options,',
+      'productRoot:fileURLToPath(new URL(".", import.meta.url))})}',
+    ].join('\n'))
+  }
   return pack(source, path.join(root, 'tarballs'))
 }
 const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex')
@@ -186,4 +211,118 @@ test('external fixed-package references survive pnpm relinking without reverting
   fixture.run('add', pack(skin, path.join(fixture.root, 'tarballs')).file)
   fixture.run('install', '--force')
   assert.deepEqual(observe(), baseline)
+})
+
+test('installed bundle bootstrap prepares durable pins without relinking the running graph', () => {
+  const fixture = setup('bootstrap', true)
+  const home = path.join(fixture.root, 'home')
+  const v1 = product(fixture.root, '0.0.0-fixture.1', 'bundled', true)
+  const v2 = product(fixture.root, '0.0.0-fixture.2', 'bundled', true)
+  fixture.run('add', v1.file)
+  const originalFile = path.join(fixture.profile, 'node_modules/dsh-plugin-anydoc/index.js')
+  const originalHash = hash(originalFile)
+  const lockFile = path.join(fixture.profile, 'pnpm-lock.yaml')
+  const beforeLock = hash(lockFile)
+  const bootstrapScript = path.join(fixture.profile, 'bootstrap.mjs')
+  write(bootstrapScript, [
+    'import {createRequire} from "node:module";',
+    'import {pathToFileURL} from "node:url";',
+    'import {bootstrap} from "dsh-nexttavern";',
+    'const require = createRequire(import.meta.url);',
+    'const peer = await import(pathToFileURL(require.resolve("fixture-host-peer")).href);',
+    'const result = await bootstrap(JSON.parse(process.argv[2]));',
+    // Import compatibility code only after inventory, pins and peer checks.
+    'const {owner, singleton} = await import(pathToFileURL(result.modules[0].entry).href);',
+    'console.log(JSON.stringify({result, owner, root: require.resolve("dsh-nexttavern"), samePeer: singleton === peer.singleton}));',
+  ].join('\n'))
+  let counter = 0
+  const bootstrap = () => JSON.parse(cli(bootstrapScript, [JSON.stringify({
+    home, profile: 'web', hostAnchor: path.join(fixture.profile, 'package.json'),
+    backup: path.join(fixture.root, 'backups', String(counter++)),
+  })], fixture.profile))
+  const installedRoot = path.dirname(createRequire(path.join(fixture.profile, 'package.json')).resolve('dsh-nexttavern'))
+  const ownedRoot = path.join(installedRoot, 'node_modules/dsh-nexttavern-anydoc')
+  const ownedEntry = path.join(ownedRoot, 'index.js')
+  const originalEntry = fs.readFileSync(ownedEntry)
+  const manifestFile = path.join(fixture.profile, 'package.json')
+  const originalManifest = hash(manifestFile)
+  const installedManifest = path.join(installedRoot, 'package.json')
+  const originalProductManifest = fs.readFileSync(installedManifest)
+  const inventoryFile = path.join(installedRoot, 'nexttavern.dependencies.json')
+  const originalInventory = fs.readFileSync(inventoryFile)
+  const unversionedProduct = JSON.parse(originalProductManifest.toString())
+  const unversionedInventory = JSON.parse(originalInventory.toString())
+  delete unversionedProduct.version
+  delete unversionedInventory.productVersion
+  write(installedManifest, unversionedProduct)
+  write(inventoryFile, unversionedInventory)
+  assert.throws(bootstrap, (error: any) => /inventory does not match/.test(String(error.stderr)))
+  fs.writeFileSync(installedManifest, originalProductManifest)
+  fs.writeFileSync(inventoryFile, originalInventory)
+  const incompleteProduct = JSON.parse(originalProductManifest.toString())
+  incompleteProduct.dependencies['dsh-nexttavern-unlisted'] = '1.0.0'
+  write(installedManifest, incompleteProduct)
+  assert.throws(bootstrap, (error: any) => /inventory is incomplete/.test(String(error.stderr)))
+  assert.equal(hash(manifestFile), originalManifest)
+  fs.writeFileSync(installedManifest, originalProductManifest)
+  fs.writeFileSync(ownedEntry, 'throw Error("must never execute before verification")')
+  assert.throws(bootstrap, (error: any) => /Protected package hash differs/.test(String(error.stderr)))
+  assert.equal(hash(manifestFile), originalManifest)
+  fs.writeFileSync(ownedEntry, originalEntry)
+  const duplicatePeer = path.join(ownedRoot, 'node_modules/fixture-host-peer')
+  pkg(duplicatePeer, 'fixture-host-peer', '1.0.0')
+  assert.throws(bootstrap, (error: any) => /different host peer/.test(String(error.stderr)))
+  for (const file of ['package.json', 'index.js']) fs.unlinkSync(path.join(duplicatePeer, file))
+  fs.rmdirSync(duplicatePeer)
+  fs.rmdirSync(path.dirname(duplicatePeer))
+  assert.equal(hash(manifestFile), originalManifest)
+  const profileLock = manifestFile + '.lock'
+  fs.writeFileSync(profileLock, String(process.pid) + '\n', {flag: 'wx'})
+  assert.throws(bootstrap, (error: any) => /timed out waiting for the writer lock/.test(String(error.stderr)))
+  assert.equal(fs.readFileSync(profileLock, 'utf8'), String(process.pid) + '\n', 'a busy official lock is never removed')
+  fs.unlinkSync(profileLock)
+  assert.equal(hash(manifestFile), originalManifest)
+  const first = bootstrap()
+  assert.equal(first.owner, '0.0.0-fixture.1')
+  assert.equal(first.samePeer, true)
+  assert.equal(first.result.runtimeSource, 'product-bundle')
+  assert.equal(first.result.profileGraph, 'relink-pending')
+  assert.equal(hash(lockFile), beforeLock, 'bootstrap must not rewrite the running package-manager graph')
+  const protectedFile = path.join(fixture.profile, 'node_modules/dsh-nexttavern-anydoc/package.json')
+  assert.equal(fs.existsSync(protectedFile), false, 'the private bundled implementation works before profile relink')
+  const pin1 = first.result.prepared.receipt.packages[0]
+  assert.equal(bootstrap().result.prepared.transaction, null)
+
+  const skin = path.join(fixture.root, 'skin')
+  pkg(skin, 'fixture-unrelated-skin', '1.0.0')
+  fixture.run('add', pack(skin, path.join(fixture.root, 'tarballs')).file)
+  assert.equal(JSON.parse(fs.readFileSync(protectedFile, 'utf8')).version, '0.0.0-fixture.1')
+  const afterSkin = bootstrap()
+  assert.equal(afterSkin.samePeer, true)
+  assert.equal(afterSkin.owner, first.owner)
+  // A peer-context hash may change pnpm's physical root path. The dependency
+  // must still belong to the current root bundle and contain the same bytes.
+  assert.equal(afterSkin.result.modules[0].entry,
+    path.join(path.dirname(afterSkin.root), 'node_modules/dsh-nexttavern-anydoc/index.js'))
+  assert.equal(hash(afterSkin.result.modules[0].entry), createHash('sha256').update(originalEntry).digest('hex'))
+  assert.equal(afterSkin.result.prepared.transaction, null)
+
+  fixture.run('add', v2.file)
+  const upgradeLock = hash(lockFile)
+  const second = bootstrap()
+  assert.equal(second.owner, '0.0.0-fixture.2', 'root must use its own new bundle despite the older profile pin')
+  assert.equal(second.samePeer, true)
+  assert.equal(hash(lockFile), upgradeLock)
+  assert.equal(JSON.parse(fs.readFileSync(protectedFile, 'utf8')).version, '0.0.0-fixture.1')
+  assert.equal(second.result.prepared.receipt.packages[0].version, '0.0.0-fixture.2')
+  assert.ok(fs.existsSync(path.join(home, pin1.directory, 'index.js')), 'old generation remains recoverable')
+
+  fixture.run('install', '--force', '--no-frozen-lockfile')
+  assert.equal(JSON.parse(fs.readFileSync(protectedFile, 'utf8')).version, '0.0.0-fixture.2')
+  assert.equal(bootstrap().owner, second.owner)
+  assert.equal(hash(originalFile), originalHash)
+  fixture.run('remove', 'dsh-nexttavern')
+  assert.equal(JSON.parse(fs.readFileSync(protectedFile, 'utf8')).dsh?.bundle, undefined,
+    'retained library pins have no autonomous activation layer')
+  assert.equal(hash(originalFile), originalHash)
 })

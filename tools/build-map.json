@@ -907,6 +907,15 @@
       ]
     },
     {
+      "artifact": "bundled-package-bootstrap",
+      "source": "src/operations/bundled-package-bootstrap.mts",
+      "banner": "runtime/alpha3/src/operations/bundled-package-bootstrap.mts",
+      "primaryOutput": "lib/operations/bundled-package-bootstrap.mjs",
+      "outputs": [
+        "lib/operations/bundled-package-bootstrap.mjs"
+      ]
+    },
+    {
       "artifact": "public-patch-harness",
       "source": "src/operations/patch-harness.mts",
       "banner": "runtime/alpha3/src/operations/patch-harness.mts",
