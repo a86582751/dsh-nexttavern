@@ -2,7 +2,9 @@
 
 ## 0.3 development — 2026-09-22
 
-- Added immutable profile-generation planning for product assembly using the official alpha.6 readers. Removing the product's bundle layer preserves user disable choices, ancestor scope, configuration overlays and expressions. Two modules compile strictly and five native configuration cases pass; activation under the official manager lock and the unified entry remain unimplemented.
+- Added a real Loader subtree entry for product-owned providers, preserving browser module identities, original configuration and disabled choices. Failed activation drains owned resources before native restoration; stale profile generations and dependency resolution outside the product are rejected. Ten focused cases and the strict four-module closure passed. The complete provider catalog, presets, package protection, manager/market controls and full Harness acceptance remain unconnected.
+
+- Added immutable profile-generation planning for product assembly using the official alpha.6 readers. Removing the product's bundle layer preserves user disable choices, ancestor scope, configuration overlays and expressions. Two modules compile strictly and five native configuration cases pass; the subsequent Loader entry stage above uses this reader, while full manager integration remains pending.
 
 - Migrated live business history to public observations plus an incremental event ledger, with awaited readiness, cancellation, instance isolation and shared-mount disposal. Fork ownership uses `inheritedEventCount`; cold telemetry observes restored histories without recharging inherited calls. Seven native cases, one affected Controller case and thirteen business suites passed within their recorded limits. Full roleplay Agent, browser, unified installation and lifecycle acceptance remain pending.
 

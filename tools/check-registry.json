@@ -371,7 +371,8 @@
         "plugin-product-state*",
         "plugin-native-lifecycle*",
         "nexttavern-lifecycle*",
-        "plugin-profile-plan*"
+        "plugin-profile-plan*",
+        "plugin-product-entry*"
       ]
     }
   ],
@@ -3327,6 +3328,35 @@
         "plugin-product-control"
       ],
       "inputs": [
+        "nexttavern-profile-plan-typescript",
+        "nexttavern-profile-plan",
+        "nexttavern-lifecycle-typescript",
+        "nexttavern-lifecycle",
+        "test-temp-helper-typescript",
+        "typescript-config",
+        "inventory-runtime-alpha3-build-tools-package-json",
+        "inventory-runtime-alpha3-build-tools-package-lock-json"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000
+    },
+    {
+      "id": "test:plugin-product-entry.test.mts",
+      "action": "test",
+      "artifact": "plugin-product-entry-contract",
+      "modules": [
+        "plugin-product-control"
+      ],
+      "inputs": [
+        "nexttavern-entry-policy-typescript",
+        "nexttavern-entry-policy",
+        "nexttavern-entry-typescript",
+        "nexttavern-entry",
         "nexttavern-profile-plan-typescript",
         "nexttavern-profile-plan",
         "nexttavern-lifecycle-typescript",

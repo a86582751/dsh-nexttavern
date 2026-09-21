@@ -2597,6 +2597,22 @@
       "source": "lib/operations/nexttavern-profile-plan.mjs"
     },
     {
+      "id": "nexttavern-entry-policy-typescript",
+      "source": "src/operations/nexttavern-entry-policy.mts"
+    },
+    {
+      "id": "nexttavern-entry-policy",
+      "source": "lib/operations/nexttavern-entry-policy.mjs"
+    },
+    {
+      "id": "nexttavern-entry-typescript",
+      "source": "src/operations/nexttavern-entry.mts"
+    },
+    {
+      "id": "nexttavern-entry",
+      "source": "lib/operations/nexttavern-entry.mjs"
+    },
+    {
       "id": "compat-anydoc-src-document-reader-ts",
       "source": "development/anydoc/src/document-reader.ts"
     },
@@ -2803,6 +2819,10 @@
     {
       "id": "plugin-profile-plan-contract",
       "source": "tests/plugin-profile-plan.test.mts"
+    },
+    {
+      "id": "plugin-product-entry-contract",
+      "source": "tests/plugin-product-entry.test.mts"
     },
     {
       "id": "quality-registry",
@@ -8220,6 +8240,37 @@
         "build-tools/package-lock.json",
         "src/operations/nexttavern-lifecycle.mts"
       ]
+    },
+    {
+      "id": "nexttavern-entry-policy-typed-build",
+      "artifact": "nexttavern-entry-policy",
+      "entry": "src/operations/nexttavern-entry-policy.mts",
+      "inputs": [
+        "src/operations/nexttavern-entry-policy.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/nexttavern-profile-plan.mts",
+        "src/operations/nexttavern-lifecycle.mts"
+      ],
+      "kind": "typescript-module",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "nexttavern-entry-typed-build",
+      "artifact": "nexttavern-entry",
+      "entry": "src/operations/nexttavern-entry.mts",
+      "inputs": [
+        "src/operations/nexttavern-entry.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/nexttavern-entry-policy.mts",
+        "src/operations/nexttavern-profile-plan.mts",
+        "src/operations/nexttavern-lifecycle.mts"
+      ],
+      "kind": "typescript-module",
+      "builder": "tools/build-modules.mjs"
     },
     {
       "id": "compat-anydoc-document-reader-js-build",

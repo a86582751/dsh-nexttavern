@@ -2270,6 +2270,24 @@
       ]
     },
     {
+      "artifact": "nexttavern-entry-policy",
+      "source": "src/operations/nexttavern-entry-policy.mts",
+      "banner": "runtime/alpha3/src/operations/nexttavern-entry-policy.mts",
+      "primaryOutput": "lib/operations/nexttavern-entry-policy.mjs",
+      "outputs": [
+        "lib/operations/nexttavern-entry-policy.mjs"
+      ]
+    },
+    {
+      "artifact": "nexttavern-entry",
+      "source": "src/operations/nexttavern-entry.mts",
+      "banner": "runtime/alpha3/src/operations/nexttavern-entry.mts",
+      "primaryOutput": "lib/operations/nexttavern-entry.mjs",
+      "outputs": [
+        "lib/operations/nexttavern-entry.mjs"
+      ]
+    },
+    {
       "artifact": "compat-anydoc-lib-document-reader-js",
       "source": "development/anydoc/src/document-reader.ts",
       "banner": "runtime/alpha3/compat/anydoc/src/document-reader.ts",
