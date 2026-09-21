@@ -1601,6 +1601,10 @@
       "source": "development/anydoc/LICENSE"
     },
     {
+      "id": "plugin-bundled-dependencies-contract",
+      "source": "tests/plugin-bundled-dependencies.test.mts"
+    },
+    {
       "id": "public-agent-instructions",
       "source": "AGENTS.md"
     },

@@ -2,6 +2,8 @@
 
 ## 0.3 development — 2026-09-21
 
+- Added an explicit offline npm/pnpm packaging test with three synthetic-package cases: tarball-relative `file:` fails as a portable dependency; bundled children survive unrelated installs, forced relinking and explicit downgrade; existing external fixed-package references retain their hashes, shared peer and lock resolution. These are packaging mechanism checks, not full DSH installation or failed-upgrade rollback acceptance. The test requires existing npm/pnpm JavaScript CLI paths and does not install Harness.
+
 - Added the independently named, unpublished [dsh-nexttavern-anydoc candidate](https://github.com/a86582751/dsh-plugin-anydoc/commit/547bd617407abcf60fa50404b6a27978bc31abce) in `development/anydoc/`, with original attribution and maintained TypeScript instead of replaying edits onto installed files. Two focused maintenance checks cover real CSV conversion, normalized output, exclusive file-write scheduling, a single roleplay tool schema and cleanup preserving a simulated user tool. It is not yet connected to the product entry or preset. File-upload and pi-ai fork identity work remains open. The market now has a smaller role: reuse an existing upstream installation, or install it only when absent, to open skins. A custom market fork is no longer planned as a required dependency; product controls belong to NextTavern itself. Compatibility package protection must also survive later unrelated skin installations and plugin upgrades.
 
 - Public repository updates resume alongside maintenance development. Repository commits are development snapshots; the latest downloadable release remains 0.2.5. No 0.3 tag, release assets or npm publication accompanies this code sync.

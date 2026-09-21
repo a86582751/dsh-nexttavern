@@ -20,6 +20,7 @@
         "plugin-thirdparty-scope*",
         "plugin-owned-packages*",
         "plugin-owned-anydoc*",
+        "plugin-bundled-dependencies*",
         "runtime/alpha3/compat/anydoc/*",
         "runtime/alpha3/compat/pi-ai/*",
         "runtime/alpha3/compat/token-meter/*",
@@ -3045,6 +3046,29 @@
       ],
       "timeoutMs": 30000,
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-bundled-dependencies.test.mts",
+      "action": "test",
+      "artifact": "plugin-bundled-dependencies-contract",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [
+        "test-temp-helper-typescript",
+        "inventory-runtime-alpha3-build-tools-package-lock-json"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "timeoutMs": 90000
     }
   ]
 }
