@@ -7,7 +7,6 @@
  * @module dsh-llm-pi-ai/login
  */
 
-import { createModels } from 'dsh-nexttavern-pi-ai'
 import type { AuthEvent, AuthPrompt, AuthType, Provider } from 'dsh-nexttavern-pi-ai'
 import type { Context } from '@deepseek-ai/cordis'
 import type { AuthorizationMethod, AuthorizationPrompt, AuthorizationSession } from '@deepseek-ai/dsh-authorization'
@@ -15,6 +14,7 @@ import { isCredentialKeySegment } from '@deepseek-ai/dsh-credentials'
 import { catalogProvider, catalogProviderIds } from './catalog.js'
 import { recordKeyFor } from './auth.js'
 import type { PiAiAuthInjection } from './adapter.js'
+import { createModels } from './models.js'
 
 /**
  * The login methods one catalog provider offers.

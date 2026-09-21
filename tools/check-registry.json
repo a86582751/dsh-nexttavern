@@ -16,6 +16,7 @@
         "plugin-owned-controller*",
         "runtime/alpha3/compat/session-controller/*",
         "plugin-owned-telemetry*",
+        "plugin-native-projection*",
         "plugin-owned-protocol*",
         "plugin-thirdparty-scope*",
         "plugin-owned-packages*",
@@ -24,9 +25,9 @@
         "runtime/alpha3/compat/anydoc/*",
         "runtime/alpha3/compat/pi-ai/*",
         "runtime/alpha3/compat/token-meter/*",
-        "runtime/alpha3/compat/session-projection/*",
         "plugin-owned-adapter*",
-        "runtime/alpha3/compat/llm-pi-ai/*"
+        "runtime/alpha3/compat/llm-pi-ai/*",
+        "plugin-protocol-frames*"
       ]
     },
     {
@@ -358,9 +359,9 @@
         "plugin-profile-context*",
         "profile-api-inputs*",
         "plugin-manager-inputs*",
-        "runtime/alpha3/compat/market/*",
         "plugin-product-state*",
-        "plugin-market-identity*"
+        "plugin-native-lifecycle*",
+        "nexttavern-lifecycle*"
       ]
     }
   ],
@@ -374,8 +375,7 @@
       "inputs": [],
       "requires": [
         "tar",
-        "compiler",
-        "jsdom"
+        "compiler"
       ],
       "heavy": true,
       "cache": false,
@@ -2972,6 +2972,18 @@
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
+      "id": "test:plugin-native-projection.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
       "id": "test:plugin-owned-telemetry.test.mts",
       "action": "test",
       "modules": [
@@ -3050,18 +3062,6 @@
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
-      "id": "test:plugin-market-identity.test.mts",
-      "action": "test",
-      "modules": [
-        "plugin-product-control"
-      ],
-      "inputs": [],
-      "heavy": true,
-      "cache": false,
-      "timeoutMs": 60000,
-      "unavailable": "Maintainer-only facility; not part of this public delivery"
-    },
-    {
       "id": "test:plugin-owned-anydoc.test.mts",
       "action": "test",
       "effects": {
@@ -3102,6 +3102,18 @@
         "service": false
       },
       "timeoutMs": 90000
+    },
+    {
+      "id": "test:plugin-native-lifecycle.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-product-control"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }

@@ -1,26 +1,5 @@
+# dsh-roleplay-ui bundle patch: 一个 insert 行。宿主半为空壳（本插件仅
+# 提供浏览器 UI），客户端模块系统按 dsh.client 声明加载 client 半。
 - insert:
     - id: roleplay-ui
-      name: dsh-nexttavern
-- insert:
-    - id: file-upload
-      name: dsh-file-upload
-      config:
-        uploadMaxBytes: 26214400
-        allowedExtensions: []
-        uploadTtlMs: 604800000
-        sweepIntervalMs: 3600000
-        maxConcurrentUploads: 4
-        maxFileBytes: 26214400
-        readLimit: 2000
-        sheetRowLimit: 200
-        maxSheets: 5
-        cacheEntries: 16
-        cacheMaxBytes: 67108864
-        inlineTextLimit: 8192
-        previewTextLimit: 2048
-        markitdownBin: ""
-        maxRecordSec: 60
-        asrEndpoint: ""
-        asrApiKeyEnv: OPENAI_API_KEY
-        asrModel: whisper-1
-        asrMaxBytes: 26214400
+      name: 'dsh-roleplay-ui'

@@ -6,9 +6,9 @@
  * stays configuration-free while a route pi-ai has never heard of is fully
  * describable from `settings.yaml`.
  *
- * Every pi-ai `Model` field the harness cannot default is required here rather
- * than at request time: an unserviceable route fails while its configuration is
- * being resolved, which is the earliest point that can name the offending key.
+ * Strict resolution rejects unserviceable models before settings writes.
+ * Deferred resolution retains their diagnostics so stored catalog drift does
+ * not prevent inspection, repair, or requests to independently valid models.
  *
  * @module dsh-llm-pi-ai/catalog
  */
@@ -90,6 +90,14 @@ const MAX_TOKENS_FIELD_GATE = {
 };
 /** The output-cap field spellings a profile may name. */
 export const MAX_TOKENS_FIELDS = Object.keys(MAX_TOKENS_FIELD_GATE);
+/** An upstream reasoning-budget spelling must be classified before it can be configured. */
+const THINKING_TOKEN_BUDGET_FIELD_GATE = {
+    thinking_token_budget: true,
+    thinking_budget: true,
+    thinking_budget_tokens: true,
+};
+/** The reasoning-budget field spellings a profile may name. */
+export const THINKING_TOKEN_BUDGET_FIELDS = Object.keys(THINKING_TOKEN_BUDGET_FIELD_GATE);
 /** Drift gate over {@link PiAiCacheControlFormat}; a new upstream convention fails compilation until named. */
 const CACHE_CONTROL_FORMAT_GATE = {
     anthropic: true,
@@ -100,12 +108,10 @@ export const CACHE_CONTROL_FORMATS = Object.keys(CACHE_CONTROL_FORMAT_GATE);
 const CHAT_TEMPLATE_VAR_GATE = {
     'thinking.enabled': true,
     'thinking.effort': true,
-    // Keep the existing Harness configuration surface while auditing pi-ai 0.84.4.
-    'thinking.budget': false,
+    'thinking.budget': true,
 };
 /** The request-state placeholders a profile may name. */
-export const CHAT_TEMPLATE_VARS = Object.keys(CHAT_TEMPLATE_VAR_GATE)
-    .filter(name => CHAT_TEMPLATE_VAR_GATE[name]);
+export const CHAT_TEMPLATE_VARS = Object.keys(CHAT_TEMPLATE_VAR_GATE);
 let providerIndex;
 /**
  * Installed catalog providers by id, constructed once. Each entry owns the API
@@ -163,6 +169,8 @@ const COMPLETIONS_COMPAT_GATE = {
     chatTemplateKwargs: 'offer',
     chatTemplateArgs: 'offer',
     supportsThinkingTokenBudget: 'offer',
+    thinkingTokenBudgetField: 'offer',
+    vllmPriority: 'offer',
     supportsStrictMode: 'offer',
     cacheControlFormat: 'offer',
     supportsLongCacheRetention: 'offer',
@@ -173,11 +181,11 @@ const COMPLETIONS_COMPAT_GATE = {
     sendSessionAffinityHeaders: 'withhold',
     deferredToolsMode: 'withhold',
     sessionAffinityFormat: 'withhold',
-    thinkingTokenBudgetField: 'withhold',
 };
 /** Disposition of every `OpenAIResponsesCompat` field; a drift gate like the one above. */
 const RESPONSES_COMPAT_GATE = {
     supportsDeveloperRole: 'offer',
+    supportsMaxOutputTokens: 'offer',
     supportsStrictMode: 'offer',
     supportsLongCacheRetention: 'offer',
     sessionAffinityFormat: 'withhold',
@@ -197,6 +205,7 @@ const ANTHROPIC_COMPAT_GATE = {
     supportsStrictTools: 'offer',
     sendSessionAffinityHeaders: 'withhold',
     supportsToolReferences: 'withhold',
+    supportsMidConvoEffort: 'withhold',
     allowedFallbackModels: 'withhold',
 };
 /** Disposition of every `BedrockCompat` field; a drift gate like the one above. */
@@ -325,9 +334,12 @@ function assertOfferedCompatFields(provider, site, compat) {
         }
     }
 }
+/** An expected configuration failure that stored-catalog reads may retain for repair. */
+export class PiAiCatalogError extends Error {
+}
 /** Report a route the deployment cannot serve, naming the settings key at fault. */
 function invalid(provider, detail) {
-    throw new Error(`llm-pi-ai: provider "${provider}" ${detail}`);
+    throw new PiAiCatalogError(`llm-pi-ai: provider "${provider}" ${detail}`);
 }
 /**
  * The one wire protocol a catalog route's shipped models agree on. This is what
@@ -466,9 +478,10 @@ function resolveModelCompat(provider, entry, route, base, api) {
  * installed catalog unchanged, which is what keeps an existing
  * `providers: { deepseek: { apiKeyEnv: … } }` profile working untouched.
  * @param request - the route-level catalog facts.
+ * @param validation - strict writes reject every error; deferred reads retain model diagnostics.
  * @returns the materialized models and the explicitly configured request caps.
  */
-export function resolveRouteModels(request) {
+export function resolveRouteModels(request, validation = 'strict') {
     const { provider } = request;
     const defaults = catalogModels(provider);
     const providerBaseUrl = catalogProvider(provider)?.baseUrl;
@@ -477,8 +490,9 @@ export function resolveRouteModels(request) {
     // serve no request anyway, so both mean "serve the installed catalog".
     const configured = request.models ?? [];
     const overrides = request.modelOverrides ?? {};
-    // Every miss is refused, never skipped: an override that lands nowhere is a
-    // typo someone would otherwise hunt for in a silently unchanged model.
+    const modelErrors = new Map();
+    // Writes reject missing referents. Stored overrides retain a diagnostic
+    // after catalog removal rather than silently disappearing.
     for (const [id, override] of Object.entries(overrides)) {
         if (id.length === 0)
             invalid(provider, 'has a modelOverrides entry with an empty model id');
@@ -491,7 +505,10 @@ export function resolveRouteModels(request) {
                 + ' catalog, so declare the fields on its entries');
         }
         if (!defaults.has(id)) {
-            invalid(provider, `modelOverrides names "${id}", which the installed catalog does not describe`);
+            const message = `modelOverrides names "${id}", which the installed catalog does not describe`;
+            if (validation === 'strict')
+                invalid(provider, message);
+            modelErrors.set(id, `llm-pi-ai: provider "${provider}" ${message}`);
         }
         // The id lives in the dict key; a value carrying its own would quietly
         // rename the model it meant to customize. The static shape already omits
@@ -515,12 +532,10 @@ export function resolveRouteModels(request) {
     // wherever it is written, so it cannot look applied on a route whose models
     // never reach the protocol that would have taken it.
     assertOfferedCompatFields(provider, 'route', request.compat);
-    for (const entry of entries) {
-        assertOfferedCompatFields(provider, `model "${entry.id}"`, entry.compat);
-    }
     const seen = new Set();
     const configuredMaxTokens = new Map();
-    const models = entries.map((entry) => {
+    const resolveEntry = (entry) => {
+        assertOfferedCompatFields(provider, `model "${entry.id}"`, entry.compat);
         if (entry.id.length === 0)
             invalid(provider, 'has a model with an empty id');
         if (seen.has(entry.id))
@@ -571,17 +586,33 @@ export function resolveRouteModels(request) {
             ...resolveModelReasoning(provider, entry, base),
             ...resolveModelCompat(provider, entry, request.compat, base, api),
         };
-    });
+    };
+    const models = [];
+    for (const entry of entries) {
+        let model;
+        try {
+            model = resolveEntry(entry);
+        }
+        catch (error) {
+            if (validation === 'strict' || !(error instanceof PiAiCatalogError))
+                throw error;
+            modelErrors.set(entry.id, error.message);
+            continue;
+        }
+        models.push(model);
+    }
+    // A later duplicate invalidates the id, including an earlier resolved entry.
+    const serviceableModels = models.filter(model => !modelErrors.has(model.id));
     // Per field, not per block: a route may default a switch its completions
     // models take beside one only its anthropic models do, and neither should
     // fail for the other's sake. What is refused is a route default no model on
     // the route could ever read, which is a route that will not behave as written.
     for (const [field] of configuredCompatEntries(request.compat)) {
         const takers = compatProtocols(field);
-        if (models.some(model => takers.includes(model.api)))
+        if (serviceableModels.some(model => takers.includes(model.api)))
             continue;
         invalid(provider, `sets compat "${field}", but no model on the route speaks a protocol that takes it;`
             + ` it exists on ${takers.join(', ')}`);
     }
-    return { models, configuredMaxTokens };
+    return { models: serviceableModels, configuredMaxTokens, modelErrors };
 }

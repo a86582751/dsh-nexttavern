@@ -1,5 +1,11 @@
 # Contributing
 
+The current 0.3 branch is migrating to Harness `0.1.6-alpha.2`. Its developer
+lock and selected compatibility packages have moved, while core/UI consumers
+and the complete build/install path are still being ported. Do not treat earlier
+alpha.3 full-build results as validation of this branch. See the dated
+[development status](CHANGELOG.md) before selecting checks.
+
 This package carries TypeScript/MTS sources and their generated JavaScript/MJS so contributors can verify the files it ships. Its local mapping is `tools/build-map.json`; the quality registry and projection map are `tools/check-registry.json` and `tools/check-map.json`.
 
 ## Source and generated files

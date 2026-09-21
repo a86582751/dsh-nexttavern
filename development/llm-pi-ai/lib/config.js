@@ -7,10 +7,9 @@
  * A route key is not required to name an installed pi-ai provider. When it does,
  * that provider's endpoint, protocol, display name, and model catalog are the
  * profile's defaults and the profile overrides them field by field; when it does
- * not, the profile is the whole provider declaration. Resolution therefore ends
- * in a built pi-ai `Provider` per route: everything a request needs is decided
- * once, while the configuration key that made a route unserviceable can still be
- * named in the failure.
+ * not, the profile is the whole provider declaration. Stored reads retain
+ * catalog diagnostics beside serviceable models; writes validate every changed
+ * provider before persistence. Self-contained profile constraints apply to both.
  *
  * @module dsh-llm-pi-ai/config
  */
@@ -18,7 +17,8 @@ import z from '@deepseek-ai/schemastery';
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout';
 import { resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm';
-import { CACHE_CONTROL_FORMATS, CHAT_TEMPLATE_VARS, MAX_TOKENS_FIELDS, MODALITIES, resolveRouteModels, SUPPORTED_THINKING_FORMATS, THINKING_LEVELS, } from './catalog.js';
+import { deepEqualJson } from '@deepseek-ai/dsh-util-values';
+import { CACHE_CONTROL_FORMATS, CHAT_TEMPLATE_VARS, MAX_TOKENS_FIELDS, MODALITIES, PiAiCatalogError, resolveRouteModels, SUPPORTED_THINKING_FORMATS, THINKING_LEVELS, THINKING_TOKEN_BUDGET_FIELDS, } from './catalog.js';
 import { buildProvider, supportedProtocols } from './provider.js';
 /** Default maximum idle interval while an adapter stream read is outstanding. */
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000;
@@ -88,6 +88,9 @@ const compatProfile = z.object({
     chatTemplateKwargs: z.dict(chatTemplateKwarg),
     chatTemplateArgs: z.dict(chatTemplateKwarg),
     supportsThinkingTokenBudget: z.boolean(),
+    thinkingTokenBudgetField: z.union(THINKING_TOKEN_BUDGET_FIELDS),
+    vllmPriority: z.number().step(1),
+    supportsMaxOutputTokens: z.boolean(),
     supportsStrictMode: z.boolean(),
     cacheControlFormat: z.union(CACHE_CONTROL_FORMATS),
     supportsLongCacheRetention: z.boolean(),
@@ -159,19 +162,16 @@ export const Config = z.object({
     providers: z.dict(profile).default({}),
 });
 /**
- * Reject a section this adapter could not serve. Registered as the settings
- * namespace's validator, so an unserviceable profile is refused where it is
- * *written* — `settings.mutate` answers `settings-rejected` with the offending
- * route and model named — instead of being stored and then quietly disabling
- * every route in the namespace. It stays a validator rather than a schema
- * transform because the schema is also the shape a configuration surface
- * renders and the value an absent section resolves to; wrapping it would break
- * both.
+ * Reject new or changed provider profiles that cannot be served. Unchanged
+ * stored profiles may need repair after a catalog upgrade and do not block
+ * edits to another provider. Removed profiles require no catalog validation.
  * @param config - the resolved section to check.
- * @throws Error naming the route and model that cannot be served.
+ * @param previous - current resolved section; omission checks every provider.
+ * @throws Error naming the route and configuration entry that cannot be served.
  */
-export function assertServiceable(config) {
-    resolveProfiles(config.providers);
+export function assertServiceable(config, previous) {
+    const changed = Object.fromEntries(Object.entries(config.providers ?? {}).filter(([provider, profile]) => !deepEqualJson(profile, previous?.providers?.[provider])));
+    resolveProfiles(changed);
 }
 /** Reject removed pre-release profile fields and name their replacements. */
 function rejectRemovedFields(provider, source) {
@@ -184,15 +184,27 @@ function rejectRemovedFields(provider, source) {
             + ' compose agent recovery with dsh-llm-retry');
     }
 }
+/** Reject a profile header that Fetch cannot put on a provider request. */
+function assertValidHeaders(provider, headers) {
+    for (const [name, value] of Object.entries(headers ?? {})) {
+        try {
+            new Headers([[name, value]]);
+        }
+        catch {
+            throw new Error(`llm-pi-ai: provider "${provider}" header "${name}" is not valid for Fetch;`
+                + ' use a valid HTTP field name and a single-line value representable as bytes');
+        }
+    }
+}
 /**
- * Validate profiles and return a detached route-keyed map suitable for
- * per-request reads. This is the one explicit resolve step, so an omitted dict
- * resolves to the empty (dormant) route set here rather than through a hidden
- * fallback, and each route's models and pi-ai provider are materialized once.
+ * Resolve scalar defaults and materialize each route's serviceable models.
+ * Deferred catalog validation retains diagnostics without deleting configured
+ * routes. An omitted dict resolves to the empty, dormant route set.
  * @param providers - configured provider profiles keyed by route.
+ * @param validation - writes require a complete catalog; stored reads retain catalog diagnostics.
  * @returns validated profiles in configuration order.
  */
-export function resolveProfiles(providers) {
+export function resolveProfiles(providers, validation = 'strict') {
     if (Array.isArray(providers)) {
         throw new Error('llm-pi-ai: providers is now a dict keyed by provider route, not an array of profiles');
     }
@@ -208,6 +220,7 @@ export function resolveProfiles(providers) {
         if (source.displayName !== undefined && source.displayName.length === 0) {
             throw new Error(`llm-pi-ai: provider "${provider}" has an empty displayName`);
         }
+        assertValidHeaders(provider, source.headers);
         const streamIdleTimeoutMs = source.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
         if (!Number.isFinite(streamIdleTimeoutMs)
             || streamIdleTimeoutMs <= 0
@@ -239,26 +252,37 @@ export function resolveProfiles(providers) {
         // always shown route keys, and a catalog route must not silently rename
         // itself on every configuration surface just because it gained a profile.
         const displayName = source.displayName ?? provider;
-        const catalog = resolveRouteModels({
-            provider,
-            ...source.api === undefined ? {} : { api: source.api },
-            ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
-            ...source.models === undefined ? {} : { models: source.models },
-            ...source.modelOverrides === undefined ? {} : { modelOverrides: source.modelOverrides },
-            ...source.compat === undefined ? {} : { compat: source.compat },
-            defaultInput,
-            defaultContextWindow: source.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
-            defaultMaxTokens: source.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
-        });
+        let catalog;
+        let piProvider;
+        let catalogError;
+        try {
+            catalog = resolveRouteModels({
+                provider,
+                ...source.api === undefined ? {} : { api: source.api },
+                ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
+                ...source.models === undefined ? {} : { models: source.models },
+                ...source.modelOverrides === undefined ? {} : { modelOverrides: source.modelOverrides },
+                ...source.compat === undefined ? {} : { compat: source.compat },
+                defaultInput,
+                defaultContextWindow: source.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
+                defaultMaxTokens: source.defaultMaxTokens ?? DEFAULT_MAX_TOKENS,
+            }, validation);
+            catalogError = catalog.modelErrors.values().next().value;
+            piProvider = buildProvider({
+                provider,
+                displayName,
+                ...source.api === undefined ? {} : { api: source.api },
+                ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
+                models: catalog.models,
+                namesCredential: source.apiKeyEnv !== undefined,
+            });
+        }
+        catch (error) {
+            if (validation === 'strict' || !(error instanceof PiAiCatalogError))
+                throw error;
+            catalogError ??= error.message;
+        }
         const { apiKeyEnv, retryPolicy, models: _models, displayName: _displayName, ...rest } = source;
-        const providerSpec = {
-            provider,
-            displayName,
-            ...source.api === undefined ? {} : { api: source.api },
-            ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
-            models: catalog.models,
-            namesCredential: apiKeyEnv !== undefined,
-        };
         resolved.set(provider, {
             ...rest,
             provider,
@@ -271,8 +295,10 @@ export function resolveProfiles(providers) {
             retryPolicy: resolveRetryPolicy(retryPolicy, `llm-pi-ai: provider "${provider}" retryPolicy`),
             ...rest.headers === undefined ? {} : { headers: { ...rest.headers } },
             ...rest.thinkingBudgets === undefined ? {} : { thinkingBudgets: { ...rest.thinkingBudgets } },
-            configuredMaxTokens: catalog.configuredMaxTokens,
-            piProvider: buildProvider(providerSpec),
+            configuredMaxTokens: catalog?.configuredMaxTokens ?? new Map(),
+            modelErrors: catalog?.modelErrors ?? new Map(),
+            ...piProvider === undefined ? {} : { piProvider },
+            ...catalogError === undefined ? {} : { catalogError },
         });
     }
     return resolved;

@@ -84,7 +84,7 @@ description: 角色扮演模式的读卡、写卡、长篇小说改编角色卡�
 
 1. 对 docx/pdf 调用 `anydoc` 时，**必须传 `outputFilePath`**。先在当前会话工作区内建立持久目录（例如工作区下的 `.dsh-card-imports/<本次导入标识>/`），再把输出写到该目录的绝对路径；不得写 `/tmp`，不得只依赖会被截断或在下一轮消失的工具返回文本。md/txt 也应复制或登记为本次导入的持久来源文件。
 2. **不要就地修改 anydoc 落盘文件，也不要在 `begin` 前运行去转义脚本。** 把它作为不可变 raw source 交给 `rp_card_import_begin`。导入器会归档原始 UTF-8 内容及哈希，并内部生成 LF 统一、保守解除防御性转义的 normalized source：只恢复明确的结构化 Markdown、常见 HTML 标签和完整 `{{template}}`，不会全局删除 LaTeX、正则、JSON/CSS/JS 或路径中的反斜杠；`lib/preset/deescape-md.mjs` 只供人工查看和旧部署恢复。这样 `\#`、`\-`、`\[` 等不再被误当成空卡证据，任何有歧义的字符仍可回到 raw source 审计。
-3. 以 `begin/chunk` 返回的归档 normalized source 为唯一分类来源，核对文件字节数、总行数及首尾内容。`read_document` 的预览、anydoc 的工具摘要、前两行、文件名中的「测试/示例」或模块分隔符都不能作为空卡判断。若转换失败，应明确报告转换错误并停止激活，绝不能转而搜索参考卡。
+3. 以 `begin/chunk` 返回的归档 normalized source 为唯一分类来源，核对文件字节数、总行数及首尾内容。anydoc 的截断摘要、前两行、文件名中的「测试/示例」或模块分隔符都不能作为空卡判断。若转换失败，应明确报告转换错误并停止激活，绝不能转而搜索参考卡。
 
 ### B. 来源跨度导入（不得让模型重写正文）
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3 development — 2026-09-22
+
+- The migration now targets Harness **0.1.6-alpha.2** and intentionally drops old session-data compatibility. Export character cards or novels in the old environment before migration. Downloads and production remain on 0.2.5; current main is unfinished development source.
+- Retired community file-upload/read_document and better-sidebar from the next-generation plan. Official upload, attachments and sidebar replace them. The [owned anydoc fork](https://github.com/a86582751/dsh-plugin-anydoc/commit/379872b6fc69814d5e974351b3f848a7522521ad) now reads through native filesystem capabilities, supports explicit document windows and full-file conversion, and has bounded version-aware caching. Full native upload integration remains pending.
+- Replaced the owned session-projection candidate with the validated official implementation. Removed the abandoned private market candidate; an existing upstream market is reused, and a missing market will be installed only for skins.
+- Rebased the [minimal pi-ai fork](https://github.com/a86582751/pi/commit/0b1dd4fe31baf343f4a592551056215ca6a12629) on the host's pinned **0.85.1**, retaining four terminal-protocol changes. The alpha.6 adapter owns cancellation, consumer-stop and idle-timeout cleanup. Gemini relay addresses and Bearer headers use configuration. SDK protocol cases and the four-protocol host cleanup matrix passed locally; complete product installation is not yet validated.
+- Native multi-provider tests expose an HMR removal limitation: reported success need not mean every original provider recovered. Product controls refuse that hot path before saving changes; cold changes require a restart. The final management workflow, remaining core/UI migrations and clean-install/full Harness acceptance are unfinished.
+
+Earlier dated entries describe their historical snapshots and are superseded by this migration direction. No new tag, Release, npm package or production deployment accompanies this source update.
+
 ## 0.3 development — 2026-09-21
 
 - Added `development/llm-pi-ai/`, an unpublished adapter candidate for the existing `0.1.2-alpha.3` host. Ordinary, roleplay and headless requests use one maintained pi-ai SDK, while request snapshots, credentials, settings-conflict recovery and native DeepSeek routes retain their boundaries. The candidate removes the previous session-mode transport split. It is not yet connected to the product; dependency assembly, formal-fork synchronization and complete lifecycle acceptance remain open.

@@ -1,6 +1,6 @@
 {
   "name": "dsh-nexttavern-anydoc",
-  "version": "0.1.0-nexttavern.2",
+  "version": "0.1.0-nexttavern.4",
   "description": "NextTavern-maintained anydoc compatibility candidate; not an upstream release.",
   "private": true,
   "type": "module",
@@ -22,10 +22,12 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@firecrawl/anydoc": "0.1.8"
+    "@firecrawl/anydoc": "0.2.4"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/dsh-tools": "0.1.2-alpha.3"
+    "@deepseek-ai/dsh-tools": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-fs": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-agent": "0.1.6-alpha.2"
   }
 }

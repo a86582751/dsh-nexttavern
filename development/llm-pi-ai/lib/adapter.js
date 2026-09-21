@@ -78,10 +78,10 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     var e = new Error(message);
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
-import { createModels, getSupportedThinkingLevels } from 'dsh-nexttavern-pi-ai';
 import { attributionHeaders, contentHasImage, LlmAdapter, LlmError, ReasoningEffortId, } from '@deepseek-ai/dsh-llm';
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout';
 import { toPiContext } from './context.js';
+import { createModels, getSupportedThinkingLevels } from './models.js';
 import { toStreamChunks } from './stream.js';
 /** Copy profile stream knobs into pi-ai's common option vocabulary. */
 function profileOptions(profile, reasoning, apiKey) {
@@ -190,7 +190,8 @@ export class PiAiAdapter extends LlmAdapter {
             return this.snapshot;
         const models = createModels(this.config.auth);
         for (const profile of profiles.values()) {
-            models.setProvider(profile.piProvider);
+            if (profile.piProvider !== undefined)
+                models.setProvider(profile.piProvider);
         }
         this.snapshot = { profiles, models };
         return this.snapshot;
@@ -205,7 +206,11 @@ export class PiAiAdapter extends LlmAdapter {
     }
     /** The configured descriptor for one exact route/model pair within one snapshot. */
     modelOf(snapshot, provider, model) {
-        this.profileOf(snapshot, provider);
+        const profile = this.profileOf(snapshot, provider);
+        const failure = profile.modelErrors.get(model)
+            ?? (profile.piProvider === undefined ? profile.catalogError : undefined);
+        if (failure !== undefined)
+            throw new LlmError(failure, 'INVALID_CONFIG');
         const resolved = snapshot.models.getModel(provider, model);
         if (resolved === undefined) {
             throw new LlmError(`pi-ai provider "${provider}" has no configured model "${model}"`, 'UNKNOWN_MODEL');
@@ -320,7 +325,7 @@ export class PiAiAdapter extends LlmAdapter {
                     // Harness-owned and therefore win collisions.
                     headers: requestHeaders(profile.headers),
                 });
-                const iterator = toStreamChunks(events, model.contextWindow, options.signal)[Symbol.asyncIterator]();
+                const iterator = toStreamChunks(events, model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]();
                 let exhausted = false;
                 try {
                     while (true) {

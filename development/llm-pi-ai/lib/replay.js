@@ -39,17 +39,21 @@ function emptyPiUsage() {
  * order), so `BlockAssembler` prunes an entry with its block whenever assembly
  * removes one.
  * @param message - completed native pi-ai assistant response.
+ * @param requestedModel - request identity stored in the assistant source; defaults to the native model.
  * @returns the versioned lossless-JSON replay projection.
  */
-export function toPiReplayState(message) {
+export function toPiReplayState(message, requestedModel = message.model) {
+    const responseModel = message.api === 'anthropic-messages' && message.model !== requestedModel
+        ? message.model : message.responseModel;
     const response = {
         kind: 'pi-ai',
         version: 2,
         api: message.api,
         provider: message.provider,
-        model: message.model,
-        ...message.responseModel === undefined ? {} : { responseModel: message.responseModel },
+        model: requestedModel,
+        ...responseModel === undefined ? {} : { responseModel },
         ...message.responseId === undefined ? {} : { responseId: message.responseId },
+        ...message.providerThinkingLevel === undefined ? {} : { providerThinkingLevel: message.providerThinkingLevel },
         stopReason: message.stopReason,
     };
     return {
@@ -100,6 +104,8 @@ function readReplayState(value) {
         return invalidReplay('responseModel must be a string');
     if (response['responseId'] !== undefined && typeof response['responseId'] !== 'string')
         return invalidReplay('responseId must be a string');
+    if (response['providerThinkingLevel'] !== undefined && typeof response['providerThinkingLevel'] !== 'string')
+        return invalidReplay('providerThinkingLevel must be a string');
     const blocks = envelope['blocks'];
     if (!Array.isArray(blocks))
         return invalidReplay('blocks must be an array');
@@ -202,9 +208,12 @@ function replayedAssistant(message, source, rawState) {
         content,
         api: state.response.api,
         provider: state.response.provider,
-        model: state.response.model,
+        // Anthropic reports aliases and fallbacks as model, unlike Completions' informational responseModel.
+        model: state.response.api === 'anthropic-messages'
+            ? state.response.responseModel ?? state.response.model : state.response.model,
         ...state.response.responseModel === undefined ? {} : { responseModel: state.response.responseModel },
         ...state.response.responseId === undefined ? {} : { responseId: state.response.responseId },
+        ...state.response.providerThinkingLevel === undefined ? {} : { providerThinkingLevel: state.response.providerThinkingLevel },
         usage: emptyPiUsage(),
         stopReason: state.response.stopReason,
         timestamp: 0,

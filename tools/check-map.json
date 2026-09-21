@@ -2117,38 +2117,6 @@
       "source": ".gitignore"
     },
     {
-      "id": "compat-session-projection-types-ts",
-      "source": "development/session-projection/src/types.ts"
-    },
-    {
-      "id": "compat-session-projection-types-js",
-      "source": "development/session-projection/lib/types.js"
-    },
-    {
-      "id": "compat-session-projection-index-ts",
-      "source": "development/session-projection/src/index.ts"
-    },
-    {
-      "id": "compat-session-projection-index-js",
-      "source": "development/session-projection/lib/index.js"
-    },
-    {
-      "id": "compat-session-projection-package-json",
-      "source": "development/session-projection/package.json"
-    },
-    {
-      "id": "compat-session-projection-origin-json",
-      "source": "development/session-projection/ORIGIN.json"
-    },
-    {
-      "id": "compat-session-projection-license",
-      "source": "development/session-projection/LICENSE"
-    },
-    {
-      "id": "compat-session-projection-license-upstream",
-      "source": "development/session-projection/LICENSE.upstream"
-    },
-    {
       "id": "compat-llm-pi-ai-adapter-ts",
       "source": "development/llm-pi-ai/src/adapter.ts"
     },
@@ -2255,6 +2223,30 @@
     {
       "id": "compat-llm-pi-ai-notice",
       "source": "development/llm-pi-ai/NOTICE"
+    },
+    {
+      "id": "nexttavern-lifecycle-typescript",
+      "source": "src/operations/nexttavern-lifecycle.mts"
+    },
+    {
+      "id": "nexttavern-lifecycle",
+      "source": "lib/operations/nexttavern-lifecycle.mjs"
+    },
+    {
+      "id": "compat-anydoc-src-document-reader-ts",
+      "source": "development/anydoc/src/document-reader.ts"
+    },
+    {
+      "id": "compat-anydoc-lib-document-reader-js",
+      "source": "development/anydoc/lib/document-reader.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-models-ts",
+      "source": "development/llm-pi-ai/src/models.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-models-js",
+      "source": "development/llm-pi-ai/lib/models.js"
     },
     {
       "id": "quality-registry",
@@ -6825,32 +6817,6 @@
       ]
     },
     {
-      "id": "compat-session-projection-types-build",
-      "kind": "typescript-module",
-      "artifact": "compat-session-projection-types-js",
-      "entry": "development/session-projection/src/types.ts",
-      "builder": "tools/build-modules.mjs",
-      "inputs": [
-        "development/session-projection/src/types.ts",
-        "build-tools/tsconfig.json",
-        "build-tools/package.json",
-        "build-tools/package-lock.json"
-      ]
-    },
-    {
-      "id": "compat-session-projection-index-build",
-      "kind": "typescript-module",
-      "artifact": "compat-session-projection-index-js",
-      "entry": "development/session-projection/src/index.ts",
-      "builder": "tools/build-modules.mjs",
-      "inputs": [
-        "development/session-projection/src/index.ts",
-        "build-tools/tsconfig.json",
-        "build-tools/package.json",
-        "build-tools/package-lock.json"
-      ]
-    },
-    {
       "id": "compat-llm-pi-ai-adapter-build",
       "kind": "typescript-module",
       "artifact": "compat-llm-pi-ai-adapter-js",
@@ -6861,7 +6827,8 @@
         "development/llm-pi-ai/src/adapter.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -6875,7 +6842,8 @@
         "development/llm-pi-ai/src/auth.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -6889,7 +6857,8 @@
         "development/llm-pi-ai/src/catalog.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -6903,7 +6872,8 @@
         "development/llm-pi-ai/src/config.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -6917,7 +6887,8 @@
         "development/llm-pi-ai/src/context.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -6931,7 +6902,8 @@
         "development/llm-pi-ai/src/discovery.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -6945,7 +6917,8 @@
         "development/llm-pi-ai/src/index.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -6959,7 +6932,8 @@
         "development/llm-pi-ai/src/login.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -6973,7 +6947,8 @@
         "development/llm-pi-ai/src/provider.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -6987,7 +6962,8 @@
         "development/llm-pi-ai/src/replay.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -7001,7 +6977,8 @@
         "development/llm-pi-ai/src/stream.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/llm-pi-ai/src/models.ts"
       ]
     },
     {
@@ -7015,7 +6992,8 @@
         "development/anydoc/src/normalize-markdown.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "development/anydoc/src/document-reader.ts"
       ]
     },
     {
@@ -7026,6 +7004,47 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "development/anydoc/src/normalize-markdown.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "nexttavern-lifecycle-typed-build",
+      "kind": "typescript-module",
+      "artifact": "nexttavern-lifecycle",
+      "entry": "src/operations/nexttavern-lifecycle.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/operations/nexttavern-lifecycle.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-anydoc-document-reader-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-anydoc-lib-document-reader-js",
+      "entry": "development/anydoc/src/document-reader.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/anydoc/src/document-reader.ts",
+        "development/anydoc/src/normalize-markdown.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-models-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-models-js",
+      "entry": "development/llm-pi-ai/src/models.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/models.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json"

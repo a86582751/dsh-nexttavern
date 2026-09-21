@@ -5,8 +5,9 @@
  * @module dsh-llm-pi-ai/context
  */
 import { brandString } from '@deepseek-ai/dsh-brand';
-import { contentHasImage, LlmError, offloadedImageText, offloadRequestImagesWithPolicy, requestImageHandleText } from '@deepseek-ai/dsh-llm';
+import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm';
 import { toPiAssistant } from './replay.js';
+import { requestImageDimensions } from '@deepseek-ai/dsh-attachment';
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.js';
 /** Join the text blocks of a harness message. */
 function flattenText(message) {
@@ -73,18 +74,21 @@ async function userContent(blocks, requestImages, resolveImageAccess) {
 }
 function collectImageRefs(blocks, refs) {
     for (const block of blocks) {
-        if (block.type === 'image')
-            refs.set(block.attachment.attachmentId, block.attachment);
-        else if (block.type === 'tool-result')
+        if (block.type === 'image') {
+            if (block.offloaded !== true)
+                refs.set(block.attachment.attachmentId, block.attachment);
+        }
+        else if (block.type === 'tool-result') {
             collectImageRefs(block.content, refs);
+        }
     }
 }
-async function prepareRequestImages(messages, attachments, policy, signal) {
+async function prepareRequestImages(messages, attachments, budget, signal) {
     const refs = new Map();
     for (const message of messages)
         collectImageRefs(message.content, refs);
     const orderedRefs = [...refs.values()];
-    const prepared = await Promise.all(orderedRefs.map(ref => attachments.readImageRequest(ref, policy, signal)));
+    const prepared = await Promise.all(orderedRefs.map(ref => attachments.readImageRequest(ref, requestImageTarget(ref, budget), signal)));
     const versions = new Map();
     for (const [index, ref] of orderedRefs.entries()) {
         versions.set(ref.attachmentId, prepared[index]);
@@ -100,11 +104,27 @@ function toolsOf(options) {
         parameters: tool.parameters,
     }));
 }
+/**
+ * Select the pi-ai `systemPrompt` source shared by both conversion paths.
+ * `options.system` wins when defined and every history message converts,
+ * including a leading `system` message, which then folds into a `user`
+ * message. Otherwise a leading `system` history message supplies the prompt
+ * and leaves the converted history; empty leading text sends no prompt.
+ */
+function splitSystemPrompt(options) {
+    if (options.system !== undefined)
+        return { systemPrompt: options.system, messages: options.messages };
+    const [first, ...rest] = options.messages;
+    if (first?.role !== 'system')
+        return { systemPrompt: undefined, messages: options.messages };
+    const text = flattenText(first);
+    return { systemPrompt: text.length > 0 ? text : undefined, messages: rest };
+}
 /** Assemble the request-level pi-ai context envelope shared by both conversion paths. */
-function piContext(options, messages) {
+function piContext(systemPrompt, options, messages) {
     const tools = toolsOf(options);
     return {
-        ...options.system !== undefined ? { systemPrompt: options.system } : {},
+        ...systemPrompt !== undefined ? { systemPrompt } : {},
         messages,
         ...tools !== undefined && tools.length > 0 ? { tools } : {},
     };
@@ -118,13 +138,17 @@ function appendAssistant(message, messages, toolNames, onReplayDegrade) {
     messages.push(assistant);
 }
 function textOnlyContext(options, onReplayDegrade) {
+    assertSupportedImageRoles(options.messages);
+    const split = splitSystemPrompt(options);
     const toolNames = new Map();
     const messages = [];
-    for (const message of options.messages) {
+    for (const message of split.messages) {
         if (contentHasImage(message.content)) {
             throw new LlmError('pi-ai image conversion requires the durable attachment service', 'UNSUPPORTED_CONTENT');
         }
         if (message.role === 'system') {
+            // pi-ai has a single systemPrompt slot; a system message that did not
+            // supply it folds into a user message to preserve order.
             messages.push({ role: 'user', content: flattenText(message), timestamp: 0 });
             continue;
         }
@@ -150,7 +174,11 @@ function textOnlyContext(options, onReplayDegrade) {
             });
         }
     }
-    return piContext(options, messages);
+    return piContext(split.systemPrompt, options, messages);
+}
+/** Deterministic request target for one source under the route budgets. */
+function requestImageTarget(ref, budget) {
+    return { ...requestImageDimensions(ref.width, ref.height, budget.maxPixels), maxBytes: budget.maxBytes };
 }
 export function toPiContext(options, images, onReplayDegrade) {
     return images === undefined
@@ -164,28 +192,21 @@ async function toPiContextWithImages(options, images, onReplayDegrade) {
         maxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
     };
     assertSupportedImageRoles(options.messages);
-    const requestMessages = offloadRequestImagesWithPolicy(options.messages, {
-        representation: 'base64',
-        ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
-        byteQuantum: 1,
-        byteLength: ref => Math.min(ref.bytes, requestImagePolicy.maxBytes),
-        placeholder: ref => offloadedImageText(ref, resolveImageAccess(ref)),
-    });
-    const requestImages = await prepareRequestImages(requestMessages, attachments, requestImagePolicy, options.signal);
-    const exactMessages = offloadRequestImagesWithPolicy(requestMessages, {
-        representation: 'base64',
-        ...maxRequestImageBytes === undefined ? {} : { maxBytes: maxRequestImageBytes },
-        byteQuantum: 1,
-        byteLength: ref => requestImages.get(ref.attachmentId).bytes,
-        placeholder: ref => offloadedImageText(ref, resolveImageAccess(ref)),
-    });
+    const split = splitSystemPrompt(options);
+    const requestImages = await prepareRequestImages(split.messages, attachments, requestImagePolicy, options.signal);
+    if (maxRequestImageBytes !== undefined) {
+        const offloadImages = requiredImageOffload(split.messages, { representation: 'base64', maxBytes: maxRequestImageBytes }, block => requestImages.get(block.attachment.attachmentId).bytes);
+        if (offloadImages > 0) {
+            throw new LlmError(`pi-ai request images exceed the ${maxRequestImageBytes}-byte base64 bound; ${offloadImages} more oldest occurrence(s) must be offloaded.`, IMAGE_OFFLOAD_REQUIRED_CODE, { offloadImages });
+        }
+    }
+    const exactMessages = projectOffloadedImages(split.messages, ref => offloadedImageText(ref, resolveImageAccess(ref)));
     const toolNames = new Map();
     const messages = [];
     for (const message of exactMessages) {
         if (message.role === 'system') {
-            // pi-ai has a single systemPrompt slot; in-history system messages are
-            // folded into user messages to preserve order (rare in practice — the
-            // harness sends the system prompt via options.system).
+            // pi-ai has a single systemPrompt slot; a system message that did not
+            // supply it folds into a user message to preserve order.
             messages.push({ role: 'user', content: flattenText(message), timestamp: 0 });
             continue;
         }
@@ -214,5 +235,5 @@ async function toPiContextWithImages(options, images, onReplayDegrade) {
             });
         }
     }
-    return piContext(options, messages);
+    return piContext(split.systemPrompt, options, messages);
 }

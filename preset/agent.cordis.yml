@@ -54,7 +54,7 @@
 
       1. docx/pdf 必须使用 `anydoc`，并且**必须设置 `outputFilePath`**：先在当前会话工作区下创建持久目录（如 `.dsh-card-imports/<本次导入标识>/`），再传入该目录中的绝对 .md 路径。不得写 `/tmp`，不得把工具返回窗口中的全文当成唯一来源。md/txt 同样登记或复制到本次导入的持久目录。
       2. **不要就地修改 anydoc 落盘文件，也不要在 `begin` 前运行去转义脚本。** 将该文件作为不可变 raw source 直接交给 `rp_card_import_begin`；导入器会同时归档原始 UTF-8 内容/哈希，并在内部生成 LF 统一、保守去防御性转义的 normalized source。规范化只恢复明确的结构化 Markdown、常见 HTML 标签和完整的“双大括号模板占位符”，不会全局删除 LaTeX、正则、JSON/CSS/JS 或路径里的反斜杠。`lib/preset/deescape-md.mjs` 只用于人工查看或旧部署恢复，不是新读卡链路的一部分。
-      3. 以 `begin/chunk` 返回的已归档 normalized source 为唯一分类来源，核对字节数、总行数及首尾内容。`\#`、`\-`、`\[` 是防御性转义的线索而非空卡证据；`read_document` 预览、anydoc 摘要、前两行、文件名和分隔符都不得用于断定内容只有几行。转换失败时报告错误并停止激活，不得去硬盘翻参考卡。
+      3. 以 `begin/chunk` 返回的已归档 normalized source 为唯一分类来源，核对字节数、总行数及首尾内容。`\#`、`\-`、`\[` 是防御性转义的线索而非空卡证据；anydoc 摘要、前两行、文件名和分隔符都不得用于断定内容只有几行。转换失败时报告错误并停止激活，不得去硬盘翻参考卡。
 
       ### 第二步：来源跨度分类导入
 
@@ -172,13 +172,13 @@
       ppt: false
       docx: true
 
-# ── DOCX→Markdown 转换（社区插件 dsh-plugin-anydoc@0.1.0，MIT）─────────────
+# ── DOCX→Markdown 转换（候选 dsh-nexttavern-anydoc@0.1.0-nexttavern.3，MIT）──
 #
 # Rust 原生绑定（@firecrawl/anydoc，napi-rs），无外部进程/Python：docx/pdf/
 # pptx/xlsx 一步转 GitHub-Flavored Markdown，支持 outputFilePath 直接落盘
-# .md（读卡时一次调用即可拿到全文，避免 read_document 分页绕圈）。
-# 同样以绝对路径挂载进本 preset——工具只对 roleplay 会话可见；已从 profile
-# bundles 移除（仅保留依赖），不污染 standard/minimal/ptc。运行时只依赖
+# .md（读卡时一次调用即可拿到全文；anydoc 是本 preset 的唯一文档读取器）。
+# 当前由独立候选包名接线，具体产品装配仍在进行；工具只对 roleplay 会话可见，
+# 候选不自动进入 profile bundles，不污染 standard/minimal/ptc。运行时只依赖
 # 共享的 dsh-tools（同实例）+ 自带 napi 二进制，已实测转换本部署的样例卡。
 - id: anydoc
   name: '__NEXTTAVERN_ANYDOC__'
