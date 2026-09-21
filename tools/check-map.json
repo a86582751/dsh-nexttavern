@@ -2117,6 +2117,38 @@
       "source": ".gitignore"
     },
     {
+      "id": "compat-session-projection-types-ts",
+      "source": "development/session-projection/src/types.ts"
+    },
+    {
+      "id": "compat-session-projection-types-js",
+      "source": "development/session-projection/lib/types.js"
+    },
+    {
+      "id": "compat-session-projection-index-ts",
+      "source": "development/session-projection/src/index.ts"
+    },
+    {
+      "id": "compat-session-projection-index-js",
+      "source": "development/session-projection/lib/index.js"
+    },
+    {
+      "id": "compat-session-projection-package-json",
+      "source": "development/session-projection/package.json"
+    },
+    {
+      "id": "compat-session-projection-origin-json",
+      "source": "development/session-projection/ORIGIN.json"
+    },
+    {
+      "id": "compat-session-projection-license",
+      "source": "development/session-projection/LICENSE"
+    },
+    {
+      "id": "compat-session-projection-license-upstream",
+      "source": "development/session-projection/LICENSE.upstream"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -6682,6 +6714,32 @@
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-projection.mts"
+      ]
+    },
+    {
+      "id": "compat-session-projection-types-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-projection-types-js",
+      "entry": "development/session-projection/src/types.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-projection/src/types.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-projection-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-projection-index-js",
+      "entry": "development/session-projection/src/index.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-projection/src/index.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     },
     {

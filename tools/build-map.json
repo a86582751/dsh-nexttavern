@@ -1783,6 +1783,24 @@
       ]
     },
     {
+      "artifact": "compat-session-projection-types-js",
+      "source": "development/session-projection/src/types.ts",
+      "banner": "runtime/alpha3/compat/session-projection/src/types.ts",
+      "primaryOutput": "development/session-projection/lib/types.js",
+      "outputs": [
+        "development/session-projection/lib/types.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-projection-index-js",
+      "source": "development/session-projection/src/index.ts",
+      "banner": "runtime/alpha3/compat/session-projection/src/index.ts",
+      "primaryOutput": "development/session-projection/lib/index.js",
+      "outputs": [
+        "development/session-projection/lib/index.js"
+      ]
+    },
+    {
       "artifact": "compat-anydoc-lib-index-js",
       "source": "development/anydoc/src/index.ts",
       "banner": "runtime/alpha3/compat/anydoc/src/index.ts",

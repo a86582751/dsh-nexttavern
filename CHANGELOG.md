@@ -2,6 +2,8 @@
 
 ## 0.3 development — 2026-09-21
 
+- Added the unpublished owned projection candidate under `development/session-projection/`. It preserves inherited-prefix metadata and avoids historical scans on caught-up reads with either public history API. Package-only strict checks cover old and candidate host declarations; ten focused maintenance telemetry cases are covered. Complete target-host compatibility remains open: Session events, recovery, Controller and client protocols also changed. This candidate is not wired into the product, and supported runtime versions remain unchanged.
+
 - Added fixed-package preparation and a bundled-runtime bootstrap candidate. Independently named private dependencies are verified before loading, share host peers and prepare versioned file references without running pnpm inside the loading host. Ten preparation cases, the existing transaction regression and a real npm/pnpm bootstrap lifecycle case passed locally. The latter covers later skin installation, root upgrade, relinking and retained inactive libraries on root removal. Alpha.3 CLI lacks the cooperative profile lock, so automatic startup wiring and complete target-host acceptance remain pending; this is not a complete one-command product installer.
 
 - Added an explicit offline npm/pnpm packaging test with three synthetic-package cases: tarball-relative `file:` fails as a portable dependency; bundled children survive unrelated installs, forced relinking and explicit downgrade; existing external fixed-package references retain their hashes, shared peer and lock resolution. These are packaging mechanism checks, not full DSH installation or failed-upgrade rollback acceptance. The test requires existing npm/pnpm JavaScript CLI paths and does not install Harness.
