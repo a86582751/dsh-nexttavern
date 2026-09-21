@@ -45,7 +45,7 @@ export function composition(ctx: Context): CompositionState {
   const previous = states.get(tree)
   if (previous?.applying) return previous
   const fingerprint = JSON.stringify(patches)
-  if (previous?.patches === fingerprint) return previous
+  if (previous && previous.patches === fingerprint) return previous
   const plan = capture(ctx, patches)
   const state = previous ?? {plan, restoring: false, applying: false, patches: fingerprint,
     nativeFibers: new Set<Fiber>(), queue: Promise.resolve()}
@@ -67,11 +67,20 @@ export function productWanted(ctx: Context, state: CompositionState): boolean {
 
 /** Used only on the official provider rows declared by this product bundle. */
 export function nativeProviderDisabled(ctx: Context): boolean {
-  const entry = loaderEntry(ctx)
-  const state = composition(ctx)
+  // Loader evaluates an ancestor's disabled expression against each child's
+  // context. A preset's persona row is not the provider the expression owns.
+  let entry: Entry | undefined = loaderEntry(ctx)
+  while (entry) {
+    const disabled = entry.options.disabled as unknown
+    if (disabled && typeof disabled === 'object' && '__jsExpr' in disabled
+      && disabled.__jsExpr === providerDisabledExpression) break
+    entry = entry.parent.ctx.fiber.entry
+  }
+  if (!entry) throw Error('NextTavern provider policy has no owning entry')
+  const state = composition(entry.ctx)
   const original = state.plan.provider({id: entry.options.id, module: entry.options.name})
   if (!original) throw Error(`NextTavern cannot find original provider ${entry.options.id}`)
-  if (!state.restoring && productWanted(ctx, state)) {
+  if (!state.restoring && productWanted(entry.ctx, state)) {
     if (entry.fiber) state.nativeFibers.add(entry.fiber)
     return true
   }
@@ -81,8 +90,7 @@ export function nativeProviderDisabled(ctx: Context): boolean {
 /** Resolve from the profile anchor: the caller must use the installed product. */
 export const providerDisabledExpression = [
   '(() => {',
-  '  const entry = ctx[Symbol.for("cordis.entry")];',
-  '  const anchor = new URL("package.json", entry.parent.tree.ctx.baseUrl);',
+  '  const anchor = process.getBuiltinModule("node:path").join(ctx.profileContext.dir, "package.json");',
   '  const require = process.getBuiltinModule("node:module").createRequire(anchor);',
   '  return require("dsh-nexttavern/entry-policy").nativeProviderDisabled(ctx);',
   '})()',

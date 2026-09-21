@@ -2270,6 +2270,24 @@
       ]
     },
     {
+      "artifact": "compat-presets-lib-index-js",
+      "source": "development/presets/src/index.ts",
+      "banner": "runtime/alpha3/compat/presets/src/index.ts",
+      "primaryOutput": "development/presets/lib/index.js",
+      "outputs": [
+        "development/presets/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-presets-lib-composition-js",
+      "source": "development/presets/src/composition.ts",
+      "banner": "runtime/alpha3/compat/presets/src/composition.ts",
+      "primaryOutput": "development/presets/lib/composition.js",
+      "outputs": [
+        "development/presets/lib/composition.js"
+      ]
+    },
+    {
       "artifact": "nexttavern-entry-policy",
       "source": "src/operations/nexttavern-entry-policy.mts",
       "banner": "runtime/alpha3/src/operations/nexttavern-entry-policy.mts",

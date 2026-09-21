@@ -1,0 +1,3 @@
+# A package specifier survives the official copy-to-user-preset operation.
+- id: nexttavern-roleplay-composition
+  name: dsh-nexttavern-presets/composition

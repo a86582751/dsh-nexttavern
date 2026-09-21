@@ -372,7 +372,8 @@
         "plugin-native-lifecycle*",
         "nexttavern-lifecycle*",
         "plugin-profile-plan*",
-        "plugin-product-entry*"
+        "plugin-product-entry*",
+        "plugin-product-preset*"
       ]
     }
   ],
@@ -3362,6 +3363,46 @@
         "nexttavern-lifecycle-typescript",
         "nexttavern-lifecycle",
         "test-temp-helper-typescript",
+        "plugin-product-entry-fixture-test",
+        "typescript-config",
+        "inventory-runtime-alpha3-build-tools-package-json",
+        "inventory-runtime-alpha3-build-tools-package-lock-json"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000
+    },
+    {
+      "id": "test:plugin-product-preset.test.mts",
+      "action": "test",
+      "artifact": "plugin-product-preset-contract",
+      "modules": [
+        "plugin-product-control"
+      ],
+      "inputs": [
+        "compat-presets-src-index-ts",
+        "compat-presets-lib-index-js",
+        "compat-presets-src-composition-ts",
+        "compat-presets-lib-composition-js",
+        "compat-presets-package-json",
+        "compat-presets-license",
+        "preset-catalog-roleplay-agent-cordis",
+        "preset-catalog-roleplay-preset",
+        "roleplay-preset",
+        "test-temp-helper-typescript",
+        "plugin-product-entry-fixture-test",
+        "nexttavern-entry-typescript",
+        "nexttavern-entry",
+        "nexttavern-entry-policy-typescript",
+        "nexttavern-entry-policy",
+        "nexttavern-profile-plan-typescript",
+        "nexttavern-profile-plan",
+        "nexttavern-lifecycle-typescript",
+        "nexttavern-lifecycle",
         "typescript-config",
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json"

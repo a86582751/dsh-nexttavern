@@ -1473,6 +1473,14 @@
       "source": "preset/preset.yml"
     },
     {
+      "id": "preset-catalog-roleplay-agent-cordis",
+      "source": "preset/catalog/roleplay/agent.cordis.yml"
+    },
+    {
+      "id": "preset-catalog-roleplay-preset",
+      "source": "preset/catalog/roleplay/preset.yml"
+    },
+    {
       "id": "ask-user-decision-pr",
       "source": "lib/core/ask-user-decision-pr.js"
     },
@@ -2597,6 +2605,30 @@
       "source": "lib/operations/nexttavern-profile-plan.mjs"
     },
     {
+      "id": "compat-presets-src-index-ts",
+      "source": "development/presets/src/index.ts"
+    },
+    {
+      "id": "compat-presets-src-composition-ts",
+      "source": "development/presets/src/composition.ts"
+    },
+    {
+      "id": "compat-presets-lib-index-js",
+      "source": "development/presets/lib/index.js"
+    },
+    {
+      "id": "compat-presets-lib-composition-js",
+      "source": "development/presets/lib/composition.js"
+    },
+    {
+      "id": "compat-presets-package-json",
+      "source": "development/presets/package.json"
+    },
+    {
+      "id": "compat-presets-license",
+      "source": "development/presets/LICENSE"
+    },
+    {
       "id": "nexttavern-entry-policy-typescript",
       "source": "src/operations/nexttavern-entry-policy.mts"
     },
@@ -2823,6 +2855,14 @@
     {
       "id": "plugin-product-entry-contract",
       "source": "tests/plugin-product-entry.test.mts"
+    },
+    {
+      "id": "plugin-product-entry-fixture-test",
+      "source": "tests/plugin-product-entry-fixture.mts"
+    },
+    {
+      "id": "plugin-product-preset-contract",
+      "source": "tests/plugin-product-preset.test.mts"
     },
     {
       "id": "quality-registry",
@@ -8239,6 +8279,32 @@
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/nexttavern-lifecycle.mts"
+      ]
+    },
+    {
+      "id": "compat-presets-index-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-presets-lib-index-js",
+      "entry": "development/presets/src/index.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/presets/src/index.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-presets-composition-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-presets-lib-composition-js",
+      "entry": "development/presets/src/composition.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/presets/src/composition.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     },
     {

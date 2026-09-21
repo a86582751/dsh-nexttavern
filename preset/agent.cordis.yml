@@ -120,10 +120,11 @@
 - id: skill-filesystem
   name: '@deepseek-ai/dsh-skill-filesystem'
   config:
-    # 注：preset 目录本身不在技能发现根内，这里显式指向本 preset 的 skills 目录。
-    # 路径与 $DSH_HOME 绑定（本部署固定为 DSH_HOME）。
+    # 官方相对技能路径基于进程 cwd；从本 composition URL 解析才能支持任意安装位置。
+    # 用户复制 catalog 预设时仍经 package composition 加载此文件，技能根保持随包路径。
     customSkillDirs:
-      - __NEXTTAVERN_PRESET__/skills
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/',
+        baseUrl))"
 
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'
@@ -157,12 +158,10 @@
 
 # ── DOCX 导出（社区插件 @huiliyi37/dsh-office@0.2.2，Apache-2.0）────────────
 #
-# 以绝对文件路径挂载 profile 安装的 dsh-office（preset 的裸包名解析不到
-# profile 的 node_modules）。仅启用 docx 族（docx_create/docx_read），
+# 通过产品私有依赖图解析 dsh-office。仅启用 docx 族（docx_create/docx_read），
 # 工具只注册在本 preset 的作用域层——standard/minimal/ptc 的工具表不受影响。
-# 依赖 @deepseek-ai/dsh-tools@0.1.2-alpha.3 已由 profile 显式安装（与本
-# harness 同版本，避免双副本版本错配）。docx_create 供模型把整理好的小说稿
-# 直接写成 Word 文档（LLM 参与整理的导出路径）。
+# 发行装配必须复用宿主的 dsh-tools 实例；alpha.6 的真实 office 兼容性仍待验收。
+# docx_create 供模型把整理好的小说稿直接写成 Word 文档。
 - id: dsh-office
   name: '__NEXTTAVERN_OFFICE__'
   config:
