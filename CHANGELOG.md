@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3 development — 2026-09-21
+
+- Public repository updates resume alongside maintenance development. Repository commits are development snapshots; the latest downloadable release remains 0.2.5. No 0.3 tag, release assets or npm publication accompanies this code sync.
+- The source-layout, module-cohesion and scoped validation work below is ready for contributor review. The next milestone is one complete NextTavern plugin entry with reliable install, enable/disable, upgrade and uninstall behavior.
+- Controller, usage/projection and pi-ai compatibility implementations have focused maintenance tests, but are not yet wired into this public package. UI migration, roleplay-only third-party ownership, formal fork delta synchronization, dependency protection and full fresh-install/migration testing remain open. The single-command installation goal is not yet a supported 0.3 installation path.
+- `provenance.json` describes the last built package snapshot; later repository commits may update source or documentation. Release provenance and installation assets will be regenerated together for the completed release.
+
+## 0.3.0-rc.1 - unpublished layout candidate
+
+- Separate maintained TS/MTS in `src/` from generated JS/MJS in `lib/`, including the Auth and skin packages. Ship the complete strict-build source closure and a generated `tools/build-map.json`; see [Contributing](CONTRIBUTING.md).
+- Keep the package name, root and `./client` exports, host injection, and the three `tools/install.mjs`, `tools/patch-harness.mjs`, `tools/public-access.mjs` commands. These commands forward to one implementation in `lib/operations`; retirement requires a separately announced breaking CLI version.
+- Internal deep paths change: `src/**/*.js` moves to the corresponding `lib/` tree; preset core and memory modules move to `preset/lib/core` and `preset/lib/memory`; Auth `index.js` moves to `lib/index.js`; the embedding dependency template moves from `src/memory/embedding-runtime` to `memory/embedding-runtime`. Consumers that bypass package exports must update their paths. Controlled Cordis paths are updated without changing plugin IDs or configuration semantics.
+- Preserve persistent schemas, append-only provenance and failure recovery. Upgrades remove obsolete receipt-owned files, reject edited managed files and preserve user-owned material. Cohesion and readability improvements separate record, presentation and lifecycle responsibilities without changing those behavior contracts.
+- This candidate's source is shared for development; its installation archives are not released. Existing installer links still describe the published 0.2.5 assets; candidate installers are bound to their own payload digest. Building Windows ARM64 and Linux artifacts does not establish real-device installation coverage.
+
 ## 0.2.5 Preview - 2026-09-16
 
 - Rebuild long-form memory around four pillars: a frozen settings prefix that is never compacted and is always injected; a hard-cut context window that keeps the most recent complete prose and preserves the tail when it advances; background director notes written by a separate background task, each carrying a source hash and a same-worldline anchor so provenance stays machine-checkable; and on-demand history recall in keyword (default), semantic and hybrid modes over player input plus valid story text, including archived and evicted prose. Status, tool output, CSS, decision cards and reasoning stay out of the corpus.

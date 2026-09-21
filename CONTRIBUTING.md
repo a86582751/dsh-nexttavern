@@ -1,59 +1,49 @@
 # Contributing
 
-Thanks for looking. This package ships both the TypeScript sources of its
-runtime and the JavaScript generated from them, so a change can be completed and
-checked here.
+This package carries TypeScript/MTS sources and their generated JavaScript/MJS so contributors can verify the files it ships. Its local mapping is `tools/build-map.json`; the quality registry and projection map are `tools/check-registry.json` and `tools/check-map.json`.
 
-## What is a source and what is generated
+## Source and generated files
 
 | Path | Meaning |
 | --- | --- |
-| `src/**/*.ts`, `preset/**/*.ts`, `integrations/**/*.ts` | Sources. Edit these. |
-| `src/**/*.js`, `preset/lib/*.js`, `lib/*.js`, `integrations/**/*.js` | Generated from the TypeScript beside them, or from the source named in their first line. |
-| `lib/client.js` | The browser bundle, built by `npm run build` from `src/client.js`. |
-| `provenance.json` | The record of the released build: every published file with its digest. It describes a release, so it is not expected to match a working tree. |
+| `src/core`, `src/memory`, `src/ui`, `src/operations` | Maintained TypeScript/MTS. Edit these. |
+| `lib/core`, `lib/memory`, `lib/ui`, `lib/operations` | Generated JavaScript/MJS mirrors. Do not hand-edit them. |
+| `integrations/auth-webserver/src/index.ts` → `integrations/auth-webserver/lib/index.js` | Auth source and generated entry. |
+| `skins/dsh-nexttavern-amber/src` → `skins/dsh-nexttavern-amber/lib` | Skin source and generated mirror. |
+| `lib/client.js` | Stable browser bundle, rebuilt by `npm run build`. |
+| `tools/COMPATIBILITY.md` | Generated list of legacy CLI forwarding entries. |
 
-Every generated file starts with `// Generated from <source>; edit the TypeScript source.`
-Change the source, run the build, and commit both.
+Generated modules carry a source banner. Legacy CLI forwarding entries load the mapped `lib/` implementation, so they do not create another stateful implementation.
 
-The browser client needs both commands: `npm run build:modules` produces
-`src/client.js` from `src/client.ts`, and `npm run build` bundles that into
-`lib/client.js`, which is the `./client` export. A change that reaches the client
-is not finished until `lib/client.js` is committed too.
-
-## Checks
+## Checks in this package
 
 ```sh
-npm ci --prefix build-tools     # the pinned toolchain: TypeScript, esbuild, acorn, yaml
-npm run check                   # every generated file matches its source
-npm test                        # the contract suites this package ships
-npm run build                   # rebuild lib/client.js
+npm ci --prefix build-tools --ignore-scripts --no-audit --no-fund
+npm ci --prefix integrations/auth-webserver --ignore-scripts --no-audit --no-fund
+
+# Default: inspect only current Git changes.
+npm run check
+npm run check -- file src/ui/client.ts
+npm run check -- module reader
+npm run check -- syntax src/ui/client.ts
+npm run check -- types
+npm run check -- tests
+npm run check -- release
+npm run check -- --plan
 ```
 
-`npm run check` fails on a hand-written `.js` sitting beside a `.ts` too: a file
-in a typed tree has to be explained by `tools/build-map.json` or by
-`provenance.json`.
+`syntax` proves parsing only. `types` uses the locked strict configuration without writing files. Generated checks reject stale or missing JS/MJS before success. `tests` selects registered lightweight suites. `release` explicitly runs the public tree's shippable lightweight tests, generated checks and bundle comparison; it does not perform a maintainer archive/install/Harness flow. Use `npm run check -- list` to see the public module IDs and aliases, and `--plan` before a costly command.
 
-Pull requests run the same commands, plus the optional Access integration's own
-test (`integrations/auth-webserver/test.mjs`). Generated files that do not match
-their sources fail the run: if you edited a `.js` by hand, edit the `.ts` and run
-`npm run build:modules` instead.
+`npm run build` rebuilds `lib/client.js`. Use `npm run build:modules` to regenerate mapped modules and legacy forwarding entries after editing TS/MTS. A change that reaches the browser client requires both steps and both affected outputs in the commit; rebuilding the TS modules alone does not update the `./client` export. The locked build-tools dependency set includes jsdom; `NEXTTAVERN_JSDOM` remains an override when a runner must point at another installed copy. Do not modify generated modules to make a check pass.
 
-An automated reviewer (CodeRabbit, configured in `.coderabbit.yaml`) also
-comments on pull requests, in Chinese. Its review is advice, not a gate: the
-checks above decide whether a change can merge, and a quiet reviewer is not the
-same as a passing run.
+The package does not carry every maintenance facility. A task that depends on a maintainer-only input is reported as `unsupported` and ends nonzero; it is never a green substitute. Candidate creation, maintainer release verification, fixed local Harness runs, deployment, tags and publication happen outside this package.
 
-## What the checks cannot cover here
+Check records live under `artifacts/checks/`. `--force` ignores a matching cached success; `resume` uses the previous or named record. Failed, interrupted, uncovered and unsupported records are not successful checks.
 
-The maintainer's tree holds further suites that need a running DeepSeek Harness,
-a Windows desktop, jsdom or the release chain itself (packaging, installers,
-patch application). If your change touches behaviour those suites exercise -
-turns and worldlines, memory, prompts, tasks, the reader - say how you verified
-it in the pull request, and expect a slower review.
+## What package checks cannot cover
+
+This public tree cannot prove a live DeepSeek Harness load, production deployment, target backup, service health, browser behaviour in every host, or publication. Describe the relevant validation and limits in a pull request. Automated review comments are advice and do not replace a passing command.
 
 ## Reporting
 
-Bugs and install problems have issue templates. Please say which Harness line
-(`0.1.2-alpha.3`), which operating system, and how you installed the package
-(Release tarball, one-click installer, npm).
+Bugs and install problems should include the Harness line (`0.1.2-alpha.3`), operating system and install method (Release tarball, one-click installer or npm).

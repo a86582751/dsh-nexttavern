@@ -4,6 +4,8 @@
 
 [简体中文](README.md) · **English**
 
+> **0.3 is in active development, with code updates published in this repository.** This tree includes the unpublished source-layout and module-cohesion refactor. Unified plugin installation, enable/disable and upgrade behavior are still being implemented and tested. A GitHub Release will follow when 0.3 is complete; installer links below still target **0.2.5**. See the [development notes and compatibility changes](CHANGELOG.md) and [contributor guide](CONTRIBUTING.md).
+
 **Let your characters think for themselves, and let the world unfold from your choices.**
 
 NextTavern is a long-form roleplay / Tavern plugin for DeepSeek Harness (DSH), with SillyTavern character-card compatibility, worldlines, long-term memory, and hybrid keyword + semantic retrieval. A character card, a sudden idea, one choice you refuse to compromise on — any of them can start a story. NextTavern brings the native agent loop to long-form roleplay: the agent looks things up on its own, keeps memory in order and reasons as individual characters, while you hold the direction.
