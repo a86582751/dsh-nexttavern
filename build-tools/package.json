@@ -81,13 +81,16 @@
     "@earendil-works/pi-ai": "0.85.1",
     "@firecrawl/anydoc": "0.2.4",
     "@modelcontextprotocol/sdk": "1.30.0",
+    "@types/mime-types": "3.0.1",
     "@types/node": "24.3.1",
     "@types/react": "19.1.12",
     "acorn": "8.15.0",
     "esbuild": "0.24.2",
+    "immer": "10.2.0",
     "jsdom": "29.1.1",
     "typescript": "5.9.3",
-    "yaml": "2.8.1"
+    "yaml": "2.8.1",
+    "zustand": "4.4.7"
   },
   "overrides": {
     "@deepseek-ai/dsh-acp": "0.1.6-alpha.2",
@@ -381,5 +384,8 @@
     "@deepseek-ai/dsh-workflow-ptc": "0.1.6-alpha.2",
     "@deepseek-ai/dsh-workspace": "0.1.6-alpha.2",
     "@deepseek-ai/dsh-workspace-changes": "0.1.6-alpha.2"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "4.0.9"
   }
 }

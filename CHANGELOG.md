@@ -2,6 +2,8 @@
 
 ## 0.3 development — 2026-09-22
 
+- Added immutable profile-generation planning for product assembly using the official alpha.6 readers. Removing the product's bundle layer preserves user disable choices, ancestor scope, configuration overlays and expressions. Two modules compile strictly and five native configuration cases pass; activation under the official manager lock and the unified entry remain unimplemented.
+
 - Migrated live business history to public observations plus an incremental event ledger, with awaited readiness, cancellation, instance isolation and shared-mount disposal. Fork ownership uses `inheritedEventCount`; cold telemetry observes restored histories without recharging inherited calls. Seven native cases, one affected Controller case and thirteen business suites passed within their recorded limits. Full roleplay Agent, browser, unified installation and lifecycle acceptance remain pending.
 
 - Migrated owned surface replacement producers and readers to the alpha.6 `startSeq/endSeq` contract, covering compaction, context windows, card research and task retirement. Host-derived types replace duplicated loose field declarations. Four native cases verify successful/rejected/cancelled writes, JSONL replay and pricing; affected business regressions and strict compilation passed. These loaded-view tests do not prove full Agent or product compatibility; the subsequent live-history stage is recorded above.

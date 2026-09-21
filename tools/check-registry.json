@@ -370,7 +370,8 @@
         "plugin-manager-inputs*",
         "plugin-product-state*",
         "plugin-native-lifecycle*",
-        "nexttavern-lifecycle*"
+        "nexttavern-lifecycle*",
+        "plugin-profile-plan*"
       ]
     }
   ],
@@ -3309,6 +3310,31 @@
         "tavern-task-retirement",
         "card-adaptation-context-typescript",
         "card-adaptation-context"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000
+    },
+    {
+      "id": "test:plugin-profile-plan.test.mts",
+      "action": "test",
+      "artifact": "plugin-profile-plan-contract",
+      "modules": [
+        "plugin-product-control"
+      ],
+      "inputs": [
+        "nexttavern-profile-plan-typescript",
+        "nexttavern-profile-plan",
+        "nexttavern-lifecycle-typescript",
+        "nexttavern-lifecycle",
+        "test-temp-helper-typescript",
+        "typescript-config",
+        "inventory-runtime-alpha3-build-tools-package-json",
+        "inventory-runtime-alpha3-build-tools-package-lock-json"
       ],
       "depends": [
         "generated"

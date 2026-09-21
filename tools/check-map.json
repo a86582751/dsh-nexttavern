@@ -2589,6 +2589,14 @@
       "source": "lib/operations/nexttavern-lifecycle.mjs"
     },
     {
+      "id": "nexttavern-profile-plan-typescript",
+      "source": "src/operations/nexttavern-profile-plan.mts"
+    },
+    {
+      "id": "nexttavern-profile-plan",
+      "source": "lib/operations/nexttavern-profile-plan.mjs"
+    },
+    {
       "id": "compat-anydoc-src-document-reader-ts",
       "source": "development/anydoc/src/document-reader.ts"
     },
@@ -2791,6 +2799,10 @@
     {
       "id": "plugin-session-history-contract",
       "source": "tests/plugin-session-history.test.mts"
+    },
+    {
+      "id": "plugin-profile-plan-contract",
+      "source": "tests/plugin-profile-plan.test.mts"
     },
     {
       "id": "quality-registry",
@@ -8193,6 +8205,20 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "nexttavern-profile-plan-typed-build",
+      "kind": "typescript-module",
+      "artifact": "nexttavern-profile-plan",
+      "entry": "src/operations/nexttavern-profile-plan.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/operations/nexttavern-profile-plan.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/nexttavern-lifecycle.mts"
       ]
     },
     {

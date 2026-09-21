@@ -2261,6 +2261,15 @@
       ]
     },
     {
+      "artifact": "nexttavern-profile-plan",
+      "source": "src/operations/nexttavern-profile-plan.mts",
+      "banner": "runtime/alpha3/src/operations/nexttavern-profile-plan.mts",
+      "primaryOutput": "lib/operations/nexttavern-profile-plan.mjs",
+      "outputs": [
+        "lib/operations/nexttavern-profile-plan.mjs"
+      ]
+    },
+    {
       "artifact": "compat-anydoc-lib-document-reader-js",
       "source": "development/anydoc/src/document-reader.ts",
       "banner": "runtime/alpha3/compat/anydoc/src/document-reader.ts",
