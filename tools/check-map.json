@@ -1573,6 +1573,34 @@
       "source": "src/operations/test-temp.mts"
     },
     {
+      "id": "compat-anydoc-src-index-ts",
+      "source": "development/anydoc/src/index.ts"
+    },
+    {
+      "id": "compat-anydoc-src-normalize-markdown-ts",
+      "source": "development/anydoc/src/normalize-markdown.ts"
+    },
+    {
+      "id": "compat-anydoc-lib-index-js",
+      "source": "development/anydoc/lib/index.js"
+    },
+    {
+      "id": "compat-anydoc-lib-normalize-markdown-js",
+      "source": "development/anydoc/lib/normalize-markdown.js"
+    },
+    {
+      "id": "compat-anydoc-package-json",
+      "source": "development/anydoc/package.json"
+    },
+    {
+      "id": "compat-anydoc-notice",
+      "source": "development/anydoc/NOTICE.md"
+    },
+    {
+      "id": "compat-anydoc-license",
+      "source": "development/anydoc/LICENSE"
+    },
+    {
       "id": "public-agent-instructions",
       "source": "AGENTS.md"
     },
@@ -6601,6 +6629,33 @@
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-projection.mts"
+      ]
+    },
+    {
+      "id": "compat-anydoc-index-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-anydoc-lib-index-js",
+      "entry": "development/anydoc/src/index.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/anydoc/src/index.ts",
+        "development/anydoc/src/normalize-markdown.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-anydoc-normalize-markdown-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-anydoc-lib-normalize-markdown-js",
+      "entry": "development/anydoc/src/normalize-markdown.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/anydoc/src/normalize-markdown.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     }
   ],

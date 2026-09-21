@@ -73,6 +73,7 @@
     "@deepseek-ai/dsh-workspace": "0.1.2-alpha.3",
     "@deepseek-ai/schemastery": "3.18.2",
     "@earendil-works/pi-ai": "0.84.4",
+    "@firecrawl/anydoc": "0.1.8",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@types/node": "24.3.1",
     "@types/react": "19.1.12",

@@ -1763,6 +1763,24 @@
       "outputs": [
         "lib/operations/quality-projection.mjs"
       ]
+    },
+    {
+      "artifact": "compat-anydoc-lib-index-js",
+      "source": "development/anydoc/src/index.ts",
+      "banner": "runtime/alpha3/compat/anydoc/src/index.ts",
+      "primaryOutput": "development/anydoc/lib/index.js",
+      "outputs": [
+        "development/anydoc/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-anydoc-lib-normalize-markdown-js",
+      "source": "development/anydoc/src/normalize-markdown.ts",
+      "banner": "runtime/alpha3/compat/anydoc/src/normalize-markdown.ts",
+      "primaryOutput": "development/anydoc/lib/normalize-markdown.js",
+      "outputs": [
+        "development/anydoc/lib/normalize-markdown.js"
+      ]
     }
   ],
   "bundles": [
