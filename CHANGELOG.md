@@ -2,6 +2,8 @@
 
 ## 0.3 development — 2026-09-21
 
+- Added `development/llm-pi-ai/`, an unpublished adapter candidate for the existing `0.1.2-alpha.3` host. Ordinary, roleplay and headless requests use one maintained pi-ai SDK, while request snapshots, credentials, settings-conflict recovery and native DeepSeek routes retain their boundaries. The candidate removes the previous session-mode transport split. It is not yet connected to the product; dependency assembly, formal-fork synchronization and complete lifecycle acceptance remain open.
+
 - Added the unpublished owned projection candidate under `development/session-projection/`. It preserves inherited-prefix metadata and avoids historical scans on caught-up reads with either public history API. Package-only strict checks cover current and newer host declarations; ten focused maintenance telemetry cases are covered. The newer-host investigation is reference only: no host upgrade is planned or required by the current task. Implementation remains on `0.1.2-alpha.3`. This candidate is not wired into the product.
 
 - Added fixed-package preparation and a bundled-runtime bootstrap candidate. Independently named private dependencies are verified before loading, share host peers and prepare versioned file references without running pnpm inside the loading host. Ten preparation cases, the existing transaction regression and a real npm/pnpm bootstrap lifecycle case passed locally. The latter covers later skin installation, root upgrade, relinking and retained inactive libraries on root removal. Alpha.3 CLI lacks the cooperative profile lock, so automatic startup wiring and complete target-host acceptance remain pending; this is not a complete one-command product installer.

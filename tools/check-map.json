@@ -2149,6 +2149,114 @@
       "source": "development/session-projection/LICENSE.upstream"
     },
     {
+      "id": "compat-llm-pi-ai-adapter-ts",
+      "source": "development/llm-pi-ai/src/adapter.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-adapter-js",
+      "source": "development/llm-pi-ai/lib/adapter.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-auth-ts",
+      "source": "development/llm-pi-ai/src/auth.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-auth-js",
+      "source": "development/llm-pi-ai/lib/auth.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-catalog-ts",
+      "source": "development/llm-pi-ai/src/catalog.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-catalog-js",
+      "source": "development/llm-pi-ai/lib/catalog.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-config-ts",
+      "source": "development/llm-pi-ai/src/config.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-config-js",
+      "source": "development/llm-pi-ai/lib/config.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-context-ts",
+      "source": "development/llm-pi-ai/src/context.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-context-js",
+      "source": "development/llm-pi-ai/lib/context.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-discovery-ts",
+      "source": "development/llm-pi-ai/src/discovery.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-discovery-js",
+      "source": "development/llm-pi-ai/lib/discovery.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-index-ts",
+      "source": "development/llm-pi-ai/src/index.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-index-js",
+      "source": "development/llm-pi-ai/lib/index.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-login-ts",
+      "source": "development/llm-pi-ai/src/login.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-login-js",
+      "source": "development/llm-pi-ai/lib/login.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-provider-ts",
+      "source": "development/llm-pi-ai/src/provider.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-provider-js",
+      "source": "development/llm-pi-ai/lib/provider.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-replay-ts",
+      "source": "development/llm-pi-ai/src/replay.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-replay-js",
+      "source": "development/llm-pi-ai/lib/replay.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-stream-ts",
+      "source": "development/llm-pi-ai/src/stream.ts"
+    },
+    {
+      "id": "compat-llm-pi-ai-stream-js",
+      "source": "development/llm-pi-ai/lib/stream.js"
+    },
+    {
+      "id": "compat-llm-pi-ai-package-json",
+      "source": "development/llm-pi-ai/package.json"
+    },
+    {
+      "id": "compat-llm-pi-ai-origin-json",
+      "source": "development/llm-pi-ai/ORIGIN.json"
+    },
+    {
+      "id": "compat-llm-pi-ai-license",
+      "source": "development/llm-pi-ai/LICENSE"
+    },
+    {
+      "id": "compat-llm-pi-ai-license-upstream",
+      "source": "development/llm-pi-ai/LICENSE.upstream"
+    },
+    {
+      "id": "compat-llm-pi-ai-notice",
+      "source": "development/llm-pi-ai/NOTICE"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -6737,6 +6845,160 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "development/session-projection/src/index.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-adapter-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-adapter-js",
+      "entry": "development/llm-pi-ai/src/adapter.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/adapter.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-auth-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-auth-js",
+      "entry": "development/llm-pi-ai/src/auth.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/auth.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-catalog-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-catalog-js",
+      "entry": "development/llm-pi-ai/src/catalog.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/catalog.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-config-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-config-js",
+      "entry": "development/llm-pi-ai/src/config.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/config.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-context-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-context-js",
+      "entry": "development/llm-pi-ai/src/context.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/context.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-discovery-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-discovery-js",
+      "entry": "development/llm-pi-ai/src/discovery.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/discovery.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-index-js",
+      "entry": "development/llm-pi-ai/src/index.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/index.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-login-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-login-js",
+      "entry": "development/llm-pi-ai/src/login.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/login.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-provider-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-provider-js",
+      "entry": "development/llm-pi-ai/src/provider.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/provider.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-replay-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-replay-js",
+      "entry": "development/llm-pi-ai/src/replay.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/replay.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-pi-ai-stream-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-pi-ai-stream-js",
+      "entry": "development/llm-pi-ai/src/stream.ts",
+      "typeContext": "pi-ai",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm-pi-ai/src/stream.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json"

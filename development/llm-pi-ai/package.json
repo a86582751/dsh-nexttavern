@@ -1,0 +1,39 @@
+{
+  "name": "dsh-nexttavern-llm-pi-ai",
+  "description": "NextTavern maintained pi-ai adapter candidate; not an upstream release",
+  "version": "0.3.0-dev.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./config": "./lib/config.js"
+  },
+  "files": [
+    "src",
+    "lib",
+    "LICENSE",
+    "LICENSE.upstream",
+    "ORIGIN.json",
+    "NOTICE"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-attachment": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-authorization": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-credentials": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-fs": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-invariants": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-launch-environment": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-llm": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-settings": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-timeout": "0.1.2-alpha.3"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-brand": "0.1.2-alpha.3",
+    "@deepseek-ai/dsh-util-values": "0.1.2-alpha.3",
+    "@deepseek-ai/schemastery": "3.18.2",
+    "dsh-nexttavern-pi-ai": "0.3.0-dev.0"
+  },
+  "private": true
+}

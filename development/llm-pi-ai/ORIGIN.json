@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "package": "dsh-nexttavern-llm-pi-ai",
+  "upstreamPackage": "@deepseek-ai/dsh-llm-pi-ai",
+  "upstreamVersion": "0.1.2-alpha.3",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "dd6322d604e00eec1ba5e0c8541159906a21094a",
+  "license": "MIT",
+  "files": [
+    {
+      "source": "src/adapter.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/adapter.ts",
+      "upstreamSha256": "c642278f425462b6252c2c6216a447ab1e8798d4815c25a71df94949ae68a4f3"
+    },
+    {
+      "source": "src/auth.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/auth.ts",
+      "upstreamSha256": "50fbdd55f60a95bdc256edfbc2686a3d96e108b3b9d4a441c9649a2870ef9fee"
+    },
+    {
+      "source": "src/catalog.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/catalog.ts",
+      "upstreamSha256": "62c93f73e0321194a44556d82c7af6ae6f6a3b328762ab0432604e67b5d2893e"
+    },
+    {
+      "source": "src/config.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/config.ts",
+      "upstreamSha256": "d3fb99b5b65ae926d21d3605cbe510bddc453390f50c077640ac5681488264d1"
+    },
+    {
+      "source": "src/context.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/context.ts",
+      "upstreamSha256": "53c9eff08151a29183bb8bb0ee86ba8c8c404d6e14c1de8617e97fd0e81cf3ce"
+    },
+    {
+      "source": "src/discovery.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/discovery.ts",
+      "upstreamSha256": "c9feeae4f3a9016ba640699e5630b148e1b86925719f4477132574d6bf630d9b"
+    },
+    {
+      "source": "src/index.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/index.ts",
+      "upstreamSha256": "75093674f039f75371d20f60755b51eb60b7d4aa6e5e4bf653cf8c28e60cdd9c"
+    },
+    {
+      "source": "src/login.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/login.ts",
+      "upstreamSha256": "4cf0502420f70ac044bb568b1632536da6f1aae5de86c602f053acf21544e7e3"
+    },
+    {
+      "source": "src/provider.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/provider.ts",
+      "upstreamSha256": "b95619b0589ea9cec979f172e870079b99c94a0c3cfec445af31dd7711648257"
+    },
+    {
+      "source": "src/replay.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/replay.ts",
+      "upstreamSha256": "f498060e4d798ece0780788600f70d1b93bc451886982bd177809cff0fc86548"
+    },
+    {
+      "source": "src/stream.ts",
+      "upstream": "packages/llm/llm-pi-ai/src/stream.ts",
+      "upstreamSha256": "24dcdd27a58b7b864973ba50dfeed57b7c25c86f040d66010fa6e69ee184362b"
+    }
+  ],
+  "changes": [
+    "Relative imports use generated .js paths",
+    "One route owner and one maintained pi-ai implementation for all sessions and headless calls, preserving immutable request snapshots",
+    "Settings drafts publish only after directory and route acceptance; rejection restores the prior live generation",
+    "Explicitly withhold new pi-ai 0.84.4 configuration fields while retaining the original Harness settings surface"
+  ],
+  "formalForkSynchronized": false
+}

@@ -1801,6 +1801,105 @@
       ]
     },
     {
+      "artifact": "compat-llm-pi-ai-adapter-js",
+      "source": "development/llm-pi-ai/src/adapter.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/adapter.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/adapter.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/adapter.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-auth-js",
+      "source": "development/llm-pi-ai/src/auth.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/auth.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/auth.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/auth.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-catalog-js",
+      "source": "development/llm-pi-ai/src/catalog.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/catalog.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/catalog.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/catalog.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-config-js",
+      "source": "development/llm-pi-ai/src/config.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/config.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/config.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/config.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-context-js",
+      "source": "development/llm-pi-ai/src/context.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/context.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/context.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/context.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-discovery-js",
+      "source": "development/llm-pi-ai/src/discovery.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/discovery.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/discovery.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/discovery.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-index-js",
+      "source": "development/llm-pi-ai/src/index.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/index.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/index.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-login-js",
+      "source": "development/llm-pi-ai/src/login.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/login.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/login.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/login.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-provider-js",
+      "source": "development/llm-pi-ai/src/provider.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/provider.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/provider.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/provider.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-replay-js",
+      "source": "development/llm-pi-ai/src/replay.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/replay.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/replay.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/replay.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-pi-ai-stream-js",
+      "source": "development/llm-pi-ai/src/stream.ts",
+      "banner": "runtime/alpha3/compat/llm-pi-ai/src/stream.ts",
+      "primaryOutput": "development/llm-pi-ai/lib/stream.js",
+      "outputs": [
+        "development/llm-pi-ai/lib/stream.js"
+      ]
+    },
+    {
       "artifact": "compat-anydoc-lib-index-js",
       "source": "development/anydoc/src/index.ts",
       "banner": "runtime/alpha3/compat/anydoc/src/index.ts",
