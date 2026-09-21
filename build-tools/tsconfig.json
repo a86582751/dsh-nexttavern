@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
     "preserveSymlinks": true,
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "strict": true,
@@ -13,7 +14,11 @@
     "skipLibCheck": false,
     "types": ["node"],
     "typeRoots": ["./node_modules/@types"],
-    "paths": {"react": ["./node_modules/@types/react/index.d.ts"]},
+    "paths": {
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "dsh-nexttavern-pi-ai": ["./node_modules/@earendil-works/pi-ai/dist/index.d.ts"],
+      "dsh-nexttavern-pi-ai/*": ["./node_modules/@earendil-works/pi-ai/dist/*"]
+    },
     "newLine": "lf"
   }
 }
