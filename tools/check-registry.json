@@ -27,7 +27,12 @@
         "runtime/alpha3/compat/token-meter/*",
         "plugin-owned-adapter*",
         "runtime/alpha3/compat/llm-pi-ai/*",
-        "plugin-protocol-frames*"
+        "plugin-protocol-frames*",
+        "plugin-native-meter*",
+        "plugin-owned-session-format*",
+        "runtime/alpha3/compat/session-format/*",
+        "runtime/alpha3/compat/session-persistence-jsonl/*",
+        "plugin-public-compiler*"
       ]
     },
     {
@@ -3113,6 +3118,48 @@
         "compiler"
       ],
       "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-native-meter.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-owned-session-format.test.mts",
+      "action": "test",
+      "inputs": [],
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-public-compiler.test.mts",
+      "action": "test",
+      "inputs": [],
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000,
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]

@@ -2,6 +2,8 @@
 
 ## 0.3 development — 2026-09-22
 
+- Implemented a versioned required message-edit format and an owned alpha.6 JSONL provider. Six focused checks cover plain/compressed storage, verification workers, cold observation, native Agent resume and rejection before invalid writes; original message identities and usage remain unchanged. Product routing, metering/UI integration, safe disable/uninstall and formal fork synchronization remain pending. Removed residual file-upload assembly and sidebar injection from the actual public build inputs.
+
 - The migration now targets Harness **0.1.6-alpha.2** and intentionally drops old session-data compatibility. Export character cards or novels in the old environment before migration. Downloads and production remain on 0.2.5; current main is unfinished development source.
 - Retired community file-upload/read_document and better-sidebar from the next-generation plan. Official upload, attachments and sidebar replace them. The [owned anydoc fork](https://github.com/a86582751/dsh-plugin-anydoc/commit/379872b6fc69814d5e974351b3f848a7522521ad) now reads through native filesystem capabilities, supports explicit document windows and full-file conversion, and has bounded version-aware caching. Full native upload integration remains pending.
 - Replaced the owned session-projection candidate with the validated official implementation. Removed the abandoned private market candidate; an existing upstream market is reused, and a missing market will be installed only for skins.

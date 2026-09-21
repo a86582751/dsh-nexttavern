@@ -1,0 +1,33 @@
+{
+  "name": "dsh-nexttavern-session-persistence-jsonl",
+  "version": "0.3.0-dev.1",
+  "private": true,
+  "description": "NextTavern maintained JSONL provider with required message-edit vocabulary; not an upstream release",
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "LICENSE",
+    "LICENSE.upstream",
+    "ORIGIN.json"
+  ],
+  "dependencies": {
+    "dsh-nexttavern-session-format": "0.3.0-dev.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-session": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-session-persistence": "0.1.6-alpha.2",
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-llm": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-session-format": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-session-format-v2-to-v3": "0.1.6-alpha.2",
+    "@deepseek-ai/node-addon-system": "0.1.2",
+    "koffi": "3.3.1",
+    "@deepseek-ai/schemastery": "3.18.2"
+  }
+}

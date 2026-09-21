@@ -5,19 +5,39 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "preserveSymlinks": true,
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmitOnError": true,
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": false,
-    "types": ["node"],
-    "typeRoots": ["./node_modules/@types"],
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "./node_modules/@types"
+    ],
     "paths": {
-      "react": ["./node_modules/@types/react/index.d.ts"],
-      "dsh-nexttavern-pi-ai": ["./node_modules/@earendil-works/pi-ai/dist/index.d.ts"],
-      "dsh-nexttavern-pi-ai/*": ["./node_modules/@earendil-works/pi-ai/dist/*"]
+      "react": [
+        "./node_modules/@types/react/index.d.ts"
+      ],
+      "dsh-nexttavern-pi-ai": [
+        "./node_modules/@earendil-works/pi-ai/dist/index.d.ts"
+      ],
+      "dsh-nexttavern-pi-ai/*": [
+        "./node_modules/@earendil-works/pi-ai/dist/*"
+      ],
+      "dsh-nexttavern-session-format": [
+        "../development/session-format/src/index.ts"
+      ],
+      "dsh-nexttavern-session-format/*": [
+        "../development/session-format/src/*.ts"
+      ]
     },
     "newLine": "lf"
   }

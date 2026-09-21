@@ -2249,6 +2249,154 @@
       "source": "development/llm-pi-ai/lib/models.js"
     },
     {
+      "id": "compat-session-format-src-catalog-ts",
+      "source": "development/session-format/src/catalog.ts"
+    },
+    {
+      "id": "compat-session-format-lib-catalog-js",
+      "source": "development/session-format/lib/catalog.js"
+    },
+    {
+      "id": "compat-session-format-src-index-ts",
+      "source": "development/session-format/src/index.ts"
+    },
+    {
+      "id": "compat-session-format-lib-index-js",
+      "source": "development/session-format/lib/index.js"
+    },
+    {
+      "id": "compat-session-format-src-projection-ts",
+      "source": "development/session-format/src/projection.ts"
+    },
+    {
+      "id": "compat-session-format-lib-projection-js",
+      "source": "development/session-format/lib/projection.js"
+    },
+    {
+      "id": "compat-session-format-src-storage-contract-ts",
+      "source": "development/session-format/src/storage-contract.ts"
+    },
+    {
+      "id": "compat-session-format-lib-storage-contract-js",
+      "source": "development/session-format/lib/storage-contract.js"
+    },
+    {
+      "id": "compat-session-format-license",
+      "source": "development/session-format/LICENSE"
+    },
+    {
+      "id": "compat-session-format-package-json",
+      "source": "development/session-format/package.json"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-format-ts",
+      "source": "development/session-persistence-jsonl/src/format.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-format-js",
+      "source": "development/session-persistence-jsonl/lib/format.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-generation-ts",
+      "source": "development/session-persistence-jsonl/src/generation.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-generation-js",
+      "source": "development/session-persistence-jsonl/lib/generation.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-index-ts",
+      "source": "development/session-persistence-jsonl/src/index.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-index-js",
+      "source": "development/session-persistence-jsonl/lib/index.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-lease-ts",
+      "source": "development/session-persistence-jsonl/src/lease.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-lease-js",
+      "source": "development/session-persistence-jsonl/lib/lease.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-migration-verifier-ts",
+      "source": "development/session-persistence-jsonl/src/migration-verifier.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-migration-verifier-js",
+      "source": "development/session-persistence-jsonl/lib/migration-verifier.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-storage-ts",
+      "source": "development/session-persistence-jsonl/src/storage.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-storage-js",
+      "source": "development/session-persistence-jsonl/lib/storage.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-win32-ts",
+      "source": "development/session-persistence-jsonl/src/win32.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-win32-js",
+      "source": "development/session-persistence-jsonl/lib/win32.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-worker-ts",
+      "source": "development/session-persistence-jsonl/src/worker.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-worker-js",
+      "source": "development/session-persistence-jsonl/lib/worker.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-zstd-private-decoder-ts",
+      "source": "development/session-persistence-jsonl/src/zstd-private-decoder.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-zstd-private-decoder-js",
+      "source": "development/session-persistence-jsonl/lib/zstd-private-decoder.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-zstd-public-decoder-ts",
+      "source": "development/session-persistence-jsonl/src/zstd-public-decoder.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-zstd-public-decoder-js",
+      "source": "development/session-persistence-jsonl/lib/zstd-public-decoder.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-zstd-ts",
+      "source": "development/session-persistence-jsonl/src/zstd.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-zstd-js",
+      "source": "development/session-persistence-jsonl/lib/zstd.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-license",
+      "source": "development/session-persistence-jsonl/LICENSE"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-license-upstream",
+      "source": "development/session-persistence-jsonl/LICENSE.upstream"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-origin-json",
+      "source": "development/session-persistence-jsonl/ORIGIN.json"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-package-json",
+      "source": "development/session-persistence-jsonl/package.json"
+    },
+    {
+      "id": "message-edit-schema",
+      "source": "schemas/message-edit.v1.json"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -7049,6 +7197,382 @@
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
+    },
+    {
+      "id": "compat-session-format-catalog-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-format-lib-catalog-js",
+      "entry": "development/session-format/src/catalog.ts",
+      "inputs": [
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-format-index-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-format-lib-index-js",
+      "entry": "development/session-format/src/index.ts",
+      "inputs": [
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-format-projection-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-format-lib-projection-js",
+      "entry": "development/session-format/src/projection.ts",
+      "inputs": [
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-format-storage-contract-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-format-lib-storage-contract-js",
+      "entry": "development/session-format/src/storage-contract.ts",
+      "inputs": [
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-format-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-format-js",
+      "entry": "development/session-persistence-jsonl/src/format.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-generation-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-generation-js",
+      "entry": "development/session-persistence-jsonl/src/generation.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-index-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-index-js",
+      "entry": "development/session-persistence-jsonl/src/index.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lease-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-lease-js",
+      "entry": "development/session-persistence-jsonl/src/lease.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-migration-verifier-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-migration-verifier-js",
+      "entry": "development/session-persistence-jsonl/src/migration-verifier.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-storage-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-storage-js",
+      "entry": "development/session-persistence-jsonl/src/storage.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-win32-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-win32-js",
+      "entry": "development/session-persistence-jsonl/src/win32.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-worker-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-worker-js",
+      "entry": "development/session-persistence-jsonl/src/worker.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-zstd-private-decoder-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-zstd-private-decoder-js",
+      "entry": "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-zstd-public-decoder-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-zstd-public-decoder-js",
+      "entry": "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-zstd-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-zstd-js",
+      "entry": "development/session-persistence-jsonl/src/zstd.ts",
+      "inputs": [
+        "development/session-persistence-jsonl/src/format.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
     }
   ],
   "typeScript": {

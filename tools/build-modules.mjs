@@ -48,19 +48,28 @@ for (const bundle of map.bundles) {
   safe(bundle);
   if (check && !typesOnly && !fs.existsSync(safe(bundle))) throw Error('Missing registered browser bundle: ' + bundle);
 }
-const program = ts.createProgram([...sourcePaths], options);
-const diagnostics = [...(config.error ? [config.error] : []), ...converted.errors, ...ts.getPreEmitDiagnostics(program)];
-for (const source of program.getSourceFiles()) {
-  if (program.isSourceFileDefaultLibrary(source) || source.fileName.replaceAll('\\', '/').includes('/node_modules/')) continue;
-  if (!sourcePaths.has(path.resolve(source.fileName))) throw Error('Unmapped public TypeScript dependency: ' + source.fileName);
-}
 const compiled = new Map();
-if (!diagnostics.length) {
-  const result = program.emit(undefined, (_file, text, _bom, _error, sources) => {
-    if (!sources || sources.length !== 1) throw Error('Ambiguous compiler output');
-    compiled.set(path.resolve(sources[0].fileName), text.replaceAll('\r\n', '\n'));
-  });
-  diagnostics.push(...result.diagnostics);
+const diagnostics = [...(config.error ? [config.error] : []), ...converted.errors];
+// Preserve the stronger optional-property semantics required by selected
+// upstream declarations without weakening checks for the rest of the package.
+for (const exactOptionalPropertyTypes of new Set(map.modules.map(module => module.exactOptionalPropertyTypes === true))) {
+  const roots = map.modules.filter(module => (module.exactOptionalPropertyTypes === true) === exactOptionalPropertyTypes)
+    .map(module => safe(module.source));
+  const program = ts.createProgram(roots, {...options, ...(exactOptionalPropertyTypes ? {exactOptionalPropertyTypes: true} : {})});
+  diagnostics.push(...ts.getPreEmitDiagnostics(program));
+  for (const source of program.getSourceFiles()) {
+    if (program.isSourceFileDefaultLibrary(source) || source.fileName.replaceAll('\\', '/').includes('/node_modules/')) continue;
+    if (!sourcePaths.has(path.resolve(source.fileName))) throw Error('Unmapped public TypeScript dependency: ' + source.fileName);
+  }
+  if (!diagnostics.length) {
+    const result = program.emit(undefined, (_file, text, _bom, _error, sources) => {
+      if (!sources || sources.length !== 1) throw Error('Ambiguous compiler output');
+      const file = path.resolve(sources[0].fileName), output = text.replaceAll('\r\n', '\n');
+      if (compiled.has(file) && compiled.get(file) !== output) throw Error('Compiler contexts disagree on output: ' + file);
+      compiled.set(file, output);
+    });
+    diagnostics.push(...result.diagnostics);
+  }
 }
 if (diagnostics.length) throw Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, {
   getCanonicalFileName: file => file, getCurrentDirectory: () => root, getNewLine: () => '\n'

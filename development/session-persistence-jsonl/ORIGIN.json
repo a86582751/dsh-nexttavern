@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "package": "dsh-nexttavern-session-persistence-jsonl",
+  "upstreamPackage": "@deepseek-ai/dsh-session-persistence-jsonl",
+  "upstreamVersion": "0.1.6-alpha.2",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "ddefc45fbc7f8e46dd73185e68295696d1297887",
+  "license": "MIT",
+  "files": [
+    {
+      "source": "src/format.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/format.ts",
+      "upstreamSha256": "9be085dd88dd2072e9478f8a28baff413a6efe7ff29554a8eb3131da3872be63"
+    },
+    {
+      "source": "src/generation.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/generation.ts",
+      "upstreamSha256": "54b37828e8b3f629b12a447c556a13ef5d2c097fe74be73a9cc4bef4c09bce5e"
+    },
+    {
+      "source": "src/index.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/index.ts",
+      "upstreamSha256": "69931beb012cde8453d46589bb83703552cb7c8e19438e67b3548042882ab861"
+    },
+    {
+      "source": "src/lease.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/lease.ts",
+      "upstreamSha256": "377f24b1446382d703d5f1346f44e15a25368a0e7967e5bd41db700a919d7ad8"
+    },
+    {
+      "source": "src/migration-verifier.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/migration-verifier.ts",
+      "upstreamSha256": "56ff3d030443e5317474eb22fee81cc80ac9166a8c382aee1bc4da7a1aae7ad7"
+    },
+    {
+      "source": "src/storage.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/storage.ts",
+      "upstreamSha256": "41d6e4af01d3f613eb9d4e89e3d8ddded5070b4e73c7b3f858a61cbbd3b43b33"
+    },
+    {
+      "source": "src/win32.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/win32.ts",
+      "upstreamSha256": "410402b1b28047db87bea4c7c60794d0f1f7338c7b736e06fa43e476f479f579"
+    },
+    {
+      "source": "src/worker.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/worker.ts",
+      "upstreamSha256": "1b5c14f911db5a4061cc1427aef47a58f608b74a1266da72379977dc38cd9805"
+    },
+    {
+      "source": "src/zstd-private-decoder.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/zstd-private-decoder.ts",
+      "upstreamSha256": "8bc5fef50df97985cb3c1184dad8f30c099452b9f80546ac71e8c19fd4614d63"
+    },
+    {
+      "source": "src/zstd-public-decoder.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/zstd-public-decoder.ts",
+      "upstreamSha256": "d5ac67fb55c01da8fcf4f73f3500f4b9463cfea0ce1d9e7f02c973ddfb5035a5"
+    },
+    {
+      "source": "src/zstd.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/zstd.ts",
+      "upstreamSha256": "b100f7c208acbf34e61351236b82be4c93a47c7d25926b8e9478a6156f2f0ff5"
+    }
+  ],
+  "changes": [
+    "Shared edit vocabulary/catalog in both main and verification worker",
+    "Official SessionPersistence base class, errors and handle contracts retain their shared instances",
+    "Strict emitted .js imports and ESM worker path; independent provider diagnostic name",
+    "Reject malformed or unsupported required events and replay edit-containing batches before writing bytes; unchanged streaming batches avoid extra history reads"
+  ],
+  "formalForkSynchronized": false
+}

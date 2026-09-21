@@ -1925,6 +1925,156 @@
       "outputs": [
         "development/llm-pi-ai/lib/models.js"
       ]
+    },
+    {
+      "artifact": "compat-session-format-lib-catalog-js",
+      "source": "development/session-format/src/catalog.ts",
+      "banner": "runtime/alpha3/compat/session-format/src/catalog.ts",
+      "primaryOutput": "development/session-format/lib/catalog.js",
+      "outputs": [
+        "development/session-format/lib/catalog.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-format-lib-index-js",
+      "source": "development/session-format/src/index.ts",
+      "banner": "runtime/alpha3/compat/session-format/src/index.ts",
+      "primaryOutput": "development/session-format/lib/index.js",
+      "outputs": [
+        "development/session-format/lib/index.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-format-lib-projection-js",
+      "source": "development/session-format/src/projection.ts",
+      "banner": "runtime/alpha3/compat/session-format/src/projection.ts",
+      "primaryOutput": "development/session-format/lib/projection.js",
+      "outputs": [
+        "development/session-format/lib/projection.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-format-lib-storage-contract-js",
+      "source": "development/session-format/src/storage-contract.ts",
+      "banner": "runtime/alpha3/compat/session-format/src/storage-contract.ts",
+      "primaryOutput": "development/session-format/lib/storage-contract.js",
+      "outputs": [
+        "development/session-format/lib/storage-contract.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-format-js",
+      "source": "development/session-persistence-jsonl/src/format.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/format.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/format.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/format.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-generation-js",
+      "source": "development/session-persistence-jsonl/src/generation.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/generation.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/generation.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/generation.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-index-js",
+      "source": "development/session-persistence-jsonl/src/index.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/index.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/index.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/index.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-lease-js",
+      "source": "development/session-persistence-jsonl/src/lease.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/lease.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/lease.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/lease.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-migration-verifier-js",
+      "source": "development/session-persistence-jsonl/src/migration-verifier.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/migration-verifier.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/migration-verifier.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/migration-verifier.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-storage-js",
+      "source": "development/session-persistence-jsonl/src/storage.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/storage.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/storage.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/storage.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-win32-js",
+      "source": "development/session-persistence-jsonl/src/win32.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/win32.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/win32.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/win32.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-worker-js",
+      "source": "development/session-persistence-jsonl/src/worker.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/worker.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/worker.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/worker.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-zstd-private-decoder-js",
+      "source": "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/zstd-private-decoder.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/zstd-private-decoder.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/zstd-private-decoder.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-zstd-public-decoder-js",
+      "source": "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/zstd-public-decoder.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/zstd-public-decoder.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/zstd-public-decoder.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-zstd-js",
+      "source": "development/session-persistence-jsonl/src/zstd.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/zstd.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/zstd.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/zstd.js"
+      ],
+      "exactOptionalPropertyTypes": true
     }
   ],
   "bundles": [
