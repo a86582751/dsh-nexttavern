@@ -1,4 +1,5 @@
 import { selectedStoryHistory, importManagementInputs, type StorySession, type StoryRow, type StoryEvent, type StoryBlock } from './memory-history.js'
+import { projectStoryEvent } from '../core/roleplay-message-view.js'
 
 export interface SourceSpan { start: number; end: number }
 export interface CleanStoryText { text: string; spans: SourceSpan[]; unresolved: boolean }
@@ -20,7 +21,8 @@ function eventFor(session: StorySession, seq: number): StoryEvent | null {
 function blockType(block: StoryBlock): string { return typeof block?.type === 'string' ? block.type.toLowerCase() : '' }
 function blockText(block: StoryBlock): string { return typeof block?.text === 'string' ? block.text : '' }
 
-function rawTextFor(row: StoryRow, event: StoryEvent | null): { raw: string; unresolved: boolean } {
+function rawTextFor(session: StorySession, row: StoryRow, original: StoryEvent | null): { raw: string; unresolved: boolean } {
+  const event = original ? projectStoryEvent(session, original) : null
   const content = event?.type === 'user/message'
     ? event.data?.content
     : event?.type === 'assistant/message' ? (event.data?.message?.content ?? event.data?.content) : undefined
@@ -113,7 +115,7 @@ export function selectedRetrievalRows(session: StorySession): RetrievalRow[] {
   const events = Array.isArray(session?.events) ? session.events : Array.isArray(session?.log) ? session.log : []
   const bySeq = new Map(events.map(event => [Number(event?.seq), event]))
   const selected = selectedStoryHistory(session).flatMap(row => {
-    const source = rawTextFor(row, bySeq.get(row.seq) ?? null)
+    const source = rawTextFor(session, row, bySeq.get(row.seq) ?? null)
     if (!source.raw) return []
     const cleaned = cleanStoryText(source.raw)
     if (!cleaned.text) return []
@@ -129,7 +131,7 @@ export function selectedRetrievalRows(session: StorySession): RetrievalRow[] {
     && visibleIndex.has(event.seq)).flatMap(event => {
       const row: StoryRow = { id: `${session.id}:${event.seq}`, seq: event.seq, turn: Number(event.data?.turn), role: 'user',
         messageId: event.data?.id ?? null, text: '', time: event.time ?? null }
-      const source = rawTextFor(row, event); if (!source.raw) return []
+      const source = rawTextFor(session, row, event); if (!source.raw) return []
       const cleaned = cleanStoryText(source.raw); if (!cleaned.text) return []
       return [{ ...row, text: cleaned.text, rawText: source.raw, spans: cleaned.spans, unresolved: source.unresolved || cleaned.unresolved }]
     })

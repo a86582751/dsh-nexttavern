@@ -2,6 +2,8 @@
 
 ## 0.3 development — 2026-09-22
 
+- Routed story windows, recall, note provenance and cold retrieval through native edited-message projections. Novel snapshots now follow edits; stale exports and summaries cannot commit old prose. Seven native reader cases and five affected regression suites passed. Edit-writing routes, UI/meter integration and full product lifecycle remain unfinished.
+
 - Implemented a versioned required message-edit format and an owned alpha.6 JSONL provider. Six focused checks cover plain/compressed storage, verification workers, cold observation, native Agent resume and rejection before invalid writes; original message identities and usage remain unchanged. Product routing, metering/UI integration, safe disable/uninstall and formal fork synchronization remain pending. Removed residual file-upload assembly and sidebar injection from the actual public build inputs.
 
 - The migration now targets Harness **0.1.6-alpha.2** and intentionally drops old session-data compatibility. Export character cards or novels in the old environment before migration. Downloads and production remain on 0.2.5; current main is unfinished development source.

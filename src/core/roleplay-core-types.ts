@@ -5,6 +5,7 @@ import type { InheritanceState } from './roleplay-inheritance-types.js'
 import type { createTelemetry } from './tavern-telemetry.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { AuthorTables } from './roleplay-author-context-types.js'
+import type { StoryObservationServices } from './roleplay-message-view.js'
 
 export const CORE_TYPESCRIPT = true
 
@@ -66,4 +67,4 @@ export type CoreContext = {
   on(name: 'llm/stream', hook: Telemetry['observe'], options: {global: boolean}): unknown
   on(name: 'session/event', hook: (session: CoreSession, event: ContextEvent) => void, options: {global: boolean}): unknown
   on(name: 'session/created', hook: (session: CoreSession) => Promise<void>, options: {global: boolean}): unknown
-} & Intersection<ContextOf<ModuleDependencies>>
+} & StoryObservationServices<ContextEvent> & Intersection<ContextOf<ModuleDependencies>>

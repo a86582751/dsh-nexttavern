@@ -1450,6 +1450,15 @@
       ]
     },
     {
+      "artifact": "roleplay-message-view",
+      "source": "src/core/roleplay-message-view.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-message-view.ts",
+      "primaryOutput": "lib/core/roleplay-message-view.js",
+      "outputs": [
+        "lib/core/roleplay-message-view.js"
+      ]
+    },
+    {
       "artifact": "roleplay-worldline-types-js",
       "source": "src/core/roleplay-worldline-types.ts",
       "banner": "runtime/alpha3/src/core/roleplay-worldline-types.ts",

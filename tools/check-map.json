@@ -1165,6 +1165,14 @@
       "source": "lib/core/roleplay-context.js"
     },
     {
+      "id": "roleplay-message-view-typescript",
+      "source": "src/core/roleplay-message-view.ts"
+    },
+    {
+      "id": "roleplay-message-view",
+      "source": "lib/core/roleplay-message-view.js"
+    },
+    {
       "id": "roleplay-worldlines-typescript",
       "source": "src/core/roleplay-worldlines.ts"
     },
@@ -2964,7 +2972,8 @@
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/memory/memory-history.ts",
-        "src/memory/memory-provenance.ts"
+        "src/memory/memory-provenance.ts",
+        "src/core/roleplay-message-view.ts"
       ]
     },
     {
@@ -2985,7 +2994,8 @@
         "src/memory/memory-retrieval-types.ts",
         "src/memory/memory-embedding-api.ts",
         "src/memory/memory-vector-worker.mts",
-        "src/memory/memory-local-worker.mts"
+        "src/memory/memory-local-worker.mts",
+        "src/core/roleplay-message-view.ts"
       ]
     },
     {
@@ -5296,6 +5306,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "src/memory/memory-summary.ts",
+        "src/core/roleplay-message-view.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json"
@@ -5352,6 +5363,7 @@
       "inputs": [
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
+        "src/core/roleplay-message-view.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json"
@@ -6085,7 +6097,21 @@
         "src/core/roleplay-userinfo.ts",
         "src/memory/memory-provenance.ts",
         "src/core/tavern-task-retirement.ts",
-        "src/core/card-adaptation-context.ts"
+        "src/core/card-adaptation-context.ts",
+        "src/core/roleplay-message-view.ts"
+      ]
+    },
+    {
+      "id": "roleplay-message-view-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-message-view",
+      "entry": "src/core/roleplay-message-view.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-message-view.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     },
     {
@@ -6185,6 +6211,7 @@
         "src/core/roleplay-import.ts",
         "src/core/card-export.ts",
         "src/core/card-export-projection.ts",
+        "src/core/roleplay-message-view.ts",
         "src/core/roleplay-inheritance-types.ts",
         "src/core/tavern-telemetry.ts",
         "src/core/tavern-telemetry-normalize.ts",
@@ -6246,6 +6273,7 @@
         "src/core/card-adaptation-tools.ts",
         "src/core/card-character-map.ts",
         "src/core/card-adaptation-context.ts",
+        "src/core/roleplay-message-view.ts",
         "src/core/card-research-planner.ts",
         "src/core/roleplay-worldline-surface.ts",
         "src/core/roleplay-import-record.ts",
@@ -6320,6 +6348,7 @@
         "src/core/roleplay-import.ts",
         "src/core/card-export.ts",
         "src/core/card-export-projection.ts",
+        "src/core/roleplay-message-view.ts",
         "src/core/roleplay-inheritance-types.ts",
         "src/core/tavern-telemetry.ts",
         "src/core/tavern-telemetry-normalize.ts",

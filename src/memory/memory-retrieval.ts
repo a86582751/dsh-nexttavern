@@ -62,6 +62,7 @@ interface Dependencies {
     read?(id: string): Promise<{
         session: Session['header'];
         events: readonly unknown[];
+        view?: Session;
     }>;
     active(session: Session): boolean;
     scopeOf?(session: Session): string;
@@ -108,6 +109,11 @@ const initial = (): Settings => ({
 export function retrievalColdSession(id: string, header: Session['header'], events: readonly unknown[]): Session {
     const nodes: number[] = [];
     for (const value of events) {
+        // Legacy metadata-only callers cannot interpret required message edits.
+        // Current product reads supply a host-prepared view instead of this fallback.
+        if ((value as {type?: string})?.type === 'roleplay/message-edit') {
+            throw Error('消息编辑归档必须使用宿主投影读取');
+        }
         const e = value as {
             seq: number;
             surfaceOp?: unknown;
@@ -495,7 +501,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
                     }
                     const snapshot = await deps.read?.(header.id);
                     if (snapshot)
-                        await sync(retrievalColdSession(header.id, snapshot.session, snapshot.events));
+                        await sync(snapshot.view ?? retrievalColdSession(header.id, snapshot.session, snapshot.events));
                 }
                 catch { /* Invalid source remains absent; never guess its worldline. */
                 }
@@ -525,7 +531,8 @@ export function createMemoryRetrieval(deps: Dependencies) {
                 continue;
             try {
                 const live = deps.session(h.id), snapshot = live ? null : await deps.read?.(h.id);
-                const session = live ?? (snapshot ? retrievalColdSession(h.id, snapshot.session, snapshot.events) : null);
+                const session = live ?? (snapshot
+                    ? snapshot.view ?? retrievalColdSession(h.id, snapshot.session, snapshot.events) : null);
                 if (session) {
                     seen.add(ws);
                     await backfill(session);

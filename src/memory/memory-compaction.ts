@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { estimateTokens, durableSeq, textOf } from './memory-provenance.js'
 import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistory, historySourceKeys, isCompactedStoryEvent, type StorySession, type StoryEvent, type NotesRecord } from './memory-history.js'
 import { validateDetailedSummary, type SummaryOptions, type SummaryResult } from './memory-summary.js'
+import { projectStoryEvent } from '../core/roleplay-message-view.js'
 
 export interface CompactionEvent extends StoryEvent {
   data?: NonNullable<StoryEvent['data']> & { shadowedRange?: unknown }
@@ -110,7 +111,7 @@ export function checkpointSummaryFromSurface(session: CompactionSession) {
   let seq = -1
   for (const event of events) {
     if (!visible.has(Number(event?.seq)) || !isCompactedStoryEvent(event)) continue
-    const raw = textOf(contentOfEvent(event))
+    const raw = textOf(contentOfEvent(projectStoryEvent(session, event)))
     const match = raw.match(/<compacted-summary>\s*([\s\S]*?)\s*<\/compacted-summary>/i)
     text = (match?.[1] ?? raw).trim()
     seq = Number(event.seq)
@@ -207,7 +208,8 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
       throw new Error('roleplay-memory: token meter 与当前会话 surface 不一致')
     }
     return surfaceSeqs.map((seq, position) => {
-      const event = log[seq]
+      const original = log[seq]
+      const event = original ? projectStoryEvent(session, original) : undefined
       const story = isStoryEvent(event, canonicalAssistantSeqs, management)
       return {
         seq,
@@ -328,7 +330,8 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
   function storyTextForSeqs(session: S, seqs: readonly number[]) {
     const log = eventsOf(session)
     return seqs.map((seq) => {
-      const event = log[seq]
+      const original = log[seq]
+      const event = original ? projectStoryEvent(session, original) : undefined
       if (!isStoryEvent(event)) return ''
       const role = event.type === 'user/message' ? '用户' : '叙事者'
       return `\n[${role} · seq:${seq}]\n${textOf(contentOfEvent(event))}`
@@ -348,7 +351,11 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
 
   function reusableSummary(session: S, range: ArchiveRange, mem: CompactionMemory, sourceText: string, locked: readonly unknown[]): CompactionSummary | null {
     if (mem.directorNotes?.manual === true) return null
-    const selected = { id: session.id, header: session.header, events: eventsOf(session), surface: { nodes: range.shadowedSeqs } }
+    const selected = {
+      id: session.id, header: session.header, events: eventsOf(session),
+      surface: { nodes: range.shadowedSeqs, contentGeneration: session.surface?.contentGeneration },
+      deriveEventMessage: session.deriveEventMessage?.bind(session),
+    }
     const history = selectedStoryHistory(selected)
     const expected = historySourceKeys(history)
     if (!expected.length) return null
@@ -463,6 +470,11 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
       // 只要求被选 span 保持不变；摘要期间追加到尾部的新消息不应让已完成工作作废。
       signal?.throwIfAborted?.()
       assertSelectedSurfaceStable(session, range)
+      // Edits preserve nodes/seq. A summary created from an older body must
+      // never replace the newly edited text after the model request returns.
+      if (storyTextForSeqs(session, range.storySeqs) !== sourceText) {
+        throw new Error('整理期间归档正文已编辑，请重试')
+      }
       assertBranchActive(session)
       const summaryEvent = session.append('compaction/summary', {
         compactionId,

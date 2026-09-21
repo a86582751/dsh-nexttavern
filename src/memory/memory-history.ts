@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { durableSeq, textOf, adaptationTurns, importedStoryProjection } from './memory-provenance.js'
+import { projectStoryEvent, messageViewGeneration, type MessageViewSession } from '../core/roleplay-message-view.js'
 
 export interface StoryBlock { type?: string; [field: string]: unknown }
 export interface StoryEvent {
@@ -24,11 +25,11 @@ export interface StoryEvent {
   sourceEventSeqs?: unknown
   surfaceOp?: 'append' | { op?: string; start: number; end?: number }
 }
-export interface StorySession {
+export interface StorySession extends MessageViewSession<StoryEvent> {
   id: string
   events?: readonly StoryEvent[]
   log?: readonly StoryEvent[]
-  surface?: { nodes?: Iterable<unknown> }
+  surface?: { nodes?: Iterable<unknown>; contentGeneration?: number }
 }
 export interface StoryRow {
   id: string
@@ -140,7 +141,8 @@ function afterStoryProofs(session: StorySession, visible = new Set(surfaceSeqsOf
     const source = marker?.type === 'user/message' ? marker.data?.source : null
     if (source?.kind !== 'plugin' || source?.plugin !== 'roleplay-tasks' || source?.form !== 'phase' || source?.stage !== 'after-story') continue
     const seq = Number(source.storySeq), turn = Number(source.turn)
-    const story = Number.isSafeInteger(seq) ? log[seq] : null
+    const original = Number.isSafeInteger(seq) ? log[seq] : null
+    const story = original ? projectStoryEvent(session, original) : null
     if (!visible.has(Number(marker.seq)) || !visible.has(seq) || Number(marker.seq) <= seq ||
       !story || story.type !== 'assistant/message' || Number(story.seq) !== seq ||
       story.data?.interrupted === true || !textOf(contentOfEvent(story)).trim() ||
@@ -164,7 +166,8 @@ export function canonicalAssistantSeqsOf(session: StorySession, seqs = surfaceSe
     .map((event) => Number(event.data?.turn)))
   const afterStory = afterStoryProofs(session, visible, evidence)
   const lastByTurn = new Map<number, number>()
-  for (const event of evidence) {
+  for (const original of evidence) {
+    const event = projectStoryEvent(session, original)
     if (event?.type !== 'assistant/message' ||
       !visible.has(Number(event.seq)) ||
       internal.has(event.seq) ||
@@ -182,7 +185,9 @@ export function canonicalAssistantSeqsOf(session: StorySession, seqs = surfaceSe
 }
 
 /** Restore only archived plot on the selected surface, never edited/deleted alternatives. */
-const selectedStoryCache = new WeakMap<StorySession, { log: readonly StoryEvent[]; id: string; surfaceKey: string; rows: StoryRow[] }>()
+const selectedStoryCache = new WeakMap<StorySession, {
+  log: readonly StoryEvent[]; id: string; surfaceKey: string; generation: number; rows: StoryRow[]
+}>()
 const immutableStoryValues = new WeakSet()
 const storyDataTypes = new Set(['turn/start','turn/end','user/message','assistant/message','tool/call','compaction/end','compaction/summary'])
 function immutableStoryValue(value: unknown): boolean {
@@ -226,13 +231,15 @@ function expandedHistorySeqs(session: StorySession, evidence = eventsOf(session)
 export function selectedStoryHistory(session: StorySession): StoryRow[] {
   const log = eventsOf(session)
   const surface = surfaceSeqsOf(session), surfaceKey = surface.join(',')
+  const generation = messageViewGeneration(session)
   // Native snapshots are immutable and replaced on every append. Cache only
   // that contract, never mutable legacy/mock logs; selection is a separate key.
   const cached = selectedStoryCache.get(session)
-  if (cached?.log === log && cached.id === session.id && cached.surfaceKey === surfaceKey) return cached.rows.map(row => ({ ...row }))
+  if (generation !== null && cached?.generation === generation && cached.log === log &&
+    cached.id === session.id && cached.surfaceKey === surfaceKey) return cached.rows.map(row => ({ ...row }))
   // Token chunks contribute only immutable type/seq, not their payload. Story
   // evidence payloads must also be deeply immutable, including legacy callers.
-  let cacheable = Object.isFrozen(log)
+  let cacheable = generation !== null && Object.isFrozen(log)
   const evidence: StoryEvent[] = []
   const turnBySeq = new Map<number, number | null>()
   const researchClosures = new Set<string>(), researchStarts = new Set<string>()
@@ -265,7 +272,10 @@ export function selectedStoryHistory(session: StorySession): StoryRow[] {
     if (typeof event.surfaceOp === 'object' && event.surfaceOp.op === 'replace') return originalTurn(log[event.surfaceOp.start], seen)
     return null
   }
-  const rows: StoryRow[] = expanded.map((seq) => log[seq]).filter((event): event is StoryEvent => {
+  const rows: StoryRow[] = expanded.map((seq) => {
+    const event = log[seq]
+    return event ? projectStoryEvent(session, event) : undefined
+  }).filter((event): event is StoryEvent => {
     if (!isStoryEvent(event, canonical, management)) return false
     const turn = originalTurn(event)
     return turn !== null && (completed.has(turn) || afterStory.turns.has(turn))
@@ -278,7 +288,9 @@ export function selectedStoryHistory(session: StorySession): StoryRow[] {
     text: textOf(contentOfEvent(event)),
     time: event.time ?? null,
   }))
-  if (cacheable) selectedStoryCache.set(session, { log, id: session.id, surfaceKey, rows: rows.map(row => ({ ...row })) })
+  if (cacheable && generation !== null) selectedStoryCache.set(session, {
+    log, id: session.id, surfaceKey, generation, rows: rows.map(row => ({ ...row })),
+  })
   return rows
 }
 

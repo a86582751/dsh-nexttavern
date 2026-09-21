@@ -5,6 +5,7 @@ import type {
   CoreAgent,
 } from './roleplay-core-types.js'
 import type { ContextSession } from './roleplay-context.js'
+import { readProjectedStory } from './roleplay-message-view.js'
 import type { InheritanceOptions } from './roleplay-inheritance-types.js'
 import type { MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 import type { NativeTaskInput, HostAgent } from './roleplay-task-host-types.js'
@@ -643,8 +644,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     scopeOf: session => ctx.get('tavernConversations')?.rootOf(session.id) ?? session.id,
     list: async () => await ctx.sessionQuery?.listSessions?.() ?? [],
     read: async id => {
-      const value = await ctx.sessionQuery!.readSession!(id)
-      return { session: value.session, events: value.events }
+      const view = await readProjectedStory(ctx, id)
+      return { session: view.header, events: view.events, view }
     },
     // Both live and cold inputs are native session logs; preserve their surface for tombstone checks.
     active: session => storyBranchIsActive(session as Parameters<typeof storyBranchIsActive>[0]),
@@ -653,7 +654,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   ctx.effect(() => () => retrieval.dispose(), 'roleplay: retrieval lifetime')
   ctx.on('session/created', session => retrieval.created(session), { global: true })
   ctx.on('session/event', (session, event) => {
-    if (['turn/end', 'user/message', 'compaction/end'].includes(event.type)) {
+    if (['turn/end', 'user/message', 'compaction/end', 'roleplay/message-edit'].includes(event.type)) {
       retrieval.changed(session)
     }
   }, { global: true })
