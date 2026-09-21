@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import {createPresetPanel,presetConversationChoices} from '../src/preset-panel.js'
-import {createNarrativePresets,BLANK_PRESET} from '../src/core/narrative-presets.js'
+import {createPresetPanel,presetConversationChoices} from '../lib/ui/preset-panel.js'
+import {createNarrativePresets,BLANK_PRESET} from '../lib/core/narrative-presets.js'
 
 const catalog={schemaVersion:1,worldlines:{'fork-a':{conversationId:'a',status:'ready'}},conversations:{a:{activeSessionId:'fork-a'}}}
 assert.deepEqual(presetConversationChoices({ids:['a','fork-a','b','background-subagent','standard'],byId:{a:{title:'First story'},'fork-a':{},b:{displayTitle:'Second story',parentId:'source-root'},'background-subagent':{title:'{"taskId":"maintenance"}',origin:'subagent',parentId:'a',projectionValues:{agentPreset:'roleplay'}},standard:{}}},catalog,id=>['a','b','background-subagent'].includes(id)),[{id:'fork-a',label:'First story'},{id:'b',label:'Second story'}],'native root metadata works before active fork metadata hydrates; subagent origins are excluded while a parent-linked independent clone remains visible')

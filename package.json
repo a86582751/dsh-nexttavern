@@ -1,6 +1,6 @@
 {
   "name": "dsh-nexttavern",
-  "version": "0.2.5",
+  "version": "0.3.0-rc.1",
   "description": "DeepSeek Harness long-form roleplay workspace with worldlines, memory, cards and exports.",
   "type": "module",
   "main": "lib/index.js",
@@ -16,6 +16,8 @@
     "lib",
     "src",
     "preset",
+    "memory",
+    "skins",
     "tools",
     "tests",
     "build-tools",
@@ -87,9 +89,9 @@
     "dsh-file-upload": "https://github.com/a86582751/dsh-file-upload/releases/download/v0.4.3-nexttavern.1/dsh-file-upload-0.4.3-nexttavern.1.tgz"
   },
   "scripts": {
-    "build": "node src/build-client.mjs src/client.js lib/client.js dsh-nexttavern",
+    "build": "node lib/ui/build-client.mjs lib/ui/client.js lib/client.js dsh-nexttavern",
     "build:modules": "node tools/build-modules.mjs --write",
-    "check": "node tools/build-modules.mjs --check",
-    "test": "node tests/run.mjs"
+    "check": "node lib/operations/quality-cli.mjs",
+    "test": "node lib/operations/quality-cli.mjs tests"
   }
 }

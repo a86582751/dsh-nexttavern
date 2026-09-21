@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { createTelemetry } from '../src/core/tavern-telemetry.ts'
-import { resolvePricing } from '../src/core/tavern-pricing.ts'
-import { aggregateUsage } from '../src/core/tavern-telemetry-aggregate.ts'
-import { queryUsageRequests } from '../src/core/tavern-telemetry-query.ts'
+import { createTelemetry } from '../lib/core/tavern-telemetry.js'
+import { resolvePricing } from '../lib/core/tavern-pricing.js'
+import { aggregateUsage } from '../lib/core/tavern-telemetry-aggregate.js'
+import { queryUsageRequests } from '../lib/core/tavern-telemetry-query.js'
 
 class Table extends Map { async put(key, value) { this.set(key, structuredClone(value)) } }
 const call = {

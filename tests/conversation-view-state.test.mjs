@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { createRoleplayActions } from '../src/session-actions.js'
-import { resolveConversationExecution } from '../src/conversation-projection.js'
-const source=fs.readFileSync(new URL('../src/client.js',import.meta.url),'utf8')
+import { createRoleplayActions } from '../lib/ui/session-actions.js'
+import { resolveConversationExecution } from '../lib/ui/conversation-projection.js'
+import { createConversationPresentation } from '../lib/ui/conversation-presentation.js'
+const source=['../lib/ui/client.js','../lib/ui/conversation-presentation.js'].map(file=>fs.readFileSync(new URL(file,import.meta.url),'utf8')).join('\n')
 const defaults={resolveActiveSessionId:()=>null,isRoleplaySession:()=>false,
   wakeSessionForState:async()=>true,invalidateState:()=>{},acceptConversations:()=>{},loadConversations:async()=>{},toast:()=>{},
   sessionsService:{},wait:async()=>{}}
@@ -167,3 +168,82 @@ for(const changed of [true,false]) {
   assert.equal(h.events.some(e=>e[0]==='invalidate'),!changed)
 }
 console.log('conversation-actions=ok (idempotent registration, admission recovery, abort race, draft transfer, maintenance)')
+
+// Exercise the extracted catalog through the same factory used by apply.
+// Timers are deterministic; no real browser, network or polling delay is needed.
+{
+  const originals = Object.fromEntries(['fetch','window','document','setTimeout','clearTimeout','setInterval','clearInterval'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]))
+  const originalNow = Date.now
+  const timers = new Map(), refs = [], effects = []
+  let timerId = 0, now = 20000, fetches = 0, refIndex = 0, effectIndex = 0, snapshot, unsubscribe
+  const surface = () => {
+    const listeners = new Map()
+    return {
+      hidden: false, listeners,
+      addEventListener(name, listener) { listeners.set(name, listener) },
+      removeEventListener(name, listener) { if (listeners.get(name) === listener) listeners.delete(name) },
+    }
+  }
+  const windowStub = surface(), documentStub = surface()
+  const catalog = revision => ({ schemaVersion:1, ok:true, revision, worldlines:{}, conversations:{} })
+  let native = { ids:['root'], current:null }
+  const React = {
+    useCallback: callback => callback,
+    useSyncExternalStore(subscribe, getSnapshot) { snapshot = getSnapshot; unsubscribe ??= subscribe(() => {}); return getSnapshot() },
+    useRef(value) { const index=refIndex++; return refs[index] ??= { current:value } },
+    useEffect(setup, dependencies) {
+      const index=effectIndex++, prior=effects[index]
+      if (!prior || dependencies.some((value, i) => value !== prior.dependencies[i])) {
+        prior?.cleanup?.()
+        effects[index] = { dependencies, cleanup:setup() }
+      }
+    },
+    createElement: (type, props, ...children) => ({ type, props, children }),
+  }
+  try {
+    globalThis.window=windowStub; globalThis.document=documentStub
+    globalThis.fetch=async () => { fetches++; return { ok:true, json:async()=>catalog(1) } }
+    Date.now=()=>now
+    globalThis.setTimeout=(run, delay)=>{ const id=++timerId; timers.set(id,{run,delay,interval:false}); return id }
+    globalThis.setInterval=(run, delay)=>{ const id=++timerId; timers.set(id,{run,delay,interval:true}); return id }
+    globalThis.clearTimeout=globalThis.clearInterval=id=>timers.delete(id)
+    const presentation=createConversationPresentation({React,sessionsService:{list:{getSnapshot:()=>native}},toast:()=>{},errorMessage:String})
+    await Promise.all([presentation.loadConversations(),presentation.loadConversations()])
+    assert.equal(fetches,1,'concurrent catalog reads share the in-flight request')
+    presentation.acceptConversations(catalog(4))
+    const render=()=>{
+      refIndex=0; effectIndex=0
+      return presentation.TavernWorkspacePresentation({browserProps:{useSessions:select=>select(native),useWorkspaces:select=>select({}),open:()=>{},forkSession:()=>{},searchSessions:async()=>({})},renderDefault:props=>props})
+    }
+    const flush=()=>new Promise(resolve=>setImmediate(resolve))
+    render(); await flush()
+    assert.equal(snapshot().value.revision,4,'a late older response cannot replace a newer accepted catalog')
+    const afterInitial=fetches
+    for (let i=0;i<3;i++) { now+=100; native={...native,ids:[...native.ids,String(i)]}; render() }
+    assert.equal(fetches,afterInitial)
+    const trailing=[...timers.entries()].filter(([,timer])=>!timer.interval)
+    assert.equal(trailing.length,1,'native list bursts leave exactly one trailing catalog read')
+    now=30000; timers.delete(trailing[0][0]); trailing[0][1].run(); await flush()
+    assert.equal(fetches,afterInitial+1)
+    windowStub.listeners.get('focus')(); await flush()
+    assert.equal(fetches,afterInitial+2,'focus reads immediately')
+    documentStub.hidden=true; documentStub.listeners.get('visibilitychange')(); await flush()
+    assert.equal(fetches,afterInitial+2,'hidden documents do not poll')
+    documentStub.hidden=false; documentStub.listeners.get('visibilitychange')(); await flush()
+    assert.equal(fetches,afterInitial+3,'becoming visible reads immediately')
+    now+=100; native={...native,ids:[...native.ids,'cleanup']}; render()
+    for (const effect of effects) effect.cleanup?.()
+    unsubscribe()
+    assert.equal(timers.size,0,'unmount clears both polling and trailing timers')
+    assert.equal(windowStub.listeners.size,0)
+    assert.equal(documentStub.listeners.size,0)
+  } finally {
+    for (const effect of effects) effect.cleanup?.()
+    Date.now=originalNow
+    for (const [key, descriptor] of Object.entries(originals)) {
+      if (descriptor) Object.defineProperty(globalThis,key,descriptor)
+      else delete globalThis[key]
+    }
+  }
+  console.log('conversation-catalog=ok (dedup, revision, trailing refresh, focus/visibility, cleanup)')
+}

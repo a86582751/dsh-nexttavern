@@ -1,0 +1,2954 @@
+{
+  "schemaVersion": 1,
+  "modules": [
+    {
+      "id": "plugin-lifecycle",
+      "aliases": [
+        "插件生命周期",
+        "统一插件"
+      ],
+      "patterns": [
+        "plugin-composition*",
+        "plugin-conditional*",
+        "plugin-carrier*",
+        "plugin-slot*",
+        "plugin-fork*",
+        "plugin-owned-controller*",
+        "runtime/alpha3/compat/session-controller/*",
+        "plugin-owned-telemetry*",
+        "plugin-owned-protocol*",
+        "plugin-thirdparty-scope*",
+        "plugin-owned-packages*",
+        "runtime/alpha3/compat/pi-ai/*",
+        "runtime/alpha3/compat/token-meter/*",
+        "runtime/alpha3/compat/session-projection/*"
+      ]
+    },
+    {
+      "id": "card-reading",
+      "aliases": [
+        "读卡",
+        "原著研究"
+      ],
+      "patterns": [
+        "card-adaptation*",
+        "card-research*",
+        "card-character-map*",
+        "tavern-library*"
+      ]
+    },
+    {
+      "id": "card-writing",
+      "aliases": [
+        "写卡"
+      ],
+      "patterns": [
+        "roleplay-author*",
+        "author-*",
+        "roleplay-card-workflow*"
+      ]
+    },
+    {
+      "id": "card-import",
+      "aliases": [
+        "角色卡导入"
+      ],
+      "patterns": [
+        "roleplay-import*",
+        "roleplay-card-import*",
+        "tavern-card*",
+        "tavern-conversion*"
+      ]
+    },
+    {
+      "id": "card-download",
+      "aliases": [
+        "角色卡下载"
+      ],
+      "patterns": [
+        "card-export*"
+      ]
+    },
+    {
+      "id": "status",
+      "aliases": [
+        "状态栏"
+      ],
+      "patterns": [
+        "roleplay-status*",
+        "status-*"
+      ]
+    },
+    {
+      "id": "decision",
+      "aliases": [
+        "决策卡"
+      ],
+      "patterns": [
+        "roleplay-decision*",
+        "decision-*",
+        "ask-user-decision*"
+      ]
+    },
+    {
+      "id": "notes",
+      "aliases": [
+        "导演笔记"
+      ],
+      "patterns": [
+        "memory-notes*",
+        "memory-summary*",
+        "memory-scheduler*",
+        "memory-compaction*",
+        "roleplay-memory-engine*",
+        "memory-entry*",
+        "memory-model-policy*",
+        "phase-a-memory*",
+        "phase-b-memory*"
+      ]
+    },
+    {
+      "id": "branches",
+      "aliases": [
+        "分支对话",
+        "世界线"
+      ],
+      "patterns": [
+        "roleplay-worldline*",
+        "roleplay-branch*",
+        "roleplay-inheritance*",
+        "tavern-conversation*",
+        "conversation-*",
+        "context-supersession*",
+        "worldline-*"
+      ]
+    },
+    {
+      "id": "worldbook",
+      "aliases": [
+        "世界书",
+        "设定"
+      ],
+      "patterns": [
+        "worldbook-*",
+        "roleplay-setting*",
+        "roleplay-resource*",
+        "settings-*",
+        "roleplay-userinfo*",
+        "userinfo-*"
+      ]
+    },
+    {
+      "id": "novel-export",
+      "aliases": [
+        "小说导出"
+      ],
+      "patterns": [
+        "novel-export*"
+      ]
+    },
+    {
+      "id": "retrieval",
+      "aliases": [
+        "记忆检索"
+      ],
+      "patterns": [
+        "memory-retrieval*",
+        "memory-local*",
+        "memory-vector*",
+        "memory-embedding*",
+        "memory-provenance*",
+        "memory-history*",
+        "memory-story-text*"
+      ]
+    },
+    {
+      "id": "reader",
+      "aliases": [
+        "阅读界面"
+      ],
+      "patterns": [
+        "reader-*",
+        "client*",
+        "host-index*",
+        "ui-contract*",
+        "message-actions*",
+        "session-actions*",
+        "user-info*",
+        "state-store*",
+        "roleplay-ui-styles*",
+        "bounded-regex*",
+        "toast-confirm*",
+        "management-panels*",
+        "panel-state*",
+        "reader-status*"
+      ]
+    },
+    {
+      "id": "narrative",
+      "aliases": [
+        "剧情回合",
+        "任务"
+      ],
+      "patterns": [
+        "roleplay-core*",
+        "roleplay-loop*",
+        "roleplay-prepare*",
+        "roleplay-preparation*",
+        "roleplay-context*",
+        "roleplay-completion*",
+        "roleplay-service*",
+        "roleplay-state*",
+        "roleplay-task*",
+        "roleplay-job*",
+        "roleplay-panel*",
+        "roleplay-session*",
+        "roleplay-telemetry-routes*",
+        "roleplay-diagnosis*",
+        "roleplay-data*",
+        "roleplay-activity*",
+        "tavern-loop*",
+        "tavern-tasks*",
+        "tavern-task*",
+        "tavern-jobs*",
+        "tavern-fallback*",
+        "inline-*",
+        "management-fork*",
+        "prompt-prefix*",
+        "task-context*",
+        "activity-view*",
+        "tavern-model-policy"
+      ]
+    },
+    {
+      "id": "telemetry",
+      "aliases": [
+        "用量统计"
+      ],
+      "patterns": [
+        "tavern-telemetry*",
+        "tavern-pricing*",
+        "tavern-embedding-telemetry*",
+        "pricing-*",
+        "telemetry-*",
+        "tavern-price-catalog",
+        "tavern-exchange-rates"
+      ]
+    },
+    {
+      "id": "character-cluster",
+      "aliases": [
+        "角色集群"
+      ],
+      "patterns": [
+        "character-cluster*"
+      ]
+    },
+    {
+      "id": "presets",
+      "aliases": [
+        "文风预设"
+      ],
+      "patterns": [
+        "narrative-preset*",
+        "narrative-style*",
+        "preset*",
+        "light-novel",
+        "otome",
+        "cosmic-romance",
+        "jrpg",
+        "cinematic",
+        "annalistic",
+        "minimal",
+        "delicate",
+        "fantasy",
+        "horror",
+        "luxun",
+        "lyrical",
+        "comedy",
+        "classical",
+        "deescape-md"
+      ]
+    },
+    {
+      "id": "access",
+      "aliases": [
+        "鉴权"
+      ],
+      "patterns": [
+        "auth-*",
+        "public-access*",
+        "*/auth/*",
+        "integrations/auth-webserver/*"
+      ]
+    },
+    {
+      "id": "skin",
+      "aliases": [
+        "酒馆皮肤"
+      ],
+      "patterns": [
+        "*/skins/*",
+        "skins/*"
+      ]
+    },
+    {
+      "id": "operations",
+      "aliases": [
+        "检查工具",
+        "构建工具"
+      ],
+      "patterns": [
+        "quality-*",
+        "build-*",
+        "release-*",
+        "public-*",
+        "test-temp*",
+        "tool-resolution*",
+        "qwen-*",
+        "debug-cli*",
+        "source-contract*",
+        "schema-contract*",
+        "canonical-sync*",
+        "deploy-*",
+        "install-public*",
+        "installer-*",
+        "patch-harness*",
+        "package*",
+        "registry",
+        "verify",
+        "check-*",
+        "snapshot-*",
+        "sync-*",
+        "official-*",
+        "pi-ai-*",
+        "acceptance-*",
+        "run-acceptance",
+        "run-contracts",
+        "select-public-tests",
+        "source-manifest",
+        "tsconfig",
+        "contracts/*",
+        "checks/*",
+        "scripts/*",
+        ".github/*",
+        "tools/*",
+        "release/*",
+        "runtime/alpha3/operations/*",
+        "runtime/alpha3/deploy/*",
+        "deployment/*",
+        "windows-setup*",
+        "linux-setup*",
+        ".gitignore"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "test:plugin-carrier.market.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "depends": [
+        "test:plugin-composition.test.mts",
+        "test:plugin-conditional-composition.test.mts"
+      ],
+      "requires": [
+        "tar"
+      ],
+      "heavy": true,
+      "cache": false,
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-conditional-composition.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-composition.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "types",
+      "action": "types",
+      "modules": [],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "generated",
+      "action": "generated",
+      "modules": [
+        "skin"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "gate": true
+    },
+    {
+      "id": "syntax",
+      "action": "syntax",
+      "modules": [],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "docs",
+      "action": "docs",
+      "modules": [],
+      "cache": false
+    },
+    {
+      "id": "bundle",
+      "action": "bundle",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "effects": {
+        "build": true
+      }
+    },
+    {
+      "id": "test:test-temp.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:build-entrypoints.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:qwen-reasoning-profile.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:public-release-metadata.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "cache": false,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:windows-setup.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "windows",
+        "pwsh"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:linux-setup.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "posix"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:public-transaction.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "heavy": true,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:public-install.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "heavy": true,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:memory-story-text.test.mjs",
+      "action": "test",
+      "modules": [
+        "retrieval"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:card-adaptation.test.mts",
+      "action": "test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:card-research-planner.test.mts",
+      "action": "test",
+      "artifact": "card-research-planner-test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:card-research-integration.test.mts",
+      "action": "test",
+      "artifact": "card-research-integration-test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:card-adaptation-retrieval.test.mts",
+      "action": "test",
+      "artifact": "card-adaptation-retrieval-test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "effects": {
+        "service": true
+      }
+    },
+    {
+      "id": "test:card-adaptation-management.test.mts",
+      "action": "test",
+      "artifact": "card-adaptation-management-test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:card-adaptation-ui.test.mts",
+      "action": "test",
+      "artifact": "card-adaptation-ui-test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:memory-retrieval.test.mjs",
+      "action": "test",
+      "modules": [
+        "retrieval"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "effects": {
+        "service": true
+      },
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:memory-retrieval-ui.test.mjs",
+      "action": "test",
+      "artifact": "memory-retrieval-ui-contract",
+      "modules": [
+        "retrieval"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-embedding-telemetry.test.mjs",
+      "action": "test",
+      "artifact": "tavern-embedding-telemetry.test.mjs-contract",
+      "modules": [
+        "telemetry"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:public-access.test.mjs",
+      "action": "test",
+      "modules": [
+        "access",
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-core-smoke.mjs",
+      "action": "test",
+      "artifact": "inventory-runtime-alpha3-tests-roleplay-core-smoke-mjs",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:context-supersession.test.mjs",
+      "action": "test",
+      "artifact": "context-supersession-contract",
+      "modules": [
+        "branches"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:decision-context.test.mjs",
+      "action": "test",
+      "artifact": "decision-context-contract",
+      "modules": [
+        "decision"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:prompt-prefix-cache.test.mjs",
+      "action": "test",
+      "artifact": "prompt-prefix-cache-contract",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:roleplay-activity.test.mjs",
+      "action": "test",
+      "artifact": "roleplay-activity-contract",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:inline-task-delivery.test.mjs",
+      "action": "test",
+      "artifact": "inline-task-delivery-contract",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:task-context-retirement.test.mjs",
+      "action": "test",
+      "artifact": "task-context-retirement-contract",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-conversations.test.mjs",
+      "action": "test",
+      "artifact": "tavern-conversations-test",
+      "modules": [
+        "branches"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:host-index-smoke.mjs",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:conversation-projection.test.mjs",
+      "action": "test",
+      "artifact": "conversation-projection-test",
+      "modules": [
+        "branches"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:official-fork-preparation.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:official-projection-hotpath.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:official-token-meter-hotpath.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:pi-ai-google-terminal.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:pi-ai-openai-terminal.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:pi-ai-anthropic-terminal.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:pi-ai-terminal-entry.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-fallback-log.test.mjs",
+      "action": "test",
+      "artifact": "fallback-log-contract",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:toast-confirm.test.mjs",
+      "action": "test",
+      "artifact": "toast-confirm-contract",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "jsdom"
+      ]
+    },
+    {
+      "id": "test:status-obligation.test.mjs",
+      "action": "test",
+      "artifact": "status-obligation-contract",
+      "modules": [
+        "status"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:roleplay-card-import.test.mjs",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-card.test.mjs",
+      "action": "test",
+      "artifact": "tavern-card-test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:worldbook-passive.test.mjs",
+      "action": "test",
+      "artifact": "worldbook-passive-test",
+      "modules": [
+        "worldbook"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:settings-workflow.test.mjs",
+      "action": "test",
+      "modules": [
+        "worldbook"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:narrative-presets.test.mjs",
+      "action": "test",
+      "modules": [
+        "presets"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:narrative-presets-ui.test.mjs",
+      "action": "test",
+      "artifact": "narrative-presets-ui-contract",
+      "modules": [
+        "presets"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:management-panels-ui.test.mjs",
+      "action": "test",
+      "artifact": "management-panels-ui-contract",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:author-save-ui.test.mjs",
+      "action": "test",
+      "artifact": "author-save-ui-contract",
+      "modules": [
+        "card-writing"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:card-export.test.mjs",
+      "action": "test",
+      "artifact": "card-export-test",
+      "modules": [
+        "card-download"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:ask-user-decision-pr.test.mjs",
+      "action": "test",
+      "artifact": "ask-user-decision-pr-test",
+      "modules": [
+        "decision"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-tasks.test.mjs",
+      "action": "test",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:character-cluster.test.mjs",
+      "action": "test",
+      "artifact": "character-cluster-test",
+      "modules": [
+        "character-cluster"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-loop.test.mjs",
+      "action": "test",
+      "artifact": "tavern-loop-test",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-telemetry.test.mjs",
+      "action": "test",
+      "artifact": "tavern-telemetry-test",
+      "modules": [
+        "telemetry"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-pricing.test.mjs",
+      "action": "test",
+      "artifact": "tavern-pricing-test",
+      "modules": [
+        "telemetry"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-jobs-integration.test.mjs",
+      "action": "test",
+      "artifact": "tavern-jobs-integration-test",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-task-lifecycle.test.mjs",
+      "action": "test",
+      "artifact": "tavern-task-lifecycle-test",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-library.test.mjs",
+      "action": "test",
+      "artifact": "tavern-library-test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-library-input.test.mjs",
+      "action": "test",
+      "artifact": "tavern-library-input-test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-library-record.test.mjs",
+      "action": "test",
+      "artifact": "tavern-library-record-test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:novel-export.test.mjs",
+      "action": "test",
+      "artifact": "novel-export-test",
+      "modules": [
+        "novel-export"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:ui-contract.test.mjs",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:status-surface-refresh.test.mjs",
+      "action": "test",
+      "artifact": "status-surface-refresh-test",
+      "modules": [
+        "status"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:official-ui-workspace-slots.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:official-ui-chat-maintenance.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:deploy-tavern-phase2.test.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:bounded-regex.test.mjs",
+      "action": "test",
+      "artifact": "bounded-regex-test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:roleplay-memory-engine.test.mjs",
+      "action": "test",
+      "artifact": "memory-engine-contract",
+      "modules": [
+        "notes"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:memory-summary.test.mjs",
+      "action": "test",
+      "artifact": "memory-summary-test",
+      "modules": [
+        "notes"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:memory-scheduler.test.mjs",
+      "action": "test",
+      "artifact": "memory-scheduler-test",
+      "modules": [
+        "notes"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:memory-notes-writer.test.mjs",
+      "action": "test",
+      "artifact": "memory-notes-writer-test",
+      "modules": [
+        "notes"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:memory-entry.test.mjs",
+      "action": "test",
+      "artifact": "memory-entry-test",
+      "modules": [
+        "notes"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:memory-model-policy.test.mjs",
+      "action": "test",
+      "artifact": "memory-model-policy-contract",
+      "modules": [
+        "notes"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:phase-a-memory.test.mjs",
+      "action": "test",
+      "artifact": "phase-a-memory-contract",
+      "modules": [
+        "notes"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:phase-b-memory.test.mjs",
+      "action": "test",
+      "artifact": "phase-b-memory-contract",
+      "modules": [
+        "notes"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:management-fork-completion.test.mts",
+      "action": "test",
+      "artifact": "management-fork-completion-contract",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:inline-maintenance-retirement.test.mts",
+      "action": "test",
+      "artifact": "inline-maintenance-retirement-contract",
+      "modules": [
+        "narrative"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:conversation-view-state.test.mjs",
+      "action": "test",
+      "artifact": "conversation-view-contract",
+      "modules": [
+        "branches"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:reader-status-regression.cjs",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "jsdom"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:reader-regex-worker.test.cjs",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:reader-author-js.test.mjs",
+      "action": "test",
+      "artifact": "reader-author-js-contract",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:debug-cli.test.py",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [],
+      "requires": [
+        "python"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:card-character-map.test.mts",
+      "action": "test",
+      "artifact": "card-character-map-test",
+      "modules": [
+        "card-reading"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:memory-provenance.test.mjs",
+      "action": "test",
+      "artifact": "memory-provenance-test",
+      "modules": [
+        "retrieval"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:worldline-fork-e2e.test.mjs",
+      "action": "test",
+      "artifact": "worldline-fork-e2e",
+      "modules": [
+        "branches"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:auth",
+      "action": "test",
+      "artifact": "auth-webserver-contract",
+      "modules": [
+        "access"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:schema-contract.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance"
+      ],
+      "cache": false,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:source-contract.mjs",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance"
+      ],
+      "cache": false,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:canonical-sync-contract.mjs",
+      "action": "inventory",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance"
+      ],
+      "cache": false,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:node-declarations-must-match-the-pinned-build-dependency",
+      "action": "test",
+      "args": [
+        "--case",
+        "node-declarations-must-match-the-pinned-build-dependency"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:auth-declarations-must-match-their-separate-lockfile",
+      "action": "test",
+      "args": [
+        "--case",
+        "auth-declarations-must-match-their-separate-lockfile"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:typescript-errors-stop-generation-and-release-before-output-writes",
+      "action": "test",
+      "args": [
+        "--case",
+        "typescript-errors-stop-generation-and-release-before-output-writes"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:stale-generated-javascript-is-rejected-and-explicit-generation-repairs-it",
+      "action": "test",
+      "args": [
+        "--case",
+        "stale-generated-javascript-is-rejected-and-explicit-generation-repairs-it"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:typescript-source-requires-an-explicit-output-mapping",
+      "action": "test",
+      "args": [
+        "--case",
+        "typescript-source-requires-an-explicit-output-mapping"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:typescript-transitive-sources-cannot-escape-inventory",
+      "action": "test",
+      "args": [
+        "--case",
+        "typescript-transitive-sources-cannot-escape-inventory"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:registered-typescript-dependencies-generate-and-ship-javascript",
+      "action": "test",
+      "args": [
+        "--case",
+        "registered-typescript-dependencies-generate-and-ship-javascript"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:new-unregistered-source-is-rejected",
+      "action": "test",
+      "args": [
+        "--case",
+        "new-unregistered-source-is-rejected"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:hand-written-javascript-in-a-typescript-owned-directory-is-rejected",
+      "action": "test",
+      "args": [
+        "--case",
+        "hand-written-javascript-in-a-typescript-owned-directory-is-rejected"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:a-build-mapping-cannot-explain-an-output-whose-source-was-deleted",
+      "action": "test",
+      "args": [
+        "--case",
+        "a-build-mapping-cannot-explain-an-output-whose-source-was-deleted"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:missing-canonical-source-is-rejected",
+      "action": "test",
+      "args": [
+        "--case",
+        "missing-canonical-source-is-rejected"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:duplicate-install-paths-are-rejected",
+      "action": "test",
+      "args": [
+        "--case",
+        "duplicate-install-paths-are-rejected"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:self-contained-payload-verifies",
+      "action": "test",
+      "args": [
+        "--case",
+        "self-contained-payload-verifies"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:typed-mjs-cli-retains-its-executable-entry-and-transforms-files",
+      "action": "test",
+      "args": [
+        "--case",
+        "typed-mjs-cli-retains-its-executable-entry-and-transforms-files"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:packaged-audit-runs-without-compiler-dependencies",
+      "action": "test",
+      "args": [
+        "--case",
+        "packaged-audit-runs-without-compiler-dependencies"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:all-inherited-acceptance-sources-use-master-inventory",
+      "action": "test",
+      "args": [
+        "--case",
+        "all-inherited-acceptance-sources-use-master-inventory"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:tgz-contains-runnable-cli-without-credentials-or-codex-dependency",
+      "action": "test",
+      "args": [
+        "--case",
+        "tgz-contains-runnable-cli-without-credentials-or-codex-dependency"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:source-import-omission-cannot-hide-behind-matching-list-counts",
+      "action": "test",
+      "args": [
+        "--case",
+        "source-import-omission-cannot-hide-behind-matching-list-counts"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:package-files-and-exports-must-exist",
+      "action": "test",
+      "args": [
+        "--case",
+        "package-files-and-exports-must-exist"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:skill-reference-card-must-exist",
+      "action": "test",
+      "args": [
+        "--case",
+        "skill-reference-card-must-exist"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:tampering-and-extra-files-are-rejected",
+      "action": "test",
+      "args": [
+        "--case",
+        "tampering-and-extra-files-are-rejected"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:traversal-is-rejected",
+      "action": "test",
+      "args": [
+        "--case",
+        "traversal-is-rejected"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:two-isolated-builds-have-identical-payload-and-tgz-hashes",
+      "action": "test",
+      "args": [
+        "--case",
+        "two-isolated-builds-have-identical-payload-and-tgz-hashes"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:crlf-checkout-produces-the-same-install-payload",
+      "action": "test",
+      "args": [
+        "--case",
+        "crlf-checkout-produces-the-same-install-payload"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:manual-and-upstream-inventory-is-separate-from-writable-files",
+      "action": "test",
+      "args": [
+        "--case",
+        "manual-and-upstream-inventory-is-separate-from-writable-files"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:scoped-deployment-selects-only-registered-files-and-pins-historical-compatibility",
+      "action": "test",
+      "args": [
+        "--case",
+        "scoped-deployment-selects-only-registered-files-and-pins-historical-compatibility"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:committed-stale-browser-bundle-is-never-the-deployment-input",
+      "action": "test",
+      "args": [
+        "--case",
+        "committed-stale-browser-bundle-is-never-the-deployment-input"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:scoped-apply-preserves-unrelated-files-and-supports-exact-rollback",
+      "action": "test",
+      "args": [
+        "--case",
+        "scoped-apply-preserves-unrelated-files-and-supports-exact-rollback"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:dirty-builds-require-explicit-test-opt-in",
+      "action": "test",
+      "args": [
+        "--case",
+        "dirty-builds-require-explicit-test-opt-in"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:write-failure-restores-a-first-install",
+      "action": "test",
+      "args": [
+        "--case",
+        "write-failure-restores-a-first-install"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:successful-offline-install-matches-receipt-and-rolls-back",
+      "action": "test",
+      "args": [
+        "--case",
+        "successful-offline-install-matches-receipt-and-rolls-back"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:audit-detects-late-target-drift-before-any-write",
+      "action": "test",
+      "args": [
+        "--case",
+        "audit-detects-late-target-drift-before-any-write"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:rollback-refuses-later-user-changes",
+      "action": "test",
+      "args": [
+        "--case",
+        "rollback-refuses-later-user-changes"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "candidate",
+      "action": "candidate",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": true
+      },
+      "timeoutMs": 900000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "archive",
+      "action": "archive",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "python"
+      ],
+      "heavy": true,
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "install",
+      "action": "install",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "python",
+        "tar"
+      ],
+      "depends": [
+        "archive"
+      ],
+      "heavy": true,
+      "cache": false,
+      "timeoutMs": 300000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "installer:windows",
+      "action": "installer",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "windows",
+        "go"
+      ],
+      "depends": [
+        "archive",
+        "test:windows-setup.test.mjs"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 600000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "installer:linux",
+      "action": "installer",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "posix"
+      ],
+      "depends": [
+        "archive",
+        "test:linux-setup.test.mjs"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 600000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "harness",
+      "action": "harness",
+      "modules": [],
+      "requires": [
+        "maintenance",
+        "harness-idle"
+      ],
+      "depends": [
+        "archive"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "network": true,
+        "service": true
+      },
+      "timeoutMs": 600000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:quality-runner.test.mjs",
+      "action": "test",
+      "artifact": "quality-test-quality-runner-test-mjs",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "depends": [
+        "generated"
+      ]
+    },
+    {
+      "id": "test:acceptance-evidence.test.mts",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance",
+        "pwsh"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-slot-ownership.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "timeoutMs": 30000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-fork-staging.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "timeoutMs": 30000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-fork-controller.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-fork-identity.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-owned-controller.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "bundle:owned-controller",
+      "action": "bundle",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:typescript-host-and-client-contexts-remain-strict-and-explicit",
+      "action": "test",
+      "args": [
+        "--case",
+        "typescript-host-and-client-contexts-remain-strict-and-explicit"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "mechanics:browser-recipes-reject-identity-and-pinned-dependency-drift-before-writes",
+      "action": "test",
+      "args": [
+        "--case",
+        "browser-recipes-reject-identity-and-pinned-dependency-drift-before-writes"
+      ],
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "maintenance",
+        "compiler",
+        "python",
+        "git"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "effects": {
+        "build": true
+      },
+      "timeoutMs": 240000,
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-owned-telemetry.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "heavy": true,
+      "id": "test:plugin-owned-protocol.test.mts",
+      "action": "test",
+      "inputs": [],
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "requires": [
+        "compiler",
+        "tar"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "timeoutMs": 60000,
+      "cache": false,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "action": "test",
+      "timeoutMs": 10000,
+      "id": "test:plugin-thirdparty-scope.test.mts",
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    }
+  ]
+}

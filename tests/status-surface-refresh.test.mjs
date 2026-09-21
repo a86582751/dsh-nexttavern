@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import {createStatusSurface} from '../src/status-surface.js'
-import {createRoleplayStateStore} from '../src/state-store.js'
+import {createStatusSurface} from '../lib/ui/status-surface.js'
+import {createRoleplayStateStore} from '../lib/ui/state-store.js'
 
 // Run the actual overlay hooks and seat against a minimal browser surface.
 const windowEvents=new EventTarget(),documentEvents=new EventTarget(),storage=new Map()

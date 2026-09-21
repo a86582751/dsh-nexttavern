@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process'
 import { LOCAL_MODELS, LOCAL_RUNTIME_VERSION, localTokenBudget, localInputPrefix, localTextRanges } from './memory-local-catalog.js'
 import type { LocalModel } from './memory-retrieval-types.js'
 
-const templates=dirname(fileURLToPath(new URL('./embedding-runtime/package.json',import.meta.url)))
+const templates=dirname(fileURLToPath(new URL('../../memory/embedding-runtime/package.json',import.meta.url)))
 const runtimeLock=createHash('sha256').update(readFileSync(join(templates,'package-lock.json'),'utf8').replace(/\r\n/g,'\n')).digest('hex')
 const home = resolve(process.argv[2]!), models = join(home,'models'), runtime = join(home,'runtimes',runtimeLock.slice(0,16)), stateFile=join(home,'local-state.json')
 const encoderOnly=process.argv[3]==='encoder'

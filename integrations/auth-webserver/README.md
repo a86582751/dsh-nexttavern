@@ -32,9 +32,18 @@ adapter against local synthetic RSA/JWT fixtures. Tests never contact Cloudflare
 or model providers. Real edge login and mobile background behavior depend on
 your own deployment and device; follow the guide's acceptance checklist.
 
-The maintenance source is `index.ts`; `index.js` is generated and remains the
-installed entry. In the maintenance checkout, install the locked dependencies
-for both `runtime/alpha3/build-tools` and `runtime/alpha3/auth`, then run
-`node runtime/alpha3/operations/build-typescript.mjs --write`. The compiler checks
-the official Host/Cordis and jose declarations against their package locks.
-Players do not need TypeScript to install or run the generated package.
+The maintenance source is `src/index.ts`; `lib/index.js` is generated and is the
+installed entry (`package.json` main is `lib/index.js`). In the maintenance
+checkout, install the locked dependencies for both `runtime/alpha3/build-tools`
+and `runtime/alpha3/auth`, then bootstrap the compiler from its TypeScript source:
+
+```powershell
+npm ci --prefix runtime/alpha3/build-tools --ignore-scripts --no-audit --no-fund
+npm ci --prefix runtime/alpha3/auth --ignore-scripts --no-audit --no-fund
+node runtime/alpha3/src/operations/build-typescript.mts --write
+node runtime/alpha3/lib/operations/build-typescript.mjs --check
+```
+
+The compiler checks the official Host/Cordis and jose declarations against their
+package locks. Players do not need TypeScript to install or run the generated
+package.

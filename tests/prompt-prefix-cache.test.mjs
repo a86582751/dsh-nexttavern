@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {pathToFileURL} from 'node:url'
-import {createStableRoleplayFence} from '../preset/lib/roleplay-core.js'
+import {createStableRoleplayFence} from '../lib/core/roleplay-core.js'
 const fence=createStableRoleplayFence()
 const authorVariables='{{user}} {{user_gender}} {{char}} {{威胁度}} {{unknown_slot}} {{}} {{{nested}}}'
 const safeVariables=fence(authorVariables,'rules')

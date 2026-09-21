@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { createToastController, confirmWithDialog } from '../src/client.js'
-import { resolveJsdom } from '../tools/tool-resolution.mjs'
+import { createToastController, confirmWithDialog } from '../lib/ui/client.js'
+import { resolveJsdom } from '../lib/operations/tool-resolution.mjs'
 
 const require = createRequire(import.meta.url)
 const { JSDOM } = require(resolveJsdom())

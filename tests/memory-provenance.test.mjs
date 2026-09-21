@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import {branchScope,belongsToBranch,durableSeq,provenanceSeqOf,scopedLedgerItems,textOf,lastSeqOf,estimateTokens,adaptationIsActive,adaptationTurns} from '../src/memory/memory-provenance.js'
+import {branchScope,belongsToBranch,durableSeq,provenanceSeqOf,scopedLedgerItems,textOf,lastSeqOf,estimateTokens,adaptationIsActive,adaptationTurns} from '../lib/memory/memory-provenance.js'
 const fork={id:'child',header:{parentSession:'root',seedLength:5},events:[{seq:3},{seq:9}]}
 assert.deepEqual(branchScope(fork),{isFork:true,seedLength:5})
 assert.deepEqual(branchScope({id:'root',header:{}}),{isFork:false,seedLength:null})

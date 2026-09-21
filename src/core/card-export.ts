@@ -2,7 +2,10 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, lstatSync, realpathSync, openSync, writeFileSync, closeSync, readFileSync, constants, fsyncSync, linkSync, unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fenceCardContent } from './tavern-card.js'
-import { exportSnapshot, renderOrganizedExport, stableJson, type ExportMaterial, type ExportSnapshot, type ExportSection } from './card-export-projection.js'
+import {
+  exportSnapshot, renderOrganizedExport, stableJson, safeHeading, sourceLines,
+  type ExportMaterial, type ExportSnapshot, type ExportSection,
+} from './card-export-projection.js'
 
 export { exportSnapshot, renderOrganizedExport, stableJson }
 
@@ -28,8 +31,6 @@ type Options = {
   classificationGuide?: string
 }
 const hash = (value: string | Uint8Array): string => createHash('sha256').update(value).digest('hex')
-const safeHeading = (value: unknown): string => String(value ?? '').replace(/[\r\n\x00-\x1f]/g, ' ').replace(/^#+\s*/, '').trim().slice(0, 200)
-const sourceLines = (text: string): string[] => text.match(/[^\n]*\n|[^\n]+$/g) ?? ['']
 const recordOf = (value: unknown): ToolArgs => value !== null && typeof value === 'object' ? value as ToolArgs : {}
 
 function writeExport(cwd: string, id: string, markdown: string): string {

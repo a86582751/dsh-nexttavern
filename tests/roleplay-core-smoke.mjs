@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
-import { createRoleplayInheritance } from '../src/core/roleplay-inheritance.js'
-import { createRoleplayService } from '../src/core/roleplay-service.js'
+import { createRoleplayInheritance } from '../lib/core/roleplay-inheritance.js'
+import { createRoleplayService } from '../lib/core/roleplay-service.js'
 import { mock } from 'node:test'
 import { createHash } from 'node:crypto'
-import { directorNotesForBranch, legacyCadenceSlots, memoryNotesCadence, selectedStoryHistory } from '../src/memory/roleplay-memory-engine.js'
-import { apply, recentWindowSince, readRoleplayActivity } from '../preset/lib/roleplay-core.js'
-import { recordSha256 } from '../src/core/roleplay-data.js'
-import { createConversationCatalog } from '../src/core/tavern-conversations.js'
+import { directorNotesForBranch, legacyCadenceSlots, memoryNotesCadence, selectedStoryHistory } from '../lib/memory/roleplay-memory-engine.js'
+import { apply, recentWindowSince, readRoleplayActivity } from '../lib/core/roleplay-core.js'
+import { recordSha256 } from '../lib/core/roleplay-data.js'
+import { createConversationCatalog } from '../lib/core/tavern-conversations.js'
 
 class Table extends Map {
   async put(key, value) { this.set(key, structuredClone(value)) }
@@ -729,6 +729,66 @@ assert.equal(savedRegenState.userActionsBySeq['1'].group.total, 1)
 assert.equal(savedRegenState.branchGroupsByMessageId['save-a2'].currentOrdinal, 2)
 assert.equal(savedRegenState.branchGroupsByMessageId['save-a2'].total, 2)
 
+// A surface edit and fork registration must share the canonical anchor lock.
+// Pause the edit before its ledger commit: a second lock in an extracted
+// module would let registration overwrite the player's new canonical text.
+{
+  const prepared = await callRoute('/api/roleplay/branch', {
+    action: 'prepare', sessionId: saveRoot.id, messageId: 'save-a1', kind: 'regenerate',
+  })
+  assert.equal(prepared.status, 200)
+  const pendingChild = enableAppend({
+    id: 'save-concurrent-child', header: { agentPreset: 'roleplay' },
+    events: [], seq: 0, surface: { nodes: [] },
+  })
+  sessions.set(pendingChild.id, pendingChild)
+  const branches = table('branch')
+  const originalPut = branches.put
+  let releaseCommit, enteredCommit
+  const commitGate = new Promise(resolve => { releaseCommit = resolve })
+  const entered = new Promise(resolve => { enteredCommit = resolve })
+  let paused = false
+  branches.put = async function (key, value) {
+    if (!paused && key.startsWith('fork-group-') && value.rootSessionId === saveRoot.id) {
+      paused = true
+      enteredCommit()
+      await commitGate
+    }
+    return originalPut.call(this, key, value)
+  }
+  let editing, registering
+  try {
+    editing = callRoute('/api/roleplay/branch', {
+      action: 'replace-message', sessionId: saveRoot.id, role: 'user', seq: 1,
+      text: '并发编辑后的玩家消息',
+    })
+    // Race against completion too, so a broken fixture fails instead of hanging.
+    await Promise.race([entered, editing.then(() => { throw Error('edit did not reach ledger commit') })])
+    let registered = false
+    registering = callRoute('/api/roleplay/branch', {
+      action: 'register', operationId: prepared.body.operationId,
+      childSessionId: pendingChild.id, requestId: 'concurrent-register',
+      promptText: prepared.body.promptText,
+    }).then(result => { registered = true; return result })
+    await new Promise(resolve => setImmediate(resolve))
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(registered, false, 'registration waits for the surface edit commit')
+    releaseCommit()
+    assert.equal((await editing).status, 200)
+    const staleRegistration = await registering
+    assert.equal(staleRegistration.status, 500)
+    assert.match(staleRegistration.body.error, /玩家消息已在其他分支修改/)
+    const group = [...branches.entries()].find(([key, value]) =>
+      key.startsWith('fork-group-') && value.rootSessionId === saveRoot.id)[1]
+    assert.equal(Object.values(group.playerVariants)[0].text, '并发编辑后的玩家消息')
+    assert.equal(group.members.some(member => member.sessionId === pendingChild.id), false)
+  } finally {
+    releaseCommit()
+    await Promise.allSettled([editing, registering])
+    branches.put = originalPut
+  }
+}
+
 // Migrate an already persisted random-id player replacement without rewriting
 // the immutable audit log. The old event remains, while a tagged stable-id
 // revision becomes authoritative and every historical UI seq stays actionable.
@@ -789,6 +849,43 @@ assert.match(badRegister.body.error, /seed/)
 await table('status').put('session-metadata-root__panel', { panel: { title: 'current' }, atSeq: 8 })
 await callRoute('/api/roleplay/branch', { action: 'replace-message', sessionId: metadataRoot.id, role: 'assistant', messageId: 'meta-a2', text: 'edited metadata answer' })
 assert.equal(table('status').get('session-metadata-root__panel').stale, true)
+// An append can succeed before derived-state invalidation fails. Retrying the
+// same edit must finish that commit without appending another text revision.
+{
+  const memory = table('memory')
+  const memoryKey = `${metadataRoot.id}__head`
+  await memory.put(memoryKey, {
+    version: 1,
+    deltas: [{ sessionId: metadataRoot.id, atSeq: 1 }, { sessionId: metadataRoot.id, atSeq: metadataRoot.seq }],
+  })
+  const originalUpdate = memory.update
+  let injected = false
+  memory.update = async function (key, update) {
+    if (key === memoryKey && !injected) {
+      injected = true
+      throw Error('fixture interrupted edit invalidation')
+    }
+    return originalUpdate.call(this, key, update)
+  }
+  const request = {
+    action: 'replace-message', sessionId: metadataRoot.id,
+    role: 'assistant', messageId: 'meta-a2', text: 'recoverable edited answer',
+  }
+  try {
+    const failed = await callRoute('/api/roleplay/branch', request)
+    assert.equal(failed.status, 500)
+    assert.match(failed.body.error, /fixture interrupted edit invalidation/)
+    const afterAppend = metadataRoot.events.length
+    assert.equal((await callRoute('/api/roleplay/branch', request)).status, 200)
+    assert.equal(metadataRoot.events.length, afterAppend, 'retry reuses the committed text revision')
+    assert.deepEqual(memory.get(memoryKey).deltas, [{ sessionId: metadataRoot.id, atSeq: 1 }])
+    const version = memory.get(memoryKey).version
+    assert.equal((await callRoute('/api/roleplay/branch', request)).status, 200)
+    assert.equal(memory.get(memoryKey).version, version, 'committed receipt prevents repeated invalidation')
+  } finally {
+    memory.update = originalUpdate
+  }
+}
 {
   let catalogDisk=null
   const catalog=createConversationCatalog({read:()=>catalogDisk,write:async v=>{catalogDisk=structuredClone(v)}})

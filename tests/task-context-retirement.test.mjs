@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import { retireCompletedTaskContexts, internalTaskSeqs, taskStorySeqs, inlineTaskInstruction } from '../src/core/tavern-tasks.js'
-import { selectedStoryHistory } from '../src/memory/roleplay-memory-engine.js'
+import { retireCompletedTaskContexts, internalTaskSeqs, taskStorySeqs, inlineTaskInstruction } from '../lib/core/tavern-tasks.js'
+import { selectedStoryHistory } from '../lib/memory/roleplay-memory-engine.js'
 {
  const legacy=JSON.parse(readFileSync(new URL('./fixtures/task-context-legacy-v1.json',import.meta.url),'utf8'))
  assert.equal(inlineTaskInstruction(legacy.jobs),legacy.instruction,'frozen task prompt bytes stay compatible')

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { apply as applyCore } from '../preset/lib/roleplay-core.js'
-import { apply as applyMemory, memoryNotesCadence } from '../src/memory/roleplay-memory-engine.js'
+import { apply as applyCore } from '../lib/core/roleplay-core.js'
+import { apply as applyMemory, memoryNotesCadence } from '../lib/memory/roleplay-memory-engine.js'
 
 class Table extends Map {
   async put(key, value) { this.set(key, structuredClone(value)) }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
-import {createResearchPlanner} from '../src/core/card-research-planner.ts'
+import {createResearchPlanner} from '../lib/core/card-research-planner.js'
 
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex')
 const sourceId='a'.repeat(64)

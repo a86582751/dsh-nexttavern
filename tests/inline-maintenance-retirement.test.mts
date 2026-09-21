@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
-import * as context from '../src/core/tavern-task-context.js'
-import type {TaskEvent,InlineContextJob} from '../src/core/tavern-task-context.js'
-import {retireDeliveredDraft,retireCoarseResearchReads} from '../src/core/card-adaptation-context.js'
+import * as context from '../lib/core/tavern-task-context.js'
+import type {TaskEvent,InlineContextJob} from '../lib/core/tavern-task-context.js'
+import {retireDeliveredDraft,retireCoarseResearchReads} from '../lib/core/card-adaptation-context.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import {createHash} from 'node:crypto'
-import {createTestDirectory,cleanupTestDirectory} from '../tools/test-temp.mjs'
-import {canonicalAssistantForTurn,surfaceEntries} from '../src/core/roleplay-context.js'
-import {importManagementInputs} from '../src/memory/memory-history.js'
-import {createFirstResponseWatchdog} from '../src/core/roleplay-loop.js'
+import {createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
+import {canonicalAssistantForTurn,surfaceEntries} from '../lib/core/roleplay-context.js'
+import {importManagementInputs} from '../lib/memory/memory-history.js'
+import {createFirstResponseWatchdog} from '../lib/core/roleplay-loop.js'
 const native=process.env.DSH_NATIVE_SESSION_MODULE?await import(process.env.DSH_NATIVE_SESSION_MODULE):null
 function fixture(id:string){const events:TaskEvent[]=[],surface={nodes:[] as number[]};return {id,events,surface,
  append(type:string,data:TaskEvent['data'],options?:{surfaceOp:'append'|{op:string;start:number;end:number};sourceEventSeqs?:number[]}){

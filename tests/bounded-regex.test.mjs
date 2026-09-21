@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import {boundedRegexMatch,worldbookRegex} from '../src/core/bounded-regex.js'
+import {boundedRegexMatch,worldbookRegex} from '../lib/core/bounded-regex.js'
 assert.deepEqual((await boundedRegexMatch([worldbookRegex('/LIGHT/i')],'lighthouse')).matches,[true])
 assert.deepEqual((await boundedRegexMatch([{pattern:'[',flags:''}],'text')).matches,[false])
 assert.equal((await boundedRegexMatch([{pattern:'x'.repeat(513),flags:''}],'x')).reason,'limit')

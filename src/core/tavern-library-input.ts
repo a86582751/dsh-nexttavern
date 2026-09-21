@@ -8,7 +8,9 @@ export const safeLibraryName = (value: unknown): string => {
   return name
 }
 export const safeLibraryType = (value: unknown): string => {
-  if (typeof value !== 'string' || !/^[a-z]+\/[a-z0-9!#$&^_.+-]+(?:;\s*charset=(?:utf-8|us-ascii))?$/i.test(value) || value.length > 128) throw new Error('资源类型无效')
+  if (typeof value !== 'string'
+      || !/^[a-z]+\/[a-z0-9!#$&^_.+-]+(?:;\s*charset=(?:utf-8|us-ascii))?$/i.test(value)
+      || value.length > 128) throw new Error('资源类型无效')
   return value.toLowerCase()
 }
 export const librarySource = (value: unknown): Record<string, string> => {
@@ -21,9 +23,12 @@ export const librarySource = (value: unknown): Record<string, string> => {
   if (!source.sessionId) throw new Error('资源来源必须包含 sessionId')
   return source
 }
-export const libraryObjectName = (sha256: string, name: string): string => `${sha256}--${safeLibraryName(name)}`
+export const createLibraryObjectName = (sha256: string, name: string): string => `${sha256}--${safeLibraryName(name)}`
+// Keep the old public helper name for callers outside the archive owner.
+export const libraryObjectName = createLibraryObjectName
 export const libraryContentDisposition = (name: string): string => {
   const fallback = name.normalize('NFKD').replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_') || 'download'
   return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`
 }
-export const libraryStableId = (workspaceHash: string, fullSha256: string): string => createHash('sha256').update(`tavern-library\0${workspaceHash}\0${fullSha256}`).digest('hex')
+export const libraryStableId = (workspaceHash: string,
+     fullSha256: string): string => createHash('sha256').update(`tavern-library\0${workspaceHash}\0${fullSha256}`).digest('hex')

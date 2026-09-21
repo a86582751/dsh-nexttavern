@@ -37,7 +37,7 @@ description: 角色扮演工具与资料工作流；当前文风由预设面板�
 ### 第一步：建立持久、规范化的原文来源
 
 1. docx/pdf 必须使用 `anydoc`，并且**必须设置 `outputFilePath`**：先在当前会话工作区下创建持久目录（如 `.dsh-card-imports/<本次导入标识>/`），再传入该目录中的绝对 .md 路径。不得写 `/tmp`，不得把工具返回窗口中的全文当成唯一来源。md/txt 同样登记或复制到本次导入的持久目录。
-2. **不要就地修改 anydoc 落盘文件，也不要在 `begin` 前运行去转义脚本。** 将该文件作为不可变 raw source 直接交给 `rp_card_import_begin`；导入器会同时归档原始 UTF-8 内容/哈希，并在内部生成 LF 统一、保守去防御性转义的 normalized source。规范化只恢复明确的结构化 Markdown、常见 HTML 标签和完整的“双大括号模板占位符”，不会全局删除 LaTeX、正则、JSON/CSS/JS 或路径里的反斜杠。`scripts/deescape-md.mjs` 只用于人工查看或旧部署恢复，不是新读卡链路的一部分。
+2. **不要就地修改 anydoc 落盘文件，也不要在 `begin` 前运行去转义脚本。** 将该文件作为不可变 raw source 直接交给 `rp_card_import_begin`；导入器会同时归档原始 UTF-8 内容/哈希，并在内部生成 LF 统一、保守去防御性转义的 normalized source。规范化只恢复明确的结构化 Markdown、常见 HTML 标签和完整的“双大括号模板占位符”，不会全局删除 LaTeX、正则、JSON/CSS/JS 或路径里的反斜杠。`lib/preset/deescape-md.mjs` 只用于人工查看或旧部署恢复，不是新读卡链路的一部分。
 3. 以 `begin/chunk` 返回的已归档 normalized source 为唯一分类来源，核对字节数、总行数及首尾内容。`\#`、`\-`、`\[` 是防御性转义的线索而非空卡证据；`read_document` 预览、anydoc 摘要、前两行、文件名和分隔符都不得用于断定内容只有几行。转换失败时报告错误并停止激活，不得去硬盘翻参考卡。
 
 ### 第二步：来源跨度分类导入

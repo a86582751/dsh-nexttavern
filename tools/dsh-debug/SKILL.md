@@ -80,6 +80,6 @@ dsh-debug --json state --session session-ID
 dsh-debug --json send --session session-ID --text-file player.txt --dry-run
 ```
 
-## Cluster settings (CLI 1.3)
+## Cluster settings (CLI 1.4)
 
 Use `cluster --session ID` for settings/revision and roster IDs. `cluster-set --session ID --enabled true|false` toggles this conversation only. `cluster-route --session ID [--character ID] --provider PROVIDER --model MODEL [--effort LEVEL]` sets default/individual routes; `--main` follows the main model, `--inherit` clears the override. Read `models` for supported values. Writes preserve other characters, enforce revisions, and never automatically retry. Use `--dry-run` for a network-free request preview.

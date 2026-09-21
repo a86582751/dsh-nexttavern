@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { apply } from '../src/core/ask-user-decision-pr.js'
+import { apply } from '../lib/core/ask-user-decision-pr.js'
 
 let registered
 const decisions = []

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { createTavernTasks, InlinePending, taskFailureDetails } from '../src/core/tavern-tasks.js'
-import { createTelemetry } from '../src/core/tavern-telemetry.js'
-import { formatFallbackText } from '../src/client.js'
+import { createTavernTasks, InlinePending, taskFailureDetails } from '../lib/core/tavern-tasks.js'
+import { createTelemetry } from '../lib/core/tavern-telemetry.js'
+import { formatFallbackText } from '../lib/ui/client.js'
 
 class Table extends Map { async put(key, value) { this.set(key, structuredClone(value)) } }
 

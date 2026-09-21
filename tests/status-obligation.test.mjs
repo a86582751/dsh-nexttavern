@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { apply } from '../preset/lib/roleplay-core.js'
+import { apply } from '../lib/core/roleplay-core.js'
 
 // Exercise the registered runtime hooks, tools and HTTP projection. No Phase-A
 // snapshot is supplied: status must survive missing preparation and restarts.

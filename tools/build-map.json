@@ -1,1134 +1,1789 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "modules": [
     {
+      "artifact": "skin-nexttavern-index",
+      "source": "skins/dsh-nexttavern-amber/src/index.ts",
+      "banner": "runtime/alpha3/preset/skins/nexttavern-amber/src/index.ts",
+      "primaryOutput": "skins/dsh-nexttavern-amber/lib/index.js",
+      "outputs": [
+        "skins/dsh-nexttavern-amber/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "skin-nexttavern-client",
+      "source": "skins/dsh-nexttavern-amber/src/client.ts",
+      "banner": "runtime/alpha3/preset/skins/nexttavern-amber/src/client.ts",
+      "primaryOutput": "skins/dsh-nexttavern-amber/lib/client.js",
+      "outputs": [
+        "skins/dsh-nexttavern-amber/lib/client.js"
+      ]
+    },
+    {
+      "artifact": "card-character-map",
       "source": "src/core/card-character-map.ts",
-      "banner": "runtime/alpha3/core/card-character-map.ts",
+      "banner": "runtime/alpha3/src/core/card-character-map.ts",
+      "primaryOutput": "lib/core/card-character-map.js",
       "outputs": [
-        "preset/lib/card-character-map.js",
-        "src/core/card-character-map.js"
+        "lib/core/card-character-map.js",
+        "preset/lib/core/card-character-map.js"
       ]
     },
     {
+      "artifact": "card-research-planner",
       "source": "src/core/card-research-planner.ts",
-      "banner": "runtime/alpha3/core/card-research-planner.ts",
+      "banner": "runtime/alpha3/src/core/card-research-planner.ts",
+      "primaryOutput": "lib/core/card-research-planner.js",
       "outputs": [
-        "preset/lib/card-research-planner.js",
-        "src/core/card-research-planner.js"
+        "lib/core/card-research-planner.js",
+        "preset/lib/core/card-research-planner.js"
       ]
     },
     {
-      "source": "src/card-adaptation-panel.ts",
-      "banner": "runtime/alpha3/ui/card-adaptation-panel.ts",
+      "artifact": "card-adaptation-panel",
+      "source": "src/ui/card-adaptation-panel.ts",
+      "banner": "runtime/alpha3/src/ui/card-adaptation-panel.ts",
+      "primaryOutput": "lib/ui/card-adaptation-panel.js",
       "outputs": [
-        "src/card-adaptation-panel.js"
+        "lib/ui/card-adaptation-panel.js"
       ]
     },
     {
+      "artifact": "card-adaptation",
       "source": "src/core/card-adaptation.ts",
-      "banner": "runtime/alpha3/core/card-adaptation.ts",
+      "banner": "runtime/alpha3/src/core/card-adaptation.ts",
+      "primaryOutput": "lib/core/card-adaptation.js",
       "outputs": [
-        "preset/lib/card-adaptation.js",
-        "src/core/card-adaptation.js"
+        "lib/core/card-adaptation.js",
+        "preset/lib/core/card-adaptation.js"
       ]
     },
     {
+      "artifact": "card-adaptation-tools",
       "source": "src/core/card-adaptation-tools.ts",
-      "banner": "runtime/alpha3/core/card-adaptation-tools.ts",
+      "banner": "runtime/alpha3/src/core/card-adaptation-tools.ts",
+      "primaryOutput": "lib/core/card-adaptation-tools.js",
       "outputs": [
-        "preset/lib/card-adaptation-tools.js",
-        "src/core/card-adaptation-tools.js"
+        "lib/core/card-adaptation-tools.js",
+        "preset/lib/core/card-adaptation-tools.js"
       ]
     },
     {
+      "artifact": "card-adaptation-context",
       "source": "src/core/card-adaptation-context.ts",
-      "banner": "runtime/alpha3/core/card-adaptation-context.ts",
+      "banner": "runtime/alpha3/src/core/card-adaptation-context.ts",
+      "primaryOutput": "lib/core/card-adaptation-context.js",
       "outputs": [
-        "preset/lib/card-adaptation-context.js",
-        "src/core/card-adaptation-context.js"
+        "lib/core/card-adaptation-context.js",
+        "preset/lib/core/card-adaptation-context.js"
       ]
     },
     {
+      "artifact": "narrative-preset-catalog",
       "source": "src/core/narrative-preset-catalog.ts",
-      "banner": "runtime/alpha3/core/narrative-preset-catalog.ts",
+      "banner": "runtime/alpha3/src/core/narrative-preset-catalog.ts",
+      "primaryOutput": "lib/core/narrative-preset-catalog.js",
       "outputs": [
-        "preset/lib/narrative-preset-catalog.js",
-        "src/core/narrative-preset-catalog.js"
+        "lib/core/narrative-preset-catalog.js",
+        "preset/lib/core/narrative-preset-catalog.js"
       ]
     },
     {
+      "artifact": "narrative-styles-light-novel",
       "source": "src/core/narrative-styles/light-novel.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/light-novel.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/light-novel.ts",
+      "primaryOutput": "lib/core/narrative-styles/light-novel.js",
       "outputs": [
-        "preset/lib/narrative-styles/light-novel.js",
-        "src/core/narrative-styles/light-novel.js"
+        "lib/core/narrative-styles/light-novel.js",
+        "preset/lib/core/narrative-styles/light-novel.js"
       ]
     },
     {
+      "artifact": "narrative-styles-otome",
       "source": "src/core/narrative-styles/otome.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/otome.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/otome.ts",
+      "primaryOutput": "lib/core/narrative-styles/otome.js",
       "outputs": [
-        "preset/lib/narrative-styles/otome.js",
-        "src/core/narrative-styles/otome.js"
+        "lib/core/narrative-styles/otome.js",
+        "preset/lib/core/narrative-styles/otome.js"
       ]
     },
     {
+      "artifact": "narrative-styles-cosmic-romance",
       "source": "src/core/narrative-styles/cosmic-romance.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/cosmic-romance.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/cosmic-romance.ts",
+      "primaryOutput": "lib/core/narrative-styles/cosmic-romance.js",
       "outputs": [
-        "preset/lib/narrative-styles/cosmic-romance.js",
-        "src/core/narrative-styles/cosmic-romance.js"
+        "lib/core/narrative-styles/cosmic-romance.js",
+        "preset/lib/core/narrative-styles/cosmic-romance.js"
       ]
     },
     {
+      "artifact": "narrative-styles-jrpg",
       "source": "src/core/narrative-styles/jrpg.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/jrpg.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/jrpg.ts",
+      "primaryOutput": "lib/core/narrative-styles/jrpg.js",
       "outputs": [
-        "preset/lib/narrative-styles/jrpg.js",
-        "src/core/narrative-styles/jrpg.js"
+        "lib/core/narrative-styles/jrpg.js",
+        "preset/lib/core/narrative-styles/jrpg.js"
       ]
     },
     {
+      "artifact": "narrative-styles-cinematic",
       "source": "src/core/narrative-styles/cinematic.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/cinematic.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/cinematic.ts",
+      "primaryOutput": "lib/core/narrative-styles/cinematic.js",
       "outputs": [
-        "preset/lib/narrative-styles/cinematic.js",
-        "src/core/narrative-styles/cinematic.js"
+        "lib/core/narrative-styles/cinematic.js",
+        "preset/lib/core/narrative-styles/cinematic.js"
       ]
     },
     {
+      "artifact": "narrative-styles-annalistic",
       "source": "src/core/narrative-styles/annalistic.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/annalistic.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/annalistic.ts",
+      "primaryOutput": "lib/core/narrative-styles/annalistic.js",
       "outputs": [
-        "preset/lib/narrative-styles/annalistic.js",
-        "src/core/narrative-styles/annalistic.js"
+        "lib/core/narrative-styles/annalistic.js",
+        "preset/lib/core/narrative-styles/annalistic.js"
       ]
     },
     {
+      "artifact": "narrative-styles-minimal",
       "source": "src/core/narrative-styles/minimal.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/minimal.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/minimal.ts",
+      "primaryOutput": "lib/core/narrative-styles/minimal.js",
       "outputs": [
-        "preset/lib/narrative-styles/minimal.js",
-        "src/core/narrative-styles/minimal.js"
+        "lib/core/narrative-styles/minimal.js",
+        "preset/lib/core/narrative-styles/minimal.js"
       ]
     },
     {
+      "artifact": "narrative-styles-delicate",
       "source": "src/core/narrative-styles/delicate.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/delicate.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/delicate.ts",
+      "primaryOutput": "lib/core/narrative-styles/delicate.js",
       "outputs": [
-        "preset/lib/narrative-styles/delicate.js",
-        "src/core/narrative-styles/delicate.js"
+        "lib/core/narrative-styles/delicate.js",
+        "preset/lib/core/narrative-styles/delicate.js"
       ]
     },
     {
+      "artifact": "narrative-styles-fantasy",
       "source": "src/core/narrative-styles/fantasy.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/fantasy.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/fantasy.ts",
+      "primaryOutput": "lib/core/narrative-styles/fantasy.js",
       "outputs": [
-        "preset/lib/narrative-styles/fantasy.js",
-        "src/core/narrative-styles/fantasy.js"
+        "lib/core/narrative-styles/fantasy.js",
+        "preset/lib/core/narrative-styles/fantasy.js"
       ]
     },
     {
+      "artifact": "narrative-styles-horror",
       "source": "src/core/narrative-styles/horror.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/horror.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/horror.ts",
+      "primaryOutput": "lib/core/narrative-styles/horror.js",
       "outputs": [
-        "preset/lib/narrative-styles/horror.js",
-        "src/core/narrative-styles/horror.js"
+        "lib/core/narrative-styles/horror.js",
+        "preset/lib/core/narrative-styles/horror.js"
       ]
     },
     {
+      "artifact": "narrative-styles-luxun",
       "source": "src/core/narrative-styles/luxun.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/luxun.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/luxun.ts",
+      "primaryOutput": "lib/core/narrative-styles/luxun.js",
       "outputs": [
-        "preset/lib/narrative-styles/luxun.js",
-        "src/core/narrative-styles/luxun.js"
+        "lib/core/narrative-styles/luxun.js",
+        "preset/lib/core/narrative-styles/luxun.js"
       ]
     },
     {
+      "artifact": "narrative-styles-lyrical",
       "source": "src/core/narrative-styles/lyrical.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/lyrical.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/lyrical.ts",
+      "primaryOutput": "lib/core/narrative-styles/lyrical.js",
       "outputs": [
-        "preset/lib/narrative-styles/lyrical.js",
-        "src/core/narrative-styles/lyrical.js"
+        "lib/core/narrative-styles/lyrical.js",
+        "preset/lib/core/narrative-styles/lyrical.js"
       ]
     },
     {
+      "artifact": "narrative-styles-comedy",
       "source": "src/core/narrative-styles/comedy.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/comedy.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/comedy.ts",
+      "primaryOutput": "lib/core/narrative-styles/comedy.js",
       "outputs": [
-        "preset/lib/narrative-styles/comedy.js",
-        "src/core/narrative-styles/comedy.js"
+        "lib/core/narrative-styles/comedy.js",
+        "preset/lib/core/narrative-styles/comedy.js"
       ]
     },
     {
+      "artifact": "narrative-styles-classical",
       "source": "src/core/narrative-styles/classical.ts",
-      "banner": "runtime/alpha3/core/narrative-styles/classical.ts",
+      "banner": "runtime/alpha3/src/core/narrative-styles/classical.ts",
+      "primaryOutput": "lib/core/narrative-styles/classical.js",
       "outputs": [
-        "preset/lib/narrative-styles/classical.js",
-        "src/core/narrative-styles/classical.js"
+        "lib/core/narrative-styles/classical.js",
+        "preset/lib/core/narrative-styles/classical.js"
       ]
     },
     {
+      "artifact": "narrative-presets",
       "source": "src/core/narrative-presets.ts",
-      "banner": "runtime/alpha3/core/narrative-presets.ts",
+      "banner": "runtime/alpha3/src/core/narrative-presets.ts",
+      "primaryOutput": "lib/core/narrative-presets.js",
       "outputs": [
-        "preset/lib/narrative-presets.js",
-        "src/core/narrative-presets.js"
+        "lib/core/narrative-presets.js",
+        "preset/lib/core/narrative-presets.js"
       ]
     },
     {
+      "artifact": "narrative-preset-default",
       "source": "src/core/narrative-preset-default.ts",
-      "banner": "runtime/alpha3/core/narrative-preset-default.ts",
+      "banner": "runtime/alpha3/src/core/narrative-preset-default.ts",
+      "primaryOutput": "lib/core/narrative-preset-default.js",
       "outputs": [
-        "preset/lib/narrative-preset-default.js",
-        "src/core/narrative-preset-default.js"
+        "lib/core/narrative-preset-default.js",
+        "preset/lib/core/narrative-preset-default.js"
       ]
     },
     {
-      "source": "src/preset-panel.ts",
-      "banner": "runtime/alpha3/ui/preset-panel.ts",
+      "artifact": "preset-panel",
+      "source": "src/ui/preset-panel.ts",
+      "banner": "runtime/alpha3/src/ui/preset-panel.ts",
+      "primaryOutput": "lib/ui/preset-panel.js",
       "outputs": [
-        "src/preset-panel.js"
+        "lib/ui/preset-panel.js"
       ]
     },
     {
+      "artifact": "memory-retrieval-types-generated",
       "source": "src/memory/memory-retrieval-types.ts",
-      "banner": "runtime/alpha3/memory/memory-retrieval-types.ts",
+      "banner": "runtime/alpha3/src/memory/memory-retrieval-types.ts",
+      "primaryOutput": "lib/memory/memory-retrieval-types.js",
       "outputs": [
-        "preset/memory/memory-retrieval-types.js",
-        "src/memory/memory-retrieval-types.js"
+        "lib/memory/memory-retrieval-types.js",
+        "preset/lib/memory/memory-retrieval-types.js"
       ]
     },
     {
+      "artifact": "memory-embedding-api-generated",
       "source": "src/memory/memory-embedding-api.ts",
-      "banner": "runtime/alpha3/memory/memory-embedding-api.ts",
+      "banner": "runtime/alpha3/src/memory/memory-embedding-api.ts",
+      "primaryOutput": "lib/memory/memory-embedding-api.js",
       "outputs": [
-        "preset/memory/memory-embedding-api.js",
-        "src/memory/memory-embedding-api.js"
+        "lib/memory/memory-embedding-api.js",
+        "preset/lib/memory/memory-embedding-api.js"
       ]
     },
     {
+      "artifact": "memory-local-catalog-generated",
       "source": "src/memory/memory-local-catalog.ts",
-      "banner": "runtime/alpha3/memory/memory-local-catalog.ts",
+      "banner": "runtime/alpha3/src/memory/memory-local-catalog.ts",
+      "primaryOutput": "lib/memory/memory-local-catalog.js",
       "outputs": [
-        "preset/memory/memory-local-catalog.js",
-        "src/memory/memory-local-catalog.js"
+        "lib/memory/memory-local-catalog.js",
+        "preset/lib/memory/memory-local-catalog.js"
       ]
     },
     {
+      "artifact": "memory-story-text-generated",
       "source": "src/memory/memory-story-text.ts",
-      "banner": "runtime/alpha3/memory/memory-story-text.ts",
+      "banner": "runtime/alpha3/src/memory/memory-story-text.ts",
+      "primaryOutput": "lib/memory/memory-story-text.js",
       "outputs": [
-        "preset/memory/memory-story-text.js",
-        "src/memory/memory-story-text.js"
+        "lib/memory/memory-story-text.js",
+        "preset/lib/memory/memory-story-text.js"
       ]
     },
     {
+      "artifact": "memory-retrieval-generated",
       "source": "src/memory/memory-retrieval.ts",
-      "banner": "runtime/alpha3/memory/memory-retrieval.ts",
+      "banner": "runtime/alpha3/src/memory/memory-retrieval.ts",
+      "primaryOutput": "lib/memory/memory-retrieval.js",
       "outputs": [
-        "preset/memory/memory-retrieval.js",
-        "src/memory/memory-retrieval.js"
+        "lib/memory/memory-retrieval.js",
+        "preset/lib/memory/memory-retrieval.js"
       ]
     },
     {
+      "artifact": "memory-vector-worker-generated",
       "source": "src/memory/memory-vector-worker.mts",
-      "banner": "runtime/alpha3/memory/memory-vector-worker.mts",
+      "banner": "runtime/alpha3/src/memory/memory-vector-worker.mts",
+      "primaryOutput": "lib/memory/memory-vector-worker.mjs",
       "outputs": [
-        "preset/memory/memory-vector-worker.mjs",
-        "src/memory/memory-vector-worker.mjs"
+        "lib/memory/memory-vector-worker.mjs",
+        "preset/lib/memory/memory-vector-worker.mjs"
       ]
     },
     {
+      "artifact": "memory-local-worker-generated",
       "source": "src/memory/memory-local-worker.mts",
-      "banner": "runtime/alpha3/memory/memory-local-worker.mts",
+      "banner": "runtime/alpha3/src/memory/memory-local-worker.mts",
+      "primaryOutput": "lib/memory/memory-local-worker.mjs",
       "outputs": [
-        "preset/memory/memory-local-worker.mjs",
-        "src/memory/memory-local-worker.mjs"
+        "lib/memory/memory-local-worker.mjs",
+        "preset/lib/memory/memory-local-worker.mjs"
       ]
     },
     {
-      "source": "src/memory-retrieval-panel.ts",
-      "banner": "runtime/alpha3/ui/memory-retrieval-panel.ts",
+      "artifact": "memory-retrieval-panel-generated",
+      "source": "src/ui/memory-retrieval-panel.ts",
+      "banner": "runtime/alpha3/src/ui/memory-retrieval-panel.ts",
+      "primaryOutput": "lib/ui/memory-retrieval-panel.js",
       "outputs": [
-        "src/memory-retrieval-panel.js"
+        "lib/ui/memory-retrieval-panel.js"
       ]
     },
     {
+      "artifact": "status-template",
       "source": "src/status-template.ts",
-      "banner": "runtime/alpha3/status-template.ts",
+      "banner": "runtime/alpha3/src/status-template.ts",
+      "primaryOutput": "lib/status-template.js",
       "outputs": [
-        "preset/status-template.js",
-        "src/status-template.js",
-        "status-template.js"
+        "lib/status-template.js",
+        "preset/lib/status-template.js"
       ]
     },
     {
-      "source": "integrations/auth-webserver/index.ts",
-      "banner": "runtime/alpha3/auth/index.ts",
+      "artifact": "auth-webserver-source",
+      "source": "integrations/auth-webserver/src/index.ts",
+      "banner": "runtime/alpha3/auth/src/index.ts",
+      "primaryOutput": "integrations/auth-webserver/lib/index.js",
       "outputs": [
-        "integrations/auth-webserver/index.js"
+        "integrations/auth-webserver/lib/index.js"
       ]
     },
     {
-      "source": "src/client.ts",
-      "banner": "runtime/alpha3/ui/client.ts",
+      "artifact": "roleplay-ui-source",
+      "source": "src/ui/client.ts",
+      "banner": "runtime/alpha3/src/ui/client.ts",
+      "primaryOutput": "lib/ui/client.js",
       "outputs": [
-        "src/client.js"
+        "lib/ui/client.js"
       ]
     },
     {
-      "source": "src/telemetry-panels.ts",
-      "banner": "runtime/alpha3/ui/telemetry-panels.ts",
+      "artifact": "telemetry-panels",
+      "source": "src/ui/telemetry-panels.ts",
+      "banner": "runtime/alpha3/src/ui/telemetry-panels.ts",
+      "primaryOutput": "lib/ui/telemetry-panels.js",
       "outputs": [
-        "src/telemetry-panels.js"
+        "lib/ui/telemetry-panels.js"
       ]
     },
     {
-      "source": "src/management-panels.ts",
-      "banner": "runtime/alpha3/ui/management-panels.ts",
+      "artifact": "management-panels",
+      "source": "src/ui/management-panels.ts",
+      "banner": "runtime/alpha3/src/ui/management-panels.ts",
+      "primaryOutput": "lib/ui/management-panels.js",
       "outputs": [
-        "src/management-panels.js"
+        "lib/ui/management-panels.js"
       ]
     },
     {
-      "source": "src/user-info.ts",
-      "banner": "runtime/alpha3/ui/user-info.ts",
+      "artifact": "user-info",
+      "source": "src/ui/user-info.ts",
+      "banner": "runtime/alpha3/src/ui/user-info.ts",
+      "primaryOutput": "lib/ui/user-info.js",
       "outputs": [
-        "src/user-info.js"
+        "lib/ui/user-info.js"
       ]
     },
     {
-      "source": "src/author-panels.ts",
-      "banner": "runtime/alpha3/ui/author-panels.ts",
+      "artifact": "author-panels",
+      "source": "src/ui/author-panels.ts",
+      "banner": "runtime/alpha3/src/ui/author-panels.ts",
+      "primaryOutput": "lib/ui/author-panels.js",
       "outputs": [
-        "src/author-panels.js"
+        "lib/ui/author-panels.js"
       ]
     },
     {
-      "source": "src/activity-view.ts",
-      "banner": "runtime/alpha3/ui/activity-view.ts",
+      "artifact": "activity-view",
+      "source": "src/ui/activity-view.ts",
+      "banner": "runtime/alpha3/src/ui/activity-view.ts",
+      "primaryOutput": "lib/ui/activity-view.js",
       "outputs": [
-        "src/activity-view.js"
+        "lib/ui/activity-view.js"
       ]
     },
     {
-      "source": "src/reader-view.ts",
-      "banner": "runtime/alpha3/ui/reader-view.ts",
+      "artifact": "reader-view",
+      "source": "src/ui/reader-view.ts",
+      "banner": "runtime/alpha3/src/ui/reader-view.ts",
+      "primaryOutput": "lib/ui/reader-view.js",
       "outputs": [
-        "src/reader-view.js"
+        "lib/ui/reader-view.js"
       ]
     },
     {
-      "source": "src/status-surface.ts",
-      "banner": "runtime/alpha3/ui/status-surface.ts",
+      "artifact": "status-surface",
+      "source": "src/ui/status-surface.ts",
+      "banner": "runtime/alpha3/src/ui/status-surface.ts",
+      "primaryOutput": "lib/ui/status-surface.js",
       "outputs": [
-        "src/status-surface.js"
+        "lib/ui/status-surface.js"
       ]
     },
     {
-      "source": "src/message-actions.ts",
-      "banner": "runtime/alpha3/ui/message-actions.ts",
+      "artifact": "message-actions",
+      "source": "src/ui/message-actions.ts",
+      "banner": "runtime/alpha3/src/ui/message-actions.ts",
+      "primaryOutput": "lib/ui/message-actions.js",
       "outputs": [
-        "src/message-actions.js"
+        "lib/ui/message-actions.js"
       ]
     },
     {
-      "source": "src/session-actions.ts",
-      "banner": "runtime/alpha3/ui/session-actions.ts",
+      "artifact": "session-actions",
+      "source": "src/ui/session-actions.ts",
+      "banner": "runtime/alpha3/src/ui/session-actions.ts",
+      "primaryOutput": "lib/ui/session-actions.js",
       "outputs": [
-        "src/session-actions.js"
+        "lib/ui/session-actions.js"
       ]
     },
     {
-      "source": "src/state-store.ts",
-      "banner": "runtime/alpha3/ui/state-store.ts",
+      "artifact": "state-store",
+      "source": "src/ui/state-store.ts",
+      "banner": "runtime/alpha3/src/ui/state-store.ts",
+      "primaryOutput": "lib/ui/state-store.js",
       "outputs": [
-        "src/state-store.js"
+        "lib/ui/state-store.js"
       ]
     },
     {
-      "source": "src/reader-model.ts",
-      "banner": "runtime/alpha3/ui/reader-model.ts",
+      "artifact": "reader-model",
+      "source": "src/ui/reader-model.ts",
+      "banner": "runtime/alpha3/src/ui/reader-model.ts",
+      "primaryOutput": "lib/ui/reader-model.js",
       "outputs": [
-        "src/reader-model.js"
+        "lib/ui/reader-model.js"
       ]
     },
     {
-      "source": "src/reader-rendering.ts",
-      "banner": "runtime/alpha3/ui/reader-rendering.ts",
+      "artifact": "reader-rendering",
+      "source": "src/ui/reader-rendering.ts",
+      "banner": "runtime/alpha3/src/ui/reader-rendering.ts",
+      "primaryOutput": "lib/ui/reader-rendering.js",
       "outputs": [
-        "src/reader-rendering.js"
+        "lib/ui/reader-rendering.js"
       ]
     },
     {
-      "source": "src/reader-regex.ts",
-      "banner": "runtime/alpha3/ui/reader-regex.ts",
+      "artifact": "reader-regex",
+      "source": "src/ui/reader-regex.ts",
+      "banner": "runtime/alpha3/src/ui/reader-regex.ts",
+      "primaryOutput": "lib/ui/reader-regex.js",
       "outputs": [
-        "src/reader-regex.js"
+        "lib/ui/reader-regex.js"
       ]
     },
     {
-      "source": "src/panel-state.ts",
-      "banner": "runtime/alpha3/ui/panel-state.ts",
+      "artifact": "panel-state",
+      "source": "src/ui/panel-state.ts",
+      "banner": "runtime/alpha3/src/ui/panel-state.ts",
+      "primaryOutput": "lib/ui/panel-state.js",
       "outputs": [
-        "src/panel-state.js"
+        "lib/ui/panel-state.js"
       ]
     },
     {
-      "source": "src/settings-projection.ts",
-      "banner": "runtime/alpha3/ui/settings-projection.ts",
+      "artifact": "settings-projection",
+      "source": "src/ui/settings-projection.ts",
+      "banner": "runtime/alpha3/src/ui/settings-projection.ts",
+      "primaryOutput": "lib/ui/settings-projection.js",
       "outputs": [
-        "src/settings-projection.js"
+        "lib/ui/settings-projection.js"
       ]
     },
     {
+      "artifact": "roleplay-panel-routes-types",
       "source": "src/core/roleplay-panel-routes-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-panel-routes-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-panel-routes-types.ts",
+      "primaryOutput": "lib/core/roleplay-panel-routes-types.js",
       "outputs": [
-        "preset/lib/roleplay-panel-routes-types.js",
-        "src/core/roleplay-panel-routes-types.js"
+        "lib/core/roleplay-panel-routes-types.js",
+        "preset/lib/core/roleplay-panel-routes-types.js"
       ]
     },
     {
+      "artifact": "roleplay-panel-routes",
       "source": "src/core/roleplay-panel-routes.ts",
-      "banner": "runtime/alpha3/core/roleplay-panel-routes.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-panel-routes.ts",
+      "primaryOutput": "lib/core/roleplay-panel-routes.js",
       "outputs": [
-        "preset/lib/roleplay-panel-routes.js",
-        "src/core/roleplay-panel-routes.js"
+        "lib/core/roleplay-panel-routes.js",
+        "preset/lib/core/roleplay-panel-routes.js"
       ]
     },
     {
+      "artifact": "roleplay-branch-routes-types",
       "source": "src/core/roleplay-branch-routes-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-branch-routes-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-branch-routes-types.ts",
+      "primaryOutput": "lib/core/roleplay-branch-routes-types.js",
       "outputs": [
-        "preset/lib/roleplay-branch-routes-types.js",
-        "src/core/roleplay-branch-routes-types.js"
+        "lib/core/roleplay-branch-routes-types.js",
+        "preset/lib/core/roleplay-branch-routes-types.js"
       ]
     },
     {
+      "artifact": "roleplay-branch-routes",
       "source": "src/core/roleplay-branch-routes.ts",
-      "banner": "runtime/alpha3/core/roleplay-branch-routes.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-branch-routes.ts",
+      "primaryOutput": "lib/core/roleplay-branch-routes.js",
       "outputs": [
-        "preset/lib/roleplay-branch-routes.js",
-        "src/core/roleplay-branch-routes.js"
+        "lib/core/roleplay-branch-routes.js",
+        "preset/lib/core/roleplay-branch-routes.js"
       ]
     },
     {
+      "artifact": "roleplay-job-routes-types",
       "source": "src/core/roleplay-job-routes-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-job-routes-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-job-routes-types.ts",
+      "primaryOutput": "lib/core/roleplay-job-routes-types.js",
       "outputs": [
-        "preset/lib/roleplay-job-routes-types.js",
-        "src/core/roleplay-job-routes-types.js"
+        "lib/core/roleplay-job-routes-types.js",
+        "preset/lib/core/roleplay-job-routes-types.js"
       ]
     },
     {
+      "artifact": "roleplay-job-routes",
       "source": "src/core/roleplay-job-routes.ts",
-      "banner": "runtime/alpha3/core/roleplay-job-routes.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-job-routes.ts",
+      "primaryOutput": "lib/core/roleplay-job-routes.js",
       "outputs": [
-        "preset/lib/roleplay-job-routes.js",
-        "src/core/roleplay-job-routes.js"
+        "lib/core/roleplay-job-routes.js",
+        "preset/lib/core/roleplay-job-routes.js"
       ]
     },
     {
+      "artifact": "roleplay-telemetry-routes-types",
       "source": "src/core/roleplay-telemetry-routes-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-telemetry-routes-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-telemetry-routes-types.ts",
+      "primaryOutput": "lib/core/roleplay-telemetry-routes-types.js",
       "outputs": [
-        "preset/lib/roleplay-telemetry-routes-types.js",
-        "src/core/roleplay-telemetry-routes-types.js"
+        "lib/core/roleplay-telemetry-routes-types.js",
+        "preset/lib/core/roleplay-telemetry-routes-types.js"
       ]
     },
     {
+      "artifact": "roleplay-telemetry-routes",
       "source": "src/core/roleplay-telemetry-routes.ts",
-      "banner": "runtime/alpha3/core/roleplay-telemetry-routes.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-telemetry-routes.ts",
+      "primaryOutput": "lib/core/roleplay-telemetry-routes.js",
       "outputs": [
-        "preset/lib/roleplay-telemetry-routes.js",
-        "src/core/roleplay-telemetry-routes.js"
+        "lib/core/roleplay-telemetry-routes.js",
+        "preset/lib/core/roleplay-telemetry-routes.js"
       ]
     },
     {
+      "artifact": "roleplay-settings-routes-types",
       "source": "src/core/roleplay-settings-routes-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-settings-routes-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-settings-routes-types.ts",
+      "primaryOutput": "lib/core/roleplay-settings-routes-types.js",
       "outputs": [
-        "preset/lib/roleplay-settings-routes-types.js",
-        "src/core/roleplay-settings-routes-types.js"
+        "lib/core/roleplay-settings-routes-types.js",
+        "preset/lib/core/roleplay-settings-routes-types.js"
       ]
     },
     {
+      "artifact": "roleplay-settings-routes",
       "source": "src/core/roleplay-settings-routes.ts",
-      "banner": "runtime/alpha3/core/roleplay-settings-routes.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-settings-routes.ts",
+      "primaryOutput": "lib/core/roleplay-settings-routes.js",
       "outputs": [
-        "preset/lib/roleplay-settings-routes.js",
-        "src/core/roleplay-settings-routes.js"
+        "lib/core/roleplay-settings-routes.js",
+        "preset/lib/core/roleplay-settings-routes.js"
       ]
     },
     {
+      "artifact": "roleplay-authoring-types",
       "source": "src/core/roleplay-authoring-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-authoring-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-authoring-types.ts",
+      "primaryOutput": "lib/core/roleplay-authoring-types.js",
       "outputs": [
-        "preset/lib/roleplay-authoring-types.js",
-        "src/core/roleplay-authoring-types.js"
+        "lib/core/roleplay-authoring-types.js",
+        "preset/lib/core/roleplay-authoring-types.js"
       ]
     },
     {
+      "artifact": "roleplay-authoring",
       "source": "src/core/roleplay-authoring.ts",
-      "banner": "runtime/alpha3/core/roleplay-authoring.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-authoring.ts",
+      "primaryOutput": "lib/core/roleplay-authoring.js",
       "outputs": [
-        "preset/lib/roleplay-authoring.js",
-        "src/core/roleplay-authoring.js"
+        "lib/core/roleplay-authoring.js",
+        "preset/lib/core/roleplay-authoring.js"
       ]
     },
     {
+      "artifact": "roleplay-diagnosis-types",
       "source": "src/core/roleplay-diagnosis-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-diagnosis-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-diagnosis-types.ts",
+      "primaryOutput": "lib/core/roleplay-diagnosis-types.js",
       "outputs": [
-        "preset/lib/roleplay-diagnosis-types.js",
-        "src/core/roleplay-diagnosis-types.js"
+        "lib/core/roleplay-diagnosis-types.js",
+        "preset/lib/core/roleplay-diagnosis-types.js"
       ]
     },
     {
+      "artifact": "roleplay-diagnosis",
       "source": "src/core/roleplay-diagnosis.ts",
-      "banner": "runtime/alpha3/core/roleplay-diagnosis.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-diagnosis.ts",
+      "primaryOutput": "lib/core/roleplay-diagnosis.js",
       "outputs": [
-        "preset/lib/roleplay-diagnosis.js",
-        "src/core/roleplay-diagnosis.js"
+        "lib/core/roleplay-diagnosis.js",
+        "preset/lib/core/roleplay-diagnosis.js"
       ]
     },
     {
+      "artifact": "roleplay-state-types",
       "source": "src/core/roleplay-state-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-state-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-state-types.ts",
+      "primaryOutput": "lib/core/roleplay-state-types.js",
       "outputs": [
-        "preset/lib/roleplay-state-types.js",
-        "src/core/roleplay-state-types.js"
+        "lib/core/roleplay-state-types.js",
+        "preset/lib/core/roleplay-state-types.js"
       ]
     },
     {
+      "artifact": "roleplay-state",
       "source": "src/core/roleplay-state.ts",
-      "banner": "runtime/alpha3/core/roleplay-state.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-state.ts",
+      "primaryOutput": "lib/core/roleplay-state.js",
       "outputs": [
-        "preset/lib/roleplay-state.js",
-        "src/core/roleplay-state.js"
+        "lib/core/roleplay-state.js",
+        "preset/lib/core/roleplay-state.js"
       ]
     },
     {
+      "artifact": "roleplay-task-tools-types",
       "source": "src/core/roleplay-task-tools-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-task-tools-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-task-tools-types.ts",
+      "primaryOutput": "lib/core/roleplay-task-tools-types.js",
       "outputs": [
-        "preset/lib/roleplay-task-tools-types.js",
-        "src/core/roleplay-task-tools-types.js"
+        "lib/core/roleplay-task-tools-types.js",
+        "preset/lib/core/roleplay-task-tools-types.js"
       ]
     },
     {
+      "artifact": "roleplay-task-tools",
       "source": "src/core/roleplay-task-tools.ts",
-      "banner": "runtime/alpha3/core/roleplay-task-tools.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-task-tools.ts",
+      "primaryOutput": "lib/core/roleplay-task-tools.js",
       "outputs": [
-        "preset/lib/roleplay-task-tools.js",
-        "src/core/roleplay-task-tools.js"
+        "lib/core/roleplay-task-tools.js",
+        "preset/lib/core/roleplay-task-tools.js"
       ]
     },
     {
+      "artifact": "roleplay-session-actions-types",
       "source": "src/core/roleplay-session-actions-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-session-actions-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-session-actions-types.ts",
+      "primaryOutput": "lib/core/roleplay-session-actions-types.js",
       "outputs": [
-        "preset/lib/roleplay-session-actions-types.js",
-        "src/core/roleplay-session-actions-types.js"
+        "lib/core/roleplay-session-actions-types.js",
+        "preset/lib/core/roleplay-session-actions-types.js"
       ]
     },
     {
+      "artifact": "roleplay-session-actions",
       "source": "src/core/roleplay-session-actions.ts",
-      "banner": "runtime/alpha3/core/roleplay-session-actions.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-session-actions.ts",
+      "primaryOutput": "lib/core/roleplay-session-actions.js",
       "outputs": [
-        "preset/lib/roleplay-session-actions.js",
-        "src/core/roleplay-session-actions.js"
+        "lib/core/roleplay-session-actions.js",
+        "preset/lib/core/roleplay-session-actions.js"
       ]
     },
     {
+      "artifact": "roleplay-author-tools-types",
       "source": "src/core/roleplay-author-tools-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-author-tools-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-author-tools-types.ts",
+      "primaryOutput": "lib/core/roleplay-author-tools-types.js",
       "outputs": [
-        "preset/lib/roleplay-author-tools-types.js",
-        "src/core/roleplay-author-tools-types.js"
+        "lib/core/roleplay-author-tools-types.js",
+        "preset/lib/core/roleplay-author-tools-types.js"
       ]
     },
     {
+      "artifact": "roleplay-author-tools",
       "source": "src/core/roleplay-author-tools.ts",
-      "banner": "runtime/alpha3/core/roleplay-author-tools.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-author-tools.ts",
+      "primaryOutput": "lib/core/roleplay-author-tools.js",
       "outputs": [
-        "preset/lib/roleplay-author-tools.js",
-        "src/core/roleplay-author-tools.js"
+        "lib/core/roleplay-author-tools.js",
+        "preset/lib/core/roleplay-author-tools.js"
       ]
     },
     {
+      "artifact": "roleplay-author-context-types",
       "source": "src/core/roleplay-author-context-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-author-context-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-author-context-types.ts",
+      "primaryOutput": "lib/core/roleplay-author-context-types.js",
       "outputs": [
-        "preset/lib/roleplay-author-context-types.js",
-        "src/core/roleplay-author-context-types.js"
+        "lib/core/roleplay-author-context-types.js",
+        "preset/lib/core/roleplay-author-context-types.js"
       ]
     },
     {
+      "artifact": "roleplay-author-context",
       "source": "src/core/roleplay-author-context.ts",
-      "banner": "runtime/alpha3/core/roleplay-author-context.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-author-context.ts",
+      "primaryOutput": "lib/core/roleplay-author-context.js",
       "outputs": [
-        "preset/lib/roleplay-author-context.js",
-        "src/core/roleplay-author-context.js"
+        "lib/core/roleplay-author-context.js",
+        "preset/lib/core/roleplay-author-context.js"
       ]
     },
     {
+      "artifact": "roleplay-loop-types",
       "source": "src/core/roleplay-loop-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-loop-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-loop-types.ts",
+      "primaryOutput": "lib/core/roleplay-loop-types.js",
       "outputs": [
-        "preset/lib/roleplay-loop-types.js",
-        "src/core/roleplay-loop-types.js"
+        "lib/core/roleplay-loop-types.js",
+        "preset/lib/core/roleplay-loop-types.js"
       ]
     },
     {
+      "artifact": "roleplay-loop",
       "source": "src/core/roleplay-loop.ts",
-      "banner": "runtime/alpha3/core/roleplay-loop.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-loop.ts",
+      "primaryOutput": "lib/core/roleplay-loop.js",
       "outputs": [
-        "preset/lib/roleplay-loop.js",
-        "src/core/roleplay-loop.js"
+        "lib/core/roleplay-loop.js",
+        "preset/lib/core/roleplay-loop.js"
       ]
     },
     {
+      "artifact": "roleplay-task-host-types",
       "source": "src/core/roleplay-task-host-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-task-host-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-task-host-types.ts",
+      "primaryOutput": "lib/core/roleplay-task-host-types.js",
       "outputs": [
-        "preset/lib/roleplay-task-host-types.js",
-        "src/core/roleplay-task-host-types.js"
+        "lib/core/roleplay-task-host-types.js",
+        "preset/lib/core/roleplay-task-host-types.js"
       ]
     },
     {
+      "artifact": "roleplay-task-host",
       "source": "src/core/roleplay-task-host.ts",
-      "banner": "runtime/alpha3/core/roleplay-task-host.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-task-host.ts",
+      "primaryOutput": "lib/core/roleplay-task-host.js",
       "outputs": [
-        "preset/lib/roleplay-task-host.js",
-        "src/core/roleplay-task-host.js"
+        "lib/core/roleplay-task-host.js",
+        "preset/lib/core/roleplay-task-host.js"
       ]
     },
     {
+      "artifact": "roleplay-service-types",
       "source": "src/core/roleplay-service-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-service-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-service-types.ts",
+      "primaryOutput": "lib/core/roleplay-service-types.js",
       "outputs": [
-        "preset/lib/roleplay-service-types.js",
-        "src/core/roleplay-service-types.js"
+        "lib/core/roleplay-service-types.js",
+        "preset/lib/core/roleplay-service-types.js"
       ]
     },
     {
+      "artifact": "roleplay-service",
       "source": "src/core/roleplay-service.ts",
-      "banner": "runtime/alpha3/core/roleplay-service.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-service.ts",
+      "primaryOutput": "lib/core/roleplay-service.js",
       "outputs": [
-        "preset/lib/roleplay-service.js",
-        "src/core/roleplay-service.js"
+        "lib/core/roleplay-service.js",
+        "preset/lib/core/roleplay-service.js"
       ]
     },
     {
+      "artifact": "roleplay-card-workflow-types",
       "source": "src/core/roleplay-card-workflow-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-card-workflow-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-card-workflow-types.ts",
+      "primaryOutput": "lib/core/roleplay-card-workflow-types.js",
       "outputs": [
-        "preset/lib/roleplay-card-workflow-types.js",
-        "src/core/roleplay-card-workflow-types.js"
+        "lib/core/roleplay-card-workflow-types.js",
+        "preset/lib/core/roleplay-card-workflow-types.js"
       ]
     },
     {
+      "artifact": "roleplay-card-workflow",
       "source": "src/core/roleplay-card-workflow.ts",
-      "banner": "runtime/alpha3/core/roleplay-card-workflow.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-card-workflow.ts",
+      "primaryOutput": "lib/core/roleplay-card-workflow.js",
       "outputs": [
-        "preset/lib/roleplay-card-workflow.js",
-        "src/core/roleplay-card-workflow.js"
+        "lib/core/roleplay-card-workflow.js",
+        "preset/lib/core/roleplay-card-workflow.js"
       ]
     },
     {
+      "artifact": "roleplay-resource-bridge-types",
       "source": "src/core/roleplay-resource-bridge-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-resource-bridge-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-resource-bridge-types.ts",
+      "primaryOutput": "lib/core/roleplay-resource-bridge-types.js",
       "outputs": [
-        "preset/lib/roleplay-resource-bridge-types.js",
-        "src/core/roleplay-resource-bridge-types.js"
+        "lib/core/roleplay-resource-bridge-types.js",
+        "preset/lib/core/roleplay-resource-bridge-types.js"
       ]
     },
     {
+      "artifact": "roleplay-resource-bridge",
       "source": "src/core/roleplay-resource-bridge.ts",
-      "banner": "runtime/alpha3/core/roleplay-resource-bridge.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-resource-bridge.ts",
+      "primaryOutput": "lib/core/roleplay-resource-bridge.js",
       "outputs": [
-        "preset/lib/roleplay-resource-bridge.js",
-        "src/core/roleplay-resource-bridge.js"
+        "lib/core/roleplay-resource-bridge.js",
+        "preset/lib/core/roleplay-resource-bridge.js"
       ]
     },
     {
+      "artifact": "roleplay-inheritance-types",
       "source": "src/core/roleplay-inheritance-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-inheritance-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-inheritance-types.ts",
+      "primaryOutput": "lib/core/roleplay-inheritance-types.js",
       "outputs": [
-        "preset/lib/roleplay-inheritance-types.js",
-        "src/core/roleplay-inheritance-types.js"
+        "lib/core/roleplay-inheritance-types.js",
+        "preset/lib/core/roleplay-inheritance-types.js"
       ]
     },
     {
+      "artifact": "roleplay-inheritance",
       "source": "src/core/roleplay-inheritance.ts",
-      "banner": "runtime/alpha3/core/roleplay-inheritance.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-inheritance.ts",
+      "primaryOutput": "lib/core/roleplay-inheritance.js",
       "outputs": [
-        "preset/lib/roleplay-inheritance.js",
-        "src/core/roleplay-inheritance.js"
+        "lib/core/roleplay-inheritance.js",
+        "preset/lib/core/roleplay-inheritance.js"
       ]
     },
     {
+      "artifact": "roleplay-decision-types",
       "source": "src/core/roleplay-decision-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-decision-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-decision-types.ts",
+      "primaryOutput": "lib/core/roleplay-decision-types.js",
       "outputs": [
-        "preset/lib/roleplay-decision-types.js",
-        "src/core/roleplay-decision-types.js"
+        "lib/core/roleplay-decision-types.js",
+        "preset/lib/core/roleplay-decision-types.js"
       ]
     },
     {
+      "artifact": "roleplay-decision",
       "source": "src/core/roleplay-decision.ts",
-      "banner": "runtime/alpha3/core/roleplay-decision.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-decision.ts",
+      "primaryOutput": "lib/core/roleplay-decision.js",
       "outputs": [
-        "preset/lib/roleplay-decision.js",
-        "src/core/roleplay-decision.js"
+        "lib/core/roleplay-decision.js",
+        "preset/lib/core/roleplay-decision.js"
       ]
     },
     {
-      "source": "src/build-client.mts",
-      "banner": "runtime/alpha3/ui/build-client.mts",
+      "artifact": "build-client",
+      "source": "src/ui/build-client.mts",
+      "banner": "runtime/alpha3/src/ui/build-client.mts",
+      "primaryOutput": "lib/ui/build-client.mjs",
       "outputs": [
-        "src/build-client.mjs"
+        "lib/ui/build-client.mjs"
       ]
     },
     {
-      "source": "tools/public-transaction.mts",
-      "banner": "runtime/alpha3/operations/public-transaction.mts",
+      "artifact": "public-transaction",
+      "source": "src/operations/public-transaction.mts",
+      "banner": "runtime/alpha3/src/operations/public-transaction.mts",
+      "primaryOutput": "lib/operations/public-transaction.mjs",
       "outputs": [
-        "tools/public-transaction.mjs"
+        "lib/operations/public-transaction.mjs"
       ]
     },
     {
-      "source": "tools/patch-harness.mts",
-      "banner": "runtime/alpha3/operations/patch-harness.mts",
+      "artifact": "public-patch-harness",
+      "source": "src/operations/patch-harness.mts",
+      "banner": "runtime/alpha3/src/operations/patch-harness.mts",
+      "primaryOutput": "lib/operations/patch-harness.mjs",
       "outputs": [
-        "tools/patch-harness.mjs"
+        "lib/operations/patch-harness.mjs"
       ]
     },
     {
-      "source": "tools/install.mts",
-      "banner": "runtime/alpha3/operations/install-public.mts",
+      "artifact": "public-install",
+      "source": "src/operations/install-public.mts",
+      "banner": "runtime/alpha3/src/operations/install-public.mts",
+      "primaryOutput": "lib/operations/install-public.mjs",
       "outputs": [
-        "tools/install.mjs"
+        "lib/operations/install-public.mjs"
       ]
     },
     {
-      "source": "tools/public-access.mts",
-      "banner": "runtime/alpha3/operations/public-access.mts",
+      "artifact": "public-access-cli",
+      "source": "src/operations/public-access.mts",
+      "banner": "runtime/alpha3/src/operations/public-access.mts",
+      "primaryOutput": "lib/operations/public-access.mjs",
       "outputs": [
-        "tools/public-access.mjs"
+        "lib/operations/public-access.mjs"
       ]
     },
     {
-      "source": "tools/public-access-recipes.mts",
-      "banner": "runtime/alpha3/operations/public-access-recipes.mts",
+      "artifact": "public-access-recipes",
+      "source": "src/operations/public-access-recipes.mts",
+      "banner": "runtime/alpha3/src/operations/public-access-recipes.mts",
+      "primaryOutput": "lib/operations/public-access-recipes.mjs",
       "outputs": [
-        "tools/public-access-recipes.mjs"
+        "lib/operations/public-access-recipes.mjs"
       ]
     },
     {
+      "artifact": "tool-resolution-helper",
+      "source": "src/operations/tool-resolution.mts",
+      "banner": "runtime/alpha3/src/operations/tool-resolution.mts",
+      "primaryOutput": "lib/operations/tool-resolution.mjs",
+      "outputs": [
+        "lib/operations/tool-resolution.mjs"
+      ]
+    },
+    {
+      "artifact": "test-temp-helper",
+      "source": "src/operations/test-temp.mts",
+      "banner": "runtime/alpha3/src/operations/test-temp.mts",
+      "primaryOutput": "lib/operations/test-temp.mjs",
+      "outputs": [
+        "lib/operations/test-temp.mjs"
+      ]
+    },
+    {
+      "artifact": "tavern-telemetry",
       "source": "src/core/tavern-telemetry.ts",
-      "banner": "runtime/alpha3/core/tavern-telemetry.ts",
+      "banner": "runtime/alpha3/src/core/tavern-telemetry.ts",
+      "primaryOutput": "lib/core/tavern-telemetry.js",
       "outputs": [
-        "preset/lib/tavern-telemetry.js",
-        "src/core/tavern-telemetry.js"
+        "lib/core/tavern-telemetry.js",
+        "preset/lib/core/tavern-telemetry.js"
       ]
     },
     {
+      "artifact": "card-export-projection-js",
       "source": "src/core/card-export-projection.ts",
-      "banner": "runtime/alpha3/core/card-export-projection.ts",
+      "banner": "runtime/alpha3/src/core/card-export-projection.ts",
+      "primaryOutput": "lib/core/card-export-projection.js",
       "outputs": [
-        "preset/lib/card-export-projection.js",
-        "src/core/card-export-projection.js"
+        "lib/core/card-export-projection.js",
+        "preset/lib/core/card-export-projection.js"
       ]
     },
     {
+      "artifact": "card-export",
       "source": "src/core/card-export.ts",
-      "banner": "runtime/alpha3/core/card-export.ts",
+      "banner": "runtime/alpha3/src/core/card-export.ts",
+      "primaryOutput": "lib/core/card-export.js",
       "outputs": [
-        "preset/lib/card-export.js",
-        "src/core/card-export.js"
+        "lib/core/card-export.js",
+        "preset/lib/core/card-export.js"
       ]
     },
     {
+      "artifact": "ask-user-decision-pr",
       "source": "src/core/ask-user-decision-pr.ts",
-      "banner": "runtime/alpha3/core/ask-user-decision-pr.ts",
+      "banner": "runtime/alpha3/src/core/ask-user-decision-pr.ts",
+      "primaryOutput": "lib/core/ask-user-decision-pr.js",
       "outputs": [
-        "preset/lib/ask-user-decision-pr.js",
-        "src/core/ask-user-decision-pr.js"
+        "lib/core/ask-user-decision-pr.js",
+        "preset/lib/core/ask-user-decision-pr.js"
       ]
     },
     {
+      "artifact": "tavern-telemetry-normalize-js",
       "source": "src/core/tavern-telemetry-normalize.ts",
-      "banner": "runtime/alpha3/core/tavern-telemetry-normalize.ts",
+      "banner": "runtime/alpha3/src/core/tavern-telemetry-normalize.ts",
+      "primaryOutput": "lib/core/tavern-telemetry-normalize.js",
       "outputs": [
-        "preset/lib/tavern-telemetry-normalize.js",
-        "src/core/tavern-telemetry-normalize.js"
+        "lib/core/tavern-telemetry-normalize.js",
+        "preset/lib/core/tavern-telemetry-normalize.js"
       ]
     },
     {
+      "artifact": "tavern-telemetry-fold-js",
       "source": "src/core/tavern-telemetry-fold.ts",
-      "banner": "runtime/alpha3/core/tavern-telemetry-fold.ts",
+      "banner": "runtime/alpha3/src/core/tavern-telemetry-fold.ts",
+      "primaryOutput": "lib/core/tavern-telemetry-fold.js",
       "outputs": [
-        "preset/lib/tavern-telemetry-fold.js",
-        "src/core/tavern-telemetry-fold.js"
+        "lib/core/tavern-telemetry-fold.js",
+        "preset/lib/core/tavern-telemetry-fold.js"
       ]
     },
     {
+      "artifact": "tavern-telemetry-aggregate-js",
       "source": "src/core/tavern-telemetry-aggregate.ts",
-      "banner": "runtime/alpha3/core/tavern-telemetry-aggregate.ts",
+      "banner": "runtime/alpha3/src/core/tavern-telemetry-aggregate.ts",
+      "primaryOutput": "lib/core/tavern-telemetry-aggregate.js",
       "outputs": [
-        "preset/lib/tavern-telemetry-aggregate.js",
-        "src/core/tavern-telemetry-aggregate.js"
+        "lib/core/tavern-telemetry-aggregate.js",
+        "preset/lib/core/tavern-telemetry-aggregate.js"
       ]
     },
     {
+      "artifact": "tavern-telemetry-query-js",
       "source": "src/core/tavern-telemetry-query.ts",
-      "banner": "runtime/alpha3/core/tavern-telemetry-query.ts",
+      "banner": "runtime/alpha3/src/core/tavern-telemetry-query.ts",
+      "primaryOutput": "lib/core/tavern-telemetry-query.js",
       "outputs": [
-        "preset/lib/tavern-telemetry-query.js",
-        "src/core/tavern-telemetry-query.js"
+        "lib/core/tavern-telemetry-query.js",
+        "preset/lib/core/tavern-telemetry-query.js"
       ]
     },
     {
+      "artifact": "tavern-library-input-js",
       "source": "src/core/tavern-library-input.ts",
-      "banner": "runtime/alpha3/core/tavern-library-input.ts",
+      "banner": "runtime/alpha3/src/core/tavern-library-input.ts",
+      "primaryOutput": "lib/core/tavern-library-input.js",
       "outputs": [
-        "preset/lib/tavern-library-input.js",
-        "src/core/tavern-library-input.js"
+        "lib/core/tavern-library-input.js",
+        "preset/lib/core/tavern-library-input.js"
       ]
     },
     {
+      "artifact": "tavern-library-record-js",
       "source": "src/core/tavern-library-record.ts",
-      "banner": "runtime/alpha3/core/tavern-library-record.ts",
+      "banner": "runtime/alpha3/src/core/tavern-library-record.ts",
+      "primaryOutput": "lib/core/tavern-library-record.js",
       "outputs": [
-        "preset/lib/tavern-library-record.js",
-        "src/core/tavern-library-record.js"
+        "lib/core/tavern-library-record.js",
+        "preset/lib/core/tavern-library-record.js"
       ]
     },
     {
+      "artifact": "tavern-library",
       "source": "src/core/tavern-library.ts",
-      "banner": "runtime/alpha3/core/tavern-library.ts",
+      "banner": "runtime/alpha3/src/core/tavern-library.ts",
+      "primaryOutput": "lib/core/tavern-library.js",
       "outputs": [
-        "preset/lib/tavern-library.js",
-        "src/core/tavern-library.js"
+        "lib/core/tavern-library.js",
+        "preset/lib/core/tavern-library.js"
       ]
     },
     {
+      "artifact": "tavern-card-adapter",
       "source": "src/core/tavern-card.ts",
-      "banner": "runtime/alpha3/core/tavern-card.ts",
+      "banner": "runtime/alpha3/src/core/tavern-card.ts",
+      "primaryOutput": "lib/core/tavern-card.js",
       "outputs": [
-        "preset/lib/tavern-card.js",
-        "src/core/tavern-card.js"
+        "lib/core/tavern-card.js",
+        "preset/lib/core/tavern-card.js"
       ]
     },
     {
-      "source": "integrations/qwen-reasoning-profile.mts",
-      "banner": "runtime/alpha3/operations/qwen-reasoning-profile.mts",
+      "artifact": "qwen-reasoning-profile",
+      "source": "src/operations/qwen-reasoning-profile.mts",
+      "banner": "runtime/alpha3/src/operations/qwen-reasoning-profile.mts",
+      "primaryOutput": "lib/operations/qwen-reasoning-profile.mjs",
       "outputs": [
-        "integrations/qwen-reasoning-profile.mjs"
+        "lib/operations/qwen-reasoning-profile.mjs"
       ]
     },
     {
+      "artifact": "roleplay-memory",
       "source": "src/memory/roleplay-memory-engine.ts",
-      "banner": "runtime/alpha3/memory/roleplay-memory-engine.ts",
+      "banner": "runtime/alpha3/src/memory/roleplay-memory-engine.ts",
+      "primaryOutput": "lib/memory/roleplay-memory-engine.js",
       "outputs": [
-        "preset/lib/roleplay-memory-engine.js",
-        "src/memory/roleplay-memory-engine.js"
+        "lib/memory/roleplay-memory-engine.js",
+        "preset/lib/memory/roleplay-memory-engine.js"
       ]
     },
     {
+      "artifact": "memory-compaction-js",
       "source": "src/memory/memory-compaction.ts",
-      "banner": "runtime/alpha3/memory/memory-compaction.ts",
+      "banner": "runtime/alpha3/src/memory/memory-compaction.ts",
+      "primaryOutput": "lib/memory/memory-compaction.js",
       "outputs": [
-        "preset/lib/memory-compaction.js",
-        "src/memory/memory-compaction.js"
+        "lib/memory/memory-compaction.js",
+        "preset/lib/memory/memory-compaction.js"
       ]
     },
     {
+      "artifact": "memory-notes-writer-js",
       "source": "src/memory/memory-notes-writer.ts",
-      "banner": "runtime/alpha3/memory/memory-notes-writer.ts",
+      "banner": "runtime/alpha3/src/memory/memory-notes-writer.ts",
+      "primaryOutput": "lib/memory/memory-notes-writer.js",
       "outputs": [
-        "preset/lib/memory-notes-writer.js",
-        "src/memory/memory-notes-writer.js"
+        "lib/memory/memory-notes-writer.js",
+        "preset/lib/memory/memory-notes-writer.js"
       ]
     },
     {
+      "artifact": "memory-scheduler-js",
       "source": "src/memory/memory-scheduler.ts",
-      "banner": "runtime/alpha3/memory/memory-scheduler.ts",
+      "banner": "runtime/alpha3/src/memory/memory-scheduler.ts",
+      "primaryOutput": "lib/memory/memory-scheduler.js",
       "outputs": [
-        "preset/lib/memory-scheduler.js",
-        "src/memory/memory-scheduler.js"
+        "lib/memory/memory-scheduler.js",
+        "preset/lib/memory/memory-scheduler.js"
       ]
     },
     {
+      "artifact": "memory-summary-js",
       "source": "src/memory/memory-summary.ts",
-      "banner": "runtime/alpha3/memory/memory-summary.ts",
+      "banner": "runtime/alpha3/src/memory/memory-summary.ts",
+      "primaryOutput": "lib/memory/memory-summary.js",
       "outputs": [
-        "preset/lib/memory-summary.js",
-        "src/memory/memory-summary.js"
+        "lib/memory/memory-summary.js",
+        "preset/lib/memory/memory-summary.js"
       ]
     },
     {
+      "artifact": "memory-history-js",
       "source": "src/memory/memory-history.ts",
-      "banner": "runtime/alpha3/memory/memory-history.ts",
+      "banner": "runtime/alpha3/src/memory/memory-history.ts",
+      "primaryOutput": "lib/memory/memory-history.js",
       "outputs": [
-        "preset/lib/memory-history.js",
-        "preset/memory/memory-history.js",
-        "src/memory/memory-history.js"
+        "lib/memory/memory-history.js",
+        "preset/lib/memory/memory-history.js"
       ]
     },
     {
+      "artifact": "roleplay-host-index",
       "source": "src/core/host-index.ts",
-      "banner": "runtime/alpha3/core/host-index.ts",
+      "banner": "runtime/alpha3/src/core/host-index.ts",
+      "primaryOutput": "lib/core/host-index.js",
       "outputs": [
+        "lib/core/host-index.js",
         "lib/index.js",
-        "preset/lib/host-index.js",
-        "src/core/host-index.js"
+        "preset/lib/core/host-index.js"
       ]
     },
     {
+      "artifact": "tavern-task-types-js",
       "source": "src/core/tavern-task-types.ts",
-      "banner": "runtime/alpha3/core/tavern-task-types.ts",
+      "banner": "runtime/alpha3/src/core/tavern-task-types.ts",
+      "primaryOutput": "lib/core/tavern-task-types.js",
       "outputs": [
-        "preset/lib/tavern-task-types.js",
-        "src/core/tavern-task-types.js"
+        "lib/core/tavern-task-types.js",
+        "preset/lib/core/tavern-task-types.js"
       ]
     },
     {
+      "artifact": "tavern-tasks",
       "source": "src/core/tavern-tasks.ts",
-      "banner": "runtime/alpha3/core/tavern-tasks.ts",
+      "banner": "runtime/alpha3/src/core/tavern-tasks.ts",
+      "primaryOutput": "lib/core/tavern-tasks.js",
       "outputs": [
-        "preset/lib/tavern-tasks.js",
-        "src/core/tavern-tasks.js"
+        "lib/core/tavern-tasks.js",
+        "preset/lib/core/tavern-tasks.js"
       ]
     },
     {
+      "artifact": "tavern-task-context-js",
       "source": "src/core/tavern-task-context.ts",
-      "banner": "runtime/alpha3/core/tavern-task-context.ts",
+      "banner": "runtime/alpha3/src/core/tavern-task-context.ts",
+      "primaryOutput": "lib/core/tavern-task-context.js",
       "outputs": [
-        "preset/lib/tavern-task-context.js",
-        "src/core/tavern-task-context.js"
+        "lib/core/tavern-task-context.js",
+        "preset/lib/core/tavern-task-context.js"
       ]
     },
     {
+      "artifact": "tavern-task-support-js",
       "source": "src/core/tavern-task-support.ts",
-      "banner": "runtime/alpha3/core/tavern-task-support.ts",
+      "banner": "runtime/alpha3/src/core/tavern-task-support.ts",
+      "primaryOutput": "lib/core/tavern-task-support.js",
       "outputs": [
-        "preset/lib/tavern-task-support.js",
-        "src/core/tavern-task-support.js"
+        "lib/core/tavern-task-support.js",
+        "preset/lib/core/tavern-task-support.js"
       ]
     },
     {
+      "artifact": "tavern-model-policy-js",
       "source": "src/core/tavern-model-policy.ts",
-      "banner": "runtime/alpha3/core/tavern-model-policy.ts",
+      "banner": "runtime/alpha3/src/core/tavern-model-policy.ts",
+      "primaryOutput": "lib/core/tavern-model-policy.js",
       "outputs": [
-        "preset/lib/tavern-model-policy.js",
-        "src/core/tavern-model-policy.js"
+        "lib/core/tavern-model-policy.js",
+        "preset/lib/core/tavern-model-policy.js"
       ]
     },
     {
-      "source": "src/conversation-projection.ts",
-      "banner": "runtime/alpha3/ui/conversation-projection.ts",
+      "artifact": "conversation-projection",
+      "source": "src/ui/conversation-projection.ts",
+      "banner": "runtime/alpha3/src/ui/conversation-projection.ts",
+      "primaryOutput": "lib/ui/conversation-projection.js",
       "outputs": [
-        "src/conversation-projection.js"
+        "lib/ui/conversation-projection.js"
       ]
     },
     {
+      "artifact": "tavern-conversations",
       "source": "src/core/tavern-conversations.ts",
-      "banner": "runtime/alpha3/core/tavern-conversations.ts",
+      "banner": "runtime/alpha3/src/core/tavern-conversations.ts",
+      "primaryOutput": "lib/core/tavern-conversations.js",
       "outputs": [
+        "lib/core/tavern-conversations.js",
         "lib/tavern-conversations.js",
-        "preset/lib/tavern-conversations.js",
-        "src/core/tavern-conversations.js"
+        "preset/lib/core/tavern-conversations.js"
       ]
     },
     {
+      "artifact": "roleplay-deescape",
       "source": "src/preset/deescape-md.mts",
-      "banner": "runtime/alpha3/preset/deescape-md.mts",
+      "banner": "runtime/alpha3/src/preset/deescape-md.mts",
+      "primaryOutput": "lib/preset/deescape-md.mjs",
       "outputs": [
-        "preset/scripts/deescape-md.mjs",
-        "src/preset/deescape-md.mjs"
+        "lib/preset/deescape-md.mjs",
+        "preset/lib/preset/deescape-md.mjs"
       ]
     },
     {
+      "artifact": "tavern-pricing",
       "source": "src/core/tavern-pricing.ts",
-      "banner": "runtime/alpha3/core/tavern-pricing.ts",
+      "banner": "runtime/alpha3/src/core/tavern-pricing.ts",
+      "primaryOutput": "lib/core/tavern-pricing.js",
       "outputs": [
-        "preset/lib/tavern-pricing.js",
-        "src/core/tavern-pricing.js"
+        "lib/core/tavern-pricing.js",
+        "preset/lib/core/tavern-pricing.js"
       ]
     },
     {
+      "artifact": "novel-export-projection-js",
       "source": "src/core/novel-export-projection.ts",
-      "banner": "runtime/alpha3/core/novel-export-projection.ts",
+      "banner": "runtime/alpha3/src/core/novel-export-projection.ts",
+      "primaryOutput": "lib/core/novel-export-projection.js",
       "outputs": [
-        "preset/lib/novel-export-projection.js",
-        "src/core/novel-export-projection.js"
+        "lib/core/novel-export-projection.js",
+        "preset/lib/core/novel-export-projection.js"
       ]
     },
     {
+      "artifact": "tavern-card-crc-js",
       "source": "src/core/tavern-card-crc.ts",
-      "banner": "runtime/alpha3/core/tavern-card-crc.ts",
+      "banner": "runtime/alpha3/src/core/tavern-card-crc.ts",
+      "primaryOutput": "lib/core/tavern-card-crc.js",
       "outputs": [
-        "preset/lib/tavern-card-crc.js",
-        "src/core/tavern-card-crc.js"
+        "lib/core/tavern-card-crc.js",
+        "preset/lib/core/tavern-card-crc.js"
       ]
     },
     {
+      "artifact": "memory-provenance-js",
       "source": "src/memory/memory-provenance.ts",
-      "banner": "runtime/alpha3/memory/memory-provenance.ts",
+      "banner": "runtime/alpha3/src/memory/memory-provenance.ts",
+      "primaryOutput": "lib/memory/memory-provenance.js",
       "outputs": [
-        "preset/lib/memory-provenance.js",
-        "preset/memory/memory-provenance.js",
-        "src/memory/memory-provenance.js"
+        "lib/memory/memory-provenance.js",
+        "preset/lib/memory/memory-provenance.js"
       ]
     },
     {
+      "artifact": "tavern-telemetry-time-range-js",
       "source": "src/core/tavern-telemetry-time-range.ts",
-      "banner": "runtime/alpha3/core/tavern-telemetry-time-range.ts",
+      "banner": "runtime/alpha3/src/core/tavern-telemetry-time-range.ts",
+      "primaryOutput": "lib/core/tavern-telemetry-time-range.js",
       "outputs": [
-        "preset/lib/tavern-telemetry-time-range.js",
-        "src/core/tavern-telemetry-time-range.js"
+        "lib/core/tavern-telemetry-time-range.js",
+        "preset/lib/core/tavern-telemetry-time-range.js"
       ]
     },
     {
+      "artifact": "bounded-regex",
       "source": "src/core/bounded-regex.ts",
-      "banner": "runtime/alpha3/core/bounded-regex.ts",
+      "banner": "runtime/alpha3/src/core/bounded-regex.ts",
+      "primaryOutput": "lib/core/bounded-regex.js",
       "outputs": [
-        "preset/lib/bounded-regex.js",
-        "src/core/bounded-regex.js"
+        "lib/core/bounded-regex.js",
+        "preset/lib/core/bounded-regex.js"
       ]
     },
     {
+      "artifact": "tavern-task-primitives-js",
       "source": "src/core/tavern-task-primitives.ts",
-      "banner": "runtime/alpha3/core/tavern-task-primitives.ts",
+      "banner": "runtime/alpha3/src/core/tavern-task-primitives.ts",
+      "primaryOutput": "lib/core/tavern-task-primitives.js",
       "outputs": [
-        "preset/lib/tavern-task-primitives.js",
-        "src/core/tavern-task-primitives.js"
+        "lib/core/tavern-task-primitives.js",
+        "preset/lib/core/tavern-task-primitives.js"
       ]
     },
     {
+      "artifact": "novel-export",
       "source": "src/core/novel-export.ts",
-      "banner": "runtime/alpha3/core/novel-export.ts",
+      "banner": "runtime/alpha3/src/core/novel-export.ts",
+      "primaryOutput": "lib/core/novel-export.js",
       "outputs": [
-        "preset/lib/novel-export.js",
-        "src/core/novel-export.js"
+        "lib/core/novel-export.js",
+        "preset/lib/core/novel-export.js"
       ]
     },
     {
+      "artifact": "character-cluster-projection-js",
       "source": "src/core/character-cluster-projection.ts",
-      "banner": "runtime/alpha3/core/character-cluster-projection.ts",
+      "banner": "runtime/alpha3/src/core/character-cluster-projection.ts",
+      "primaryOutput": "lib/core/character-cluster-projection.js",
       "outputs": [
-        "preset/lib/character-cluster-projection.js",
-        "src/core/character-cluster-projection.js"
+        "lib/core/character-cluster-projection.js",
+        "preset/lib/core/character-cluster-projection.js"
       ]
     },
     {
+      "artifact": "character-cluster",
       "source": "src/core/character-cluster.ts",
-      "banner": "runtime/alpha3/core/character-cluster.ts",
+      "banner": "runtime/alpha3/src/core/character-cluster.ts",
+      "primaryOutput": "lib/core/character-cluster.js",
       "outputs": [
-        "preset/lib/character-cluster.js",
-        "src/core/character-cluster.js"
+        "lib/core/character-cluster.js",
+        "preset/lib/core/character-cluster.js"
       ]
     },
     {
+      "artifact": "roleplay-status-types",
       "source": "src/core/roleplay-status-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-status-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-status-types.ts",
+      "primaryOutput": "lib/core/roleplay-status-types.js",
       "outputs": [
-        "preset/lib/roleplay-status-types.js",
-        "src/core/roleplay-status-types.js"
+        "lib/core/roleplay-status-types.js",
+        "preset/lib/core/roleplay-status-types.js"
       ]
     },
     {
+      "artifact": "roleplay-status",
       "source": "src/core/roleplay-status.ts",
-      "banner": "runtime/alpha3/core/roleplay-status.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-status.ts",
+      "primaryOutput": "lib/core/roleplay-status.js",
       "outputs": [
-        "preset/lib/roleplay-status.js",
-        "src/core/roleplay-status.js"
+        "lib/core/roleplay-status.js",
+        "preset/lib/core/roleplay-status.js"
       ]
     },
     {
+      "artifact": "roleplay-preparation-types",
       "source": "src/core/roleplay-preparation-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-preparation-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-preparation-types.ts",
+      "primaryOutput": "lib/core/roleplay-preparation-types.js",
       "outputs": [
-        "preset/lib/roleplay-preparation-types.js",
-        "src/core/roleplay-preparation-types.js"
+        "lib/core/roleplay-preparation-types.js",
+        "preset/lib/core/roleplay-preparation-types.js"
       ]
     },
     {
+      "artifact": "roleplay-preparation",
       "source": "src/core/roleplay-preparation.ts",
-      "banner": "runtime/alpha3/core/roleplay-preparation.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-preparation.ts",
+      "primaryOutput": "lib/core/roleplay-preparation.js",
       "outputs": [
-        "preset/lib/roleplay-preparation.js",
-        "src/core/roleplay-preparation.js"
+        "lib/core/roleplay-preparation.js",
+        "preset/lib/core/roleplay-preparation.js"
       ]
     },
     {
+      "artifact": "roleplay-completion-types",
       "source": "src/core/roleplay-completion-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-completion-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-completion-types.ts",
+      "primaryOutput": "lib/core/roleplay-completion-types.js",
       "outputs": [
-        "preset/lib/roleplay-completion-types.js",
-        "src/core/roleplay-completion-types.js"
+        "lib/core/roleplay-completion-types.js",
+        "preset/lib/core/roleplay-completion-types.js"
       ]
     },
     {
+      "artifact": "roleplay-completion",
       "source": "src/core/roleplay-completion.ts",
-      "banner": "runtime/alpha3/core/roleplay-completion.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-completion.ts",
+      "primaryOutput": "lib/core/roleplay-completion.js",
       "outputs": [
-        "preset/lib/roleplay-completion.js",
-        "src/core/roleplay-completion.js"
+        "lib/core/roleplay-completion.js",
+        "preset/lib/core/roleplay-completion.js"
       ]
     },
     {
+      "artifact": "roleplay-import-types",
       "source": "src/core/roleplay-import-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-import-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-import-types.ts",
+      "primaryOutput": "lib/core/roleplay-import-types.js",
       "outputs": [
-        "preset/lib/roleplay-import-types.js",
-        "src/core/roleplay-import-types.js"
+        "lib/core/roleplay-import-types.js",
+        "preset/lib/core/roleplay-import-types.js"
       ]
     },
     {
+      "artifact": "roleplay-import",
       "source": "src/core/roleplay-import.ts",
-      "banner": "runtime/alpha3/core/roleplay-import.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-import.ts",
+      "primaryOutput": "lib/core/roleplay-import.js",
       "outputs": [
-        "preset/lib/roleplay-import.js",
-        "src/core/roleplay-import.js"
+        "lib/core/roleplay-import.js",
+        "preset/lib/core/roleplay-import.js"
       ]
     },
     {
+      "artifact": "roleplay-data",
       "source": "src/core/roleplay-data.ts",
-      "banner": "runtime/alpha3/core/roleplay-data.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-data.ts",
+      "primaryOutput": "lib/core/roleplay-data.js",
       "outputs": [
-        "preset/lib/roleplay-data.js",
-        "src/core/roleplay-data.js"
+        "lib/core/roleplay-data.js",
+        "preset/lib/core/roleplay-data.js"
       ]
     },
     {
+      "artifact": "roleplay-context",
       "source": "src/core/roleplay-context.ts",
-      "banner": "runtime/alpha3/core/roleplay-context.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-context.ts",
+      "primaryOutput": "lib/core/roleplay-context.js",
       "outputs": [
-        "preset/lib/roleplay-context.js",
-        "src/core/roleplay-context.js"
+        "lib/core/roleplay-context.js",
+        "preset/lib/core/roleplay-context.js"
       ]
     },
     {
+      "artifact": "roleplay-worldline-types-js",
       "source": "src/core/roleplay-worldline-types.ts",
-      "banner": "runtime/alpha3/core/roleplay-worldline-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-worldline-types.ts",
+      "primaryOutput": "lib/core/roleplay-worldline-types.js",
       "outputs": [
-        "preset/lib/roleplay-worldline-types.js",
-        "src/core/roleplay-worldline-types.js"
+        "lib/core/roleplay-worldline-types.js",
+        "preset/lib/core/roleplay-worldline-types.js"
       ]
     },
     {
+      "artifact": "roleplay-worldlines",
       "source": "src/core/roleplay-worldlines.ts",
-      "banner": "runtime/alpha3/core/roleplay-worldlines.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-worldlines.ts",
+      "primaryOutput": "lib/core/roleplay-worldlines.js",
       "outputs": [
-        "preset/lib/roleplay-worldlines.js",
-        "src/core/roleplay-worldlines.js"
+        "lib/core/roleplay-worldlines.js",
+        "preset/lib/core/roleplay-worldlines.js"
       ]
+    },
+    {
+      "artifact": "roleplay-core",
+      "source": "src/core/roleplay-core.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-core.ts",
+      "primaryOutput": "lib/core/roleplay-core.js",
+      "outputs": [
+        "lib/core/roleplay-core.js",
+        "preset/lib/core/roleplay-core.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-core-types",
+      "source": "src/core/roleplay-core-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-core-types.ts",
+      "primaryOutput": "lib/core/roleplay-core-types.js",
+      "outputs": [
+        "lib/core/roleplay-core-types.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-worldline-surface",
+      "source": "src/core/roleplay-worldline-surface.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-worldline-surface.ts",
+      "primaryOutput": "lib/core/roleplay-worldline-surface.js",
+      "outputs": [
+        "lib/core/roleplay-worldline-surface.js",
+        "preset/lib/core/roleplay-worldline-surface.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-import-record",
+      "source": "src/core/roleplay-import-record.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-import-record.ts",
+      "primaryOutput": "lib/core/roleplay-import-record.js",
+      "outputs": [
+        "lib/core/roleplay-import-record.js",
+        "preset/lib/core/roleplay-import-record.js"
+      ]
+    },
+    {
+      "artifact": "card-research-packets",
+      "source": "src/core/card-research-packets.ts",
+      "banner": "runtime/alpha3/src/core/card-research-packets.ts",
+      "primaryOutput": "lib/core/card-research-packets.js",
+      "outputs": [
+        "lib/core/card-research-packets.js",
+        "preset/lib/core/card-research-packets.js"
+      ]
+    },
+    {
+      "artifact": "card-adaptation-tool-schemas",
+      "source": "src/core/card-adaptation-tool-schemas.ts",
+      "banner": "runtime/alpha3/src/core/card-adaptation-tool-schemas.ts",
+      "primaryOutput": "lib/core/card-adaptation-tool-schemas.js",
+      "outputs": [
+        "lib/core/card-adaptation-tool-schemas.js",
+        "preset/lib/core/card-adaptation-tool-schemas.js"
+      ]
+    },
+    {
+      "artifact": "card-research-record",
+      "source": "src/core/card-research-record.ts",
+      "banner": "runtime/alpha3/src/core/card-research-record.ts",
+      "primaryOutput": "lib/core/card-research-record.js",
+      "outputs": [
+        "lib/core/card-research-record.js",
+        "preset/lib/core/card-research-record.js"
+      ]
+    },
+    {
+      "artifact": "conversation-presentation",
+      "source": "src/ui/conversation-presentation.ts",
+      "banner": "runtime/alpha3/src/ui/conversation-presentation.ts",
+      "primaryOutput": "lib/ui/conversation-presentation.js",
+      "outputs": [
+        "lib/ui/conversation-presentation.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-ui-styles",
+      "source": "src/ui/roleplay-ui-styles.ts",
+      "banner": "runtime/alpha3/src/ui/roleplay-ui-styles.ts",
+      "primaryOutput": "lib/ui/roleplay-ui-styles.js",
+      "outputs": [
+        "lib/ui/roleplay-ui-styles.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-userinfo",
+      "source": "src/core/roleplay-userinfo.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-userinfo.ts",
+      "primaryOutput": "lib/core/roleplay-userinfo.js",
+      "outputs": [
+        "lib/core/roleplay-userinfo.js",
+        "lib/roleplay-userinfo.js",
+        "preset/lib/core/roleplay-userinfo.js"
+      ]
+    },
+    {
+      "artifact": "tavern-pricing-data",
+      "source": "src/core/tavern-pricing-data.ts",
+      "banner": "runtime/alpha3/src/core/tavern-pricing-data.ts",
+      "primaryOutput": "lib/core/tavern-pricing-data.js",
+      "outputs": [
+        "lib/core/tavern-pricing-data.js",
+        "preset/lib/core/tavern-pricing-data.js"
+      ]
+    },
+    {
+      "artifact": "tavern-price-catalog",
+      "source": "src/core/tavern-price-catalog.ts",
+      "banner": "runtime/alpha3/src/core/tavern-price-catalog.ts",
+      "primaryOutput": "lib/core/tavern-price-catalog.js",
+      "outputs": [
+        "lib/core/tavern-price-catalog.js",
+        "preset/lib/core/tavern-price-catalog.js"
+      ]
+    },
+    {
+      "artifact": "tavern-exchange-rates",
+      "source": "src/core/tavern-exchange-rates.ts",
+      "banner": "runtime/alpha3/src/core/tavern-exchange-rates.ts",
+      "primaryOutput": "lib/core/tavern-exchange-rates.js",
+      "outputs": [
+        "lib/core/tavern-exchange-rates.js",
+        "preset/lib/core/tavern-exchange-rates.js"
+      ]
+    },
+    {
+      "artifact": "pricing-panel",
+      "source": "src/ui/pricing-panel.ts",
+      "banner": "runtime/alpha3/src/ui/pricing-panel.ts",
+      "primaryOutput": "lib/ui/pricing-panel.js",
+      "outputs": [
+        "lib/ui/pricing-panel.js"
+      ]
+    },
+    {
+      "artifact": "tavern-task-retirement",
+      "source": "src/core/tavern-task-retirement.ts",
+      "banner": "runtime/alpha3/src/core/tavern-task-retirement.ts",
+      "primaryOutput": "lib/core/tavern-task-retirement.js",
+      "outputs": [
+        "lib/core/tavern-task-retirement.js",
+        "preset/lib/core/tavern-task-retirement.js"
+      ]
+    },
+    {
+      "artifact": "character-cluster-settings",
+      "source": "src/core/character-cluster-settings.ts",
+      "banner": "runtime/alpha3/src/core/character-cluster-settings.ts",
+      "primaryOutput": "lib/core/character-cluster-settings.js",
+      "outputs": [
+        "lib/core/character-cluster-settings.js",
+        "preset/lib/core/character-cluster-settings.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-status-presentation",
+      "source": "src/core/roleplay-status-presentation.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-status-presentation.ts",
+      "primaryOutput": "lib/core/roleplay-status-presentation.js",
+      "outputs": [
+        "lib/core/roleplay-status-presentation.js",
+        "preset/lib/core/roleplay-status-presentation.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-setting-store",
+      "source": "src/core/roleplay-setting-store.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-setting-store.ts",
+      "primaryOutput": "lib/core/roleplay-setting-store.js",
+      "outputs": [
+        "lib/core/roleplay-setting-store.js",
+        "preset/lib/core/roleplay-setting-store.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-setting-tools",
+      "source": "src/core/roleplay-setting-tools.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-setting-tools.ts",
+      "primaryOutput": "lib/core/roleplay-setting-tools.js",
+      "outputs": [
+        "lib/core/roleplay-setting-tools.js",
+        "preset/lib/core/roleplay-setting-tools.js"
+      ]
+    },
+    {
+      "artifact": "author-runtime",
+      "source": "src/ui/author-runtime.ts",
+      "banner": "runtime/alpha3/src/ui/author-runtime.ts",
+      "primaryOutput": "lib/ui/author-runtime.js",
+      "outputs": [
+        "lib/ui/author-runtime.js"
+      ]
+    },
+    {
+      "artifact": "status-rendering",
+      "source": "src/ui/status-rendering.ts",
+      "banner": "runtime/alpha3/src/ui/status-rendering.ts",
+      "primaryOutput": "lib/ui/status-rendering.js",
+      "outputs": [
+        "lib/ui/status-rendering.js"
+      ]
+    },
+    {
+      "artifact": "decision-seat",
+      "source": "src/ui/decision-seat.ts",
+      "banner": "runtime/alpha3/src/ui/decision-seat.ts",
+      "primaryOutput": "lib/ui/decision-seat.js",
+      "outputs": [
+        "lib/ui/decision-seat.js"
+      ]
+    },
+    {
+      "artifact": "reader-beauty",
+      "source": "src/ui/reader-beauty.ts",
+      "banner": "runtime/alpha3/src/ui/reader-beauty.ts",
+      "primaryOutput": "lib/ui/reader-beauty.js",
+      "outputs": [
+        "lib/ui/reader-beauty.js"
+      ]
+    },
+    {
+      "artifact": "card-adaptation-presentations",
+      "source": "src/ui/card-adaptation-presentations.ts",
+      "banner": "runtime/alpha3/src/ui/card-adaptation-presentations.ts",
+      "primaryOutput": "lib/ui/card-adaptation-presentations.js",
+      "outputs": [
+        "lib/ui/card-adaptation-presentations.js"
+      ]
+    },
+    {
+      "artifact": "quality-types",
+      "source": "src/operations/quality-types.mts",
+      "banner": "runtime/alpha3/src/operations/quality-types.mts",
+      "primaryOutput": "lib/operations/quality-types.mjs",
+      "outputs": [
+        "lib/operations/quality-types.mjs"
+      ]
+    },
+    {
+      "artifact": "quality-context",
+      "source": "src/operations/quality-context.mts",
+      "banner": "runtime/alpha3/src/operations/quality-context.mts",
+      "primaryOutput": "lib/operations/quality-context.mjs",
+      "outputs": [
+        "lib/operations/quality-context.mjs"
+      ]
+    },
+    {
+      "artifact": "quality-plan",
+      "source": "src/operations/quality-plan.mts",
+      "banner": "runtime/alpha3/src/operations/quality-plan.mts",
+      "primaryOutput": "lib/operations/quality-plan.mjs",
+      "outputs": [
+        "lib/operations/quality-plan.mjs"
+      ]
+    },
+    {
+      "artifact": "quality-inputs",
+      "source": "src/operations/quality-inputs.mts",
+      "banner": "runtime/alpha3/src/operations/quality-inputs.mts",
+      "primaryOutput": "lib/operations/quality-inputs.mjs",
+      "outputs": [
+        "lib/operations/quality-inputs.mjs"
+      ]
+    },
+    {
+      "artifact": "quality-process",
+      "source": "src/operations/quality-process.mts",
+      "banner": "runtime/alpha3/src/operations/quality-process.mts",
+      "primaryOutput": "lib/operations/quality-process.mjs",
+      "outputs": [
+        "lib/operations/quality-process.mjs"
+      ]
+    },
+    {
+      "artifact": "quality-actions",
+      "source": "src/operations/quality-actions.mts",
+      "banner": "runtime/alpha3/src/operations/quality-actions.mts",
+      "primaryOutput": "lib/operations/quality-actions.mjs",
+      "outputs": [
+        "lib/operations/quality-actions.mjs"
+      ]
+    },
+    {
+      "artifact": "quality-run",
+      "source": "src/operations/quality-run.mts",
+      "banner": "runtime/alpha3/src/operations/quality-run.mts",
+      "primaryOutput": "lib/operations/quality-run.mjs",
+      "outputs": [
+        "lib/operations/quality-run.mjs"
+      ]
+    },
+    {
+      "artifact": "quality-cli",
+      "source": "src/operations/quality-cli.mts",
+      "banner": "runtime/alpha3/src/operations/quality-cli.mts",
+      "primaryOutput": "lib/operations/quality-cli.mjs",
+      "outputs": [
+        "lib/operations/quality-cli.mjs"
+      ]
+    },
+    {
+      "artifact": "quality-projection",
+      "source": "src/operations/quality-projection.mts",
+      "banner": "runtime/alpha3/src/operations/quality-projection.mts",
+      "primaryOutput": "lib/operations/quality-projection.mjs",
+      "outputs": [
+        "lib/operations/quality-projection.mjs"
+      ]
+    }
+  ],
+  "bundles": [
+    "lib/client.js"
+  ],
+  "compatibilityEntrypoints": [
+    {
+      "path": "tools/patch-harness.mjs",
+      "artifact": "public-patch-harness",
+      "invoke": "patchCli",
+      "reason": "Legacy documented CLI entry; generated forwarding only. Review removal at the next breaking CLI release after replacement commands are documented."
+    },
+    {
+      "path": "tools/install.mjs",
+      "artifact": "public-install",
+      "reason": "Legacy documented CLI entry; generated forwarding only. Review removal at the next breaking CLI release after replacement commands are documented."
+    },
+    {
+      "path": "tools/public-access.mjs",
+      "artifact": "public-access-cli",
+      "reason": "Legacy documented CLI entry; generated forwarding only. Review removal at the next breaking CLI release after replacement commands are documented."
     }
   ]
 }

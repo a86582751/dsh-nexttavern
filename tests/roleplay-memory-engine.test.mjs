@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { apply, directorNotesForBranch, durableCompactionArchives, filterMemoryRecordForBranch, queryStoryHistory, readStoryHistory, selectedStoryHistory, memoryNotesCadence } from '../src/memory/roleplay-memory-engine.js'
-import { legacyCadenceSlots, storyCadenceSlots } from '../src/memory/roleplay-memory-engine.js'
+import { apply, directorNotesForBranch, durableCompactionArchives, filterMemoryRecordForBranch, queryStoryHistory, readStoryHistory, selectedStoryHistory, memoryNotesCadence } from '../lib/memory/roleplay-memory-engine.js'
+import { legacyCadenceSlots, storyCadenceSlots } from '../lib/memory/roleplay-memory-engine.js'
 
 {
  const fixture=JSON.parse(readFileSync(new URL('./fixtures/memory-history-legacy-v1.json',import.meta.url),'utf8'))

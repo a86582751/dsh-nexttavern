@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import {registerAdaptationTools} from '../src/core/card-adaptation-tools.js'
-import {createTestDirectory,cleanupTestDirectory} from '../tools/test-temp.mjs'
+import {registerAdaptationTools} from '../lib/core/card-adaptation-tools.js'
+import {createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
 const temp=createTestDirectory('adaptation-management-')
 try{
  fs.writeFileSync(temp+'/novel.txt','第一章 开场\n纳兰嫣然还没有作出退婚的决定。\n第二章 约定\n这是另一种可能。')

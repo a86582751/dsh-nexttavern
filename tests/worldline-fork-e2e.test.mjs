@@ -11,9 +11,9 @@
 // fail, recover - and reads the state panel, the decision card, the director
 // notes and the worldbook on both sides of the fork.
 import assert from 'node:assert/strict'
-import { createConversationCatalog } from '../src/core/tavern-conversations.js'
-import { directorNotesForBranch } from '../src/memory/roleplay-memory-engine.js'
-import { apply } from '../preset/lib/roleplay-core.js'
+import { createConversationCatalog } from '../lib/core/tavern-conversations.js'
+import { directorNotesForBranch } from '../lib/memory/roleplay-memory-engine.js'
+import { apply } from '../lib/core/roleplay-core.js'
 
 class Table extends Map {
   async put(key, value) { this.set(key, structuredClone(value)) }

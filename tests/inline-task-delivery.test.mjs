@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { inlineTaskInstruction, inlineTaskMessages, taskPhaseMessage, awaitTaskAdmissions, InlinePending, tavernTaskToolBoundary } from '../src/core/tavern-tasks.js'
-import {maintenancePrompt,maintenanceTaskInputs} from '../src/core/tavern-task-context.js'
+import { inlineTaskInstruction, inlineTaskMessages, taskPhaseMessage, awaitTaskAdmissions, InlinePending, tavernTaskToolBoundary } from '../lib/core/tavern-tasks.js'
+import {maintenancePrompt,maintenanceTaskInputs} from '../lib/core/tavern-task-context.js'
 {
  const admitted=[]
  const first=Promise.resolve().then(()=>{admitted.push('first');throw new InlinePending('first')})

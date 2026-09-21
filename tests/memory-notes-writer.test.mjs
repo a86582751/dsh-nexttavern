@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createDirectorNotesWriter } from '../src/memory/memory-notes-writer.js'
+import { createDirectorNotesWriter } from '../lib/memory/memory-notes-writer.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/memory-notes-writer-legacy-v1.json', import.meta.url), 'utf8'))
 const flush = () => new Promise(resolve => setImmediate(resolve))

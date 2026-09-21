@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { apply } from '../preset/lib/roleplay-core.js'
+import { apply } from '../lib/core/roleplay-core.js'
 
 const text = value => [{ type: 'text', text: value }]
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return {promise, resolve} }

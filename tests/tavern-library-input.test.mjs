@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { safeLibraryName, safeLibraryType, librarySource, libraryObjectName, libraryContentDisposition, libraryStableId } from '../src/core/tavern-library-input.js'
+import { safeLibraryName, safeLibraryType, librarySource, libraryObjectName, libraryContentDisposition, libraryStableId } from '../lib/core/tavern-library-input.js'
 assert.equal(safeLibraryName('  e\u0301  '), 'é')
 for (const value of ['', '.', '..', 'a/b', 'a'.repeat(161)]) assert.throws(() => safeLibraryName(value))
 assert.equal(safeLibraryType('TEXT/PLAIN; CHARSET=UTF-8'), 'text/plain; charset=utf-8')

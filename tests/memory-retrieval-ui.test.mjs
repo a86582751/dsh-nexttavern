@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import {createMemoryRetrievalPanel} from '../src/memory-retrieval-panel.js'
+import {createMemoryRetrievalPanel} from '../lib/ui/memory-retrieval-panel.js'
 
 const timers=new Map();let timerId=0
 const windowListeners=new Map();globalThis.window={setInterval(fn,ms){const id=++timerId;timers.set(id,{fn,ms});return id},clearInterval(id){timers.delete(id)},addEventListener(type,fn){windowListeners.set(type,fn)},removeEventListener(type){windowListeners.delete(type)},dispatchEvent(event){windowListeners.get(event.type)?.(event);return true}}

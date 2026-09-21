@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import {characterOccurrenceMap} from '../src/core/card-character-map.ts'
+import {characterOccurrenceMap} from '../lib/core/card-character-map.js'
 const chapters=Array.from({length:36},(_,i)=>'前文'.repeat(600)+(i%2?'云中客':'林青')+'这是不能进入分布回执的正文。'+'后文'.repeat(900))
 let start=0
 const segments=chapters.map((text,id)=>{const segment={id,start,end:start+text.length,chapter:`章${id}`};start=segment.end;return segment})

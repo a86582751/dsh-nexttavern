@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
-import {testTempRoot as tmpdir} from '../tools/test-temp.mjs'
+import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
-import { apply } from '../preset/lib/roleplay-core.js'
-import { createTavernLibrary } from '../src/core/tavern-library.js'
-import { pngCrc } from '../src/core/tavern-card.js'
+import { apply } from '../lib/core/roleplay-core.js'
+import { createTavernLibrary } from '../lib/core/tavern-library.js'
+import { pngCrc } from '../lib/core/tavern-card.js'
 
 class Table extends Map {
   async put(key, value) { this.set(key, structuredClone(value)) }

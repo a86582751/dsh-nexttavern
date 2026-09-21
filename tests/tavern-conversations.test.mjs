@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { createConversationCatalog } from '../src/core/tavern-conversations.js'
+import { createConversationCatalog } from '../lib/core/tavern-conversations.js'
 let disk=null,fail=false
 const store=()=>createConversationCatalog({read:()=>disk,write:async value=>{if(fail)throw new Error('disk failure');disk=structuredClone(value)}})
 let catalog=store()

@@ -3,8 +3,8 @@ import http from 'node:http'
 import {createHash} from 'node:crypto'
 import {join} from 'node:path'
 import {DatabaseSync} from 'node:sqlite'
-import {createMemoryRetrieval,retrievalColdSession} from '../src/memory/memory-retrieval.js'
-import {createTestDirectory,cleanupTestDirectory} from '../tools/test-temp.mjs'
+import {createMemoryRetrieval,retrievalColdSession} from '../lib/memory/memory-retrieval.js'
+import {createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
 const home=createTestDirectory('adaptation-vectors-'),previous=process.env.NEXTTAVERN_MEMORY_HOME
 process.env.NEXTTAVERN_MEMORY_HOME=home
 const sent=[],ledger=new Map(),table=new Map();let service,inspection:DatabaseSync|undefined,live=true,latency=0

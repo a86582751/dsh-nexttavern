@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import {retrieveWorldbook} from '../preset/lib/roleplay-core.js'
-import {renderWorldbookEntry} from '../src/core/roleplay-author-context.js'
-import {estimateTokens} from '../src/core/roleplay-data.js'
+import {retrieveWorldbook} from '../lib/core/roleplay-core.js'
+import {renderWorldbookEntry} from '../lib/core/roleplay-author-context.js'
+import {estimateTokens} from '../lib/core/roleplay-data.js'
 const T={worldbook:new Map([
   ['a__kingdom',{id:'kingdom',name:'静海王国',keywords:['静海王国'],content:'煤灰覆盖下层街区。贵族各自为政。'}],
   ['a__pinned',{id:'pinned',name:'旧常驻',alwaysOn:true,content:'旧常驻必须经过核心设定兼容层，不能绕过查询。'}],

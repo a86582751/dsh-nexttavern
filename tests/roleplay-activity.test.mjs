@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import {readRoleplayActivity} from '../preset/lib/roleplay-core.js'
-import {fetchRoleplayText, startActivityPolling, backgroundNotesPresentation} from '../src/client.js'
+import {readRoleplayActivity} from '../lib/core/roleplay-core.js'
+import {fetchRoleplayText, startActivityPolling, backgroundNotesPresentation} from '../lib/ui/client.js'
 {
  const a={sessionId:'a',observedAt:10000,backgroundJobs:[{kind:'memory',status:'running',createdAt:2000}]}
  assert.equal(backgroundNotesPresentation(a,'a',12000).seconds,10)

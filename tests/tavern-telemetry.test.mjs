@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { foldSessionCalls, aggregateUsage, createTelemetry, timeRange, queryUsageRequests } from '../src/core/tavern-telemetry.js'
+import { foldSessionCalls, aggregateUsage, createTelemetry, timeRange, queryUsageRequests } from '../lib/core/tavern-telemetry.js'
 class Table extends Map { async put(k,v){this.set(k,structuredClone(v))} }
 class IdentityTable extends Map {
   constructor(){super();this.durable=new Map()}

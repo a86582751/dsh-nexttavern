@@ -6,13 +6,13 @@
   "description": "Opt-in Cloudflare Access JWT origin authentication for DeepSeek Harness alpha.3.",
   "repository": "https://github.com/a86582751/dsh-nexttavern",
   "type": "module",
-  "main": "index.js",
+  "main": "lib/index.js",
   "scripts": {
     "test": "node test.mjs"
   },
   "files": [
-    "index.js",
-    "index.ts",
+    "lib/index.js",
+    "src/index.ts",
     "cordis.patch.yml",
     "README.md",
     "LICENSE",

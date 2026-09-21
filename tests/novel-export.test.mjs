@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {taskHash,InlinePending} from '../src/core/tavern-tasks.js'
-import {createNovelExports,novelUnits,validateNovelChunk} from '../src/core/novel-export.js'
+import {taskHash,InlinePending} from '../lib/core/tavern-tasks.js'
+import {createNovelExports,novelUnits,validateNovelChunk} from '../lib/core/novel-export.js'
 const entries=[{seq:1,role:'user',text:'我拿起三只蓝瓶。'}, {seq:2,role:'assistant',text:'“等到月落再开门。”她递来七枚银叶。\n\n只有铜灯熄灭，温室铜钥匙才能转动。'}]
 const units=novelUnits(entries)
 assert.equal(units.length,3)

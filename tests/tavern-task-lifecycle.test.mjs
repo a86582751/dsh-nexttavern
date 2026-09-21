@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import { createModelPolicy, createTavernTasks, InlinePending, taskHash, nativeTaskOutputBudget } from '../src/core/tavern-tasks.js'
-import { createRoleplayTaskHost } from '../src/core/roleplay-task-host.js'
-import { sha256, recordSha256 } from '../src/core/roleplay-data.js'
-import { fenceCardContent } from '../src/core/tavern-card.js'
+import { createModelPolicy, createTavernTasks, InlinePending, taskHash, nativeTaskOutputBudget } from '../lib/core/tavern-tasks.js'
+import { createRoleplayTaskHost } from '../lib/core/roleplay-task-host.js'
+import { sha256, recordSha256 } from '../lib/core/roleplay-data.js'
+import { fenceCardContent } from '../lib/core/tavern-card.js'
 
 class Table extends Map {
   async put(key, value) { this.set(key, structuredClone(value)) }

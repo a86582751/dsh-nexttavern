@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import * as memory from '../src/memory/roleplay-memory-engine.js'
+import * as memory from '../lib/memory/roleplay-memory-engine.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/memory-notes-writer-legacy-v1.json', import.meta.url), 'utf8'))
 function fixture(config = {}) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { createRoleplayDecision } from '../src/core/roleplay-decision.js'
-import {buildDecisionContext, taskDependenciesCurrent} from '../preset/lib/roleplay-core.js'
+import { createRoleplayDecision } from '../lib/core/roleplay-decision.js'
+import {buildDecisionContext, taskDependenciesCurrent} from '../lib/core/roleplay-core.js'
 const T=Object.fromEntries(['cards','rules','worldbook'].map(k=>[k,new Map()]))
 T.cards.set('a__npc',{id:'npc',name:'守门人',kind:'npc',content:'只在出示铜钥匙后开门。',source:{raw:'ARCHIVE_CSS'}})
 T.cards.set('b__npc',{name:'OTHER_BRANCH',content:'不得泄漏'})

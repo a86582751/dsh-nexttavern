@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { mock } from 'node:test'
-import { createMemoryScheduler } from '../src/memory/memory-scheduler.js'
+import { createMemoryScheduler } from '../lib/memory/memory-scheduler.js'
 
 const flush = () => new Promise(resolve => setImmediate(resolve))
 const advance = async ms => { mock.timers.tick(ms); await flush() }

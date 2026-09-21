@@ -1,11 +1,29 @@
 // Canonical TypeScript source for the Tavern resource archive.
 // Project-owned Tavern resource archive. It never exposes a filesystem path as an API.
 import { createHash, randomUUID } from 'node:crypto'
-import { constants, closeSync, createReadStream, fsyncSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { constants,
+     closeSync,
+     createReadStream,
+     fsyncSync,
+     fstatSync,
+     lstatSync,
+     mkdirSync,
+     openSync,
+     readFileSync,
+     realpathSync,
+     renameSync,
+     statSync,
+     unlinkSync,
+     writeSync } from 'node:fs'
 import { Readable } from 'node:stream'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { safeLibraryName as safeName, safeLibraryType as safeType, librarySource as sourceOf, libraryObjectName as fileName, libraryContentDisposition as contentDisposition, libraryStableId as stableId } from './tavern-library-input.js'
-import { libraryRecordKey, libraryPendingKey, librarySourceKey, libraryObjectName } from './tavern-library-record.js'
+import { safeLibraryName as safeName,
+     safeLibraryType as safeType,
+     librarySource as sourceOf,
+     createLibraryObjectName,
+     libraryContentDisposition as contentDisposition,
+     libraryStableId as stableId } from './tavern-library-input.js'
+import { libraryRecordKey, libraryPendingKey, librarySourceKey, validatedLibraryObjectName } from './tavern-library-record.js'
 
 export interface TavernResource {
   schemaVersion: 1
@@ -57,17 +75,33 @@ const TEXT_TYPES = new Set(['text/plain', 'text/markdown', 'application/json', '
 const digest = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
 const copy = <T>(value: T): T => structuredClone(value)
 function fail(message: string): never { throw new Error(message) }
-const within = (root: string, candidate: string): boolean => { const part = relative(root, candidate); return part !== '..' && !part.startsWith(`..${sep}`) && !isAbsolute(part) }
+const within = (root: string,
+     candidate: string): boolean => { const part = relative(root,
+     candidate);
+     return part !== '..'
+    && !part.startsWith(`..${sep}`)
+    && !isAbsolute(part) }
 const archiveLocks = new Map<string, Promise<unknown>>()
 const keyFor = (workspaceHash: string, id: string): string => libraryRecordKey(RECORD_PREFIX, workspaceHash, id)
 const sourceKey = (source: Record<string, string>): string => librarySourceKey(source)
 const pendingKeyFor = (workspaceHash: string, id: string): string => libraryPendingKey(PENDING_PREFIX, workspaceHash, id)
 // Input/path helpers are generated from tavern-library-input.ts.
-async function lockArchive<T>(key: string, fn: () => PromiseLike<T>): Promise<T> { const prior = archiveLocks.get(key) ?? Promise.resolve(); const next = prior.catch(() => {}).then(fn); archiveLocks.set(key, next); try { return await next } finally { if (archiveLocks.get(key) === next) archiveLocks.delete(key) } }
+async function lockArchive<T>(key: string,
+     fn: () => PromiseLike<T>): Promise<T> { const prior = archiveLocks.get(key)
+    ?? Promise.resolve();
+     const next = prior.catch(() => {}).then(fn);
+     archiveLocks.set(key,
+     next);
+     try { return await next } finally { if (archiveLocks.get(key) === next) archiveLocks.delete(key) } }
 
 
 export function createTavernLibrary({ workspace, table }: { workspace: string; table: LibraryTable }) {
-  if (typeof workspace !== 'string' || !isAbsolute(workspace) || !table || typeof table.get !== 'function' || typeof table.entries !== 'function' || typeof table.put !== 'function') fail('资源库初始化参数无效')
+  if (typeof workspace !== 'string'
+      || !isAbsolute(workspace)
+      || !table
+      || typeof table.get !== 'function'
+      || typeof table.entries !== 'function'
+      || typeof table.put !== 'function') fail('资源库初始化参数无效')
   const requestedRoot = resolve(workspace)
   if (lstatSync(requestedRoot).isSymbolicLink()) fail('工作区不能是符号链接或目录链接')
   const root = realpathSync(requestedRoot)
@@ -78,7 +112,11 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
   const libraryDir = join(root, 'tavern-library')
   const objectDir = join(libraryDir, 'objects')
   const assertDirectory = (path: string): void => {
-    if (lstatSync(path).isSymbolicLink() || !statSync(path).isDirectory() || realpathSync(path) !== path || !within(root, path)) fail('资源库目录不能是符号链接、目录链接或工作区外路径')
+    if (lstatSync(path).isSymbolicLink()
+        || !statSync(path).isDirectory()
+        || realpathSync(path) !== path
+        || !within(root,
+         path)) fail('资源库目录不能是符号链接、目录链接或工作区外路径')
   }
   mkdirSync(libraryDir, { recursive: true })
   assertDirectory(libraryDir)
@@ -104,7 +142,14 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
     }
     for (const record of records()) {
       try { verify(record) } catch (error) {
-        result.push({ schemaVersion: 1, id: `resource-${record.id}`, resourceId: record.id, state: 'pending', name: record.name, type: record.type, source: record.source, reason: String((error as Error).message) })
+        result.push({ schemaVersion: 1,
+             id: `resource-${record.id}`,
+             resourceId: record.id,
+             state: 'pending',
+             name: record.name,
+             type: record.type,
+             source: record.source,
+             reason: String((error as Error).message) })
       }
     }
     result.sort((left, right) => left.id.localeCompare(right.id, 'en'))
@@ -117,7 +162,7 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
     return copy(record)
   }
   const objectPath = (record: TavernResource): string => {
-    const objectName = libraryObjectName(record, safeName, fileName)
+    const objectName = validatedLibraryObjectName(record, safeName, createLibraryObjectName)
     if (basename(objectName) !== objectName) fail('资源记录损坏')
     const path = join(objectDir, objectName)
     if (!within(objectDir, path)) fail('资源对象路径越界')
@@ -127,7 +172,14 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
     ensureDirectories()
     const path = objectPath(record)
     const node = lstatSync(path)
-    if (node.isSymbolicLink() || !node.isFile() || node.size !== record.bytes || node.size < 1 || node.size > TAVERN_LIBRARY_LIMITS.bytes || realpathSync(path) !== path || !within(objectDir, realpathSync(path))) fail('资源文件缺失或不安全')
+    if (node.isSymbolicLink()
+        || !node.isFile()
+        || node.size !== record.bytes
+        || node.size < 1
+        || node.size > TAVERN_LIBRARY_LIMITS.bytes
+        || realpathSync(path) !== path
+        || !within(objectDir,
+         realpathSync(path))) fail('资源文件缺失或不安全')
     const bytes = readFileSync(path)
     if (bytes.length !== record.bytes || digest(bytes) !== record.fullSha256) fail('资源文件已损坏')
     return { path, bytes, modifiedAt: node.mtime.toISOString() }
@@ -137,7 +189,13 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
     if (bytes.length < 1 || bytes.length > TAVERN_LIBRARY_LIMITS.bytes) fail('资源大小超出限制')
     try {
       const existing = lstatSync(path)
-      if (existing.isSymbolicLink() || !existing.isFile() || existing.size !== bytes.length || realpathSync(path) !== path || !within(objectDir, realpathSync(path)) || digest(readFileSync(path)) !== hash) fail('同名资源对象冲突或已损坏')
+      if (existing.isSymbolicLink()
+          || !existing.isFile()
+          || existing.size !== bytes.length
+          || realpathSync(path) !== path
+          || !within(objectDir,
+           realpathSync(path))
+          || digest(readFileSync(path)) !== hash) fail('同名资源对象冲突或已损坏')
       return
     } catch (error) {
       if ((error as NodeJS.ErrnoException | null)?.code !== 'ENOENT') throw error
@@ -153,7 +211,10 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
       if (lstatSync(temporary).isSymbolicLink() || realpathSync(objectDir) !== objectDir) fail('资源暂存文件不安全')
       renameSync(temporary, path)
       const directoryFd = openSync(objectDir, constants.O_RDONLY)
-      try { try { fsyncSync(directoryFd) } catch (error) { if (process.platform !== 'win32' || !['EPERM', 'EINVAL'].includes((error as NodeJS.ErrnoException | null)?.code ?? '')) throw error } } finally { closeSync(directoryFd) }
+      try { try { fsyncSync(directoryFd) } catch (error) { if (process.platform !== 'win32'
+          || !['EPERM',
+           'EINVAL'].includes((error as NodeJS.ErrnoException | null)?.code
+          ?? '')) throw error } } finally { closeSync(directoryFd) }
       const reread = readFileSync(path)
       if (reread.length !== bytes.length || digest(reread) !== hash) fail('资源写入复核失败')
     } finally {
@@ -180,15 +241,35 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
         }
         return { ...verified, sources, deduplicated: true }
       }
-      const objectName = fileName(fullSha256, cleanName)
+      const objectName = createLibraryObjectName(fullSha256, cleanName)
       writeObject(join(objectDir, objectName), body, fullSha256)
       const now = new Date().toISOString()
-      const record: TavernResource = { schemaVersion: 1, id, workspaceHash, name: cleanName, type: cleanType, bytes: body.length, fullSha256, objectName, createdAt: now, verifiedAt: now, source: cleanSource, sources: [cleanSource] }
+      const record: TavernResource = { schemaVersion: 1,
+           id,
+           workspaceHash,
+           name: cleanName,
+           type: cleanType,
+           bytes: body.length,
+           fullSha256,
+           objectName,
+           createdAt: now,
+           verifiedAt: now,
+           source: cleanSource,
+           sources: [cleanSource] }
       await table.put(keyFor(workspaceHash, id), copy(record))
       return { ...record, deduplicated: false }
     })
   }
-  function metadata(id: unknown) { const record = recordFor(id); const { path, modifiedAt } = verify(record); return { ...record, source: copy(record.source), sources: copy(record.sources ?? [record.source]), path, modifiedAt, sha256: record.fullSha256 } }
+  function metadata(id: unknown) { const record = recordFor(id);
+       const { path,
+       modifiedAt } = verify(record);
+       return { ...record,
+       source: copy(record.source),
+       sources: copy(record.sources
+      ?? [record.source]),
+       path,
+       modifiedAt,
+       sha256: record.fullSha256 } }
   function list() { return records().flatMap(record=>{try{return [metadata(record.id)]}catch{return []}}) }
   function read(id: unknown) {
     const record = recordFor(id)
@@ -205,7 +286,11 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
     try {
       fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
       const node = statSync(path), opened = fstatSync(fd)
-      if (!opened.isFile() || opened.size !== record.bytes || opened.dev !== node.dev || opened.ino !== node.ino || digest(readFileSync(fd)) !== record.fullSha256) fail('资源文件在下载前改变')
+      if (!opened.isFile()
+          || opened.size !== record.bytes
+          || opened.dev !== node.dev
+          || opened.ino !== node.ino
+          || digest(readFileSync(fd)) !== record.fullSha256) fail('资源文件在下载前改变')
       const stream = Readable.toWeb(createReadStream(path, { fd, autoClose: true, start: 0 }))
       fd = undefined
       // Node's web-stream declaration differs from DOM's; the runtime object is
@@ -239,7 +324,13 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
       await table.put(pendingKeyFor(workspaceHash, id), completed)
       return { ok: true, resource: result }
     } catch (error) {
-      const pendingRecord: PendingResource = { schemaVersion: 1, id, state: 'pending', source, name: typeof input.name === 'string' ? input.name : '', type: typeof input.type === 'string' ? input.type : '', reason: (error as Error).message }
+      const pendingRecord: PendingResource = { schemaVersion: 1,
+           id,
+           state: 'pending',
+           source,
+           name: typeof input.name === 'string' ? input.name : '',
+           type: typeof input.type === 'string' ? input.type : '',
+           reason: (error as Error).message }
       await table.put(pendingKeyFor(workspaceHash, id), pendingRecord)
       return { ok: false, pending: pendingRecord }
     }

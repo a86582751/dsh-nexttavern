@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict'
 import { rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { createTestDirectory } from '../tools/test-temp.mjs'
+import { createTestDirectory } from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
-import { createTavernLibrary } from '../src/core/tavern-library.js'
-import { createResourceBridge } from '../src/core/roleplay-resource-bridge.js'
+import { createTavernLibrary } from '../lib/core/tavern-library.js'
+import { createResourceBridge } from '../lib/core/roleplay-resource-bridge.js'
 import { createHash } from 'node:crypto'
+import { createLibraryObjectName, libraryObjectName as legacyCreateName, safeLibraryName } from '../lib/core/tavern-library-input.js'
+import { validatedLibraryObjectName, libraryObjectName as legacyValidateName } from '../lib/core/tavern-library-record.js'
+
+const objectHash = 'a'.repeat(64)
+const objectName = `${objectHash}--é.txt`
+assert.equal(createLibraryObjectName(objectHash, ' e\u0301.txt '), objectName)
+assert.equal(legacyCreateName, createLibraryObjectName, 'old construction export retains its identity')
+assert.equal(legacyValidateName, validatedLibraryObjectName, 'old validation export retains its identity')
+assert.equal(validatedLibraryObjectName({fullSha256: objectHash, objectName, name: 'é.txt'}, safeLibraryName, createLibraryObjectName), objectName)
+assert.throws(() => validatedLibraryObjectName({fullSha256: objectHash, objectName: '../escape', name: 'é.txt'}, safeLibraryName, createLibraryObjectName), /资源记录损坏/)
 
 function makeTable({ failPuts = 0 } = {}) {
   const values = new Map(); let remaining = failPuts
@@ -155,7 +165,6 @@ for(const hasValues of [false,true]) {
  } finally {rmSync(root,{recursive:true,force:true});rmSync(other,{recursive:true,force:true})}
 }
 console.log('tavern-library=ok (dedup/collision/tamper/path/symlink/late-write/migration/download/resource bridge)')
-
 
 
 

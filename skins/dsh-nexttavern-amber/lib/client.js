@@ -1,4 +1,4 @@
-// Generated from runtime/alpha3/preset/skins/nexttavern-amber/lib/client.ts; edit the TypeScript source.
+// Generated from runtime/alpha3/preset/skins/nexttavern-amber/src/client.ts; edit the TypeScript source.
 "use strict";
 // NextTavern amber tavern skin — browser half.
 //

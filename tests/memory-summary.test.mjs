@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { createMemorySummarizer, validateDetailedSummary } from '../src/memory/memory-summary.js'
+import { createMemorySummarizer, validateDetailedSummary } from '../lib/memory/memory-summary.js'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/memory-summary-legacy-v1.json', import.meta.url), 'utf8'))
 assert.equal(fixture.schemaVersion, 1)

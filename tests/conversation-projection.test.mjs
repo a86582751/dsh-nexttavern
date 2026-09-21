@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { projectConversationList, projectConversationWorkspaces,projectConversationSearch,resolveConversationExecution } from '../src/conversation-projection.js'
+import { projectConversationList, projectConversationWorkspaces,projectConversationSearch,resolveConversationExecution } from '../lib/ui/conversation-projection.js'
 
 const catalog = {
   schemaVersion: 1,

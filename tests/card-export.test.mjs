@@ -1,8 +1,21 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { exportSnapshot, renderOrganizedExport, registerCardExport } from '../src/core/card-export.js'
+import { exportSnapshot, renderOrganizedExport, registerCardExport } from '../lib/core/card-export.js'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { createTestDirectory, cleanupTestDirectory } from '../tools/test-temp.mjs'
+import { createTestDirectory, cleanupTestDirectory } from '../lib/operations/test-temp.mjs'
+import { stableJson as exportJson } from '../lib/core/card-export-projection.js'
+import { stableJson as recordJson, recordSha256 } from '../lib/core/roleplay-data.js'
+
+// Lock the two historical formats separately; a shared serializer would alter hashes.
+const hashSample = {Z: 1, a: 2, omitted: undefined, nested: {Z: 3, a: 4}, list: [undefined, null, {Z: 5, a: 6}]}
+const recordBytes = '{"Z":1,"a":2,"list":[null,null,{"Z":5,"a":6}],"nested":{"Z":3,"a":4}}'
+const exportBytes = '{"a":2,"list":[null,null,{"a":6,"Z":5}],"nested":{"a":4,"Z":3},"Z":1}'
+assert.equal(recordJson(hashSample), recordBytes)
+assert.equal(exportJson(hashSample), exportBytes)
+assert.equal(recordJson(undefined), 'null')
+assert.equal(exportJson(undefined), undefined)
+assert.equal(recordSha256(hashSample), createHash('sha256').update(recordBytes).digest('hex'))
+assert.equal(recordSha256(undefined), 'missing')
 
 const material = [
   { label: '人物设定', source: 'card.data.description', text: `人物的长段设定：${'守望灯塔，记录每一次潮汐。'.repeat(180)}` },

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { libraryRecordKey, libraryPendingKey, librarySourceKey, libraryObjectName } from '../src/core/tavern-library-record.js'
-import { safeLibraryName, libraryObjectName as objectFileName } from '../src/core/tavern-library-input.js'
+import { libraryRecordKey, libraryPendingKey, librarySourceKey, libraryObjectName } from '../lib/core/tavern-library-record.js'
+import { safeLibraryName, libraryObjectName as objectFileName } from '../lib/core/tavern-library-input.js'
 
 assert.equal(libraryRecordKey('record__', 'workspace', 'id'), 'record__workspace__id')
 assert.equal(libraryPendingKey('pending__', 'workspace', 'id'), 'pending__workspace__id')

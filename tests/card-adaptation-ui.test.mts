@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import {createCardAdaptationPanel} from '../src/card-adaptation-panel.js'
+import {createCardAdaptationPanel} from '../lib/ui/card-adaptation-panel.js'
 let modelFocusCount=0,modelScrollCount=0
 function renderer(){
  let cells=[],index=0,dirty=false,effects=[],root,props,seat
@@ -89,7 +89,7 @@ await click('清空向量');pendingConfirm(false);await runner.flush();assert.eq
 const frozenModelRevision=modelRevision
 await click('重建向量');modelRevision++;pendingConfirm(true);await runner.flush()
 assert.equal(calls.filter(c=>c.body).at(-1).body.expectedModelRevision,frozenModelRevision,'rebuild retains the model revision seen before confirmation')
-const client=fs.readFileSync(new URL('../src/client.ts',import.meta.url),'utf8')
-assert.match(client,/\['character-cluster','角色集群'\],\['card-adaptation','长文本转角色卡'\]/)
-assert.match(client,/tab==='card-adaptation'\?React.createElement\(CardAdaptationPanel/)
+const client=fs.readFileSync(new URL('../src/ui/client.ts',import.meta.url),'utf8')
+assert.match(client.replace(/\s+/g,''),/\['character-cluster','角色集群'\],\['card-adaptation','长文本转角色卡'\]/)
+assert.match(client,/case 'card-adaptation':\s*return React\.createElement\(\s*CardAdaptationPanel/)
 runner.dispose();console.log('card-adaptation-ui=ok (tab order, draft/poll lock, frozen confirmations, cross-session guard, explicit retry)')

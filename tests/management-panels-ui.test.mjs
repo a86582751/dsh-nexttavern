@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import {createManagementPanels} from '../src/management-panels.js'
+import {createManagementPanels} from '../lib/ui/management-panels.js'
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}}
 function hooks(){
   const cells=[];let index=0,pending=[],dirty=false,component,props,seat

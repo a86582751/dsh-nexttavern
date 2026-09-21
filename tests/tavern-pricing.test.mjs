@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { normalizeCatalog, resolvePricing, createPriceCatalog, createExchangeRates, convertUsageCurrency } from '../src/core/tavern-pricing.js'
-import { registerTelemetryRoutes } from '../src/core/roleplay-telemetry-routes.js'
+import { normalizeCatalog, resolvePricing, createPriceCatalog, createExchangeRates, convertUsageCurrency } from '../lib/core/tavern-pricing.js'
+import { registerTelemetryRoutes } from '../lib/core/roleplay-telemetry-routes.js'
 const feed={deepseek:{name:'DeepSeek',models:{'deepseek-v4-flash':{id:'deepseek-v4-flash',name:'Flash',modalities:{output:['text']},cost:{input:.14,output:.28,cache_read:.0028}}}},relay:{models:{'deepseek-v4-flash':{modalities:{output:['text']},cost:{input:9,output:9}}}},test:{models:{tiered:{modalities:{output:['text']},cost:{input:1,output:2,cache_read:.1,cache_write:.2,tiers:[{tier:{type:'context',size:200000},input:2,output:4,cache_read:.2,cache_write:.4}]}}}}}
 const catalog=normalizeCatalog(feed)
 const call={provider:'deepseek-official',model:'deepseek-v4-flash',usage:{inputTokens:100,outputTokens:20,cacheReadTokens:900,cacheWriteTokens:0,totalTokens:1020}}
@@ -47,6 +47,40 @@ await fxOffline.sync();assert.equal(fxHits,1)
 const badFx=createExchangeRates({table:new Table(),now:()=>clock,fetcher:async()=>new Response(JSON.stringify({...fxFeed,rates:{USD:1,CNY:-1}}))})
 await badFx.sync();assert.equal(badFx.status().rateAt,null);assert.ok(badFx.status().error)
 console.log('exchange-rate=ok (daily refresh, conversion, missing quotes, offline cache, provenance)')
+
+// Exercise the extracted transport through both public facades: no real HTTP and no full install.
+for (const [factory, payload, cap] of [
+  [createPriceCatalog, feed, 16 * 1024 * 1024],
+  [createExchangeRates, { ...fxFeed, time_last_update_unix: clock / 1000, time_next_update_unix: clock / 1000 + 86400 }, 1024 * 1024],
+]) {
+  let finish, requests = 0
+  const pending = new Promise(resolve => { finish = resolve })
+  const store = new Table()
+  const service = factory({ table: store, now: () => clock, fetcher: async () => { requests++; return pending } })
+  const first = service.sync(), joined = service.sync(true)
+  assert.equal(requests, 1, 'forced refresh joins an in-flight request')
+  assert.equal(service.state().syncing, true)
+  finish(new Response(JSON.stringify(payload)))
+  await Promise.all([first, joined])
+  assert.equal(service.state().syncing, false)
+  const saved = structuredClone([...store.values()][0])
+  let cancelled = 0
+  const oversized = factory({ table: store, now: () => clock, fetcher: async () => ({
+    ok: true,
+    headers: new Headers(),
+    body: { getReader: () => ({
+      read: async () => ({ done: false, value: new Uint8Array(cap + 1) }),
+      cancel: async () => { cancelled++; throw Error('cleanup failure must not escape') },
+    }) },
+  }) })
+  await oversized.sync(true)
+  assert.equal(cancelled, 1, 'streaming cap is enforced even without Content-Length')
+  assert.ok(oversized.state().error)
+  assert.equal(oversized.state().sha256, saved.sha256, 'failed refresh preserves the successful source hash')
+  assert.equal(oversized.state().fetchedAt, saved.fetchedAt)
+  assert.equal(oversized.state().syncing, false)
+}
+console.log('pricing-lifecycle=ok (in-flight join, streamed cap, reader cleanup, cached failure recovery)')
 
 // Route scheduling and filters use deterministic services; no external network.
 const routes=new Map(),events=[]

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createConversationCatalog, type LegacyForkOperation, type ConversationSnapshot } from './tavern-conversations.js'
+import { readUserInfo as readUserInfoFile, writeUserInfo } from './roleplay-userinfo.js'
 
 type UserInfo = Record<string, unknown>
 type SessionEvent = { type?: string; data?: { agentPreset?: unknown } }
@@ -18,21 +19,8 @@ type HostContext = {
 }
 type Route = { path: string; methods: readonly string[]; fetch: (request: Request) => Promise<Response> }
 
-const userInfoPath = (): string => process.env.DSH_ROLEPLAY_USERINFO_PATH ??
-  join(process.env.DSH_HOME ?? join(process.env.HOME ?? '.', '.dsh'), 'roleplay-userinfo.json')
-
-const readUserInfo = (): UserInfo => {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(userInfoPath(), 'utf8'))
-    return parsed && typeof parsed === 'object' ? parsed as UserInfo : {}
-  } catch { return {} }
-}
-
-const writeUserInfo = (record: UserInfo): void => {
-  const p = userInfoPath()
-  mkdirSync(join(p, '..'), { recursive: true })
-  writeFileSync(p, JSON.stringify(record, null, 2), 'utf8')
-}
+// HTTP clients expect an object even before a user profile exists.
+const readUserInfo = (): UserInfo => readUserInfoFile() ?? {}
 
 const jsonResponse = (status: number, value: unknown): Response =>
   new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })

@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { join, relative, sep, isAbsolute } from 'node:path'
-import { readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs'
+import { relative, sep, isAbsolute } from 'node:path'
+import { writeUserInfo as writeUserInfoFile } from './roleplay-userinfo.js'
+
+export { userInfoPath, readUserInfo } from './roleplay-userinfo.js'
 
 
 // ── 小工具 ──────────────────────────────────────────────────────────────────
@@ -9,29 +11,10 @@ import { readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs'
 // 冒号不可用：以双下划线分隔 branchId 与子键（session id 只含 [a-z0-9-]）。
 export const keyOf = (branchId: string, sub: string) => `${branchId}__${sub}`
 
-// 用户级信息（{{user}}/{{user_gender}} 数据源）：独立文件存储，不依赖任何会话
-// （设置页路由由 dsh-roleplay-ui 宿主半注册，开机即存在）。
-export const userInfoPath = () =>
-  process.env.DSH_ROLEPLAY_USERINFO_PATH ??
-  join(process.env.DSH_HOME ?? join(process.env.HOME ?? '.', '.dsh'), 'roleplay-userinfo.json')
-
-export function readUserInfo() {
-  try {
-    const raw = readFileSync(userInfoPath(), 'utf8')
-    const parsed: unknown = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : null
-  } catch {
-    return null
-  }
-}
-
 export function writeUserInfo(record: unknown) {
+  // Preserve the preset's best-effort contract; the Host HTTP route reports write failures.
   try {
-    const p = userInfoPath()
-    mkdirSync(join(p, '..'), { recursive: true })
-    const temp = `${p}.tmp-${process.pid}-${Date.now()}`
-    writeFileSync(temp, JSON.stringify(record, null, 2), 'utf8')
-    renameSync(temp, p)
+    writeUserInfoFile(record)
   } catch {}
 }
 
@@ -95,6 +78,9 @@ export function cloneRecord<T>(value: T): T {
   return value === undefined ? value : structuredClone(value)
 }
 
+// Persisted record hashes use UTF-16 key order, omit undefined object fields and
+// encode undefined array values as null. Do not replace this with export JSON's
+// locale-aware ordering: that would invalidate existing record CAS hashes.
 export function stableJson(value: unknown): string | undefined {
   if (value === undefined) return 'null'
   if (value === null || typeof value !== 'object') return JSON.stringify(value)

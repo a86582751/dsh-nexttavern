@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mock } from 'node:test'
-import { createRoleplayCompletion } from '../src/core/roleplay-completion.js'
-import { InlinePending } from '../src/core/tavern-tasks.js'
+import { createRoleplayCompletion } from '../lib/core/roleplay-completion.js'
+import { InlinePending } from '../lib/core/tavern-tasks.js'
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
 const flush=()=>new Promise(resolve=>setImmediate(resolve))
