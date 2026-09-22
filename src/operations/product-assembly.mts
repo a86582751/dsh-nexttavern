@@ -8,10 +8,10 @@ import {contained as inside} from './public-transaction.mjs'
 interface ProductRecipe {
   packageArtifact: string
   patchArtifact: string
-  packages: {packageArtifact: string; assembly?: string}[]
+  packages: {packageArtifact: string; assembly?: string; resources?: {artifact: string; path: string}[]}[]
 }
 interface Plan {
-  artifacts: {id: string; source: string}[]
+  artifacts: {id: string; source: string; public?: {path?: string}}[]
   product: ProductRecipe
   publicRelease: {packageName: string; candidateVersion: string}
 }
@@ -56,7 +56,8 @@ export function assembleProduct(options: {
       throw Error('Invalid private product package: ' + pkg.name)
     }
     if (row.assembly && !options.archives[row.assembly]) throw Error('Missing pinned archive: ' + row.assembly)
-    return {...row, source, pkg}
+    const publicMetadata = artifact(row.packageArtifact).public?.path
+    return {...row, source, pkg, publicMetadata}
   })
   const names = owned.map(row => row.pkg.name).sort()
   if (new Set(names).size !== names.length) throw Error('Duplicate product package')
@@ -71,11 +72,24 @@ export function assembleProduct(options: {
   const moduleRoot = inside(packageRoot, 'node_modules')
   if (fs.existsSync(moduleRoot)) throw Error('Candidate dependencies must be absent before assembly')
   fs.mkdirSync(moduleRoot)
-  const packages = owned.map(({pkg, source, assembly}) => {
+  const packages = owned.map(({pkg, source, assembly, publicMetadata, resources}) => {
     const output = inside(moduleRoot, pkg.name)
     if (assembly) {
       const result = assembleOwnedDependency({repo, id: assembly, archive: options.archives[assembly]!, output})
       if (result.name !== pkg.name || result.version !== pkg.version) throw Error('Assembly identity differs from recipe')
+      // The public compiler keeps the maintained SDK overlays at their source
+      // package location. Complete that developer copy with the SAME admitted
+      // upstream files, otherwise its emitted overlays import absent modules.
+      // Existing projected sources keep their public normalization; upstream
+      // maps remain with the exact private SDK, not a different source tree.
+      if (!publicMetadata) throw Error('Assembled dependency has no public metadata mapping')
+      const development = inside(packageRoot, path.posix.dirname(publicMetadata))
+      for (const file of regularPackageFiles(output)) {
+        const target = inside(development, file)
+        if (file.endsWith('.map') || fs.existsSync(target)) continue
+        fs.mkdirSync(path.dirname(target), {recursive: true})
+        fs.copyFileSync(inside(output, file), target)
+      }
     } else {
       const prefix = path.posix.dirname(source) + '/'
       const files = new Set(plan.artifacts.filter(row => row.source.startsWith(prefix)).map(row => row.source))
@@ -84,6 +98,11 @@ export function assembleProduct(options: {
         fs.mkdirSync(path.dirname(target), {recursive: true})
         fs.copyFileSync(inside(repo, file), target)
       }
+    }
+    for (const resource of resources ?? []) {
+      const target = inside(output, resource.path)
+      fs.mkdirSync(path.dirname(target), {recursive: true})
+      fs.copyFileSync(inside(repo, artifact(resource.artifact).source), target)
     }
     const files = regularPackageFiles(output).sort().map(file => ({path: file,
       sha256: createHash('sha256').update(fs.readFileSync(inside(output, file))).digest('hex')}))

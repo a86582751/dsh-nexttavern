@@ -4106,6 +4106,10 @@
       "source": "lib/operations/product-assembly.mjs"
     },
     {
+      "id": "nexttavern-retired-harness-replay",
+      "source": "tools/harness-patches.json"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },

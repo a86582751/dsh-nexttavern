@@ -155,7 +155,22 @@
     "@deepseek-ai/dsh-api-remotes": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-client-locale": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-client-modules": "0.1.7-alpha.1",
-    "@deepseek-ai/dsh-client-ui-primitives": "0.1.7-alpha.1"
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-agent-instructions": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-command-compact": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-compaction-tool-result-pruner": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-persona": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-skill-filesystem": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-ask-user": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-bash": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-fs": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-fs-search": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-jobs": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-pwsh": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-skill": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-subagent": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-subagent-control": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-tool-web": "0.1.7-alpha.1"
   },
   "files": [
     "lib",

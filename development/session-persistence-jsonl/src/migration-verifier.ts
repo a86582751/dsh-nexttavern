@@ -71,27 +71,13 @@ class VerificationScheduler {
 const verificationScheduler = new VerificationScheduler()
 
 function workerSpawn(request: VerificationRequest): { readonly entry: string | URL; readonly options: WorkerOptions } {
-  /* v8 ignore next 3 -- built-worker coverage owns the bundled path. */
-  if (!import.meta.url.endsWith('.ts')) {
-    return {
-      entry: new URL('./worker.js', import.meta.url),
-      options: { workerData: request, execArgv: [] },
-    }
-  }
-  const workerEntry = new URL('./worker.ts', import.meta.url)
-  const bootstrap = [
-    `import { register as registerEsm } from ${JSON.stringify(import.meta.resolve('tsx/esm/api'))}`,
-    `import { register as registerCjs } from ${JSON.stringify(import.meta.resolve('tsx/cjs/api'))}`,
-    'registerCjs()',
-    'registerEsm()',
-    `await import(${JSON.stringify(workerEntry.href)})`,
-  ].join('\n')
+  // Both src/ and lib/ resolve this to the package's registered generated
+  // worker. Contributors build before execution, just like the installed
+  // product; a child process must not depend on an undeclared tsx runtime or
+  // infer that TypeScript sits beside its emitted JavaScript.
   return {
-    entry: new URL(`data:text/javascript,${encodeURIComponent(bootstrap)}`),
-    options: {
-      workerData: request,
-      execArgv: [],
-    },
+    entry: new URL('../lib/worker.js', import.meta.url),
+    options: { workerData: request, execArgv: [] },
   }
 }
 

@@ -16,7 +16,7 @@ export interface HarnessPatch {
   edits: { offset: number; delete: number; insert: string }[]
   group?: string
 }
-interface PatchManifest { schemaVersion: number; patches: HarnessPatch[] }
+interface PatchManifest { schemaVersion: number; patches: HarnessPatch[]; retiredProduct?: string }
 interface PatchOptions { apply?: boolean; stopped?: boolean; harness?: string; patches?: string; backup?: string; rollback?: string }
 
 export function transform(bytes: Buffer, patch: HarnessPatch) {
@@ -84,6 +84,9 @@ export function patchCli(args = process.argv.slice(2)) {
   if (!options.harness) throw Error('Explicit --harness required');
   const patchFile = options.patches ?? fileURLToPath(new URL('../../tools/harness-patches.json', import.meta.url));
   const data = JSON.parse(fs.readFileSync(patchFile, 'utf8')) as PatchManifest;
+  if (data.retiredProduct === 'dsh-nexttavern') {
+    throw Error('NextTavern uses native plugin installation; this product has no Harness replay patches');
+  }
   if (data.schemaVersion !== 1 || !Array.isArray(data.patches) || new Set(data.patches.map(item => item.unit)).size < 6) throw Error('Incomplete compatibility patch set');
   const audit = auditPatches({harness: options.harness, patches: data.patches});
   let transaction = null;

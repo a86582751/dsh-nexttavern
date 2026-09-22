@@ -1465,7 +1465,8 @@
       "banner": "runtime/alpha3/src/core/roleplay-message-view.ts",
       "primaryOutput": "lib/core/roleplay-message-view.js",
       "outputs": [
-        "lib/core/roleplay-message-view.js"
+        "lib/core/roleplay-message-view.js",
+        "preset/lib/core/roleplay-message-view.js"
       ]
     },
     {
@@ -7393,6 +7394,10 @@
       {
         "id": "product-assembly",
         "source": "lib/operations/product-assembly.mjs"
+      },
+      {
+        "id": "nexttavern-retired-harness-replay",
+        "source": "tools/harness-patches.json"
       }
     ],
     "builds": [
