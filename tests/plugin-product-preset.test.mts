@@ -27,9 +27,11 @@ function presetFixture(conflict = false, pathProbe?: Record<string, unknown>) {
     for (const file of ['package.json', 'lib/index.js', 'lib/composition.js']) {
       save(path.join(pkg, file), fs.readFileSync(new URL('../development/presets/'+file, import.meta.url), 'utf8'))
     }
-    let presetBody = JSON.stringify([{id: 'persona', name: '@deepseek-ai/dsh-persona', config: {
-      prefix: 'Product preset probe', complete: true, includeRuntimeContext: false,
-    }}])
+    const fullPreset = fs.readFileSync(new URL('../preset/agent.cordis.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+    const personaStart = fullPreset.indexOf('- id: persona\n')
+    const personaEnd = fullPreset.indexOf('\n- id: ', personaStart+1)
+    assert.ok(personaStart >= 0 && personaEnd > personaStart)
+    let presetBody = fullPreset.slice(personaStart, personaEnd)
     if (pathProbe) {
       const fullPreset = fs.readFileSync(new URL('../preset/agent.cordis.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
       const row = (id: string) => {
