@@ -993,6 +993,14 @@
       "source": "build-tools/tsconfig.json"
     },
     {
+      "id": "typescript-builder",
+      "source": "lib/operations/build-typescript.mjs"
+    },
+    {
+      "id": "typescript-builder-typescript",
+      "source": "src/operations/build-typescript.mts"
+    },
+    {
       "id": "debug-cli",
       "source": "tools/dsh-debug/dsh_debug.py"
     },
@@ -1726,7 +1734,7 @@
     },
     {
       "id": "public-build-modules",
-      "source": "tools/build-modules.mjs"
+      "source": "lib/operations/public-build-modules.mjs"
     },
     {
       "id": "public-agents-notes",
@@ -2481,6 +2489,58 @@
       "source": "tests/plugin-owned-packages-fixture.mts"
     },
     {
+      "id": "compat-pi-ai-google-generative-ai-ts",
+      "source": "development/pi-ai/src/api/google-generative-ai.ts"
+    },
+    {
+      "id": "compat-pi-ai-google-generative-ai-js",
+      "source": "development/pi-ai/lib/api/google-generative-ai.js"
+    },
+    {
+      "id": "compat-pi-ai-openai-completions-ts",
+      "source": "development/pi-ai/src/api/openai-completions.ts"
+    },
+    {
+      "id": "compat-pi-ai-openai-completions-js",
+      "source": "development/pi-ai/lib/api/openai-completions.js"
+    },
+    {
+      "id": "compat-pi-ai-openai-responses-shared-ts",
+      "source": "development/pi-ai/src/api/openai-responses-shared.ts"
+    },
+    {
+      "id": "compat-pi-ai-openai-responses-shared-js",
+      "source": "development/pi-ai/lib/api/openai-responses-shared.js"
+    },
+    {
+      "id": "compat-pi-ai-anthropic-messages-ts",
+      "source": "development/pi-ai/src/api/anthropic-messages.ts"
+    },
+    {
+      "id": "compat-pi-ai-anthropic-messages-js",
+      "source": "development/pi-ai/lib/api/anthropic-messages.js"
+    },
+    {
+      "id": "compat-pi-ai-package-json",
+      "source": "development/pi-ai/package.json"
+    },
+    {
+      "id": "compat-pi-ai-origin-json",
+      "source": "development/pi-ai/ORIGIN.json"
+    },
+    {
+      "id": "compat-pi-ai-license",
+      "source": "development/pi-ai/LICENSE"
+    },
+    {
+      "id": "compat-pi-ai-license-upstream",
+      "source": "development/pi-ai/LICENSE.upstream"
+    },
+    {
+      "id": "compat-pi-ai-notice",
+      "source": "development/pi-ai/NOTICE"
+    },
+    {
       "id": "compat-llm-pi-ai-adapter-ts",
       "source": "development/llm-pi-ai/src/adapter.ts"
     },
@@ -2883,6 +2943,30 @@
     {
       "id": "compat-session-controller-archived-session-gate-js",
       "source": "development/session-controller/lib/archived-session-gate.js"
+    },
+    {
+      "id": "compat-pi-ai-bedrock-converse-stream-ts",
+      "source": "development/pi-ai/src/api/bedrock-converse-stream.ts"
+    },
+    {
+      "id": "compat-pi-ai-bedrock-converse-stream-js",
+      "source": "development/pi-ai/lib/api/bedrock-converse-stream.js"
+    },
+    {
+      "id": "compat-pi-ai-mistral-conversations-ts",
+      "source": "development/pi-ai/src/api/mistral-conversations.ts"
+    },
+    {
+      "id": "compat-pi-ai-mistral-conversations-js",
+      "source": "development/pi-ai/lib/api/mistral-conversations.js"
+    },
+    {
+      "id": "compat-pi-ai-pi-messages-ts",
+      "source": "development/pi-ai/src/api/pi-messages.ts"
+    },
+    {
+      "id": "compat-pi-ai-pi-messages-js",
+      "source": "development/pi-ai/lib/api/pi-messages.js"
     },
     {
       "id": "plugin-configuration-fixture",
@@ -3897,6 +3981,10 @@
       "source": "tests/plugin-ui-chat-message-edits.test.mts"
     },
     {
+      "id": "public-build-modules-typescript",
+      "source": "src/operations/public-build-modules.mts"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -3915,6 +4003,7 @@
       "inputs": [
         "skins/dsh-nexttavern-amber/src/index.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -3928,6 +4017,7 @@
       "inputs": [
         "skins/dsh-nexttavern-amber/src/client.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -3942,6 +4032,7 @@
         "src/core/card-character-map.ts",
         "src/core/card-adaptation.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-card.ts",
@@ -3958,6 +4049,7 @@
         "src/core/card-research-planner.ts",
         "src/core/card-adaptation.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/card-research-record.ts",
@@ -3974,6 +4066,7 @@
       "inputs": [
         "src/ui/card-adaptation-panel.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/ui/card-adaptation-presentations.ts"
@@ -3990,6 +4083,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4049,6 +4143,7 @@
         "src/memory/memory-retrieval-types.ts",
         "src/memory/memory-embedding-api.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/card-research-planner.ts",
@@ -4075,6 +4170,7 @@
         "src/core/tavern-task-types.ts",
         "src/core/tavern-task-support.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-retirement.ts",
@@ -4092,6 +4188,7 @@
         "src/core/narrative-preset-catalog.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/narrative-styles/light-novel.ts",
@@ -4120,6 +4217,7 @@
         "src/core/narrative-styles/light-novel.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4134,6 +4232,7 @@
         "src/core/narrative-styles/otome.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4148,6 +4247,7 @@
         "src/core/narrative-styles/cosmic-romance.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4162,6 +4262,7 @@
         "src/core/narrative-styles/jrpg.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4176,6 +4277,7 @@
         "src/core/narrative-styles/cinematic.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4190,6 +4292,7 @@
         "src/core/narrative-styles/annalistic.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4204,6 +4307,7 @@
         "src/core/narrative-styles/minimal.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4218,6 +4322,7 @@
         "src/core/narrative-styles/delicate.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4232,6 +4337,7 @@
         "src/core/narrative-styles/fantasy.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4246,6 +4352,7 @@
         "src/core/narrative-styles/horror.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4260,6 +4367,7 @@
         "src/core/narrative-styles/luxun.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4274,6 +4382,7 @@
         "src/core/narrative-styles/lyrical.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4288,6 +4397,7 @@
         "src/core/narrative-styles/comedy.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4302,6 +4412,7 @@
         "src/core/narrative-styles/classical.ts",
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4315,6 +4426,7 @@
       "inputs": [
         "src/core/narrative-presets.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -4360,6 +4472,7 @@
       "inputs": [
         "src/core/narrative-preset-default.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4373,6 +4486,7 @@
       "inputs": [
         "src/ui/preset-panel.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -4420,6 +4534,7 @@
       "inputs": [
         "src/memory/memory-retrieval-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4433,6 +4548,7 @@
       "inputs": [
         "src/memory/memory-embedding-api.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/memory/memory-retrieval-types.ts"
@@ -4447,6 +4563,7 @@
       "inputs": [
         "src/memory/memory-local-catalog.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/memory/memory-retrieval-types.ts"
@@ -4461,6 +4578,7 @@
       "inputs": [
         "src/memory/memory-story-text.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/memory/memory-history.ts",
@@ -4477,6 +4595,7 @@
       "inputs": [
         "src/memory/memory-retrieval.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/memory/memory-story-text.ts",
@@ -4499,6 +4618,7 @@
       "inputs": [
         "src/memory/memory-vector-worker.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/memory/memory-embedding-api.ts",
@@ -4516,6 +4636,7 @@
       "inputs": [
         "src/memory/memory-local-worker.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/memory/memory-local-catalog.ts",
@@ -4531,6 +4652,7 @@
       "inputs": [
         "src/ui/memory-retrieval-panel.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4544,6 +4666,7 @@
       "inputs": [
         "status-template.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4559,6 +4682,7 @@
         "integrations/auth-webserver/package.json",
         "integrations/auth-webserver/package-lock.json",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4588,6 +4712,7 @@
         "src/ui/settings-projection.ts",
         "src/ui/conversation-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -4647,6 +4772,7 @@
         "src/ui/telemetry-panels.ts",
         "src/ui/settings-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/ui/pricing-panel.ts"
@@ -4663,6 +4789,7 @@
         "src/ui/panel-state.ts",
         "src/ui/settings-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4676,6 +4803,7 @@
       "inputs": [
         "src/ui/user-info.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4691,6 +4819,7 @@
         "src/ui/state-store.ts",
         "src/ui/panel-state.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4708,6 +4837,7 @@
         "src/ui/reader-rendering.ts",
         "src/ui/reader-regex.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -4732,6 +4862,7 @@
         "src/ui/reader-rendering.ts",
         "src/ui/reader-regex.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -4755,6 +4886,7 @@
         "src/ui/reader-rendering.ts",
         "src/ui/reader-regex.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -4775,6 +4907,7 @@
         "src/ui/state-store.ts",
         "src/ui/panel-state.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4789,6 +4922,7 @@
         "src/ui/session-actions.ts",
         "src/ui/conversation-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4803,6 +4937,7 @@
         "src/ui/state-store.ts",
         "src/ui/panel-state.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4818,6 +4953,7 @@
         "src/ui/reader-rendering.ts",
         "src/ui/reader-regex.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -4834,6 +4970,7 @@
         "src/ui/reader-rendering.ts",
         "src/ui/reader-regex.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/ui/status-rendering.ts"
@@ -4848,6 +4985,7 @@
       "inputs": [
         "src/ui/reader-regex.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4861,6 +4999,7 @@
       "inputs": [
         "src/ui/panel-state.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4874,6 +5013,7 @@
       "inputs": [
         "src/ui/settings-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -4918,6 +5058,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -4972,6 +5113,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5001,6 +5143,7 @@
         "src/core/roleplay-worldline-types.ts",
         "src/core/tavern-conversations.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-context.ts",
@@ -5055,6 +5198,7 @@
         "src/core/roleplay-branch-routes-types.ts",
         "src/core/tavern-conversations.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5103,6 +5247,7 @@
         "src/core/roleplay-status-types.ts",
         "src/core/roleplay-resource-bridge.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-author-context-types.ts",
@@ -5156,6 +5301,7 @@
         "src/core/novel-export-projection.ts",
         "src/core/roleplay-resource-bridge.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5203,6 +5349,7 @@
         "src/core/tavern-telemetry-aggregate.ts",
         "src/core/tavern-telemetry-query.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-author-context-types.ts",
@@ -5258,6 +5405,7 @@
         "src/core/tavern-telemetry-query.ts",
         "src/core/roleplay-telemetry-routes-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5305,6 +5453,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-author-context-types.ts",
@@ -5353,6 +5502,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5393,6 +5543,7 @@
         "src/core/roleplay-import-types.ts",
         "src/core/roleplay-task-host.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -5432,6 +5583,7 @@
         "src/core/roleplay-authoring-types.ts",
         "src/core/roleplay-author-context-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5470,6 +5622,7 @@
         "src/core/tavern-pricing.ts",
         "src/core/tavern-telemetry-time-range.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-author-context-types.ts",
@@ -5512,6 +5665,7 @@
         "src/core/roleplay-import-types.ts",
         "src/core/roleplay-task-host.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-author-context-types.ts",
@@ -5556,6 +5710,7 @@
         "src/core/card-export.ts",
         "src/core/card-export-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5602,6 +5757,7 @@
         "src/core/roleplay-status-types.ts",
         "src/core/roleplay-status.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5641,6 +5797,7 @@
         "src/core/roleplay-import-types.ts",
         "src/core/roleplay-task-host.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-author-context-types.ts",
@@ -5677,6 +5834,7 @@
         "src/core/roleplay-task-tools-types.ts",
         "src/core/roleplay-task-host.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-author-context-types.ts",
@@ -5707,6 +5865,7 @@
         "src/core/roleplay-data.ts",
         "src/core/roleplay-author-context-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -5738,6 +5897,7 @@
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-session-actions-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -5767,6 +5927,7 @@
         "src/core/roleplay-data.ts",
         "src/core/roleplay-author-context-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -5798,6 +5959,7 @@
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-author-tools-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -5826,6 +5988,7 @@
         "src/core/tavern-task-context.ts",
         "src/core/roleplay-data.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -5855,6 +6018,7 @@
         "src/core/tavern-task-context.ts",
         "src/core/roleplay-author-context-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -5898,6 +6062,7 @@
         "src/core/card-export.ts",
         "src/core/card-export-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5946,6 +6111,7 @@
         "src/core/card-export.ts",
         "src/core/card-export-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -5983,6 +6149,7 @@
         "src/core/roleplay-status-types.ts",
         "src/core/roleplay-import-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-author-context-types.ts",
@@ -6017,6 +6184,7 @@
         "src/core/roleplay-status-types.ts",
         "src/core/roleplay-import-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-author-context-types.ts",
@@ -6053,6 +6221,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-worldline-types.ts",
@@ -6089,6 +6258,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-worldline-types.ts",
@@ -6123,6 +6293,7 @@
         "src/core/tavern-library-record.ts",
         "src/core/roleplay-import-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -6156,6 +6327,7 @@
         "src/core/tavern-library-record.ts",
         "src/core/roleplay-import-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -6187,6 +6359,7 @@
         "src/core/tavern-task-context.ts",
         "src/core/roleplay-data.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -6219,6 +6392,7 @@
         "src/core/tavern-task-types.ts",
         "src/core/tavern-task-context.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -6250,6 +6424,7 @@
         "src/core/roleplay-status-types.ts",
         "src/core/roleplay-import-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -6284,6 +6459,7 @@
         "src/memory/memory-provenance.ts",
         "src/core/roleplay-status-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "status-template.ts",
@@ -6318,6 +6494,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-worldline-types.ts",
@@ -6353,6 +6530,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-worldline-types.ts",
@@ -6371,6 +6549,7 @@
       "inputs": [
         "src/ui/build-client.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6384,6 +6563,7 @@
       "inputs": [
         "src/operations/public-transaction.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6398,6 +6578,7 @@
         "src/operations/protected-packages.mts",
         "src/operations/public-transaction.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6413,6 +6594,7 @@
         "src/operations/protected-packages.mts",
         "src/operations/public-transaction.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6427,6 +6609,7 @@
         "src/operations/patch-harness.mts",
         "src/operations/public-transaction.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6441,6 +6624,7 @@
         "src/operations/install-public.mts",
         "src/operations/public-transaction.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6456,6 +6640,7 @@
         "src/operations/patch-harness.mts",
         "src/operations/public-transaction.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6469,6 +6654,7 @@
       "inputs": [
         "src/operations/public-access-recipes.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6482,6 +6668,7 @@
       "inputs": [
         "src/operations/tool-resolution.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6495,6 +6682,21 @@
       "inputs": [
         "src/operations/test-temp.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "typescript-builder-typed-build",
+      "kind": "typescript-module",
+      "artifact": "typescript-builder",
+      "entry": "src/operations/build-typescript.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/operations/build-typescript.mts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6514,6 +6716,7 @@
         "src/core/tavern-telemetry-time-range.ts",
         "src/core/tavern-tasks.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-primitives.ts",
@@ -6545,6 +6748,7 @@
       "inputs": [
         "src/core/card-export-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6561,6 +6765,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6574,6 +6779,7 @@
       "inputs": [
         "src/core/ask-user-decision-pr.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6588,6 +6794,7 @@
         "src/core/tavern-telemetry-normalize.ts",
         "src/core/tavern-tasks.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-primitives.ts",
@@ -6618,6 +6825,7 @@
         "src/core/tavern-telemetry-normalize.ts",
         "src/core/tavern-tasks.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-context.ts",
@@ -6652,6 +6860,7 @@
         "src/core/tavern-telemetry-normalize.ts",
         "src/core/tavern-pricing.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-tasks.ts",
@@ -6682,6 +6891,7 @@
         "src/core/tavern-telemetry-normalize.ts",
         "src/core/tavern-pricing.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-tasks.ts",
@@ -6709,6 +6919,7 @@
       "inputs": [
         "src/core/tavern-library-input.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6722,6 +6933,7 @@
       "inputs": [
         "src/core/tavern-library-record.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6737,6 +6949,7 @@
         "src/core/tavern-library-input.ts",
         "src/core/tavern-library-record.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6751,6 +6964,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6764,6 +6978,7 @@
       "inputs": [
         "src/operations/qwen-reasoning-profile.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6783,6 +6998,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6800,6 +7016,7 @@
         "src/memory/memory-summary.ts",
         "src/core/roleplay-message-view.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6816,6 +7033,7 @@
         "src/memory/memory-provenance.ts",
         "src/memory/memory-summary.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6829,6 +7047,7 @@
       "inputs": [
         "src/memory/memory-scheduler.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6842,6 +7061,7 @@
       "inputs": [
         "src/memory/memory-summary.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6857,6 +7077,7 @@
         "src/memory/memory-provenance.ts",
         "src/core/roleplay-message-view.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6871,6 +7092,7 @@
         "src/core/host-index.ts",
         "src/core/tavern-conversations.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts"
@@ -6886,6 +7108,7 @@
         "src/core/tavern-task-types.ts",
         "src/core/tavern-task-primitives.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6904,6 +7127,7 @@
         "src/core/tavern-task-support.ts",
         "src/core/tavern-task-primitives.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/memory/memory-provenance.ts",
@@ -6924,6 +7148,7 @@
         "src/core/tavern-task-primitives.ts",
         "src/core/tavern-task-support.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-types.ts",
@@ -6943,6 +7168,7 @@
       "inputs": [
         "src/core/tavern-task-support.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -6957,6 +7183,7 @@
         "src/core/tavern-model-policy.ts",
         "src/core/tavern-task-support.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7002,6 +7229,7 @@
         "lib/ui/conversation-projection.js",
         "src/ui/conversation-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "lib/ui/build-client.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
@@ -7106,6 +7334,7 @@
       "inputs": [
         "src/ui/conversation-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7119,6 +7348,7 @@
       "inputs": [
         "src/core/tavern-conversations.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7132,6 +7362,7 @@
       "inputs": [
         "src/preset/deescape-md.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7145,6 +7376,7 @@
       "inputs": [
         "src/core/tavern-pricing.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-pricing-data.ts",
@@ -7162,6 +7394,7 @@
         "src/core/novel-export-projection.ts",
         "src/core/tavern-task-primitives.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-types.ts"
@@ -7176,6 +7409,7 @@
       "inputs": [
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7189,6 +7423,7 @@
       "inputs": [
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7202,6 +7437,7 @@
       "inputs": [
         "src/core/tavern-telemetry-time-range.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7215,6 +7451,7 @@
       "inputs": [
         "src/core/bounded-regex.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7228,6 +7465,7 @@
       "inputs": [
         "src/core/tavern-task-primitives.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-types.ts"
@@ -7244,6 +7482,7 @@
         "src/core/novel-export-projection.ts",
         "src/core/tavern-task-primitives.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-types.ts"
@@ -7258,6 +7497,7 @@
       "inputs": [
         "src/core/character-cluster-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7278,6 +7518,7 @@
         "src/core/tavern-task-primitives.ts",
         "src/core/tavern-task-support.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/character-cluster-settings.ts",
@@ -7303,6 +7544,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-context.ts",
@@ -7337,6 +7579,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-context.ts",
@@ -7379,6 +7622,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-worldline-types.ts",
@@ -7411,6 +7655,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-worldline-types.ts",
@@ -7449,6 +7694,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-worldline-types.ts",
@@ -7483,6 +7729,7 @@
         "src/memory/memory-history.ts",
         "src/memory/memory-provenance.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-worldline-types.ts",
@@ -7504,6 +7751,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-context.ts",
@@ -7534,6 +7782,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-context.ts",
@@ -7561,6 +7810,7 @@
       "inputs": [
         "src/core/roleplay-data.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts"
@@ -7578,6 +7828,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-tasks.ts",
@@ -7602,6 +7853,7 @@
       "inputs": [
         "src/core/roleplay-message-view.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -7615,6 +7867,7 @@
       "inputs": [
         "src/core/session-history.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-primitives.ts"
@@ -7629,6 +7882,7 @@
       "inputs": [
         "src/core/roleplay-worldline-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-context.ts",
@@ -7657,6 +7911,7 @@
         "src/core/roleplay-worldlines.ts",
         "src/core/roleplay-worldline-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/tavern-task-context.ts",
@@ -7686,6 +7941,7 @@
         "src/core/roleplay-core.ts",
         "src/core/roleplay-core-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-context.ts",
@@ -7823,6 +8079,7 @@
       "inputs": [
         "src/core/roleplay-core-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-context.ts",
@@ -7948,6 +8205,7 @@
         "src/core/roleplay-data.ts",
         "src/core/roleplay-message-view.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -7976,6 +8234,7 @@
         "src/core/tavern-task-support.ts",
         "src/core/tavern-model-policy.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/core/roleplay-userinfo.ts",
@@ -7994,6 +8253,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8007,6 +8267,7 @@
       "inputs": [
         "src/core/card-adaptation-tool-schemas.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8023,6 +8284,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8037,6 +8299,7 @@
         "src/ui/conversation-presentation.ts",
         "src/ui/conversation-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8050,6 +8313,7 @@
       "inputs": [
         "src/ui/roleplay-ui-styles.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8063,6 +8327,7 @@
       "inputs": [
         "src/core/roleplay-userinfo.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8076,6 +8341,7 @@
       "inputs": [
         "src/core/tavern-pricing-data.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8090,6 +8356,7 @@
         "src/core/tavern-price-catalog.ts",
         "src/core/tavern-pricing-data.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8104,6 +8371,7 @@
         "src/core/tavern-exchange-rates.ts",
         "src/core/tavern-pricing-data.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8118,6 +8386,7 @@
         "src/ui/pricing-panel.ts",
         "src/ui/settings-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8139,6 +8408,7 @@
         "src/core/tavern-card.ts",
         "src/core/tavern-card-crc.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8164,6 +8434,7 @@
         "src/core/tavern-card-crc.ts",
         "src/core/character-cluster-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8194,6 +8465,7 @@
         "src/core/roleplay-userinfo.ts",
         "src/core/roleplay-import-types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8248,6 +8520,7 @@
         "src/core/roleplay-preparation-types.ts",
         "src/memory/memory-history.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8305,6 +8578,7 @@
         "src/core/roleplay-task-tools-types.ts",
         "src/core/roleplay-setting-store.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8318,6 +8592,7 @@
       "inputs": [
         "src/ui/author-runtime.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8331,6 +8606,7 @@
       "inputs": [
         "src/ui/status-rendering.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8349,6 +8625,7 @@
         "src/ui/reader-regex.ts",
         "status-template.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8365,6 +8642,7 @@
         "src/ui/status-rendering.ts",
         "src/ui/reader-regex.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8379,6 +8657,7 @@
         "src/ui/card-adaptation-presentations.ts",
         "src/ui/card-adaptation-panel.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8391,6 +8670,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-types.mts"
@@ -8404,6 +8684,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-context.mts"
@@ -8417,6 +8698,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-plan.mts"
@@ -8430,6 +8712,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-inputs.mts"
@@ -8443,6 +8726,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-process.mts"
@@ -8456,6 +8740,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-actions.mts"
@@ -8469,6 +8754,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-run.mts"
@@ -8482,6 +8768,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-cli.mts"
@@ -8495,6 +8782,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/quality-projection.mts"
@@ -8509,6 +8797,7 @@
       "inputs": [
         "development/session-controller/src/agent.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8522,6 +8811,7 @@
       "inputs": [
         "development/session-controller/src/commands.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8535,6 +8825,7 @@
       "inputs": [
         "development/session-controller/src/control.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8548,6 +8839,7 @@
       "inputs": [
         "development/session-controller/src/fork-reservation.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8561,6 +8853,7 @@
       "inputs": [
         "development/session-controller/src/history.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8574,6 +8867,7 @@
       "inputs": [
         "development/session-controller/src/index.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/session-controller/src/archived-session-gate.ts"
@@ -8588,6 +8882,7 @@
       "inputs": [
         "development/session-controller/src/list.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8601,6 +8896,7 @@
       "inputs": [
         "development/session-controller/src/model-selection-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8614,6 +8910,7 @@
       "inputs": [
         "development/session-controller/src/types.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8627,6 +8924,7 @@
       "inputs": [
         "development/session-controller/src/typert.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8640,6 +8938,7 @@
       "inputs": [
         "development/session-controller/src/client/contract/events.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8654,6 +8953,7 @@
       "inputs": [
         "development/session-controller/src/client/contract/session.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8668,6 +8968,7 @@
       "inputs": [
         "development/session-controller/src/client/contract/sessions.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8682,6 +8983,7 @@
       "inputs": [
         "development/session-controller/src/client/contract/snapshot.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8696,6 +8998,7 @@
       "inputs": [
         "development/session-controller/src/client/index.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8710,6 +9013,7 @@
       "inputs": [
         "development/session-controller/src/client/ordered-baseline.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8724,6 +9028,7 @@
       "inputs": [
         "development/session-controller/src/client/scope.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8738,6 +9043,7 @@
       "inputs": [
         "development/session-controller/src/client/sessions/history-records.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8752,6 +9058,7 @@
       "inputs": [
         "development/session-controller/src/client/sessions/lineage.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8766,6 +9073,7 @@
       "inputs": [
         "development/session-controller/src/client/sessions/manager.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8780,6 +9088,7 @@
       "inputs": [
         "development/session-controller/src/client/sessions/notifier.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8794,6 +9103,7 @@
       "inputs": [
         "development/session-controller/src/client/sessions/projection-store.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8808,6 +9118,7 @@
       "inputs": [
         "development/session-controller/src/client/sessions/remotes.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8822,6 +9133,7 @@
       "inputs": [
         "development/session-controller/src/client/sessions/service.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8836,6 +9148,7 @@
       "inputs": [
         "development/session-controller/src/client/sessions/session.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8850,6 +9163,7 @@
       "inputs": [
         "development/session-controller/src/client/time-zone.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8864,6 +9178,7 @@
       "inputs": [
         "development/session-controller/src/client/transport.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -8965,6 +9280,7 @@
         "development/token-meter/src/types.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8979,6 +9295,7 @@
         "development/token-meter/src/projection.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -8993,6 +9310,7 @@
         "development/token-meter/src/client.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9007,6 +9325,7 @@
         "development/token-meter/src/index.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9021,6 +9340,7 @@
         "development/token-meter/src/breakdown-projection.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9035,6 +9355,7 @@
         "development/token-meter/src/estimate.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9049,6 +9370,7 @@
         "development/token-meter/src/route-pricing.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9063,6 +9385,7 @@
         "development/token-meter/src/surface-fold.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9077,6 +9400,7 @@
         "development/token-meter/src/surface-projection.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9091,9 +9415,70 @@
         "development/token-meter/src/usage-projection.ts",
         "development/session-format/src/projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
+    },
+    {
+      "typeContext": "pi-ai",
+      "id": "compat-pi-ai-google-generative-ai-build",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/pi-ai/src/api/google-generative-ai.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "entry": "development/pi-ai/src/api/google-generative-ai.ts",
+      "artifact": "compat-pi-ai-google-generative-ai-js",
+      "kind": "typescript-module"
+    },
+    {
+      "typeContext": "pi-ai",
+      "id": "compat-pi-ai-openai-completions-build",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/pi-ai/src/api/openai-completions.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "entry": "development/pi-ai/src/api/openai-completions.ts",
+      "artifact": "compat-pi-ai-openai-completions-js",
+      "kind": "typescript-module"
+    },
+    {
+      "typeContext": "pi-ai",
+      "id": "compat-pi-ai-openai-responses-shared-build",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/pi-ai/src/api/openai-responses-shared.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "entry": "development/pi-ai/src/api/openai-responses-shared.ts",
+      "artifact": "compat-pi-ai-openai-responses-shared-js",
+      "kind": "typescript-module"
+    },
+    {
+      "typeContext": "pi-ai",
+      "id": "compat-pi-ai-anthropic-messages-build",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/pi-ai/src/api/anthropic-messages.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "entry": "development/pi-ai/src/api/anthropic-messages.ts",
+      "artifact": "compat-pi-ai-anthropic-messages-js",
+      "kind": "typescript-module"
     },
     {
       "id": "compat-llm-pi-ai-adapter-build",
@@ -9105,6 +9490,7 @@
       "inputs": [
         "development/llm-pi-ai/src/adapter.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9120,6 +9506,7 @@
       "inputs": [
         "development/llm-pi-ai/src/auth.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9135,6 +9522,7 @@
       "inputs": [
         "development/llm-pi-ai/src/catalog.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9150,6 +9538,7 @@
       "inputs": [
         "development/llm-pi-ai/src/config.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9165,6 +9554,7 @@
       "inputs": [
         "development/llm-pi-ai/src/context.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9180,6 +9570,7 @@
       "inputs": [
         "development/llm-pi-ai/src/discovery.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9195,6 +9586,7 @@
       "inputs": [
         "development/llm-pi-ai/src/index.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9210,6 +9602,7 @@
       "inputs": [
         "development/llm-pi-ai/src/login.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9225,6 +9618,7 @@
       "inputs": [
         "development/llm-pi-ai/src/provider.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9240,6 +9634,7 @@
       "inputs": [
         "development/llm-pi-ai/src/replay.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9255,6 +9650,7 @@
       "inputs": [
         "development/llm-pi-ai/src/stream.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/llm-pi-ai/src/models.ts"
@@ -9270,6 +9666,7 @@
         "development/anydoc/src/index.ts",
         "development/anydoc/src/normalize-markdown.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/anydoc/src/document-reader.ts"
@@ -9284,6 +9681,7 @@
       "inputs": [
         "development/anydoc/src/normalize-markdown.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9297,6 +9695,7 @@
       "inputs": [
         "src/operations/nexttavern-lifecycle.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9310,6 +9709,7 @@
       "inputs": [
         "src/operations/nexttavern-profile-plan.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/nexttavern-lifecycle.mts"
@@ -9324,6 +9724,7 @@
       "inputs": [
         "development/presets/src/index.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9337,6 +9738,7 @@
       "inputs": [
         "development/presets/src/composition.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9348,6 +9750,7 @@
       "inputs": [
         "src/operations/nexttavern-entry-policy.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/nexttavern-profile-plan.mts",
@@ -9363,6 +9766,7 @@
       "inputs": [
         "src/operations/nexttavern-entry.mts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/nexttavern-entry-policy.mts",
@@ -9382,6 +9786,7 @@
         "development/anydoc/src/document-reader.ts",
         "development/anydoc/src/normalize-markdown.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9396,6 +9801,7 @@
       "inputs": [
         "development/llm-pi-ai/src/models.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9412,7 +9818,8 @@
         "development/session-format/src/storage-contract.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -9429,7 +9836,8 @@
         "development/session-format/src/storage-contract.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -9446,7 +9854,8 @@
         "development/session-format/src/storage-contract.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -9463,7 +9872,8 @@
         "development/session-format/src/storage-contract.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
-        "build-tools/package-lock.json"
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -9488,6 +9898,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9517,6 +9928,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9546,6 +9958,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9575,6 +9988,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9604,6 +10018,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9633,6 +10048,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9662,6 +10078,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9691,6 +10108,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9720,6 +10138,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9749,6 +10168,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9778,6 +10198,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9796,6 +10217,7 @@
       "inputs": [
         "development/session-controller/src/assistant-stream.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9809,6 +10231,7 @@
       "inputs": [
         "development/session-controller/src/media-references.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -9822,6 +10245,7 @@
       "inputs": [
         "development/session-controller/src/client/session-wire-event.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -9836,6 +10260,7 @@
       "inputs": [
         "development/session-controller/src/client/sessions/assistant-stream.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ],
@@ -9861,6 +10286,7 @@
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
         "development/session-format/src/catalog.ts",
         "development/session-format/src/index.ts",
         "development/session-format/src/projection.ts",
@@ -9879,9 +10305,55 @@
       "inputs": [
         "development/session-controller/src/archived-session-gate.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
+    },
+    {
+      "typeContext": "pi-ai",
+      "id": "compat-pi-ai-bedrock-converse-stream-build",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/pi-ai/src/api/bedrock-converse-stream.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "entry": "development/pi-ai/src/api/bedrock-converse-stream.ts",
+      "artifact": "compat-pi-ai-bedrock-converse-stream-js",
+      "kind": "typescript-module"
+    },
+    {
+      "typeContext": "pi-ai",
+      "id": "compat-pi-ai-mistral-conversations-build",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/pi-ai/src/api/mistral-conversations.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "entry": "development/pi-ai/src/api/mistral-conversations.ts",
+      "artifact": "compat-pi-ai-mistral-conversations-js",
+      "kind": "typescript-module"
+    },
+    {
+      "typeContext": "pi-ai",
+      "id": "compat-pi-ai-pi-messages-build",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/pi-ai/src/api/pi-messages.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "entry": "development/pi-ai/src/api/pi-messages.ts",
+      "artifact": "compat-pi-ai-pi-messages-js",
+      "kind": "typescript-module"
     },
     {
       "id": "compat-ui-chat-chat-settings-js-build",
@@ -9892,6 +10364,7 @@
       "inputs": [
         "development/ui-chat/src/chat-settings.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -9906,6 +10379,7 @@
       "inputs": [
         "development/ui-chat/src/client/apply.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -9921,6 +10395,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/ApprovalCommand.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -9936,6 +10411,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/AssistantMarkdown.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -9951,6 +10427,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/AssistantNodeView.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -9966,6 +10443,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/ChatGroupSeat.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -9981,6 +10459,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/ChatNodeSeat.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -9996,6 +10475,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/ChatView.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10011,6 +10491,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/CommandNodeView.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10026,6 +10507,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/CompactionCommandCard.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10041,6 +10523,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/CompactionItem.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10056,6 +10539,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/ContextBody.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10071,6 +10555,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/ContextInjectionRow.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10086,6 +10571,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/GenericCommandCard.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10101,6 +10587,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/message-chrome.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10116,6 +10603,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/MessageIconActions.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10131,6 +10619,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/MessageItem.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10146,6 +10635,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/ReasoningRow.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10161,6 +10651,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/register-node-renderers.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10176,6 +10667,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/render-entry.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10191,6 +10683,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/searchable-hidden.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10206,6 +10699,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/stat-dialog.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10221,6 +10715,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/StatsPills.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10236,6 +10731,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/step-process.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10251,6 +10747,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/SystemPromptRow.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10266,6 +10763,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/token-format.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10281,6 +10779,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/turn-assistant.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10296,6 +10795,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/turn-rail-items.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10311,6 +10811,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/turn-trigger.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10326,6 +10827,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/TurnNavigator.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10341,6 +10843,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/TurnProcessNodeView.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10356,6 +10859,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/TurnTailNodeView.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10371,6 +10875,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/TurnTriggerNodeView.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10386,6 +10891,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/TurnUsagePanel.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10401,6 +10907,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/use-calendar-day.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10416,6 +10923,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/use-chat-navigation.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10431,6 +10939,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/use-chat-reading.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10446,6 +10955,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/use-chat-scroll.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10461,6 +10971,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/use-chat-viewport.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10476,6 +10987,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/use-disclosure.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10491,6 +11003,7 @@
       "inputs": [
         "development/ui-chat/src/client/chat/use-turn-data.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10506,6 +11019,7 @@
       "inputs": [
         "development/ui-chat/src/client/contract/assistant-content.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10521,6 +11035,7 @@
       "inputs": [
         "development/ui-chat/src/client/contract/chat-nodes.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10536,6 +11051,7 @@
       "inputs": [
         "development/ui-chat/src/client/contract/chat-visibility.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10551,6 +11067,7 @@
       "inputs": [
         "development/ui-chat/src/client/contract/process-groups.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10566,6 +11083,7 @@
       "inputs": [
         "development/ui-chat/src/client/contract/slots.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10581,6 +11099,7 @@
       "inputs": [
         "development/ui-chat/src/client/contract/snapshot.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10596,6 +11115,7 @@
       "inputs": [
         "development/ui-chat/src/client/contract/store.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10611,6 +11131,7 @@
       "inputs": [
         "development/ui-chat/src/client/contract/turn-metrics.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10626,6 +11147,7 @@
       "inputs": [
         "development/ui-chat/src/client/contract/turn-process.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10641,6 +11163,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/assistant.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10656,6 +11179,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/chat-snapshot-builder.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10671,6 +11195,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/command.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10686,6 +11211,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/common.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10701,6 +11227,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/compaction.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10716,6 +11243,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/event-projection.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10731,6 +11259,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/fallback.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10746,6 +11275,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/inbox.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10761,6 +11291,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/message-edits.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10776,6 +11307,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/message.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10791,6 +11323,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/partial.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10806,6 +11339,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/process-activity.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10821,6 +11355,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/process-groups.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10836,6 +11371,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/register.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10851,6 +11387,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/request-prompt.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10866,6 +11403,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/retry.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10881,6 +11419,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/roleplay-story.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10896,6 +11435,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/tool.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10911,6 +11451,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/turn-error.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10926,6 +11467,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/turn-max-tokens.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10941,6 +11483,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/turn-navigation.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10956,6 +11499,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/turn-process-presentation.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10971,6 +11515,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/turn-process.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -10986,6 +11531,7 @@
       "inputs": [
         "development/ui-chat/src/client/conversation-nodes/turn-tail.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11001,6 +11547,7 @@
       "inputs": [
         "development/ui-chat/src/client/index.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11016,6 +11563,7 @@
       "inputs": [
         "development/ui-chat/src/client/locale.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11031,6 +11579,7 @@
       "inputs": [
         "development/ui-chat/src/client/markdown-labels.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11046,6 +11595,7 @@
       "inputs": [
         "development/ui-chat/src/client/model/conversation-context.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11061,6 +11611,7 @@
       "inputs": [
         "development/ui-chat/src/client/model/steering-history.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11076,6 +11627,7 @@
       "inputs": [
         "development/ui-chat/src/client/model/tool-call-tree.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11091,6 +11643,7 @@
       "inputs": [
         "development/ui-chat/src/client/performance-usage.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11106,6 +11659,7 @@
       "inputs": [
         "development/ui-chat/src/client/presentation-policy.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11121,6 +11675,7 @@
       "inputs": [
         "development/ui-chat/src/client/settings/LinkOpeningRow.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11136,6 +11691,7 @@
       "inputs": [
         "development/ui-chat/src/client/settings/PerformanceUsageRow.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11151,6 +11707,7 @@
       "inputs": [
         "development/ui-chat/src/client/settings/PreferenceRow.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11166,6 +11723,7 @@
       "inputs": [
         "development/ui-chat/src/client/settings/TranscriptViewRow.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11181,6 +11739,7 @@
       "inputs": [
         "development/ui-chat/src/client/stores.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11196,6 +11755,7 @@
       "inputs": [
         "development/ui-chat/src/client/transcript-view.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11211,6 +11771,7 @@
       "inputs": [
         "development/ui-chat/src/index.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-chat/src/css-modules.d.ts"
@@ -11225,6 +11786,7 @@
       "inputs": [
         "development/ui-workspace/src/client/contract/slots.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11240,6 +11802,7 @@
       "inputs": [
         "development/ui-workspace/src/client/index.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11255,6 +11818,7 @@
       "inputs": [
         "development/ui-workspace/src/client/locales.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11270,6 +11834,7 @@
       "inputs": [
         "development/ui-workspace/src/client/navigation.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11285,6 +11850,7 @@
       "inputs": [
         "development/ui-workspace/src/client/pin-order.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11300,6 +11866,7 @@
       "inputs": [
         "development/ui-workspace/src/client/rows/AnimatedRows.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11315,6 +11882,7 @@
       "inputs": [
         "development/ui-workspace/src/client/rows/Rows.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11330,6 +11898,7 @@
       "inputs": [
         "development/ui-workspace/src/client/rows/WorkspaceBrowser.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11345,6 +11914,7 @@
       "inputs": [
         "development/ui-workspace/src/client/session-actions/ArchiveSession.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11360,6 +11930,7 @@
       "inputs": [
         "development/ui-workspace/src/client/session-actions/derived.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11375,6 +11946,7 @@
       "inputs": [
         "development/ui-workspace/src/client/session-actions/ForkSession.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11390,6 +11962,7 @@
       "inputs": [
         "development/ui-workspace/src/client/session-actions/PinSession.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11405,6 +11978,7 @@
       "inputs": [
         "development/ui-workspace/src/client/session-actions/RenameSession.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11420,6 +11994,7 @@
       "inputs": [
         "development/ui-workspace/src/client/session-actions/RowActionToast.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11435,6 +12010,7 @@
       "inputs": [
         "development/ui-workspace/src/client/stores.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11450,6 +12026,7 @@
       "inputs": [
         "development/ui-workspace/src/client/tree.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11465,6 +12042,7 @@
       "inputs": [
         "development/ui-workspace/src/client/WorkspacePicker.tsx",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11480,6 +12058,7 @@
       "inputs": [
         "development/ui-workspace/src/index.ts",
         "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "development/ui-workspace/src/css-modules.d.ts"
@@ -11654,6 +12233,20 @@
           "react/jsx-runtime"
         ]
       }
+    },
+    {
+      "id": "public-build-modules-typed-build",
+      "kind": "typescript-module",
+      "artifact": "public-build-modules",
+      "entry": "src/operations/public-build-modules.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/public-build-modules.mts"
+      ]
     }
   ],
   "typeScript": {

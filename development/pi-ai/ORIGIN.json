@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "package": "dsh-nexttavern-pi-ai",
+  "upstreamPackage": "@earendil-works/pi-ai",
+  "upstreamVersion": "0.85.1",
+  "repository": "https://github.com/earendil-works/pi",
+  "license": "MIT",
+  "archiveIntegrity": "sha512-+VgVIJDkDO2efYJKEEqvPTH4zmnIaXdAppGbO+vKFA9qy5PdhFiAenuFAkU+oiCSfOC4dMHDyrjdQeL4ZoC5CQ==",
+  "sourceRecovery": "Original four maintained modules were compared byte-for-byte with the official v0.85.1 tag. The three additional alpha.7 performance modules were recovered from sourcesContent in the integrity-pinned npm archive; their original source hashes are recorded below.",
+  "files": [
+    {
+      "source": "src/api/google-generative-ai.ts",
+      "upstream": "src/api/google-generative-ai.ts",
+      "upstreamSha256": "1395c3f2a90bf701b8b5fc1b6f7de8d323193ed339e07a60630900099a543757"
+    },
+    {
+      "source": "src/api/openai-completions.ts",
+      "upstream": "src/api/openai-completions.ts",
+      "upstreamSha256": "7c1002a6a17cd081f36a44defea533ea03f65e07477e4ddec49b402760e97df8"
+    },
+    {
+      "source": "src/api/openai-responses-shared.ts",
+      "upstream": "src/api/openai-responses-shared.ts",
+      "upstreamSha256": "2562ad7497bfe9cf71533b7584400751746b6a563229a615f6e23848780d2bee"
+    },
+    {
+      "source": "src/api/anthropic-messages.ts",
+      "upstream": "src/api/anthropic-messages.ts",
+      "upstreamSha256": "9abf35ebe5dbe3a9d7a621c420aa0cbf474eb2ec7c79e1bea8e28966c564b7ab"
+    },
+    {
+      "source": "src/api/bedrock-converse-stream.ts",
+      "upstream": "src/api/bedrock-converse-stream.ts",
+      "upstreamSha256": "b8cff28740f8a549fc5fd2d466980f8900688c01fcad3df96ba68f7eaf4fbaf3"
+    },
+    {
+      "source": "src/api/mistral-conversations.ts",
+      "upstream": "src/api/mistral-conversations.ts",
+      "upstreamSha256": "042e8886f68da48b4218726bcbc20ff440510b23dbdbffe5ea9c7fb8a876b762"
+    },
+    {
+      "source": "src/api/pi-messages.ts",
+      "upstream": "src/api/pi-messages.ts",
+      "upstreamSha256": "c8bbdcaaa30064db24afa8e9b2fbc66f9d4be89149c170e2de94b8705e5830b4"
+    }
+  ],
+  "changes": [
+    "Relative runtime imports use generated .js paths; strict index safety retains proven bounds",
+    "Four terminal protocol conditions stop reading once the final usage/event is received",
+    "Anthropic releases its SSE reader after terminal iteration; cancellation policy remains owned by official alpha.7 adapter",
+    "No custom transport AbortController, idle timeout, Gemini base URL or authentication patch"
+  ],
+  "fork": {
+    "repository": "https://github.com/a86582751/pi",
+    "baseCommit": "d981de1229ef899957bbe968bc8dcda02a21f477",
+    "currentChangesSynced": false,
+    "previousCompatibilityCommit": "a6d1032396fb2baf64edc6db9b871a79ae18996c",
+    "branch": "codex/nexttavern-alpha6",
+    "compatibilityCommit": "0b1dd4fe31baf343f4a592551056215ca6a12629",
+    "sourceReceipt": "nexttavern-compat/source-sync.json",
+    "files": [
+      {
+        "source": "src/api/google-generative-ai.ts",
+        "forkPath": "packages/ai/src/api/google-generative-ai.ts",
+        "sha256": "19df1cfb3227030de56c091b79af8b4292d13432f73c2312dae8e2f080f367e4"
+      },
+      {
+        "source": "src/api/openai-completions.ts",
+        "forkPath": "packages/ai/src/api/openai-completions.ts",
+        "sha256": "1c6c0ee092648af715bf526f349dcee1e7d128622e30ae34d8a3a7ab4ef10854"
+      },
+      {
+        "source": "src/api/openai-responses-shared.ts",
+        "forkPath": "packages/ai/src/api/openai-responses-shared.ts",
+        "sha256": "6ffa3a44eaeb8eee3d68a7c90ee05b5a091d5618cb6cd1b062dea707cf4715c1"
+      },
+      {
+        "source": "src/api/anthropic-messages.ts",
+        "forkPath": "packages/ai/src/api/anthropic-messages.ts",
+        "sha256": "5ebe64bda065112fd7ff304ab022ee060aa492809587ea14a4331064d0ae68f2"
+      }
+    ]
+  },
+  "hostPatch": {
+    "commit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
+    "path": "patches/@earendil-works__pi-ai@0.85.1.patch",
+    "changes": "Retain terminal parsing; omit repeated per-delta tool argument JSON parsing across all six official patched providers."
+  }
+}

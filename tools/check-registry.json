@@ -3226,7 +3226,10 @@
       "requires": [
         "compiler"
       ],
-      "timeoutMs": 30000,
+      "timeoutMs": 420000,
+      "depends": [
+        "generated"
+      ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
@@ -3280,6 +3283,7 @@
         "tavern-telemetry-time-range-js",
         "tavern-tasks-typescript",
         "tavern-tasks",
+        "typescript-builder",
         "tavern-task-types-typescript",
         "tavern-task-types-js",
         "tavern-task-support-typescript",

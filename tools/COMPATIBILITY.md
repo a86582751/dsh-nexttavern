@@ -5,3 +5,4 @@ Only the following generated forwarding entries remain at the documented 0.2.x c
 - `tools/patch-harness.mjs`: Legacy documented CLI entry; generated forwarding only. Review removal at the next breaking CLI release after replacement commands are documented.
 - `tools/install.mjs`: Legacy documented CLI entry; generated forwarding only. Review removal at the next breaking CLI release after replacement commands are documented.
 - `tools/public-access.mjs`: Legacy documented CLI entry; generated forwarding only. Review removal at the next breaking CLI release after replacement commands are documented.
+- `tools/build-modules.mjs`: Stable public build command; compiler and delivery checks live in maintained TypeScript.
