@@ -1,10 +1,10 @@
 # Contributing
 
-The current 0.3 branch is migrating to Harness `0.1.6-alpha.2`. Its developer
-lock and selected compatibility packages have moved, while core/UI consumers
-and the complete build/install path are still being ported. Do not treat earlier
-alpha.3 full-build results as validation of this branch. See the dated
-[development status](CHANGELOG.md) before selecting checks.
+The current 0.3 branch targets Harness `0.1.7-alpha.1` with Session V4. The
+maintenance tree has passed strict compilation for 392 modules and seven UI
+focused checks. Public rebuild, root product assembly and complete installation
+acceptance remain open; see the dated [development status](CHANGELOG.md) before
+selecting checks.
 
 This package carries TypeScript/MTS sources and their generated JavaScript/MJS so contributors can verify the files it ships. Its local mapping is `tools/build-map.json`; the quality registry and projection map are `tools/check-registry.json` and `tools/check-map.json`.
 
@@ -52,4 +52,7 @@ This public tree cannot prove a live DeepSeek Harness load, production deploymen
 
 ## Reporting
 
-Bugs and install problems should include the Harness line (`0.1.2-alpha.3`), operating system and install method (Release tarball, one-click installer or npm).
+Bugs and install problems should distinguish the current 0.2.5 release line
+(`0.1.2-alpha.3`) from the 0.3 development target (`0.1.7-alpha.1`), and
+include the operating system and install method (Release tarball, one-click
+installer or npm).
