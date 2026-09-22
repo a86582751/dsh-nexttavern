@@ -13212,7 +13212,10 @@
           "build-tools/package-lock.json",
           "src/operations/nexttavern-entry-policy.mts",
           "src/operations/nexttavern-profile-plan.mts",
-          "src/operations/nexttavern-lifecycle.mts"
+          "src/operations/nexttavern-lifecycle.mts",
+          "src/operations/bundled-package-bootstrap.mts",
+          "src/operations/protected-packages.mts",
+          "src/operations/public-transaction.mts"
         ],
         "kind": "typescript-module",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",

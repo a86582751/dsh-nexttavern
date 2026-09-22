@@ -7,10 +7,11 @@ import {isAbsolute, relative, sep} from 'node:path'
 import {fileURLToPath, pathToFileURL} from 'node:url'
 import {capture, composition, loaderEntry, productWanted, providerDisabledExpression,
   type CompositionState, type ProfilePlan} from './nexttavern-entry-policy.mjs'
+import {inspectBundledPackages} from './bundled-package-bootstrap.mjs'
 
 const productRoot = fileURLToPath(new URL('../../', import.meta.url))
 const productRequire = createRequire(new URL('../../package.json', import.meta.url))
-const productMetadata: {peerDependencies?: Record<string, string>} = JSON.parse(
+const productMetadata: {peerDependencies?: Record<string, string>; bundleDependencies?: string[]} = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
 // Cordis publishes this as an ambient const enum, with no runtime export.
 // The member type verifies the numeric value against the pinned declaration.
@@ -135,22 +136,29 @@ export default class NextTavernEntry extends EntryTree {
 
   async reconcile(previousPlan?: ProfilePlan): Promise<void> {
     if (this.closing || !productWanted(this.ctx, this.state)) return
-    const rows = this.rows()
-    const epoch = this.epoch
-    this.state.restoring = false
-    // Native imports and disposal can already be in flight in sibling entries.
-    // Await those exact fibers, not host.await(), which would await this entry.
-    for (const provider of this.config.providers) {
-      await this.host.resolve(provider.id).update({}, false, true)
-    }
-    for (const fiber of this.state.nativeFibers) {
-      await fiber.dispose()
-      while (fiber.inertia) await fiber.inertia
-    }
-    this.state.nativeFibers.clear()
-    if (this.closing || epoch !== this.epoch) return
-    this.released = false
     try {
+      // A published product owns a private dependency inventory. Admit it before
+      // stopping native providers or evaluating any private entry. This read-only
+      // path is safe while the official manager holds its profile writer lock;
+      // durable pin preparation must not be awaited from this reload lifecycle.
+      if (productMetadata.bundleDependencies) {
+        inspectBundledPackages(productRoot, this.ctx.profileContext.installAnchor)
+      }
+      const rows = this.rows()
+      const epoch = this.epoch
+      this.state.restoring = false
+      // Native imports and disposal can already be in flight in sibling entries.
+      // Await those exact fibers, not host.await(), which would await this entry.
+      for (const provider of this.config.providers) {
+        await this.host.resolve(provider.id).update({}, false, true)
+      }
+      for (const fiber of this.state.nativeFibers) {
+        await fiber.dispose()
+        while (fiber.inertia) await fiber.inertia
+      }
+      this.state.nativeFibers.clear()
+      if (this.closing || epoch !== this.epoch) return
+      this.released = false
       await this.root.update(rows)
       await this.await()
       const outcomes = await Promise.allSettled([...this.entries()].map(entry => entry.fiber?.await()))

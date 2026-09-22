@@ -40,6 +40,7 @@ interface FixtureOptions {
   disabled?: boolean; fail?: boolean; slowRelease?: boolean; failingAddon?: boolean; missingOwned?: boolean
   pendingNestedAddon?: boolean
   hostMode?: 'active' | 'failed' | 'pending'
+  inventory?: 'valid' | 'mismatch'
   prepareAddons?: (productRoot: string, profileRoot: string) => Promise<{
     rows: {id: string; name: string; config?: object; disabled?: boolean}[]
     peers?: Record<string, string>
@@ -71,10 +72,14 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   }
   const productDir = path.join(dir, 'node_modules/dsh-nexttavern')
   write(path.join(productDir, 'package.json'), {name: 'dsh-nexttavern', version: '0.0.0-fixture',
+    ...(options.inventory ? {bundleDependencies: [], dependencies:{}} : {}),
     type: 'module', exports: {'.': './lib/operations/nexttavern-entry.mjs',
       './entry-policy': './lib/operations/nexttavern-entry-policy.mjs',
       ...(options.hostMode ? {'./host':'./host.mjs','./client':'./client.js'} : {})},
     dsh: {bundle: {patch: './patch.json'}, ...(options.hostMode ? {client:{platform:'web',inject:[]}} : {})}})
+  if(options.inventory) write(path.join(productDir,'nexttavern.dependencies.json'), {
+    schemaVersion:1,productVersion:options.inventory==='valid'?'0.0.0-fixture':'wrong-version',packages:[],
+  })
   if(options.hostMode) {
     write(path.join(productDir,'client.js'), 'window.__ModuleLoader__.load({id:"dsh-nexttavern",factory:()=>({})});')
     write(path.join(productDir,'host.mjs'), `
@@ -90,6 +95,9 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     ['nexttavern-entry-policy', new URL('../lib/operations/nexttavern-entry-policy.mjs', import.meta.url)],
     ['nexttavern-profile-plan', new URL('../lib/operations/nexttavern-profile-plan.mjs', import.meta.url)],
     ['nexttavern-lifecycle', new URL('../lib/operations/nexttavern-lifecycle.mjs', import.meta.url)],
+    ['bundled-package-bootstrap', new URL('../lib/operations/bundled-package-bootstrap.mjs', import.meta.url)],
+    ['protected-packages', new URL('../lib/operations/protected-packages.mjs', import.meta.url)],
+    ['public-transaction', new URL('../lib/operations/public-transaction.mjs', import.meta.url)],
   ] as const
   for (const [name, source] of modules) {
     write(path.join(productDir, 'lib/operations', name+'.mjs'),
@@ -228,6 +236,7 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     assert.equal(productEntry?.fiber?.state, 2, 'requested product must be ACTIVE')
     await ctx.plugin(ClientModuleRegistry)
     return {ctx, active, changes, attempts, original, before, releaseEntered, releaseGate,
+      productDir, profileManifest:manifest,
       graph: () => ctx.clientModules.graph().entries.map((entry: {id: string}) => entry.id),
       async update(patches: unknown[], selected = true) {
         write(manifest, {private: true, dsh: {profile: {bundles: ['fixture-base', ...(selected ? ['dsh-nexttavern'] : [])]}}})

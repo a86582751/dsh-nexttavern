@@ -1,7 +1,45 @@
 /** Product entry lifecycle against actual alpha.7 libraries. */
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import {createRequire} from 'node:module'
+import {pathToFileURL} from 'node:url'
 import {test} from 'node:test'
 import {fixture, nativeCase, causedBy} from './plugin-product-entry-fixture.mts'
+
+test('root inventory admission is read-only while the official profile lock is held',async t=>{
+  if(await nativeCase(t.name,import.meta.url))return
+  const f=await fixture({inventory:'valid'})
+  try {
+    const require=createRequire(new URL('../build-tools/package.json',import.meta.url))
+    const {withFileLock}=await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-atomic-write')).href)
+    await withFileLock(f.profileManifest,async()=>{
+      await f.update([{id:'meter',config:{service:'entryProbe',value:'locked-update'}}])
+      assert.equal(f.ctx.get('entryProbe').value,'locked-update')
+      const manifest=JSON.parse(fs.readFileSync(f.profileManifest,'utf8'))
+      assert.equal(manifest.dependencies,undefined,'admission does not prepare profile references inside reload')
+    })
+  } finally {await f.close()}
+})
+
+test('root rejects mismatched inventories and restores native after a corrupted hot update',async t=>{
+  if(await nativeCase(t.name,import.meta.url))return
+  await assert.rejects(fixture({inventory:'mismatch'}),causedBy('inventory does not match'))
+  const f=await fixture({inventory:'valid'})
+  try {
+    const inventory=path.join(f.productDir,'nexttavern.dependencies.json')
+    const accepted=fs.readFileSync(inventory)
+    fs.writeFileSync(inventory,JSON.stringify({schemaVersion:1,productVersion:'wrong-version',packages:[]}))
+    await assert.rejects(f.update([{id:'meter',config:{service:'entryProbe',value:'must-not-load'}}]),
+      causedBy('inventory does not match'))
+    assert.equal(f.active.get('entryProbe'),'official')
+    assert.equal(f.ctx.get('entryProbe').value,'original')
+    assert.equal(f.attempts.some(attempt=>attempt.owner==='owned'&&attempt.value==='must-not-load'),false)
+    fs.writeFileSync(inventory,accepted)
+    await f.update([{id:'meter',config:{service:'entryProbe',value:'recovered'}}])
+    assert.equal(f.ctx.get('entryProbe').value,'recovered')
+  } finally {await f.close()}
+})
 
 test('product host routes share one browser source and drain before provider restoration', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
