@@ -27,13 +27,19 @@ interface PackageMetadata {
   dsh?: {bundle?: unknown}
 }
 const readJson = <T,>(file: string) => JSON.parse(fs.readFileSync(file, 'utf8')) as T
+export type PeerManifestResolver = (name: string, parentURL: string) => string | undefined
 
-function peerPackage(anchor: string, name: string, optional: boolean): string | null {
+function peerPackage(anchor: string, name: string, optional: boolean, resolveManifest?: PeerManifestResolver): string | null {
   try {
     // Some host peers expose only subpaths (node-addon-system/flock), or only
     // ESM conditions. Their package owner is the identity boundary; requiring
     // a nonexistent CJS root export would reject an otherwise valid graph.
-    const metadata = findPackageJSON(name, pathToFileURL(anchor))
+    // Node's findPackageJSON ignores module hooks. A running profile must use
+    // the host's package owner service, just like its actual module imports.
+    // Plain on-disk graphs (offline admission) retain the physical lookup.
+    const metadata = resolveManifest ? resolveManifest(name, pathToFileURL(anchor).href)
+      : findPackageJSON(name, pathToFileURL(anchor))
+    if (!metadata && optional) return null
     if (!metadata) throw Error('No package metadata for peer: ' + name)
     return fs.realpathSync(metadata)
   } catch (error) {
@@ -43,7 +49,7 @@ function peerPackage(anchor: string, name: string, optional: boolean): string | 
 }
 
 function verifyPeers(metadataPath: string, metadata: PackageMetadata, hostAnchor: string,
-  productAnchor: string, ownedNames: ReadonlySet<string>) {
+  productAnchor: string, ownedNames: ReadonlySet<string>, resolveManifest?: PeerManifestResolver) {
   for (const peer of Object.keys(metadata.peerDependencies ?? {})) {
     const optional = metadata.peerDependenciesMeta?.[peer]?.optional === true
     // Compatibility peers share the product's private owner even before profile
@@ -51,7 +57,7 @@ function verifyPeers(metadataPath: string, metadata: PackageMetadata, hostAnchor
     const owned = peer.startsWith('dsh-nexttavern-')
     if (owned && !ownedNames.has(peer)) throw Error('Uninventoried owned peer: ' + peer)
     const reference = owned ? productAnchor : hostAnchor
-    if (peerPackage(metadataPath, peer, optional) !== peerPackage(reference, peer, optional)) {
+    if (peerPackage(metadataPath, peer, optional, resolveManifest) !== peerPackage(reference, peer, optional, resolveManifest)) {
       throw Error('Compatibility dependency uses a different host peer: ' + metadata.name + ' -> ' + peer)
     }
   }
@@ -62,7 +68,7 @@ function verifyPeers(metadataPath: string, metadata: PackageMetadata, hostAnchor
  * arbitrary installed package. Returned modules remain inside the root bundle:
  * pinning a future profile resolution must not switch a running process's graph.
  */
-export function inspectBundledPackages(productRoot: string, hostAnchor: string) {
+export function inspectBundledPackages(productRoot: string, hostAnchor: string, resolveManifest?: PeerManifestResolver) {
   productRoot = fs.realpathSync(productRoot)
   const rootManifest = contained(productRoot, 'package.json')
   const product = readJson<PackageMetadata>(rootManifest)
@@ -82,7 +88,7 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string) 
     throw Error('Bundled compatibility inventory is incomplete')
   }
   const ownedNames = new Set(bundledNames)
-  verifyPeers(rootManifest, product, hostManifest, rootManifest, ownedNames)
+  verifyPeers(rootManifest, product, hostManifest, rootManifest, ownedNames, resolveManifest)
   const seen = new Set<string>()
   const packages = inventory.packages.map(spec => {
     if (typeof spec.name !== 'string' || !/^dsh-nexttavern-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(spec.name)
@@ -108,7 +114,7 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string) 
     const entry = fs.realpathSync(productResolver.resolve(spec.name))
     const relativeEntry = path.relative(source, entry).replaceAll('\\', '/')
     if (contained(source, relativeEntry) !== entry) throw Error('Compatibility entry escaped its bundle')
-    verifyPeers(metadataPath, metadata, hostManifest, rootManifest, ownedNames)
+    verifyPeers(metadataPath, metadata, hostManifest, rootManifest, ownedNames, resolveManifest)
     return {...spec, source, entry}
   })
   return {productRoot, version: product.version, packages}
@@ -121,13 +127,14 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string) 
  */
 export async function bootstrapBundledPackages(options: {
   productRoot: string; hostAnchor: string; home: string; profile: string; backup: string
+  resolvePeerManifest?: PeerManifestResolver
 }) {
   if (!/^[a-zA-Z0-9_-]+$/.test(options.profile)) throw Error('Invalid profile name')
   const manifest = contained(fs.realpathSync(options.home), `profiles/${options.profile}/package.json`)
   // Coordinate with supported host writers, not merely our home transaction.
   // Never remove an existing official lock: an orphan needs explicit recovery.
   return withFileLock(manifest, async () => {
-    const bundle = inspectBundledPackages(options.productRoot, options.hostAnchor)
+    const bundle = inspectBundledPackages(options.productRoot, options.hostAnchor, options.resolvePeerManifest)
     const recovered = recoverProtectedPackages(options.home)
     const prepared = prepareProtectedPackages({...options, packages: bundle.packages})
     return {

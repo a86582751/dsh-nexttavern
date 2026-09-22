@@ -1,5 +1,12 @@
 [
   {
+    "id": "session-log-deepseek",
+    "name": "@deepseek-ai/dsh-session-log-deepseek",
+    "config": {
+      "enabled": false
+    }
+  },
+  {
     "id": "llm-pi-ai",
     "name": "@deepseek-ai/dsh-llm-pi-ai",
     "disabled": {
