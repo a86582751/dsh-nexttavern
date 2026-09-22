@@ -6,7 +6,7 @@
 
 > **0.3 is in active development, with code updates published in this repository.** This tree includes the unpublished source-layout and module-cohesion refactor. Unified plugin installation, enable/disable and upgrade behavior are still being implemented and tested. A GitHub Release will follow when 0.3 is complete; installer links below still target **0.2.5**. See the [development notes and compatibility changes](CHANGELOG.md) and [contributor guide](CONTRIBUTING.md).
 
-> **0.3 targets Harness `0.1.6-alpha.2` and does not support old session data.** Export character cards or novels from the old environment before migrating; novel export does not preserve complete session state. Current `main` is unfinished migration source, not an installable 0.3 release.
+> **0.3 is being replanned for Harness `0.1.7-alpha.1` / Session V4; dependency and source migration are not complete.** Earlier alpha.6 checks do not establish compatibility with this version. Old session-data migration is not promised: export cards or novels first; novels do not preserve full session state. Current `main` is not an installable 0.3 release.
 
 **Let your characters think for themselves, and let the world unfold from your choices.**
 

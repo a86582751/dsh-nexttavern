@@ -2,6 +2,8 @@
 
 ## 0.3 development — 2026-09-22
 
+- Superseded the alpha.6 execution plan after reviewing official Harness `0.1.7-alpha.1`. The new plan covers Session V4 sources/tool messages, declarative presets, profile-based settings, missing UI extension points and the official pi-ai streaming fix before complete product assembly and clean-install acceptance. Dependencies and runtime code have not yet moved to alpha.7; the entries below retain their original alpha.6 evidence limits. Downloads and production are unchanged.
+
 - Integrated an owned preset-composition adapter with the Loader entry, reusing one official roster and preserving configured defaults and roots. Unknown roleplay presets are rejected; package-addressed composition survives the official copy operation and user copies survive uninstall. Native Agent setup exposed and fixed inherited provider-policy evaluation and writable-root alias protection. Seven preset cases and ten entry regressions are 17 unique successes across two runs (the latest run covered two new and two affected prior cases); a wrapper index strict rebuild and one new path case also passed. Full business composition, skill discovery, DOCX／office alpha.6 compatibility, dependency delivery and active-Agent switching remain unverified.
 
 - Owned JSONL and Session Controller now wait for message-edit interpretation before activation. Product startup rejects pending dependencies, including nested addons, and restores native providers instead of reporting success. Native composition checks cover edited-history recovery, pending-input persistence, disable/re-enable and failure cleanup. The affected scopes have 42 unique passing checks; full product installation, roleplay workflows and paid Harness acceptance remain pending.
