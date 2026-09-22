@@ -5,6 +5,7 @@ import {createRequire} from 'node:module'
 import {readFileSync, realpathSync} from 'node:fs'
 import {isAbsolute, relative, sep} from 'node:path'
 import {fileURLToPath, pathToFileURL} from 'node:url'
+import {isDeepStrictEqual} from 'node:util'
 import {capture, composition, loaderEntry, productWanted, providerDisabledExpression,
   type CompositionState, type ProfilePlan} from './nexttavern-entry-policy.mjs'
 import {inspectBundledPackages} from './bundled-package-bootstrap.mjs'
@@ -90,6 +91,24 @@ export default class NextTavernEntry extends EntryTree {
       const patches = (candidate as {patches?: unknown}).patches
       if (state.applyHostUpdate) throw Error('NextTavern profile update is still running; retry the profile update')
       const proposal = capture(ctx, patches)
+      const ownedIntent = (plan: ProfilePlan) => ({
+        selected: plan.selected,
+        product: plan.rows.find(row => row.id === loaderEntry(owner.ctx).options.id),
+        providers: owner.config.providers.map(provider => plan.provider({id:provider.id,module:provider.original})),
+      })
+      if (isDeepStrictEqual(ownedIntent(state.plan), ownedIntent(proposal))) {
+        // Native settings saves also update Include. Keep unrelated rows on
+        // that normal path so a welcome/theme edit cannot revoke live Session
+        // RPCs and browser scope adapters by restarting the entire product.
+        const accepted = {plan:state.plan, patches:state.patches}
+        state.plan = proposal
+        state.patches = proposal.rows
+        try {return next()} catch (error) {
+          state.plan = accepted.plan
+          state.patches = accepted.patches
+          throw error
+        }
+      }
       state.previousPlan = state.plan
       state.plan = proposal
       state.patches = proposal.rows

@@ -134,6 +134,24 @@ test('product reconfiguration preserves native config through replacement', asyn
   } finally {await f.close()}
 })
 
+test('unrelated native settings updates retain product providers and browser ownership', async t => {
+  if (await nativeCase(t.name, import.meta.url)) return
+  const f = await fixture()
+  try {
+    f.ctx.loader.builtins.unrelated = (ctx: any, config: {value:number}) => {
+      ctx.provide('unrelatedSettings', {value:config.value})
+    }
+    const provider = f.ctx.get('entryProbe')
+    for (const value of [1, 2]) {
+      await f.update([{insert:[{id:'unrelated',name:'cordis:unrelated',config:{value}}]}])
+      assert.equal(f.ctx.get('unrelatedSettings').value, value)
+      assert.equal(f.ctx.get('entryProbe'), provider)
+      assert.deepEqual(f.changes, ['start:owned'])
+      assert.deepEqual(f.graph(), ['fixture-owned-provider'])
+    }
+  } finally {await f.close()}
+})
+
 test('product activation failure releases resources and fails startup explicitly', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
   await assert.rejects(fixture({fail:true}), causedBy('owned provider failed'))
