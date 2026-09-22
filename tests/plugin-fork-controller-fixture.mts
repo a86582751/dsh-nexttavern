@@ -38,6 +38,7 @@ export async function prepareControllerHost(ctx: any, options: {
   Persistence?: any
   workspaces?: any[]
   deferPersistence?: boolean
+  nativeFileUploads?: boolean
 }) {
   const uploadResolvers = new Set<unknown>()
   let declaration: any
@@ -86,10 +87,17 @@ export async function prepareControllerHost(ctx: any, options: {
     maxImageBytes: 1024, maxImagesPerMessage: 1, maxMessageImageBytes: 1024,
     maxImagePixels: 1024, maxImageDimension: 32, mediaTypes: ['image/png'],
   }}))
-  ctx.provide('fileUploads', peripheral({registerAgentResolver(resolver: unknown) {
-    uploadResolvers.add(resolver)
-    return () => {uploadResolvers.delete(resolver)}
-  }}))
+  if (options.nativeFileUploads) {
+    ctx.provide('commands', peripheral({registerFileReceiptResolver: () => () => {}}))
+    ctx.provide('connection', peripheral({fetch: {register: () => () => {}}}))
+    const {default: FileUploads} = await load('dsh-client-file-upload')
+    await ctx.plugin(FileUploads)
+  } else {
+    ctx.provide('fileUploads', peripheral({registerAgentResolver(resolver: unknown) {
+      uploadResolvers.add(resolver)
+      return () => {uploadResolvers.delete(resolver)}
+    }}))
+  }
   ctx.provide('workspaceRegistry', peripheral({list: () => options.workspaces ?? [],
     archivedSessionIds: [], pinnedSessionIds: []}))
 
@@ -106,6 +114,7 @@ export async function controllerFixture(options: {
   Persistence?: any
   controllerPackage?: {name: string; baseUrl: string}
   workspaces?: any[]
+  nativeFileUploads?: boolean
 } = {}) {
   const Controller = options.Controller ?? SessionController
   const dir = createTestDirectory('plugin-fork-controller-')
@@ -150,6 +159,7 @@ export async function controllerFixture(options: {
       Format: options.Format,
       Persistence: options.Persistence,
       workspaces: options.workspaces,
+      nativeFileUploads: options.nativeFileUploads,
     })
     writePreset = preparedHost.writePreset
     uploadResolverCount = preparedHost.uploadResolverCount

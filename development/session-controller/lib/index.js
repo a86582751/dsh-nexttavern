@@ -209,7 +209,12 @@ let SessionController = (() => {
             installModelSelectionProjection(ctx);
             this.agents = new ApiSessionAgentController(ctx);
             this.commands = new SessionCommandController(ctx, this.agents, process.cwd());
-            ctx.effect(() => ctx.fileUploads.registerAgentResolver(async (sessionId) => {
+            // Cordis 4.0.3 wraps function-valued service properties on reads. The native
+            // resolver disposer compares callback identity, so it must close over the
+            // service receiver itself rather than that tracing proxy. Registration has
+            // no context-dependent work; this Controller still owns the effect lifetime.
+            const fileUploads = Reflect.get(ctx.fileUploads, Symbol.for('cordis.original')) ?? ctx.fileUploads;
+            ctx.effect(() => fileUploads.registerAgentResolver(async (sessionId) => {
                 const result = await this.agents.resolveAgent(sessionId);
                 if ('error' in result)
                     throw result.error;
