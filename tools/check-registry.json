@@ -3899,6 +3899,24 @@
         "ui"
       ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "inputs": [],
+      "cache": false,
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "timeoutMs": 90000,
+      "id": "test:plugin-bundle-inventory.test.mts",
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }

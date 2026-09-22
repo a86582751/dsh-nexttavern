@@ -74,7 +74,9 @@ function recordFor(home: string, profile: string, input: Pick<ProtectedPackageIn
   return {name: input.name, version: input.version, files, directory, reference}
 }
 
-function verifyPackage(root: string, record: ProtectedPackageRecord): void {
+/** The same inventory gate protects a runtime bundle and its later durable copy. */
+export function verifyProtectedPackage(root: string, record: Pick<ProtectedPackageRecord, 'name' | 'version' | 'files'>): void {
+  normalizedFiles(record.files)
   const actual = inventory(root)
   const expected = record.files.map(file => file.path).sort()
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw Error('Protected package file inventory differs: ' + record.name)
@@ -145,7 +147,7 @@ export function planProtectedPackages(options: {home: string; profile: string; p
       if (dependencies[item.name] !== item.reference || otherDependencies.some(map => Object.hasOwn(map, item.name))) {
         throw Error('Protected profile reference changed: ' + item.name)
       }
-      verifyPackage(contained(home, item.directory), canonical)
+      verifyProtectedPackage(contained(home, item.directory), canonical)
       return canonical
     })
   }
@@ -164,11 +166,11 @@ export function planProtectedPackages(options: {home: string; profile: string; p
       throw Error('Existing profile dependency is not owned by this installer: ' + record.name)
     }
     const source = fs.realpathSync(input.source)
-    verifyPackage(source, record)
+    verifyProtectedPackage(source, record)
     const target = contained(home, record.directory)
     const existing = fs.existsSync(target) ? inventory(target) : []
     if (existing.length) {
-      verifyPackage(target, record)
+      verifyProtectedPackage(target, record)
       reused.set(record.directory, record)
     }
     else {
@@ -197,7 +199,7 @@ export function planProtectedPackages(options: {home: string; profile: string; p
   const assertUnchanged = () => {
     // Reused generations are read-only dependencies, not transactional writes.
     // Verify them and both metadata preimages again after acquiring the lock.
-    for (const record of reused.values()) verifyPackage(contained(home, record.directory), record)
+    for (const record of reused.values()) verifyProtectedPackage(contained(home, record.directory), record)
     for (const directory of emptyGenerations) {
       const target = contained(home, directory)
       if (fs.existsSync(target) && inventory(target).length) throw Error('Protected generation changed since planning: ' + directory)

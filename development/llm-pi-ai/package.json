@@ -6,7 +6,8 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
-    "./config": "./lib/config.js"
+    "./config": "./lib/config.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "src",

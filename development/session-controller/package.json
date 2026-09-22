@@ -9,7 +9,8 @@
     ".": "./lib/index.js",
     "./types": "./lib/types.js",
     "./typert": "./lib/typert.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "lib",

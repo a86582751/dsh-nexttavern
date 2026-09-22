@@ -1,10 +1,11 @@
 /** Verify the installed product's private dependencies before preparing durable pins. */
 import fs from 'node:fs'
 import path from 'node:path'
-import {createRequire} from 'node:module'
+import {createRequire, findPackageJSON} from 'node:module'
+import {pathToFileURL} from 'node:url'
 import {withFileLock} from '@deepseek-ai/dsh-atomic-write'
 import {contained} from './public-transaction.mjs'
-import {prepareProtectedPackages, recoverProtectedPackages, type ProtectedFile} from './protected-packages.mjs'
+import {prepareProtectedPackages, recoverProtectedPackages, verifyProtectedPackage, type ProtectedFile} from './protected-packages.mjs'
 
 export interface BundledPackageSpec {
   name: string
@@ -27,18 +28,30 @@ interface PackageMetadata {
 }
 const readJson = <T,>(file: string) => JSON.parse(fs.readFileSync(file, 'utf8')) as T
 
-function peerEntry(resolver: NodeJS.Require, name: string, optional: boolean): string | null {
-  try {return fs.realpathSync(resolver.resolve(name))} catch (error) {
-    if (optional && (error as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') return null
+function peerPackage(anchor: string, name: string, optional: boolean): string | null {
+  try {
+    // Some host peers expose only subpaths (node-addon-system/flock), or only
+    // ESM conditions. Their package owner is the identity boundary; requiring
+    // a nonexistent CJS root export would reject an otherwise valid graph.
+    const metadata = findPackageJSON(name, pathToFileURL(anchor))
+    if (!metadata) throw Error('No package metadata for peer: ' + name)
+    return fs.realpathSync(metadata)
+  } catch (error) {
+    if (optional && ['MODULE_NOT_FOUND','ERR_MODULE_NOT_FOUND'].includes((error as NodeJS.ErrnoException).code ?? '')) return null
     throw error
   }
 }
 
-function verifyPeers(metadataPath: string, metadata: PackageMetadata, hostResolver: NodeJS.Require) {
-  const resolver = createRequire(metadataPath)
+function verifyPeers(metadataPath: string, metadata: PackageMetadata, hostAnchor: string,
+  productAnchor: string, ownedNames: ReadonlySet<string>) {
   for (const peer of Object.keys(metadata.peerDependencies ?? {})) {
     const optional = metadata.peerDependenciesMeta?.[peer]?.optional === true
-    if (peerEntry(resolver, peer, optional) !== peerEntry(hostResolver, peer, optional)) {
+    // Compatibility peers share the product's private owner even before profile
+    // relink; host services must still resolve to the host's exact singleton.
+    const owned = peer.startsWith('dsh-nexttavern-')
+    if (owned && !ownedNames.has(peer)) throw Error('Uninventoried owned peer: ' + peer)
+    const reference = owned ? productAnchor : hostAnchor
+    if (peerPackage(metadataPath, peer, optional) !== peerPackage(reference, peer, optional)) {
       throw Error('Compatibility dependency uses a different host peer: ' + metadata.name + ' -> ' + peer)
     }
   }
@@ -60,8 +73,7 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string) 
     throw Error('Bundled dependency inventory does not match this NextTavern version')
   }
   const productResolver = createRequire(rootManifest)
-  const hostResolver = createRequire(fs.realpathSync(hostAnchor))
-  verifyPeers(rootManifest, product, hostResolver)
+  const hostManifest = fs.realpathSync(hostAnchor)
   const bundledNames = (product.bundleDependencies ?? []).filter(name => name.startsWith('dsh-nexttavern-')).sort()
   const declaredNames = Object.keys(product.dependencies ?? {}).filter(name => name.startsWith('dsh-nexttavern-')).sort()
   const inventoriedNames = inventory.packages.map(spec => spec.name).sort()
@@ -69,6 +81,8 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string) 
     || JSON.stringify(declaredNames) !== JSON.stringify(inventoriedNames)) {
     throw Error('Bundled compatibility inventory is incomplete')
   }
+  const ownedNames = new Set(bundledNames)
+  verifyPeers(rootManifest, product, hostManifest, rootManifest, ownedNames)
   const seen = new Set<string>()
   const packages = inventory.packages.map(spec => {
     if (typeof spec.name !== 'string' || !/^dsh-nexttavern-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(spec.name)
@@ -87,10 +101,14 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string) 
     if (metadata.name !== spec.name || metadata.version !== spec.version || metadata.dsh?.bundle !== undefined) {
       throw Error('Bundled compatibility identity or activation layer differs: ' + spec.name)
     }
+    // Startup may inspect the private bundle while manager holds its writer
+    // lock. Verify bytes here without profile writes or waiting for that lock;
+    // durable pin preparation remains a separate, explicitly locked operation.
+    verifyProtectedPackage(source, spec)
     const entry = fs.realpathSync(productResolver.resolve(spec.name))
     const relativeEntry = path.relative(source, entry).replaceAll('\\', '/')
     if (contained(source, relativeEntry) !== entry) throw Error('Compatibility entry escaped its bundle')
-    verifyPeers(metadataPath, metadata, hostResolver)
+    verifyPeers(metadataPath, metadata, hostManifest, rootManifest, ownedNames)
     return {...spec, source, entry}
   })
   return {productRoot, version: product.version, packages}

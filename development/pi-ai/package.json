@@ -13,7 +13,8 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "import": "./lib/index.js"
+      "import": "./lib/index.js",
+      "default": "./lib/index.js"
     },
     "./compat": {
       "types": "./lib/compat.d.ts",
@@ -42,7 +43,8 @@
     "./bun-oauth": {
       "types": "./lib/bun-oauth.d.ts",
       "import": "./lib/bun-oauth.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "lib",
