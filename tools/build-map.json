@@ -2181,6 +2181,15 @@
       ]
     },
     {
+      "artifact": "owned-dependency-mjs",
+      "source": "src/operations/owned-dependency.mts",
+      "banner": "runtime/alpha3/src/operations/owned-dependency.mts",
+      "primaryOutput": "lib/operations/owned-dependency.mjs",
+      "outputs": [
+        "lib/operations/owned-dependency.mjs"
+      ]
+    },
+    {
       "artifact": "compat-llm-pi-ai-adapter-js",
       "source": "development/llm-pi-ai/src/adapter.ts",
       "banner": "runtime/alpha3/compat/llm-pi-ai/src/adapter.ts",
@@ -3572,6 +3581,15 @@
       "outputs": [
         "lib/operations/public-build-modules.mjs"
       ]
+    },
+    {
+      "artifact": "product-assembly",
+      "source": "src/operations/product-assembly.mts",
+      "banner": "runtime/alpha3/src/operations/product-assembly.mts",
+      "primaryOutput": "lib/operations/product-assembly.mjs",
+      "outputs": [
+        "lib/operations/product-assembly.mjs"
+      ]
     }
   ],
   "compilerPlan": {
@@ -4813,14 +4831,6 @@
         "source": "src/core/host-index.ts"
       },
       {
-        "id": "roleplay-ui-package",
-        "source": "package.json"
-      },
-      {
-        "id": "roleplay-ui-bundle-patch",
-        "source": "cordis.patch.yml"
-      },
-      {
         "id": "roleplay-memory",
         "source": "lib/memory/roleplay-memory-engine.js"
       },
@@ -5867,6 +5877,14 @@
       {
         "id": "compat-pi-ai-license-upstream",
         "source": "development/pi-ai/LICENSE.upstream"
+      },
+      {
+        "id": "owned-dependency-mts",
+        "source": "src/operations/owned-dependency.mts"
+      },
+      {
+        "id": "owned-dependency-mjs",
+        "source": "lib/operations/owned-dependency.mjs"
       },
       {
         "id": "compat-pi-ai-notice",
@@ -7359,6 +7377,22 @@
       {
         "id": "public-build-modules-typescript",
         "source": "src/operations/public-build-modules.mts"
+      },
+      {
+        "id": "nexttavern-product-package",
+        "source": "package.json"
+      },
+      {
+        "id": "nexttavern-product-patch",
+        "source": "cordis.patch.json"
+      },
+      {
+        "id": "product-assembly-typescript",
+        "source": "src/operations/product-assembly.mts"
+      },
+      {
+        "id": "product-assembly",
+        "source": "lib/operations/product-assembly.mjs"
       }
     ],
     "builds": [
@@ -12853,6 +12887,23 @@
         "banner": "runtime/alpha3/compat/pi-ai/src/api/anthropic-messages.ts"
       },
       {
+        "artifact": "owned-dependency-mjs",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/operations/owned-dependency.mts",
+          "src/operations/tool-resolution.mts",
+          "src/operations/test-temp.mts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "kind": "typescript-module",
+        "entry": "src/operations/owned-dependency.mts",
+        "id": "owned-dependency-build",
+        "banner": "runtime/alpha3/src/operations/owned-dependency.mts"
+      },
+      {
         "id": "compat-llm-pi-ai-adapter-build",
         "kind": "typescript-module",
         "artifact": "compat-llm-pi-ai-adapter-js",
@@ -15602,6 +15653,25 @@
           "src/operations/public-build-modules.mts"
         ],
         "banner": "runtime/alpha3/src/operations/public-build-modules.mts"
+      },
+      {
+        "artifact": "product-assembly",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/operations/product-assembly.mts",
+          "src/operations/owned-dependency.mts",
+          "src/operations/tool-resolution.mts",
+          "src/operations/test-temp.mts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/public-transaction.mts"
+        ],
+        "kind": "typescript-module",
+        "entry": "src/operations/product-assembly.mts",
+        "id": "product-assembly-build",
+        "banner": "runtime/alpha3/src/operations/product-assembly.mts"
       }
     ],
     "typeScript": {

@@ -1,27 +1,37 @@
 {
-  "name": "dsh-roleplay-ui",
-  "version": "0.1.0",
-  "description": "DeepSeek Harness roleplay preset 沉浸式前端：状态/操作按钮、沉浸阅读模式、样式覆盖。仅对 agentPreset=roleplay 的会话生效。",
+  "name": "dsh-nexttavern",
+  "version": "0.3.0-rc.1",
+  "description": "NextTavern roleplay product for DeepSeek Harness 0.1.7-alpha.1.",
   "type": "module",
-  "main": "lib/index.js",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": ">=24"
+  },
+  "main": "lib/operations/nexttavern-entry.mjs",
   "exports": {
     ".": {
-      "default": "./lib/index.js"
+      "default": "./lib/operations/nexttavern-entry.mjs"
+    },
+    "./entry-policy": {
+      "default": "./lib/operations/nexttavern-entry-policy.mjs"
+    },
+    "./host": {
+      "default": "./lib/core/host-index.js"
     },
     "./client": {
       "default": "./lib/client.js"
+    },
+    "./package.json": {
+      "default": "./package.json"
     }
   },
-  "files": [
-    "lib/index.js",
-    "lib/client.js",
-    "lib/tavern-conversations.js",
-    "lib/roleplay-userinfo.js",
-    "cordis.patch.yml"
-  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/a86582751/dsh-nexttavern.git"
+  },
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": "./cordis.patch.json"
     },
     "client": {
       "platform": "web",
@@ -30,12 +40,136 @@
         "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-api-workspace-controller",
         "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-commands",
+        "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-modules",
-        "@deepseek-ai/dsh-client-ui-chat"
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "dsh-nexttavern-ui-chat",
+        "dsh-nexttavern-ui-workspace",
+        "dsh-nexttavern-session-controller"
       ]
     }
   },
-  "license": "GPL-3.0-only"
+  "dependencies": {
+    "dsh-nexttavern-anydoc": "0.1.0-nexttavern.4",
+    "dsh-nexttavern-llm-pi-ai": "0.3.0-dev.1",
+    "dsh-nexttavern-pi-ai": "0.3.0-dev.1",
+    "dsh-nexttavern-presets": "0.3.0-dev.1",
+    "dsh-nexttavern-session-controller": "0.3.0-dev.1",
+    "dsh-nexttavern-session-format": "0.3.0-dev.1",
+    "dsh-nexttavern-session-persistence-jsonl": "0.3.0-dev.1",
+    "dsh-nexttavern-token-meter": "0.3.0-dev.1",
+    "dsh-nexttavern-ui-chat": "0.1.7-alpha.1-nexttavern.1",
+    "dsh-nexttavern-ui-workspace": "0.1.7-alpha.1-nexttavern.1",
+    "@firecrawl/anydoc": "0.2.4",
+    "@deepseek-ai/dsh-brand": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-util-values": "0.1.7-alpha.1",
+    "@deepseek-ai/schemastery": "3.18.3",
+    "@anthropic-ai/sdk": "0.123.0",
+    "@aws-sdk/client-bedrock-runtime": "3.1048.0",
+    "@earendil-works/pi-telemetry": "0.85.1",
+    "@google/genai": "1.52.0",
+    "@smithy/node-http-handler": "4.7.3",
+    "http-proxy-agent": "7.0.2",
+    "https-proxy-agent": "7.0.6",
+    "openai": "6.40.0",
+    "partial-json": "0.1.7",
+    "typebox": "1.3.7"
+  },
+  "bundleDependencies": [
+    "dsh-nexttavern-anydoc",
+    "dsh-nexttavern-llm-pi-ai",
+    "dsh-nexttavern-pi-ai",
+    "dsh-nexttavern-presets",
+    "dsh-nexttavern-session-controller",
+    "dsh-nexttavern-session-format",
+    "dsh-nexttavern-session-persistence-jsonl",
+    "dsh-nexttavern-token-meter",
+    "dsh-nexttavern-ui-chat",
+    "dsh-nexttavern-ui-workspace"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.3",
+    "@deepseek-ai/dsh-tools": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-fs": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-agent": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-attachment": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-authorization": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-credentials": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-invariants": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-launch-environment": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-llm": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-settings": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-timeout": "0.1.7-alpha.1",
+    "@deepseek-ai/cordis-plugin-include": "1.0.8",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-agent-preset": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-brand": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-deque": "0.1.7-alpha.1",
+    "@deepseek-ai/schemastery": "3.18.3",
+    "mime-types": "3.0.2",
+    "zod": "4.6.5",
+    "@deepseek-ai/dsh-agent-default-model": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-api-gateway": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-file-upload": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-commands": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-file-reference": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-jobs": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-native-command": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-scope": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-persistence": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-projection": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-projection-cache": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-query": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-title": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-skill": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-subagent": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-typert-registry": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-util-time": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-util-values": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-util-workspace-path": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-workspace": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-api-session-controller": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-format": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-format-catalog": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-format-v0-to-v1": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-format-v1-to-v2": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-format-v2-to-v3": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-session-format-v3-to-v4": "0.1.7-alpha.1",
+    "@deepseek-ai/node-addon-system": "0.1.2",
+    "koffi": "3.3.1",
+    "@deepseek-ai/dsh-token-meter": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-compaction": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-llm-retry": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-compaction-image-offload": "0.1.7-alpha.1",
+    "@deepseek-ai/cordis-plugin-loader": "1.0.4",
+    "@deepseek-ai/dsh-app-boot": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-atomic-write": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-ui-session": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-api-workspace-controller": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-api-remotes": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-locale": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-modules": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.7-alpha.1"
+  },
+  "files": [
+    "lib",
+    "preset",
+    "memory",
+    "node_modules",
+    "licenses",
+    "cordis.patch.json",
+    "nexttavern.dependencies.json"
+  ],
+  "scripts": {
+    "test": "node lib/operations/quality-cli.mjs tests",
+    "check": "node lib/operations/quality-cli.mjs",
+    "build:modules": "node tools/build-modules.mjs --write",
+    "build": "node lib/ui/build-client.mjs src/ui/client.ts lib/client.js dsh-nexttavern"
+  }
 }

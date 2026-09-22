@@ -1,0 +1,108 @@
+[
+  {
+    "id": "llm-pi-ai",
+    "name": "@deepseek-ai/dsh-llm-pi-ai",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "session-persistence-jsonl",
+    "name": "@deepseek-ai/dsh-session-persistence-jsonl",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "token-meter",
+    "name": "@deepseek-ai/dsh-token-meter",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "session-controller",
+    "name": "@deepseek-ai/dsh-api-session-controller",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "ui-chat",
+    "name": "@deepseek-ai/dsh-client-ui-chat",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "id": "ui-workspace",
+    "name": "@deepseek-ai/dsh-client-ui-workspace",
+    "disabled": {
+      "__jsExpr": "(() => {\n  const anchor = process.getBuiltinModule(\"node:path\").join(ctx.profileContext.dir, \"package.json\");\n  const require = process.getBuiltinModule(\"node:module\").createRequire(anchor);\n  return require(\"dsh-nexttavern/entry-policy\").nativeProviderDisabled(ctx);\n})()"
+    }
+  },
+  {
+    "insert": [
+      {
+        "id": "nexttavern",
+        "name": "dsh-nexttavern",
+        "config": {
+          "providers": [
+            {
+              "id": "llm-pi-ai",
+              "original": "@deepseek-ai/dsh-llm-pi-ai",
+              "replacement": "dsh-nexttavern-llm-pi-ai"
+            },
+            {
+              "id": "session-persistence-jsonl",
+              "original": "@deepseek-ai/dsh-session-persistence-jsonl",
+              "replacement": "dsh-nexttavern-session-persistence-jsonl"
+            },
+            {
+              "id": "token-meter",
+              "original": "@deepseek-ai/dsh-token-meter",
+              "replacement": "dsh-nexttavern-token-meter"
+            },
+            {
+              "id": "session-controller",
+              "original": "@deepseek-ai/dsh-api-session-controller",
+              "replacement": "dsh-nexttavern-session-controller"
+            },
+            {
+              "id": "ui-chat",
+              "original": "@deepseek-ai/dsh-client-ui-chat",
+              "replacement": "dsh-nexttavern-ui-chat"
+            },
+            {
+              "id": "ui-workspace",
+              "original": "@deepseek-ai/dsh-client-ui-workspace",
+              "replacement": "dsh-nexttavern-ui-workspace"
+            }
+          ],
+          "addons": [
+            {
+              "id": "nexttavern-session-format",
+              "name": "dsh-nexttavern-session-format"
+            },
+            {
+              "id": "preset-roleplay",
+              "name": "@deepseek-ai/dsh-agent-preset",
+              "config": {
+                "id": "roleplay",
+                "name": "NextTavern",
+                "description": "沉浸式长篇小说角色扮演工作台",
+                "plugins": [
+                  {
+                    "id": "nexttavern-roleplay-composition",
+                    "name": "dsh-nexttavern-presets/composition"
+                  }
+                ]
+              }
+            }
+          ],
+          "host": "dsh-nexttavern/host"
+        }
+      }
+    ]
+  }
+]

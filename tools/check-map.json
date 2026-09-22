@@ -1437,14 +1437,6 @@
       "source": "src/core/host-index.ts"
     },
     {
-      "id": "roleplay-ui-package",
-      "source": "package.json"
-    },
-    {
-      "id": "roleplay-ui-bundle-patch",
-      "source": "cordis.patch.yml"
-    },
-    {
       "id": "roleplay-memory",
       "source": "lib/memory/roleplay-memory-engine.js"
     },
@@ -2555,6 +2547,14 @@
     {
       "id": "compat-pi-ai-license-upstream",
       "source": "development/pi-ai/LICENSE.upstream"
+    },
+    {
+      "id": "owned-dependency-mts",
+      "source": "src/operations/owned-dependency.mts"
+    },
+    {
+      "id": "owned-dependency-mjs",
+      "source": "lib/operations/owned-dependency.mjs"
     },
     {
       "id": "compat-pi-ai-notice",
@@ -4088,6 +4088,22 @@
     {
       "id": "public-build-modules-typescript",
       "source": "src/operations/public-build-modules.mts"
+    },
+    {
+      "id": "nexttavern-product-package",
+      "source": "package.json"
+    },
+    {
+      "id": "nexttavern-product-patch",
+      "source": "cordis.patch.json"
+    },
+    {
+      "id": "product-assembly-typescript",
+      "source": "src/operations/product-assembly.mts"
+    },
+    {
+      "id": "product-assembly",
+      "source": "lib/operations/product-assembly.mjs"
     },
     {
       "id": "quality-registry",
@@ -9598,6 +9614,22 @@
       "kind": "typescript-module"
     },
     {
+      "artifact": "owned-dependency-mjs",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/operations/owned-dependency.mts",
+        "src/operations/tool-resolution.mts",
+        "src/operations/test-temp.mts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "kind": "typescript-module",
+      "entry": "src/operations/owned-dependency.mts",
+      "id": "owned-dependency-build"
+    },
+    {
       "id": "compat-llm-pi-ai-adapter-build",
       "kind": "typescript-module",
       "artifact": "compat-llm-pi-ai-adapter-js",
@@ -12385,6 +12417,24 @@
         "build-tools/package-lock.json",
         "src/operations/public-build-modules.mts"
       ]
+    },
+    {
+      "artifact": "product-assembly",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/operations/product-assembly.mts",
+        "src/operations/owned-dependency.mts",
+        "src/operations/tool-resolution.mts",
+        "src/operations/test-temp.mts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/public-transaction.mts"
+      ],
+      "kind": "typescript-module",
+      "entry": "src/operations/product-assembly.mts",
+      "id": "product-assembly-build"
     }
   ],
   "typeScript": {

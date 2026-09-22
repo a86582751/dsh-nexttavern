@@ -1,5 +1,0 @@
-# dsh-roleplay-ui bundle patch: 一个 insert 行。宿主半为空壳（本插件仅
-# 提供浏览器 UI），客户端模块系统按 dsh.client 声明加载 client 半。
-- insert:
-    - id: roleplay-ui
-      name: 'dsh-roleplay-ui'

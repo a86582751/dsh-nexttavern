@@ -163,7 +163,7 @@
 # 发行装配必须复用宿主的 dsh-tools 实例；alpha.6 的真实 office 兼容性仍待验收。
 # docx_create 供模型把整理好的小说稿直接写成 Word 文档。
 - id: dsh-office
-  name: '__NEXTTAVERN_OFFICE__'
+  name: '@huiliyi37/dsh-office'
   config:
     enable:
       xlsx: false
@@ -180,7 +180,7 @@
 # 候选不自动进入 profile bundles，不污染 standard/minimal/ptc。运行时只依赖
 # 共享的 dsh-tools（同实例）+ 自带 napi 二进制，已实测转换本部署的样例卡。
 - id: anydoc
-  name: '__NEXTTAVERN_ANYDOC__'
+  name: 'dsh-nexttavern-anydoc'
 
 # ── roleplay runtime（本 preset 自有的全部服务 + 压缩栈）──────────────────────
 #
