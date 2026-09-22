@@ -69,6 +69,15 @@ export function assembleProduct(options: {
   for (const {pkg} of owned) if (metadata.dependencies?.[pkg.name] !== pkg.version) {
     throw Error('Unpinned product dependency: ' + pkg.name)
   }
+  // Host packages are supplied by native runtime resolution. Installing a
+  // second copy in the profile can shadow that owner even at the same version.
+  for (const pkg of [metadata, ...owned.map(row => row.pkg)]) {
+    for (const dependency of Object.keys(pkg.dependencies ?? {})) {
+      if (dependency.startsWith('@deepseek-ai/')) {
+        throw Error('Host module must be a shared peer: ' + pkg.name + ' -> ' + dependency)
+      }
+    }
+  }
   const moduleRoot = inside(packageRoot, 'node_modules')
   if (fs.existsSync(moduleRoot)) throw Error('Candidate dependencies must be absent before assembly')
   fs.mkdirSync(moduleRoot)

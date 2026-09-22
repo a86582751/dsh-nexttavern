@@ -49,7 +49,8 @@
   },
   "license": "GPL-3.0-only",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.3"
+    "@deepseek-ai/cordis": "4.0.3",
+    "@deepseek-ai/schemastery": "3.18.3"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.3",
@@ -95,7 +96,6 @@
     "@deepseek-ai/dsh-settings": "0.1.7-alpha.1"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "3.18.3",
     "dsh-nexttavern-session-format": "0.3.0-dev.1"
   },
   "files": [

@@ -28,12 +28,12 @@
     "@deepseek-ai/dsh-launch-environment": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-llm": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-settings": "0.1.7-alpha.1",
-    "@deepseek-ai/dsh-timeout": "0.1.7-alpha.1"
-  },
-  "dependencies": {
+    "@deepseek-ai/dsh-timeout": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-brand": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-util-values": "0.1.7-alpha.1",
-    "@deepseek-ai/schemastery": "3.18.3",
+    "@deepseek-ai/schemastery": "3.18.3"
+  },
+  "dependencies": {
     "dsh-nexttavern-pi-ai": "0.3.0-dev.1"
   },
   "private": true
