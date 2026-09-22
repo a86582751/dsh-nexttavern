@@ -72,6 +72,9 @@
 }
 
 .body {
+  /* Keep absolute tool status labels inside this capped scrollport. Otherwise
+     their outer containing block makes each running call expand the chat. */
+  position: relative;
   --dsh-chat-flow-gap: 8px;
   max-height: min(400px, 50vh);
   overflow-y: auto;
