@@ -5,14 +5,14 @@ import type { CatalogEntry } from './tavern-pricing.js'
 import type { TelemetryRouteBody, TelemetryRoutesDependencies } from './roleplay-telemetry-routes-types.js'
 
 export function registerTelemetryRoutes({ctx, resolveRoleplaySession, exchangeRates, priceCatalog, telemetry}: TelemetryRoutesDependencies) {
-  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/roleplay/exchange-rate',methods:['GET','POST'],fetch:async request=>{
+  ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path:'/api/roleplay/exchange-rate',methods:['GET','POST'],fetch:async request=>{
     try{const url=new URL(request.url),body=request.method==='POST'?await request.json() as TelemetryRouteBody:null,session=await resolveRoleplaySession(body?.sessionId??url.searchParams.get('sessionId'))
       if(!session)return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
       if(body){if(body.action!=='sync')throw new Error('未知汇率操作');await exchangeRates.sync(true)}else exchangeRates.refresh()
       return jsonResponse(200,{ok:true,fx:exchangeRates.status()})
     }catch(error){return jsonResponse(400,{ok:false,error:String((error as Error).message)})}
   }}),'roleplay: daily exchange rate route')
-  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/roleplay/price-catalog',methods:['GET','POST'],fetch:async request=>{
+  ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path:'/api/roleplay/price-catalog',methods:['GET','POST'],fetch:async request=>{
     try{const url=new URL(request.url),body=request.method==='POST'?await request.json() as TelemetryRouteBody:null,session=await resolveRoleplaySession(body?.sessionId??url.searchParams.get('sessionId'))
       if(!session)return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
       if(body){if(body.action!=='sync')throw new Error('未知目录操作');await priceCatalog.sync(true)}else if(telemetry.prices().autoSync)priceCatalog.refresh()
@@ -28,7 +28,7 @@ export function registerTelemetryRoutes({ctx, resolveRoleplaySession, exchangeRa
       return jsonResponse(200,{ok:true,catalog:priceCatalog.status(),entries})
     }catch(error){return jsonResponse(400,{ok:false,error:String((error as Error).message)})}
   }}),'roleplay: public price catalog route')
-  for(const path of ['/api/roleplay/usage','/api/roleplay/usage-requests','/api/roleplay/logs','/api/roleplay/prices'])ctx.effect(()=>ctx.connection.fetch.register({path,methods:path.endsWith('/prices')?['GET','POST']:['GET'],fetch:async request=>{
+  for(const path of ['/api/roleplay/usage','/api/roleplay/usage-requests','/api/roleplay/logs','/api/roleplay/prices'])ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path,methods:path.endsWith('/prices')?['GET','POST']:['GET'],fetch:async request=>{
     try {
       const url=new URL(request.url),body=request.method==='POST'?await request.json() as TelemetryRouteBody:null
       const session=await resolveRoleplaySession(body?.sessionId??url.searchParams.get('sessionId'))

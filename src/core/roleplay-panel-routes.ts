@@ -12,7 +12,7 @@ ctx, T, resolveRoleplaySession, ensureBranch, awaitImportBarrier, importRecordKe
 }: Pick<PanelRoutesDependencies,
      'ctx' | 'T' | 'resolveRoleplaySession' | 'ensureBranch' | 'awaitImportBarrier' | 'importRecordKey' | 'assertImportRecordIntegrity'>) {
     ctx.effect(
-    () => ctx.connection.fetch.register({
+    () => ctx.connection.fetch.register({requestBody: 'buffered',
         path: '/api/roleplay/card-avatar',
         methods: ['GET'],
         fetch: async (request) => {
@@ -72,7 +72,7 @@ ctx,
       | 'RULE_TEXT_FIELDS' | 'withImportLock'>) {
     // 轮末决策卡：玩家点选后标记已答；前端随即以「我选择：…」用户消息开启下一轮。
     ctx.effect(
-    () => ctx.connection.fetch.register({
+    () => ctx.connection.fetch.register({requestBody: 'buffered',
         path: '/api/roleplay/decision',
 
         methods: ['POST'],
@@ -140,7 +140,7 @@ ctx,
         'roleplay: route decision'
     );
     ctx.effect(
-    () => ctx.connection.fetch.register({
+    () => ctx.connection.fetch.register({requestBody: 'buffered',
         path: '/api/roleplay/set',
 
         methods: ['POST'],

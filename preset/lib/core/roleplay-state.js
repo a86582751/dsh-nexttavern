@@ -174,7 +174,7 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             lineage: svc.branchLineage(session),
         };
     };
-    ctx.effect(() => ctx.connection.fetch.register({
+    ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered',
         path: '/api/roleplay/state',
         methods: ['GET'],
         fetch: async (request) => {
@@ -190,7 +190,7 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             }
         },
     }), 'roleplay: route state');
-    ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/activity', methods: ['GET'], fetch: async (request) => {
+    ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path: '/api/roleplay/activity', methods: ['GET'], fetch: async (request) => {
             const session = await resolveRoleplaySession(new URL(request.url).searchParams.get('sessionId'));
             if (!session)
                 return jsonResponse(404, { ok: false, error: '角色扮演会话不存在' });

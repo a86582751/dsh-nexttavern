@@ -1,3 +1,4 @@
+import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { HostSession, HostAgent } from './roleplay-task-host-types.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { createRoleplayPreparation } from './roleplay-preparation.js'
@@ -17,7 +18,7 @@ type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface SettingsRoutesDependencies {
   ctx: {
     effect(work: () => unknown, label: string): unknown
-    connection: {fetch: {register(route: {path: string; methods: string[]; fetch(request: Request): Promise<Response>}): unknown}}
+    connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
     llm: {
       resolveModelInfo?(provider: string, model: string): PromiseLike<{reasoning?: ReasoningInfo}>
       listProviders?(): {id: string}[]

@@ -1102,7 +1102,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   })
 
   const maintenanceJobs = new Map<string, MaintenanceRouteJob>()
-  ctx.effect(() => ctx.connection.fetch.register({
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered',
     path: '/api/roleplay/card-adaptation',
     methods: ['GET', 'POST'],
     fetch: async request => {
@@ -1169,7 +1169,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     priceCatalog,
     telemetry,
   })
-  ctx.effect(() => ctx.connection.fetch.register({
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered',
     path: '/api/roleplay/retrieval-confirmations',
     methods: ['GET', 'POST'],
     fetch: async request => {
@@ -1194,7 +1194,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       }
     },
   }), 'roleplay: semantic index rebuild confirmation')
-  ctx.effect(() => ctx.connection.fetch.register({
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered',
     path: '/api/roleplay/memory-retrieval',
     methods: ['GET', 'POST'],
     fetch: async request => {

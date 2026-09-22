@@ -21,7 +21,7 @@ export function registerBranchRoutes({ ctx, T, resolveRoleplaySession, cloneBran
         await catalog.ready;
         return catalog.fail(childId, operation.operationId);
     }
-    ctx.effect(() => ctx.connection.fetch.register({
+    ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered',
         path: '/api/roleplay/branch',
         methods: ['POST'],
         fetch: async (request) => {

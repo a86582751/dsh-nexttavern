@@ -22,7 +22,7 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
   }
   ctx.effect(
     () =>
-      ctx.connection.fetch.register({
+      ctx.connection.fetch.register({requestBody: 'buffered',
         path: '/api/roleplay/branch',
         methods: ['POST'],
         fetch: async (request) => {

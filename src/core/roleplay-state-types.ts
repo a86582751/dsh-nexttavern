@@ -1,3 +1,4 @@
+import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { ContextSession, ContextPreparation } from './roleplay-context.js'
 import type { BranchSession } from './roleplay-worldline-types.js'
 import type { createRoleplayWorldlines } from './roleplay-worldlines.js'
@@ -18,7 +19,7 @@ export interface StateTable {
 }
 export interface StateContext {
   effect(work: () => unknown, label: string): unknown
-  connection: {fetch: {register(route: {path: string; methods: string[]; fetch(request: Request): Promise<Response>}): unknown}}
+  connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
   get(name: 'compaction'): {directorNotes?(session: StateSession): unknown} | null | undefined
 }
 type Worldlines = ReturnType<typeof createRoleplayWorldlines>

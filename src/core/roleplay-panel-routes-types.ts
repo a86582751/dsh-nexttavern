@@ -1,3 +1,4 @@
+import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { StateSession } from './roleplay-state-types.js'
 import type { createRoleplayState } from './roleplay-state.js'
 import type { createRoleplayStatus } from './roleplay-status.js'
@@ -30,7 +31,7 @@ type Imports = ReturnType<typeof registerRoleplayImports>
 export interface PanelRoutesDependencies {
   ctx: {
     effect(work: () => unknown, label: string): unknown
-    connection: {fetch: {register(route: {path: string; methods: string[]; fetch(request: Request): Promise<Response>}): unknown}}
+    connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
     get(name: 'compaction'): {saveDirectorNotes?(session: StateSession, summary: unknown): PromiseLike<unknown>} | null | undefined
   }
   T: Record<'branch' | 'cards' | 'worldbook' | 'decision' | 'rules' | 'status', PanelTable>

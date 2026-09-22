@@ -1,3 +1,4 @@
+import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { createRoleplayWorldlines } from './roleplay-worldlines.js'
 import type { BranchSession, ForkOperation, RegistrationResult } from './roleplay-worldline-types.js'
 import type { createConversationCatalog } from './tavern-conversations.js'
@@ -52,7 +53,7 @@ export interface BranchRoutesDependencies extends Pick<Worldlines,
   'replaceAssistantText' | 'replaceUserText'> {
   ctx: {
     effect(work: () => unknown, label: string): unknown
-    connection: {fetch: {register(route: {path: string; methods: string[]; fetch(request: Request): Promise<Response>}): unknown}}
+    connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
     sessions: {get(id: string): BranchRouteSession | null | undefined}
     get(name: 'tavernConversations'): Catalog | null | undefined
     sessionController: {

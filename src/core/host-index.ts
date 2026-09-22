@@ -1,3 +1,4 @@
+import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 // Host-wide routes exist before any roleplay Agent has been mounted.
 // Userinfo shares the preset's roleplay-userinfo.json storage.
 import { join } from 'node:path'
@@ -20,7 +21,7 @@ type HostContext = {
   provide?: (name: string, value: unknown) => unknown
   logger?: { warn?: (message: string) => unknown }
 }
-type Route = { path: string; methods: readonly string[]; fetch: (request: Request) => Promise<Response> }
+type Route = ConnectionFetchRoute
 
 // HTTP clients expect an object even before a user profile exists.
 const readUserInfo = (): UserInfo => readUserInfoFile() ?? {}
@@ -73,11 +74,11 @@ export function apply(ctx: HostContext): void {
   // Retain rejection for request-time 503 without an unhandled startup error.
   void ready.catch(() => ctx.logger?.warn?.('roleplay: worldline catalog migration failed; original records retained'))
   ctx.provide?.('tavernConversations', { ...catalog, ready })
-  ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/conversations', methods: ['GET'], fetch: async () => {
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered', path: '/api/roleplay/conversations', methods: ['GET'], fetch: async () => {
     try { await ready; return jsonResponse(200, { ok: true, ...catalog.snapshot() }) }
     catch { return jsonResponse(503, { ok: false, error: '酒馆会话目录未就绪，原有记录未改写' }) }
   }}), 'roleplay-ui: durable book/worldline catalog')
-  ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/userinfo', methods: ['GET', 'POST'], fetch: async request => {
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered', path: '/api/roleplay/userinfo', methods: ['GET', 'POST'], fetch: async request => {
     try {
       if (request.method === 'GET') return jsonResponse(200, { ok: true, userinfo: readUserInfo() })
       const body = requestBody(await request.json().catch(() => null))
@@ -87,7 +88,7 @@ export function apply(ctx: HostContext): void {
   }}), 'roleplay-ui: userinfo route')
   // Resume only the selected Session after a Host restart. No prompt or sibling
   // wake is issued; agent-owned routes become available through native resume.
-  ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/wake', methods: ['POST'], fetch: async request => {
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered', path: '/api/roleplay/wake', methods: ['POST'], fetch: async request => {
     try {
       const body = requestBody(await request.json().catch(() => null)); const sessionId = String(body.sessionId ?? '').trim()
       if (!sessionId || sessionId.length > 200 || /[\u0000-\u001f]/.test(sessionId)) return jsonResponse(400, { ok: false, error: 'sessionId 无效' })

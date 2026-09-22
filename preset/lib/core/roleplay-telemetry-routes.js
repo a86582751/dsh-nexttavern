@@ -3,7 +3,7 @@ import { jsonResponse } from './roleplay-state.js';
 import { timeRange, aggregateUsage, queryUsageRequests } from './tavern-telemetry.js';
 import { convertUsageCurrency } from './tavern-pricing.js';
 export function registerTelemetryRoutes({ ctx, resolveRoleplaySession, exchangeRates, priceCatalog, telemetry }) {
-    ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/exchange-rate', methods: ['GET', 'POST'], fetch: async (request) => {
+    ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path: '/api/roleplay/exchange-rate', methods: ['GET', 'POST'], fetch: async (request) => {
             try {
                 const url = new URL(request.url), body = request.method === 'POST' ? await request.json() : null, session = await resolveRoleplaySession(body?.sessionId ?? url.searchParams.get('sessionId'));
                 if (!session)
@@ -21,7 +21,7 @@ export function registerTelemetryRoutes({ ctx, resolveRoleplaySession, exchangeR
                 return jsonResponse(400, { ok: false, error: String(error.message) });
             }
         } }), 'roleplay: daily exchange rate route');
-    ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/price-catalog', methods: ['GET', 'POST'], fetch: async (request) => {
+    ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path: '/api/roleplay/price-catalog', methods: ['GET', 'POST'], fetch: async (request) => {
             try {
                 const url = new URL(request.url), body = request.method === 'POST' ? await request.json() : null, session = await resolveRoleplaySession(body?.sessionId ?? url.searchParams.get('sessionId'));
                 if (!session)
@@ -53,7 +53,7 @@ export function registerTelemetryRoutes({ ctx, resolveRoleplaySession, exchangeR
             }
         } }), 'roleplay: public price catalog route');
     for (const path of ['/api/roleplay/usage', '/api/roleplay/usage-requests', '/api/roleplay/logs', '/api/roleplay/prices'])
-        ctx.effect(() => ctx.connection.fetch.register({ path, methods: path.endsWith('/prices') ? ['GET', 'POST'] : ['GET'], fetch: async (request) => {
+        ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path, methods: path.endsWith('/prices') ? ['GET', 'POST'] : ['GET'], fetch: async (request) => {
                 try {
                     const url = new URL(request.url), body = request.method === 'POST' ? await request.json() : null;
                     const session = await resolveRoleplaySession(body?.sessionId ?? url.searchParams.get('sessionId'));

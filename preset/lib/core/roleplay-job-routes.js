@@ -34,7 +34,7 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
         agent.steer(taskPhaseMessage('management', '请完成酒馆管理中刚启动的任务。不要续写剧情。', { jobId: job.id, jobKind: kind }));
         return job;
     }
-    ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/jobs', methods: ['GET', 'POST'], fetch: async (request) => {
+    ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path: '/api/roleplay/jobs', methods: ['GET', 'POST'], fetch: async (request) => {
             try {
                 const url = new URL(request.url), body = request.method === 'POST' ? await request.json() : null;
                 const session = await resolveRoleplaySession(body?.sessionId ?? url.searchParams.get('sessionId'));
@@ -102,7 +102,7 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
         ['/api/roleplay/download', async (session, url) => libraryFor(session).openDownload(url.searchParams.get('resourceId'))],
     ];
     for (const [path, handler] of resourceRoutes)
-        ctx.effect(() => ctx.connection.fetch.register({ path, methods: ['GET'], fetch: async (request) => {
+        ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path, methods: ['GET'], fetch: async (request) => {
                 try {
                     const url = new URL(request.url), session = await resolveRoleplaySession(url.searchParams.get('sessionId'));
                     if (!session)
@@ -117,7 +117,7 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
     return { startExportJob };
 }
 export function registerMaintenanceRoute({ ctx, resolveRoleplaySession, maintenanceJobs, latestStatusEvent, runStatusObligation, selectedStatusRecord }) {
-    ctx.effect(() => ctx.connection.fetch.register({
+    ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered',
         path: '/api/roleplay/maintenance', methods: ['POST'],
         fetch: async (request) => {
             try {
