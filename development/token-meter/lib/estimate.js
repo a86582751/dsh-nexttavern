@@ -45,9 +45,6 @@ export function estimateContent(blocks) {
                     + Math.ceil(block.arguments.length / CHARS_PER_TOKEN)
                     + BLOCK_OVERHEAD;
                 break;
-            case 'tool-result':
-                tokens += estimateContent(block.content) + BLOCK_OVERHEAD;
-                break;
             default:
                 // ContentBlockMap is merge-extensible; unknown blocks (and image
                 // references, whose request price is route-owned) retain a

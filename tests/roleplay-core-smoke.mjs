@@ -275,7 +275,7 @@ assert.equal(prepared.body.previousTurnEndSeq, null)
   {seq:0,type:'turn/start',data:{turn:4}},
   {seq:1,type:'user/message',data:{id:'u-old',source:{kind:'user'},content:text('打开档案')}},
   {seq:2,type:'assistant/message',data:{turn:4,message:{id:'old-canon',content:text('档案已打开')}}},
-  {seq:3,type:'user/message',data:{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story',storySeq:2,turn:4},content:text('维护')}},
+  {seq:3,type:'user/message',data:{source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story',storySeq:2,turn:4},content:text('维护')}},
   {seq:4,type:'assistant/message',data:{turn:4,message:{id:'old-maintenance',content:text('记忆结果')}}},
   {seq:5,type:'turn/end',data:{turn:4,reason:{kind:'error'}}},
   {seq:6,type:'turn/start',data:{turn:5}},

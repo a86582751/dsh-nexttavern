@@ -17,11 +17,11 @@ session.append=(type,data,options={})=>{
   return e
 }
 const append=(source,text)=>session.append('user/message',{id:String(session.seq),role:'user',source,content:[{type:'text',text}]},{surfaceOp:'append'})
-const first=append({kind:'plugin',plugin:'roleplay-context',form:'context'},'FULL_FIXED_SETTING_OLD_1')
+const first=append({kind: 'roleplay-context',form:'context'},'FULL_FIXED_SETTING_OLD_1')
 const user=append({kind:'user'},'Player intent')
 const tool=session.append('tool/result',{message:{role:'tool',content:[{type:'text',text:'tool result'}]}},{surfaceOp:'append'})
-const second=append({kind:'plugin',plugin:'roleplay-context',form:'context'},'FULL_FIXED_SETTING_OLD_2')
-const unselected=append({kind:'plugin',plugin:'roleplay-context',form:'context'},'SIBLING_CONTEXT')
+const second=append({kind: 'roleplay-context',form:'context'},'FULL_FIXED_SETTING_OLD_2')
+const unselected=append({kind: 'roleplay-context',form:'context'},'SIBLING_CONTEXT')
 session.surface.nodes.pop()
 const ordinary=append({kind:'user'},'A user literally mentions roleplay-context')
 const audit=structuredClone(session.events)
@@ -32,15 +32,15 @@ assert.deepEqual(session.surface.nodes,prefix,'ordinary turns preserve the compl
 assert.ok(session.surface.nodes.includes(user.seq)&&session.surface.nodes.includes(tool.seq)&&session.surface.nodes.includes(ordinary.seq))
 assert.equal(core.retireRoleplayContexts(session,3),0,'retry is also a no-op')
 assert.deepEqual(session.events[unselected.seq],audit[unselected.seq])
-append({kind:'plugin',plugin:'roleplay-context',form:'director-notes',branchId:session.id,notesHash:'new'},'FULL_CURRENT_FIXED_SETTING_AND_RECALL')
+append({kind: 'roleplay-context',form:'director-notes',branchId:session.id,notesHash:'new'},'FULL_CURRENT_FIXED_SETTING_AND_RECALL')
 const visible=session.surface.nodes.map(seq=>session.events[seq])
-assert.equal(visible.filter(e=>e.data?.source?.plugin==='roleplay-context').length,3)
+assert.equal(visible.filter(e=>e.data?.source?.kind==='roleplay-context').length,3)
 assert.ok(JSON.stringify(visible).includes('FULL_FIXED_SETTING_OLD'))
 assert.ok(JSON.stringify(visible).includes('FULL_CURRENT_FIXED_SETTING_AND_RECALL'))
 // Only a successfully prepared replacement can retire a dynamic snapshot.
 // Unchanged notes retain their exact full anchor, while obsolete state and
 // redundant references leave the model surface without touching audit bytes.
-const dynamic=(form,hash,mode,branchId=session.id)=>({kind:'plugin',plugin:'roleplay-context',schemaVersion:1,form,branchId,mode,[form==='state'?'stateHash':'notesHash']:hash.repeat(64)})
+const dynamic=(form,hash,mode,branchId=session.id)=>({kind: 'roleplay-context',schemaVersion:1,form,branchId,mode,[form==='state'?'stateHash':'notesHash']:hash.repeat(64)})
 const oldNotes=append(dynamic('director-notes','a','full'),'OLD_NOTES_PAYLOAD')
 const notes=append(dynamic('director-notes','b','full'),'CURRENT_NOTES_PAYLOAD')
 const ref=append(dynamic('director-notes','b','reference'),'OLD_REFERENCE')
@@ -64,11 +64,11 @@ assert.equal(core.retireRoleplayContexts(session,4,[{...future[1],source:dynamic
 const windowSession={id:'window-branch',events:[],surface:{nodes:[]}}
 const addWindow=(type,data)=>{const event={seq:windowSession.events.length,type,data};windowSession.events.push(event);windowSession.surface.nodes.push(event.seq);return event}
 addWindow('turn/start',{turn:1})
-addWindow('user/message',{id:'prepare',source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'prepare'},content:[]})
+addWindow('user/message',{id:'prepare',source:{kind: 'roleplay-tasks',form:'phase',stage:'prepare'},content:[]})
 addWindow('assistant/message',{turn:1,message:{id:'maintenance-call',content:[{type:'tool-call',id:'maintenance-call-id',name:'rp_task_submit',arguments:'{}'}]}})
 addWindow('tool/call',{turn:1,callId:'maintenance-call-id',name:'rp_task_submit'})
 addWindow('tool/result',{turn:1,message:{id:'maintenance-result',role:'tool',source:{kind:'tool',callId:'maintenance-call-id'},content:[{type:'text',text:'LARGE_MAINTENANCE_RESULT'}]}})
-addWindow('user/message',{id:'story-phase',source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'story'},content:[]})
+addWindow('user/message',{id:'story-phase',source:{kind: 'roleplay-tasks',form:'phase',stage:'story'},content:[]})
 addWindow('user/message',{id:'old-player',source:{kind:'user'},content:[{type:'text',text:'OLD_PLAYER'}]})
 addWindow('assistant/message',{turn:1,message:{id:'old-story',content:[{type:'text',text:'OLD_STORY'}]}})
 const derived=[
@@ -82,15 +82,15 @@ const derived=[
 const continuity=core.retainRoleplayWindowContinuity(windowSession,derived,1000)
 assert.deepEqual(continuity.map(message=>message.id),['old-player','old-story'])
 const anchors=[
- {type:'user/message',data:{source:{kind:'plugin',plugin:'roleplay-context',form:'director-notes'}}},
- {type:'user/message',data:{source:{kind:'plugin',plugin:'roleplay-context',form:'state'}}},
+ {type:'user/message',data:{source:{kind: 'roleplay-context',form:'director-notes'}}},
+ {type:'user/message',data:{source:{kind: 'roleplay-context',form:'state'}}},
  {type:'user/message',data:{source:{kind:'user'}}},
 ]
 assert.equal(core.roleplayWindowCutStartIndex(anchors,2),0,'the first old-window anchors leave with their first story input')
 if(process.env.DSH_NATIVE_SESSION_MODULE){
  const {Session}=await import(process.env.DSH_NATIVE_SESSION_MODULE)
  const native=Session.create('dynamic-context-native')
- const source=(form,n,mode)=>({kind:'plugin',plugin:'roleplay-context',schemaVersion:1,branchId:native.id,form,mode,[form==='state'?'stateHash':'notesHash']:n.toString(16).padStart(64,'0')})
+ const source=(form,n,mode)=>({kind: 'roleplay-context',schemaVersion:1,branchId:native.id,form,mode,[form==='state'?'stateHash':'notesHash']:n.toString(16).padStart(64,'0')})
  const add=(id,src,value)=>native.append('user/message',{id,role:'user',source:src,content:[{type:'text',text:value}]},{surfaceOp:'append'})
  for(let turn=1;turn<=15;turn++){
   const noteVersion=Math.ceil(turn/3),full=turn%3===1

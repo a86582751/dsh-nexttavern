@@ -487,7 +487,7 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
         const modeCard = h('div', {
             className: 'dsh-rp-retrieval-card'
         }, h('h5', null, '记忆检索方式'), note('只检索当前世界线的玩家输入和有效剧情正文，包含归档旧正文。向量模型需在「Embedding 模型设置」中手动配置启用。'), field('将所选方式应用到 / Apply to', h('select', {
-            value: modeScope, onChange: e => setModeScope((e.target as HTMLSelectElement).value as Scope)
+            value: modeScope, onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => setModeScope((e.target as HTMLSelectElement).value as Scope)
         }, h('option', {
             value: 'session'
         }, '当前会话 / Session'), h('option', {
@@ -558,7 +558,7 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
             ? h('select', {
                 'aria-label': '模型 ID',
                 value: draft.model ?? '',
-                onChange: e => update({
+                onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => update({
                     model: (e.target as HTMLSelectElement).value, dimensions: null
                 })
             }, h('option', {
@@ -571,7 +571,7 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
             }, h('select', {
                 'aria-label': '模型 ID 下拉选择',
                 value: draft.model ?? '',
-                onChange: e => update({
+                onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => update({
                     model: (e.target as HTMLSelectElement).value
                 })
             }, h('option', {
@@ -643,7 +643,7 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
             }), placeholder: 'My embedding provider'
         })), field('类型', h('select', {
             value: draft.kind ?? 'online',
-            onChange: e => update({
+            onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => update({
                 kind: (e.target as HTMLSelectElement).value as Provider['kind'],
                 model: '',
                 dimensions: null,
@@ -657,7 +657,7 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
             value: 'local'
         }, '本地 / Local'))), !local ? field('协议', h('select', {
             value: draft.protocol ?? 'openai',
-            onChange: e => update({
+            onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => update({
                 protocol: (e.target as HTMLSelectElement).value as Provider['protocol']
             })
         }, Object.entries(protocols).map(([id, label]) => h('option', {
@@ -804,7 +804,7 @@ export function createMemoryRetrievalPanel({ React, jsonFetch, toast }: Dependen
              h('select',
              {
             value: progressSession,
-            onChange: e => {
+            onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => {
                 setProgressReply(null);
                 setProgressError(null);
                 setProgressSession((e.target as HTMLSelectElement).value);

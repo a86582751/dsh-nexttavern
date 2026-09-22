@@ -16,13 +16,13 @@ for(const target of [undefined,null,{view:'chat'},{draft:17,view:'chat'},{draft:
     resolveActiveSessionId:()=> 'target', isRoleplaySession:()=>true,
     fetch:async(url,options)=>{const body=JSON.parse(options.body);assert.equal(body.action,'select-worldline');assert.equal(body.sessionId,'target');return {ok:true,text:async()=>'{"ok":true}'}},
     acceptConversations:()=>{},
-    sessionsService:{open(id){
+    openSession(id){
       const value=JSON.parse(saved.get(`dsh.conversation.${id}`))
       // Native alpha.3 SessionInputShell.setDraft calls text.replace directly.
       assert.equal(typeof value.draft,'string','view transfer must initialize the native conversation draft before opening a fresh branch')
       value.draft.replace(/placeholder/g,'')
       opened=true
-    }},
+    },
   })
   await actions.openSessionPreservingView('target','source')
   assert.ok(opened)
@@ -66,7 +66,12 @@ function actionHarness(handler, options={}) {
     resolveActiveSessionId:()=> 'source',isRoleplaySession:()=>true,
     now:()=>time,wait:async ms=>{waits.push(ms);time+=ms},
     storage:{length:0,key:()=>null,getItem:()=>null,setItem:()=>{}},
-    sessionsService:{binding:()=>binding,refresh:async()=>events.push(['refresh']),open:id=>events.push(['open',id])},
+    openSession:id=>events.push(['open',id]),
+    sessionsService:{async using(id,options,operation){
+      assert.equal(options.source,'nexttavernAction')
+      events.push(['retain',id])
+      try {return await operation({binding})} finally {events.push(['release',id])}
+    },refresh:async()=>events.push(['refresh'])},
     remoteSession:{selectModel:async data=>{events.push(['model',data]);return {ok:true,value:{}}}},
     wakeSessionForState:async id=>{events.push(['wake',id]);return true},
     invalidateState:id=>events.push(['invalidate',id]),loadConversations:async()=>events.push(['catalog']),
@@ -128,12 +133,16 @@ function branchReply(body) {
   assert.equal(h.calls.some(b=>b.action==='abort'),false)
   assert.equal(h.events.some(e=>e[0]==='abandon'),false)
   assert.deepEqual(h.events.filter(e=>e[0]==='open'),[['open','child']])
+  assert.deepEqual(h.events.filter(e=>e[0]==='retain'||e[0]==='release'),
+    [['retain','source'],['retain','child'],['release','child'],['release','source']])
+  assert.deepEqual(h.events.find(e=>e[0]==='begin')[1],{mode:'queue',text:'edited',attachments:[]})
 }
 for(const response of ['lost','rejected']) {
   const h=actionHarness(branchReply,{prompt:async()=>{if(response==='lost')throw Error('transport');return {ok:false,error:{code:'DENIED',message:'rejected'}}}})
   if(response==='lost')assert.equal(await h.controller.forkAndPrompt({sourceSessionId:'source',kind:'regenerate'}),'child')
   else await assert.rejects(h.controller.forkAndPrompt({sourceSessionId:'source',kind:'regenerate'}),/DENIED/)
   assert.equal(h.calls.some(b=>b.action==='abort'),response==='rejected','transport loss alone cannot abort a committed prompt')
+  assert.deepEqual(h.events.filter(e=>e[0]==='release'),[['release','child'],['release','source']])
 }
 {
   let aborted=false
@@ -160,6 +169,7 @@ for(const response of ['lost','rejected']) {
   const active=actionHarness(branchReply,{running:true})
   await assert.rejects(active.controller.forkAndPrompt({sourceSessionId:'source',kind:'regenerate'}),/当前一轮/)
   assert.equal(active.calls.some(b=>b.action==='create-worldline'),false)
+  assert.deepEqual(active.events.filter(e=>e[0]==='release'),[['release','source']])
 }
 for(const changed of [true,false]) {
   const h=actionHarness((body,calls)=>({ok:true,job:{id:changed&&calls.length>1?'other':'job',state:calls.length===1?'running':'completed'}}))

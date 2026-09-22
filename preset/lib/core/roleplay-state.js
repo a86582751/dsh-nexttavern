@@ -7,7 +7,7 @@ export const jsonResponse = (status, value) => new Response(JSON.stringify(value
     status,
     headers: { 'content-type': 'application/json; charset=utf-8' },
 });
-export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, repairLegacyUserReplacementIdentities, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, importSummary, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession }) {
+export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, importSummary, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession }) {
     const collectBranchRecords = (session) => {
         const prefix = `${session.id}__`;
         const cards = [];
@@ -29,7 +29,6 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
     const readRoleplayState = async (session) => {
         await awaitImportBarrier(session.id);
         await ensureBranch(session);
-        await repairLegacyUserReplacementIdentities(session);
         let forkLookup = buildForkLookupIndex(session);
         await reconcileCanonicalPlayerVariants(session, forkLookup);
         if (!statusRecoveredSessions.has(session.id)) {
@@ -65,7 +64,7 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
         for (const event of eventsOf(session)) {
             if (event?.type === 'turn/start')
                 activeTurn = Number(event.data?.turn);
-            if (event?.type === 'user/message' && event.data?.source?.plugin === 'roleplay-tasks' && Number.isSafeInteger(activeTurn))
+            if (event?.type === 'user/message' && event.data?.source?.kind === 'roleplay-tasks' && Number.isSafeInteger(activeTurn))
                 maintenanceTurns.add(activeTurn);
             if (event?.type === 'user/message' && event.data?.source?.kind === 'user' && Number.isSafeInteger(activeTurn)) {
                 playerTurns.add(activeTurn);

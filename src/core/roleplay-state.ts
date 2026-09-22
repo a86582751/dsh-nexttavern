@@ -62,7 +62,7 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, b
     let activeTurn: number | null = null
     for (const event of eventsOf(session)) {
       if (event?.type === 'turn/start') activeTurn = Number(event.data?.turn)
-      if (event?.type === 'user/message' && event.data?.source?.plugin === 'roleplay-tasks' && Number.isSafeInteger(activeTurn)) maintenanceTurns.add(activeTurn!)
+      if (event?.type === 'user/message' && event.data?.source?.kind === 'roleplay-tasks' && Number.isSafeInteger(activeTurn)) maintenanceTurns.add(activeTurn!)
       if (event?.type === 'user/message' && event.data?.source?.kind === 'user' && Number.isSafeInteger(activeTurn)) {
         playerTurns.add(activeTurn!)
         try {

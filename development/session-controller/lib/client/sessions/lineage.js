@@ -33,8 +33,9 @@ export function flattenLineage(summaries) {
             return;
         }
         visited.add(s.sessionId);
+        const { agentAvailable: _agentAvailable, ...row } = s;
         out.push({
-            ...s,
+            ...row,
             depth,
         });
         const kids = children.get(s.sessionId);

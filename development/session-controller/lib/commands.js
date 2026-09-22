@@ -56,6 +56,7 @@ import { randomUUID } from 'node:crypto';
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { AttachmentError } from '@deepseek-ai/dsh-attachment';
 import { ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage, } from '@deepseek-ai/dsh-llm';
+import { buildForkSeed } from '@deepseek-ai/dsh-session/fork';
 import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title';
@@ -65,6 +66,23 @@ import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol';
 import { ApiSessionAgentController, ApiSessionCwdConflict, ApiSessionNotFound, ApiSessionPresetConflict, ApiSessionSubagentOwnership, apiSessionSubagentOwnershipError, hasApiSessionSubagentOwner, inspectApiSession, } from './agent.js';
 function hasPromptContent(content) {
     return content.some(part => part.type !== 'text' || part.text.trim().length > 0);
+}
+/**
+ * Resolve the omitted-`atSeq` default to the latest completed-turn prefix,
+ * including standalone events before the next turn begins.
+ */
+function latestCompletedPrefixBoundary(events) {
+    const lastTurnEnd = events.findLast(event => event.type === 'turn/end');
+    if (lastTurnEnd === undefined)
+        return undefined;
+    let boundary = lastTurnEnd.seq;
+    for (const next of events.slice(boundary + 1)) {
+        if (next.type === 'turn/start' || (next.type === 'user/message' && next.surfaceOp === 'append')
+            || next.type === 'agent/inbox/spliced')
+            break;
+        boundary = next.seq;
+    }
+    return boundary;
 }
 /** Implements Session business commands delegated by the Session Controller Remote service. */
 export class SessionCommandController {
@@ -181,8 +199,10 @@ export class SessionCommandController {
         }
     }
     /**
-     * Create a new ordinary Session from one completed-turn prefix.
-     * @param request - source Session and optional event anchor.
+     * Create a new ordinary Session from an exact event prefix. An explicit
+     * `atSeq` is the inclusive cut; an omitted value selects the latest
+     * completed-turn prefix. An open cut receives synthetic fork closers.
+     * @param request - source Session and optional exact event boundary.
      * @returns the new Session identity.
      */
     async fork(request, beforePublish) {
@@ -209,26 +229,22 @@ export class SessionCommandController {
                 throw new RemoteError('gateway/internal', `fork source unavailable for session "${request.sessionId}": ${String(error)}`, {});
             }
             const source = __addDisposableResource(env_1, observed, false);
-            const lastSeq = source.events.at(-1)?.seq ?? -1;
-            const anchoredBoundary = atSeq === undefined
-                ? undefined
-                : source.events.find(event => event.type === 'turn/end' && event.seq >= atSeq);
-            const boundary = anchoredBoundary
-                ?? (atSeq === undefined || atSeq > lastSeq
-                    ? source.events.findLast(event => event.type === 'turn/end')
-                    : undefined);
-            if (boundary === undefined) {
-                throw new RemoteError('session/fork-unavailable', atSeq !== undefined && atSeq <= lastSeq
-                    ? `session "${request.sessionId}" has not completed the turn containing event ${String(atSeq)}`
-                    : `session "${request.sessionId}" has no completed turn to fork from`, { sessionId: request.sessionId });
+            const boundary = atSeq ?? latestCompletedPrefixBoundary(source.events);
+            if (boundary === undefined || source.events[boundary]?.seq !== boundary) {
+                throw new RemoteError('session/fork-unavailable', request.atSeq === undefined
+                    ? `session "${request.sessionId}" has no completed turn to fork from`
+                    : `event ${String(request.atSeq)} does not exist in session "${request.sessionId}" (last seq: ${String(source.events.at(-1)?.seq ?? 'none')})`, { sessionId: request.sessionId });
             }
-            let cut = SessionLogOffset(boundary.seq + 1);
+            let cut = SessionLogOffset(boundary + 1);
             // Roleplay's prepared fork includes late edit/ownership metadata before
             // the next turn. Ordinary Remote fork retains the official boundary.
-            if (beforePublish) {
+            if (beforePublish && source.events[boundary]?.type === 'turn/end') {
                 while (cut < source.events.length && source.events[cut]?.type !== 'turn/start')
                     cut = SessionLogOffset(cut + 1);
             }
+            // End-seed and any open-turn closers belong to the child, so lineage uses
+            // the inherited cut rather than the total number of generated seed rows.
+            const seed = buildForkSeed(source.events, SessionSeq(cut - 1));
             let workspace;
             try {
                 workspace = await this.forkWorkspace(source.header);
@@ -245,7 +261,7 @@ export class SessionCommandController {
                 const { provider, model } = this.ctx.agentDefaultModel.currentSelection();
                 await this.ctx.agents.create({
                     sessionId: childId,
-                    seed: source.events.slice(0, cut),
+                    seed,
                     inheritedEventCount: cut,
                     meta: {
                         ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
@@ -393,6 +409,7 @@ export class SessionCommandController {
      */
     async updateQueue(request) {
         if (request.action.kind === 'edit') {
+            // oxlint-disable-next-line typescript/no-unnecessary-condition -- Remote callers can submit untyped JSON.
             if (request.action.content.some(block => block.type !== 'text')) {
                 throw new RemoteError('session/attachment-invalid', 'queue edits accept text content only', { reason: 'QUEUE_EDIT_NON_TEXT' });
             }
@@ -481,6 +498,9 @@ export class SessionCommandController {
     rejectCreation(sessionId, error) {
         if (remoteErrorOf(error) !== undefined)
             throw error;
+        if (error instanceof Error && error.name === 'SessionAlreadyOwnedError') {
+            throw new RemoteError('session/writer-held', error.message, { sessionId });
+        }
         if (error instanceof ApiSessionPresetConflict) {
             throw new RemoteError('agent-preset/conflict', error.message, {
                 sessionId: error.sessionId,
@@ -564,33 +584,52 @@ function imageBlockIn(content, match) {
             if (match(ref))
                 return ref;
         }
-        if (block.type === 'tool-result') {
-            const nested = imageBlockIn(block.content, match);
-            if (nested !== undefined)
-                return nested;
-        }
     }
     return undefined;
 }
+/** Read only first-party declared content fields; unknown event payloads stay opaque. */
 function imageInEvent(event, match) {
     const data = event.data;
-    const direct = imageBlockIn(data.content, match);
-    if (direct !== undefined)
-        return direct;
-    const message = imageBlockIn(data.message?.content, match);
-    if (message !== undefined)
-        return message;
-    for (const inserted of data.inserted ?? []) {
-        const found = imageBlockIn(inserted.content, match);
-        if (found !== undefined)
-            return found;
-    }
-    if (event.type === 'assistant/message' || event.type === 'assistant/attempt') {
-        for (const chunk of assistantStreamChunks(event.data.stream, 'block-end')) {
-            const found = imageBlockIn([chunk.block], match);
+    // First-party event payloads can be present without their producer plugin mounted.
+    const type = event.type;
+    switch (type) {
+        case 'user/message':
+        case 'tool/ptc-dispatch':
+            return imageBlockIn(data.content, match);
+        case 'system/message':
+        case 'developer/message':
+        case 'tool/result':
+        case 'team/message/queued':
+            return imageBlockIn(data.message?.content, match);
+        case 'agent/inbox/spliced': {
+            const messages = data.inserted;
+            if (!Array.isArray(messages))
+                return undefined;
+            for (const message of messages) {
+                if (typeof message !== 'object' || message === null || Array.isArray(message))
+                    continue;
+                const found = imageBlockIn(message.content, match);
+                if (found !== undefined)
+                    return found;
+            }
+            return undefined;
+        }
+        case 'compaction/summary':
+            return imageBlockIn(data.summary, match) ?? imageBlockIn(data.rawOutput, match);
+        case 'assistant/message': {
+            const found = imageBlockIn(data.message?.content, match);
             if (found !== undefined)
                 return found;
+            break;
         }
+        case 'assistant/attempt': break;
+        default: return undefined;
+    }
+    const assistant = event;
+    for (const chunk of assistantStreamChunks(assistant.data.stream, 'block-end')) {
+        const found = imageBlockIn([chunk.block], match);
+        if (found !== undefined)
+            return found;
     }
     return undefined;
 }

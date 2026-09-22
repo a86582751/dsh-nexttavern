@@ -18,6 +18,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { constants, createZstdCompress } from 'node:zlib';
 import { Session } from '@deepseek-ai/dsh-session';
 import { BlockAssembler, expandAssistantStream } from '@deepseek-ai/dsh-llm';
+import { SessionFormatError } from '@deepseek-ai/dsh-session-format';
 import { validateStoredEvents } from 'dsh-nexttavern-session-format/storage-contract';
 import { generationLogFilename, logSuffix, SessionLogScanner } from './format.js';
 import { publishNewFileWin32 } from './win32.js';
@@ -633,6 +634,7 @@ async function publishPreparedMigration(options, suffix, artifact, sourceIdentit
             throw new Error('staged session generation changed during verification');
         }
         await internals.barrier('before-source-check', 1);
+        await options.validateRelatedSources?.();
         const beforePublish = await internals.fs.stat(sourcePath);
         if (identity(beforePublish) !== identity(sourceIdentity)) {
             throw new JsonlGenerationSourceChangedError(sourcePath);
@@ -689,6 +691,7 @@ async function prepareMigration(options, internals) {
     if (artifact.header.version !== format.currentVersion) {
         throw new Error(`format migration returned v${artifact.header.version}, expected v${format.currentVersion}`);
     }
+    await options.validateRelatedSources?.();
     const sourceIdentity = source.identity;
     let publication;
     return {
@@ -724,3 +727,26 @@ export function createJsonlGenerationRuntime(overrides = {}) {
     };
 }
 const defaultGenerationRuntime = createJsonlGenerationRuntime();
+/**
+ * Read one stable source through the shared streaming parser without publishing a generation.
+ * @param path - selected source generation path.
+ * @param version - physical source version identified by its filename.
+ * @param compression - source encoding.
+ * @param format - codec/restore factory, independent of current-generation publication.
+ * @param signal - cancellation observed during source reads and decode yields.
+ * @returns decoded artifact and physical source identity for later revalidation.
+ * @throws SessionFormatError for physical decoding failures; storage, cancellation, and unsupported migration errors retain their category.
+ */
+export async function readDecodedJsonlSource(path, version, compression, format, signal) {
+    const source = await readStableJsonlFile(path, signal);
+    let artifact;
+    try {
+        artifact = await decodeStreamingMigration(source.bytes, compression, version, format, undefined, signal);
+    }
+    catch (error) {
+        if (signal?.aborted || error instanceof SessionFormatError)
+            throw error;
+        throw new SessionFormatError(String(error), { cause: error });
+    }
+    return { artifact, identity: source.identity };
+}

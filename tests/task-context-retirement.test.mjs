@@ -2,16 +2,35 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import { retireCompletedTaskContexts, internalTaskSeqs, taskStorySeqs, inlineTaskInstruction } from '../lib/core/tavern-tasks.js'
 import { selectedStoryHistory } from '../lib/memory/roleplay-memory-engine.js'
+import {taskHash} from '../lib/core/tavern-task-primitives.js'
 {
  const legacy=JSON.parse(readFileSync(new URL('./fixtures/task-context-legacy-v1.json',import.meta.url),'utf8'))
  assert.equal(inlineTaskInstruction(legacy.jobs),legacy.instruction,'frozen task prompt bytes stay compatible')
+ // Preserve the frozen business scenarios, but feed the current producer
+ // vocabulary. This fixture adaptation is not a runtime historical migrator.
+ for(const scenario of legacy.scenarios) {
+   for(const event of scenario.input.events) {
+     const source=event.data?.source
+     if(source?.kind==='plugin'){source.kind=source.plugin;delete source.plugin}
+     const message=event.type==='tool/result'?event.data?.message:null
+     if(message){
+       message.role='tool';message.source.kind='tool';message.toolCallId=message.source.callId
+       if(message.content[0]?.type==='tool-result')message.content=message.content[0].content
+     }
+   }
+   for(const receipt of scenario.receipts){
+     const source=receipt.data.source
+     source.kind=source.plugin;delete source.plugin
+     source.sourceSha256=taskHash(receipt.options.sourceEventSeqs.map(seq=>scenario.input.events.find(e=>e.seq===seq)))
+   }
+ }
  for(const scenario of legacy.scenarios) {
    const session=structuredClone(scenario.input),raw=JSON.stringify(session.events),receipts=[]
    session.append=(type,data,options)=>{const {id,...stableData}=data;receipts.push({type,data:stableData,options})}
    assert.deepEqual([...taskStorySeqs(session)],scenario.storySeqs)
    assert.deepEqual([...internalTaskSeqs(session)],scenario.internalSeqs)
    assert.equal(retireCompletedTaskContexts(session,scenario.currentTurn),scenario.retired)
-   // Compare historical business receipts under the alpha.6 wire field names.
+   // Compare historical business receipts under the current wire field names.
    // This test-only normalization is not an old-session migration path.
    const expected=structuredClone(scenario.receipts)
    for(const receipt of expected) {
@@ -38,13 +57,13 @@ s.append=(type,data,options={})=>{
  return e
 }
 const add=(type,data,visible=true)=>s.append(type,data,visible?{surfaceOp:'append'}:{})
-const phase=(stage,extras={})=>add('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage,...extras},content:[{type:'text',text:'full maintenance source'}]})
+const phase=(stage,extras={})=>add('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage,...extras},content:[{type:'text',text:'full maintenance source'}]})
 add('turn/start',{turn:1},false)
 const input=add('user/message',{id:'u',source:{kind:'user'},content:[{type:'text',text:'my action'}]})
 phase('prepare')
 const call=add('assistant/message',{turn:1,message:{id:'tool-msg',content:[{type:'tool-call',id:'call',name:'rp_task_submit',arguments:{result:'LARGE_RESULT'}}]}})
 add('tool/call',{turn:1,name:'rp_task_submit',id:'call'},false)
-const result=add('tool/result',{turn:1,step:1,message:{role:'tool',source:{kind:'tool',callId:'call'},content:[{type:'text',text:'LARGE_RESULT'}]}})
+const result=add('tool/result',{turn:1,step:1,message:{role:'tool',toolCallId:'call',source:{kind:'tool',callId:'call'},content:[{type:'text',text:'LARGE_RESULT'}]}})
 phase('story')
 const body=add('assistant/message',{turn:1,message:{id:'body',content:[{type:'text',text:'story prose'}]}})
 const proof=phase('after-story',{turn:1,storySeq:body.seq})
@@ -84,12 +103,12 @@ for(const scenario of [
   return e
  }}
  const put=(type,data,visible=true)=>t.append(type,data,visible?{surfaceOp:'append'}:{})
- const mark=stage=>put('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage},content:[]})
+ const mark=stage=>put('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage},content:[]})
  put('turn/start',{turn:1},false);mark(scenario.callPhase??'prepare')
  const a=put('assistant/message',{turn:1,message:{role:'assistant',content:scenario.ids.map(id=>({type:'tool-call',id,name:'rp_task_submit',arguments:'{}'}))}})
  if(scenario.resultPhase)mark(scenario.resultPhase)
  if(scenario.currentResult){put('turn/end',{turn:1,reason:{kind:'completed'}},false);put('turn/start',{turn:2},false);mark('prepare')}
- const rs=scenario.results.map(callId=>put('tool/result',{message:{role:'tool',source:{kind:'tool',callId},content:[]}}))
+ const rs=scenario.results.map(callId=>put('tool/result',{message:{role:'tool',toolCallId:callId,source:{kind:'tool',callId},content:[]}}))
  if(!scenario.currentResult){put('turn/end',{turn:1,reason:{kind:'completed'}},false);put('turn/start',{turn:2},false)}
  retireCompletedTaskContexts(t,2)
  assert.ok(t.surface.nodes.includes(a.seq),scenario.name+' call stays in its original context')
@@ -110,10 +129,10 @@ for(const variant of ['export','mixed-story','failed','unfinished','other-branch
  const story=put('assistant/message',{turn:1,message:{content:[{type:'text',text:'PRESERVE STORY'}]}})
  put('turn/end',{turn:1,reason:{kind:'completed'}},false)
  put('turn/start',{turn:2},false)
- const phase=put('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'management',jobKind:'card-export'},content:[{type:'text',text:'EXPORT SOURCE'.repeat(1000)}]})
+ const phase=put('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage:'management',jobKind:'card-export'},content:[{type:'text',text:'EXPORT SOURCE'.repeat(1000)}]})
  put('assistant/message',{turn:2,message:{content:[{type:'tool-call',id:'export-call',name:'rp_card_export_begin',arguments:'{}'}]}})
  put('tool/result',{turn:2,message:{role:'tool',source:{callId:'export-call'},content:[{type:'text',text:'EXPORT RAW'.repeat(1000)}]}})
- if(variant==='mixed-story')put('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story',storySeq:story.seq},content:[]})
+ if(variant==='mixed-story')put('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story',storySeq:story.seq},content:[]})
  if(variant!=='unfinished')put('turn/end',{turn:2,reason:{kind:variant==='failed'?'error':'completed'}},false)
  if(variant==='other-branch')t.surface.nodes=t.surface.nodes.filter(seq=>seq<phase.seq)
  const before=JSON.stringify(t.events),count=t.events.length,surface=[...t.surface.nodes]
@@ -138,17 +157,17 @@ for(const variant of ['active','failed-import','failed-turn','current','foreign-
  }}
  const put=(type,data,visible=true)=>t.append(type,data,visible?{surfaceOp:'append'}:{})
  put('turn/start',{turn:1},false)
- const notes=put('user/message',{source:{kind:'plugin',plugin:'roleplay-context',form:'director-notes'},content:[]})
+ const notes=put('user/message',{source:{kind: 'roleplay-context',form:'director-notes'},content:[]})
  const player=put('user/message',{source:{kind:'user'},content:[{type:'text',text:'import this card'}]})
  const begin=put('assistant/message',{turn:1,message:{content:[{type:'tool-call',id:'begin',name:'rp_card_import_begin',arguments:'{}'}]}})
  put('tool/result',{message:{source:{callId:'begin'},content:[{type:'text',text:'IMPORT MATERIAL'.repeat(1000)}]}})
- if(variant==='foreign-anchor')put('user/message',{source:{kind:'plugin',plugin:'roleplay-context',form:'state'},content:[]})
- if(variant==='story-before-finalize')put('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'story'},content:[]})
+ if(variant==='foreign-anchor')put('user/message',{source:{kind: 'roleplay-context',form:'state'},content:[]})
+ if(variant==='story-before-finalize')put('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage:'story'},content:[]})
  put('assistant/message',{turn:1,message:{content:[{type:'tool-call',id:'final',name:'rp_card_import_finalize',arguments:'{}'}]}})
  if(variant!=='unpaired')put('tool/result',{message:{source:{callId:'final'},content:[{type:'tool-result',toolCallId:'final',content:[{type:'text',text:JSON.stringify({ok:variant!=='failed-import',status:true,activatedAt:1000,normalizedSha256:'a'.repeat(64),importId:'card',coverage:1})}]}]}})
- const storyPhase=put('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'story'},content:[]})
+ const storyPhase=put('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage:'story'},content:[]})
  const opening=put('assistant/message',{turn:1,message:{content:[{type:'text',text:'AUTHOR ORIGINAL OPENING'}]}})
- put('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story',storySeq:opening.seq},content:[]})
+ put('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story',storySeq:opening.seq},content:[]})
  put('turn/end',{turn:1,reason:{kind:variant==='failed-turn'?'error':'completed'}},false)
  if(variant==='other-branch')t.surface.nodes=t.surface.nodes.filter(seq=>seq<begin.seq||seq>=storyPhase.seq)
  const raw=JSON.stringify(t.events),count=t.events.length,before=[...t.surface.nodes]

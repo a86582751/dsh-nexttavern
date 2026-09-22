@@ -1,60 +1,4 @@
 // Generated from runtime/alpha3/compat/llm-pi-ai/src/index.ts; edit the TypeScript source.
-/**
- * Generic pi-ai-backed LLM adapter plugin. One plugin instance owns a dict of
- * provider routes; a route naming an installed pi-ai provider inherits that
- * provider's endpoint, protocol, and model catalog as defaults, and a route
- * pi-ai does not ship is declared outright. Profile facts resolve per request
- * over the optional `llm-pi-ai` user-settings section and the optional
- * credential seam, so a changed key, endpoint, model, or knob reaches the next
- * request without a restart; a changed *route set* (or a route's
- * registration-captured retry policy) re-registers the same adapter instance
- * in place.
- *
- * ```yaml
- * - id: llm
- *   name: '@deepseek-ai/dsh-llm-pi-ai'
- *   config:
- *     providers:
- *       # Catalog route: everything but the credential comes from pi-ai.
- *       openai:
- *         apiKeyEnv: OPENAI_API_KEY
- *         retryPolicy:
- *           mode: normal
- *           maxRetries: 2
- *       # Catalog route with the catalog narrowed and one capacity corrected.
- *       anthropic:
- *         apiKeyEnv: ANTHROPIC_API_KEY
- *         models:
- *           - id: claude-sonnet-4-5
- *             contextWindow: 200000
- *       # Hand-declared route: pi-ai ships nothing under this key.
- *       acme-gateway:
- *         displayName: Acme Gateway
- *         apiKeyEnv: ACME_GATEWAY_API_KEY
- *         api: openai-completions
- *         baseURL: https://gateway.acme.example/v1
- *         # Reasoning dialect for a URL pi-ai cannot recognize.
- *         compat:
- *           thinkingFormat: deepseek
- *         models:
- *           - id: acme-large
- *             name: Acme Large
- *             contextWindow: 65536
- *             maxTokens: 4096
- *           - id: acme-think
- *             name: Acme Think
- *             contextWindow: 262144
- *             maxTokens: 32768
- *             # key = selectable level, value = wire spelling; only off may
- *             # leave the value empty (supported, send nothing).
- *             reasoningEfforts:
- *               off:
- *               high: high
- *               max: ultra
- * ```
- *
- * @module @deepseek-ai/dsh-llm-pi-ai
- */
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment';
 import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm';
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values';
@@ -96,14 +40,14 @@ function registrationFacts(profiles) {
  * @param profiles - the currently resolved provider profiles.
  * @returns the directory entries in catalog order, declared routes last.
  */
-function directoryEntries(profiles) {
+function directoryEntries(profiles, settingsNs) {
     const catalog = new Set(catalogProviderIds());
     const entries = new Map();
     const declare = (provider, displayName, error) => {
         entries.set(provider, {
             provider,
             displayName,
-            settingsNs: NS,
+            settingsNs,
             settingsPath: ['providers', provider],
             // Membership of the installed catalog, not of the settings document:
             // narrowing a shipped provider's models stores a profile too, and that
@@ -120,12 +64,22 @@ function directoryEntries(profiles) {
 }
 /** Register one generic pi-ai adapter for all configured provider routes. */
 export function apply(ctx, config) {
-    let current = () => config;
-    let acceptedRaw = config;
-    let acceptedProfiles = resolveProfiles(config.providers, 'deferred');
-    // Stored settings are a draft until both registries accept them. In particular,
-    // a rejected added route must not change an existing route's endpoint or key.
+    ctx.inject(['settings'], child => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)); });
+    const settingsNs = ctx.fiber.entry?.options.id ?? NS;
+    const readProviders = () => structuredClone(config.providers.get());
+    let acceptedRaw = readProviders();
+    let acceptedProfiles = resolveProfiles(acceptedRaw, 'deferred');
+    // Loader config is a draft until both registries accept the same generation.
+    // Requests and credential snapshots keep using the last accepted generation.
     const profiles = () => acceptedProfiles;
+    ctx.on('internal/config', function (_raw, next) {
+        const raw = next();
+        if (this !== ctx.fiber)
+            return raw;
+        const candidate = Config(raw);
+        assertServiceable({ providers: structuredClone(candidate.providers.get()) }, { providers: acceptedRaw });
+        return raw;
+    });
     const resolveApiKey = async (provider, profile) => {
         const ref = profile.apiKeyEnv;
         // Only a profile that names no credential at all defers to pi-ai's
@@ -174,7 +128,7 @@ export function apply(ctx, config) {
     let directory;
     let directoryFacts;
     const ensureDirectory = () => {
-        const entries = directoryEntries(profiles());
+        const entries = directoryEntries(profiles(), settingsNs);
         if (deepEqualJson(entries, directoryFacts))
             return;
         // Atomic replace, never dispose-then-register: a route another adapter
@@ -209,7 +163,7 @@ export function apply(ctx, config) {
     // except the stored credential and deployment-owned headers: the curated UI
     // accepts neither, so an already-configured route supplies both inside the
     // Host rather than widening the discovery request.
-    ctx.llm.registerModelDiscovery(NS, (request, signal) => discoverModels({ ...request, ...signal === undefined ? {} : { signal } }, () => storedDiscoveryProfile(request.provider)));
+    ctx.llm.registerModelDiscovery(settingsNs, (request, signal) => discoverModels({ ...request, ...signal === undefined ? {} : { signal } }, () => storedDiscoveryProfile(request.provider)));
     // Route effects bind to this apply fiber via the stable `ctx` reference,
     // even when a swap runs inside the scoped settings callback below. A bare
     // mount (zero routes) is the dormant posture: nothing registers until a
@@ -242,49 +196,26 @@ export function apply(ctx, config) {
         registeredFacts = facts;
     };
     ensureRegistrationFacts();
-    ctx.inject(['settings'], (settingsCtx) => {
-        let registering = true;
-        settingsCtx.settings.installSection(ctx, NS, Config, config, {
-            validate: (value) => {
-                // Stored catalog drift must not prevent registration of the repair UI.
-                if (registering) {
-                    resolveProfiles(value.providers, 'deferred');
-                }
-                else {
-                    assertServiceable(value, current());
-                }
-            },
-            setSource: (source) => {
-                current = source;
-            },
-            onChange: () => {
-                const raw = current();
-                if (raw === acceptedRaw)
-                    return;
-                const previous = acceptedProfiles;
-                const next = resolveProfiles(raw.providers, 'deferred');
-                // Both native registry replacements are synchronous. Directory changes
-                // emit no event; route replacement publishes the completed generation.
-                // Expose the candidate only while its metadata is being validated.
-                acceptedProfiles = next;
-                try {
-                    ensureDirectory();
-                    ensureRegistrationFacts();
-                    acceptedRaw = raw;
-                }
-                catch (error) {
-                    acceptedProfiles = previous;
-                    // Restore the directory after a refused route candidate. The route
-                    // handle normally rejected before mutation; also restore it if a
-                    // synchronous observer threw after the native publication point.
-                    ensureDirectory();
-                    registration?.replace([...previous.keys()]);
-                    registeredFacts = registrationFacts(previous);
-                    ctx.logger.error('llm-pi-ai: keeping the previous configuration after a refused registry update');
-                    ctx.logger.error(error);
-                }
-            },
-        });
-        registering = false;
+    ctx.on('loader/volatile-update', () => {
+        const raw = readProviders();
+        if (deepEqualJson(raw, acceptedRaw))
+            return;
+        const previous = acceptedProfiles;
+        try {
+            acceptedProfiles = resolveProfiles(raw, 'deferred');
+            ensureDirectory();
+            ensureRegistrationFacts();
+            acceptedRaw = raw;
+        }
+        catch (error) {
+            acceptedProfiles = previous;
+            // Directory replacement is silent; route publication is the commit point.
+            // Restore both if a route collision or a synchronous observer rejects it.
+            ensureDirectory();
+            registration?.replace([...previous.keys()]);
+            registeredFacts = registrationFacts(previous);
+            ctx.logger.error('llm-pi-ai: keeping the previous configuration after a refused registry update');
+            ctx.logger.error(error);
+        }
     });
 }

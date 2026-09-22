@@ -18,13 +18,13 @@ function fixture(id:string){const events:TaskEvent[]=[],surface={nodes:[] as num
  },deriveMessages(){return surface.nodes.map(seq=>{const e=events[seq]!;return e.type==='user/message'?e.data:e.data?.message})}}}
 const create=(id:string)=>native?native.Session.create(id):fixture(id)
 const model={kind:'model',provider:'fixture',model:'fixture'}
-const toolResult=(id:string,error=false)=>({turn:1,step:2,message:{id:'result-'+id,role:'tool',source:{kind:'tool',callId:id},isError:error,content:[{type:'tool-result',toolCallId:id,content:[{type:'text',text:error?'INITIAL_VALIDATION_ERROR':'{"ok":true}'}]}]}})
+const toolResult=(id:string,error=false)=>({turn:1,step:2,message:{id:'result-'+id,role:'tool',toolCallId:id,source:{kind:'tool',callId:id},isError:error,content:[{type:'text',text:error?'INITIAL_VALIDATION_ERROR':'{"ok":true}'}]}})
 for(const variant of ['saved','deferred','unproven-deferred','partial','wrong-owner','wrong-source','wrong-generation','wrong-hash','failed-note','early-note','reread','hidden-note','mixed']){
  const s=fixture('coarse-checkpoint-'+variant),owner=s.id
  const env={schemaVersion:1,owner,sourceId:'novel',textSha256:'a'.repeat(64),generation:'g1',packetIds:['p1','p2']}
  const call=(id:string,action:string,proof:unknown,failed=false,visible=true)=>{
   const message=s.append('assistant/message',{turn:1,message:{content:[{type:'tool-call',id,name:'rp_source_research',arguments:JSON.stringify({action,source_id:'novel'})},...(variant==='mixed'&&action==='query'?[{type:'text',text:'KEEP_UNRELATED_TEXT'}]:[])]}},{surfaceOp:'append'})
-  const result=toolResult(id,failed);result.message.content[0]!.content[0]!.text=JSON.stringify(proof)
+  const result=toolResult(id,failed);result.message.content[0]!.text=JSON.stringify(proof)
   const output=s.append('tool/result',result,visible?{surfaceOp:'append'}:undefined)
   return {message,output}
  }
@@ -34,7 +34,7 @@ for(const variant of ['saved','deferred','unproven-deferred','partial','wrong-ow
   ...(variant==='wrong-hash'?{textSha256:'b'.repeat(64)}:{})}},variant==='failed-note',variant!=='hidden-note')
  if(variant==='early-note')note()
  const read=call('read','query',{sourceId:'novel',researchDelivery:env,text:'LONG_ORIGINAL_EVIDENCE'})
- const deferred=['deferred','unproven-deferred'].includes(variant)?s.append('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'coarse-research-evidence',...env,...(variant==='unproven-deferred'?{packetIds:['foreign-packet']}: {})},content:[{type:'text',text:'LARGE_DEFERRED_ORIGINAL'.repeat(3000)}]},{surfaceOp:'append'}):null
+ const deferred=['deferred','unproven-deferred'].includes(variant)?s.append('user/message',{source:{kind: 'roleplay-tasks',form:'coarse-research-evidence',...env,...(variant==='unproven-deferred'?{packetIds:['foreign-packet']}: {})},content:[{type:'text',text:'LARGE_DEFERRED_ORIGINAL'.repeat(3000)}]},{surfaceOp:'append'}):null
  if(variant!=='early-note')note()
  const reread=variant==='reread'?call('reread','read',{sourceId:'novel',researchDelivery:env,text:'KEEP_EXPLICIT_REREAD'}):null
  const before=JSON.stringify(s.events),count=s.events.length,retired=retireCoarseResearchReads(s,owner)
@@ -71,7 +71,7 @@ for(const variant of ['active','wrong-id','wrong-hash','failed','unseen-proof','
  if(variant==='early-phase')phase()
  for(const [name,id,proof] of [['rp_card_import_begin','begin',{ok:true,importId:'i',normalizedSha256:'a'.repeat(64)}],['rp_card_import_finalize','final',{ok:true,importId:variant==='wrong-id'?'other':'i',normalizedSha256:(variant==='wrong-hash'?'b':'a').repeat(64),activatedAt:123,coverage:1}]] as const){
   add('assistant/message',{turn:1,message:{content:[{type:'tool-call',id,name,arguments:'{}'}]}},variant!=='unseen-proof')
-  const result=toolResult(id,variant==='failed'&&id==='final');result.message.content[0]!.content[0]!.text=JSON.stringify(proof);add('tool/result',result,variant!=='unseen-proof')
+  const result=toolResult(id,variant==='failed'&&id==='final');result.message.content[0]!.text=JSON.stringify(proof);add('tool/result',result,variant!=='unseen-proof')
  }
  if(!['early-phase','no-phase'].includes(variant))phase()
  const opening=add('assistant/message',{turn:1,message:{content:[{type:'text',text:'The ship arrives.'}]}})
@@ -111,7 +111,7 @@ try {
   const call=(name:string,id:string,proof:unknown)=>{
    add('assistant/message',{turn:1,message:{content:[{type:'tool-call',id,name,arguments:'{}'}]}})
    add('tool/call',{turn:1,callId:id,name},false)
-   const result=toolResult(id);result.message.content[0]!.content[0]!.text=JSON.stringify(proof);return add('tool/result',result)
+   const result=toolResult(id);result.message.content[0]!.text=JSON.stringify(proof);return add('tool/result',result)
   }
   call('rp_card_draft_check','begin',{ok:true,mode:'authoring'})
   call('run_code','research',{text:'OLD_RESEARCH_AND_DRAFT'.repeat(10000)})
@@ -135,7 +135,7 @@ for(const variant of ['active','wrong-hash','pending']){
  for(const [name,id,proof] of [['rp_card_import_begin','begin',{ok:true,importId:'i'}],['rp_card_import_chunk','chunk',{text:'IMPORT_PAYLOAD_ONLY'.repeat(2000)}],['rp_card_import_finalize','final',{ok:true,importId:'i',activatedAt:123,coverage:1,normalizedSha256:'a'.repeat(64)}]] as const){
   add('assistant/message',{turn:1,message:{content:[{type:'tool-call',id,name,arguments:'{}'}]}})
   if(variant==='pending'&&id==='final')break
-  const result=toolResult(id);result.message.content[0]!.content[0]!.text=JSON.stringify(proof);add('tool/result',result)
+  const result=toolResult(id);result.message.content[0]!.text=JSON.stringify(proof);add('tool/result',result)
  }
  const raw=JSON.stringify(s.events),length=s.events.length
  const retired=context.retireCompletedTaskContexts(s,1,{importId:'i',normalizedSha256:(variant==='wrong-hash'?'b':'a').repeat(64),opening:'EXACT_AUTHOR_OPENING'})
@@ -147,7 +147,7 @@ for(const variant of ['activated','active-current','coarse-current','wrong-curre
  const call=(name:string,id:string,proof:unknown,error=false)=>{
   add('assistant/message',{turn:1,message:{role:'assistant',content:[{type:'reasoning',text:'private reasoning'},{type:'tool-call',id,name,arguments:'{}'}]}})
   add('tool/call',{turn:1,name,callId:id},false)
-  const result=toolResult(id,error);result.message.content[0]!.content[0]!.text=JSON.stringify(proof);return add('tool/result',result)
+  const result=toolResult(id,error);result.message.content[0]!.text=JSON.stringify(proof);return add('tool/result',result)
  }
  add('turn/start',{turn:1},false)
  const player=add('user/message',{role:'user',source:{kind:'user'},content:[{type:'text',text:'Keep the player preferences.'}]})
@@ -271,7 +271,7 @@ for(const variant of ['used','just-returned','same-turn','body-not-completed','n
  for(const [i,name] of tools.entries()){
   add('tool/call',{turn:1,step:2,callId:'read-'+i,name,arguments:'{}'},false)
   if(variant==='missing-result'&&i===tools.length-1)continue
-  const result=toolResult('read-'+i);result.message.content[0]!.content[0]!.text='READ_EVIDENCE_ONLY '.repeat(2500);add('tool/result',result)
+  const result=toolResult('read-'+i);result.message.content[0]!.text='READ_EVIDENCE_ONLY '.repeat(2500);add('tool/result',result)
  }
  if(!['just-returned','proof-before-read'].includes(variant)){body=story();if(variant!=='no-proof')prove(body)}
  if(variant!=='just-returned')add('turn/end',{turn:1,reason:{kind:variant==='body-not-completed'?'failed':'completed'}},false)

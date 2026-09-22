@@ -17,11 +17,7 @@ declare function require(name: '@deepseek-ai/dsh-client-ui-primitives'): {
   }>
 }
 type ActionDependencies = Parameters<typeof createRoleplayActions>[0]
-type ReaderDependencies = Parameters<typeof createReaderView>[0]
-type ActionSession = NonNullable<ReturnType<NonNullable<ActionDependencies['sessionsService']['binding']>>>['session']
-type ReaderSession = NonNullable<NonNullable<ReturnType<NonNullable<NonNullable<ReaderDependencies['sessionsService']>['binding']>>>['session']>
-interface SessionService extends Omit<ActionDependencies['sessionsService'], 'binding' | 'list'> {
-  binding?(id: string | null): { session: ActionSession & ReaderSession & { open?(): unknown } } | null | undefined
+interface SessionService extends Omit<ActionDependencies['sessionsService'], 'list'> {
   list?: {
     getSnapshot?(): SessionList & {
       byId?: Record<string, SessionSummary & {
@@ -72,7 +68,8 @@ interface Services {
   'workspaces': ActionDependencies['workspacesService'];
   'remote.session': RemoteSession | null;
   'remote.commands': RemoteCommands | undefined;
-  'betterSidebar': unknown
+  'uiSession': {adapter: {current: {getSnapshot(): {key?: string}; subscribe(listener: () => void): () => void}}};
+  'uiWorkspace': {openSession(id: string): void}
 }
 interface ClientContext {
   get<K extends keyof Services>(name: K): Services[K];
@@ -122,7 +119,7 @@ export {
 // 变更：操作按钮从会话头部移到消息操作行（与复制/反馈同列），含重新生成
 // 版本翻页（k/N）；角色扮演面板由原生 sidebar slots 统一管理。
 
-export const inject = ['slots', 'remote.commands', 'remote.session', 'sessions', 'workspaces']
+export const inject = ['slots', 'remote.commands', 'remote.session', 'sessions', 'workspaces', 'uiSession', 'uiWorkspace']
 const DSH_ROLEPLAY_UI_PATCH = 'dsh-roleplay-ui-bundle-v2'
 
 const IMMERSIVE_KEY = 'dsh-roleplay-ui.immersive'
@@ -130,10 +127,8 @@ const IMMERSIVE_KEY = 'dsh-roleplay-ui.immersive'
 export function apply(ctx: ClientContext) {
   const React = require('react')
   const slots = ctx.get('slots')
-  let betterSidebar: unknown = null
-  try {
-    betterSidebar = ctx.get('betterSidebar')
-  } catch { }
+  const mainSelection = ctx.get('uiSession').adapter.current
+  const navigation = ctx.get('uiWorkspace')
   const sessionsService = ctx.get('sessions')
   const workspacesService = ctx.get('workspaces')
   let remoteSession: RemoteSession | null = null
@@ -153,60 +148,11 @@ export function apply(ctx: ClientContext) {
     'sidebar.workspaces.presentation',
     () => slots.register({ name: 'sidebar.workspaces.presentation', id: 'tavern-conversation-presentation' }, TavernWorkspacePresentation))
 
-  // Host versions expose the active session through slightly different
-  // snapshot shapes. Keep the fallback permissive and side-effect free.
-  const readSessionId = (value: unknown, depth = 0): string | null => {
-    if (!value || depth > 3) return null
-    if (typeof value === 'string') return value.trim() || null
-    if (typeof value !== 'object') return null
-    const record = value as Record<string, unknown>
-    for (const key of ['sessionId', 'session_id', 'conversationId']) {
-      if (typeof record[key] === 'string' && record[key].trim()) return record[key].trim()
-    }
-    for (const key of ['current', 'active', 'session', 'state', 'snapshot']) {
-      const nested = readSessionId(record[key], depth + 1)
-      if (nested) return nested
-    }
-    return null
-  }
-  const readServiceSnapshot = (value: unknown): unknown => {
-    const service = value as Record<string, unknown> | null
-    if (!service) return null
-    for (const key of ['getSnapshot', 'getCurrent', 'getActive']) {
-      if (typeof service[key] === 'function') {
-        try {
-          const value = service[key]()
-          if (value !== undefined && value !== null) return value
-        } catch { }
-      }
-    }
-    for (const key of ['current', 'active', 'session', 'snapshot']) {
-      if (service[key] !== undefined && service[key] !== null) return service[key]
-    }
-    return null
-  }
-  const resolveActiveSessionId = () => {
-    try {
-      const current = sessionsService?.list?.getSnapshot?.()?.current
-      if (typeof current === 'string' && current.trim()) return current.trim()
-    } catch { }
-    const sidebarId = readSessionId(readServiceSnapshot(betterSidebar))
-    if (sidebarId) return sidebarId
-    const remoteId = readSessionId(readServiceSnapshot(remoteSession))
-    if (remoteId) return remoteId
-    if (typeof location !== 'undefined') {
-      try {
-        const queryId = new URLSearchParams(location.search).get('sessionId')
-        if (queryId?.trim()) return queryId.trim()
-      } catch { }
-    }
-    if (typeof document !== 'undefined') {
-      const el = document.querySelector('[data-session-id], [data-conversation-session-id]')
-      const domId = el?.getAttribute('data-session-id') ?? el?.getAttribute('data-conversation-session-id')
-      if (domId?.trim()) return domId.trim()
-    }
-    return null
-  }
+  // The main-view owner publishes explicit absence when archived or released.
+  // Secondary SessionProvider views keep their own scoped props.
+  const resolveActiveSessionId = () => mainSelection.getSnapshot().key ?? null
+  const useMainSessionId = () => React.useSyncExternalStore(
+    notify => mainSelection.subscribe(notify), resolveActiveSessionId, () => null)
   // The roleplay UI is mounted at the application level, while agent preset
   // identity is already available in the native session-list projection. Do
   // not probe roleplay REST routes (or wake a session) merely because the user
@@ -293,6 +239,7 @@ export function apply(ctx: ClientContext) {
     {
       sessionsService,
       workspacesService,
+      openSession: id => navigation.openSession(id),
       remoteSession,
       resolveActiveSessionId,
       isRoleplaySession,
@@ -343,6 +290,10 @@ export function apply(ctx: ClientContext) {
     })
 
   if (slots !== undefined) {
+    slots.inject('conversation.chat.roleplay-failure-actions', () => slots.register({
+      name: 'conversation.chat.roleplay-failure-actions', id: 'roleplay-failure-actions', order: 30,
+      inject: sessionId => ({sessionId}),
+    }, AssistantActions))
     slots.inject(
       'conversation.chat.assistant-actions',
       () =>
@@ -590,7 +541,7 @@ export function apply(ctx: ClientContext) {
         body)
     }
     function ManagerEntry({ useSessions }: SidebarProps) {
-      const currentSessionId = useSessions?.(state => state.current)
+      const currentSessionId = useMainSessionId()
       React.useEffect(
         () => {
           if (managerState.open && managerState.sessionId !== currentSessionId) {
@@ -685,7 +636,7 @@ export function apply(ctx: ClientContext) {
       { label, side: props?.wide === false ? 'right' : 'bottom', delayMs: 500 },
       button)
     const managerButton = (props: SidebarProps) => {
-      const sessionId = props?.useSessions?.(state => state.current);
+      const sessionId = useMainSessionId();
       return sidebarTooltip(
         props,
         '酒馆管理',
@@ -702,7 +653,7 @@ export function apply(ctx: ClientContext) {
           props?.wide === false ? null : React.createElement('span', { className: 'dsh-rp-nav-label' }, '酒馆管理')))
     }
     const statusModeButton = (props: SidebarProps) => {
-      const sessionId = props?.useSessions?.(state => state.current);
+      const sessionId = useMainSessionId();
       return sidebarTooltip(
         props,
         '切换状态栏模式',
@@ -718,7 +669,7 @@ export function apply(ctx: ClientContext) {
           sidebarIcon('status')))
     }
     const decisionButton = (props: SidebarProps) => {
-      const sessionId = props?.useSessions?.(state => state.current);
+      const sessionId = useMainSessionId();
       return sidebarTooltip(
         props,
         '显示或隐藏决策卡',
@@ -849,32 +800,19 @@ export function apply(ctx: ClientContext) {
       }, 'roleplay-ui: status overlay')
     }
 
-    // 初始同步 + 状态订阅：session list/remote session 提供活动会话来源，
-    // 因此先立即读取当前快照（否则 overlaySessionId 永远是 null、悬浮窗不出现），
-    // 再用 subscribeState（若有）跟踪会话切换。
+    // A released main view clears its overlays, even if a sidebar retains B.
     let lastSessionId: string | null = null
-    const onSidebarState = () => {
+    const onMainSelection = () => {
       const sid = resolveActiveSessionId()
-      // conversation.view / Reader 切换时宿主快照可能瞬时为空。保留最后一次
-      // 已确认会话；一次 null 绝不能卸载状态栏及其恢复徽标。
-      if (!sid) return
-      if (sid && sid !== lastSessionId) {
-        lastSessionId = sid
-        syncImmersive(sid)
-        overlaySessionId = sid
-        if (typeof overlayRender === 'function') overlayRender()
-      }
+      if (sid === lastSessionId) return
+      lastSessionId = sid
+      if (sid) syncImmersive(sid)
+      else document.body.classList.remove('rp-immersive')
+      overlaySessionId = sid
+      overlayRender?.()
     }
-    onSidebarState()
-    const sessionList = sessionsService?.list
-    if (sessionList && typeof sessionList.subscribe === 'function') {
-      ctx.effect(() => sessionList.subscribe(onSidebarState), 'roleplay-ui: active session watch')
-    }
-    const remoteSub = remoteSession && (typeof remoteSession.subscribeState === 'function' ? remoteSession.subscribeState : remoteSession.subscribe)
-    if (typeof remoteSub === 'function') {
-      ctx.effect(() => remoteSub.call(remoteSession, onSidebarState), 'roleplay-ui: remote session watch')
-    }
-    // The active session source is DSH sessions/remote.session. The optional
-    // legacy sidebar service is never required for lifecycle or state.
+    onMainSelection()
+    ctx.effect(() => mainSelection.subscribe(onMainSelection), 'roleplay-ui: main view watch')
+    ctx.effect(() => () => document.body.classList.remove('rp-immersive'), 'roleplay-ui: immersive state')
   }
 }

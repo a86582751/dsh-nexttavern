@@ -33,7 +33,6 @@
         "@deepseek-ai/dsh-client-ui-commands",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-modules",
-        "dsh-better-sidebar",
         "@deepseek-ai/dsh-client-ui-chat"
       ]
     }

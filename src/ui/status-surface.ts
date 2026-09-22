@@ -508,7 +508,7 @@ React,
                             {
                                 className: 'dsh-rp-status-html',
 
-                                ref: (element: HTMLDivElement | null) => {
+                                ref: (element: HTMLDivElement | null): void => {
                                     if (!element) return;
                                     const roots = Array.from(element.children).filter(child => !['STYLE', 'SCRIPT'].includes(child.tagName));
                                     for (const child of Array.from(element.children)) child.removeAttribute('data-dsh-status-fill-root');

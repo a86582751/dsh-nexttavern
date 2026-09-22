@@ -1,18 +1,4 @@
 // Generated from runtime/alpha3/compat/llm-pi-ai/src/config.ts; edit the TypeScript source.
-/**
- * Configuration schema and provider-profile validation for the pi-ai adapter.
- * Profiles are a dict keyed by provider route, so the composition base and a
- * user-settings layer merge per provider and the route set is structural.
- *
- * A route key is not required to name an installed pi-ai provider. When it does,
- * that provider's endpoint, protocol, display name, and model catalog are the
- * profile's defaults and the profile overrides them field by field; when it does
- * not, the profile is the whole provider declaration. Stored reads retain
- * catalog diagnostics beside serviceable models; writes validate every changed
- * provider before persistence. Self-contained profile constraints apply to both.
- *
- * @module dsh-llm-pi-ai/config
- */
 import z from '@deepseek-ai/schemastery';
 import { credentialRef } from '@deepseek-ai/dsh-credentials';
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout';
@@ -159,7 +145,7 @@ const profile = z.object({
 });
 /** Runtime schema for {@link Config}. */
 export const Config = z.object({
-    providers: z.dict(profile).default({}),
+    providers: z.dict(profile).default({}).volatile(),
 });
 /**
  * Reject new or changed provider profiles that cannot be served. Unchanged

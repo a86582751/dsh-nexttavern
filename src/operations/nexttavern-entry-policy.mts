@@ -1,5 +1,5 @@
 /** Shared by bundle expressions and the product entry; owns no global service. */
-import type {Context, Fiber} from '@deepseek-ai/cordis'
+import type {Context, Fiber, FiberState} from '@deepseek-ai/cordis'
 import type {Entry, EntryTree} from '@deepseek-ai/cordis-plugin-loader'
 import * as profileApi from '@deepseek-ai/dsh-app-boot'
 import {isDeepStrictEqual} from 'node:util'
@@ -10,14 +10,16 @@ export type ProfilePlan = ReturnType<typeof captureNextTavernProfilePlan>
 export interface ProductOwner {stop(): Promise<void>; reconcile(): Promise<void>}
 export interface CompositionState {
   plan: ProfilePlan
+  previousPlan?: ProfilePlan
+  applyHostUpdate?: () => unknown
   owner?: ProductOwner
   restoring: boolean
   applying: boolean
-  patches: string
+  patches: unknown
   nativeFibers: Set<Fiber>
-  queue: Promise<void>
 }
 const states = new WeakMap<EntryTree, CompositionState>()
+const FAILED_FIBER_STATE: FiberState.FAILED = 3
 
 export function loaderEntry(ctx: Context): Entry {
   const entry = ctx[Symbol.for('cordis.entry') as keyof Context] as Entry | undefined
@@ -26,12 +28,12 @@ export function loaderEntry(ctx: Context): Entry {
 }
 
 export function capture(ctx: Context, patches: unknown): ProfilePlan {
-  if (!ctx.profileContext) throw Error('NextTavern requires the alpha.6 profile context')
+  if (!ctx.profileContext) throw Error('NextTavern requires the alpha.7 profile context')
   const plan = captureNextTavernProfilePlan(ctx.profileContext, profileApi)
   // A file watcher or another writer may already have changed disk. Reject the
   // stale apply instead of combining that disk generation with these entries.
-  // The published app-boot artifact inlines an older Include which mutates
-  // inserted patch rows. Compare its resulting composition, never mistake
+  // Include passes inserted patch rows into Loader's mutable entry options.
+  // Compare their resulting composition, never mistake
   // those mutated rows for the product-free original configuration.
   if (!Array.isArray(patches) || !isDeepStrictEqual(plan.rows, profileApi.composeEntries([patches]))) {
     throw Error('NextTavern profile changed during composition; retry the profile update')
@@ -44,14 +46,29 @@ export function composition(ctx: Context): CompositionState {
   const patches = tree.ctx.fiber.entry?.options.config?.patches
   const previous = states.get(tree)
   if (previous?.applying) return previous
-  const fingerprint = JSON.stringify(patches)
-  if (previous && previous.patches === fingerprint) return previous
+  // Include shares inserted rows with mutable Loader options. Compare the
+  // effective composition: a later explicit patch still wins over a temporary
+  // native fallback written into an earlier inserted row during rollback.
+  const composed = Array.isArray(patches) ? profileApi.composeEntries([patches]) : undefined
+  if (previous && isDeepStrictEqual(previous.patches, composed)) return previous
   const plan = capture(ctx, patches)
-  const state = previous ?? {plan, restoring: false, applying: false, patches: fingerprint,
-    nativeFibers: new Set<Fiber>(), queue: Promise.resolve()}
+  const acceptedPlan = previous?.plan
+  const state = previous ?? {plan, restoring: false, applying: false, patches: plan.rows,
+    nativeFibers: new Set<Fiber>()}
   state.plan = plan
-  state.patches = fingerprint
+  state.patches = plan.rows
   states.set(tree, state)
+  // A failed product has no live update hook. Provider-only edits leave the
+  // product row's config equal, so Include would otherwise keep its FAILED
+  // fiber forever. A new effective generation retries that exact native fiber
+  // once; its lifecycle/error stays visible to Loader and manager admission.
+  const product = tree.store[PRODUCT_ENTRY]
+  if (state.restoring && !state.owner && productWanted(ctx, state)
+    && product?.fiber?.state === FAILED_FIBER_STATE) {
+    state.previousPlan = acceptedPlan
+    state.restoring = false
+    product.fiber.update(product.options.config, true)
+  }
   return state
 }
 

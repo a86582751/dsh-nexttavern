@@ -164,7 +164,7 @@ export class ClientSessions {
         this.rootCtx = rootCtx;
         this.manager = new SessionManager(remote);
         this.list = createSnapshotStore({
-            ids: [], byId: {}, phase: 'pending', subagentsByParent: {}, jobsBySession: {},
+            ids: [], byId: {}, phase: 'pending', projectionsBySession: {},
         });
         const disposeManagerProjection = this.manager.subscribe(() => { this.projectList(); });
         rootCtx.effect(() => async () => {
@@ -235,25 +235,17 @@ export class ClientSessions {
      * Resolve an already discovered direct-parent address without opening it.
      * Feature plugins use this to avoid Agent-bound RPCs in persisted child views.
      * @param id - possible addressed child id.
-     * @returns The retained address, when present.
+     * @returns A retained or loaded-catalog address, without retaining a new selection or scope.
      */
     subagentAddress(id) {
         return this.manager.subagentAddress(id);
     }
     /**
-     * Inform the Session Controller whether a catalog menu is consuming membership updates.
-     * @param parentSessionId - selected parent.
-     * @param open - menu state.
+     * Load all Session projections once per connection; retry an unsuccessful initial read.
+     * @param sessionId - Session to inspect without opening its conversation.
      */
-    setSubagentCatalogOpen(parentSessionId, open) {
-        this.manager.setSubagentCatalogOpen(parentSessionId, open);
-    }
-    /**
-     * Refresh one direct-child catalog.
-     * @param parentSessionId - catalog owner.
-     */
-    refreshSubagents(parentSessionId) {
-        return this.manager.refreshSubagents(parentSessionId);
+    refreshProjections(sessionId) {
+        return this.manager.refreshProjections(sessionId);
     }
     /**
      * Refresh the real Session baseline, reusing an in-flight pull.
@@ -333,15 +325,14 @@ export class ClientSessions {
         return result.value.sessionId;
     }
     /**
-     * Fork a Session from a completed-turn prefix of the source and publish
-     * the child in the catalog before resolving.
-     * @param opts - source session id, the optional event seq anchoring the
-     *   cut (the boundary is the first turn/end at or after it; an in-log
-     *   anchor in an open turn is unavailable rather than clipped backward),
-     *   and whether to increment an inherited durable title before resolving.
-     *   A fractional anchor floors to a real event seq: the frozen nodes of an
-     *   interrupted turn carry flow-ordering seqs between two events, and the
-     *   wire takes integers only.
+     * Fork a session from an exact inclusive prefix of the source (same
+     * synchronous-addressability guarantee as {@link ClientSessions.create}:
+     * on resolution the child is catalogued and may be explicitly retained).
+     * @param opts - source session id, the optional exact inclusive boundary
+     *   seq (a real event seq the caller already knows; a cut inside an open
+     *   turn is balanced Host-side with synthetic closers, and omission selects
+     *   the latest completed-turn prefix), and whether to increment an
+     *   inherited durable title before resolving.
      * @returns the child session id.
      * @throws {SessionForkError} with the source id.
      * @throws {Error} when a requested child-title rename fails after creation.
@@ -352,26 +343,16 @@ export class ClientSessions {
             : undefined;
         const result = await this.manager.fork({
             sessionId: opts.sessionId,
-            // Flooring lands inside the anchor's own turn (every turn opens with a
-            // turn/start), so the host's first-turn/end-at-or-after cut still ends
-            // on that turn — never clipped back to the previous one.
-            ...(opts.atSeq === undefined ? {} : { atSeq: SessionSeq(Math.floor(opts.atSeq)) }),
+            ...(opts.atSeq === undefined ? {} : { atSeq: SessionSeq(opts.atSeq) }),
         });
         if (!result.ok)
             throw new SessionForkError(result.error, opts.sessionId);
         this.projectList();
         const childId = result.value.sessionId;
         if (sourceTitle !== undefined) {
-            const reference = this.retain(childId, { source: 'controllerOperation' });
-            try {
-                await reference.ready;
-                const renamed = await reference.binding.session.rename(increasedForkTitle(sourceTitle));
-                if (!renamed.ok)
-                    throw new Error(`fork child rename failed: ${renamed.error.code}: ${renamed.error.message}`);
-            }
-            finally {
-                reference.release();
-            }
+            const renamed = await this.manager.rename(childId, increasedForkTitle(sourceTitle));
+            if (!renamed.ok)
+                throw new Error(`fork child rename failed: ${renamed.error.code}: ${renamed.error.message}`);
         }
         return childId;
     }
@@ -451,8 +432,9 @@ export class ClientSessions {
             else
                 this.publishRetention(id);
         });
-        if (this.list.getSnapshot().byId[id] === undefined)
+        if (this.list.getSnapshot().byId[id] === undefined && this.manager.subagentAddress(id) !== undefined) {
             this.projectList();
+        }
         this.publishRetention(id);
         return reference;
     }
@@ -508,7 +490,7 @@ export class ClientSessions {
     /** Project the manager's list snapshot into the store (title derivation is display-only). */
     projectList() {
         const previousById = this.list.getSnapshot().byId;
-        const { items, phase, subagentsByParent, jobsBySession, } = this.manager.getListSnapshot();
+        const { items, phase, projectionsBySession, } = this.manager.getListSnapshot();
         const ids = [];
         const byId = {};
         for (const entry of items) {
@@ -529,10 +511,8 @@ export class ClientSessions {
                 ...(entry.origin !== undefined ? { origin: entry.origin } : {}),
             };
         }
-        for (const [parentId, catalog] of Object.entries(subagentsByParent)) {
-            for (const child of catalog.entries) {
-                if (child.kind !== 'child')
-                    continue;
+        for (const [parentId, projection] of Object.entries(projectionsBySession)) {
+            for (const child of projection.values.subagentCatalog ?? []) {
                 const childId = child.id;
                 const summary = byId[childId];
                 const projectionValues = summary?.projectionValues ?? this.manager.projectionValues(childId);
@@ -542,7 +522,7 @@ export class ClientSessions {
                 if (summary === undefined) {
                     byId[childId] = {
                         id: childId, displayTitle, parentId: parentId,
-                        origin: 'subagent', running: child.activity === 'running', blank: false, updatedAt: 0,
+                        origin: 'subagent', running: this.scopes.get(childId)?.session.getSnapshot().running ?? false, blank: false, updatedAt: 0,
                         retainedBy: this.retentionSnapshot(childId).retainedBy,
                         ...(projectionValues === undefined ? {} : { projectionValues }),
                         ...(title === undefined ? {} : { title }),
@@ -560,18 +540,26 @@ export class ClientSessions {
         for (const [id, record] of this.scopes) {
             if (byId[id] !== undefined)
                 continue;
+            const address = this.manager.subagentAddress(id);
+            if (address === undefined)
+                continue;
             const previous = previousById[id];
             const snapshot = record.session.getSnapshot();
-            const address = this.manager.subagentAddress(id);
+            const projectionValues = this.manager.projectionValues(id);
+            const projectedTitle = projectionValues?.title;
+            const title = typeof projectedTitle === 'string' && projectedTitle !== '' ? projectedTitle : previous?.title;
             byId[id] = {
                 ...(previous ?? { id, displayTitle: id, updatedAt: 0 }),
                 running: snapshot.running,
                 retainedBy: record.retention.retainedBy,
                 blank: snapshot.blank,
-                ...(address === undefined ? {} : { parentId: address.parentSessionId, origin: 'subagent' }),
+                parentId: address.parentSessionId,
+                origin: 'subagent',
+                ...(projectionValues === undefined ? {} : { projectionValues }),
+                ...(title === undefined ? {} : { title, displayTitle: title }),
             };
         }
-        this.list.set({ ids, byId, phase, subagentsByParent, jobsBySession });
+        this.list.set({ ids, byId, phase, projectionsBySession });
     }
     startScopeDrop(id, record, disposeFiber = true, sessionDisposal = this.manager.drop(id, record.session)) {
         const drop = this.dropScope(record, disposeFiber, sessionDisposal);

@@ -7,9 +7,7 @@ export interface StateReply extends Record<string, unknown> {
   error?: unknown
 }
 export interface StateSessionService {
-  binding?(sessionId: string): {session?: {open?(): unknown | PromiseLike<unknown>}} | null | undefined
-  refresh?(): unknown | PromiseLike<unknown>
-  open?(sessionId: string): unknown
+  using<T>(sessionId: string, options: {source: 'nexttavernState'}, operation: () => T | Promise<T>): Promise<T>
 }
 interface StateStoreDependencies {
   sessionsService?: StateSessionService | null
@@ -66,20 +64,11 @@ export function createRoleplayStateStore({sessionsService,isRoleplaySession,fetc
       if (response.ok && payload?.ok) return true
     } catch {}
 
-    // Compatibility fallback for profiles where the Host bridge has not yet
-    // been installed. Opening the client binding is idempotent and never
-    // creates or submits a Session.
-    let binding = sessionsService?.binding?.(sessionId)
-    if (!binding) {
-      try { await sessionsService?.refresh?.() } catch {}
-      binding = sessionsService?.binding?.(sessionId)
-    }
-    if (!binding) return false
-    try { sessionsService?.open?.(sessionId) } catch {}
+    // A transient native acquisition opens history without changing the main
+    // view. The Controller releases it on success and on opening failure.
     try {
-      if (typeof binding.session?.open === 'function') await binding.session.open()
-    } catch {}
-    return true
+      return await sessionsService?.using(sessionId, {source: 'nexttavernState'}, () => true) ?? false
+    } catch { return false }
   }
   const fetchState = async (sessionId: string, force = false): Promise<StateReply> => {
     if (!isRoleplaySession(sessionId)) return { ok: true, sessionId, preset: 'other' }

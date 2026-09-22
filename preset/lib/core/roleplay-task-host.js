@@ -44,7 +44,7 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             const e = events[index];
             if (e.type === 'turn/start' || e.type === 'turn/end')
                 return null;
-            if (e.type === 'user/message' && e.data?.source?.plugin === 'roleplay-tasks' && e.data.source.form === 'phase')
+            if (e.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks' && e.data.source.form === 'phase')
                 return e.data.source;
         }
         return null;

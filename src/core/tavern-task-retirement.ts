@@ -45,6 +45,8 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 const m = e.data?.message, id = m?.source?.callId;
                 if (!m || !id || !calls.has(id) || results.has(id))
                     return null;
+                if (m.role === 'tool' && (m.source?.kind !== 'tool' || m.toolCallId !== id))
+                    return null;
                 results.add(id);
                 if (calls.get(id) === 'rp_card_import_finalize') {
                     const wrapped = (m.content ?? []).filter(b => b.type === 'tool-result');
@@ -75,7 +77,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                     };
                 }
             }
-            else if (e?.type !== 'user/message' || e.data?.source?.kind !== 'plugin' || e.data.source.plugin !== 'roleplay-tasks'
+            else if (e?.type !== 'user/message' || e.data?.source?.kind !== 'roleplay-tasks'
                 || e.data.source.form !== 'phase'
                 || ['story', 'after-story'].includes(e.data.source.stage ?? ''))
                 return null;
@@ -112,7 +114,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             if (group)
                 bySeq.set(e.seq, group);
             const source = e.type === 'user/message' ? e.data?.source : null;
-            if (group && source?.kind === 'plugin' && source.plugin === 'roleplay-tasks') {
+            if (group && source?.kind === 'roleplay-tasks') {
                 if (['card-export', 'novel-export'].includes(source.jobKind ?? ''))
                     group.export = true;
                 if (source.form === 'phase' && ['story', 'after-story'].includes(source.stage ?? ''))
@@ -171,8 +173,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 continue;
             const receipt = {
                 schemaVersion: 1,
-                kind: 'plugin',
-                plugin: 'roleplay-tasks',
+                kind: 'roleplay-tasks',
                 form: 'management-receipt',
                 sessionId: session.id,
                 sourceTurn: candidate.turn,
@@ -242,7 +243,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                     continue;
             }
             if (e.type === 'user/message') {
-                if (source?.kind === 'plugin' && source.plugin === 'roleplay-tasks' && source.form === 'phase'
+                if (source?.kind === 'roleplay-tasks' && source.form === 'phase'
                     && ['after-story', 'prepare', 'management'].includes(source.stage ?? '')) {
                     flush();
                     group.push(seq);
@@ -396,8 +397,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 id: randomUUID(),
                 role: 'user',
                 source: {
-                    kind: 'plugin',
-                    plugin: 'roleplay-tasks',
+                    kind: 'roleplay-tasks',
                     form: 'maintenance-receipt',
                     schemaVersion: 1,
                     sessionId: session.id,
@@ -440,7 +440,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             if (turn !== undefined)
                 owners.set(e.seq, turn);
             const source = e.type === 'user/message' ? e.data?.source : undefined;
-            if (turn !== undefined && source?.kind === 'plugin' && source.plugin === 'roleplay-tasks'
+            if (turn !== undefined && source?.kind === 'roleplay-tasks'
                 && source.form === 'phase'
                 && source.stage === 'after-story'
                 && source.turn === turn
@@ -487,8 +487,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 id: randomUUID(),
                 role: 'user',
                 source: {
-                    kind: 'plugin',
-                    plugin: 'roleplay-tasks',
+                    kind: 'roleplay-tasks',
                     form: 'read-evidence-receipt',
                     schemaVersion: 1,
                     sessionId: session.id,

@@ -111,7 +111,7 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
       const event=events[index]!
       if(event.type==='turn/start'||event.type==='turn/end')break
       const source=event.type==='user/message'?event.data?.source:null
-      if(source?.kind==='plugin'&&source.plugin==='roleplay-tasks'&&source.form==='phase'){phase=source.stage;break}
+      if(source?.kind==='roleplay-tasks'&&source.form==='phase'){phase=source.stage;break}
     }
     if(!phase||phase==='story'||phase==='character-cast')return
     // The main writer may hand off a discovered defect after publishing prose.
@@ -187,7 +187,7 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
         if(decision?.kind!=='enter')return decision
         // Resumed preparations may contain last turn's injected context. Keep
         // only the original conversation input, never replay transient lore.
-        const originalMessages=preparation!.messages.filter(m=>m.source?.plugin!=='roleplay-context'&&m.source?.plugin!=='roleplay-tasks')
+        const originalMessages=preparation!.messages.filter(m=>m.source?.kind!=='roleplay-context'&&m.source?.kind!=='roleplay-tasks')
         const staged={...payload,messages:cloneRecord(originalMessages)}
         const hidden=await buildPhaseA(session,staged,st)
         retireRoleplayContexts(session,payload.turn,hidden)
@@ -202,7 +202,7 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
         const phaseSnapshot=st.snapshots.get(Number(payload.turn))??st.snapshot
         const messages=phaseSnapshot?.contextWindow?.rollover
           ?retainRoleplayWindowContinuity(session,decision.messages,storyWindowSettings(session).tail):decision.messages
-        const remaining=messages.filter(m=>!originalIds.has(m.id)&&m.source?.plugin!=='roleplay-tasks'&&m.source?.plugin!=='roleplay-context')
+        const remaining=messages.filter(m=>!originalIds.has(m.id)&&m.source?.kind!=='roleplay-tasks'&&m.source?.kind!=='roleplay-context')
         return {...decision,messages:[restore,...hidden,...originalMessages,...remaining]}
       } catch(error) {
         st.lastPreparedTurn=-1

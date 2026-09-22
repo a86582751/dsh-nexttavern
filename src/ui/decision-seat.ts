@@ -117,9 +117,9 @@ export function createDecisionSeat({ React, createRoot, resolveActiveSessionId, 
 
                         onLostPointerCapture: () => { dragRef.current = null; },
 
-                        onDoubleClick: e => { if (!(e.target as Element)?.closest?.('button,input')) moveTo({ x: 0, y: 0 }); },
+                        onDoubleClick: (e: ReactAPI.MouseEvent<HTMLDivElement>) => { if (!(e.target as Element)?.closest?.('button,input')) moveTo({ x: 0, y: 0 }); },
 
-                        onKeyDown: e => {
+                        onKeyDown: (e: ReactAPI.KeyboardEvent<HTMLDivElement>) => {
                             if (e.target !== e.currentTarget) return;
                             const deltas: Record<string,
                                  readonly [number,

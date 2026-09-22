@@ -41,7 +41,7 @@ export interface CheckpointMessage extends Record<string, unknown> {
   id: string
   role: string
   content: { type: 'text'; text: string }[]
-  source: { kind: string; plugin: string; compactionId: string; sourceCommandId?: unknown }
+  source: { kind: 'compact-checkpoint'; compactionId: string; sourceCommandId?: unknown }
 }
 export interface CompactionOptions<S extends CompactionSession> {
   config: CompactionSettings
@@ -136,8 +136,7 @@ export function durableCompactionArchives(session: CompactionSession) {
     const checkpoint = events[summarySeq + 1]
     const checkpointSeq = durableSeq(checkpoint?.seq)
     if (checkpoint?.type !== 'user/message' ||
-      checkpoint.data?.source?.kind !== 'plugin' ||
-      checkpoint.data?.source?.plugin !== 'compact' ||
+      checkpoint.data?.source?.kind !== 'compact-checkpoint' ||
       String(checkpoint.data?.source?.compactionId ?? '') !== compactionId ||
       typeof checkpoint.surfaceOp !== 'object' || checkpoint.surfaceOp.op !== 'replace' ||
       checkpointSeq === null ||
@@ -451,7 +450,7 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
           ...summaryBlocks,
           { type: 'text', text: '</compacted-summary>' },
         ],
-        source: { kind: 'plugin', plugin: 'compact', compactionId, ...(sourceCommandId === undefined ? {} : { sourceCommandId }) },
+        source: { kind: 'compact-checkpoint', compactionId, ...(sourceCommandId === undefined ? {} : { sourceCommandId }) },
       }
 
       // 用当前路由定价比较实际替换消息；没有 estimateMessage 的兼容环境

@@ -619,7 +619,7 @@ if(scenario==='loop-contract'){
  const settledJob={schemaVersion:1,id:'settled-inline',sessionId:session.id,branchId:session.id,kind:'status',status:'completed',execution:'inline',generation:'settled-generation',main:{provider:'fixture',model:'main'},actualRoute:{provider:'fixture',model:'main'},source:{},sourceHash:'settled-source',input:{system:'settled maintenance'},result:{title:'已保存'}}
  const pendingJob={schemaVersion:1,id:'pending-inline',sessionId:session.id,branchId:session.id,kind:'decision',status:'running',execution:'inline',generation:'pending-generation',main:{provider:'fixture',model:'main'},actualRoute:{provider:'fixture',model:'main'},source:{},sourceHash:'pending-source',input:{system:'pending maintenance'}}
  branch.set('tavern_job__settled-inline',settledJob);branch.set('tavern_job__pending-inline',pendingJob)
- session.append('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story',schemaVersion:1,turn:0,storySeq:settledStory.seq},content:text(inlineTaskInstruction([{...settledJob,status:'running'}]))},{surfaceOp:'append'})
+ session.append('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story',schemaVersion:1,turn:0,storySeq:settledStory.seq},content:text(inlineTaskInstruction([{...settledJob,status:'running'}]))},{surfaceOp:'append'})
  session.append('turn/end',{turn:0,reason:{kind:'completed'}},{surfaceOp:undefined})
  const settledPhaseSeq=session.events.at(-2).seq
  assert.equal(await pre(payload,async()=>skipped),skipped)
@@ -662,7 +662,7 @@ if(scenario==='loop-contract'){
  const sameTurnResult=session.append('tool/result',{turn:1,step:1,message:{source:{kind:'tool',callId:'read-1'},content:[{type:'tool-result',toolCallId:'read-1',content:[{type:'text',text:'same-turn evidence'}]}]}},{surfaceOp:'append'})
  await pre({...payload,step:1,messages:[player]},async()=>skipped)
  assert.ok(session.surface.nodes.includes(sameTurnRead.seq)&&session.surface.nodes.includes(sameTurnResult.seq),'same-turn retrieval evidence is not retired before story commit and turn completion')
- const phase={kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'character-cast'}
+ const phase={kind: 'roleplay-tasks',form:'phase',stage:'character-cast'}
  session.append('user/message',{source:phase,content:text('cast pending')},{surfaceOp:'append'})
  assert.equal(await pre({...payload,step:2,messages:[]},async()=>skipped),skipped)
  const disabled=await pre({...payload,step:2,messages:[]},async()=>({kind:'enter',messages:[player]}))
@@ -913,7 +913,7 @@ if(scenario==='authoring-opening'){
   session.append('tool/call',{turn:1,name,callId:id})
   session.append('tool/result',{turn:1,message:{source:{callId:id},content:[{type:'tool-result',toolCallId:id,content:text(JSON.stringify(proof))}]}},{surfaceOp:'append'})
  }
- openingPhase=session.append('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'story',openingImportId:'opening-import'},content:text('Show the imported opening.')},{surfaceOp:'append'})
+ openingPhase=session.append('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage:'story',openingImportId:'opening-import'},content:text('Show the imported opening.')},{surfaceOp:'append'})
 }
 const story=session.append('assistant/message',{turn:1,step:2,message:{id:'story-1',content:text(scenario==='same-route'?residentBody:'铜灯映亮了庭院。')}},{surfaceOp:'append'})
 if(scenario.startsWith('status-delayed')) {

@@ -116,6 +116,8 @@ export function filterMemoryRecordForBranch(value, session, checkpoint = null) {
 export function adaptationToolResult(value) {
     if (!record(value) || !record(value.source) || typeof value.source.callId !== 'string' || !Array.isArray(value.content))
         return null;
+    if (value.role === 'tool' && (value.source?.kind !== 'tool' || value.toolCallId !== value.source.callId))
+        return null;
     const wrapped = value.content.filter(b => record(b) && b.type === 'tool-result');
     if (wrapped.length && (wrapped.length !== 1 || wrapped[0].toolCallId !== value.source.callId))
         return null;
@@ -186,7 +188,7 @@ export function importedStoryProjection(events, nodes) {
     const pending = [...nodes];
     for (let i = 0; i < pending.length; i++) {
         const event = bySeq.get(pending[i]), source = record(event?.data?.source) ? event.data.source : null;
-        if (event?.type !== 'user/message' || source?.kind !== 'plugin' || source.plugin !== 'roleplay-tasks' || source.form !== 'management-receipt' || !Array.isArray(event.sourceEventSeqs))
+        if (event?.type !== 'user/message' || source?.kind !== 'roleplay-tasks' || source.form !== 'management-receipt' || !Array.isArray(event.sourceEventSeqs))
             continue;
         for (const seq of event.sourceEventSeqs)
             if (bySeq.has(seq) && !selected.has(seq)) {
@@ -239,7 +241,7 @@ export function importedStoryProjection(events, nodes) {
                 }
             }
         }
-        if (event.type === 'user/message' && visible.has(event.seq) && source?.kind === 'plugin' && source.plugin === 'roleplay-tasks' && source.form === 'phase') {
+        if (event.type === 'user/message' && visible.has(event.seq) && source?.kind === 'roleplay-tasks' && source.form === 'phase') {
             story = source.stage === 'story' && !!final && source.openingImportId === final.id && event.seq > final.seq;
             if (story && final)
                 boundaries.push({ turn, finalizeSeq: final.seq, storyPhaseSeq: event.seq, importId: final.id, normalizedSha256: final.hash });

@@ -53,11 +53,6 @@ function collectProjectedAttachments(blocks, images, files) {
             files.push(block.attachment);
             fileTokens += estimateStructuralBlock(block);
         }
-        else if (block.type === 'tool-result') {
-            const nested = collectProjectedAttachments(block.content, images, files);
-            imageTokens += nested.imageTokens;
-            fileTokens += nested.fileTokens;
-        }
     }
     return { imageTokens, fileTokens };
 }

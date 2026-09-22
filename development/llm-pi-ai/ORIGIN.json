@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "package": "dsh-nexttavern-llm-pi-ai",
   "upstreamPackage": "@deepseek-ai/dsh-llm-pi-ai",
-  "upstreamVersion": "0.1.6-alpha.2",
+  "upstreamVersion": "0.1.7-alpha.1",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
-  "commit": "ddefc45fbc7f8e46dd73185e68295696d1297887",
+  "commit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
   "license": "MIT",
   "files": [
     {
@@ -20,27 +20,27 @@
     {
       "source": "src/catalog.ts",
       "upstream": "packages/llm/llm-pi-ai/src/catalog.ts",
-      "upstreamSha256": "f54ea456dc9a9274dd6e08b2eb6299d216bd5e65014d62774d2fd7f003da35af"
+      "upstreamSha256": "ab7ba66ef2e9ff83769adb00af348246f7797c13140fccf1c2fc44868f5305bb"
     },
     {
       "source": "src/config.ts",
       "upstream": "packages/llm/llm-pi-ai/src/config.ts",
-      "upstreamSha256": "969866686fec879f1631b8f2e60002201ebee919a711792a9225d3623072edfc"
+      "upstreamSha256": "fb126e455806216badfb8c2d1ee9b0e2db8abde0be266aa37afa4f42fdaf3279"
     },
     {
       "source": "src/context.ts",
       "upstream": "packages/llm/llm-pi-ai/src/context.ts",
-      "upstreamSha256": "8820bc0965be2364c7087dff48f24a676d9c4195f80f322d19f481ba82e689da"
+      "upstreamSha256": "b86efb2feddb96b01d7c0a7d7adf8e7652fd31c8d2e3e2e5c48e3aba4ce0656f"
     },
     {
       "source": "src/discovery.ts",
       "upstream": "packages/llm/llm-pi-ai/src/discovery.ts",
-      "upstreamSha256": "4bd67512236c7c50e0316c87f03cd60b3d464026dacf3fbee8bc5c4c6c1318a6"
+      "upstreamSha256": "6f6a249dce322bebb48e72c35c5113225de187aa2b09cde91d15ecba371aa966"
     },
     {
       "source": "src/index.ts",
       "upstream": "packages/llm/llm-pi-ai/src/index.ts",
-      "upstreamSha256": "73e3c4b1f6e953fcb482423147d8e782928179dfe75b600dcf7dba31d341dd29"
+      "upstreamSha256": "1aa1823262d01d9e2bdc33177b82bfb1082b4559cbde288bb3606db19d575f2d"
     },
     {
       "source": "src/login.ts",
@@ -60,7 +60,7 @@
     {
       "source": "src/replay.ts",
       "upstream": "packages/llm/llm-pi-ai/src/replay.ts",
-      "upstreamSha256": "6ad0071e7d513185bd9b5975b3aa30530ef3a637f62787efa8eab16f549aab83"
+      "upstreamSha256": "71c35a2fa7ce6399784c84a1d04ca3922eae6358aedd40724a12372090c59542"
     },
     {
       "source": "src/stream.ts",

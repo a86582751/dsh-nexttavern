@@ -22,20 +22,21 @@ interface Selection {provider?: string; model?: string; reasoningEffort?: string
 interface Submission {requestId: string; abandon(): void}
 interface SessionBinding {
   session: {
+    loadOlder(): Promise<void>
     getSnapshot?(): {running?: boolean}
     projections?: {faceOf?(key: string): {getSnapshot?(): Selection & {next?: Selection; selected?: Selection}} | undefined}
-    beginSubmission(input: {mode: 'queue'; text: string; images: unknown[]}): Submission
+    beginSubmission(input: {mode: 'queue'; text: string; attachments: unknown[]}): Submission
     prompt(blocks: {type: 'text'; text: string}[], mode: 'queue', images: undefined, requestId: string): Promise<RemoteResult<unknown>>
   }
 }
 interface SessionService {
-  binding?(id: string): SessionBinding | null | undefined
+  using<T>(id: string, options: {source: 'nexttavernAction' | 'nexttavernState' | 'nexttavernReader'}, operation: (reference: {binding: SessionBinding}) => T | Promise<T>): Promise<T>
   refresh(): unknown | PromiseLike<unknown>
-  open(id: string): unknown
   list?: {getSnapshot?(): {byId?: Record<string, {cwd?: string}>}}
 }
 interface ActionDependencies {
   sessionsService: SessionService
+  openSession(id: string): void
   workspacesService?: {list?: {getSnapshot?(): {items?: {sessionIds?: string[]; workspaceId?: string}[]}}} | null
   remoteSession?: {
     create?(input: {agentPreset: string; workspaceId?: string; cwd?: string}): Promise<RemoteResult<{agentPreset?: string; sessionId: string}>>
@@ -55,6 +56,7 @@ interface ActionDependencies {
 }
 
 export function createRoleplayActions({sessionsService,
+    openSession,
     workspacesService,
     remoteSession,
     resolveActiveSessionId,
@@ -192,14 +194,10 @@ export function createRoleplayActions({sessionsService,
     return new Error(label + '：' + code + String(result?.error?.message ?? '未知远端错误'))
   }
 
-  const requireSessionBinding = async (sessionId: string) => {
-    let binding = sessionsService?.binding?.(sessionId)
-    if (binding) return binding
-    await sessionsService?.refresh?.()
-    binding = sessionsService?.binding?.(sessionId)
-    if (!binding) throw new Error(`新分支 ${sessionId} 尚未进入会话列表`)
-    return binding
-  }
+  // Each asynchronous action owns its exact generation until settlement.
+  // A navigation change must not dispose the source or child mid-submission.
+  const withSession = <T>(sessionId: string, operation: (binding: SessionBinding) => Promise<T>) =>
+    sessionsService.using(sessionId, {source: 'nexttavernAction'}, reference => operation(reference.binding))
 
   const repairActiveConversationDraft = () => {
     const sessionId = resolveActiveSessionId()
@@ -243,7 +241,7 @@ export function createRoleplayActions({sessionsService,
     }
     const selected=await branchRequest({action:'select-worldline',sessionId:targetSessionId})
     if(selected.conversations)acceptConversations(selected.conversations)
-    sessionsService.open(targetSessionId)
+    openSession(targetSessionId)
   }
 
   const workspaceIdForSession = (sessionId: string) => {
@@ -273,9 +271,8 @@ export function createRoleplayActions({sessionsService,
     }
   }
 
-  const createFirstTurnBranch = async (sourceSessionId: string) => {
+  const createFirstTurnBranch = async (sourceSessionId: string) => withSession(sourceSessionId, async sourceBinding => {
     if (!remoteSession?.create) throw new Error('会话创建服务尚未就绪')
-    const sourceBinding = await requireSessionBinding(sourceSessionId)
     const sourceRow = sessionsService?.list?.getSnapshot?.()?.byId?.[sourceSessionId]
     const workspaceId = workspaceIdForSession(sourceSessionId)
     const request = workspaceId
@@ -288,10 +285,9 @@ export function createRoleplayActions({sessionsService,
     }
     const childId = created.value.sessionId
     await sessionsService?.refresh?.()
-    const childBinding = await requireSessionBinding(childId)
     await copyModelSelection(sourceBinding, childId)
-    return { childId, childBinding }
-  }
+    return { childId }
+  })
 
   const waitForBranchOperation = async (operationId: string,
        timeoutMs = 15 * 60 * 1000,
@@ -365,93 +361,95 @@ export function createRoleplayActions({sessionsService,
       if (!promptText) throw new Error('消息不能为空')
     }
 
-    const sourceBinding = await requireSessionBinding(sourceSessionId)
-    if (sourceBinding?.session?.getSnapshot?.()?.running) throw new Error('请等待当前一轮完成后再创建分支')
-    const created=await branchRequest({action:'create-worldline',operationId:prepared.operationId,sessionId:sourceSessionId})
-    const childId=created.childSessionId
-    if(created.conversations)acceptConversations(created.conversations)
-    await sessionsService.refresh()
-    await loadConversations()
-    const childBinding=await requireSessionBinding(childId)
-    await copyModelSelection(sourceBinding,childId)
+    return withSession(sourceSessionId, async sourceBinding => {
+      if (sourceBinding?.session?.getSnapshot?.()?.running) throw new Error('请等待当前一轮完成后再创建分支')
+      const created=await branchRequest({action:'create-worldline',operationId:prepared.operationId,sessionId:sourceSessionId})
+      const childId=created.childSessionId
+      if(created.conversations)acceptConversations(created.conversations)
+      await sessionsService.refresh()
+      await loadConversations()
+      return withSession(childId, async childBinding => {
+        await copyModelSelection(sourceBinding,childId)
 
-    const submission = childBinding.session.beginSubmission({ mode: 'queue', text: promptText, images: [] })
-    try {
-      await wakeSessionForState(childId)
-      await registerBranchOperation({
-        operationId: prepared.operationId,
-        childSessionId: childId,
-        requestId: submission.requestId,
-        promptText,
-      })
-    } catch (error) {
-      submission.abandon()
-      // Abort only when registration is known not to be in an indeterminate
-      // committed state. A lost response must never delete a valid member.
-      if (!errorDetails(error).operationStateUnknown) {
-        try { await branchRequest({ action: 'abort', operationId: prepared.operationId }) } catch {}
-      }
-      await openSessionPreservingView(sourceSessionId, childId)
-      throw error
-    }
-    invalidateState(sourceSessionId)
-    invalidateState(childId)
-    await openSessionPreservingView(childId, sourceSessionId)
-
-    let result
-    try {
-      result = await childBinding.session.prompt(
-        [{ type: 'text', text: promptText }],
-        'queue',
-        undefined,
-        submission.requestId
-      )
-    } catch (error) {
-      // A transport exception does not prove commands/prompt was rejected: the
-      // server may already be generating. Observe the durable requestId-linked
-      // operation first; only an explicit no-admission timeout is safe to abort.
-      try {
-        await waitForBranchOperation(prepared.operationId, 15 * 60 * 1000, {
-          requireRequestAdmission: true,
-          admissionGraceMs: 15000,
-        })
+        const submission = childBinding.session.beginSubmission({ mode: 'queue', text: promptText, attachments: [] })
+        try {
+          await wakeSessionForState(childId)
+          await registerBranchOperation({
+            operationId: prepared.operationId,
+            childSessionId: childId,
+            requestId: submission.requestId,
+            promptText,
+          })
+        } catch (error) {
+          submission.abandon()
+          // Abort only when registration is known not to be in an indeterminate
+          // committed state. A lost response must never delete a valid member.
+          if (!errorDetails(error).operationStateUnknown) {
+            try { await branchRequest({ action: 'abort', operationId: prepared.operationId }) } catch {}
+          }
+          await openSessionPreservingView(sourceSessionId, childId)
+          throw error
+        }
         invalidateState(sourceSessionId)
         invalidateState(childId)
-        return childId
-      } catch (observedError) {
-        if (errorDetails(observedError).safeToAbort) {
-          let abortResult = null
-          try { abortResult = await branchRequest({ action: 'abort', operationId: prepared.operationId }) } catch {}
-          if (abortResult?.alreadyAccepted) {
-            try {
-              await waitForBranchOperation(prepared.operationId)
-              invalidateState(sourceSessionId)
-              invalidateState(childId)
-              return childId
-            } catch (acceptedError) {
-              await openSessionPreservingView(sourceSessionId, childId)
-              throw new Error('发送已被服务器接纳，但未能确认最终结果：' + String(errorDetails(acceptedError).message ?? acceptedError))
+        await openSessionPreservingView(childId, sourceSessionId)
+
+        let result
+        try {
+          result = await childBinding.session.prompt(
+            [{ type: 'text', text: promptText }],
+            'queue',
+            undefined,
+            submission.requestId
+          )
+        } catch (error) {
+          // A transport exception does not prove commands/prompt was rejected: the
+          // server may already be generating. Observe the durable requestId-linked
+          // operation first; only an explicit no-admission timeout is safe to abort.
+          try {
+            await waitForBranchOperation(prepared.operationId, 15 * 60 * 1000, {
+              requireRequestAdmission: true,
+              admissionGraceMs: 15000,
+            })
+            invalidateState(sourceSessionId)
+            invalidateState(childId)
+            return childId
+          } catch (observedError) {
+            if (errorDetails(observedError).safeToAbort) {
+              let abortResult = null
+              try { abortResult = await branchRequest({ action: 'abort', operationId: prepared.operationId }) } catch {}
+              if (abortResult?.alreadyAccepted) {
+                try {
+                  await waitForBranchOperation(prepared.operationId)
+                  invalidateState(sourceSessionId)
+                  invalidateState(childId)
+                  return childId
+                } catch (acceptedError) {
+                  await openSessionPreservingView(sourceSessionId, childId)
+                  throw new Error('发送已被服务器接纳，但未能确认最终结果：' + String(errorDetails(acceptedError).message ?? acceptedError))
+                }
+              }
+              submission.abandon()
             }
+            await openSessionPreservingView(sourceSessionId, childId)
+            if (errorDetails(observedError).safeToAbort) throw observedError
+            throw new Error(`${String(errorDetails(error).message ?? error)}；且未能确认分支最终状态：${String(errorDetails(observedError).message ?? observedError)}`)
           }
-          submission.abandon()
         }
-        await openSessionPreservingView(sourceSessionId, childId)
-        if (errorDetails(observedError).safeToAbort) throw observedError
-        throw new Error(`${String(errorDetails(error).message ?? error)}；且未能确认分支最终状态：${String(errorDetails(observedError).message ?? observedError)}`)
-      }
-    }
-    if (!result?.ok) {
-      try { await branchRequest({ action: 'abort', operationId: prepared.operationId }) } catch {}
-      await openSessionPreservingView(sourceSessionId, childId)
-      throw remoteFailure(kind === 'player-edit' ? '修改后发送失败' : '重新生成失败', result)
-    }
-    try {
-      await waitForBranchOperation(prepared.operationId)
-    } finally {
-      invalidateState(sourceSessionId)
-      invalidateState(childId)
-    }
-    return childId
+        if (!result?.ok) {
+          try { await branchRequest({ action: 'abort', operationId: prepared.operationId }) } catch {}
+          await openSessionPreservingView(sourceSessionId, childId)
+          throw remoteFailure(kind === 'player-edit' ? '修改后发送失败' : '重新生成失败', result)
+        }
+        try {
+          await waitForBranchOperation(prepared.operationId)
+        } finally {
+          invalidateState(sourceSessionId)
+          invalidateState(childId)
+        }
+        return childId
+      })
+    })
   }
 
   const forkWithoutUserTurn = async ({ sourceSessionId, messageId }: {sourceSessionId: string; messageId?: string}) => {
@@ -463,7 +461,6 @@ export function createRoleplayActions({sessionsService,
     if(created.conversations)acceptConversations(created.conversations)
     await sessionsService.refresh()
     await loadConversations()
-    await requireSessionBinding(childId)
     await registerBranchOperation({
       operationId: prepared.operationId,
       childSessionId: childId,
@@ -477,7 +474,6 @@ export function createRoleplayActions({sessionsService,
 
   const openNativeBranch = async (member: {sessionId?: string} | null | undefined) => {
     if (!member?.sessionId) return
-    await requireSessionBinding(member.sessionId)
     await openSessionPreservingView(member.sessionId)
   }
 
@@ -487,7 +483,6 @@ export function createRoleplayActions({sessionsService,
       runMaintenance,
       registerBranchOperation,
       retryBranchMutation,
-      requireSessionBinding,
       repairActiveConversationDraft,
       openSessionPreservingView,
       createFirstTurnBranch,

@@ -36,7 +36,7 @@ export function assertMessageEdit(value: unknown): asserts value is MessageEdit 
 export function editMessageText(message: Message, edit: MessageEdit): Message {
   if (message.role !== edit.role || message.id !== edit.messageId) throw Error('Message edit identity mismatch')
   if (message.role !== 'assistant' && message.role !== 'user') throw Error('Message is not editable')
-  const content: typeof message.content = []
+  const content: Array<(typeof message.content)[number]> = []
   let inserted = false
   for (const block of message.content) {
     if (block.type !== 'text') content.push(block)

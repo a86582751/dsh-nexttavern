@@ -141,8 +141,8 @@ export function readRoleplayActivity(session: ContextSession,preparation: Contex
     if (!step && type === 'step/start') step = event
     if (type === 'user/message') {
       const source = event.data?.source
-      if (!phase && source?.plugin === 'roleplay-tasks' && source.form === 'phase') phase = event
-      if (!proof && source?.kind === 'plugin' && source.plugin === 'roleplay-tasks' &&
+      if (!phase && source?.kind === 'roleplay-tasks' && source.form === 'phase') phase = event
+      if (!proof && source?.kind === 'roleplay-tasks' &&
         source.stage === 'after-story' && Number.isSafeInteger(source.storySeq)) proof = event
     }
     if (end && phase && step && proof) break
@@ -194,7 +194,7 @@ export function retireRoleplayContexts(session: ContextSession & Pick<TaskContex
   let retired=0
   for(const form of ['director-notes','state']) {
     const field=form==='state'?'stateHash':'notesHash'
-    const valid=(source:TaskMessage['source'])=>source?.kind==='plugin'&&source.plugin==='roleplay-context'
+    const valid=(source:TaskMessage['source'])=>source?.kind==='roleplay-context'
       &&source.schemaVersion===1&&source.form===form&&['full','reference'].includes(String(source.mode))
       &&typeof source.branchId==='string'&&/^[a-f0-9]{64}$/.test(String(source[field]??''))
     const next=prepared.filter(m=>valid(m.source)&&m.source?.branchId===session.id&&textOf(m.content).trim())
@@ -206,7 +206,7 @@ export function retireRoleplayContexts(session: ContextSession & Pick<TaskContex
     if(source.mode==='reference'&&!backing)continue
     for(const event of old) {
       if(event===backing)continue
-      session.append('user/message',{id:randomUUID(),role:'user',source:{kind:'plugin',plugin:'roleplay-context',form:'retired',schemaVersion:1,
+      session.append('user/message',{id:randomUUID(),role:'user',source:{kind: 'roleplay-context',form:'retired',schemaVersion:1,
         retiredForm:form,retiredAtTurn:turn,branchId:session.id,sourceSeq:event.seq},content:[{type:'text',text:'[旧动态上下文已回收；以当前锚点为准。]'}]},
         {surfaceOp:{op:'replace',startSeq:event.seq,endSeq:event.seq},sourceEventSeqs:[event.seq]})
       retired++
@@ -245,7 +245,7 @@ export function surfaceEntries(session: ContextSession): StoryEntry[] {
       const src = e.data?.source
       // 普通玩家输入，以及分支投影中按原文恢复的玩家输入；后台上下文、
       // compact checkpoint、重生指令和工具材料都不属于剧情正文。
-      if (src?.kind !== 'user' && !(src?.kind === 'plugin' && src?.plugin === 'roleplay' && src?.form === 'branch-user')) continue
+      if (src?.kind !== 'user' && !(src?.kind === 'roleplay' && src?.form === 'branch-user')) continue
       const text = textOf(e.data?.content)
       if (text.trim()) out.push({
         seq: e.seq,
@@ -292,7 +292,7 @@ export function completedAssistantReceiptForTurn(session: ContextSession, turn: 
     if(event.type==='turn/start'){current=Number(event.data?.turn);internal=false;if(current===target){candidate=null;completed=false}}
     if(current!==target)continue
     const source=event.type==='user/message'?event.data?.source:null
-    if(source?.kind==='plugin'&&source.plugin==='roleplay-tasks'&&source.form==='phase')internal=source.stage!=='story'
+    if(source?.kind==='roleplay-tasks'&&source.form==='phase')internal=source.stage!=='story'
     if(event.type==='assistant/message'&&Number(event.data?.turn)===target) {
       // Completion fallbacks must agree with the current visible body. Keep
       // the original receipt identity, but an edit to empty prose cannot land a fork.
@@ -333,7 +333,7 @@ export function canonicalAssistantForTurn(session: ContextSession, turn: unknown
 
 export function visibleCompactionCheckpoint(session: ContextSession) {
   for (const event of [...surfaceEvents(session)].reverse()) {
-    if (event?.type !== 'user/message' || event.data?.source?.kind !== 'plugin' || event.data?.source?.plugin !== 'compact') continue
+    if (event?.type !== 'user/message' || event.data?.source?.kind !== 'compact-checkpoint') continue
     const raw = textOf(event.data?.content)
     const match = raw.match(/<compacted-summary>\s*([\s\S]*?)\s*<\/compacted-summary>/i)
     if (match?.[1]?.trim()) return { text: match[1].trim(), seq: Number(event.seq) }
@@ -388,7 +388,7 @@ function roleplayMessageText(message: ContextMessage | undefined) {
 function roleplayMessageIsStory(message: ContextMessage | undefined) {
   if (!message || typeof message !== 'object') return false
   // Assistant messages carry provider/model metadata rather than a
-  // `source.kind === "model"` marker in Harness. Treat every assistant
+  // `source?.kind === "model"` marker in Harness. Treat every assistant
   // message as narrative here; tool calls/results remain separate messages.
   if (message.role === 'assistant') return true
   return message.role === 'user' && message.source?.kind === 'user'
@@ -427,7 +427,7 @@ function internalMaintenanceMessageIds(session: ContextSession) {
   for (const event of events) {
     if (event?.type === 'turn/start' || event?.type === 'turn/end') inMaintenance = false
     const source = event?.type === 'user/message' ? event.data?.source : null
-    if (source?.kind === 'plugin' && source.plugin === 'roleplay-tasks' && source.form === 'phase') {
+    if (source?.kind === 'roleplay-tasks' && source.form === 'phase') {
       inMaintenance = source.stage !== 'story'
     }
     if (event?.type === 'assistant/message' && internal.has(Number(event.seq))) {
@@ -459,7 +459,7 @@ export function retainRoleplayWindowContinuity<M extends ContextMessage>(session
   const list: readonly M[] = Array.isArray(messages) ? messages : []
   const selected = list.filter((message) => {
     const source = message?.source
-    if (source?.kind === 'plugin' && (source.plugin === 'roleplay-tasks' || source.plugin === 'roleplay-context')) return false
+    if ((source?.kind === 'roleplay-tasks' || source?.kind === 'roleplay-context')) return false
     const id = messageIdOf(message)
     if (id && maintenance.ids.has(id)) return false
     const callId = source?.callId ?? message?.callId
@@ -479,7 +479,7 @@ export function roleplayWindowCutStartIndex(surface: readonly ContextEvent[], st
   while (index > 0) {
     const event = surface[index - 1]
     const source = event?.type === 'user/message' ? event.data?.source : null
-    if (source?.kind !== 'plugin' || source.plugin !== 'roleplay-context') break
+    if (source?.kind !== 'roleplay-context') break
     index -= 1
   }
   return index

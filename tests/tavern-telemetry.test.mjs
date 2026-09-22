@@ -15,7 +15,7 @@ const usage={inputTokens:100,outputTokens:20,cacheReadTokens:900,cacheWriteToken
  const api=createTelemetry({table,jobs:()=>jobs,sessions:{get:id=>{assert.equal(typeof id,'string');lookups.push(id);return id===s.id?s:null}}})
  await api.ingest(s)
  const logs=api.logs()
- assert.deepEqual(logs.filter(row=>row.source.kind==='task').map(row=>row.source.jobId),['valid'])
+ assert.deepEqual(logs.filter(row=>row.source?.kind==='task').map(row=>row.source.jobId),['valid'])
  assert.equal(api.calls().length,1,'job projections do not create another charge')
  assert.deepEqual(jobs,original,'malformed durable jobs are not repaired by telemetry reads')
  const before=lookups.length
@@ -32,7 +32,7 @@ const usage={inputTokens:100,outputTokens:20,cacheReadTokens:900,cacheWriteToken
 }
 {
   const events=[
-    event(0,'user/message',{source:{plugin:'roleplay-tasks',jobKind:'status'}}),
+    event(0,'user/message',{source:{kind:'roleplay-tasks',jobKind:'status'}}),
     event(1,'step/start',{turn:1,step:1}),
     event(2,'step/start',{turn:2,step:1}),
   ]

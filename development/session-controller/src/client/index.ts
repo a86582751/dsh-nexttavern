@@ -33,7 +33,7 @@ export type {
   SessionListPhase,
   SessionListSnapshot,
   SessionSearchResultItem,
-  SubagentCatalogSnapshot,
+  SessionProjectionSnapshot,
 } from './sessions/manager.js'
 export type { Session } from './sessions/session.js'
 export type {
@@ -83,6 +83,10 @@ export interface SessionReferenceSourceMap {
   controllerOperation: unknown
   /** A Client Gateway invocation's synchronous Context ownership. */
   gateway: unknown
+  /** Product-owned asynchronous UI operations; never a main-view substitute. */
+  nexttavernAction: unknown
+  nexttavernState: unknown
+  nexttavernReader: unknown
 }
 
 /** Declaration-merge-extensible labels carried by independent Client references. */

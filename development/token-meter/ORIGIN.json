@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "package": "dsh-nexttavern-token-meter",
   "upstreamPackage": "@deepseek-ai/dsh-token-meter",
-  "upstreamVersion": "0.1.6-alpha.2",
+  "upstreamVersion": "0.1.7-alpha.1",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
-  "commit": "ddefc45fbc7f8e46dd73185e68295696d1297887",
+  "commit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
   "license": "MIT",
   "files": [
     {
@@ -20,7 +20,7 @@
     {
       "source": "src/estimate.ts",
       "upstream": "packages/llm/token-meter/src/estimate.ts",
-      "upstreamSha256": "cba6d6e5d5ef6736a166a26736998a294606986514d28a8e0258bc8a4759f236"
+      "upstreamSha256": "30ecc576a77aa3a65fb8173c551e13d7651ddba2d7bbd907845a003f17ee189d"
     },
     {
       "source": "src/route-pricing.ts",
@@ -30,7 +30,7 @@
     {
       "source": "src/surface-fold.ts",
       "upstream": "packages/llm/token-meter/src/surface-fold.ts",
-      "upstreamSha256": "f521ae83a4818cbc01f17778e2d5ee4d799345fffc12df86455f0c72ac0e5f51"
+      "upstreamSha256": "ee5e0dbe6f6782f765b670ffeee09db3e6cf18808530db476621d12853cfc6f1"
     },
     {
       "source": "src/surface-projection.ts",

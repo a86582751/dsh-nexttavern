@@ -109,7 +109,7 @@ export function createRoleplayPreparation(deps) {
             id: randomUUID(),
             role: 'user',
             content: [{ type: 'text', text: `[角色扮演上下文窗口 ${activeWindow.windowNumber}] 旧剧情已保存在只读历史。当前窗口保留最新 ${continuityTailTokens} tokens 的完整正文；需要旧事实时调用 rp_history。` }],
-            source: { kind: 'plugin', plugin: 'roleplay-context-window', form: 'snapshot', schemaVersion: 1,
+            source: { kind: 'roleplay-context-window', form: 'snapshot', schemaVersion: 1,
                 checkpointGeneration: proof.generationId, checkpointSourceKeys: proof.sourceKeys,
                 checkpointSourceSeqs: proof.sourceSeqs },
         }, {
@@ -311,12 +311,12 @@ export function createRoleplayPreparation(deps) {
             notesSourceSeqs: directorNotes?.sourceSeqs ?? [], windowId: activeContextWindow.windowId };
         const visibleAnchor = (form, hashField, hash) => surfaceEvents(session).findLast((event) => {
             const source = event?.type === 'user/message' ? event.data?.source : null;
-            return source?.kind === 'plugin' && source.plugin === 'roleplay-context'
+            return source?.kind === 'roleplay-context'
                 && source.form === form && source.branchId === branchId && source.mode === 'full' && source[hashField] === hash;
         }) ?? null;
         const contextMessage = (form, source, body) => ({
             id: randomUUID(), role: 'user', content: [{ type: 'text', text: body }],
-            source: { kind: 'plugin', plugin: 'roleplay-context', form, schemaVersion: 1, branchId, ...source },
+            source: { kind: 'roleplay-context', form, schemaVersion: 1, branchId, ...source },
         });
         const values = userValues(branchId);
         const renderContextText = (value) => String(value ?? '')

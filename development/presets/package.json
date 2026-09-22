@@ -5,12 +5,20 @@
   "type": "module",
   "description": "NextTavern composition adapter for the official DSH preset roster; no upstream implementation fork",
   "license": "GPL-3.0-only",
-  "exports": {".": "./lib/index.js", "./composition": "./lib/composition.js", "./package.json": "./package.json"},
-  "files": ["src", "lib", "LICENSE"],
+  "exports": {
+    ".": "./lib/index.js",
+    "./composition": "./lib/composition.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "LICENSE"
+  ],
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/cordis-plugin-include": "1.0.7",
-    "@deepseek-ai/dsh-agent-presets": "0.1.6-alpha.2",
-    "@deepseek-ai/dsh-home-paths": "0.1.6-alpha.2"
+    "@deepseek-ai/cordis": "4.0.3",
+    "@deepseek-ai/cordis-plugin-include": "1.0.8",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.1.7-alpha.1",
+    "@deepseek-ai/dsh-agent-preset": "0.1.7-alpha.1"
   }
 }

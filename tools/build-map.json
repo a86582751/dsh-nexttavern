@@ -2508,6 +2508,988 @@
       "outputs": [
         "development/session-controller/lib/client/sessions/assistant-stream.js"
       ]
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-catalog-migration-js",
+      "source": "development/session-persistence-jsonl/src/catalog-migration.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/catalog-migration.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/catalog-migration.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/catalog-migration.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-session-controller-archived-session-gate-js",
+      "source": "development/session-controller/src/archived-session-gate.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/archived-session-gate.ts",
+      "primaryOutput": "development/session-controller/lib/archived-session-gate.js",
+      "outputs": [
+        "development/session-controller/lib/archived-session-gate.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-chat-settings-js-bundle",
+      "source": "development/ui-chat/src/chat-settings.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/chat-settings.ts",
+      "primaryOutput": "development/ui-chat/lib/chat-settings.js",
+      "outputs": [
+        "development/ui-chat/lib/chat-settings.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-apply-js-bundle",
+      "source": "development/ui-chat/src/client/apply.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/apply.ts",
+      "primaryOutput": "development/ui-chat/lib/client/apply.js",
+      "outputs": [
+        "development/ui-chat/lib/client/apply.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-ApprovalCommand-js-bundle",
+      "source": "development/ui-chat/src/client/chat/ApprovalCommand.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/ApprovalCommand.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/ApprovalCommand.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/ApprovalCommand.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-AssistantMarkdown-js-bundle",
+      "source": "development/ui-chat/src/client/chat/AssistantMarkdown.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/AssistantMarkdown.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/AssistantMarkdown.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/AssistantMarkdown.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-AssistantNodeView-js-bundle",
+      "source": "development/ui-chat/src/client/chat/AssistantNodeView.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/AssistantNodeView.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/AssistantNodeView.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/AssistantNodeView.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-ChatGroupSeat-js-bundle",
+      "source": "development/ui-chat/src/client/chat/ChatGroupSeat.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/ChatGroupSeat.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/ChatGroupSeat.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/ChatGroupSeat.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-ChatNodeSeat-js-bundle",
+      "source": "development/ui-chat/src/client/chat/ChatNodeSeat.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/ChatNodeSeat.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/ChatNodeSeat.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/ChatNodeSeat.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-ChatView-js-bundle",
+      "source": "development/ui-chat/src/client/chat/ChatView.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/ChatView.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/ChatView.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/ChatView.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-CommandNodeView-js-bundle",
+      "source": "development/ui-chat/src/client/chat/CommandNodeView.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/CommandNodeView.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/CommandNodeView.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/CommandNodeView.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-CompactionCommandCard-js-bundle",
+      "source": "development/ui-chat/src/client/chat/CompactionCommandCard.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/CompactionCommandCard.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/CompactionCommandCard.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/CompactionCommandCard.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-CompactionItem-js-bundle",
+      "source": "development/ui-chat/src/client/chat/CompactionItem.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/CompactionItem.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/CompactionItem.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/CompactionItem.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-ContextBody-js-bundle",
+      "source": "development/ui-chat/src/client/chat/ContextBody.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/ContextBody.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/ContextBody.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/ContextBody.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-ContextInjectionRow-js-bundle",
+      "source": "development/ui-chat/src/client/chat/ContextInjectionRow.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/ContextInjectionRow.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/ContextInjectionRow.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/ContextInjectionRow.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-GenericCommandCard-js-bundle",
+      "source": "development/ui-chat/src/client/chat/GenericCommandCard.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/GenericCommandCard.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/GenericCommandCard.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/GenericCommandCard.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-message-chrome-js-bundle",
+      "source": "development/ui-chat/src/client/chat/message-chrome.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/message-chrome.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/message-chrome.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/message-chrome.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-MessageIconActions-js-bundle",
+      "source": "development/ui-chat/src/client/chat/MessageIconActions.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/MessageIconActions.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/MessageIconActions.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/MessageIconActions.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-MessageItem-js-bundle",
+      "source": "development/ui-chat/src/client/chat/MessageItem.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/MessageItem.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/MessageItem.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/MessageItem.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-ReasoningRow-js-bundle",
+      "source": "development/ui-chat/src/client/chat/ReasoningRow.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/ReasoningRow.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/ReasoningRow.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/ReasoningRow.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-register-node-renderers-js-bundle",
+      "source": "development/ui-chat/src/client/chat/register-node-renderers.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/register-node-renderers.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/register-node-renderers.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/register-node-renderers.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-render-entry-js-bundle",
+      "source": "development/ui-chat/src/client/chat/render-entry.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/render-entry.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/render-entry.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/render-entry.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-searchable-hidden-js-bundle",
+      "source": "development/ui-chat/src/client/chat/searchable-hidden.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/searchable-hidden.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/searchable-hidden.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/searchable-hidden.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-stat-dialog-js-bundle",
+      "source": "development/ui-chat/src/client/chat/stat-dialog.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/stat-dialog.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/stat-dialog.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/stat-dialog.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-StatsPills-js-bundle",
+      "source": "development/ui-chat/src/client/chat/StatsPills.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/StatsPills.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/StatsPills.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/StatsPills.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-step-process-js-bundle",
+      "source": "development/ui-chat/src/client/chat/step-process.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/step-process.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/step-process.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/step-process.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-SystemPromptRow-js-bundle",
+      "source": "development/ui-chat/src/client/chat/SystemPromptRow.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/SystemPromptRow.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/SystemPromptRow.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/SystemPromptRow.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-token-format-js-bundle",
+      "source": "development/ui-chat/src/client/chat/token-format.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/token-format.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/token-format.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/token-format.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-turn-assistant-js-bundle",
+      "source": "development/ui-chat/src/client/chat/turn-assistant.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/turn-assistant.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/turn-assistant.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/turn-assistant.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-turn-rail-items-js-bundle",
+      "source": "development/ui-chat/src/client/chat/turn-rail-items.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/turn-rail-items.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/turn-rail-items.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/turn-rail-items.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-turn-trigger-js-bundle",
+      "source": "development/ui-chat/src/client/chat/turn-trigger.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/turn-trigger.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/turn-trigger.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/turn-trigger.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-TurnNavigator-js-bundle",
+      "source": "development/ui-chat/src/client/chat/TurnNavigator.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/TurnNavigator.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/TurnNavigator.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/TurnNavigator.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-TurnProcessNodeView-js-bundle",
+      "source": "development/ui-chat/src/client/chat/TurnProcessNodeView.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/TurnProcessNodeView.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/TurnProcessNodeView.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/TurnProcessNodeView.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-TurnTailNodeView-js-bundle",
+      "source": "development/ui-chat/src/client/chat/TurnTailNodeView.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/TurnTailNodeView.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/TurnTailNodeView.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/TurnTailNodeView.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-TurnTriggerNodeView-js-bundle",
+      "source": "development/ui-chat/src/client/chat/TurnTriggerNodeView.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/TurnTriggerNodeView.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/TurnTriggerNodeView.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/TurnTriggerNodeView.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-TurnUsagePanel-js-bundle",
+      "source": "development/ui-chat/src/client/chat/TurnUsagePanel.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/TurnUsagePanel.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/TurnUsagePanel.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/TurnUsagePanel.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-use-calendar-day-js-bundle",
+      "source": "development/ui-chat/src/client/chat/use-calendar-day.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-calendar-day.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/use-calendar-day.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/use-calendar-day.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-use-chat-navigation-js-bundle",
+      "source": "development/ui-chat/src/client/chat/use-chat-navigation.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-chat-navigation.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/use-chat-navigation.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/use-chat-navigation.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-use-chat-reading-js-bundle",
+      "source": "development/ui-chat/src/client/chat/use-chat-reading.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-chat-reading.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/use-chat-reading.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/use-chat-reading.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-use-chat-scroll-js-bundle",
+      "source": "development/ui-chat/src/client/chat/use-chat-scroll.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-chat-scroll.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/use-chat-scroll.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/use-chat-scroll.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-use-chat-viewport-js-bundle",
+      "source": "development/ui-chat/src/client/chat/use-chat-viewport.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-chat-viewport.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/use-chat-viewport.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/use-chat-viewport.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-use-disclosure-js-bundle",
+      "source": "development/ui-chat/src/client/chat/use-disclosure.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-disclosure.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/use-disclosure.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/use-disclosure.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-use-turn-data-js-bundle",
+      "source": "development/ui-chat/src/client/chat/use-turn-data.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-turn-data.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/use-turn-data.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/use-turn-data.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-contract-assistant-content-js-bundle",
+      "source": "development/ui-chat/src/client/contract/assistant-content.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/contract/assistant-content.ts",
+      "primaryOutput": "development/ui-chat/lib/client/contract/assistant-content.js",
+      "outputs": [
+        "development/ui-chat/lib/client/contract/assistant-content.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-contract-chat-nodes-js-bundle",
+      "source": "development/ui-chat/src/client/contract/chat-nodes.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/contract/chat-nodes.ts",
+      "primaryOutput": "development/ui-chat/lib/client/contract/chat-nodes.js",
+      "outputs": [
+        "development/ui-chat/lib/client/contract/chat-nodes.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-contract-chat-visibility-js-bundle",
+      "source": "development/ui-chat/src/client/contract/chat-visibility.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/contract/chat-visibility.ts",
+      "primaryOutput": "development/ui-chat/lib/client/contract/chat-visibility.js",
+      "outputs": [
+        "development/ui-chat/lib/client/contract/chat-visibility.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-contract-process-groups-js-bundle",
+      "source": "development/ui-chat/src/client/contract/process-groups.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/contract/process-groups.ts",
+      "primaryOutput": "development/ui-chat/lib/client/contract/process-groups.js",
+      "outputs": [
+        "development/ui-chat/lib/client/contract/process-groups.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-contract-slots-js-bundle",
+      "source": "development/ui-chat/src/client/contract/slots.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/contract/slots.ts",
+      "primaryOutput": "development/ui-chat/lib/client/contract/slots.js",
+      "outputs": [
+        "development/ui-chat/lib/client/contract/slots.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-contract-snapshot-js-bundle",
+      "source": "development/ui-chat/src/client/contract/snapshot.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/contract/snapshot.ts",
+      "primaryOutput": "development/ui-chat/lib/client/contract/snapshot.js",
+      "outputs": [
+        "development/ui-chat/lib/client/contract/snapshot.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-contract-store-js-bundle",
+      "source": "development/ui-chat/src/client/contract/store.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/contract/store.ts",
+      "primaryOutput": "development/ui-chat/lib/client/contract/store.js",
+      "outputs": [
+        "development/ui-chat/lib/client/contract/store.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-contract-turn-metrics-js-bundle",
+      "source": "development/ui-chat/src/client/contract/turn-metrics.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/contract/turn-metrics.ts",
+      "primaryOutput": "development/ui-chat/lib/client/contract/turn-metrics.js",
+      "outputs": [
+        "development/ui-chat/lib/client/contract/turn-metrics.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-contract-turn-process-js-bundle",
+      "source": "development/ui-chat/src/client/contract/turn-process.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/contract/turn-process.ts",
+      "primaryOutput": "development/ui-chat/lib/client/contract/turn-process.js",
+      "outputs": [
+        "development/ui-chat/lib/client/contract/turn-process.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-assistant-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/assistant.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/assistant.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/assistant.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/assistant.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-chat-snapshot-builder-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/chat-snapshot-builder.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/chat-snapshot-builder.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/chat-snapshot-builder.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/chat-snapshot-builder.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-command-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/command.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/command.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/command.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/command.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-common-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/common.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/common.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/common.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/common.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-compaction-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/compaction.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/compaction.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/compaction.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/compaction.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-event-projection-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/event-projection.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/event-projection.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/event-projection.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/event-projection.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-fallback-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/fallback.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/fallback.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/fallback.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/fallback.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-inbox-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/inbox.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/inbox.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/inbox.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/inbox.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-message-edits-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/message-edits.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/message-edits.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/message-edits.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/message-edits.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-message-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/message.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/message.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/message.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/message.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-partial-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/partial.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/partial.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/partial.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/partial.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-process-activity-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/process-activity.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/process-activity.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/process-activity.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/process-activity.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-process-groups-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/process-groups.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/process-groups.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/process-groups.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/process-groups.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-register-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/register.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/register.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/register.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/register.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-request-prompt-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/request-prompt.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/request-prompt.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/request-prompt.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/request-prompt.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-retry-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/retry.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/retry.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/retry.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/retry.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-roleplay-story-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/roleplay-story.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/roleplay-story.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/roleplay-story.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/roleplay-story.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-tool-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/tool.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/tool.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/tool.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/tool.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-turn-error-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/turn-error.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/turn-error.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/turn-error.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/turn-error.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-turn-max-tokens-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/turn-max-tokens.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/turn-max-tokens.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/turn-max-tokens.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/turn-max-tokens.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-turn-navigation-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/turn-navigation.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/turn-navigation.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/turn-navigation.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/turn-navigation.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-turn-process-presentation-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/turn-process-presentation.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/turn-process-presentation.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/turn-process-presentation.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/turn-process-presentation.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-turn-process-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/turn-process.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/turn-process.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/turn-process.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/turn-process.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-conversation-nodes-turn-tail-js-bundle",
+      "source": "development/ui-chat/src/client/conversation-nodes/turn-tail.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/turn-tail.ts",
+      "primaryOutput": "development/ui-chat/lib/client/conversation-nodes/turn-tail.js",
+      "outputs": [
+        "development/ui-chat/lib/client/conversation-nodes/turn-tail.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-index-js-bundle",
+      "source": "development/ui-chat/src/client/index.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/index.ts",
+      "primaryOutput": "development/ui-chat/lib/client/index.js",
+      "outputs": [
+        "development/ui-chat/lib/client/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-locale-js-bundle",
+      "source": "development/ui-chat/src/client/locale.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/locale.ts",
+      "primaryOutput": "development/ui-chat/lib/client/locale.js",
+      "outputs": [
+        "development/ui-chat/lib/client/locale.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-markdown-labels-js-bundle",
+      "source": "development/ui-chat/src/client/markdown-labels.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/markdown-labels.ts",
+      "primaryOutput": "development/ui-chat/lib/client/markdown-labels.js",
+      "outputs": [
+        "development/ui-chat/lib/client/markdown-labels.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-model-conversation-context-js-bundle",
+      "source": "development/ui-chat/src/client/model/conversation-context.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/model/conversation-context.ts",
+      "primaryOutput": "development/ui-chat/lib/client/model/conversation-context.js",
+      "outputs": [
+        "development/ui-chat/lib/client/model/conversation-context.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-model-steering-history-js-bundle",
+      "source": "development/ui-chat/src/client/model/steering-history.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/model/steering-history.ts",
+      "primaryOutput": "development/ui-chat/lib/client/model/steering-history.js",
+      "outputs": [
+        "development/ui-chat/lib/client/model/steering-history.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-model-tool-call-tree-js-bundle",
+      "source": "development/ui-chat/src/client/model/tool-call-tree.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/model/tool-call-tree.ts",
+      "primaryOutput": "development/ui-chat/lib/client/model/tool-call-tree.js",
+      "outputs": [
+        "development/ui-chat/lib/client/model/tool-call-tree.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-performance-usage-js-bundle",
+      "source": "development/ui-chat/src/client/performance-usage.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/performance-usage.ts",
+      "primaryOutput": "development/ui-chat/lib/client/performance-usage.js",
+      "outputs": [
+        "development/ui-chat/lib/client/performance-usage.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-presentation-policy-js-bundle",
+      "source": "development/ui-chat/src/client/presentation-policy.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/presentation-policy.ts",
+      "primaryOutput": "development/ui-chat/lib/client/presentation-policy.js",
+      "outputs": [
+        "development/ui-chat/lib/client/presentation-policy.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-settings-LinkOpeningRow-js-bundle",
+      "source": "development/ui-chat/src/client/settings/LinkOpeningRow.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/settings/LinkOpeningRow.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/settings/LinkOpeningRow.js",
+      "outputs": [
+        "development/ui-chat/lib/client/settings/LinkOpeningRow.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-settings-PerformanceUsageRow-js-bundle",
+      "source": "development/ui-chat/src/client/settings/PerformanceUsageRow.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/settings/PerformanceUsageRow.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/settings/PerformanceUsageRow.js",
+      "outputs": [
+        "development/ui-chat/lib/client/settings/PerformanceUsageRow.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-settings-PreferenceRow-js-bundle",
+      "source": "development/ui-chat/src/client/settings/PreferenceRow.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/settings/PreferenceRow.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/settings/PreferenceRow.js",
+      "outputs": [
+        "development/ui-chat/lib/client/settings/PreferenceRow.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-settings-TranscriptViewRow-js-bundle",
+      "source": "development/ui-chat/src/client/settings/TranscriptViewRow.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/settings/TranscriptViewRow.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/settings/TranscriptViewRow.js",
+      "outputs": [
+        "development/ui-chat/lib/client/settings/TranscriptViewRow.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-stores-js-bundle",
+      "source": "development/ui-chat/src/client/stores.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/stores.ts",
+      "primaryOutput": "development/ui-chat/lib/client/stores.js",
+      "outputs": [
+        "development/ui-chat/lib/client/stores.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-transcript-view-js-bundle",
+      "source": "development/ui-chat/src/client/transcript-view.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/transcript-view.ts",
+      "primaryOutput": "development/ui-chat/lib/client/transcript-view.js",
+      "outputs": [
+        "development/ui-chat/lib/client/transcript-view.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-index-js-bundle",
+      "source": "development/ui-chat/src/index.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/index.ts",
+      "primaryOutput": "development/ui-chat/lib/index.js",
+      "outputs": [
+        "development/ui-chat/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-contract-slots-js-bundle",
+      "source": "development/ui-workspace/src/client/contract/slots.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/contract/slots.ts",
+      "primaryOutput": "development/ui-workspace/lib/client/contract/slots.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/contract/slots.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-index-js-bundle",
+      "source": "development/ui-workspace/src/client/index.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/index.ts",
+      "primaryOutput": "development/ui-workspace/lib/client/index.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-locales-js-bundle",
+      "source": "development/ui-workspace/src/client/locales.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/locales.ts",
+      "primaryOutput": "development/ui-workspace/lib/client/locales.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/locales.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-navigation-js-bundle",
+      "source": "development/ui-workspace/src/client/navigation.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/navigation.ts",
+      "primaryOutput": "development/ui-workspace/lib/client/navigation.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/navigation.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-pin-order-js-bundle",
+      "source": "development/ui-workspace/src/client/pin-order.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/pin-order.ts",
+      "primaryOutput": "development/ui-workspace/lib/client/pin-order.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/pin-order.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-rows-AnimatedRows-js-bundle",
+      "source": "development/ui-workspace/src/client/rows/AnimatedRows.tsx",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/rows/AnimatedRows.tsx",
+      "primaryOutput": "development/ui-workspace/lib/client/rows/AnimatedRows.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/rows/AnimatedRows.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-rows-Rows-js-bundle",
+      "source": "development/ui-workspace/src/client/rows/Rows.tsx",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/rows/Rows.tsx",
+      "primaryOutput": "development/ui-workspace/lib/client/rows/Rows.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/rows/Rows.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-rows-WorkspaceBrowser-js-bundle",
+      "source": "development/ui-workspace/src/client/rows/WorkspaceBrowser.tsx",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/rows/WorkspaceBrowser.tsx",
+      "primaryOutput": "development/ui-workspace/lib/client/rows/WorkspaceBrowser.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/rows/WorkspaceBrowser.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-session-actions-ArchiveSession-js-bundle",
+      "source": "development/ui-workspace/src/client/session-actions/ArchiveSession.tsx",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/session-actions/ArchiveSession.tsx",
+      "primaryOutput": "development/ui-workspace/lib/client/session-actions/ArchiveSession.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/session-actions/ArchiveSession.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-session-actions-derived-js-bundle",
+      "source": "development/ui-workspace/src/client/session-actions/derived.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/session-actions/derived.ts",
+      "primaryOutput": "development/ui-workspace/lib/client/session-actions/derived.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/session-actions/derived.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-session-actions-ForkSession-js-bundle",
+      "source": "development/ui-workspace/src/client/session-actions/ForkSession.tsx",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/session-actions/ForkSession.tsx",
+      "primaryOutput": "development/ui-workspace/lib/client/session-actions/ForkSession.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/session-actions/ForkSession.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-session-actions-PinSession-js-bundle",
+      "source": "development/ui-workspace/src/client/session-actions/PinSession.tsx",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/session-actions/PinSession.tsx",
+      "primaryOutput": "development/ui-workspace/lib/client/session-actions/PinSession.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/session-actions/PinSession.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-session-actions-RenameSession-js-bundle",
+      "source": "development/ui-workspace/src/client/session-actions/RenameSession.tsx",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/session-actions/RenameSession.tsx",
+      "primaryOutput": "development/ui-workspace/lib/client/session-actions/RenameSession.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/session-actions/RenameSession.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-session-actions-RowActionToast-js-bundle",
+      "source": "development/ui-workspace/src/client/session-actions/RowActionToast.tsx",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/session-actions/RowActionToast.tsx",
+      "primaryOutput": "development/ui-workspace/lib/client/session-actions/RowActionToast.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/session-actions/RowActionToast.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-stores-js-bundle",
+      "source": "development/ui-workspace/src/client/stores.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/stores.ts",
+      "primaryOutput": "development/ui-workspace/lib/client/stores.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/stores.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-tree-js-bundle",
+      "source": "development/ui-workspace/src/client/tree.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/tree.ts",
+      "primaryOutput": "development/ui-workspace/lib/client/tree.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/tree.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-WorkspacePicker-js-bundle",
+      "source": "development/ui-workspace/src/client/WorkspacePicker.tsx",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/WorkspacePicker.tsx",
+      "primaryOutput": "development/ui-workspace/lib/client/WorkspacePicker.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/WorkspacePicker.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-index-js-bundle",
+      "source": "development/ui-workspace/src/index.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/index.ts",
+      "primaryOutput": "development/ui-workspace/lib/index.js",
+      "outputs": [
+        "development/ui-workspace/lib/index.js"
+      ]
     }
   ],
   "bundles": [

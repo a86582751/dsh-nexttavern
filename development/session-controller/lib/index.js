@@ -87,10 +87,12 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
 });
 /** Session Remote owner: cold reads, explicit Agent commands, and live control state. */
 import { hostname } from 'node:os';
+import { resolve } from 'node:path';
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { errorChain } from '@deepseek-ai/dsh-llm';
-import { canOpenNativePath, nativeFileManager, openNativePath, revealNativePath } from '@deepseek-ai/dsh-native-command';
+import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command';
+import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import { ApiSessionAgentController, inspectApiSession, } from './agent.js';
 import { SessionCommandController } from './commands.js';
@@ -102,6 +104,7 @@ import { buildModelCatalog } from '@deepseek-ai/dsh-api-session-controller';
 import { installModelSelectionProjection } from './model-selection-projection.js';
 import { SessionSkillCatalog } from '@deepseek-ai/dsh-api-session-controller';
 import { SessionMediaReferences } from './media-references.js';
+import { ArchivedSessionGate } from './archived-session-gate.js';
 export { ApiSessionNotFound } from './agent.js';
 export { SessionFileReferences, SessionSkillCatalog } from '@deepseek-ai/dsh-api-session-controller';
 /** Host service backing the generated `ctx.remote.session` namespace. */
@@ -115,6 +118,7 @@ let SessionController = (() => {
     let _modelCatalog_decorators;
     let _canOpenWorkspacePath_decorators;
     let _openWorkspacePath_decorators;
+    let _workspacePathApplications_decorators;
     let _rename_decorators;
     let _fork_decorators;
     let _prompt_decorators;
@@ -123,6 +127,7 @@ let SessionController = (() => {
     let _cancel_decorators;
     let _page_decorators;
     let _follow_decorators;
+    let _projections_decorators;
     let _control_decorators;
     return class SessionController extends _classSuper {
         static {
@@ -134,6 +139,7 @@ let SessionController = (() => {
             _modelCatalog_decorators = [Remote('modelCatalog')];
             _canOpenWorkspacePath_decorators = [Remote];
             _openWorkspacePath_decorators = [Remote('openWorkspacePath')];
+            _workspacePathApplications_decorators = [Remote('workspacePathApplications')];
             _rename_decorators = [Remote('rename')];
             _fork_decorators = [Remote('fork')];
             _prompt_decorators = [Remote('prompt')];
@@ -142,6 +148,7 @@ let SessionController = (() => {
             _cancel_decorators = [Remote('cancel')];
             _page_decorators = [Remote('page')];
             _follow_decorators = [Remote({ mode: 'stream' })];
+            _projections_decorators = [Remote('projections')];
             _control_decorators = [Remote({ mode: 'stream' })];
             __esDecorate(this, null, _list_decorators, { kind: "method", name: "list", static: false, private: false, access: { has: obj => "list" in obj, get: obj => obj.list }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _search_decorators, { kind: "method", name: "search", static: false, private: false, access: { has: obj => "search" in obj, get: obj => obj.search }, metadata: _metadata }, null, _instanceExtraInitializers);
@@ -150,6 +157,7 @@ let SessionController = (() => {
             __esDecorate(this, null, _modelCatalog_decorators, { kind: "method", name: "modelCatalog", static: false, private: false, access: { has: obj => "modelCatalog" in obj, get: obj => obj.modelCatalog }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _canOpenWorkspacePath_decorators, { kind: "method", name: "canOpenWorkspacePath", static: false, private: false, access: { has: obj => "canOpenWorkspacePath" in obj, get: obj => obj.canOpenWorkspacePath }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _openWorkspacePath_decorators, { kind: "method", name: "openWorkspacePath", static: false, private: false, access: { has: obj => "openWorkspacePath" in obj, get: obj => obj.openWorkspacePath }, metadata: _metadata }, null, _instanceExtraInitializers);
+            __esDecorate(this, null, _workspacePathApplications_decorators, { kind: "method", name: "workspacePathApplications", static: false, private: false, access: { has: obj => "workspacePathApplications" in obj, get: obj => obj.workspacePathApplications }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _rename_decorators, { kind: "method", name: "rename", static: false, private: false, access: { has: obj => "rename" in obj, get: obj => obj.rename }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _fork_decorators, { kind: "method", name: "fork", static: false, private: false, access: { has: obj => "fork" in obj, get: obj => obj.fork }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _prompt_decorators, { kind: "method", name: "prompt", static: false, private: false, access: { has: obj => "prompt" in obj, get: obj => obj.prompt }, metadata: _metadata }, null, _instanceExtraInitializers);
@@ -158,6 +166,7 @@ let SessionController = (() => {
             __esDecorate(this, null, _cancel_decorators, { kind: "method", name: "cancel", static: false, private: false, access: { has: obj => "cancel" in obj, get: obj => obj.cancel }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _page_decorators, { kind: "method", name: "page", static: false, private: false, access: { has: obj => "page" in obj, get: obj => obj.page }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _follow_decorators, { kind: "method", name: "follow", static: false, private: false, access: { has: obj => "follow" in obj, get: obj => obj.follow }, metadata: _metadata }, null, _instanceExtraInitializers);
+            __esDecorate(this, null, _projections_decorators, { kind: "method", name: "projections", static: false, private: false, access: { has: obj => "projections" in obj, get: obj => obj.projections }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _control_decorators, { kind: "method", name: "control", static: false, private: false, access: { has: obj => "control" in obj, get: obj => obj.control }, metadata: _metadata }, null, _instanceExtraInitializers);
             if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
         }
@@ -168,6 +177,7 @@ let SessionController = (() => {
             'agents',
             'attachments',
             'fileUploads',
+            'fs',
             'llm',
             'sessions',
             'sessionProjections',
@@ -184,6 +194,8 @@ let SessionController = (() => {
         history;
         listState;
         openPath;
+        fileApplications;
+        openFileApplication;
         revealPath;
         canOpenPath;
         promotions = new Set();
@@ -211,19 +223,32 @@ let SessionController = (() => {
             }, 'session-controller.promotions');
             this.history = new SessionHistoryController(ctx, (observation) => { this.promote(observation); });
             this.listState = new ApiSessionList(ctx);
-            this.openPath = internals.openPath ?? openNativePath;
+            this.fileApplications = internals.fileApplications ?? nativeFileApplications;
+            this.openFileApplication = internals.openFileApplication ?? openNativeFileApplication;
+            this.openPath = internals.openPath ?? openNativeAssociatedPath;
             this.revealPath = internals.revealPath ?? revealNativePath;
             this.canOpenPath = internals.canOpenPath
                 ?? (() => config.nativeOpen ?? (internals.openPath !== undefined || canOpenNativePath()));
             ctx.plugin(SessionFileReferences);
             ctx.plugin(SessionMediaReferences);
             ctx.plugin(SessionSkillCatalog);
+            // An archived Session, or a subagent descendant of one, runs no model step
+            // until it is restored; what it still runs is stopped by the owners that
+            // answer the Workspace registry's archive-admission events.
+            ctx.plugin(ArchivedSessionGate);
             ctx.on('session/created', (session) => {
                 ctx.emit('api-session/added', this.listState.summaryFor(session));
             });
             ctx.on('session/disposed', (session) => {
                 ctx.emit('api-session/removed', session.id);
             });
+            const publishAgentAvailability = ({ agent }) => {
+                if (ctx.sessions.get(agent.id) === agent.session) {
+                    ctx.emit('api-session/added', this.listState.summaryFor(agent.session));
+                }
+            };
+            ctx.on('agent/created', publishAgentAvailability);
+            ctx.on('agent/disposed', publishAgentAvailability);
             ctx.on('agent/status', ({ agent, status }) => {
                 ctx.emit('api-session/status', agent.id, status === 'running');
             });
@@ -347,29 +372,65 @@ let SessionController = (() => {
             return { name: hostname(), available: fileManager !== null && this.canOpenPath(), fileManager };
         }
         /**
-         * Open one path prepared by a Session-aware caller on the Host desktop.
+         * Verify one path through the composed filesystem and open it on the Host desktop.
          * @param request - path after best-effort Session workspace resolution.
          * @param signal - caller lifetime; abort terminates the native command.
          * @returns confirmation after the native opener accepts the path.
-         * @throws RemoteError when the request is invalid, cancelled, or the opener fails.
+         * @throws RemoteError when the request is invalid, has no verified Host mapping, is cancelled, or the opener fails.
          */
         async openWorkspacePath(request, signal) {
-            if (request.path.length === 0) {
-                throw new RemoteError('gateway/bad-request', 'session.openWorkspacePath requires a non-empty path', {});
-            }
-            signal.throwIfAborted();
             try {
+                const path = await this.verifyDesktopPath(request.path, signal);
                 if (request.action === 'reveal')
-                    await this.revealPath(request.path, signal);
+                    await this.revealPath(path, signal);
+                else if (request.application !== undefined)
+                    await this.openFileApplication(path, request.application, signal);
                 else
-                    await this.openPath(request.path, signal);
+                    await this.openPath(path, signal);
                 return { opened: true };
             }
             catch (error) {
                 if (signal.aborted)
                     throw new RemoteError('gateway/cancelled', 'path open was aborted', {});
-                throw new RemoteError('gateway/internal', `path open failed: ${error instanceof Error ? error.message : String(error)}`, {});
+                if (error instanceof RemoteError)
+                    throw error;
+                throw new RemoteError('gateway/internal', 'path open failed', {}, { cause: error });
             }
+        }
+        /**
+         * Query current file handlers on the serving desktop without activating an Agent.
+         * @param request - file path in Host filesystem syntax.
+         * @param signal - caller lifetime, propagated to filesystem and desktop queries.
+         * @returns OS application names, icons, and default selection; empty when desktop opening is unavailable.
+         * @throws RemoteError when the path is invalid, the query is cancelled, or native discovery fails.
+         */
+        async workspacePathApplications(request, signal) {
+            if (!this.canOpenPath())
+                return [];
+            try {
+                const path = await this.verifyDesktopPath(request.path, signal);
+                return await this.fileApplications(path, signal);
+            }
+            catch (error) {
+                if (signal.aborted)
+                    throw new RemoteError('gateway/cancelled', 'application query was aborted', {});
+                if (error instanceof RemoteError)
+                    throw error;
+                throw new RemoteError('gateway/internal', 'file application query failed', {}, { cause: error });
+            }
+        }
+        async verifyDesktopPath(path, signal) {
+            if (path.length === 0)
+                throw new RemoteError('gateway/bad-request', 'A non-empty file path is required', {});
+            signal.throwIfAborted();
+            const hostPath = resolve(path);
+            const { fs } = this.ctx;
+            const mapped = fs.processPathFromHostPath(hostPath);
+            if (mapped === undefined || fs.processPath(await fs.resolve(mapped, { signal })) !== hostPath) {
+                throw new RemoteError('gateway/bad-request', 'Path has no verified Host path', {});
+            }
+            signal.throwIfAborted();
+            return hostPath;
         }
         /**
          * Rename one Session after explicitly resuming it.
@@ -380,8 +441,10 @@ let SessionController = (() => {
             return this.commands.rename(request);
         }
         /**
-         * Fork one cold-readable completed-turn prefix into a new Session.
-         * @param request - source Session and optional event anchor.
+         * Fork one cold-readable exact event prefix into a new Session. An omitted
+         * boundary selects the latest completed-turn prefix; an open cut receives
+         * synthetic fork closers.
+         * @param request - source Session and optional exact inclusive event boundary.
          * @returns the new Session identity.
          */
         fork(request) {
@@ -445,6 +508,47 @@ let SessionController = (() => {
          */
         follow(request, signal) {
             return this.history.follow(request, signal);
+        }
+        /**
+         * Read all registered projections without activating an Agent.
+         * @param request - Session whose current values are required.
+         * @param signal - cancellation for the Session observation.
+         * @returns complete baseline, or null when the Session does not exist.
+         */
+        async projections(request, signal) {
+            const { sessionId } = request;
+            if (sessionId.length === 0) {
+                throw new RemoteError('gateway/bad-request', 'sessionId must not be empty', {});
+            }
+            try {
+                const env_2 = { stack: [], error: void 0, hasError: false };
+                try {
+                    const observation = __addDisposableResource(env_2, await this.ctx.sessionQuery.observeSession(sessionId, { signal }), false);
+                    const projections = observation.projections;
+                    if (projections === undefined) {
+                        throw new RemoteError('session/projections-unavailable', 'Session projections are unavailable', {});
+                    }
+                    return { asOfSeq: projections.asOfSeq, values: projections.values };
+                }
+                catch (e_2) {
+                    env_2.error = e_2;
+                    env_2.hasError = true;
+                }
+                finally {
+                    __disposeResources(env_2);
+                }
+            }
+            catch (error) {
+                if (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND')
+                    return null;
+                if (signal.aborted
+                    || (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_ABORTED')) {
+                    throw new RemoteError('gateway/cancelled', 'Session projection read was cancelled', {}, { cause: error });
+                }
+                if (error instanceof RemoteError)
+                    throw error;
+                throw new RemoteError('gateway/internal', 'Session projection read failed', {}, { cause: error });
+            }
         }
         /**
          * Stream a complete live-control baseline followed by replacement frames.

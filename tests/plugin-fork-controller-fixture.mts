@@ -1,6 +1,5 @@
 /** Real Controller/AgentLoop cold activation; no Harness, network adapter or product preset. */
 import assert from 'node:assert/strict'
-import {mkdir, writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import {createRequire} from 'node:module'
 import {pathToFileURL} from 'node:url'
@@ -10,7 +9,7 @@ const require = createRequire(new URL('../build-tools/package.json', import.meta
 const load = (name: string) => import(pathToFileURL(require.resolve(`@deepseek-ai/${name}`)).href)
 const {Context} = await load('cordis')
 const {default: Loader} = await load('cordis-plugin-loader')
-const {default: SessionStore} = await load('dsh-session')
+const {default: SessionStore, buildForkSeed, SessionSeq} = await load('dsh-session')
 const {default: SessionProjectionRegistry} = await load('dsh-session-projection')
 const {default: JsonlSessionPersistence} = await load('dsh-session-persistence-jsonl')
 const {default: AgentRegistry, agentEvents, assembleContextFor} = await load('dsh-agent')
@@ -20,18 +19,11 @@ const {default: TypertRegistry} = await load('dsh-typert-registry')
 const {default: SystemPrompt, renderPrompt} = await load('dsh-system-prompt')
 const {default: ToolRuntime} = await load('dsh-tools')
 const {default: LlmRuntime} = await load('dsh-llm')
-const {default: SettingsProvider} = await load('dsh-settings')
+const {default: LocalFileSystem} = await load('dsh-fs-local')
 const {default: AgentDefaultModel} = await load('dsh-agent-default-model')
-const {default: AgentPresets, COMPOSITION_FILE} = await load('dsh-agent-presets')
+const {default: AgentPresets} = await load('dsh-agent-preset-registry')
+const {default: AgentPreset} = await load('dsh-agent-preset')
 const {default: SessionController} = await load('dsh-api-session-controller')
-
-/** Only settings storage is synthetic; registration, validation and live updates are native. */
-class MemorySettings extends SettingsProvider {
-  writable = true
-  stored: Record<string, unknown> = {}
-  async load() { return structuredClone(this.stored) }
-  async persist(namespace: string, section: unknown) { this.stored[namespace] = structuredClone(section) }
-}
 
 /** Use native observation/leases/projections; searching is outside this probe. */
 class PointQuery extends SessionQueryEngine {
@@ -47,20 +39,18 @@ export async function prepareControllerHost(ctx: any, options: {
   workspaces?: any[]
   deferPersistence?: boolean
 }) {
-  const presetRoot = path.join(options.directory, 'presets')
-  const presetDir = path.join(presetRoot, 'probe')
   const uploadResolvers = new Set<unknown>()
+  let declaration: any
 
   async function writePreset(duplicate = false) {
-    await mkdir(presetDir, {recursive: true})
     const row = {id: 'persona', name: '@deepseek-ai/dsh-persona', config: {
       prefix: 'Cold probe {{provider}}/{{model}}', complete: true, includeRuntimeContext: false,
     }}
     const rows = duplicate ? [row, {...row, id: 'conflicting-persona'}] : [row]
-    await writeFile(path.join(presetDir, COMPOSITION_FILE), JSON.stringify(rows), 'utf8')
+    await declaration?.dispose()
+    declaration = await ctx.plugin(AgentPreset, {id: 'probe', plugins: rows})
   }
 
-  await writePreset()
   await ctx.plugin(SessionStore)
   if (options.Format) await ctx.plugin(options.Format)
   await ctx.plugin(options.Projection ?? SessionProjectionRegistry)
@@ -71,16 +61,19 @@ export async function prepareControllerHost(ctx: any, options: {
   }
   await ctx.plugin(PointQuery)
   await ctx.plugin(TypertRegistry)
-  await ctx.plugin(MemorySettings)
   await ctx.plugin(SystemPrompt, {includeHarnessIdentity: false, includeRuntimeContext: false, persona: ''})
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(LlmRuntime)
+  await ctx.plugin(LocalFileSystem, {cwd: options.directory})
   await ctx.plugin(AgentRegistry)
-  await ctx.plugin(AgentDefaultModel, {provider: 'fixture-default', model: 'before'})
+  ctx.loader.builtins.fixtureDefaultModel = AgentDefaultModel
+  await ctx.loader.create({id: 'fixture-default-model', name: 'cordis:fixtureDefaultModel',
+    config: {provider: 'fixture-default', model: 'before'}})
+  await ctx.loader.await()
+  assert.ok(ctx.agentDefaultModel, 'fixture default model must be active')
   await ctx.plugin(AgentLoop, {agents: []})
-  await ctx.plugin(AgentPresets, {
-    default: 'probe', roots: [{path: presetRoot, trust: 'user'}], includeShippedRoot: false, includeUserRoot: false,
-  })
+  await ctx.plugin(AgentPresets, {default: 'probe'})
+  await writePreset()
   // Cold projection reads image policy, but this fixture must never touch
   // attachment bytes or workspace operations.
   const peripheral = (values: Record<string, unknown> = {}) => new Proxy(values, {get: (target, key) => {
@@ -97,9 +90,13 @@ export async function prepareControllerHost(ctx: any, options: {
     uploadResolvers.add(resolver)
     return () => {uploadResolvers.delete(resolver)}
   }}))
-  ctx.provide('workspaceRegistry', peripheral({list: () => options.workspaces ?? []}))
+  ctx.provide('workspaceRegistry', peripheral({list: () => options.workspaces ?? [],
+    archivedSessionIds: [], pinnedSessionIds: []}))
 
-  return {writePreset, uploadResolverCount: () => uploadResolvers.size}
+  return {writePreset, uploadResolverCount: () => uploadResolvers.size,
+    // Native Loader owns the volatile refs. Persistent profile edits are
+    // covered separately by the configuration fixture.
+    saveDefaultModel: (selection: object) => ctx.loader.update('fixture-default-model', {config: selection})}
 }
 
 export async function controllerFixture(options: {
@@ -118,13 +115,14 @@ export async function controllerFixture(options: {
   const registrations: {event: string}[] = []
   let writePreset: (duplicate?: boolean) => Promise<void>
   let uploadResolverCount = () => 0
+  let saveDefaultModel: (selection: object) => Promise<unknown>
   let controllerFiber: any
 
   async function startController() {
     if (options.controllerPackage) {
-      await ctx.loader.root.update([{
+      await ctx.loader.create({
         id: 'session-controller', name: options.controllerPackage.name, config: {nativeOpen: false},
-      }])
+      })
       await ctx.loader.await()
     } else {
       controllerFiber = await ctx.plugin(Controller, {nativeOpen: false})
@@ -132,7 +130,7 @@ export async function controllerFixture(options: {
   }
 
   async function stopController() {
-    if (options.controllerPackage) await ctx.loader.root.update([])
+    if (options.controllerPackage) await ctx.loader.remove('session-controller')
     else await controllerFiber.dispose()
   }
 
@@ -155,6 +153,7 @@ export async function controllerFixture(options: {
     })
     writePreset = preparedHost.writePreset
     uploadResolverCount = preparedHost.uploadResolverCount
+    saveDefaultModel = preparedHost.saveDefaultModel
     await startController()
     registrations.length = 0
   } catch (error) {
@@ -164,8 +163,9 @@ export async function controllerFixture(options: {
   }
 
   async function stageFrom(id: string, source: any) {
-    const seed = source.snapshotEvents()
-    const child = ctx.sessions.prepare(id, {seed, inheritedEventCount: seed.length, meta: {
+    const events = source.snapshotEvents()
+    const seed = buildForkSeed(events, SessionSeq(events.length - 1))
+    const child = ctx.sessions.prepare(id, {seed, inheritedEventCount: events.length, meta: {
       cwd: dir, parentSession: source.id, isSeeded: true, agentPreset: 'probe',
     }})
     const handle = await ctx.sessionPersistence.create(child.header, {inheritedEventCount: child.inheritedEventCount})
@@ -175,6 +175,7 @@ export async function controllerFixture(options: {
   }
 
   return {ctx, dir, published, registrations, writePreset, stageFrom,
+    saveDefaultModel,
     uploadResolverCount,
     stopController, startController,
     async stage(id: string, selection?: {provider: string; model: string; reasoningEffort?: string}) {

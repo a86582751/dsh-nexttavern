@@ -31,7 +31,7 @@ try {
   }
   // This is deliberately visible in the raw session but absent from compaction
   // evidence: export must use the selected, compacted story only.
-  session.append('user/message', { id: 'management', role: 'user', source: { kind: 'plugin', plugin: 'roleplay-tasks', form: 'phase', stage: 'management' }, content: text('不要把这条管理指令写进小说。') }, { surfaceOp: 'append' })
+  session.append('user/message', { id: 'management', role: 'user', source: { kind: 'roleplay-tasks', form: 'phase', stage: 'management' }, content: text('不要把这条管理指令写进小说。') }, { surfaceOp: 'append' })
   const inbox = []
   const agent = { session, status: 'idle', options: { provider: 'fixture', model: 'main', reasoningEffort: 'high' }, steer: message => inbox.push(message) }
   let spawns = 0, direct = 0
@@ -255,7 +255,7 @@ try {
   branch.entries=entries
 
   const foreignWorkspace=mkdtempSync(join(workspace,'foreign-'))
-  const foreignSession={id:'foreign',header:{agentPreset:'roleplay',cwd:foreignWorkspace}}
+  const foreignSession={id:'foreign',header:{agentPreset:'roleplay',cwd:foreignWorkspace},events:[]}
   const foreignLibrary=createTavernLibrary({workspace:foreignWorkspace,table:branch})
   const foreignResource=await foreignLibrary.archive({name:'foreign.md',type:'text/markdown',bytes:Buffer.from('foreign resource'),source:{sessionId:'foreign'}})
   const getSession=ctx.sessions.get

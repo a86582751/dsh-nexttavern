@@ -5,22 +5,23 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 const require = createRequire(new URL('../../build-tools/package.json', import.meta.url))
 const { build } = require('esbuild') as typeof import('../../build-tools/node_modules/esbuild/lib/main.js')
+const { transform } = require('lightningcss') as typeof import('../../build-tools/node_modules/lightningcss/node/index.js')
 
 const [entry, outfile, requestedModuleId, flag, recipeId] = process.argv.slice(2)
 if (!entry || !outfile) throw new Error('usage: node build-client.mjs <entry> <outfile>')
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
 interface BrowserRecipe {
   id: string; entry: string
-  browser?: {moduleId: string; external: string[]}
+  browser?: {moduleId: string; external: string[]; inlineArtifactImports?: Record<string, string>}
 }
 let recipe: BrowserRecipe | undefined
 let nodePaths: string[] | undefined
-let artifacts: {source: string; sha256?: string}[] = []
+let artifacts: {id: string; source: string; sha256?: string}[] = []
 if (flag !== undefined) {
   if (flag !== '--recipe' || !recipeId) throw Error('Expected --recipe ID')
   const plan = JSON.parse(readFileSync(resolve(root, 'release/source-manifest.json'), 'utf8')) as {
     builds: BrowserRecipe[]; typeScript: {declarationPackages: string[]}
-    artifacts: {source: string; sha256?: string}[]
+    artifacts: {id: string; source: string; sha256?: string}[]
   }
   recipe = plan.builds.find(item => item.id === recipeId)
   if (!recipe?.browser || resolve(root, recipe.entry) !== resolve(entry)) throw Error('Browser recipe entry mismatch')
@@ -41,6 +42,44 @@ const result = await build({
   platform: 'browser',
   external,
   nodePaths,
+  jsx: 'automatic',
+  plugins: [{
+    name: 'owned-client-assets',
+    setup(builder) {
+      builder.onResolve({filter: /^dsh-nexttavern-/}, args => {
+        if (external.includes(args.path)) return {path: args.path, external: true}
+        const artifactId = recipe?.browser?.inlineArtifactImports?.[args.path]
+        const artifact = artifacts.find(item => item.id === artifactId)
+        if (!artifact) throw Error('Unregistered owned browser import: ' + args.path)
+        return {path: resolve(root, artifact.source)}
+      })
+      builder.onLoad({filter: /\.css$/}, args => {
+        const source = relative(root, args.path).replaceAll('\\', '/')
+        const modules = args.path.endsWith('.module.css')
+        const css = transform({filename: source, code: readFileSync(args.path), minify: true,
+          cssModules: modules ? {pattern: '[hash]_[local]'} : false})
+        const classes: Record<string, string> = {}
+        // lightningcss exports come from a native hash map: sort names so
+        // repeated builds produce identical bytes across processes.
+        for (const [name, value] of Object.entries(css.exports ?? {}).sort(([left], [right]) => left.localeCompare(right))) {
+          if (value.composes.length) throw Error('CSS module composition needs an explicit dependency: ' + source)
+          classes[name] = value.name
+        }
+        // The native module loader claims these tags when it materializes the
+        // factory and removes them on unload. Do not create a second CSS owner.
+        return {loader: 'js', contents: `
+          const owner = ${JSON.stringify(moduleId)};
+          const key = ${JSON.stringify(moduleId + '/' + source)};
+          if (![...document.querySelectorAll('style[data-plugin-css]')].some(tag => tag.dataset.pluginCss === key)) {
+            const style = document.createElement('style');
+            style.dataset.plugin = owner; style.dataset.pluginCss = key;
+            style.textContent = ${JSON.stringify(css.code.toString())}; document.head.appendChild(style);
+          }
+          export default ${JSON.stringify(classes)};
+        `}
+      })
+    },
+  }],
   write: false,
   banner: {
     js: `window.__ModuleLoader__.load({ id: ${JSON.stringify(moduleId)}, factory: function (require) { var module = { exports: {} }; var exports = module.exports;`,

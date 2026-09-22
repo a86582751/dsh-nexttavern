@@ -1073,8 +1073,7 @@ export function registerAdaptationTools({ ctx, table, sessionOf, retrieval, acti
                 continue;
             const origin = event.data?.source;
             if (event.type === 'user/message'
-                && origin?.kind === 'plugin'
-                && origin.plugin === 'roleplay-tasks'
+                && origin?.kind === 'roleplay-tasks'
                 && origin.form === 'coarse-research-evidence'
                 && origin.owner === owner
                 && origin.sourceId === id
@@ -1251,8 +1250,7 @@ export function registerAdaptationTools({ ctx, table, sessionOf, retrieval, acti
                         id: randomUUID(),
                         role: 'user',
                         source: {
-                            kind: 'plugin',
-                            plugin: 'roleplay-tasks',
+                            kind: 'roleplay-tasks',
                             form: 'coarse-research-evidence',
                             ...preview.researchDelivery,
                             packetIds: group.map(packet => packet.packetId),

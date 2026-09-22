@@ -1,4 +1,4 @@
-/** Product entry lifecycle against actual alpha.6 libraries. */
+/** Product entry lifecycle against actual alpha.7 libraries. */
 import assert from 'node:assert/strict'
 import {test} from 'node:test'
 import {fixture, nativeCase, causedBy} from './plugin-product-entry-fixture.mts'
@@ -83,6 +83,28 @@ test('failed product reconfiguration restores native and permits a later valid u
 test('addon failure after provider startup leaves no owned resource', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
   await assert.rejects(fixture({failingAddon:true}), causedBy('addon failed'))
+})
+
+test('failed generations retry once, preserve accepted config, and respect a later disable', async t => {
+  if (await nativeCase(t.name, import.meta.url)) return
+  const f = await fixture()
+  const failedAttempts = () => f.attempts.filter(attempt => attempt.owner === 'owned' && attempt.value === 'reject').length
+  const rejected = (revision: number) => [{id:'meter',config:{service:'entryProbe',value:'reject',revision}}]
+  try {
+    await assert.rejects(f.update(rejected(1)), causedBy('owned provider failed'))
+    assert.equal(failedAttempts(), 1)
+    await f.update(rejected(1))
+    assert.equal(failedAttempts(), 1, 'unchanged failed generation must not retry')
+    await assert.rejects(f.update(rejected(2)), causedBy('owned provider failed'))
+    assert.equal(failedAttempts(), 2, 'new generation gets one attempt')
+    assert.deepEqual(f.ctx.get('entryProbe'), {owner:'official',value:'original'})
+    await f.update([...rejected(3), {id:'nexttavern',disabled:true}])
+    assert.equal(failedAttempts(), 2, 'disabled product must not retry')
+    assert.deepEqual(f.graph(), ['fixture-official-provider'])
+    await f.update([{id:'meter',config:{service:'entryProbe',value:'recovered'}}])
+    assert.deepEqual(f.ctx.get('entryProbe'), {owner:'owned',value:'recovered'})
+    assert.equal(f.attempts.filter(attempt => attempt.owner === 'owned' && attempt.value === 'recovered').length, 1)
+  } finally {await f.close()}
 })
 
 test('uninstall waits for the owned disposer before starting the original provider', async t => {

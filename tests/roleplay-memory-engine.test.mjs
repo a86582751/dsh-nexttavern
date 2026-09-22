@@ -7,6 +7,16 @@ import { legacyCadenceSlots, storyCadenceSlots } from '../lib/memory/roleplay-me
 {
  const fixture=JSON.parse(readFileSync(new URL('./fixtures/memory-history-legacy-v1.json',import.meta.url),'utf8'))
  assert.equal(fixture.schemaVersion,1)
+ // Keep historical business expectations while using the current wire sources.
+ // No production history migration is implied by this fixture-only conversion.
+ const currentSources=value=>{
+   if(!value||typeof value!=='object')return
+   if(value.kind==='plugin'&&typeof value.plugin==='string'){
+     value.kind=value.plugin==='compact'?'compact-checkpoint':value.plugin;delete value.plugin
+   }
+   for(const child of Object.values(value))currentSources(child)
+ }
+ currentSources(fixture)
  for(const sample of fixture.cases) {
   const before=structuredClone(sample)
   const {session,record}=sample
@@ -47,7 +57,7 @@ const text = (value) => [{ type: 'text', text: value }]
  const session=makeSession('tool-history',completedStoryEvents(),[1,2,3,6,7])
  const result=session.append('tool/result',{message:{source:{callId:'lore-1'},content:text('档案原件：第三次泵冲后方可开门。')}},{surfaceOp:'append'})
  const other=session.append('tool/result',{message:{source:{callId:'discarded'},content:text('OTHER_WORLDLINE_RESULT')}})
- const checkpoint=session.append('user/message',{source:{kind:'plugin',plugin:'roleplay-context-window'},content:text('窗口回执')},
+ const checkpoint=session.append('user/message',{source:{kind: 'roleplay-context-window'},content:text('窗口回执')},
   {surfaceOp:{op:'replace',startSeq:result.seq,endSeq:result.seq},sourceEventSeqs:[result.seq]})
  checkpoint.sourceEventSeqs=[result.seq]
  assert.equal(queryStoryHistory(session,{query:'第三次泵冲'}).matchedEntries,0,'plot-only default never imports tool material into memory')
@@ -152,7 +162,7 @@ for(const tool of ['rp_card_export_begin','rp_diagnose','rp_preset','rp_card_dra
     event('turn/start',{turn:1}),
     event('user/message',{id:'u1',source:{kind:'user'},content:text('我推开温室的门。')},'append'),
     event('assistant/message',{turn:1,message:{id:'story',content:text('铜灯熄灭后，温室门缓缓打开。')}},'append'),
-    event('user/message',{id:'after-story',source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story',storySeq:2,turn:1},content:text('正文已经落盘。')},'append'),
+    event('user/message',{id:'after-story',source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story',storySeq:2,turn:1},content:text('正文已经落盘。')},'append'),
     event('assistant/message',{turn:1,message:{id:'internal',content:text('内部维护结果，不能进入剧情记忆。')}},'append'),
     event('turn/end',{turn:1,reason:{kind:'aborted'}}),
   ],[1,2,3,4])
@@ -177,7 +187,7 @@ for(const tool of ['rp_card_export_begin','rp_diagnose','rp_preset','rp_card_dra
     event('assistant/message',{turn:1,message:{id:'tool-commentary',content:text('我先检查铜灯。')}},'append'),
     event('tool/result',{turn:1,content:text('工具输出不属于剧情。')},'append'),
     event('assistant/message',{turn:1,message:{id:'story',content:text('铜灯熄灭后，温室门缓缓打开。')}},'append'),
-    event('user/message',{id:'after-story',source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story',storySeq:4,turn:1},content:text('正文已经落盘。')},'append'),
+    event('user/message',{id:'after-story',source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story',storySeq:4,turn:1},content:text('正文已经落盘。')},'append'),
     event('assistant/message',{turn:1,message:{id:'internal',content:text('内部维护结果。')}},'append'),
     event('turn/end',{turn:1,reason:{kind:'completed'}}),
   ],[1,2,3,4,5,6])
@@ -225,7 +235,7 @@ function completedStoryEvents({ cardText = 'SECRET_CARD', oldBranchText = 'UNSEL
   return [
     event('turn/start', { turn: 1 }),
     event('user/message', { id: 'u1', role: 'user', content: text('玩家走进雨夜车站'), source: { kind: 'user' } }, 'append'),
-    event('user/message', { id: 'ctx1', role: 'user', content: text(cardText), source: { kind: 'plugin', plugin: 'roleplay-context' } }, 'append'),
+    event('user/message', { id: 'ctx1', role: 'user', content: text(cardText), source: { kind: 'roleplay-context' } }, 'append'),
     event('assistant/message', { turn: 1, message: { id: 'a1', role: 'assistant', content: text('她收起伞，报出只有两人知道的暗号。') } }, 'append'),
     event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
     event('turn/start', { turn: 2 }),
@@ -454,7 +464,7 @@ async function testDurableArchivesRequireVisibleCheckpoint() {
     event('user/message', {
       role: 'user',
       content: text('<compacted-summary>HIDDEN</compacted-summary>'),
-      source: { kind: 'plugin', plugin: 'compact', compactionId: 'c-hidden' },
+      source: { kind: 'compact-checkpoint', compactionId: 'c-hidden' },
     }, { op: 'replace', start: 0, end: 1 }),
     event('compaction/end', { compactionId: 'c-hidden' }),
   ]
@@ -502,7 +512,7 @@ async function testPlotOnlyAndDurableContract() {
   assert.equal(summaryEvent.data.usage, undefined)
   const checkpoint = session.events[summaryEvent.seq + 1]
   assert.equal(checkpoint.type, 'user/message')
-  assert.equal(checkpoint.data.source.plugin, 'compact')
+  assert.equal(checkpoint.data.source?.kind, 'compact-checkpoint')
   assert.equal(session.events.at(-1).type, 'compaction/end')
   assert.equal(h.ctx.flushed, true)
   assert.equal(h.heads.get('root').archives.at(-1).sessionId, 'root')
@@ -591,7 +601,7 @@ async function testPressureUsesWholeRequestButSummarizesPlot() {
   const events = [
     event('turn/start', { turn: 1 }),
     event('user/message', { id: 'u1', role: 'user', content: text('第一幕'), source: { kind: 'user' } }, 'append'),
-    event('user/message', { id: 'ctx', role: 'user', content: text('VERY_LARGE_WORLDBOOK'), source: { kind: 'plugin', plugin: 'roleplay-context' } }, 'append'),
+    event('user/message', { id: 'ctx', role: 'user', content: text('VERY_LARGE_WORLDBOOK'), source: { kind: 'roleplay-context' } }, 'append'),
     event('assistant/message', { turn: 1, message: { id: 'a1', role: 'assistant', content: text('第一幕结束') } }, 'append'),
     event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
     event('turn/start', { turn: 2 }),
@@ -731,7 +741,7 @@ async function testHistoryOnlyExpandsSelectedCompaction() {
   const session = makeSession('history', completedStoryEvents(), [1, 2, 3, 6, 7])
   session.append('compaction/start', { compactionId: 'c1', turn: null })
   session.append('compaction/summary', { compactionId: 'c1', shadowedSeqs: [1, 2, 3], shadowedRange: { start: 1, end: 3 } })
-  session.append('user/message', { id: 'summary', role: 'user', content: text('SUMMARY_NOT_PLOT'), source: { kind: 'plugin', plugin: 'compact', compactionId: 'c1' } },
+  session.append('user/message', { id: 'summary', role: 'user', content: text('SUMMARY_NOT_PLOT'), source: { kind: 'compact-checkpoint', compactionId: 'c1' } },
     { surfaceOp: { op: 'replace', startSeq: 1, endSeq: 3 }, sourceEventSeqs: [1, 2, 3] })
   session.append('compaction/end', { compactionId: 'c1', turn: null })
   session.append('assistant/message', { ...session.events[7].data, message: { ...session.events[7].data.message, content: text('修改后，怀表没有响。') } },
@@ -888,7 +898,7 @@ async function testPostCompactionPreparationMatrix() {
     const session = makeSession(`matrix-${operation}`, completedStoryEvents(), [1,2,3,6,7])
     session.append('compaction/start',{compactionId:'selected-checkpoint',turn:null})
     session.append('compaction/summary',{compactionId:'selected-checkpoint',shadowedSeqs:[1,2,3],shadowedRange:{start:1,end:3}})
-    session.append('user/message',{id:'checkpoint',content:text('VERIFIED_PREFIX'),source:{kind:'plugin',plugin:'compact',compactionId:'selected-checkpoint'}},
+    session.append('user/message',{id:'checkpoint',content:text('VERIFIED_PREFIX'),source:{kind: 'compact-checkpoint',compactionId:'selected-checkpoint'}},
       {surfaceOp:{op:'replace',startSeq:1,endSeq:3},sourceEventSeqs:[1,2,3]})
     session.append('compaction/end',{compactionId:'selected-checkpoint',turn:null})
     const h=makeHarness({session})
@@ -898,7 +908,7 @@ async function testPostCompactionPreparationMatrix() {
     const auditBefore=structuredClone(session.events)
     if(operation==='regenerate') session.append('assistant/message',{turn:2,message:{id:'variant4',content:text('四号版本留在车站')}},
       {surfaceOp:{op:'replace',startSeq:7,endSeq:7},sourceEventSeqs:[7]})
-    if(operation==='delete') session.append('user/message',{id:'deleted-range',content:[],source:{kind:'plugin',plugin:'test-branch-tombstone'}},
+    if(operation==='delete') session.append('user/message',{id:'deleted-range',content:[],source:{kind: 'test-branch-tombstone'}},
       {surfaceOp:{op:'replace',startSeq:6,endSeq:7},sourceEventSeqs:[6,7]})
     if(operation==='edit-save'||operation==='edit-send') session.append('user/message',{id:'edited-user',content:text('玩家改为留在原地'),source:{kind:'user'}},
       {surfaceOp:{op:'replace',startSeq:6,endSeq:operation==='edit-send'?7:6},sourceEventSeqs:operation==='edit-send'?[6,7]:[6]})
@@ -968,7 +978,7 @@ async function testAfterStoryProofFeedsDirectorNotesAfterMaintenanceAbort() {
     event('turn/start',{turn:1}),
     event('user/message',{id:'u1',source:{kind:'user'},content:text('我推开温室的门。')},'append'),
     event('assistant/message',{turn:1,message:{id:'story',content:text('铜灯熄灭后，温室门缓缓打开。')}},'append'),
-    event('user/message',{id:'after-story',source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story',storySeq:2,turn:1},content:text('正文已经落盘。')},'append'),
+    event('user/message',{id:'after-story',source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story',storySeq:2,turn:1},content:text('正文已经落盘。')},'append'),
     event('assistant/message',{turn:1,message:{id:'internal',content:text('内部维护失败信息。')}},'append'),
     event('turn/end',{turn:1,reason:{kind:'aborted'}}),
   ],[1,2,3,4])
@@ -984,7 +994,7 @@ async function testNotesFinishBeforeTurnEnd() {
   event('turn/start',{turn:1}),
   event('user/message',{id:'u',source:{kind:'user'},content:text('推开温室门。')},'append'),
   event('assistant/message',{turn:1,message:{id:'body',content:text('温室门打开，铜灯熄灭。')}},'append'),
-  event('user/message',{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story',storySeq:2,turn:1},content:text('维护阶段。')},'append'),
+  event('user/message',{source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story',storySeq:2,turn:1},content:text('维护阶段。')},'append'),
  ],[1,2,3])
  const h=makeHarness({session});await apply(h.ctx,defaultConfig)
  await h.services.get('compaction').finishTurn({session})
@@ -1175,11 +1185,15 @@ await testAutomaticTimeoutIsActuallyBounded()
    // Production does not translate alpha.3 archives during this breaking upgrade.
    const expected=structuredClone(sample.expected)
    for(const event of expected.events) {
+    const source=event.data?.source
+    if(source?.kind==='plugin'&&source.plugin==='compact'){
+     source.kind='compact-checkpoint';delete source.plugin
+    }
     const op=event.surfaceOp
     if(op?.op==='replace')event.surfaceOp={op:'replace',startSeq:op.start,endSeq:op.end}
    }
    assert.deepEqual(normalize({result,events:session.events.slice(before),surface:session.surface.nodes,head:h.heads.get(session.id),requests:h.requests,flushed:Boolean(h.ctx.flushed)}),expected,
-    'compaction request, provenance and ledger mirror survive the alpha.6 surface field rename')
+    'compaction request, provenance and ledger mirror survive the current wire field changes')
    assert.equal(sample.nodeReads,4,'old selection recalculates the story surface for pressure')
    assert.equal(nodeReads,2,'typed selection reuses its existing surface projection')
   }

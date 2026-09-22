@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "package": "dsh-nexttavern-session-controller",
   "upstreamPackage": "@deepseek-ai/dsh-api-session-controller",
-  "upstreamVersion": "0.1.6-alpha.2",
+  "upstreamVersion": "0.1.7-alpha.1",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
-  "commit": "ddefc45fbc7f8e46dd73185e68295696d1297887",
+  "commit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
   "license": "MIT",
   "files": [
     {
       "source": "src/agent.ts",
       "upstream": "packages/api/session-controller/src/agent.ts",
-      "upstreamSha256": "dfb0b04d44377ab962c4afa7e45a0366d2f2a54bbeb217e9b23f89dfa060372d"
+      "upstreamSha256": "c7740bd94bac7adb05b520c869451e18bc65201fa141a15d3e32241d4a2281c0"
     },
     {
       "source": "src/assistant-stream.ts",
@@ -25,12 +25,12 @@
     {
       "source": "src/client/contract/session.ts",
       "upstream": "packages/api/session-controller/src/client/contract/session.ts",
-      "upstreamSha256": "68c1bf8543a6f7d9508b055330afb9ad12f1949f55b4a2448eef372124133be6"
+      "upstreamSha256": "7642dd59c526f3dc50b7becb5cf9f4a4bf6bf87ee7181e99e088a6b34db62d4b"
     },
     {
       "source": "src/client/contract/sessions.ts",
       "upstream": "packages/api/session-controller/src/client/contract/sessions.ts",
-      "upstreamSha256": "ffa70201c25098de04f44f37dc1481f2f069500ee18fecdf1805d76deba83862"
+      "upstreamSha256": "082745c4204535e99dd7ce1111834df67e0f73b8cbd5ddeec41ca6dddfc2b6de"
     },
     {
       "source": "src/client/contract/snapshot.ts",
@@ -40,7 +40,7 @@
     {
       "source": "src/client/index.ts",
       "upstream": "packages/api/session-controller/src/client/index.ts",
-      "upstreamSha256": "90663b703054df15769a97ff8efbf0e84e4becc32345add8d17a9156930453cb"
+      "upstreamSha256": "d90c6dcb93af854c6789240556e0f483be142e9bfadbf1b50eeb10bd7cf09c53"
     },
     {
       "source": "src/client/ordered-baseline.ts",
@@ -55,7 +55,7 @@
     {
       "source": "src/client/session-wire-event.ts",
       "upstream": "packages/api/session-controller/src/client/session-wire-event.ts",
-      "upstreamSha256": "a7f30dadbc540666396277e528f18dc6e87d64e32a98cfea98c696f2d427b4f9"
+      "upstreamSha256": "22dc43f3fc68a28b366dee96a9e3450bc083dfdc7301c6cc5b48ce2acf73f534"
     },
     {
       "source": "src/client/sessions/assistant-stream.ts",
@@ -70,12 +70,12 @@
     {
       "source": "src/client/sessions/lineage.ts",
       "upstream": "packages/api/session-controller/src/client/sessions/lineage.ts",
-      "upstreamSha256": "29daaec612c2b78c58488d94f1e53777d979e095483aafed91259f37a5c0ac25"
+      "upstreamSha256": "8348b9fc3df11661ef43c16528a3f4a5c2afadb70d0bef83ddcb2a9af3216505"
     },
     {
       "source": "src/client/sessions/manager.ts",
       "upstream": "packages/api/session-controller/src/client/sessions/manager.ts",
-      "upstreamSha256": "b1aa3eab3cb0b92cce2dd1dea8479e8f78664add7b5078911247d54cd5502e8a"
+      "upstreamSha256": "e7dfa21eff0234ffa458ade61dffd80e97aff11d6e5a735c9c1b22d838571802"
     },
     {
       "source": "src/client/sessions/notifier.ts",
@@ -85,22 +85,22 @@
     {
       "source": "src/client/sessions/projection-store.ts",
       "upstream": "packages/api/session-controller/src/client/sessions/projection-store.ts",
-      "upstreamSha256": "0cfc37bd5c57fd1aaa3af2fe2f8557604798e09817127779d426c8dd8ffdb708"
+      "upstreamSha256": "c93096330b0dd9c025c178e6194727d41c43ba40f5384e56dcdd3270f1d59589"
     },
     {
       "source": "src/client/sessions/remotes.ts",
       "upstream": "packages/api/session-controller/src/client/sessions/remotes.ts",
-      "upstreamSha256": "7e33f3e6968d4d3b0e124c6b71b35babcbc8ca56cff41ecf6b42348f7dbf6e75"
+      "upstreamSha256": "0ea0f978301dbf926246668e46600bd576adb3ed093d55c271a4de1cac2149ba"
     },
     {
       "source": "src/client/sessions/service.ts",
       "upstream": "packages/api/session-controller/src/client/sessions/service.ts",
-      "upstreamSha256": "9774dbbbb4ae8915134c6da8707f91147df831c54f1a44916d4cfe2367e9298f"
+      "upstreamSha256": "9c6e0730aa36ee821cf2781894694d290990167c7246816b86cb309876518d71"
     },
     {
       "source": "src/client/sessions/session.ts",
       "upstream": "packages/api/session-controller/src/client/sessions/session.ts",
-      "upstreamSha256": "97395774eaa08d520f96b57ce33b0b7ba8a50b1484ecda42c8f40062ce39d0fa"
+      "upstreamSha256": "b66b2af217063a0d272bb57269eeb86f74cac717dc6bc6629b8dd1bdab7ab04e"
     },
     {
       "source": "src/client/time-zone.ts",
@@ -115,27 +115,27 @@
     {
       "source": "src/commands.ts",
       "upstream": "packages/api/session-controller/src/commands.ts",
-      "upstreamSha256": "a28710b2368df8747cdb88f08c97358eab0dc64f2c2c653868a8fe7129f30944"
+      "upstreamSha256": "b1c4ba9b741a5b9d3673b17a98a6d8d3d699c886ae84fe525cce68632ec37db8"
     },
     {
       "source": "src/control.ts",
       "upstream": "packages/api/session-controller/src/control.ts",
-      "upstreamSha256": "8a065da06b1ac2282b9daf6d3615b665657092d9b42e81227cb4b6bd6e4055c0"
+      "upstreamSha256": "1c68ae048ae911ac2e169b92b0e038ae0a3adc13a02c25ceb0b46536c5821b57"
     },
     {
       "source": "src/history.ts",
       "upstream": "packages/api/session-controller/src/history.ts",
-      "upstreamSha256": "17d630b344dc359cded27fa6d99b68c144b1c4881fcb624b0b5ef7d6cacfc090"
+      "upstreamSha256": "4ea3f9dd3f89e9dbad27b85e5266395d2f59677478231f395b6899b04816c582"
     },
     {
       "source": "src/index.ts",
       "upstream": "packages/api/session-controller/src/index.ts",
-      "upstreamSha256": "c3c8f0e1b3272db26bdb90b56a3efd373e492e26d7aa491c509aa9c988eddd7d"
+      "upstreamSha256": "e662755456dee9f9656745afe3309d138ddbd6d161d0643e89fa5cca19bf72a5"
     },
     {
       "source": "src/list.ts",
       "upstream": "packages/api/session-controller/src/list.ts",
-      "upstreamSha256": "8c1d376917552b8c510393666438f53d9bbe2d8e728fd0b50cfd2d81b52858e9"
+      "upstreamSha256": "d3590501fd305210a30c92a92d408db719852ca562079b31996ec11fde25d15a"
     },
     {
       "source": "src/media-references.ts",
@@ -145,11 +145,16 @@
     {
       "source": "src/model-selection-projection.ts",
       "upstream": "packages/api/session-controller/src/model-selection-projection.ts",
-      "upstreamSha256": "dfc401247080f930d148effea68cf32c2fae37df2b9d718f387b0a0265c45d00"
+      "upstreamSha256": "a45bdb4bf86025c62e45e83a582301ff649fea50c94f82eedd81b37ba6ef7f9f"
+    },
+    {
+      "source": "src/archived-session-gate.ts",
+      "upstream": "packages/api/session-controller/src/archived-session-gate.ts",
+      "upstreamSha256": "1445070c0a9da7ebe7e3032a24ab9fcc4a803973ac12d4adf4b872ea0f0d0e18"
     }
   ],
   "changes": [
-    "Maintain host and client from the pinned alpha6 source; official types, Remote vocabulary and public stateless adapters are shared",
+    "Maintain host and client from pinned alpha7 source; official types, Remote vocabulary and public stateless adapters are shared",
     "Host-only forkPrepared awaits caller reservation before the native Agent create/setup publication path",
     "Prepared roleplay cuts retain late edit/ownership records before the next turn; ordinary Remote forks keep the official completed-turn boundary",
     "Native inheritedEventCount/isSeeded metadata and the single Controller model-selection owner are preserved",

@@ -127,7 +127,7 @@ export function createCardAdaptationPresentations(React: typeof ReactAPI) {
                 h(
                 'select',
                     {
-                        ref: (element: HTMLSelectElement | null) => { modelSettingsRef.current = element; },
+                        ref: (element: HTMLSelectElement | null): void => { modelSettingsRef.current = element; },
                         'data-dsh-rp-novel-model-settings': true,
                         className: 'dsh-rp-input',
                         value: modelSelection,

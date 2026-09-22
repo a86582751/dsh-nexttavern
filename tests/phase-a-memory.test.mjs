@@ -67,9 +67,9 @@ async function harness(memoryResult, config = {}) {
   }
   return {session,table,services,begin,append,prepare,completePendingTasks,calls,tools:toolHandlers,sections,routes,dispose:()=>cleanup.reverse().forEach(f=>f())}
 }
-const hidden=messages=>messages.filter(m=>m.source?.plugin==='roleplay-context')
+const hidden=messages=>messages.filter(m=>m.source?.kind==='roleplay-context')
 const hiddenText=messages=>hidden(messages).map(m=>m.content[0].text).join('\n')
-const anchor=(messages,form)=>messages.find(m=>m.source?.plugin==='roleplay-context'&&m.source.form===form)
+const anchor=(messages,form)=>messages.find(m=>m.source?.kind==='roleplay-context'&&m.source.form===form)
 
 // High-frequency assembly is deterministic. Even an explicit auxiliary model
 // must not run scene/recall inference before the main author can write.
@@ -83,7 +83,7 @@ const anchor=(messages,form)=>messages.find(m=>m.source?.plugin==='roleplay-cont
   assert.equal(h.calls.length,0,'program reads notes directly: zero pre-story auxiliary model calls')
   assert.match(hiddenText(messages),/铜钥匙还在玩家手中/)
   assert.doesNotMatch(hiddenText(messages),/记忆·本轮召回|召回来源|准备降级|尚未完成/)
-  assert.ok(!messages.some(m=>m.source?.plugin==='roleplay-tasks'&&m.source.stage==='prepare'))
+  assert.ok(!messages.some(m=>m.source?.kind==='roleplay-tasks'&&m.source.stage==='prepare'))
   assert.equal([...h.table('branch').values()].filter(j=>j.kind==='memory'&&j.input).length,0)
  } finally {h.dispose()}
 }
@@ -175,7 +175,7 @@ const anchor=(messages,form)=>messages.find(m=>m.source?.plugin==='roleplay-cont
   const empty=await h.prepare(5)
   assert.equal(anchor(empty,'director-notes').source.mode,'full')
   assert.match(anchor(empty,'director-notes').content[0].text,/没有可用导演笔记|均已失效/)
-  const firstFull=h.session.events.find(event=>event.data?.source?.plugin==='roleplay-context'&&event.data.source.form==='director-notes'&&event.data.source.mode==='full')
+  const firstFull=h.session.events.find(event=>event.data?.source?.kind==='roleplay-context'&&event.data.source.form==='director-notes'&&event.data.source.mode==='full')
   h.session.surface.nodes=h.session.surface.nodes.filter(seq=>seq!==firstFull.seq)
   notes=originalNotes
   h.begin(6)
@@ -189,7 +189,7 @@ const anchor=(messages,form)=>messages.find(m=>m.source?.plugin==='roleplay-cont
  try {
   const notes='BRANCH_LOCAL_NOTES'
   h.services.set('compaction',{directorNotes:()=>({text:notes,generationId:'branch-notes',sourceKeys:['1:a'],sourceSeqs:[1]})})
-  h.append('user/message',{id:'parent-anchor',role:'user',source:{kind:'plugin',plugin:'roleplay-context',form:'director-notes',schemaVersion:1,branchId:'parent-branch',notesHash:'parent-hash',mode:'full'},content:text('[导演笔记锚点·完整版本 parent-hash]\nBRANCH_LOCAL_NOTES')},'append')
+  h.append('user/message',{id:'parent-anchor',role:'user',source:{kind: 'roleplay-context',form:'director-notes',schemaVersion:1,branchId:'parent-branch',notesHash:'parent-hash',mode:'full'},content:text('[导演笔记锚点·完整版本 parent-hash]\nBRANCH_LOCAL_NOTES')},'append')
   h.begin(1)
   const messages=await h.prepare(1)
   assert.equal(anchor(messages,'director-notes').source.mode,'full')
@@ -205,17 +205,17 @@ const anchor=(messages,form)=>messages.find(m=>m.source?.plugin==='roleplay-cont
   await h.table('branch').put(`${h.session.id}__settings`,{contextWindowTokens:1000,continuityTailTokens:2005})
   await h.table('branch').put('other-branch__settings',{contextWindowTokens:999999,continuityTailTokens:999999})
   h.services.set('compaction',{prepareForTurn:async()=>({status:'ready'}),directorNotes:()=>({text:'WINDOW_NOTES',generationId:'window-notes',sourceKeys:['1:a'],sourceSeqs:[1]}),ensureWindowCheckpoint:async()=>({status:'ready',branchId:h.session.id,generationId:'checkpoint',sourceKeys:[],sourceSeqs:[]})})
-  const notes=h.append('user/message',{id:'old-notes',role:'user',source:{kind:'plugin',plugin:'roleplay-context',form:'director-notes',branchId:h.session.id,mode:'full'},content:text('OLD_WINDOW_NOTES')},'append')
-  const state=h.append('user/message',{id:'old-state',role:'user',source:{kind:'plugin',plugin:'roleplay-context',form:'state',branchId:h.session.id,mode:'full'},content:text('OLD_WINDOW_STATE')},'append')
+  const notes=h.append('user/message',{id:'old-notes',role:'user',source:{kind: 'roleplay-context',form:'director-notes',branchId:h.session.id,mode:'full'},content:text('OLD_WINDOW_NOTES')},'append')
+  const state=h.append('user/message',{id:'old-state',role:'user',source:{kind: 'roleplay-context',form:'state',branchId:h.session.id,mode:'full'},content:text('OLD_WINDOW_STATE')},'append')
   h.append('turn/start',{turn:1})
   const oldUser=h.append('user/message',{id:'old-user',role:'user',source:{kind:'user'},content:text('OLD_PLAYER')},'append')
   const oldStory=h.append('assistant/message',{turn:1,message:{id:'old-story',content:text('S'.repeat(5000))}},'append')
-  h.append('user/message',{id:'after-story',role:'user',source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story',storySeq:oldStory.seq,turn:1},content:[]},'append')
+  h.append('user/message',{id:'after-story',role:'user',source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story',storySeq:oldStory.seq,turn:1},content:[]},'append')
   h.append('assistant/message',{turn:1,message:{id:'maintenance',content:text('M'.repeat(8000))}},'append')
   h.append('turn/end',{turn:1,reason:{kind:'completed'}})
   h.begin(2)
   await h.prepare(2)
-  const checkpoint=h.session.events.find(event=>event.data?.source?.plugin==='roleplay-context-window')
+  const checkpoint=h.session.events.find(event=>event.data?.source?.kind==='roleplay-context-window')
   assert.ok(checkpoint,'story pressure creates a real window checkpoint')
   assert.equal(checkpoint.surfaceOp.startSeq,notes.seq,'replacement starts at the first old-window anchor')
   assert.deepEqual(checkpoint.sourceEventSeqs.slice(0,2),[notes.seq,state.seq],'replacement provenance includes both old anchors')
@@ -242,10 +242,10 @@ for (const mutate of [false,true]) {
   h.begin(3)
   if(mutate) {
    await assert.rejects(h.prepare(3),/来源|窗口/)
-   assert.equal(h.session.events.filter(e=>e.data?.source?.plugin==='roleplay-context-window').length,0)
+   assert.equal(h.session.events.filter(e=>e.data?.source?.kind==='roleplay-context-window').length,0)
   } else {
    const messages=await h.prepare(3)
-   const checkpoint=h.session.events.find(e=>e.data?.source?.plugin==='roleplay-context-window')
+   const checkpoint=h.session.events.find(e=>e.data?.source?.kind==='roleplay-context-window')
    assert.equal(checkpoint.data.source.checkpointGeneration,'saved')
    assert.equal(checkpoint.data.source.schemaVersion,1)
    assert.match(hiddenText(messages),/NEW_CHECKPOINT_NOTES/)
@@ -291,7 +291,7 @@ for (const failure of ['cancel','deleted','initial-write','window-write']) {
   }
   gate.resolve()
   await pending
-  const receipts=h.session.events.filter(e=>e.data?.source?.plugin==='roleplay-context-window')
+  const receipts=h.session.events.filter(e=>e.data?.source?.kind==='roleplay-context-window')
   assert.equal(receipts.length,failure==='window-write'?1:0,`${failure}: only a failed post-append write leaves a durable receipt`)
   assert.deepEqual(branch.get(windowKey),failure==='initial-write'?undefined:originalWindow)
   assert.equal(branch.get(`${h.session.id}__task-preparation`).status,'preparing','failed preparation cannot admit prose')

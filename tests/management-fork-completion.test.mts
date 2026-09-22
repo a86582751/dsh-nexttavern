@@ -20,7 +20,7 @@ function fixture({via='event',tool='rp_source_search',invalid='',retry=false}={}
   const events:ContextEvent[]=[
     {seq:0,type:'turn/start',data:{turn:1}},
     {seq:1,type:'user/message',data:{id:'player',source:{kind:'user',rpcId:'request'},content:[{type:'text',text:'Check the card'}]}},
-    {seq:2,type:'user/message',data:{id:'phase',source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:invalid==='internal'?'after-story':'story'},content:[]}},
+    {seq:2,type:'user/message',data:{id:'phase',source:{kind: 'roleplay-tasks',form:'phase',stage:invalid==='internal'?'after-story':'story'},content:[]}},
     {seq:3,type:'tool/call',data:{turn:1,name:tool,callId:'call',arguments:'{"source_id":"book","query":"clue"}'}},
     {seq:4,type:'assistant/message',data:{turn:1,message:{id:'done',content:[{type:'text',text:invalid==='empty'?'':'Card file updated; no story was generated.'}]},interrupted:invalid==='interrupted'}},
     {seq:5,type:'turn/end',data:{turn:1,reason:{kind:invalid==='failed'?'error':'completed'}}},

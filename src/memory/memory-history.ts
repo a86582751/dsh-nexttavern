@@ -21,7 +21,7 @@ export interface StoryEvent {
     compactionId?: unknown
     error?: unknown
     shadowedSeqs?: unknown
-    source?: { kind?: string; plugin?: string; stage?: string; form?: string; jobKind?: string; storySeq?: unknown; turn?: unknown; compactionId?: unknown }
+    source?: { kind?: string; stage?: string; form?: string; jobKind?: string; storySeq?: unknown; turn?: unknown; compactionId?: unknown }
   }
   sourceEventSeqs?: unknown
   surfaceOp?: StorySurfaceOp
@@ -91,10 +91,10 @@ export function importManagementInputs(session: StorySession, evidence = eventsO
     }
     if(event.type==='tool/call'&&event.data?.name==='rp_card_draft_check')authoring=true
     if(event.type==='tool/call'&&['rp_card_import_begin','rp_commit_card'].includes(event.data?.name ?? ''))authoring=false
-    if(event.type==='user/message'&&event.data?.source?.plugin==='roleplay-tasks'&&event.data.source.stage==='after-story')authoring=false
+    if(event.type==='user/message'&&event.data?.source?.kind==='roleplay-tasks'&&event.data.source.stage==='after-story')authoring=false
     if(authoring&&event.type==='tool/call'&&event.data?.name==='ask_user_question')exportTurns.add(Number(event.data?.turn??turn))
     if(event.type==='tool/call' && /^(?:rp_card_export_(begin|chunk|finalize)|rp_novel_export|rp_diagnose|rp_preset|rp_card_draft_check)$/.test(event.data?.name??''))exportTurns.add(Number(event.data?.turn??turn))
-    if(event.type==='user/message'&&event.data?.source?.plugin==='roleplay-tasks'&&['card-export','novel-export'].includes(event.data?.source?.jobKind ?? ''))exportTurns.add(turn)
+    if(event.type==='user/message'&&event.data?.source?.kind==='roleplay-tasks'&&['card-export','novel-export'].includes(event.data?.source?.jobKind ?? ''))exportTurns.add(turn)
     if (event.type === 'turn/end') turn = null
   }
   const resumed=importedStoryProjection(evidence,surfaceSeqsOf(session)).prose
@@ -136,7 +136,7 @@ function afterStoryProofs(session: StorySession, visible = new Set(surfaceSeqsOf
   const log = eventsOf(session), committed = new Set<number>(), turns = new Set<number>()
   for (const marker of evidence) {
     const source = marker?.type === 'user/message' ? marker.data?.source : null
-    if (source?.kind !== 'plugin' || source?.plugin !== 'roleplay-tasks' || source?.form !== 'phase' || source?.stage !== 'after-story') continue
+    if (source?.kind !== 'roleplay-tasks' || source?.form !== 'phase' || source?.stage !== 'after-story') continue
     const seq = Number(source.storySeq), turn = Number(source.turn)
     const original = Number.isSafeInteger(seq) ? log[seq] : null
     const story = original ? projectStoryEvent(session, original) : null
@@ -155,7 +155,7 @@ export function canonicalAssistantSeqsOf(session: StorySession, seqs = surfaceSe
   let inTask=false
   for(const event of evidence) {
     if(event?.type==='turn/start'||event?.type==='turn/end')inTask=false
-    if(event?.type==='user/message'&&event.data?.source?.kind==='plugin'&&event.data?.source?.plugin==='roleplay-tasks'&&event.data?.source?.form==='phase')inTask=event.data.source.stage!=='story'
+    if(event?.type==='user/message'&&event.data?.source?.kind==='roleplay-tasks'&&event.data?.source?.form==='phase')inTask=event.data.source.stage!=='story'
     if(inTask&&event?.type==='assistant/message')internal.add(event.seq)
   }
   const completedTurns = new Set(evidence
@@ -208,7 +208,7 @@ function expandedHistorySeqs(session: StorySession, evidence = eventsOf(session)
     const event = log[seq]
     if (!event || Number(event.seq) !== seq) return
     if (isCompactedStoryEvent(event)) {
-      if (event.data?.source?.plugin === 'roleplay-context-window') {
+      if (event.data?.source?.kind === 'roleplay-context-window') {
         const archived = Array.isArray(event.sourceEventSeqs) ? event.sourceEventSeqs : []
         for (const source of archived) expand(source, depth + 1)
         return
@@ -419,6 +419,5 @@ export function directorNotesForBranch(value: unknown, session: StorySession, en
 
 export function isCompactedStoryEvent(event: StoryEvent | null | undefined) {
   return event?.type === 'user/message'
-    && event?.data?.source?.kind === 'plugin'
-    && (event?.data?.source?.plugin === 'compact' || event?.data?.source?.plugin === 'roleplay-context-window')
+    && (event?.data?.source?.kind === 'compact-checkpoint' || event?.data?.source?.kind === 'roleplay-context-window')
 }

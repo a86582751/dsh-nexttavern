@@ -39,7 +39,7 @@ export function retireDeliveredDraft(session:TaskContextSession,currentTurn:numb
     for(const seq of nodes){
       const e=lookup.get(seq),source=e?.data?.source
       const owned=e&&seq>=draft.start&&seq<=draft.end&&(e.type==='assistant/message'||e.type==='tool/result'
-        ||e.type==='user/message'&&source?.kind==='plugin'&&['roleplay-tasks','roleplay-context'].includes(source.plugin??''))
+        ||e.type==='user/message'&&['roleplay-tasks','roleplay-context'].includes(source?.kind??''))
       if(owned)group.push(seq);else flush()
     }
     flush();if(!groups.length)continue
@@ -47,7 +47,7 @@ export function retireDeliveredDraft(session:TaskContextSession,currentTurn:numb
       if(createHash('sha256').update(source.bytes.toString('utf8')).digest('hex')!==draft.sha256)continue
     }catch{continue}
     for(const selected of groups){const first=selected[0]!,last=selected.at(-1)!
-      session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind:'plugin',plugin:'roleplay-tasks',form:'management-receipt',jobKind:'card-authoring',sessionId:session.id,sourceTurn:draft.turn,sourcePath:draft.path,sha256:draft.sha256,sourceSha256:createHash('sha256').update(JSON.stringify(selected.map(seq=>lookup.get(seq)))).digest('hex')},
+      session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind: 'roleplay-tasks',form:'management-receipt',jobKind:'card-authoring',sessionId:session.id,sourceTurn:draft.turn,sourcePath:draft.path,sha256:draft.sha256,sourceSha256:createHash('sha256').update(JSON.stringify(selected.map(seq=>lookup.get(seq)))).digest('hex')},
         content:[{type:'text',text:`写卡阶段已交付并通过草稿检查：${draft.path}（SHA-256 ${draft.sha256}）。玩家确认的要求与最终交付消息保留；研究/写卡过程在历史 seq ${first}–${last} 可追溯。导入请直接读取该文件；原著与阅读笔记仍可按需查询，文件通过检查不代表已激活。`}]},
         {surfaceOp:{op:'replace',startSeq:first,endSeq:last},sourceEventSeqs:selected});retired+=selected.length
     }
@@ -117,13 +117,13 @@ export function retireFinishedAdaptation(session:TaskContextSession,currentTurn:
     for(const seq of nodes){
       const event=lookup.get(seq),source=event?.data?.source
       const owned=event&&seq>=span.start&&seq<=span.end&&(event.type==='assistant/message'||event.type==='tool/result'
-        ||event.type==='user/message'&&source?.kind==='plugin'&&['roleplay-tasks','roleplay-context'].includes(source.plugin??''))
+        ||event.type==='user/message'&&['roleplay-tasks','roleplay-context'].includes(source?.kind??''))
       if(owned)group.push(seq);else flush()
     }
     flush()
     for(const selected of groups){
       const start=selected[0]!,end=selected.at(-1)!
-      session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind:'plugin',plugin:'roleplay-tasks',form:'management-receipt',
+      session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind: 'roleplay-tasks',form:'management-receipt',
         sessionId:session.id,jobKind:'card-adaptation',sourceId:span.sourceId,importId:span.importId,start,end,
         sourceSha256:createHash('sha256').update(JSON.stringify(selected.map(seq=>lookup.get(seq)))).digest('hex')},
         content:[{type:'text',text:`原著研究已结束，角色卡已完整激活，当前设定由酒馆栏目提供。研究材料与旧工具尝试保留于历史 seq ${start}–${end}；需要核对原著时按 sourceId ${span.sourceId} 查询阅读笔记或原文。研究过程不是扮演正史。`}]},
@@ -199,7 +199,7 @@ export function retireCoarseResearchReads(session:TaskContextSession,owner:strin
     }
     if(pending.size)continue
     const start=selected[0]!,end=selected.at(-1)!
-    session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind:'plugin',plugin:'roleplay-tasks',form:'adaptation-receipt',owner:session.id,researchOwner:owner,
+    session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind: 'roleplay-tasks',form:'adaptation-receipt',owner:session.id,researchOwner:owner,
       sourceSha256:createHash('sha256').update(JSON.stringify(selected.map(seq=>bySeq.get(seq)))).digest('hex')},
       content:[{type:'text',text:`这批粗颗粒度原文已整理到阅读笔记，长工具结果移出请求，原始证据保留于历史 seq ${start}–${end}。用 rp_source_research(entries) 查笔记；确需重新核实时才定向 read。继续下一批关系检索，勿重复注入已读原文；原著事实不是当前世界线剧情。`}]},
       {surfaceOp:{op:'replace',startSeq:start,endSeq:end},sourceEventSeqs:selected})
@@ -210,13 +210,13 @@ export function retireCoarseResearchReads(session:TaskContextSession,owner:strin
   // must still trace to a successful visible tool delivery before this node.
   for(const seq of nodes){
     const e=bySeq.get(seq),source=e?.data?.source
-    if(e?.type!=='user/message'||source?.kind!=='plugin'||source.plugin!=='roleplay-tasks'||source.form!=='coarse-research-evidence')continue
+    if(e?.type!=='user/message'||source?.kind!=='roleplay-tasks'||source.form!=='coarse-research-evidence')continue
     const v=envelope(source);if(!v)continue
     const saved=confirmed.get(identity(v))
     if(!saved||v.packetIds.some(id=>(saved.get(id)??-1)<=seq))continue
     const published=new Set([...deliveries].filter(([at,d])=>at<seq&&identity(d)===identity(v)).flatMap(([,d])=>d.packetIds))
     if(v.packetIds.some(id=>!published.has(id)))continue
-    session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind:'plugin',plugin:'roleplay-tasks',form:'adaptation-receipt',owner:session.id,researchOwner:owner,
+    session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind: 'roleplay-tasks',form:'adaptation-receipt',owner:session.id,researchOwner:owner,
       sourceSha256:createHash('sha256').update(JSON.stringify(e)).digest('hex')},
       content:[{type:'text',text:`这批原文已确认整理到粗颗粒度阅读笔记。证据原文保留于历史 seq ${seq}；需要细节时按 sourceId ${v.sourceId} 查询 entries 或定向 read，不把原著当作当前剧情。`}]},
       {surfaceOp:{op:'replace',startSeq:seq,endSeq:seq},sourceEventSeqs:[seq]})
@@ -270,7 +270,7 @@ export function retireAdaptationReads(session:TaskContextSession,notes:{sourceId
     }
     if(pending.size)continue
     const start=selected[0]!,end=selected.at(-1)!
-    session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind:'plugin',plugin:'roleplay-tasks',form:'adaptation-receipt',owner:session.id,checkpointSeq:groupCheckpoint,
+    session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind: 'roleplay-tasks',form:'adaptation-receipt',owner:session.id,checkpointSeq:groupCheckpoint,
       sourceSha256:createHash('sha256').update(JSON.stringify(selected.map(seq=>lookup.get(seq)))).digest('hex')},
       content:[{type:'text',text:`改编研究资料已保存笔记。原始工具记录保留于 seq ${start}–${end}；需要细节才调用 rp_source_notes / rp_source_read。${resume}原著与改编设想均不是已发生的扮演剧情。`}]},
       {surfaceOp:{op:'replace',startSeq:start,endSeq:end},sourceEventSeqs:selected})
@@ -286,7 +286,7 @@ export function retireAdaptationReads(session:TaskContextSession,notes:{sourceId
     }
     if(group.length<2)continue
     const start=group[0]!,end=group.at(-1)!
-    session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind:'plugin',plugin:'roleplay-tasks',form:'adaptation-receipt',owner:session.id,checkpointSeq:checkpoint,
+    session.append('user/message',{id:randomUUID(),role:'user',source:{schemaVersion:1,kind: 'roleplay-tasks',form:'adaptation-receipt',owner:session.id,checkpointSeq:checkpoint,
       sourceSha256:createHash('sha256').update(JSON.stringify(group.map(seq=>bySeq.get(seq)))).digest('hex')},
       content:[{type:'text',text:`先前小说阅读已保存独立研究笔记，原始调用和回执均保留在追加历史中。${resume}需要细节才用 rp_source_notes 或 rp_source_read/search；这些资料不是扮演正史。`}]},
       {surfaceOp:{op:'replace',startSeq:start,endSeq:end},sourceEventSeqs:group})

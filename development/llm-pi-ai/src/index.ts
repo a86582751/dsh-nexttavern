@@ -54,13 +54,15 @@
  *
  * @module @deepseek-ai/dsh-llm-pi-ai
  */
+import type {} from '@deepseek-ai/dsh-settings'
+
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 
 import type { Context } from '@deepseek-ai/cordis'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
 import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-fs'
-import type {} from '@deepseek-ai/dsh-settings'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { PiAiAdapter } from './adapter.js'
 import { authContextFrom, credentialStoreFrom } from './auth.js'
@@ -75,6 +77,7 @@ export { PiAiAdapter } from './adapter.js'
 export type { PiAiAdapterOptions } from './adapter.js'
 export { Config } from './config.js'
 export type {
+  Options,
   PiAiCompatProfile,
   PiAiModality,
   PiAiModelOverride,
@@ -120,6 +123,7 @@ function registrationFacts(profiles: ReadonlyMap<string, ResolvedPiAiProviderPro
  */
 function directoryEntries(
   profiles: ReadonlyMap<string, ResolvedPiAiProviderProfile>,
+  settingsNs: string,
 ): LlmConfigurableProvider[] {
   const catalog = new Set(catalogProviderIds())
   const entries = new Map<string, LlmConfigurableProvider>()
@@ -127,7 +131,7 @@ function directoryEntries(
     entries.set(provider, {
       provider,
       displayName,
-      settingsNs: NS,
+      settingsNs,
       settingsPath: ['providers', provider],
       // Membership of the installed catalog, not of the settings document:
       // narrowing a shipped provider's models stores a profile too, and that
@@ -143,12 +147,24 @@ function directoryEntries(
 
 /** Register one generic pi-ai adapter for all configured provider routes. */
 export function apply(ctx: Context, config: Config): void {
-  let current: () => Config = () => config
-  let acceptedRaw = config
-  let acceptedProfiles: ReadonlyMap<string, ResolvedPiAiProviderProfile> = resolveProfiles(config.providers, 'deferred')
-  // Stored settings are a draft until both registries accept them. In particular,
-  // a rejected added route must not change an existing route's endpoint or key.
+  ctx.inject(['settings'], child => { child.effect(() => child.settings.configure({auto: false}, ctx.fiber)) })
+  const settingsNs = ctx.fiber.entry?.options.id ?? NS
+  const readProviders = () => structuredClone(config.providers.get()) as import('./config.js').Options['providers']
+  let acceptedRaw = readProviders()
+  let acceptedProfiles: ReadonlyMap<string, ResolvedPiAiProviderProfile> = resolveProfiles(acceptedRaw, 'deferred')
+  // Loader config is a draft until both registries accept the same generation.
+  // Requests and credential snapshots keep using the last accepted generation.
   const profiles = () => acceptedProfiles
+  ctx.on('internal/config', function (this: import('@deepseek-ai/cordis').Fiber, _raw, next) {
+    const raw: unknown = next()
+    if (this !== ctx.fiber) return raw
+    const candidate = Config(raw as import('./config.js').Options)
+    assertServiceable(
+      {providers: structuredClone(candidate.providers.get())} as import('./config.js').Options,
+      {providers: acceptedRaw},
+    )
+    return raw
+  })
 
   const resolveApiKey = async (
     provider: string,
@@ -209,7 +225,7 @@ export function apply(ctx: Context, config: Config): void {
   let directory: DirectoryRegistrationHandle | undefined
   let directoryFacts: unknown
   const ensureDirectory = (): void => {
-    const entries = directoryEntries(profiles())
+    const entries = directoryEntries(profiles(), settingsNs)
     if (deepEqualJson(entries, directoryFacts)) return
     // Atomic replace, never dispose-then-register: a route another adapter
     // family already declares (a profile keyed `deepseek-official`) would
@@ -242,7 +258,7 @@ export function apply(ctx: Context, config: Config): void {
   // except the stored credential and deployment-owned headers: the curated UI
   // accepts neither, so an already-configured route supplies both inside the
   // Host rather than widening the discovery request.
-  ctx.llm.registerModelDiscovery(NS, (request, signal) => discoverModels(
+  ctx.llm.registerModelDiscovery(settingsNs, (request, signal) => discoverModels(
     { ...request, ...signal === undefined ? {} : { signal } },
     () => storedDiscoveryProfile(request.provider),
   ))
@@ -277,46 +293,24 @@ export function apply(ctx: Context, config: Config): void {
   }
   ensureRegistrationFacts()
 
-  ctx.inject(['settings'], (settingsCtx) => {
-    let registering = true
-    settingsCtx.settings.installSection(ctx, NS, Config, config, {
-      validate: (value) => {
-        // Stored catalog drift must not prevent registration of the repair UI.
-        if (registering) {
-          resolveProfiles(value.providers, 'deferred')
-        } else {
-          assertServiceable(value, current())
-        }
-      },
-      setSource: (source) => {
-        current = source
-      },
-      onChange: () => {
-        const raw = current()
-        if (raw === acceptedRaw) return
-        const previous = acceptedProfiles
-        const next = resolveProfiles(raw.providers, 'deferred')
-        // Both native registry replacements are synchronous. Directory changes
-        // emit no event; route replacement publishes the completed generation.
-        // Expose the candidate only while its metadata is being validated.
-        acceptedProfiles = next
-        try {
-          ensureDirectory()
-          ensureRegistrationFacts()
-          acceptedRaw = raw
-        } catch (error) {
-          acceptedProfiles = previous
-          // Restore the directory after a refused route candidate. The route
-          // handle normally rejected before mutation; also restore it if a
-          // synchronous observer threw after the native publication point.
-          ensureDirectory()
-          registration?.replace([...previous.keys()])
-          registeredFacts = registrationFacts(previous)
-          ctx.logger.error('llm-pi-ai: keeping the previous configuration after a refused registry update')
-          ctx.logger.error(error)
-        }
-      },
-    })
-    registering = false
+  ctx.on('loader/volatile-update', () => {
+    const raw = readProviders()
+    if (deepEqualJson(raw, acceptedRaw)) return
+    const previous = acceptedProfiles
+    try {
+      acceptedProfiles = resolveProfiles(raw, 'deferred')
+      ensureDirectory()
+      ensureRegistrationFacts()
+      acceptedRaw = raw
+    } catch (error) {
+      acceptedProfiles = previous
+      // Directory replacement is silent; route publication is the commit point.
+      // Restore both if a route collision or a synchronous observer rejects it.
+      ensureDirectory()
+      registration?.replace([...previous.keys()])
+      registeredFacts = registrationFacts(previous)
+      ctx.logger.error('llm-pi-ai: keeping the previous configuration after a refused registry update')
+      ctx.logger.error(error)
+    }
   })
 }

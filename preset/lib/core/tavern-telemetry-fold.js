@@ -30,7 +30,7 @@ export function foldSessionCalls(session) {
             }
         }
         if (e.type === 'user/message')
-            phase = d.source?.plugin === 'roleplay-tasks' ? (d.source.jobKind ?? d.source.stage ?? 'maintenance') : 'narrative';
+            phase = d.source?.kind === 'roleplay-tasks' ? (d.source.jobKind ?? d.source.stage ?? 'maintenance') : 'narrative';
         if (e.type === 'step/start' || e.type === 'llm/retry-started') {
             if (current?.status === 'running')
                 finish(e.time, 'unknown');

@@ -27,10 +27,12 @@ interface ReaderState extends StateReply {
     failedTurnRecoveryByTurn?: Record<string, unknown>;
 }
 interface ChatSnapshot {order?: string[];nodes?: {get(key: string): ReaderNode | undefined;};}
+interface ReaderSessionSnapshot {loadingOlder?: boolean;hasMore?: boolean;}
 interface ReaderViewProps {
     sessionId?: string;scope?: {sessionId?: string;};
     useChat?(selector: (value: ChatSnapshot) => ChatSnapshot): ChatSnapshot;
     useConversation?(selector: (value: unknown) => unknown): unknown;
+    useSession?(selector: (value: ReaderSessionSnapshot) => ReaderSessionSnapshot): ReaderSessionSnapshot;
     snapshot?: unknown;conversation?: unknown;
     loadOlder?(): unknown | PromiseLike<unknown>;
 }
@@ -41,7 +43,7 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     isRoleplaySession(id: string): boolean;
     useTavernActivity: ActivityComponents['useTavernActivity'];
     fetchState(id: string, force?: boolean): Promise<ReaderState>;
-    sessionsService?: {binding?(id: string | null): {session?: {subscribe?(listener: () => void): () => void;getSnapshot?(): {loadingOlder?: boolean;hasMore?: boolean;};loadOlder?(): unknown | PromiseLike<unknown>;};} | null | undefined;};
+    sessionsService: {using<T>(id: string, options: {source: 'nexttavernReader'}, operation: (reference: {binding: {session: {loadOlder(): Promise<void>}}}) => T | Promise<T>): Promise<T>};
     toast(text: string): void;
     pendingPlayerBubble: ActivityComponents['pendingPlayerBubble'];
     ActivityBanner: ActivityComponents['ActivityBanner'];
@@ -66,7 +68,8 @@ React,
 }: ReaderDependencies) {
     const noopSnapshotHook = () => null;
     function ReaderView(props: ReaderViewProps) {
-        const sessionId = props.sessionId ?? props.scope?.sessionId ?? resolveActiveSessionId();
+        // Scoped provider identity is authoritative, including a secondary view.
+        const sessionId = props.sessionId ?? props.scope?.sessionId ?? null;
         React.useEffect(
         () => {
             const restore = () => window.dispatchEvent(new Event('dsh-roleplay-view-activated'));
@@ -135,22 +138,12 @@ React,
         const snapshot = useConv((value) => value) ?? props.snapshot ?? props.conversation ?? null;
         const readerRef = React.useRef<HTMLDivElement>(null);
         const scrollRef = React.useRef<HTMLDivElement>(null);
-        // `conversation.view` does not inherit ChatView's loadOlder injection.
-        // Use the same Session face and pager as Chat, never a second history API.
-        const sessionFace = sessionsService?.binding?.(sessionId)?.session ?? null;
-        const sessionSnapshot = React.useSyncExternalStore(
-
-        React.useCallback((notify) => sessionFace?.subscribe?.(notify) ?? (() => { }), [sessionFace]),
-
-            React.useCallback(() => sessionFace?.getSnapshot?.() ?? null, [sessionFace]),
-
-            () => null
-
-        );
-        const historySnapshot = sessionSnapshot;
-        const loadOlder = sessionFace && typeof sessionFace.loadOlder === 'function'
-            ? () => sessionFace.loadOlder!()
-            : typeof props.loadOlder === 'function' ? props.loadOlder : null;
+        const useSession = props.useSession ?? noopSnapshotHook;
+        const historySnapshot = useSession(value => value);
+        // Paging can outlive a view switch, so retain its exact Session through
+        // the native pager's completion. Rendering belongs to the slot owner.
+        const loadOlder = sessionId ? () => sessionsService.using(sessionId,
+            {source: 'nexttavernReader'}, reference => reference.binding.session.loadOlder()) : null;
 
         const fillComposer = (text: string) => {
             const editor = document.querySelector<HTMLElement>('[data-composer-input]');
@@ -549,7 +542,7 @@ React,
 
                     ref: readerRef,
 
-                    onClick: (event) => {
+                    onClick: (event: ReactAPI.MouseEvent<HTMLDivElement>) => {
                         const f = event.target
                             && typeof (event.target as Element).closest === 'function' ? (event.target as Element).closest<HTMLElement>('.f') : null;
                         if (f) {

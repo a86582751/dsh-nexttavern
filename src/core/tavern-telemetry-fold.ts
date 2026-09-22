@@ -18,7 +18,7 @@ export function foldSessionCalls(session: TelemetrySession): TelemetryCallRecord
     const d=e.data??{}
     if(e.type==='compaction/summary'&&d.usage&&!d.nativeTask&&e.seq>=seed)out.push({schemaVersion:1,id:hash([session.id,'compaction',d.compactionId??e.seq]),sessionId:session.id,ownerSessionId:session.id,kind:'compaction',provider:d.provider??null,model:d.model??null,status:'completed',startedAt:e.time,completedAt:e.time,durationMs:null,firstTokenMs:null,usage:usageOf(d.usage),source:{kind:'compaction-summary',sessionId:session.id,startSeq:e.seq,evidenceSeq:e.seq}})
     if(e.type==='request/header'){route=d.header?.config??route;if(current){current.provider=route.provider??null;current.model=route.model??null}}
-    if(e.type==='user/message')phase=d.source?.plugin==='roleplay-tasks'?(d.source.jobKind??d.source.stage??'maintenance'):'narrative'
+    if(e.type==='user/message')phase=d.source?.kind==='roleplay-tasks'?(d.source.jobKind??d.source.stage??'maintenance'):'narrative'
     if(e.type==='step/start'||e.type==='llm/retry-started') {
       if(current?.status==='running')finish(e.time,'unknown')
       current={schemaVersion:1,id:hash([session.id,e.seq]),sessionId:session.id,ownerSessionId:session.id,

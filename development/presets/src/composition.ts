@@ -1,4 +1,4 @@
-/** A package-addressed include remains valid when DSH copies a user preset. */
+/** Resolve the owned composition and resources beside the installed product. */
 import type {Context} from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 

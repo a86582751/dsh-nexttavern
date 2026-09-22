@@ -150,8 +150,7 @@ export function taskPhaseMessage(stage, content, extra = {}) {
                 type: 'text', text: content
             }],
         source: {
-            kind: 'plugin',
-            plugin: 'roleplay-tasks',
+            kind: 'roleplay-tasks',
             form: 'phase',
             schemaVersion: 1,
             stage,
@@ -240,7 +239,7 @@ export function inlineTaskMessages(session, stage, jobs, { force = false, maxCha
         if (event.type === 'turn/start' || event.type === 'turn/end')
             break;
         const source = event.type === 'user/message' ? event.data?.source : null;
-        if (source?.plugin === 'roleplay-tasks' && source.form === 'phase') {
+        if (source?.kind === 'roleplay-tasks' && source.form === 'phase') {
             if (source.stage === stage && source.instructionHash === instructionHash)
                 return [];
             break;
@@ -257,7 +256,7 @@ export function taskStorySeqs(session) {
     const result = new Set();
     for (const event of events) {
         const source = event?.type === 'user/message' ? event.data?.source : undefined;
-        if (source?.kind === 'plugin' && source.plugin === 'roleplay-tasks' && source.stage === 'after-story'
+        if (source?.kind === 'roleplay-tasks' && source.stage === 'after-story'
             && typeof source.storySeq === 'number'
             && Number.isSafeInteger(source.storySeq))
             result.add(source.storySeq);
@@ -285,7 +284,7 @@ export function internalTaskSeqs(session) {
             authoring = true;
         if (e?.type === 'tool/call' && ['rp_card_import_begin', 'rp_commit_card'].includes(e.data?.name ?? ''))
             authoring = false;
-        if (e?.type === 'user/message' && e.data?.source?.plugin === 'roleplay-tasks'
+        if (e?.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks'
             && e.data.source.stage === 'after-story')
             authoring = false;
         if (authoring && e?.type === 'tool/call' && e.data?.name === 'ask_user_question')
@@ -294,12 +293,12 @@ export function internalTaskSeqs(session) {
             && (/^(?:rp_card_export_(?:begin|chunk|finalize)|rp_novel_export|rp_diagnose|rp_preset|rp_card_draft_check)$/.test(e.data?.name ?? '')
                 || isSettingManagementCall(e.data)))
             managementTurns.add(e.data?.turn ?? turn);
-        if (e?.type === 'user/message' && e.data?.source?.plugin === 'roleplay-tasks'
+        if (e?.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks'
             && ['card-export', 'novel-export'].includes(e.data?.source?.jobKind ?? ''))
             managementTurns.add(turn);
         if (e?.type === 'turn/start' || e?.type === 'turn/end')
             internal = false;
-        if (e?.type === 'user/message' && e.data?.source?.kind === 'plugin' && e.data?.source?.plugin === 'roleplay-tasks'
+        if (e?.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks'
             && e.data?.source?.form === 'phase')
             internal = e.data.source.stage !== 'story';
         if (internal && e?.type === 'assistant/message')

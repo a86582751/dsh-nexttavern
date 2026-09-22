@@ -2,25 +2,25 @@
   "schemaVersion": 1,
   "package": "dsh-nexttavern-session-persistence-jsonl",
   "upstreamPackage": "@deepseek-ai/dsh-session-persistence-jsonl",
-  "upstreamVersion": "0.1.6-alpha.2",
+  "upstreamVersion": "0.1.7-alpha.1",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
-  "commit": "ddefc45fbc7f8e46dd73185e68295696d1297887",
+  "commit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
   "license": "MIT",
   "files": [
     {
       "source": "src/format.ts",
       "upstream": "packages/session/session-persistence-jsonl/src/format.ts",
-      "upstreamSha256": "9be085dd88dd2072e9478f8a28baff413a6efe7ff29554a8eb3131da3872be63"
+      "upstreamSha256": "87d536ead041fb953f866e0191a79b4dbbbc510aee1461706f9cdc2e4c46a038"
     },
     {
       "source": "src/generation.ts",
       "upstream": "packages/session/session-persistence-jsonl/src/generation.ts",
-      "upstreamSha256": "54b37828e8b3f629b12a447c556a13ef5d2c097fe74be73a9cc4bef4c09bce5e"
+      "upstreamSha256": "43a400aaa47be789173ef4d5dd3226bce374cbfac300c2bff199b5a7d108efd6"
     },
     {
       "source": "src/index.ts",
       "upstream": "packages/session/session-persistence-jsonl/src/index.ts",
-      "upstreamSha256": "69931beb012cde8453d46589bb83703552cb7c8e19438e67b3548042882ab861"
+      "upstreamSha256": "6c56c465034c7673dd167f2ad7270ad8ce9ae7536457a291dc6a7abb81328436"
     },
     {
       "source": "src/lease.ts",
@@ -61,6 +61,11 @@
       "source": "src/zstd.ts",
       "upstream": "packages/session/session-persistence-jsonl/src/zstd.ts",
       "upstreamSha256": "b100f7c208acbf34e61351236b82be4c93a47c7d25926b8e9478a6156f2f0ff5"
+    },
+    {
+      "source": "src/catalog-migration.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/catalog-migration.ts",
+      "upstreamSha256": "414ffd8d3ed6b80bb239f54916ec64e6b5f3d06ebc5a0d950922391271d612fa"
     }
   ],
   "changes": [

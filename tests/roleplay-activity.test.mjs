@@ -53,9 +53,9 @@ assert.equal(session.events.length,1,'UI echo must not append player text to mod
 assert.equal(readRoleplayActivity({...session,id:'b'},preparation,[],2000).pendingPlayer,null)
 session.events.push({seq:1,type:'user/message',surfaceOp:'append',time:2100,data:player});session.surface.nodes.push(1)
 assert.equal(readRoleplayActivity(session,preparation,[],2200).pendingPlayer,null,'native player node replaces the UI echo')
-session.events.push({seq:2,type:'user/message',time:2300,data:{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'story'}}})
+session.events.push({seq:2,type:'user/message',time:2300,data:{source:{kind: 'roleplay-tasks',form:'phase',stage:'story'}}})
 assert.equal(readRoleplayActivity(session,{...preparation,status:'completed'},[],2400).stage,'story')
-session.events.push({seq:3,type:'user/message',time:2500,data:{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story'}}})
+session.events.push({seq:3,type:'user/message',time:2500,data:{source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story'}}})
 assert.equal(readRoleplayActivity(session,{...preparation,status:'completed'},[{sessionId:'a',kind:'memory',status:'queued',createdAt:2500}],2600).stage,'memory')
 session.events.push({seq:4,type:'turn/end',time:3000,data:{turn:1,reason:{kind:'completed'}}})
 assert.equal(readRoleplayActivity(session,{...preparation,status:'completed'},[],4000).running,false)
@@ -68,7 +68,7 @@ assert.equal(state.elapsedMs,2000,'foreground elapsed time stops at native turn/
 assert.equal(state.backgroundJobs.length,1,'background work stays observable separately')
 assert.equal(state.jobs.length,0)
 assert.equal(readRoleplayActivity(session,null,[{...background,status:'queued'}],9000).stage,'done','queued background notes do not pause the player')
-const next={...session,events:[...session.events,{seq:5,type:'turn/start',time:5000,data:{turn:2}},{seq:6,type:'user/message',data:{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'story'}}}]}
+const next={...session,events:[...session.events,{seq:5,type:'turn/start',time:5000,data:{turn:2}},{seq:6,type:'user/message',data:{source:{kind: 'roleplay-tasks',form:'phase',stage:'story'}}}]}
 state=readRoleplayActivity(next,null,[background,{...background,sessionId:'other'}],6000)
 assert.equal(state.stage,'story')
 assert.equal(state.backgroundJobs.length,1,'prior-turn notes remain visible without leaking another session')
@@ -76,13 +76,13 @@ assert.equal(readRoleplayActivity(session,null,[{...background,background:false}
 const streaming={id:'stream',surface:{nodes:[]},events:[
  {seq:0,type:'turn/start',time:100,data:{turn:3}},
  {seq:1,type:'step/start',data:{turn:3,step:4}},
- {seq:2,type:'user/message',data:{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'story'}}},
+ {seq:2,type:'user/message',data:{source:{kind: 'roleplay-tasks',form:'phase',stage:'story'}}},
 ]}
 state=readRoleplayActivity(streaming,null,[],200)
 assert.equal(state.storyStep,4,'step/start precedes pre-step story admission')
 assert.equal(state.phaseSeq,2)
 assert.equal(readRoleplayActivity(streaming,{sessionId:'stream',turn:3,status:'preparing'},[],200).stage,'story','committed phase outranks stale preparation metadata')
-streaming.events.push({seq:3,type:'user/message',data:{source:{kind:'plugin',plugin:'roleplay-tasks',form:'phase',stage:'after-story'}}},{seq:4,type:'step/start',data:{turn:3,step:5}})
+streaming.events.push({seq:3,type:'user/message',data:{source:{kind: 'roleplay-tasks',form:'phase',stage:'after-story'}}},{seq:4,type:'step/start',data:{turn:3,step:5}})
 assert.equal(readRoleplayActivity(streaming,null,[],300).storyStep,null,'maintenance steps never receive a story streaming identity')
 assert.equal(readRoleplayActivity({id:'none',events:[{seq:0,type:'turn/start',data:{turn:1}},{seq:1,type:'step/start',data:{step:1}}]},null).storyStep,null,'unproven default story label is insufficient for stream admission')
 let oldReads=0
@@ -105,7 +105,7 @@ assert.equal(oldReads,0,'idle legacy fallback reuses its exact audit/surface pro
   const current = { id: 'large-current', surface: { nodes: [] }, events: [
     { seq: 0, type: 'turn/start', time: 100, data: { turn: 2 } },
     { seq: 1, type: 'step/start', data: { turn: 2, step: 3 } },
-    { seq: 2, type: 'user/message', data: { source: { plugin: 'roleplay-tasks', form: 'phase', stage: 'story' } } },
+    { seq: 2, type: 'user/message', data: { source: { kind: 'roleplay-tasks', form: 'phase', stage: 'story' } } },
     ...chunks,
   ] }
   const activity = readRoleplayActivity(current, null, [], 200)
@@ -116,7 +116,7 @@ assert.equal(oldReads,0,'idle legacy fallback reuses its exact audit/surface pro
   const storySeq = current.events.length
   current.events.push({ seq: storySeq, type: 'assistant/message', data: { turn: 2, message: { id: 'large-story', content: [{ type: 'text', text: 'finished story' }] } } })
   current.surface.nodes.push(storySeq)
-  current.events.push({ seq: storySeq + 1, type: 'user/message', data: { source: { kind: 'plugin', plugin: 'roleplay-tasks', form: 'phase', stage: 'after-story', storySeq } } })
+  current.events.push({ seq: storySeq + 1, type: 'user/message', data: { source: { kind: 'roleplay-tasks', form: 'phase', stage: 'after-story', storySeq } } })
   assert.equal(readRoleplayActivity(current, null).storySeq, storySeq, 'latest durable story proof remains visible during maintenance')
   current.events.push({ seq: storySeq + 2, type: 'turn/start', data: { turn: 3 } })
   assert.equal(readRoleplayActivity(current, null).storySeq, null, 'a new turn never inherits the prior story proof')

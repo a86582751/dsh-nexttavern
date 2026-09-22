@@ -254,7 +254,7 @@ export function createMessageActionComponents({
             autoFocus: true,
             disabled: busy,
             onChange: (event: ReactAPI.ChangeEvent<HTMLTextAreaElement>) => setText(event.target.value),
-            onKeyDown: (event) => {
+            onKeyDown: (event: ReactAPI.KeyboardEvent<HTMLTextAreaElement>) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && ready)
                     onSave(text.trim());
             },

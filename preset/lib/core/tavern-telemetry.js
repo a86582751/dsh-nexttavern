@@ -186,7 +186,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
             .filter(j => j?.childSessionId === s.id && (j.sessionId ?? j.branchId) === ownerSessionId && j.id)
             .map(j => j.id), fingerprint = events(s).length;
         if (relatedJobIds.length)
-            for (const stream of records().filter(r => r.sessionId === s.id && r.source.kind === 'stream')) {
+            for (const stream of records().filter(r => r.sessionId === s.id && r.source?.kind === 'stream')) {
                 const jobIds = [
                     ...new Set([
                         ...(stream.source.jobIds ?? []), ...(stream.source.jobId ? [stream.source.jobId] : []), ...relatedJobIds
@@ -201,7 +201,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
             }
         if (scanned.get(s.id) === fingerprint)
             return;
-        const streams = records().filter(r => r.sessionId === s.id && r.source.kind === 'stream' && !r.source.purpose);
+        const streams = records().filter(r => r.sessionId === s.id && r.source?.kind === 'stream' && !r.source.purpose);
         // Reuse the fold unless append-only history advanced while persistence yielded.
         let attempts = foldSessionCalls(s);
         for (const call of attempts) {
@@ -244,8 +244,9 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
                 toolStarts.set(e.data?.callId, e);
             if (!['tool/result', 'turn/end', 'compaction/end', 'assistant/message'].includes(e.type))
                 continue;
-            const d = e.data ?? {}, block = d.message?.content?.find(b => b.type === 'tool-result'), start = toolStarts.get(d.callId ?? d.message?.source?.callId ?? block?.toolCallId), bad = Boolean(d.error)
+            const d = e.data ?? {}, block = d.message?.content?.find(b => b.type === 'tool-result'), start = toolStarts.get(d.callId ?? d.message?.toolCallId ?? d.message?.source?.callId ?? block?.toolCallId), bad = Boolean(d.error)
                 || block?.isError === true
+                || d.message?.isError === true
                 || d.isError === true
                 || d.result?.isError === true
                 || d.reason?.kind === 'error';
@@ -408,7 +409,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
             const existingIdentity = [
                 existing.ownerSessionId, existing.source.workspaceId, existing.provider, existing.model, existing.source.purpose
             ].join('\u0000');
-            if (existing.source.kind !== 'embedding' || existingIdentity !== identity)
+            if (existing.source?.kind !== 'embedding' || existingIdentity !== identity)
                 throw new Error('embedding telemetry identity changed');
             if (existing.status !== 'unknown' && call.status === 'unknown')
                 throw new Error('embedding telemetry terminal rollback');
@@ -494,7 +495,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
         }
         const boundary = events(s).findLast(e => e.type === 'step/start' || e.type === 'llm/retry-started');
         const startedAt = Date.now(), id = randomUUID(), job = jobs().find(j => j.childSessionId === s.id);
-        const message = events(s).findLast(e => e.type === 'user/message')?.data, phase = message?.source?.plugin === 'roleplay-tasks'
+        const message = events(s).findLast(e => e.type === 'user/message')?.data, phase = message?.source?.kind === 'roleplay-tasks'
             ? (message.source.jobKind ?? message.source.stage ?? 'management')
             : 'narrative';
         let call = {
@@ -586,7 +587,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
                     ...r.source, jobIds: [...new Set([...(r.source.jobIds ?? []), ...jobIds])]
                 }
             } : r;
-            return value.status === 'running' && !active.has(value.id) && value.source.kind === 'stream' ? {
+            return value.status === 'running' && !active.has(value.id) && value.source?.kind === 'stream' ? {
                 ...value, status: 'interrupted'
             } : value;
         });

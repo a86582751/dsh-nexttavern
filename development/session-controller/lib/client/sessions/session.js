@@ -44,6 +44,7 @@ export class Session {
     jumpTargetSeq = null;
     /** The running jump loop's completion, shared by retargeting callers. */
     jumpPromise = null;
+    pendingHistory = null;
     stopObservingInbox;
     assistantStream = new ClientAssistantStream();
     running = false;
@@ -57,7 +58,7 @@ export class Session {
     promptAttempted = false;
     /** A first accepted prompt stays in the engaging phase until its turn is observable. */
     firstPromptPendingTurn = false;
-    /** Empty-log mirror (see ConversationSnapshot.blank); unknown bare sessions begin conservatively blank. */
+    /** New Session display state; unknown bare sessions begin conservatively blank. */
     blankBit = true;
     removed = false;
     promptError = null;
@@ -73,8 +74,9 @@ export class Session {
      * Per-session projection value store (push model; see the session-projection
      * subsystem page, docs/subsystems/session-projection.md): finished whole
      * values computed on the Host, seeded by the tail page's
-     * projections block and updated by Session Controller control frames under the
-     * one higher-seq-wins rule. Keys are read via `projections.faceOf(key)`
+     * projections block and updated by Session Controller control frames;
+     * Host-sequenced writes merge under higher-seq-wins and cached list blocks
+     * yield to them (projection-store.ts). Keys are read via `projections.faceOf(key)`
      * (the useProjection resolution face); the conversation snapshot never
      * carries projection values, and no client-side domain folding exists.
      * Manager-owned when constructed through SessionManager (frames route and
@@ -141,16 +143,15 @@ export class Session {
      */
     beginSubmission(input) {
         const requestId = randomUUID();
+        const placement = this.running ? input.mode === 'steer' ? 'steering' : 'queued' : 'transcript';
         this.pendingSubmissions = [...this.pendingSubmissions, {
                 requestId,
-                placement: this.running
-                    ? input.mode === 'steer' ? 'steering' : 'queued'
-                    : 'transcript',
+                placement,
                 time: Date.now(),
                 text: input.text,
                 attachments: input.attachments,
             }];
-        this.submissionSettlements.set(requestId, { onRetire: input.onRetire, retiring: false });
+        this.submissionSettlements.set(requestId, { placement, onRetire: input.onRetire, retiring: false });
         // The blank → engaging edge flips here, ahead of prompt(): the composer
         // docks and the echo renders on the click's own frame.
         this.promptAttempted = true;
@@ -214,19 +215,12 @@ export class Session {
             this.notifier.markDirty();
             return result;
         }
-        // Blank flips on ACCEPTANCE, not attempt: an accepted prompt starts the
-        // conversation's first turn on the host (the host criterion — a logged
-        // turn/start — is fact, not optimism; standalone command and projection
-        // events never flip it), while a rejected first prompt must keep the
-        // session blank — the client-side blank mirror only ever lowers, so
-        // flipping early on a failure would surface the session forever and
-        // strip its connectWorkspace reuse eligibility against the host's
-        // authority.
+        // Rejection must leave a first prompt blank and eligible for workspace reuse.
         if (this.blankBit) {
             this.blankBit = false;
-            this.options.onEngaged?.(this);
             this.notifier.markDirty();
         }
+        this.options.onEngaged?.(this);
         return result;
     }
     /**
@@ -348,6 +342,15 @@ export class Session {
         // loop starts here.
         if (this.loadingOlder)
             return Promise.resolve();
+        const events = this.events;
+        if (events === undefined)
+            return Promise.resolve();
+        const pending = {
+            beforeSeq: this.baseSeq,
+            hasMore: this.hasMore,
+            pages: [],
+        };
+        this.pendingHistory = pending;
         this.jumpTargetSeq = seq;
         this.loadingOlder = true;
         this.notifier.markDirty();
@@ -357,17 +360,14 @@ export class Session {
         const generation = this.openGeneration;
         this.jumpPromise = (async () => {
             try {
-                while (this.hasMore && this.jumpTargetSeq !== null && this.baseSeq > this.jumpTargetSeq) {
+                while (pending.hasMore && this.jumpTargetSeq !== null && pending.beforeSeq > this.jumpTargetSeq) {
                     if (generation !== this.openGeneration)
                         return;
-                    const events = this.events;
-                    if (events === undefined)
-                        return;
-                    const before = this.baseSeq;
-                    await events.prepend({ beforeSeq: this.baseSeq, maxMessages: JUMP_PAGE_MESSAGES });
+                    const before = pending.beforeSeq;
+                    await events.prepend({ beforeSeq: before, maxMessages: JUMP_PAGE_MESSAGES });
                     // No-progress guard: an empty or dropped page that still claims more
                     // history must end the loop, not spin it.
-                    if (this.baseSeq >= before)
+                    if (pending.beforeSeq >= before)
                         return;
                 }
             }
@@ -379,7 +379,11 @@ export class Session {
             finally {
                 this.jumpTargetSeq = null;
                 this.jumpPromise = null;
+                this.pendingHistory = null;
                 this.loadingOlder = false;
+                if (generation === this.openGeneration && pending.pages.length > 0) {
+                    this.prependWindow(pending.pages.reverse().flat(), pending.hasMore);
+                }
                 this.notifier.markDirty();
             }
         })();
@@ -425,8 +429,7 @@ export class Session {
      * @param running - the new running state.
      */
     handleRunning(running) {
-        // Turn-start conversion: a blank session never runs, so the first
-        // running:true proves another side's first message landed.
+        // Running converts display state without establishing durable turn history.
         if (running && this.blankBit) {
             this.blankBit = false;
             this.notifier.markDirty();
@@ -466,13 +469,15 @@ export class Session {
         this.notifier.markDirty();
     }
     /**
-     * Blank-bit relay from the authoritative summary source (`session.list` and
-     * `api-session/added`). Monotone: once any signal (local first send,
-     * running flip, an earlier summary) cleared it, a stale true never
-     * re-blanks.
-     * @param blank - the summary's derived empty-log bit.
+     * Apply the Manager's effective display blank, further reconciled with the
+     * current `sessionListMetadata` projection. Local send attempts and current
+     * running state prevent re-blanking; an earlier false summary alone does not.
+     * The Manager retains acceptance and earlier running observations across
+     * Session-object replacement.
+     * @param blank - New Session display state after Manager reconciliation.
      */
     handleBlank(blank) {
+        blank = blank && this.projections.values().sessionListMetadata?.blank !== false;
         if (blank === this.blankBit)
             return;
         if (blank && (this.promptAttempted || this.running))
@@ -571,13 +576,31 @@ export class Session {
         const visible = this.assistantStream.replace(entries, assistantStream);
         this.baseSeq = SessionLogOffset(entries[0]?.event.seq ?? 0);
         this.hasMore = hasMore;
+        if (this.pendingHistory !== null) {
+            this.pendingHistory.beforeSeq = this.baseSeq;
+            this.pendingHistory.hasMore = hasMore;
+            this.pendingHistory.pages.length = 0;
+        }
         if (visible.some(entry => entry.event.type === 'turn/start'))
             this.firstPromptPendingTurn = false;
         if (projections !== undefined)
             this.projections.seed(projections);
         this.eventSource.replace(visible, hasMore);
+        // A new follow baseline replaces optimistic steering with Host-owned rows.
+        // Receipt-backed inputs are accepted, not failed, even if their history is outside this window.
+        if (projections !== undefined) {
+            for (const [requestId, { receipt }] of this.submissionSettlements) {
+                if (receipt !== undefined && receipt.seq <= projections.asOfSeq) {
+                    this.scheduleObservedRetirement(requestId, receipt.attachments);
+                }
+            }
+        }
         for (const entry of visible)
             this.observeSubmissionEvent(entry.event);
+        if (projections !== undefined) {
+            const inbox = projections.values.inbox;
+            this.observeSteeringInsertions(inbox?.['next-step'] ?? [], 0, projections.asOfSeq);
+        }
         this.notifier.markDirty();
     }
     publishAssistantEntry(result) {
@@ -610,6 +633,13 @@ export class Session {
     }
     /** Prepend one stream-validated history page. */
     prependWindow(entries, hasMore) {
+        if (this.pendingHistory !== null) {
+            const pending = this.pendingHistory;
+            pending.beforeSeq = entries[0] === undefined ? pending.beforeSeq : SessionLogOffset(entries[0].event.seq);
+            pending.hasMore = hasMore;
+            pending.pages.push(entries);
+            return;
+        }
         this.baseSeq = entries[0] === undefined ? this.baseSeq : SessionLogOffset(entries[0].event.seq);
         this.hasMore = hasMore;
         this.eventSource.prepend(entries, hasMore);
@@ -632,37 +662,66 @@ export class Session {
         if (this.submissionSettlements.size === 0)
             return;
         if (event.type === 'agent/inbox/spliced') {
-            const splice = event.data;
-            if (Array.isArray(splice?.inserted)) {
-                for (const message of splice.inserted)
-                    this.observeSubmissionEvent({ type: 'user/message', data: message });
+            const { target, start, removedCount = 0, inserted, outcome } = event.data;
+            if (target === 'next-step') {
+                for (const [requestId, settlement] of this.submissionSettlements) {
+                    const receipt = settlement.receipt;
+                    if (receipt === undefined || receipt.index === null || receipt.seq >= event.seq)
+                        continue;
+                    const removed = receipt.index >= start && receipt.index < start + removedCount;
+                    if (removed && outcome === 'canceled')
+                        this.retireFailedSubmission(requestId);
+                    else
+                        settlement.receipt = {
+                            ...receipt,
+                            seq: event.seq,
+                            index: removed ? null : receipt.index < start ? receipt.index : receipt.index + inserted.length - removedCount,
+                        };
+                }
+                this.observeSteeringInsertions(inserted, start, event.seq);
+            }
+            for (const message of inserted)
+                this.observeSubmissionMessage(message, false);
+            return;
+        }
+        if (event.type === 'request/context' || event.type === 'turn/end') {
+            for (const [requestId, settlement] of this.submissionSettlements) {
+                if (settlement.receipt?.index === null && settlement.receipt.seq < event.seq)
+                    this.retireFailedSubmission(requestId);
             }
             return;
         }
-        if (event.type !== 'user/message')
-            return;
-        // Structural read: window entries may be compact history records, so the
-        // fields are narrowed rather than trusted (same posture as Conversation
-        // assembly matchers).
-        const data = event.data;
-        const source = data?.source;
-        if (source?.kind !== 'user' || typeof source.rpcId !== 'string')
-            return;
-        this.scheduleObservedRetirement(source.rpcId, attachmentRefsIn(data?.content));
+        if (event.type === 'user/message')
+            this.observeSubmissionMessage(event.data, true);
     }
-    /** Retire local echoes when their accepted messages appear in the durable Inbox projection. */
+    observeSteeringInsertions(messages, start, seq) {
+        for (const [index, message] of messages.entries()) {
+            const source = message.source;
+            if (source.kind !== 'user' || !('rpcId' in source))
+                continue;
+            const settlement = this.submissionSettlements.get(source.rpcId);
+            if (settlement?.placement !== 'steering' || settlement.retiring || (settlement.receipt?.seq ?? -1) > seq)
+                continue;
+            settlement.receipt = { seq, index: start + index, attachments: attachmentRefsIn(message.content) };
+        }
+    }
+    observeSubmissionMessage(message, admitted) {
+        const source = message.source;
+        if (source.kind !== 'user' || !('rpcId' in source))
+            return;
+        if (!admitted && this.submissionSettlements.get(source.rpcId)?.placement === 'steering')
+            return;
+        this.scheduleObservedRetirement(source.rpcId, attachmentRefsIn(message.content));
+    }
+    /** Retire non-steering echoes when the Inbox accepts their queue occurrences. */
     observeSubmissionInbox() {
         if (this.submissionSettlements.size === 0)
             return;
         const inbox = this.projections.get('inbox');
         if (inbox === undefined)
             return;
-        for (const message of [...inbox['next-turn'], ...inbox['next-step']]) {
-            const source = message.source;
-            if (source.kind === 'user' && 'rpcId' in source) {
-                this.scheduleObservedRetirement(source.rpcId, attachmentRefsIn(message.content));
-            }
-        }
+        for (const message of [...inbox['next-turn'], ...inbox['next-step']])
+            this.observeSubmissionMessage(message, false);
     }
     /**
      * Latch one observed settlement and remove the echo an animation frame
@@ -711,6 +770,7 @@ export class Session {
         this.notifier.markDirty();
     }
     buildSnapshot() {
+        const identity = this.projections.values().subagent;
         return {
             sessionId: this.sessionId,
             pendingSubmissions: this.pendingSubmissions,
@@ -718,7 +778,9 @@ export class Session {
             subagent: this.address === undefined
                 ? null
                 : {
-                    address: this.address,
+                    address: this.address.mode === 'unknown' && identity != null
+                        ? { ...this.address, mode: identity.mode }
+                        : this.address,
                     ...(this.parentAvailable === undefined ? {} : { parentAvailable: this.parentAvailable }),
                 },
             removed: this.removed,

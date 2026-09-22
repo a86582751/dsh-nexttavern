@@ -2,14 +2,16 @@
 import {Service, type FiberState, type Context} from '@deepseek-ai/cordis'
 import {EntryTree, type EntryOptions} from '@deepseek-ai/cordis-plugin-loader'
 import {createRequire} from 'node:module'
-import {realpathSync} from 'node:fs'
-import {isAbsolute, relative} from 'node:path'
+import {readFileSync, realpathSync} from 'node:fs'
+import {isAbsolute, relative, sep} from 'node:path'
 import {fileURLToPath, pathToFileURL} from 'node:url'
 import {capture, composition, loaderEntry, productWanted, providerDisabledExpression,
   type CompositionState, type ProfilePlan} from './nexttavern-entry-policy.mjs'
 
 const productRoot = fileURLToPath(new URL('../../', import.meta.url))
 const productRequire = createRequire(new URL('../../package.json', import.meta.url))
+const productMetadata: {peerDependencies?: Record<string, string>} = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
 // Cordis publishes this as an ambient const enum, with no runtime export.
 // The member type verifies the numeric value against the pinned declaration.
 const ACTIVE_FIBER_STATE: FiberState.ACTIVE = 2
@@ -22,6 +24,16 @@ function ownedModule(specifier: string): string {
     throw Error(`NextTavern module resolved outside its product bundle: ${specifier}`)
   }
   return pathToFileURL(resolved).href
+}
+
+function addonModule(specifier: string): string {
+  // Native declarations are shared host peers, not private replacement code.
+  // The candidate inventory verifies their identity against the host before
+  // activation. Other addons must still resolve inside the product bundle.
+  if (specifier.startsWith('@deepseek-ai/') && productMetadata.peerDependencies?.[specifier]) {
+    return pathToFileURL(realpathSync(productRequire.resolve(specifier))).href
+  }
+  return ownedModule(specifier)
 }
 
 export interface ProviderReplacement {
@@ -47,45 +59,43 @@ export default class NextTavernEntry extends EntryTree {
     // Capture before super attaches the product's subtree to its main entry.
     const host = loaderEntry(ctx).parent.tree
     const state = composition(ctx)
-    super(ctx)
+    // A native preset records its declaring context's base URL. Resolve its
+    // child rows and resources from this installed product, never profile cwd.
+    super(ctx.extend({baseUrl: pathToFileURL(productRoot + sep).href}))
     this.host = host
     this.state = state
     if (state.owner) throw Error('NextTavern already owns this profile')
     state.owner = this
 
-    ctx.on('loader/patch-context', async (entry, next) => {
+    ctx.on('loader/patch-context', (entry, next) => {
       // Include starts new rows before removing old rows. Uninstall may remove
       // the conditional patch entirely, so native startup must drain us first.
-      if (entry.parent.tree === host && this.config.providers.some(provider =>
+      if (!this.released && entry.parent.tree === host && this.config.providers.some(provider =>
         provider.id === entry.options.id && provider.original === entry.options.name)) {
-        await this.stop()
+        throw Error('NextTavern provider restoration requires a completed product shutdown')
       }
-      await next()
+      return next()
     }, {global: true})
 
     const owner = this
-    ctx.on('internal/update', async function (candidate, _noSave, next) {
+    ctx.on('internal/update', function (candidate, _noSave, next) {
       if (this.entry !== host.ctx.fiber.entry) return next()
-      // Capture the argument, not Entry.options: a later update can replace
-      // those options before this update reaches Include's own apply queue.
+      // Fiber.update does not await waterfall promises. Capture synchronously
+      // and use the product fiber's native restart lifecycle, which Loader and
+      // the official manager actually await and inspect for failure.
       const patches = (candidate as {patches?: unknown}).patches
-      const task = state.queue.then(async () => {
-        const before = state.plan
-        const beforePatches = state.patches
-        state.plan = capture(ctx, patches)
-        state.patches = JSON.stringify(patches)
-        state.applying = true
-        try {
-          await next()
-          if (!owner.closing && state.owner === owner) await owner.reconcile(before)
-        } catch (error) {
-          state.plan = before
-          state.patches = beforePatches
-          throw error
-        } finally {state.applying = false}
-      })
-      state.queue = task.catch(() => {})
-      await task
+      if (state.applyHostUpdate) throw Error('NextTavern profile update is still running; retry the profile update')
+      const proposal = capture(ctx, patches)
+      state.previousPlan = state.plan
+      state.plan = proposal
+      state.patches = proposal.rows
+      state.applying = true
+      // Defer Include's tree mutation until our old children have drained.
+      // Otherwise Include starts an original provider before removing ours.
+      state.applyHostUpdate = next
+      // restart records errors on the fiber; consume this returned promise
+      // because its caller is synchronous, not a second admission channel.
+      void owner.ctx.fiber.restart().catch(() => {})
     }, {global: true, prepend: true})
   }
 
@@ -112,7 +122,12 @@ export default class NextTavernEntry extends EntryTree {
       }
       return {...structuredClone(intent.row), name: ownedModule(provider.replacement)}
     })
-    return [...rows, ...structuredClone(this.config.addons ?? []).map(row => ({...row, name: ownedModule(row.name)}))]
+    const addons = structuredClone(this.config.addons ?? []).map(row => {
+      if (!row.id || ids.has(row.id)) throw Error(`Duplicate or missing NextTavern addon identity ${row.id}`)
+      ids.add(row.id)
+      return {...row, name: addonModule(row.name)}
+    })
+    return [...rows, ...addons]
   }
 
   async reconcile(previousPlan?: ProfilePlan): Promise<void> {
@@ -135,6 +150,10 @@ export default class NextTavernEntry extends EntryTree {
     try {
       await this.root.update(rows)
       await this.await()
+      const outcomes = await Promise.allSettled([...this.entries()].map(entry => entry.fiber?.await()))
+      const failures = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected')
+      if (failures.length) throw new AggregateError(failures.map(outcome => outcome.reason),
+        'NextTavern child activation failed')
       // await() drains work but also returns for PENDING fibers whose hard
       // dependencies never appeared. Do not report a half-active takeover.
       for (const entry of this.entries()) {
@@ -161,6 +180,10 @@ export default class NextTavernEntry extends EntryTree {
     if (this.released) return
     this.epoch += 1
     this.stopping = (async () => {
+      // Native browser discovery reacts to disposal in a microtask and still
+      // sees this subtree until imports settle. Mark rows inactive before that
+      // observation, even when their parent already began disposing fibers.
+      await Promise.all([...this.entries()].map(entry => entry.update({disabled: true})))
       // A late import can still publish a fiber. Wait for known child work,
       // then include uncommitted rows, not only EntryGroup.data. Keep the
       // native-start middleware blocked until every captured fiber drains.
@@ -182,6 +205,12 @@ export default class NextTavernEntry extends EntryTree {
     await this.stop()
     if (this.state.owner !== this) return
     this.state.owner = undefined
+    const apply = this.state.applyHostUpdate
+    if (apply) {
+      this.state.applyHostUpdate = undefined
+      try {apply()} finally {this.state.applying = false}
+      if (productWanted(this.ctx, this.state)) return
+    }
     await this.restoreNative()
   }
 
@@ -201,6 +230,15 @@ export default class NextTavernEntry extends EntryTree {
 
   async *[Service.init]() {
     yield () => this.release()
-    await this.reconcile()
+    const version = this.state.plan.version
+    try {
+      await this.reconcile(this.state.previousPlan)
+    } catch (cause) {
+      // Official reconciliation compares diagnostics for already-failed rows.
+      // Include the proposal identity so a second failed provider-only edit
+      // cannot be mistaken for an unchanged pre-existing failure.
+      throw new Error(`NextTavern activation failed for profile generation ${version}`, {cause})
+    }
+    this.state.previousPlan = undefined
   }
 }

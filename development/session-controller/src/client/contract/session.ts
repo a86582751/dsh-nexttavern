@@ -127,6 +127,8 @@ export interface ISession {
    * turn-jump loader. Repeated calls while a jump is paging lower its shared
    * target and return the in-flight completion; `snapshot.loadingOlder` is
    * the busy signal for the whole jump.
+   * Older pages publish together at completion, including successful pages
+   * before a later failure; live events remain independently visible.
    * @param seq - durable event seq the window must reach (a turn's `turn/start` seq).
    * @returns completion once covered, exhausted, superseded, or failed soft.
    */

@@ -1,4 +1,4 @@
-/** Real alpha.6 Include and product entry; tiny providers, never a Harness install. */
+/** Real alpha.7 Include and product entry; tiny providers, never a Harness install. */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -39,6 +39,11 @@ export async function nativeCase(title: string, testUrl: string) {
 interface FixtureOptions {
   disabled?: boolean; fail?: boolean; slowRelease?: boolean; failingAddon?: boolean; missingOwned?: boolean
   pendingNestedAddon?: boolean
+  prepareAddons?: (productRoot: string, profileRoot: string) => Promise<{
+    rows: {id: string; name: string; config?: object; disabled?: boolean}[]
+    peers?: Record<string, string>
+    initialize(ctx: any): Promise<void>
+  }>
   prepareProvider?: (productRoot: string, profileRoot: string) => Promise<{
     original: string; replacement: string; config: object; initialize(ctx: any): Promise<void>
     id?: string
@@ -87,8 +92,14 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     path.join(dir,'node_modules/@deepseek-ai'), process.platform === 'win32' ? 'junction' : 'dir')
   const policy = await import(pathToFileURL(path.join(productDir, 'lib/operations/nexttavern-entry-policy.mjs')).href)
   const custom = await options.prepareProvider?.(productDir, dir)
+  const productAddons = await options.prepareAddons?.(productDir, dir)
+  if (productAddons?.peers) {
+    const metadata = JSON.parse(fs.readFileSync(path.join(productDir, 'package.json'), 'utf8'))
+    write(path.join(productDir, 'package.json'), {...metadata, peerDependencies: productAddons.peers})
+  }
   const active = new Map<string, string>()
   const changes: string[] = []
+  const attempts: {owner: string; value: unknown}[] = []
   const releaseEntered = Promise.withResolvers<void>()
   const releaseGate = Promise.withResolvers<void>()
   const ownedReady = Promise.withResolvers<void>()
@@ -103,6 +114,7 @@ async function prepareFixture(root: string, options: FixtureOptions) {
       exports: {'.': './index.mjs', './client': './client.js'},
       dsh: {client: {platform: 'web', inject: []}}})
     write(host, `export default function(ctx,config) {
+      ctx.productProbe.attempt(${JSON.stringify(owner)}, config.value);
       if (${JSON.stringify(owner)} === 'owned' && (ctx.productProbe.fail || config.value === 'reject')) throw Error('owned provider failed');
       ctx.effect(() => ctx.productProbe.acquire(${JSON.stringify(owner)}, config));
       ctx.provide(config.service, {owner:${JSON.stringify(owner)}, value:config.value});
@@ -144,7 +156,8 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     {insert: [{id: 'nexttavern', name: pathToFileURL(path.join(productDir, 'lib/operations/nexttavern-entry.mjs')).href,
       config: {providers: providers.map(({config,...row})=>row),
         addons: options.failingAddon ? [{id:'addon',name:pathToFileURL(addon).href}]
-          : options.pendingNestedAddon ? [{id:'nested',name:pathToFileURL(nestedAddon).href}] : custom?.addons ?? []}}]},
+          : options.pendingNestedAddon ? [{id:'nested',name:pathToFileURL(nestedAddon).href}]
+            : [...(custom?.addons ?? []), ...(productAddons?.rows ?? [])]}}]},
   ])
   const patchPath = path.join(dir, 'cordis.patch.yml')
   write(patchPath, [])
@@ -154,8 +167,13 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     startedBundles: ['fixture-base','dsh-nexttavern'], overlays: [], telemetryDisabledEnv: undefined}
   const ctx = new Context()
   ctx.baseUrl = pathToFileURL(dir+path.sep).href
+  // Keep boot's global update observer in the fixture's real waterfall chain.
+  ctx.on('internal/update', (_config: unknown, _noSave: boolean, next: () => unknown) => {
+    Promise.resolve(next()).catch(error => ctx.logger.error(error))
+  }, {global: true, prepend: true})
   ctx.provide('profileContext', context)
   ctx.provide('productProbe', {fail: options.fail, ownedReady: ownedReady.promise,
+    attempt(owner: string, value: unknown) {attempts.push({owner, value})},
     acquire(owner: string, config: {service: string}) {
     assert.equal(active.has(config.service), false, 'duplicate provider')
     active.set(config.service, owner)
@@ -183,10 +201,20 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   try {
     await ctx.plugin(Loader)
     await custom?.initialize(ctx)
+    await productAddons?.initialize(ctx)
     ctx.provide('webServer', {register: () => () => {}})
     await api.mountRootInclude(ctx, configFile, api.readProfilePatches('fixture', context))
+    // alpha.7 mounts asynchronously; match boot's settlement and activation
+    // audit instead of treating entry creation as completed startup.
+    await ctx.loader.await()
+    await api.auditStartupEntries(ctx, 'fixture')
+    // Boot tolerates optional entry failures. Product admission explicitly
+    // requires the requested product to be active, as manager enablement does.
+    const productEntry = [...ctx.loader.entries()].find(entry => entry.options.id === 'nexttavern')
+    await productEntry?.fiber?.await()
+    assert.equal(productEntry?.fiber?.state, 2, 'requested product must be ACTIVE')
     await ctx.plugin(ClientModuleRegistry)
-    return {ctx, active, changes, original, before, releaseEntered, releaseGate,
+    return {ctx, active, changes, attempts, original, before, releaseEntered, releaseGate,
       graph: () => ctx.clientModules.graph().entries.map((entry: {id: string}) => entry.id),
       async update(patches: unknown[], selected = true) {
         write(manifest, {private: true, dsh: {profile: {bundles: ['fixture-base', ...(selected ? ['dsh-nexttavern'] : [])]}}})
