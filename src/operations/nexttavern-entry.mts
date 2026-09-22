@@ -134,6 +134,29 @@ export default class NextTavernEntry extends EntryTree {
     return [...rows, ...addons]
   }
 
+  private async settleNativeDependencies(epoch: number): Promise<void> {
+    // Replacing persistence wakes native Workspace; Connection may still be
+    // loading its browser credentials. Our subtree's await() returns for PENDING
+    // consumers before that independent I/O completes. Drain only work already
+    // running outside our tree, never the Include/Loader ancestors awaiting us.
+    const excluded = new Set([...this.entries()].map(entry => entry.fiber))
+    let ancestor = this.ctx.fiber
+    while (!excluded.has(ancestor)) {
+      excluded.add(ancestor)
+      ancestor = ancestor.parent.fiber
+    }
+    while ([...this.entries()].some(entry => !entry.disabled && entry.fiber?.state !== ACTIVE_FIBER_STATE)) {
+      const running = new Set([...this.host.entries()].flatMap(entry => {
+        const fiber = entry.fiber
+        return fiber?.inertia && !excluded.has(fiber) ? [fiber.inertia] : []
+      }))
+      if (!running.size) return
+      await Promise.allSettled(running)
+      if (this.closing || epoch !== this.epoch) return
+      await this.await()
+    }
+  }
+
   async reconcile(previousPlan?: ProfilePlan): Promise<void> {
     if (this.closing || !productWanted(this.ctx, this.state)) return
     try {
@@ -167,6 +190,8 @@ export default class NextTavernEntry extends EntryTree {
       const failures = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected')
       if (failures.length) throw new AggregateError(failures.map(outcome => outcome.reason),
         'NextTavern child activation failed')
+      await this.settleNativeDependencies(epoch)
+      if (this.closing || epoch !== this.epoch) return
       // await() drains work but also returns for PENDING fibers whose hard
       // dependencies never appeared. Do not report a half-active takeover.
       for (const entry of this.entries()) {

@@ -39,6 +39,7 @@ export async function nativeCase(title: string, testUrl: string) {
 interface FixtureOptions {
   disabled?: boolean; fail?: boolean; slowRelease?: boolean; failingAddon?: boolean; missingOwned?: boolean
   pendingNestedAddon?: boolean
+  lateNativeDependency?: boolean
   hostMode?: 'active' | 'failed' | 'pending'
   inventory?: 'valid' | 'mismatch'
   prepareAddons?: (productRoot: string, profileRoot: string) => Promise<{
@@ -146,6 +147,18 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   const original = custom?.original ?? provider('fixture-official-provider', 'official')
   if (!custom) provider('fixture-owned-provider', 'owned')
   const replacement = custom?.replacement ?? 'fixture-owned-provider'
+  const lateNative = path.join(dir, 'late-native.mjs')
+  const lateConsumer = path.join(productDir, 'late-consumer.mjs')
+  if (options.lateNativeDependency) {
+    write(lateNative, `import {setTimeout} from 'node:timers/promises';
+      export const inject=['entryProbe'];
+      export async function apply(ctx) {
+        await setTimeout(20);
+        ctx.provide('lateNativeService', {ready:true});
+      }`)
+    write(lateConsumer, `export const inject=['lateNativeService'];
+      export function apply(ctx) {ctx.provide('lateConsumer', ctx.lateNativeService)}`)
+  }
   const providers = [{id:custom?.id ?? 'meter',original,replacement,
     config:custom?.config ?? {service:'entryProbe',value:'original'}}, ...(custom?.additional ?? [])]
   const addon = path.join(productDir, 'failing-addon.mjs')
@@ -168,9 +181,9 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   write(manifest, {private: true, dsh: {profile: {bundles: ['fixture-base','dsh-nexttavern']}}})
   write(path.join(dir, 'node_modules/fixture-base/package.json'), {name: 'fixture-base',
     dsh: {bundle: {patch: './patch.json'}}})
-  write(path.join(dir, 'node_modules/fixture-base/patch.json'), [{insert: providers.map(row=>({
+  write(path.join(dir, 'node_modules/fixture-base/patch.json'), [{insert: [...providers.map(row=>({
     id:row.id,name:row.original,disabled:options.disabled ?? false,config:row.config,
-  }))}])
+  })), ...(options.lateNativeDependency ? [{id:'late-native',name:pathToFileURL(lateNative).href}] : [])]}])
   write(path.join(productDir, 'patch.json'), [
     ...providers.map(row=>({id:row.id,name:row.original,disabled:{__jsExpr:policy.providerDisabledExpression}})),
     {insert: [{id: 'nexttavern', name: pathToFileURL(path.join(productDir, 'lib/operations/nexttavern-entry.mjs')).href,
@@ -178,7 +191,8 @@ async function prepareFixture(root: string, options: FixtureOptions) {
         ...(options.hostMode ? {host:'dsh-nexttavern/host'} : {}),
         addons: options.failingAddon ? [{id:'addon',name:pathToFileURL(addon).href}]
           : options.pendingNestedAddon ? [{id:'nested',name:pathToFileURL(nestedAddon).href}]
-            : [...(custom?.addons ?? []), ...(productAddons?.rows ?? [])]}}]},
+            : [...(custom?.addons ?? []), ...(productAddons?.rows ?? []),
+              ...(options.lateNativeDependency ? [{id:'late-consumer',name:pathToFileURL(lateConsumer).href}] : [])]}}]},
   ])
   const patchPath = path.join(dir, 'cordis.patch.yml')
   write(patchPath, [])

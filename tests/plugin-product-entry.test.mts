@@ -70,6 +70,18 @@ test('an active addon tree with a pending nested dependency cannot complete take
   await assert.rejects(fixture({pendingNestedAddon:true}),causedBy('enabled entry is not active'))
 })
 
+test('product waits for native async services awakened by its replacement provider', async t => {
+  if (await nativeCase(t.name, import.meta.url)) return
+  const f = await fixture({lateNativeDependency:true})
+  try {
+    assert.equal(f.ctx.get('lateConsumer').ready,true)
+    assert.equal(f.ctx.get('entryProbe').owner,'owned')
+    await f.update([{id:'nexttavern',disabled:true}])
+    assert.equal(f.ctx.get('lateConsumer'),undefined)
+    assert.equal(f.ctx.get('entryProbe').owner,'official')
+  } finally {await f.close()}
+})
+
 test('product entry mounts real child entries and restores original provider on disable', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
   const f = await fixture()
