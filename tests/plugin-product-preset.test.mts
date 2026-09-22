@@ -38,13 +38,13 @@ function presetFixture(conflict = false, pathProbe?: Record<string, unknown>) {
         const end = fullPreset.indexOf('\n- id: ', start+1)
         return fullPreset.slice(start, end < 0 ? undefined : end)
       }
-      // Real resource expressions and office identity; observers inspect paths,
-      // while actual tools and DOCX remain part of full Harness acceptance.
+      // Real resource expressions and owned reader identity; actual document
+      // conversion remains covered by the anydoc contract and Harness acceptance.
       presetBody = row('skill-filesystem').replace('@deepseek-ai/dsh-skill-filesystem', 'nexttavern-skill-probe')
-        +'\n'+row('dsh-office')
+        +'\n'+row('anydoc')
       for (const [name, body] of [
         ['nexttavern-skill-probe', "ctx.emit('nexttavern/preset-path', {skills:config.customSkillDirs[0]})"],
-        ['@huiliyi37/dsh-office', "ctx.emit('nexttavern/preset-path', {office:config.enable.docx})"],
+        ['dsh-nexttavern-anydoc', "ctx.emit('nexttavern/preset-path', {reader:'dsh-nexttavern-anydoc'})"],
       ]) {
         const folder = path.join(productRoot, 'node_modules', name!)
         save(path.join(folder, 'package.json'), JSON.stringify({name, type: 'module', main: 'index.js'}))
@@ -101,7 +101,7 @@ test('product declaration does not shadow a pre-existing player preset identity'
   await assert.rejects(presetFixture(true), causedBy('Duplicate agent preset: roleplay'))
 })
 
-test('declaration resource paths and office resolve from a relocated product', async t => {
+test('declaration resource paths and owned document reader resolve from a relocated product', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
   const observed: Record<string, any> = {}, f = await presetFixture(false, observed)
   const scope = createScope(f.ctx, {})
@@ -110,6 +110,6 @@ test('declaration resource paths and office resolve from a relocated product', a
     assert.equal(roleplay.broken, undefined)
     await f.ctx.agentPresets.mount(scope.ctx, 'roleplay')
     assert.ok(fs.existsSync(path.join(observed.skills, 'path-probe/SKILL.md')))
-    assert.equal(observed.office, true)
+    assert.equal(observed.reader, 'dsh-nexttavern-anydoc')
   } finally { await scope.dispose(); await f.close() }
 })

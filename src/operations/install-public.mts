@@ -67,7 +67,7 @@ if (options.uninstall) {
   const YAML = require('yaml') as YamlParser;
   const destination = path.join(home, '.agent-presets/roleplay').replaceAll('\\', '/');
   const modulePath = (name: string) => {
-    for (const base of [path.join(home, 'profiles', profile), harness]) {
+    for (const base of [packageRoot, path.join(home, 'profiles', profile), harness]) {
       const resolver = createRequire(path.join(base, 'package.json'));
       try {return resolver.resolve(name).replaceAll('\\', '/');} catch (error) {if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') throw error;}
     }
@@ -81,11 +81,11 @@ if (options.uninstall) {
     if (/\.(md|yml)$/.test(member.path)) bytes = Buffer.from(bytes.toString().replaceAll('__NEXTTAVERN_PRESET__', destination));
     if (member.path.endsWith('/agent.cordis.yml')) {
       const doc = YAML.parseDocument(bytes.toString(), {customTags: [{tag: 'tag:yaml.org,2002:js', resolve: value => value}]});
-      for (const id of ['anydoc','dsh-office']) {
+      for (const id of ['anydoc']) {
         const index = doc.contents.items.findIndex(node => node.get('id') === id);
         if (index < 0) throw Error('Missing document integration definition');
         if (!options.documents) doc.contents.items.splice(index, 1);
-        else doc.contents.items[index]!.set('name', modulePath(id === 'anydoc' ? 'dsh-plugin-anydoc' : '@huiliyi37/dsh-office'));
+        else doc.contents.items[index]!.set('name', modulePath('dsh-nexttavern-anydoc'));
       }
       bytes = Buffer.from(doc.toString());
     }
