@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { resolve, dirname, basename, relative } from 'node:path'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 const require = createRequire(new URL('../../build-tools/package.json', import.meta.url))
@@ -9,17 +9,20 @@ const { transform } = require('lightningcss') as typeof import('../../build-tool
 
 const [entry, outfile, requestedModuleId, flag, recipeId] = process.argv.slice(2)
 if (!entry || !outfile) throw new Error('usage: node build-client.mjs <entry> <outfile>')
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+const publicMapping = resolve(packageRoot, 'tools/check-map.json')
+const root = existsSync(publicMapping) ? packageRoot : resolve(packageRoot, '../..')
+const mappingFile = existsSync(publicMapping) ? publicMapping : resolve(root, 'release/source-manifest.json')
 interface BrowserRecipe {
   id: string; entry: string
-  browser?: {moduleId: string; external: string[]; inlineArtifactImports?: Record<string, string>}
+  browser?: {moduleId: string; external: string[]; inlineArtifactImports?: Record<string, string>; minifyWhitespace?: boolean}
 }
 let recipe: BrowserRecipe | undefined
 let nodePaths: string[] | undefined
 let artifacts: {id: string; source: string; sha256?: string}[] = []
 if (flag !== undefined) {
   if (flag !== '--recipe' || !recipeId) throw Error('Expected --recipe ID')
-  const plan = JSON.parse(readFileSync(resolve(root, 'release/source-manifest.json'), 'utf8')) as {
+  const plan = JSON.parse(readFileSync(mappingFile, 'utf8')) as {
     builds: BrowserRecipe[]; typeScript: {declarationPackages: string[]}
     artifacts: {id: string; source: string; sha256?: string}[]
   }
@@ -43,6 +46,7 @@ const result = await build({
   external,
   nodePaths,
   jsx: 'automatic',
+  minifyWhitespace: recipe?.browser?.minifyWhitespace ?? false,
   plugins: [{
     name: 'owned-client-assets',
     setup(builder) {
@@ -55,13 +59,16 @@ const result = await build({
       })
       builder.onLoad({filter: /\.css$/}, args => {
         const source = relative(root, args.path).replaceAll('\\', '/')
+        // Package-relative stylesheet identities survive compat/ -> development/
+        // projection. Audit still uses the real local source path below.
+        const stylesheet = relative(dirname(resolve(entry)), args.path).replaceAll('\\', '/')
         const modules = args.path.endsWith('.module.css')
-        const css = transform({filename: source, code: readFileSync(args.path), minify: true,
+        const css = transform({filename: stylesheet, code: readFileSync(args.path), minify: true,
           cssModules: modules ? {pattern: '[hash]_[local]'} : false})
         const classes: Record<string, string> = {}
         // lightningcss exports come from a native hash map: sort names so
         // repeated builds produce identical bytes across processes.
-        for (const [name, value] of Object.entries(css.exports ?? {}).sort(([left], [right]) => left.localeCompare(right))) {
+        for (const [name, value] of Object.entries(css.exports ?? {}).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
           if (value.composes.length) throw Error('CSS module composition needs an explicit dependency: ' + source)
           classes[name] = value.name
         }
@@ -69,7 +76,7 @@ const result = await build({
         // factory and removes them on unload. Do not create a second CSS owner.
         return {loader: 'js', contents: `
           const owner = ${JSON.stringify(moduleId)};
-          const key = ${JSON.stringify(moduleId + '/' + source)};
+          const key = ${JSON.stringify(moduleId + '/' + stylesheet)};
           if (![...document.querySelectorAll('style[data-plugin-css]')].some(tag => tag.dataset.pluginCss === key)) {
             const style = document.createElement('style');
             style.dataset.plugin = owner; style.dataset.pluginCss = key;

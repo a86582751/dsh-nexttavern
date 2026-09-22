@@ -2389,6 +2389,26 @@
       "source": "development/session-controller/lib/client.js"
     },
     {
+      "id": "controller-browser-vendor-dsh-typert-protocol-lib-index-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-typert-protocol/lib/index.js",
+      "sha256": "f7e0fa4b750267f6adaa1b901be7987f0d830800ec3a05f247251bf77de0b809"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-api-session-controller-lib-types-types-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-api-session-controller/lib/types/types.js",
+      "sha256": "933fe63cada3bd5126d2a96ca042524dd1b2ada286fc0c49c0967a0927312bd2"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-util-workspace-path-lib-index-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-util-workspace-path/lib/index.js",
+      "sha256": "e7ffbf3b2b0dec523226e294eb0fcc5903d9d9938bd472ae5d8179cbead5bfad"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-util-crypto-lib-index-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-util-crypto/lib/index.js",
+      "sha256": "640b26c8e5a1156c6c8e8749a22f805c9c0e34444778eb4ee9529be3e88ec862"
+    },
+    {
       "id": "compat-token-meter-types-ts",
       "source": "development/token-meter/src/types.ts"
     },
@@ -2903,6 +2923,46 @@
     {
       "id": "compat-session-controller-client-sessions-assistant-stream-js",
       "source": "development/session-controller/lib/client/sessions/assistant-stream.js"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-brand-lib-index-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-brand/lib/index.js",
+      "sha256": "14feb59256b891982b2017d73ed03ee65e2a7365f48e4902a856acb0e52d5eb0"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-llm-lib-types-assembler-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/assembler.js",
+      "sha256": "35a4754ab854055942b9142934c595c3e6358a717947daa2d8d89847aef988f7"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-llm-lib-types-assistant-stream-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/assistant-stream.js",
+      "sha256": "7e0cc96a4d60aed34381b552f9cb4549d70df36dbd28c0630da4cd93fa44b7a1"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-llm-lib-types-message-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/message.js",
+      "sha256": "c87812f77a2afd284f271af071575edcadfde3daa7b6554d77b96810ce4688e0"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-session-lib-types-known-event-types-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/known-event-types.js",
+      "sha256": "8f38e6fc9439bb4e47f2bd3aa21c86d5141ef9679f41181c9d9a48765c67d3be"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-session-lib-types-surface-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/surface.js",
+      "sha256": "7e9d4bd3b7c5b2eceed0f8b035e9c021237c72baa2b53e4c6fc941e8b417580e"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-session-lib-types-types-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/types.js",
+      "sha256": "a03acad09eec657b94441109af0da31b5b29668feae35d1b9e72fd99beca505f"
+    },
+    {
+      "id": "controller-browser-vendor-dsh-util-values-lib-index-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-util-values/lib/index.js",
+      "sha256": "890eda6f657c44da19ffbd151ea27dd835caac65db0478f64f6c3926534485ec"
     },
     {
       "id": "plugin-session-history-contract",
@@ -3969,8 +4029,53 @@
       "source": "development/ui-workspace/package.json"
     },
     {
+      "id": "ui-browser-vendor-tanstack-virtual-core-dist-esm-lazy-measurements-js",
+      "source": "build-tools/node_modules/@tanstack/virtual-core/dist/esm/lazy-measurements.js",
+      "sha256": "db1c48346696c7340333ea7672ee0709c736a6e8da0db824b4bbf0d8b7e499b6"
+    },
+    {
+      "id": "ui-browser-vendor-tanstack-virtual-core-dist-esm-utils-js",
+      "source": "build-tools/node_modules/@tanstack/virtual-core/dist/esm/utils.js",
+      "sha256": "5c3be002a2e586ffdb85b85345f0786c8ba88f316685e7121945b1cac8da9a48"
+    },
+    {
+      "id": "ui-browser-vendor-tanstack-virtual-core-dist-esm-index-js",
+      "source": "build-tools/node_modules/@tanstack/virtual-core/dist/esm/index.js",
+      "sha256": "255d29a9969a23e9867a11fb323ccac5a97c95bb765e1f3b68e9715dd12362bd"
+    },
+    {
+      "id": "ui-browser-vendor-tanstack-react-virtual-dist-esm-index-js",
+      "source": "build-tools/node_modules/@tanstack/react-virtual/dist/esm/index.js",
+      "sha256": "9a64b6cded332d3632793399f8980a4c744d1003208512ebe2a31d08b92da3ba"
+    },
+    {
+      "id": "ui-browser-vendor-deepseek-ai-dsh-token-meter-lib-types-turn-usage-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-token-meter/lib/types/turn-usage.js",
+      "sha256": "6cee2c03747d47abdc191568a445efe128a85a1b06f86c8be7a9d55b94d3d9b8"
+    },
+    {
+      "id": "ui-browser-vendor-deepseek-ai-dsh-token-meter-lib-types-client-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-token-meter/lib/types/client.js",
+      "sha256": "79f8481851ed25977ee6a89c855c2f88ee6975e880b5394b678e7e6473761bc8"
+    },
+    {
+      "id": "ui-browser-vendor-deepseek-ai-cosmokit-lib-index-js",
+      "source": "build-tools/node_modules/@deepseek-ai/cosmokit/lib/index.js",
+      "sha256": "ba44c0871656e4c7cac2c3c8a2ff644e0d2eb9d6bda7f6355866d686d513268e"
+    },
+    {
+      "id": "ui-browser-vendor-deepseek-ai-schemastery-lib-index-mjs",
+      "source": "build-tools/node_modules/@deepseek-ai/schemastery/lib/index.mjs",
+      "sha256": "cfcbe46c7416bdb35ce891c252152bbf519e08199bede5930dd7cb880c65f1ef"
+    },
+    {
       "id": "compat-ui-chat-browser",
       "source": "development/ui-chat/lib/client.js"
+    },
+    {
+      "id": "ui-browser-vendor-clsx-dist-clsx-mjs",
+      "source": "build-tools/node_modules/clsx/dist/clsx.mjs",
+      "sha256": "d949e5cdbfebc76a6642b1901095e900fc3f2262d8dc0373aa44850a9bc75522"
     },
     {
       "id": "compat-ui-workspace-browser",
@@ -4661,10 +4766,10 @@
       "id": "status-template-js",
       "kind": "typescript-module",
       "artifact": "status-template",
-      "entry": "status-template.ts",
+      "entry": "src/status-template.ts",
       "builder": "tools/build-modules.mjs",
       "inputs": [
-        "status-template.ts",
+        "src/status-template.ts",
         "build-tools/tsconfig.json",
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
@@ -4715,7 +4820,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/ui/memory-retrieval-panel.ts",
         "src/ui/card-adaptation-panel.ts",
         "src/ui/conversation-presentation.ts",
@@ -4840,7 +4945,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/ui/status-rendering.ts"
       ]
     },
@@ -4865,7 +4970,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/ui/author-runtime.ts",
         "src/ui/status-rendering.ts",
         "src/ui/reader-beauty.ts"
@@ -4889,7 +4994,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/ui/decision-seat.ts",
         "src/ui/status-rendering.ts"
       ]
@@ -4956,7 +5061,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/ui/status-rendering.ts"
       ]
     },
@@ -5061,7 +5166,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-worldline-surface.ts",
         "src/core/roleplay-import-record.ts",
@@ -5116,7 +5221,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-worldline-surface.ts",
         "src/core/roleplay-import-record.ts",
@@ -5201,7 +5306,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-worldline-surface.ts",
         "src/core/roleplay-import-record.ts",
@@ -5304,7 +5409,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-task-tools.ts",
         "src/core/roleplay-task-tools-types.ts",
@@ -5408,7 +5513,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/memory/memory-retrieval-types.ts",
         "src/core/roleplay-worldline-surface.ts",
@@ -5505,7 +5610,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-worldline-surface.ts",
         "src/core/roleplay-import-record.ts",
@@ -5586,7 +5691,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-userinfo.ts",
         "src/memory/memory-provenance.ts",
         "src/core/tavern-task-retirement.ts",
@@ -5713,7 +5818,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-worldline-surface.ts",
         "src/core/roleplay-import-record.ts",
@@ -5760,7 +5865,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-worldline-surface.ts",
         "src/core/roleplay-import-record.ts",
@@ -5904,7 +6009,7 @@
         "src/memory/memory-provenance.ts",
         "src/core/tavern-task-retirement.ts",
         "src/core/card-adaptation-context.ts",
-        "status-template.ts"
+        "src/status-template.ts"
       ]
     },
     {
@@ -5966,7 +6071,7 @@
         "src/memory/memory-provenance.ts",
         "src/core/tavern-task-retirement.ts",
         "src/core/card-adaptation-context.ts",
-        "status-template.ts"
+        "src/status-template.ts"
       ]
     },
     {
@@ -6025,7 +6130,7 @@
         "src/memory/memory-provenance.ts",
         "src/core/tavern-task-retirement.ts",
         "src/core/card-adaptation-context.ts",
-        "status-template.ts"
+        "src/status-template.ts"
       ]
     },
     {
@@ -6065,7 +6170,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-worldline-types.ts",
         "src/core/roleplay-import-record.ts",
@@ -6114,7 +6219,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-author-context-types.ts",
         "src/core/roleplay-worldline-types.ts",
         "src/core/card-adaptation.ts",
@@ -6266,7 +6371,7 @@
         "src/core/roleplay-userinfo.ts",
         "src/core/tavern-task-retirement.ts",
         "src/core/card-adaptation-context.ts",
-        "status-template.ts"
+        "src/status-template.ts"
       ]
     },
     {
@@ -6462,7 +6567,7 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-import-record.ts",
         "src/core/roleplay-userinfo.ts",
         "src/core/tavern-task-retirement.ts",
@@ -7233,7 +7338,7 @@
         "lib/ui/build-client.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/ui/conversation-presentation.ts",
         "lib/ui/conversation-presentation.js",
         "src/ui/roleplay-ui-styles.ts",
@@ -7308,7 +7413,7 @@
         "lib/core/roleplay-userinfo.js",
         "src/core/roleplay-author-context-types.ts",
         "lib/core/roleplay-author-context-types.js",
-        "status-template.js",
+        "lib/status-template.js",
         "src/ui/memory-retrieval-panel.ts",
         "lib/ui/memory-retrieval-panel.js",
         "src/ui/card-adaptation-panel.ts",
@@ -7555,7 +7660,7 @@
         "src/core/tavern-model-policy.ts",
         "src/core/tavern-task-support.ts",
         "src/core/tavern-task-primitives.ts",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-import-record.ts",
         "src/core/roleplay-userinfo.ts",
         "src/memory/memory-provenance.ts",
@@ -7590,7 +7695,7 @@
         "src/core/tavern-model-policy.ts",
         "src/core/tavern-task-support.ts",
         "src/core/tavern-task-primitives.ts",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-import-record.ts",
         "src/core/roleplay-userinfo.ts",
         "src/core/roleplay-status-presentation.ts",
@@ -7793,7 +7898,7 @@
         "src/core/tavern-model-policy.ts",
         "src/core/tavern-task-support.ts",
         "src/core/tavern-task-primitives.ts",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-import-record.ts",
         "src/core/roleplay-userinfo.ts",
         "src/memory/memory-provenance.ts",
@@ -7969,7 +8074,7 @@
         "src/memory/memory-provenance.ts",
         "src/core/roleplay-decision-types.ts",
         "src/core/roleplay-status.ts",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-import.ts",
         "src/core/card-export.ts",
         "src/core/card-export-projection.ts",
@@ -8107,7 +8212,7 @@
         "src/memory/memory-provenance.ts",
         "src/core/roleplay-decision-types.ts",
         "src/core/roleplay-status.ts",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-import.ts",
         "src/core/card-export.ts",
         "src/core/card-export-projection.ts",
@@ -8447,7 +8552,7 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "src/core/roleplay-status-presentation.ts",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/tavern-task-support.ts",
         "src/core/roleplay-status-types.ts",
         "src/core/roleplay-context.ts",
@@ -8498,7 +8603,7 @@
         "src/core/roleplay-import-types.ts",
         "src/core/card-export.ts",
         "src/core/card-export-projection.ts",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-worldline-types.ts",
         "src/core/roleplay-state-types.ts",
         "src/core/roleplay-worldlines.ts",
@@ -8552,7 +8657,7 @@
         "src/core/roleplay-context.ts",
         "src/core/card-export.ts",
         "src/core/card-export-projection.ts",
-        "status-template.ts",
+        "src/status-template.ts",
         "src/core/roleplay-panel-routes-types.ts",
         "src/core/roleplay-state-types.ts",
         "src/core/roleplay-worldline-types.ts",
@@ -8623,7 +8728,7 @@
         "src/ui/reader-rendering.ts",
         "src/ui/status-rendering.ts",
         "src/ui/reader-regex.ts",
-        "status-template.ts",
+        "src/status-template.ts",
         "build-tools/tsconfig.json",
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
@@ -9259,6 +9364,10 @@
         "lib/ui/build-client.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
+        "build-tools/node_modules/@deepseek-ai/dsh-typert-protocol/lib/index.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-api-session-controller/lib/types/types.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-util-workspace-path/lib/index.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-util-crypto/lib/index.js",
         "development/session-controller/src/assistant-stream.ts",
         "development/session-controller/lib/assistant-stream.js",
         "development/session-controller/src/media-references.ts",
@@ -9267,6 +9376,14 @@
         "development/session-controller/lib/client/session-wire-event.js",
         "development/session-controller/src/client/sessions/assistant-stream.ts",
         "development/session-controller/lib/client/sessions/assistant-stream.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-brand/lib/index.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/assembler.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/assistant-stream.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/message.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/known-event-types.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/surface.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/types.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-util-values/lib/index.js",
         "development/session-controller/src/archived-session-gate.ts"
       ]
     },
@@ -12071,6 +12188,7 @@
       "entry": "development/ui-chat/src/client/index.ts",
       "builder": "lib/ui/build-client.mjs",
       "inputs": [
+        "build-tools/node_modules/@deepseek-ai/dsh-util-workspace-path/lib/index.js",
         "development/ui-chat/src/client/contract/snapshot.ts",
         "development/ui-chat/src/client/chat/ApprovalCommand.tsx",
         "development/ui-chat/src/client/markdown-labels.ts",
@@ -12090,13 +12208,20 @@
         "development/ui-chat/src/client/chat/searchable-hidden.ts",
         "development/ui-chat/src/client/chat/ChatView.module.css",
         "development/ui-chat/src/client/chat/ChatNodeSeat.tsx",
+        "build-tools/node_modules/@deepseek-ai/dsh-util-values/lib/index.js",
         "development/ui-chat/src/client/chat/render-entry.ts",
         "development/ui-chat/src/client/chat/step-process.ts",
         "development/ui-chat/src/client/chat/use-disclosure.ts",
         "development/ui-chat/src/client/chat/ChatGroupSeat.module.css",
         "development/ui-chat/src/client/chat/ChatGroupSeat.tsx",
+        "build-tools/node_modules/@tanstack/virtual-core/dist/esm/lazy-measurements.js",
+        "build-tools/node_modules/@tanstack/virtual-core/dist/esm/utils.js",
+        "build-tools/node_modules/@tanstack/virtual-core/dist/esm/index.js",
+        "build-tools/node_modules/@tanstack/react-virtual/dist/esm/index.js",
         "development/ui-chat/src/client/chat/TurnNavigator.module.css",
         "development/ui-chat/src/client/chat/TurnNavigator.tsx",
+        "build-tools/node_modules/@deepseek-ai/dsh-brand/lib/index.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/types.js",
         "development/ui-chat/src/client/chat/turn-rail-items.ts",
         "development/ui-chat/src/client/chat/use-chat-navigation.ts",
         "development/ui-chat/src/client/chat/use-chat-reading.ts",
@@ -12133,6 +12258,8 @@
         "development/ui-chat/src/client/contract/turn-metrics.ts",
         "development/ui-chat/src/client/chat/StatsPills.module.css",
         "development/ui-chat/src/client/chat/StatsPills.tsx",
+        "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/known-event-types.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/surface.js",
         "development/ui-chat/src/client/conversation-nodes/common.ts",
         "development/ui-chat/src/client/conversation-nodes/event-projection.ts",
         "development/ui-chat/src/client/conversation-nodes/assistant.ts",
@@ -12155,10 +12282,18 @@
         "development/ui-chat/src/client/conversation-nodes/turn-max-tokens.ts",
         "development/ui-chat/src/client/conversation-nodes/roleplay-story.ts",
         "development/ui-chat/src/client/conversation-nodes/turn-process.ts",
+        "build-tools/node_modules/@deepseek-ai/dsh-util-crypto/lib/index.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/message.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/assembler.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-llm/lib/types/assistant-stream.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-token-meter/lib/types/turn-usage.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-token-meter/lib/types/client.js",
         "development/ui-chat/src/client/conversation-nodes/turn-tail.ts",
         "development/ui-chat/src/client/conversation-nodes/process-activity.ts",
         "development/ui-chat/src/client/conversation-nodes/process-groups.ts",
         "development/ui-chat/src/client/conversation-nodes/register.ts",
+        "build-tools/node_modules/@deepseek-ai/cosmokit/lib/index.js",
+        "build-tools/node_modules/@deepseek-ai/schemastery/lib/index.mjs",
         "development/ui-chat/src/chat-settings.ts",
         "development/ui-chat/src/client/settings/PreferenceRow.module.css",
         "development/ui-chat/src/client/settings/PreferenceRow.tsx",
@@ -12187,7 +12322,8 @@
         ],
         "inlineArtifactImports": {
           "dsh-nexttavern-session-format/projection": "compat-session-format-lib-projection-js"
-        }
+        },
+        "minifyWhitespace": true
       }
     },
     {
@@ -12199,10 +12335,13 @@
       "inputs": [
         "development/ui-workspace/src/client/contract/slots.ts",
         "development/ui-workspace/src/client/locales.ts",
+        "build-tools/node_modules/@deepseek-ai/dsh-util-values/lib/index.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-util-workspace-path/lib/index.js",
         "development/ui-workspace/src/client/tree.ts",
         "development/ui-workspace/src/client/stores.ts",
         "development/ui-workspace/src/client/pin-order.ts",
         "development/ui-workspace/src/client/navigation.ts",
+        "build-tools/node_modules/clsx/dist/clsx.mjs",
         "development/ui-workspace/src/client/rows/Rows.module.css",
         "development/ui-workspace/src/client/rows/Rows.tsx",
         "development/ui-workspace/src/client/rows/AnimatedRows.module.css",
@@ -12231,7 +12370,8 @@
           "@deepseek-ai/dsh-client-ui-primitives",
           "react",
           "react/jsx-runtime"
-        ]
+        ],
+        "minifyWhitespace": true
       }
     },
     {

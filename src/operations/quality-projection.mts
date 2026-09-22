@@ -18,10 +18,24 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
     if (base !== undefined && !paths.has(delivery.artifact)) paths.set(delivery.artifact, path.posix.join(base, delivery.path))
   }
   for (const test of plan.publicRelease.publicTests) paths.set(test.artifact, test.path)
-  const sourcePaths = new Map(plan.artifacts.filter(artifact => paths.has(artifact.id))
-    .map(artifact => [artifact.source, paths.get(artifact.id)!]))
+  // Locked browser inputs are reconstructed by npm ci, not copied into public
+  // source control. Keep their exact byte pins and package-relative locations.
+  for (const directory of plan.typeScript?.declarationPackages ?? []) {
+    const metadata = plan.artifacts.find(artifact => artifact.source === directory + '/package.json')
+    const target = metadata && paths.get(metadata.id)
+    if (!target) throw Error('Public check missing declaration package: ' + directory)
+    for (const artifact of plan.artifacts) if (artifact.sha256 && artifact.source.startsWith(directory + '/node_modules/')) {
+      paths.set(artifact.id, path.posix.dirname(target) + artifact.source.slice(directory.length))
+    }
+  }
+  const sourcePaths = new Map<string, string>()
+  for (const artifact of plan.artifacts) if (paths.has(artifact.id) && !sourcePaths.has(artifact.source)) {
+    sourcePaths.set(artifact.source, paths.get(artifact.id)!)
+  }
   const mapping: SourceMapping = {
-    artifacts: plan.artifacts.filter(artifact => paths.has(artifact.id)).map(artifact => ({id: artifact.id, source: paths.get(artifact.id)!})),
+    artifacts: plan.artifacts.filter(artifact => paths.has(artifact.id)).map(artifact => ({
+      id: artifact.id, source: paths.get(artifact.id)!, ...(artifact.sha256 ? {sha256:artifact.sha256} : {}),
+    })),
     builds: plan.builds.filter(build => paths.has(build.artifact) && sourcePaths.has(build.entry)).map(build => ({
       ...build, entry: sourcePaths.get(build.entry)!,
       builder: build.kind === 'typescript-module' ? 'tools/build-modules.mjs' : sourcePaths.get(build.builder)!,

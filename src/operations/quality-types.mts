@@ -17,10 +17,10 @@ export interface CheckTask {
 }
 export interface CheckModule {id: string; aliases: string[]; patterns: string[]}
 export interface CheckRegistry {schemaVersion: 1; modules: CheckModule[]; tasks: CheckTask[]}
-export interface Artifact {id: string; source: string; public?: {path?: string}}
+export interface Artifact {id: string; source: string; sha256?: string; public?: {path?: string}}
 export interface BuildMapping {
   id: string; kind?: string; artifact: string; entry: string; builder: string; inputs: string[]
-  browser?: {moduleId: string; external: string[]; inlineArtifactImports?: Record<string, string>}
+  browser?: {moduleId: string; external: string[]; inlineArtifactImports?: Record<string, string>; minifyWhitespace?: boolean}
 }
 export interface SourceMapping {
   artifacts: Artifact[]

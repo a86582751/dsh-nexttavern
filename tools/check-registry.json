@@ -2954,7 +2954,19 @@
         "service": false
       },
       "inputs": [
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "controller-browser-vendor-dsh-brand-lib-index-js",
+        "controller-browser-vendor-dsh-llm-lib-types-assembler-js",
+        "controller-browser-vendor-dsh-llm-lib-types-assistant-stream-js",
+        "controller-browser-vendor-dsh-llm-lib-types-message-js",
+        "controller-browser-vendor-dsh-session-lib-types-known-event-types-js",
+        "controller-browser-vendor-dsh-session-lib-types-surface-js",
+        "controller-browser-vendor-dsh-session-lib-types-types-js",
+        "controller-browser-vendor-dsh-util-values-lib-index-js",
+        "controller-browser-vendor-dsh-typert-protocol-lib-index-js",
+        "controller-browser-vendor-dsh-api-session-controller-lib-types-types-js",
+        "controller-browser-vendor-dsh-util-workspace-path-lib-index-js",
+        "controller-browser-vendor-dsh-util-crypto-lib-index-js"
       ]
     },
     {
@@ -3607,7 +3619,25 @@
         "service": false
       },
       "inputs": [
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "controller-browser-vendor-dsh-util-workspace-path-lib-index-js",
+        "controller-browser-vendor-dsh-util-values-lib-index-js",
+        "ui-browser-vendor-tanstack-virtual-core-dist-esm-lazy-measurements-js",
+        "ui-browser-vendor-tanstack-virtual-core-dist-esm-utils-js",
+        "ui-browser-vendor-tanstack-virtual-core-dist-esm-index-js",
+        "ui-browser-vendor-tanstack-react-virtual-dist-esm-index-js",
+        "controller-browser-vendor-dsh-brand-lib-index-js",
+        "controller-browser-vendor-dsh-session-lib-types-types-js",
+        "controller-browser-vendor-dsh-session-lib-types-known-event-types-js",
+        "controller-browser-vendor-dsh-session-lib-types-surface-js",
+        "controller-browser-vendor-dsh-util-crypto-lib-index-js",
+        "controller-browser-vendor-dsh-llm-lib-types-message-js",
+        "controller-browser-vendor-dsh-llm-lib-types-assembler-js",
+        "controller-browser-vendor-dsh-llm-lib-types-assistant-stream-js",
+        "ui-browser-vendor-deepseek-ai-dsh-token-meter-lib-types-turn-usage-js",
+        "ui-browser-vendor-deepseek-ai-dsh-token-meter-lib-types-client-js",
+        "ui-browser-vendor-deepseek-ai-cosmokit-lib-index-js",
+        "ui-browser-vendor-deepseek-ai-schemastery-lib-index-mjs"
       ]
     },
     {
@@ -3629,7 +3659,10 @@
         "service": false
       },
       "inputs": [
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "controller-browser-vendor-dsh-util-values-lib-index-js",
+        "controller-browser-vendor-dsh-util-workspace-path-lib-index-js",
+        "ui-browser-vendor-clsx-dist-clsx-mjs"
       ]
     },
     {
@@ -3850,6 +3883,22 @@
         "compat-ui-chat-index-js-bundle",
         "compat-ui-chat-browser"
       ]
+    },
+    {
+      "depends": [
+        "generated"
+      ],
+      "inputs": [],
+      "action": "test",
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 90000,
+      "id": "test:plugin-public-browser.test.mts",
+      "modules": [
+        "ui"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }
