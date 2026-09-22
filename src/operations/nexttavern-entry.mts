@@ -1,5 +1,5 @@
 /** Product-owned Loader subtree. Native and replacement providers never overlap. */
-import {Service, type FiberState, type Context} from '@deepseek-ai/cordis'
+import {Service, type Fiber, type FiberState, type Context} from '@deepseek-ai/cordis'
 import {EntryTree, type EntryOptions} from '@deepseek-ai/cordis-plugin-loader'
 import {createRequire} from 'node:module'
 import {readFileSync, realpathSync} from 'node:fs'
@@ -45,6 +45,8 @@ export interface NextTavernEntryConfig {
   /** Supplied by the product bundle, never discovered by scanning node_modules. */
   providers: ProviderReplacement[]
   addons?: EntryOptions[]
+  /** A host half inside this root package; never a second Loader/browser source. */
+  host?: string
 }
 
 export default class NextTavernEntry extends EntryTree {
@@ -54,6 +56,7 @@ export default class NextTavernEntry extends EntryTree {
   private stopping?: Promise<void>
   private released = false
   private epoch = 0
+  private hostFiber?: Fiber
 
   constructor(ctx: Context, private config: NextTavernEntryConfig) {
     // Capture before super attaches the product's subtree to its main entry.
@@ -161,6 +164,16 @@ export default class NextTavernEntry extends EntryTree {
           throw Error(`NextTavern enabled entry is not active: ${entry.id}`)
         }
       }
+      if (this.config.host) {
+        // Register profile-wide routes only after the required providers are
+        // active. A Loader row for this same package would claim its browser
+        // identity a second time; a native child fiber shares this root owner.
+        const hostModule = await import(ownedModule(this.config.host))
+        if (this.closing || epoch !== this.epoch) return
+        this.hostFiber = this.ctx.plugin(hostModule)
+        await this.hostFiber.await()
+        if (this.hostFiber.state !== ACTIVE_FIBER_STATE) throw Error('NextTavern host routes are not active')
+      }
     } catch (error) {
       // A hot reconfiguration failure does not dispose the main entry. Its
       // init-generator cleanup alone cannot restore services in this path.
@@ -180,10 +193,20 @@ export default class NextTavernEntry extends EntryTree {
     if (this.released) return
     this.epoch += 1
     this.stopping = (async () => {
-      // Native browser discovery reacts to disposal in a microtask and still
-      // sees this subtree until imports settle. Mark rows inactive before that
-      // observation, even when their parent already began disposing fibers.
-      await Promise.all([...this.entries()].map(entry => entry.update({disabled: true})))
+      // Mark our transient rows synchronously, before host disposal yields.
+      // Calling entry.update here would also stop their providers too early;
+      // root.stop below owns that disposal, after route handles have drained.
+      // Browser discovery can run on the first disposal microtask and must
+      // already see every old source disabled. These rows are never persisted.
+      for (const entry of this.entries()) entry.options.disabled = true
+      // Routes may retain provider handles. Release them before their backing
+      // storage/controller providers and before native fallback can start.
+      if (this.hostFiber) {
+        const host = this.hostFiber
+        this.hostFiber = undefined
+        await host.dispose()
+        while (host.inertia) await host.inertia
+      }
       // A late import can still publish a fiber. Wait for known child work,
       // then include uncommitted rows, not only EntryGroup.data. Keep the
       // native-start middleware blocked until every captured fiber drains.

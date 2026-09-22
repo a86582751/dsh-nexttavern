@@ -12183,7 +12183,6 @@
     },
     {
       "id": "compat-ui-chat-browser-build",
-      "kind": "browser",
       "artifact": "compat-ui-chat-browser",
       "entry": "development/ui-chat/src/client/index.ts",
       "builder": "lib/ui/build-client.mjs",
@@ -12328,7 +12327,6 @@
     },
     {
       "id": "compat-ui-workspace-browser-build",
-      "kind": "browser",
       "artifact": "compat-ui-workspace-browser",
       "entry": "development/ui-workspace/src/client/index.ts",
       "builder": "lib/ui/build-client.mjs",

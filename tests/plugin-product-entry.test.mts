@@ -3,6 +3,30 @@ import assert from 'node:assert/strict'
 import {test} from 'node:test'
 import {fixture, nativeCase, causedBy} from './plugin-product-entry-fixture.mts'
 
+test('product host routes share one browser source and drain before provider restoration', async t => {
+  if (await nativeCase(t.name, import.meta.url)) return
+  const f = await fixture({hostMode:'active'})
+  try {
+    assert.deepEqual(f.graph().sort(), ['dsh-nexttavern','fixture-owned-provider'])
+    assert.equal(f.active.get('hostRoutes'),'host')
+    await f.update([{id:'nexttavern',disabled:true}])
+    assert.equal(f.active.has('hostRoutes'),false)
+    assert.deepEqual(f.graph(),['fixture-official-provider'])
+    assert.deepEqual(f.changes,['start:owned','start:host','stop:host','stop:owned','start:official'])
+    await f.update([])
+    assert.equal(f.active.get('hostRoutes'),'host')
+    assert.deepEqual(f.graph().sort(),['dsh-nexttavern','fixture-owned-provider'])
+  } finally {await f.close()}
+})
+
+for(const hostMode of ['failed','pending'] as const) {
+  test(`product refuses ${hostMode} host routes and releases its providers`, async t => {
+    if (await nativeCase(t.name, import.meta.url)) return
+    await assert.rejects(fixture({hostMode}),causedBy(hostMode==='failed'
+      ? 'host registration failed' : 'host routes are not active'))
+  })
+}
+
 test('an active addon tree with a pending nested dependency cannot complete takeover', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
   await assert.rejects(fixture({pendingNestedAddon:true}),causedBy('enabled entry is not active'))

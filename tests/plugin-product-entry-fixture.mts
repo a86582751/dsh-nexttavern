@@ -39,6 +39,7 @@ export async function nativeCase(title: string, testUrl: string) {
 interface FixtureOptions {
   disabled?: boolean; fail?: boolean; slowRelease?: boolean; failingAddon?: boolean; missingOwned?: boolean
   pendingNestedAddon?: boolean
+  hostMode?: 'active' | 'failed' | 'pending'
   prepareAddons?: (productRoot: string, profileRoot: string) => Promise<{
     rows: {id: string; name: string; config?: object; disabled?: boolean}[]
     peers?: Record<string, string>
@@ -71,8 +72,19 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   const productDir = path.join(dir, 'node_modules/dsh-nexttavern')
   write(path.join(productDir, 'package.json'), {name: 'dsh-nexttavern', version: '0.0.0-fixture',
     type: 'module', exports: {'.': './lib/operations/nexttavern-entry.mjs',
-      './entry-policy': './lib/operations/nexttavern-entry-policy.mjs'},
-    dsh: {bundle: {patch: './patch.json'}}})
+      './entry-policy': './lib/operations/nexttavern-entry-policy.mjs',
+      ...(options.hostMode ? {'./host':'./host.mjs','./client':'./client.js'} : {})},
+    dsh: {bundle: {patch: './patch.json'}, ...(options.hostMode ? {client:{platform:'web',inject:[]}} : {})}})
+  if(options.hostMode) {
+    write(path.join(productDir,'client.js'), 'window.__ModuleLoader__.load({id:"dsh-nexttavern",factory:()=>({})});')
+    write(path.join(productDir,'host.mjs'), `
+      export const inject=${JSON.stringify([options.hostMode==='pending' ? 'missingHostService' : 'entryProbe'])};
+      export function apply(ctx) {
+        if (ctx.entryProbe.owner !== 'owned') throw Error('host must mount after owned providers');
+        if (${options.hostMode==='failed'}) throw Error('host registration failed');
+        ctx.effect(()=>ctx.productProbe.acquire('host',{service:'hostRoutes'}));
+      }`)
+  }
   const modules = [
     ['nexttavern-entry', new URL('../lib/operations/nexttavern-entry.mjs', import.meta.url)],
     ['nexttavern-entry-policy', new URL('../lib/operations/nexttavern-entry-policy.mjs', import.meta.url)],
@@ -155,6 +167,7 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     ...providers.map(row=>({id:row.id,name:row.original,disabled:{__jsExpr:policy.providerDisabledExpression}})),
     {insert: [{id: 'nexttavern', name: pathToFileURL(path.join(productDir, 'lib/operations/nexttavern-entry.mjs')).href,
       config: {providers: providers.map(({config,...row})=>row),
+        ...(options.hostMode ? {host:'dsh-nexttavern/host'} : {}),
         addons: options.failingAddon ? [{id:'addon',name:pathToFileURL(addon).href}]
           : options.pendingNestedAddon ? [{id:'nested',name:pathToFileURL(nestedAddon).href}]
             : [...(custom?.addons ?? []), ...(productAddons?.rows ?? [])]}}]},
