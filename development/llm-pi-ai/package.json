@@ -31,9 +31,7 @@
     "@deepseek-ai/dsh-timeout": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-brand": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-util-values": "0.1.7-alpha.1",
-    "@deepseek-ai/schemastery": "3.18.3"
-  },
-  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.3",
     "dsh-nexttavern-pi-ai": "0.3.0-dev.1"
   },
   "private": true

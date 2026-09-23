@@ -20,7 +20,6 @@
     "LICENSE.upstream"
   ],
   "dependencies": {
-    "dsh-nexttavern-session-format": "0.3.0-dev.1",
     "mime-db": "1.54.0",
     "mime-types": "3.0.2",
     "zod": "4.6.5"
