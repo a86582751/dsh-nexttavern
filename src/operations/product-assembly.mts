@@ -2,6 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {createHash} from 'node:crypto'
+import {execFileSync} from 'node:child_process'
 import {assembleOwnedDependency, regularPackageFiles} from './owned-dependency.mjs'
 import {contained as inside} from './public-transaction.mjs'
 
@@ -31,6 +32,53 @@ const save = (file: string, value: unknown) => {
 }
 
 /**
+ * The npm command that will report a library's published file set. The
+ * JavaScript entry is preferred everywhere: a `.cmd` shim cannot be spawned
+ * without a shell on Windows, and running the CLI through this same Node keeps
+ * the answer independent of a caller's PATH order.
+ */
+function resolveNpmCommand(): string {
+  const node = path.dirname(process.execPath)
+  const candidates = [
+    path.join(node, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    path.join(node, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    '/usr/bin/npm',
+  ]
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  throw Error('Cannot find npm next to this Node installation: ' + process.execPath)
+}
+
+/**
+ * The file set the library's own maintainer publishes, asked of the package
+ * manager that will later install it. A whole-directory copy would ship the
+ * maintainer's development sources and test fixtures, whose paths and literal
+ * credentials belong to their authors and must not travel in our package.
+ */
+function publishedFiles(source: string): string[] {
+  const npm = resolveNpmCommand()
+  const args = ['pack', '--dry-run', '--json', '--ignore-scripts', '--no-audit', '--no-fund']
+  const result = npm.endsWith('.js')
+    ? execFileSync(process.execPath, [npm, ...args], {cwd: source, encoding: 'utf8', timeout: 120_000})
+    : execFileSync(npm, args, {cwd: source, encoding: 'utf8', timeout: 120_000})
+  const parsed = JSON.parse(result) as {files?: {path: string}[]}[]
+  const files = parsed[0]?.files?.map(entry => entry.path).filter(Boolean) ?? []
+  if (!files.length) throw Error('Library publishes no files: ' + source)
+  return files.map(file => file.replaceAll('\\', '/'))
+}
+
+/**
+ * A library's own tests and fixtures, which several maintainers publish inside
+ * their package but no runtime consumer loads. They carry their authors' local
+ * paths and sample credentials, so our package must not redistribute them.
+ */
+const LIBRARY_TEST_FILE = /(?:^|\/)(?:tests?|__tests__|__mocks__)\/|\.(?:test|spec)\.[cm]?[jt]sx?$/
+
+/** Reject bytes that may not travel in this package; asked once per vendored file. */
+export type VendorAdmission = (file: string, bytes: Buffer) => boolean
+
+/**
  * Copy each owned package's ordinary dependencies into its own `node_modules`.
  *
  * A third-party library declared as a shared host peer resolves only when the
@@ -40,11 +88,13 @@ const save = (file: string, value: unknown) => {
  * inventory is taken so those bytes are protected like every other member.
  */
 function vendorLibraries(output: string, owner: string, dependencies: Record<string, string>,
-  libraryRoot: string | undefined, pinned: Record<string, string>) {
+  libraryRoot: string | undefined, pinned: Record<string, string>, admit: VendorAdmission | undefined) {
   const libraries = Object.keys(dependencies).filter(name => !name.startsWith('@deepseek-ai/')
     && !name.startsWith('dsh-nexttavern-'))
-  if (!libraries.length) return
+  const excluded: {library: string; files: number}[] = []
+  if (!libraries.length) return excluded
   if (!libraryRoot) throw Error('Product assembly needs a library root for third-party dependencies')
+  if (!admit) throw Error('Product assembly needs a vendor admission check for third-party libraries')
   for (const name of libraries) {
     const version = dependencies[name]!
     if (pinned[name] !== version) {
@@ -55,8 +105,23 @@ function vendorLibraries(output: string, owner: string, dependencies: Record<str
     if (manifest.name !== name || manifest.version !== version) {
       throw Error(`Vendored library differs from its pin: ${name} ${manifest.version} != ${version}`)
     }
-    fs.cpSync(source, inside(output, 'node_modules/' + name), {recursive: true})
+    const target = inside(output, 'node_modules/' + name)
+    let dropped = 0
+    for (const file of regularPackageFiles(source)) {
+      const from = path.join(source, file)
+      // The library's own tests and fixtures carry their authors' local paths
+      // and sample credentials; admission decides what may travel in this package.
+      if (LIBRARY_TEST_FILE.test(file) || !admit(file, fs.readFileSync(from))) {
+        dropped += 1
+        continue
+      }
+      const to = inside(target, file)
+      fs.mkdirSync(path.dirname(to), {recursive: true})
+      fs.copyFileSync(from, to)
+    }
+    if (dropped) excluded.push({library: name, files: dropped})
   }
+  return excluded
 }
 
 /**
@@ -66,6 +131,7 @@ function vendorLibraries(output: string, owner: string, dependencies: Record<str
  */
 export function assembleProduct(options: {
   repo: string; packageRoot: string; archives: Record<string, string>; libraryRoot?: string
+  admitVendoredFile?: VendorAdmission
 }) {
   const repo = fs.realpathSync(options.repo)
   const plan = json<Plan>(path.join(repo, 'release/source-manifest.json'))
@@ -144,14 +210,17 @@ export function assembleProduct(options: {
       fs.mkdirSync(path.dirname(target), {recursive: true})
       fs.copyFileSync(inside(repo, artifact(resource.artifact).source), target)
     }
-    vendorLibraries(output, pkg.name, pkg.dependencies ?? {}, options.libraryRoot, plan.product.bundleLibraries ?? {})
+    const excluded = vendorLibraries(output, pkg.name, pkg.dependencies ?? {}, options.libraryRoot,
+      plan.product.bundleLibraries ?? {}, options.admitVendoredFile)
     const files = regularPackageFiles(output).sort().map(file => ({path: file,
       sha256: createHash('sha256').update(fs.readFileSync(inside(output, file))).digest('hex')}))
-    return {name: pkg.name, version: pkg.version, files}
+    return {name: pkg.name, version: pkg.version, files, excludedVendoredFiles: excluded}
   })
-  const inventory = {schemaVersion: 1, productVersion: metadata.version, packages}
+  const inventory = {schemaVersion: 1, productVersion: metadata.version, packages: packages.map(({excludedVendoredFiles, ...row}) => row)}
+  const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
+    .map(item => ({package: row.name, ...item})))
   save(path.join(packageRoot, 'package.json'), metadata)
   save(path.join(packageRoot, 'nexttavern.dependencies.json'), inventory)
   fs.copyFileSync(inside(repo, artifact(plan.product.patchArtifact).source), path.join(packageRoot, 'cordis.patch.json'))
-  return inventory
+  return {...inventory, excludedVendoredFiles}
 }
