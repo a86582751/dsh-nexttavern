@@ -5,7 +5,8 @@ import {createRequire, findPackageJSON} from 'node:module'
 import {pathToFileURL} from 'node:url'
 import {withFileLock} from '@deepseek-ai/dsh-atomic-write'
 import {contained} from './public-transaction.mjs'
-import {prepareProtectedPackages, recoverProtectedPackages, verifyProtectedPackage, type ProtectedFile} from './protected-packages.mjs'
+import {prepareProtectedPackages, protectedGeneration, recoverProtectedPackages, verifyProtectedPackage,
+  type ProtectedFile, type VerifiedProtectedSource} from './protected-packages.mjs'
 
 export interface BundledPackageSpec {
   name: string
@@ -82,11 +83,14 @@ function verifyPeers(metadataPath: string, metadata: PackageMetadata, hostAnchor
 }
 
 /**
- * The inventory is emitted by release assembly, never computed by trusting an
- * arbitrary installed package. Returned modules remain inside the root bundle:
- * pinning a future profile resolution must not switch a running process's graph.
+ * Structural identity of an installed product bundle: its manifest, the
+ * inventory release assembly emitted, and the exact owned names.
+ *
+ * Nothing here hashes a member or resolves a peer, so a caller can decide from
+ * identity alone whether durable references are already current. Byte
+ * admission stays where it is charged, once per locked preparation round.
  */
-export function inspectBundledPackages(productRoot: string, hostAnchor: string, resolveManifest?: PeerManifestResolver) {
+export function readBundleIdentity(productRoot: string) {
   productRoot = fs.realpathSync(productRoot)
   const rootManifest = contained(productRoot, 'package.json')
   const product = readJson<PackageMetadata>(rootManifest)
@@ -96,8 +100,6 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string, 
     || inventory.productVersion !== product.version || !Array.isArray(inventory.packages)) {
     throw Error('Bundled dependency inventory does not match this NextTavern version')
   }
-  const productResolver = createRequire(rootManifest)
-  const hostManifest = fs.realpathSync(hostAnchor)
   const bundledNames = (product.bundleDependencies ?? []).filter(name => name.startsWith('dsh-nexttavern-')).sort()
   const declaredNames = Object.keys(product.dependencies ?? {}).filter(name => name.startsWith('dsh-nexttavern-')).sort()
   const inventoriedNames = inventory.packages.map(spec => spec.name).sort()
@@ -105,8 +107,6 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string, 
     || JSON.stringify(declaredNames) !== JSON.stringify(inventoriedNames)) {
     throw Error('Bundled compatibility inventory is incomplete')
   }
-  const ownedNames = new Set(bundledNames)
-  verifyPeers(rootManifest, product, hostManifest, rootManifest, ownedNames, resolveManifest)
   const seen = new Set<string>()
   const packages = inventory.packages.map(spec => {
     if (typeof spec.name !== 'string' || !/^dsh-nexttavern-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(spec.name)
@@ -118,7 +118,24 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string, 
       || product.dependencies?.[spec.name] !== spec.version) {
       throw Error('Compatibility dependency is not exactly pinned and bundled: ' + spec.name)
     }
-    const source = fs.realpathSync(contained(productRoot, 'node_modules/' + spec.name))
+    return {name: spec.name, version: spec.version, files: spec.files}
+  })
+  return {productRoot, rootManifest, metadata: product, version: product.version, packages}
+}
+
+/**
+ * The inventory is emitted by release assembly, never computed by trusting an
+ * arbitrary installed package. Returned modules remain inside the root bundle:
+ * pinning a future profile resolution must not switch a running process's graph.
+ */
+export function inspectBundledPackages(productRoot: string, hostAnchor: string, resolveManifest?: PeerManifestResolver) {
+  const identity = readBundleIdentity(productRoot)
+  const hostManifest = fs.realpathSync(hostAnchor)
+  const ownedNames = new Set(identity.packages.map(spec => spec.name))
+  verifyPeers(identity.rootManifest, identity.metadata, hostManifest, identity.rootManifest, ownedNames, resolveManifest)
+  const productResolver = createRequire(identity.rootManifest)
+  const packages = identity.packages.map(spec => {
+    const source = fs.realpathSync(contained(identity.productRoot, 'node_modules/' + spec.name))
     const metadataPath = fs.realpathSync(productResolver.resolve(spec.name + '/package.json'))
     if (metadataPath !== path.join(source, 'package.json')) throw Error('Compatibility package escaped its product bundle')
     const metadata = readJson<PackageMetadata>(metadataPath)
@@ -132,10 +149,12 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string, 
     const entry = fs.realpathSync(productResolver.resolve(spec.name))
     const relativeEntry = path.relative(source, entry).replaceAll('\\', '/')
     if (contained(source, relativeEntry) !== entry) throw Error('Compatibility entry escaped its bundle')
-    verifyPeers(metadataPath, metadata, hostManifest, rootManifest, ownedNames, resolveManifest)
-    return {...spec, source, entry}
+    verifyPeers(metadataPath, metadata, hostManifest, identity.rootManifest, ownedNames, resolveManifest)
+    // The generation names exactly these bytes, so the transaction that may
+    // write them can reuse this verification instead of reading the tree again.
+    return {...spec, source, entry, generation: protectedGeneration(spec)}
   })
-  return {productRoot, version: product.version, packages}
+  return {productRoot: identity.productRoot, version: identity.version, packages}
 }
 
 /**
@@ -188,7 +207,11 @@ export async function bootstrapBundledPackages(options: {
   const run = () => withFileLock(manifest, async () => {
     const bundle = inspectBundledPackages(options.productRoot, options.hostAnchor, options.resolvePeerManifest)
     const recovered = recoverProtectedPackages(options.home)
-    const prepared = prepareProtectedPackages({...options, packages: bundle.packages})
+    // This round's own admission is the verification the write plan reuses:
+    // both run inside the same writer lock, so the plan never re-reads a tree
+    // this call just hashed.
+    const verifiedSources: VerifiedProtectedSource[] = bundle.packages.map(({source, generation}) => ({source, generation}))
+    const prepared = prepareProtectedPackages({...options, packages: bundle.packages, verifiedSources})
     return {
       schemaVersion: 1 as const,
       state: 'bundled-runtime-prepared' as const,

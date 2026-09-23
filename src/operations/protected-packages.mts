@@ -12,6 +12,14 @@ export interface ProtectedPackageInput {
   source: string
   files: ProtectedFile[]
 }
+/**
+ * One source tree a caller already admitted with this module's own gate.
+ *
+ * `generation` is the identity of the exact record a transaction would write,
+ * so a stale or different inventory cannot be paired with a verified tree: any
+ * other record falls back to verifying here, inside the same writer lock.
+ */
+export interface VerifiedProtectedSource {source: string; generation: string}
 interface ProtectedPackageRecord {
   name: string
   version: string
@@ -62,13 +70,25 @@ function normalizedFiles(files: ProtectedFile[]): ProtectedFile[] {
   }).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
 }
 
+/**
+ * Identity of one protected generation. Every byte that reaches a durable
+ * directory is named by this digest, so equal generations are interchangeable
+ * and a verification of one cannot stand in for another.
+ */
+export function protectedGeneration(input: Pick<ProtectedPackageInput, 'name' | 'version' | 'files'>): string {
+  return generationOf(input, normalizedFiles(input.files))
+}
+
+const generationOf = (input: Pick<ProtectedPackageInput, 'name' | 'version'>, files: ProtectedFile[]) =>
+  digest(JSON.stringify({name: input.name, version: input.version, files}))
+
 function recordFor(home: string, profile: string, input: Pick<ProtectedPackageInput, 'name' | 'version' | 'files'>): ProtectedPackageRecord {
   if (!/^dsh-nexttavern-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(input.name)) throw Error('Only independently named NextTavern child packages may be protected')
   if (typeof input.version !== 'string' || !input.version) throw Error('Protected package version is required')
   const files = normalizedFiles(input.files)
   for (const file of files) contained(home, file.path)
   if (!files.some(file => file.path === 'package.json')) throw Error('Protected inventory must include package.json')
-  const generation = digest(JSON.stringify({name: input.name, version: input.version, files}))
+  const generation = generationOf(input, files)
   const directory = `maintenance/fixed-packages/${input.name}/${generation}`
   const reference = 'file:' + path.relative(contained(home, `profiles/${profile}`), contained(home, directory)).replaceAll('\\', '/')
   return {name: input.name, version: input.version, files, directory, reference}
@@ -117,10 +137,15 @@ function assertNoResolutionOverride(manifest: ProfileManifest, names: Set<string
  * not from a fresh trust-on-first-use hash of an installed upstream package.
  * No existing generation is edited or deleted, including on downgrade/remove.
  */
-export function planProtectedPackages(options: {home: string; profile: string; packages: ProtectedPackageInput[]}) {
+export function planProtectedPackages(options: {home: string; profile: string; packages: ProtectedPackageInput[]
+  verifiedSources?: readonly VerifiedProtectedSource[]}) {
   const home = fs.realpathSync(options.home)
   const {profile} = options
   if (!/^[a-zA-Z0-9_-]+$/.test(profile)) throw Error('Invalid profile name')
+  // A caller that admitted these exact generations against these exact trees
+  // while holding the same writer lock has already paid for the read; asking
+  // for it twice per preparation is what a product-sized bundle cannot afford.
+  const admitted = new Map((options.verifiedSources ?? []).map(entry => [entry.generation, entry.source]))
   const manifestPath = `profiles/${profile}/package.json`
   const receiptPath = `profiles/${profile}/.nexttavern-protected-packages.json`
   const manifestBytes = fs.readFileSync(contained(home, manifestPath))
@@ -166,7 +191,7 @@ export function planProtectedPackages(options: {home: string; profile: string; p
       throw Error('Existing profile dependency is not owned by this installer: ' + record.name)
     }
     const source = fs.realpathSync(input.source)
-    verifyProtectedPackage(source, record)
+    if (admitted.get(generationOf(record, record.files)) !== source) verifyProtectedPackage(source, record)
     const target = contained(home, record.directory)
     const existing = fs.existsSync(target) ? inventory(target) : []
     if (existing.length) {
@@ -225,6 +250,7 @@ export function recoverProtectedPackages(home: string) {
  */
 export function prepareProtectedPackages(options: {
   home: string; profile: string; packages: ProtectedPackageInput[]; backup: string
+  verifiedSources?: readonly VerifiedProtectedSource[]
 }) {
   if (fs.existsSync(contained(options.home, '.nexttavern-transaction.lock'))) {
     throw Error('Pending home transaction; run recoverProtectedPackages before preparing references')

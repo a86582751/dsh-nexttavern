@@ -3,7 +3,7 @@ import type {PluginChange} from '@deepseek-ai/dsh-plugin-manager'
 import type {Context} from '@deepseek-ai/cordis'
 import fs from 'node:fs'
 import {dirname, join} from 'node:path'
-import {bootstrapBundledPackages, inspectBundledPackages, isWriterLockBusy,
+import {bootstrapBundledPackages, isWriterLockBusy, readBundleIdentity,
   type PeerManifestResolver} from './bundled-package-bootstrap.mjs'
 
 /** Receipt the preparing transaction writes into the profile it edits. */
@@ -232,10 +232,13 @@ function referencesCurrent(recorded: Map<string, string> | null, version: string
 }
 
 /**
- * The product's own durable-reference work against one installed profile. The
- * read-only inspection runs first and `bootstrapBundledPackages` re-verifies the
- * same bundle under the writer lock, so a profile edited in between is rejected
- * by the transaction instead of being written against stale bytes.
+ * The product's own durable-reference work against one installed profile.
+ *
+ * The read-only step decides from the bundle's identity alone whether the
+ * durable references already describe it; admission of the bytes, the peers and
+ * the entry points happens once inside the locked transaction that may write.
+ * A profile or tree edited after that decision is still rejected by the
+ * transaction, because nothing is written against unverified bytes.
  */
 export function createOwnedPackagePreparation(facts: OwnedPackageFacts): PackagePreparationScheduler {
   return createPackagePreparation({
@@ -245,11 +248,12 @@ export function createOwnedPackagePreparation(facts: OwnedPackageFacts): Package
       return {installedVersion: versions.size === 1 ? [...versions][0]! : null}
     },
     prepare: async (): Promise<PreparationOutcome> => {
-      const bundle = inspectBundledPackages(facts.productRoot, facts.hostAnchor, facts.resolvePeerManifest)
-      const names = bundle.packages.map(spec => spec.name)
-      if (referencesCurrent(preparedVersions(facts), bundle.version, names)) return {state: 'current'}
+      const identity = readBundleIdentity(facts.productRoot)
+      const names = identity.packages.map(spec => spec.name)
+      if (referencesCurrent(preparedVersions(facts), identity.version, names)) return {state: 'current'}
+      let version: string
       try {
-        await bootstrapBundledPackages({
+        const prepared = await bootstrapBundledPackages({
           productRoot: facts.productRoot, hostAnchor: facts.hostAnchor,
           home: facts.home, profile: facts.profile,
           // A preparation transaction keeps its rollback copy beside the home it
@@ -258,13 +262,14 @@ export function createOwnedPackagePreparation(facts: OwnedPackageFacts): Package
           resolvePeerManifest: facts.resolvePeerManifest,
           lockWaitMs: facts.lockWaitMs ?? LOCK_WAIT_MS,
         })
+        version = prepared.version
       } catch (error) {
         // A lock the host held for longer than that bound is a busy profile,
         // not a rejected bundle: the next notice or activation retries it.
         if (isWriterLockBusy(error)) return {state: 'lock-busy'}
         throw error
       }
-      return {state: 'prepared', version: bundle.version}
+      return {state: 'prepared', version}
     },
   })
 }
