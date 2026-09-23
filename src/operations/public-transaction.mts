@@ -90,6 +90,18 @@ function restore(root: string, backup: string, journal: TransactionJournal) {
   journal.state = 'rolled-back';
   save(path.join(backup, 'transaction.json'), journal);
 }
+/**
+ * How many installed members may pass between journal checkpoints.
+ *
+ * The journal is the recovery map, so it must exist in full before the first
+ * write. Rewriting it after every member instead costs one full serialization
+ * and file replacement per member, which a product-sized write set turns into
+ * minutes of work. Recovery never depends on the `applied` flag: it compares
+ * each target's current digest against the recorded before and after states, so
+ * a checkpoint that lags the writes is recovered exactly the same way.
+ */
+const JOURNAL_CHECKPOINT_EVERY = 256
+
 export function applyTransaction({root, backup, files, purpose, assertUnchanged,
   failAfter = Infinity, crashAfter = Infinity}: TransactionOptions) {
   root = fs.realpathSync(root);
@@ -119,6 +131,7 @@ export function applyTransaction({root, backup, files, purpose, assertUnchanged,
     }
     save(path.join(backup, 'transaction.json'), journal);
     release.beginWrites();
+    let checkpointed = 0;
     for (const [index, file] of files.entries()) {
       const target = contained(root, file.path), item = journal.files[index]!;
       if (hashAt(target) !== file.before) throw Error('Target changed before write: ' + file.path);
@@ -135,7 +148,12 @@ export function applyTransaction({root, backup, files, purpose, assertUnchanged,
       if (hashAt(target) !== item.after) throw Error('Installed digest mismatch: ' + file.path);
       if (index + 1 >= crashAfter) process.exit(86);
       item.applied = true;
-      save(path.join(backup, 'transaction.json'), journal);
+      // Checkpoint on a bounded cadence and always on the last member, so the
+      // recorded progress never trails the writes by more than one interval.
+      if (index + 1 - checkpointed >= JOURNAL_CHECKPOINT_EVERY) {
+        save(path.join(backup, 'transaction.json'), journal);
+        checkpointed = index + 1;
+      }
       if (index + 1 >= failAfter) throw Error('Injected transaction failure');
     }
     journal.state = 'installed';
