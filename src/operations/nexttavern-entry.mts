@@ -9,6 +9,8 @@ import {isDeepStrictEqual} from 'node:util'
 import {capture, composition, loaderEntry, productWanted, providerDisabledExpression,
   type CompositionState, type ProfilePlan} from './nexttavern-entry-policy.mjs'
 import {inspectBundledPackages} from './bundled-package-bootstrap.mjs'
+import {bindPackagePreparation, createOwnedPackagePreparation,
+  type PackagePreparationScheduler} from './nexttavern-package-preparation.mjs'
 
 const productRoot = fileURLToPath(new URL('../../', import.meta.url))
 const productRequire = createRequire(new URL('../../package.json', import.meta.url))
@@ -59,6 +61,7 @@ export default class NextTavernEntry extends EntryTree {
   private released = false
   private epoch = 0
   private hostFiber?: Fiber
+  private preparation?: PackagePreparationScheduler
 
   constructor(ctx: Context, private config: NextTavernEntryConfig) {
     // Capture before super attaches the product's subtree to its main entry.
@@ -71,6 +74,9 @@ export default class NextTavernEntry extends EntryTree {
     this.state = state
     if (state.owner) throw Error('NextTavern already owns this profile')
     state.owner = this
+    // Bound while this instance owns the profile, so a manager change notice
+    // reaching the host is never left without a schedule.
+    bindPackagePreparation(ctx, this.preparationState())
 
     ctx.on('loader/patch-context', (entry, next) => {
       // Include starts new rows before removing old rows. Uninstall may remove
@@ -124,6 +130,27 @@ export default class NextTavernEntry extends EntryTree {
 
   /** Child edits belong to this transient subtree, never the profile file. */
   write(): void {}
+
+  /**
+   * The deferred writer for this install's durable package references. It never
+   * runs inside the loading lifecycle: `reconcile` only inspects read-only, and
+   * the returned scheduler acquires the host writer lock on a later turn.
+   */
+  private preparationState(): PackagePreparationScheduler {
+    if (this.preparation) return this.preparation
+    const {name: profile, home, installAnchor} = this.ctx.profileContext
+    this.preparation = createOwnedPackagePreparation({
+      productRoot, hostAnchor: installAnchor, home, profile,
+      resolvePeerManifest: this.peerManifestResolver(),
+      logger: this.ctx.logger,
+    })
+    return this.preparation
+  }
+
+  private peerManifestResolver() {
+    const packages = this.ctx.get('pluginPackages')
+    return packages ? (name: string, parentURL: string) => packages.packageOf(name, parentURL)?.manifestPath : undefined
+  }
 
   private rows(): EntryOptions[] {
     const ids = new Set<string>()
@@ -228,6 +255,11 @@ export default class NextTavernEntry extends EntryTree {
         await this.hostFiber.await()
         if (this.hostFiber.state !== ACTIVE_FIBER_STATE) throw Error('NextTavern host routes are not active')
       }
+      // Only a fully active product schedules durable package references. The
+      // call returns before any writer-lock wait, so activation never blocks on
+      // another component's transaction. The first activation of this instance
+      // takes the attempt; a re-activation keeps the same one.
+      this.preparationState().schedule()
     } catch (error) {
       // A hot reconfiguration failure does not dispose the main entry. Its
       // init-generator cleanup alone cannot restore services in this path.
@@ -246,6 +278,10 @@ export default class NextTavernEntry extends EntryTree {
     if (this.stopping) return this.stopping
     if (this.released) return
     this.epoch += 1
+    // Cancel a preparation that has not started, so a stopping product never
+    // begins a profile write transaction; an already running one finishes
+    // inside its own lock and is awaited by nobody here.
+    this.preparation?.close()
     this.stopping = (async () => {
       // Mark our transient rows synchronously, before host disposal yields.
       // Calling entry.update here would also stop their providers too early;

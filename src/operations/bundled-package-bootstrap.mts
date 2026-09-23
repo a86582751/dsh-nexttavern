@@ -29,6 +29,16 @@ interface PackageMetadata {
 const readJson = <T,>(file: string) => JSON.parse(fs.readFileSync(file, 'utf8')) as T
 export type PeerManifestResolver = (name: string, parentURL: string) => string | undefined
 
+/**
+ * Whether a bootstrap failure was the host's own profile writer lock still
+ * being held. `withFileLock` names exactly this condition, and the caller that
+ * can retry later distinguishes it from a real verification or write failure
+ * instead of reporting a busy profile as a broken install.
+ */
+export function isWriterLockBusy(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('timed out waiting for the writer lock')
+}
+
 function peerPackage(anchor: string, name: string, optional: boolean, resolveManifest?: PeerManifestResolver): string | null {
   try {
     // Some host peers expose only subpaths (node-addon-system/flock), or only
@@ -124,10 +134,16 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string, 
  * Bootstrap never runs pnpm inside the loading host. Private bundled modules
  * are usable now; profile file: references take effect on a later package-manager
  * operation. That distinction is preserved in the result, not hidden as success.
+ *
+ * `lockWaitMs` must exceed the host lock hold this caller can overlap. The
+ * default suits an uncontended hand-off; a scheduler that runs beside the
+ * official manager's own pnpm transaction states its own bound instead of
+ * failing on the manager's lock window.
  */
 export async function bootstrapBundledPackages(options: {
   productRoot: string; hostAnchor: string; home: string; profile: string; backup: string
   resolvePeerManifest?: PeerManifestResolver
+  lockWaitMs?: number
 }) {
   if (!/^[a-zA-Z0-9_-]+$/.test(options.profile)) throw Error('Invalid profile name')
   const manifest = contained(fs.realpathSync(options.home), `profiles/${options.profile}/package.json`)
@@ -147,5 +163,5 @@ export async function bootstrapBundledPackages(options: {
       recovered,
       prepared,
     }
-  })
+  }, options.lockWaitMs === undefined ? undefined : {waitMs: options.lockWaitMs})
 }
