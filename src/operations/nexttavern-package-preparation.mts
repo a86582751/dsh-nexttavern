@@ -1,13 +1,12 @@
 /** Prepare durable owned-package references after the host released its profile writer lock. */
 import type {PluginChange} from '@deepseek-ai/dsh-plugin-manager'
 import type {Context} from '@deepseek-ai/cordis'
-import fs from 'node:fs'
 import {dirname, join} from 'node:path'
 import {bootstrapBundledPackages, isWriterLockBusy, readBundleIdentity,
   type PeerManifestResolver} from './bundled-package-bootstrap.mjs'
+import {durableReferencesIntact, readPreparedReferences,
+  type PreparedReference} from './protected-packages.mjs'
 
-/** Receipt the preparing transaction writes into the profile it edits. */
-const RECEIPT = '.nexttavern-protected-packages.json'
 /**
  * The official manager holds this lock across its own operation, including the
  * reload it awaits before publishing `plugin-manager/changed`. This bound
@@ -203,54 +202,49 @@ export interface OwnedPackageFacts {
 }
 
 /**
- * The profile receipt currently recording durable references for one profile,
- * or null when nothing was prepared yet. The receipt's own paths and hashes are
- * revalidated inside the preparing transaction; this read only decides whether
- * that transaction is needed at all.
+ * Whether the receipt already pins exactly this bundle: the same owned names,
+ * and for each one the same version and the same bytes. Owned packages release
+ * on their own versions, so the product version is never the right key here.
  */
-function preparedVersions(facts: Pick<OwnedPackageFacts, 'home' | 'profile'>): Map<string, string> | null {
-  try {
-    const receipt = JSON.parse(fs.readFileSync(
-      join(facts.home, 'profiles', facts.profile, RECEIPT), 'utf8')) as {
-        schemaVersion?: unknown; profile?: unknown; packages?: {name?: unknown; version?: unknown}[]}
-    if (receipt?.schemaVersion !== 1 || receipt.profile !== facts.profile || !Array.isArray(receipt.packages)) return null
-    const recorded = new Map<string, string>()
-    for (const item of receipt.packages) {
-      if (typeof item?.name !== 'string' || typeof item.version !== 'string') return null
-      recorded.set(item.name, item.version)
-    }
-    return recorded
-  } catch {
-    return null
-  }
-}
-
-/** Whether the receipt already records exactly this bundle's owned packages at these versions. */
-function referencesCurrent(recorded: Map<string, string> | null, version: string, names: readonly string[]): boolean {
-  if (!recorded || recorded.size !== names.length) return false
-  return names.every(name => recorded.get(name) === version)
+function referencesCurrent(recorded: Map<string, PreparedReference>,
+  packages: readonly {name: string; version: string; generation: string}[]): boolean {
+  if (recorded.size !== packages.length) return false
+  return packages.every(spec => {
+    const item = recorded.get(spec.name)
+    return item?.version === spec.version && item.generation === spec.generation
+  })
 }
 
 /**
  * The product's own durable-reference work against one installed profile.
  *
- * The read-only step decides from the bundle's identity alone whether the
- * durable references already describe it; admission of the bytes, the peers and
- * the entry points happens once inside the locked transaction that may write.
- * A profile or tree edited after that decision is still rejected by the
- * transaction, because nothing is written against unverified bytes.
+ * The read-only step decides from the bundle's identity, the profile's recorded
+ * references and each generation's own identity whether this round can stand
+ * down. Admission of the member bytes, the peers and the entry points stays in
+ * the locked transaction that may write, so a tree edited after that decision is
+ * still rejected there, and nothing is ever written against unverified bytes.
  */
 export function createOwnedPackagePreparation(facts: OwnedPackageFacts): PackagePreparationScheduler {
   return createPackagePreparation({
     logger: facts.logger,
     inspect: () => {
-      const versions = new Set(preparedVersions(facts)?.values() ?? [])
+      // Logging only: the shipped bundle versions each owned package, so a
+      // single recorded version names it; mixed versions stay unnamed.
+      const versions = new Set([...readPreparedReferences(facts.home, facts.profile)?.values() ?? []]
+        .map(item => item.version))
       return {installedVersion: versions.size === 1 ? [...versions][0]! : null}
     },
     prepare: async (): Promise<PreparationOutcome> => {
       const identity = readBundleIdentity(facts.productRoot)
-      const names = identity.packages.map(spec => spec.name)
-      if (referencesCurrent(preparedVersions(facts), identity.version, names)) return {state: 'current'}
+      const recorded = readPreparedReferences(facts.home, facts.profile)
+      // Both halves decide, because either one alone would report a profile that
+      // is not actually ready. The receipt must name this bundle's own versions
+      // and generations, and the profile must still carry the references and
+      // generations those records describe. A mismatch in either half leaves the
+      // decision - and every write - to the locked transaction, which is also
+      // the only reader of member bytes.
+      if (recorded && referencesCurrent(recorded, identity.packages)
+        && durableReferencesIntact(facts.home, facts.profile, recorded.values())) return {state: 'current'}
       let version: string
       try {
         const prepared = await bootstrapBundledPackages({

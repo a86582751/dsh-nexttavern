@@ -4,6 +4,7 @@ import path from 'node:path'
 import {applyTransaction, contained, digest, recoverInterruptedTransaction, type TransactionFile} from './public-transaction.mjs'
 
 const transactionPurpose = 'prepare-protected-package-references'
+const receiptName = '.nexttavern-protected-packages.json'
 
 export interface ProtectedFile {path: string; sha256: string}
 export interface ProtectedPackageInput {
@@ -20,13 +21,19 @@ export interface ProtectedPackageInput {
  * other record falls back to verifying here, inside the same writer lock.
  */
 export interface VerifiedProtectedSource {source: string; generation: string}
-interface ProtectedPackageRecord {
+export interface ProtectedPackageRecord {
   name: string
   version: string
   files: ProtectedFile[]
   directory: string
   reference: string
 }
+/**
+ * One durable reference as a receipt records it, with the generation its bytes
+ * name. The receipt is the only place that records an owned package's own
+ * version, because the shipped product versions its children independently.
+ */
+export type PreparedReference = ProtectedPackageRecord & {generation: string}
 interface ProtectedReceipt {
   schemaVersion: 1
   state: 'references-prepared'
@@ -107,6 +114,76 @@ export function verifyProtectedPackage(root: string, record: Pick<ProtectedPacka
   if (metadata.name !== record.name || metadata.version !== record.version) throw Error('Protected package identity differs from receipt')
 }
 
+/**
+ * The durable references one profile's own receipt records, canonicalised, or
+ * null when no usable receipt exists.
+ *
+ * This is the cheap read a caller uses to decide whether the locked
+ * transaction is needed at all, so it never reads a member's bytes: the name,
+ * the version, the generation those bytes must name and the reference that
+ * follows from them are all pure functions of the receipt. A receipt that is
+ * missing, foreign or not canonical returns null, which leaves the decision to
+ * the locked transaction instead of to this read.
+ */
+export function readPreparedReferences(home: string, profile: string): Map<string, PreparedReference> | null {
+  try {
+    const root = fs.realpathSync(home)
+    const receipt = JSON.parse(fs.readFileSync(
+      contained(root, `profiles/${profile}/${receiptName}`), 'utf8')) as ProtectedReceipt
+    if (receipt?.schemaVersion !== 1 || receipt.profile !== profile
+      || receipt.state !== 'references-prepared' || !Array.isArray(receipt.packages)) return null
+    const recorded = new Map<string, PreparedReference>()
+    for (const item of receipt.packages) {
+      const record = recordFor(root, profile, item)
+      if (recorded.has(record.name)) return null
+      recorded.set(record.name, {...record, generation: generationOf(record, record.files)})
+    }
+    return recorded
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether one profile still carries exactly these durable references.
+ *
+ * The structural half of the locked transaction's own admission, for a caller
+ * that must decide whether that transaction is needed: the profile's own
+ * `dependencies` name every recorded reference and no other dependency map
+ * claims one of those names, no pnpm override shadows them, and each generation
+ * directory still holds the identity and the file set its name promises. No
+ * member's bytes are read here - only the locked transaction verifies those and
+ * only it may write - so a mismatch means "run the round", never "repair".
+ */
+export function durableReferencesIntact(home: string, profile: string, references: Iterable<PreparedReference>): boolean {
+  try {
+    const root = fs.realpathSync(home)
+    const manifest = JSON.parse(fs.readFileSync(
+      contained(root, `profiles/${profile}/package.json`), 'utf8')) as ProfileManifest
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return false
+    const dependencies = dependencyMap(manifest.dependencies, 'dependencies')
+    const others = ['devDependencies', 'optionalDependencies', 'peerDependencies']
+      .map(field => dependencyMap(manifest[field], field))
+    const names = new Set<string>()
+    for (const reference of references) {
+      if (dependencies[reference.name] !== reference.reference) return false
+      if (others.some(map => Object.hasOwn(map, reference.name))) return false
+      names.add(reference.name)
+      const directory = contained(root, reference.directory)
+      const metadata = JSON.parse(fs.readFileSync(
+        contained(directory, 'package.json'), 'utf8')) as {name?: unknown; version?: unknown}
+      if (metadata?.name !== reference.name || metadata.version !== reference.version) return false
+      if (JSON.stringify(inventory(directory)) !== JSON.stringify(reference.files.map(file => file.path).sort())) {
+        return false
+      }
+    }
+    assertNoResolutionOverride(manifest, names)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function dependencyMap(value: unknown, field: string): Record<string, string> {
   if (value === undefined) return {}
   if (!value || typeof value !== 'object' || Array.isArray(value)
@@ -147,7 +224,7 @@ export function planProtectedPackages(options: {home: string; profile: string; p
   // for it twice per preparation is what a product-sized bundle cannot afford.
   const admitted = new Map((options.verifiedSources ?? []).map(entry => [entry.generation, entry.source]))
   const manifestPath = `profiles/${profile}/package.json`
-  const receiptPath = `profiles/${profile}/.nexttavern-protected-packages.json`
+  const receiptPath = `profiles/${profile}/${receiptName}`
   const manifestBytes = fs.readFileSync(contained(home, manifestPath))
   const manifest = JSON.parse(manifestBytes.toString()) as ProfileManifest
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw Error('Invalid profile manifest')
