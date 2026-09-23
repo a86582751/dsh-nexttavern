@@ -1701,6 +1701,14 @@
       "source": "src/operations/bundled-package-bootstrap.mts"
     },
     {
+      "id": "nexttavern-package-preparation",
+      "source": "lib/operations/nexttavern-package-preparation.mjs"
+    },
+    {
+      "id": "nexttavern-package-preparation-typescript",
+      "source": "src/operations/nexttavern-package-preparation.mts"
+    },
+    {
       "id": "public-patch-harness",
       "source": "lib/operations/patch-harness.mjs"
     },
@@ -9913,6 +9921,20 @@
       "builder": "tools/build-modules.mjs"
     },
     {
+      "id": "nexttavern-package-preparation-typed-build",
+      "artifact": "nexttavern-package-preparation",
+      "entry": "src/operations/nexttavern-package-preparation.mts",
+      "inputs": [
+        "src/operations/nexttavern-package-preparation.mts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "kind": "typescript-module",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
       "id": "nexttavern-entry-typed-build",
       "artifact": "nexttavern-entry",
       "entry": "src/operations/nexttavern-entry.mts",
@@ -9926,6 +9948,7 @@
         "src/operations/nexttavern-profile-plan.mts",
         "src/operations/nexttavern-lifecycle.mts",
         "src/operations/bundled-package-bootstrap.mts",
+        "src/operations/nexttavern-package-preparation.mts",
         "src/operations/protected-packages.mts",
         "src/operations/public-transaction.mts"
       ],

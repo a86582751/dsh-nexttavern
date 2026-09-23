@@ -21,6 +21,8 @@
         "plugin-owned-packages*",
         "plugin-owned-anydoc*",
         "plugin-bundled-dependencies*",
+        "plugin-package-preparation*",
+        "nexttavern-package-preparation*",
         "runtime/alpha3/compat/anydoc/*",
         "runtime/alpha3/compat/pi-ai/*",
         "runtime/alpha3/compat/token-meter/*",
@@ -371,7 +373,9 @@
         "plugin-product-state*",
         "plugin-native-lifecycle*",
         "nexttavern-lifecycle*",
+        "nexttavern-entry*",
         "plugin-profile-plan*",
+        "nexttavern-profile-plan*",
         "plugin-product-entry*",
         "plugin-product-preset*"
       ]
@@ -3095,6 +3099,20 @@
       "inputs": [],
       "cache": true,
       "timeoutMs": 10000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:plugin-package-preparation.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler"
+      ],
+      "cache": true,
+      "timeoutMs": 60000,
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
