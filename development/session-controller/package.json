@@ -20,14 +20,15 @@
     "LICENSE.upstream"
   ],
   "dependencies": {
-    "dsh-nexttavern-session-format": "0.3.0-dev.1"
+    "dsh-nexttavern-session-format": "0.3.0-dev.1",
+    "mime-db": "1.54.0",
+    "mime-types": "3.0.2",
+    "zod": "4.6.5"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-brand": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-deque": "0.1.7-alpha.1",
     "@deepseek-ai/schemastery": "3.18.3",
-    "mime-types": "3.0.2",
-    "zod": "4.6.5",
     "@deepseek-ai/cordis": "4.0.3",
     "@deepseek-ai/dsh-agent": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-agent-default-model": "0.1.7-alpha.1",

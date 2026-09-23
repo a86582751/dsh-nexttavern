@@ -198,6 +198,8 @@ export interface OwnedPackageFacts {
   /** Resolve a peer through the host's running package owner when it provides one. */
   resolvePeerManifest?: PeerManifestResolver
   logger?: PreparationLogger
+  /** Bound on waiting for the host's profile writer lock; tests state their own. */
+  lockWaitMs?: number
 }
 
 /**
@@ -254,7 +256,7 @@ export function createOwnedPackagePreparation(facts: OwnedPackageFacts): Package
           // edits: the profile tree itself must never receive these journals.
           backup: join(dirname(facts.home), 'nexttavern-prepare-backup', `${Date.now()}-${process.pid}`),
           resolvePeerManifest: facts.resolvePeerManifest,
-          lockWaitMs: LOCK_WAIT_MS,
+          lockWaitMs: facts.lockWaitMs ?? LOCK_WAIT_MS,
         })
       } catch (error) {
         // A lock the host held for longer than that bound is a busy profile,

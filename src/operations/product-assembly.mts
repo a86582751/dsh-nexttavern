@@ -9,6 +9,8 @@ interface ProductRecipe {
   packageArtifact: string
   patchArtifact: string
   packages: {packageArtifact: string; assembly?: string; resources?: {artifact: string; path: string}[]}[]
+  /** Exact library versions every owned package's ordinary dependencies resolve to. */
+  bundleLibraries?: Record<string, string>
 }
 interface Plan {
   artifacts: {id: string; source: string; public?: {path?: string}}[]
@@ -29,12 +31,41 @@ const save = (file: string, value: unknown) => {
 }
 
 /**
+ * Copy each owned package's ordinary dependencies into its own `node_modules`.
+ *
+ * A third-party library declared as a shared host peer resolves only when the
+ * harness happens to depend on it, which produces a product that cannot start
+ * on any profile the harness does not sit above. Carrying the exact pinned
+ * bytes instead keeps the product self-contained, and the copy runs before the
+ * inventory is taken so those bytes are protected like every other member.
+ */
+function vendorLibraries(output: string, owner: string, dependencies: Record<string, string>,
+  libraryRoot: string | undefined, pinned: Record<string, string>) {
+  const libraries = Object.keys(dependencies).filter(name => !name.startsWith('@deepseek-ai/')
+    && !name.startsWith('dsh-nexttavern-'))
+  if (!libraries.length) return
+  if (!libraryRoot) throw Error('Product assembly needs a library root for third-party dependencies')
+  for (const name of libraries) {
+    const version = dependencies[name]!
+    if (pinned[name] !== version) {
+      throw Error(`Third-party dependency is not pinned by the product recipe: ${owner} -> ${name}@${version}`)
+    }
+    const source = path.join(libraryRoot, name)
+    const manifest = json<Metadata>(path.join(source, 'package.json'))
+    if (manifest.name !== name || manifest.version !== version) {
+      throw Error(`Vendored library differs from its pin: ${name} ${manifest.version} != ${version}`)
+    }
+    fs.cpSync(source, inside(output, 'node_modules/' + name), {recursive: true})
+  }
+}
+
+/**
  * Caller owns a fresh candidate directory. Archives are explicit pinned inputs;
  * this operation has no network, pnpm, profile, or installed-package writes.
  * A failed candidate is never returned as usable and is the caller's cleanup.
  */
 export function assembleProduct(options: {
-  repo: string; packageRoot: string; archives: Record<string, string>
+  repo: string; packageRoot: string; archives: Record<string, string>; libraryRoot?: string
 }) {
   const repo = fs.realpathSync(options.repo)
   const plan = json<Plan>(path.join(repo, 'release/source-manifest.json'))
@@ -113,6 +144,7 @@ export function assembleProduct(options: {
       fs.mkdirSync(path.dirname(target), {recursive: true})
       fs.copyFileSync(inside(repo, artifact(resource.artifact).source), target)
     }
+    vendorLibraries(output, pkg.name, pkg.dependencies ?? {}, options.libraryRoot, plan.product.bundleLibraries ?? {})
     const files = regularPackageFiles(output).sort().map(file => ({path: file,
       sha256: createHash('sha256').update(fs.readFileSync(inside(output, file))).digest('hex')}))
     return {name: pkg.name, version: pkg.version, files}

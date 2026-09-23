@@ -18,6 +18,9 @@
     "LICENSE.upstream",
     "ORIGIN.json"
   ],
+  "dependencies": {
+    "zod": "4.6.5"
+  },
   "peerDependencies": {
     "@deepseek-ai/dsh-token-meter": "0.1.7-alpha.1",
     "@deepseek-ai/dsh-compaction": "0.1.7-alpha.1",
@@ -28,7 +31,6 @@
     "@deepseek-ai/dsh-util-values": "0.1.7-alpha.1",
     "@deepseek-ai/cordis": "4.0.3",
     "@deepseek-ai/schemastery": "3.18.3",
-    "zod": "4.6.5",
     "@deepseek-ai/dsh-compaction-image-offload": "0.1.7-alpha.1",
     "dsh-nexttavern-session-format": "0.3.0-dev.1"
   }
