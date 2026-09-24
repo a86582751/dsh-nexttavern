@@ -3609,6 +3609,70 @@
       "outputs": [
         "lib/operations/product-assembly.mjs"
       ]
+    },
+    {
+      "artifact": "compat-session-controller-catalog-js",
+      "source": "development/session-controller/src/catalog.ts",
+      "banner": "runtime/alpha3/compat/session-controller/src/catalog.ts",
+      "primaryOutput": "development/session-controller/lib/catalog.js",
+      "outputs": [
+        "development/session-controller/lib/catalog.js"
+      ]
+    },
+    {
+      "artifact": "compat-token-meter-turn-usage-js",
+      "source": "development/token-meter/src/turn-usage.ts",
+      "banner": "runtime/alpha3/compat/token-meter/src/turn-usage.ts",
+      "primaryOutput": "development/token-meter/lib/turn-usage.js",
+      "outputs": [
+        "development/token-meter/lib/turn-usage.js"
+      ]
+    },
+    {
+      "artifact": "compat-session-persistence-jsonl-lib-testing-generation-js",
+      "source": "development/session-persistence-jsonl/src/testing/generation.ts",
+      "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/testing/generation.ts",
+      "primaryOutput": "development/session-persistence-jsonl/lib/testing/generation.js",
+      "outputs": [
+        "development/session-persistence-jsonl/lib/testing/generation.js"
+      ],
+      "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-QuotaNoticeHost-js-bundle",
+      "source": "development/ui-chat/src/client/chat/QuotaNoticeHost.tsx",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/QuotaNoticeHost.tsx",
+      "primaryOutput": "development/ui-chat/lib/client/chat/QuotaNoticeHost.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/QuotaNoticeHost.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-use-process-scroll-js-bundle",
+      "source": "development/ui-chat/src/client/chat/use-process-scroll.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-process-scroll.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/use-process-scroll.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/use-process-scroll.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-chat-client-chat-use-scroll-follow-js-bundle",
+      "source": "development/ui-chat/src/client/chat/use-scroll-follow.ts",
+      "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-scroll-follow.ts",
+      "primaryOutput": "development/ui-chat/lib/client/chat/use-scroll-follow.js",
+      "outputs": [
+        "development/ui-chat/lib/client/chat/use-scroll-follow.js"
+      ]
+    },
+    {
+      "artifact": "compat-ui-workspace-client-shortcuts-js-bundle",
+      "source": "development/ui-workspace/src/client/shortcuts.ts",
+      "banner": "runtime/alpha3/compat/ui-workspace/src/client/shortcuts.ts",
+      "primaryOutput": "development/ui-workspace/lib/client/shortcuts.js",
+      "outputs": [
+        "development/ui-workspace/lib/client/shortcuts.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -7428,6 +7492,66 @@
       {
         "id": "nexttavern-retired-harness-replay",
         "source": "tools/harness-patches.json"
+      },
+      {
+        "id": "compat-session-controller-catalog-ts",
+        "source": "development/session-controller/src/catalog.ts"
+      },
+      {
+        "id": "compat-session-controller-catalog-js",
+        "source": "development/session-controller/lib/catalog.js"
+      },
+      {
+        "id": "compat-token-meter-turn-usage-ts",
+        "source": "development/token-meter/src/turn-usage.ts"
+      },
+      {
+        "id": "compat-token-meter-turn-usage-js",
+        "source": "development/token-meter/lib/turn-usage.js"
+      },
+      {
+        "id": "compat-session-persistence-jsonl-src-testing-generation-ts",
+        "source": "development/session-persistence-jsonl/src/testing/generation.ts"
+      },
+      {
+        "id": "compat-session-persistence-jsonl-lib-testing-generation-js",
+        "source": "development/session-persistence-jsonl/lib/testing/generation.js"
+      },
+      {
+        "id": "compat-ui-chat-src-client-chat-QuotaNoticeHost-ts-source",
+        "source": "development/ui-chat/src/client/chat/QuotaNoticeHost.tsx"
+      },
+      {
+        "id": "compat-ui-chat-client-chat-QuotaNoticeHost-js-bundle",
+        "source": "development/ui-chat/lib/client/chat/QuotaNoticeHost.js"
+      },
+      {
+        "id": "compat-ui-chat-src-client-chat-use-process-scroll-ts-source",
+        "source": "development/ui-chat/src/client/chat/use-process-scroll.ts"
+      },
+      {
+        "id": "compat-ui-chat-client-chat-use-process-scroll-js-bundle",
+        "source": "development/ui-chat/lib/client/chat/use-process-scroll.js"
+      },
+      {
+        "id": "compat-ui-chat-src-client-chat-use-scroll-follow-ts-source",
+        "source": "development/ui-chat/src/client/chat/use-scroll-follow.ts"
+      },
+      {
+        "id": "compat-ui-chat-client-chat-use-scroll-follow-js-bundle",
+        "source": "development/ui-chat/lib/client/chat/use-scroll-follow.js"
+      },
+      {
+        "id": "compat-ui-workspace-src-client-shortcuts-ts-source",
+        "source": "development/ui-workspace/src/client/shortcuts.ts"
+      },
+      {
+        "id": "compat-ui-workspace-client-shortcuts-js-bundle",
+        "source": "development/ui-workspace/lib/client/shortcuts.js"
+      },
+      {
+        "id": "ui-browser-vendor-deepseek-ai-dsh-api-workspace-controller-lib-types-default-workspace-js",
+        "source": "build-tools/node_modules/@deepseek-ai/dsh-api-workspace-controller/lib/types/default-workspace.js"
       }
     ],
     "builds": [
@@ -15746,6 +15870,136 @@
         "entry": "src/operations/product-assembly.mts",
         "id": "product-assembly-build",
         "banner": "runtime/alpha3/src/operations/product-assembly.mts"
+      },
+      {
+        "id": "compat-session-controller-catalog-build",
+        "kind": "typescript-module",
+        "artifact": "compat-session-controller-catalog-js",
+        "entry": "development/session-controller/src/catalog.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/session-controller/src/catalog.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/compat/session-controller/src/catalog.ts"
+      },
+      {
+        "id": "compat-token-meter-turn-usage-build",
+        "kind": "typescript-module",
+        "artifact": "compat-token-meter-turn-usage-js",
+        "entry": "development/token-meter/src/turn-usage.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/token-meter/src/turn-usage.ts",
+          "development/session-format/src/projection.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/compat/token-meter/src/turn-usage.ts"
+      },
+      {
+        "id": "compat-session-persistence-jsonl-testing-generation-js-build",
+        "kind": "typescript-module",
+        "artifact": "compat-session-persistence-jsonl-lib-testing-generation-js",
+        "entry": "development/session-persistence-jsonl/src/testing/generation.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/session-persistence-jsonl/src/testing/generation.ts",
+          "development/session-persistence-jsonl/src/generation.ts",
+          "development/session-persistence-jsonl/src/index.ts",
+          "development/session-persistence-jsonl/src/lease.ts",
+          "development/session-persistence-jsonl/src/migration-verifier.ts",
+          "development/session-persistence-jsonl/src/storage.ts",
+          "development/session-persistence-jsonl/src/win32.ts",
+          "development/session-persistence-jsonl/src/worker.ts",
+          "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+          "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+          "development/session-persistence-jsonl/src/zstd.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "development/session-format/src/catalog.ts",
+          "development/session-format/src/index.ts",
+          "development/session-format/src/projection.ts",
+          "development/session-format/src/storage-contract.ts",
+          "development/session-persistence-jsonl/src/catalog-migration.ts"
+        ],
+        "typeContext": "session-storage",
+        "banner": "runtime/alpha3/compat/session-persistence-jsonl/src/testing/generation.ts"
+      },
+      {
+        "id": "compat-ui-chat-client-chat-QuotaNoticeHost-js-build",
+        "kind": "typescript-module",
+        "artifact": "compat-ui-chat-client-chat-QuotaNoticeHost-js-bundle",
+        "entry": "development/ui-chat/src/client/chat/QuotaNoticeHost.tsx",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/ui-chat/src/client/chat/QuotaNoticeHost.tsx",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "development/ui-chat/src/css-modules.d.ts"
+        ],
+        "typeContext": "ui-compat-client",
+        "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/QuotaNoticeHost.tsx"
+      },
+      {
+        "id": "compat-ui-chat-client-chat-use-process-scroll-js-build",
+        "kind": "typescript-module",
+        "artifact": "compat-ui-chat-client-chat-use-process-scroll-js-bundle",
+        "entry": "development/ui-chat/src/client/chat/use-process-scroll.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/ui-chat/src/client/chat/use-process-scroll.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "development/ui-chat/src/css-modules.d.ts"
+        ],
+        "typeContext": "ui-compat-client",
+        "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-process-scroll.ts"
+      },
+      {
+        "id": "compat-ui-chat-client-chat-use-scroll-follow-js-build",
+        "kind": "typescript-module",
+        "artifact": "compat-ui-chat-client-chat-use-scroll-follow-js-bundle",
+        "entry": "development/ui-chat/src/client/chat/use-scroll-follow.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/ui-chat/src/client/chat/use-scroll-follow.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "development/ui-chat/src/css-modules.d.ts"
+        ],
+        "typeContext": "ui-compat-client",
+        "banner": "runtime/alpha3/compat/ui-chat/src/client/chat/use-scroll-follow.ts"
+      },
+      {
+        "id": "compat-ui-workspace-client-shortcuts-js-build",
+        "kind": "typescript-module",
+        "artifact": "compat-ui-workspace-client-shortcuts-js-bundle",
+        "entry": "development/ui-workspace/src/client/shortcuts.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/ui-workspace/src/client/shortcuts.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "development/ui-workspace/src/css-modules.d.ts"
+        ],
+        "typeContext": "ui-compat-client",
+        "banner": "runtime/alpha3/compat/ui-workspace/src/client/shortcuts.ts"
       }
     ],
     "typeScript": {

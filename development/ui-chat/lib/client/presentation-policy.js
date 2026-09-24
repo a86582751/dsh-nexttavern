@@ -12,18 +12,25 @@ const POLICIES = {
         liveProcessDetail: false,
         settledReasoningPreview: false,
     },
-    detailed: {
-        mode: 'detailed',
+    standard: {
+        mode: 'standard',
         foldCompletedTurns: true,
         stepGrouping: 'collapsed',
         liveProcessDetail: true,
         settledReasoningPreview: true,
     },
-    expanded: {
-        mode: 'expanded',
+    detailed: {
+        mode: 'detailed',
         foldCompletedTurns: true,
-        stepGrouping: 'none',
+        stepGrouping: 'history',
         liveProcessDetail: true,
+        settledReasoningPreview: true,
+    },
+    verbose: {
+        mode: 'verbose',
+        foldCompletedTurns: false,
+        stepGrouping: 'none',
+        liveProcessDetail: false,
         settledReasoningPreview: true,
     },
 };

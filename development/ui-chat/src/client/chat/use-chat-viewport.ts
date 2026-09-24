@@ -2,13 +2,8 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import type { ChatScrollPosition } from '../contract/slots.ts'
 import type { ChatSnapshot } from '../contract/snapshot.ts'
-
-/** Scroll position, maximum top, and viewport height from one geometry read. */
-export interface ViewportMetrics {
-  readonly top: number
-  readonly floor: number
-  readonly height: number
-}
+import { scrollMetrics, ScrollFollow, type ViewportMetrics } from './use-scroll-follow.ts'
+export type { ViewportMetrics } from './use-scroll-follow.ts'
 
 /** Scroll geometry attributed against the last acknowledged position. */
 export interface ViewportScroll {
@@ -150,8 +145,7 @@ export class ChatViewport {
   private metrics(): ViewportMetrics | null {
     const scroller = this.elements?.scroller
     if (scroller === undefined) return null
-    const height = scroller.clientHeight
-    return { top: scroller.scrollTop, height, floor: Math.max(0, scroller.scrollHeight - height) }
+    return scrollMetrics(scroller)
   }
 
   private anchor(key: string, identity: 'position' | 'node' = 'position'): HTMLElement | null {
@@ -343,6 +337,7 @@ export class ChatViewport {
 
   /**
    * Compensate inner scrolling first, then the outer scrollport, within their actual scroll ranges.
+   * An inner write pauses its bound follow controller so the reading anchor takes priority.
    * @returns the actual landing, or null when no visible retained row remains.
    */
   preserve(): ViewportLanding | null {
@@ -366,9 +361,16 @@ export class ChatViewport {
     }
     if (group !== null && group.body.contains(row)) {
       const top = row.getBoundingClientRect().top - group.body.getBoundingClientRect().top
-      const floor = Math.max(0, group.body.scrollHeight - group.body.clientHeight)
-      const target = Math.max(0, Math.min(floor, group.body.scrollTop + top - group.top))
-      if (group.body.scrollTop !== target) group.body.scrollTop = target
+      const metrics = scrollMetrics(group.body)
+      const target = Math.max(0, Math.min(metrics.floor, metrics.top + top - group.top))
+      if (metrics.top !== target) {
+        const follow = ScrollFollow.forElement(group.body)
+        if (follow === undefined) group.body.scrollTop = target
+        else {
+          follow.jump(group.body, metrics, target)
+          follow.setFollowing(false)
+        }
+      }
     }
     const metrics = this.metrics()
     if (metrics === null) return null
@@ -379,11 +381,19 @@ export class ChatViewport {
 
   /**
    * Align the scrollport with its current floor.
+   * @param follow - independent follow intent and scrolling controller.
    * @returns the actual floor landing, or null while detached.
    */
-  scrollToBottom(): ViewportLanding | null {
+  scrollToBottom(follow: ScrollFollow): ViewportLanding | null {
     const metrics = this.metrics()
-    return metrics === null ? null : this.write(metrics.floor, metrics, this.latestTurn)
+    if (metrics === null || this.elements === null) return null
+    const landing: ViewportLanding = {
+      metrics: follow.toBottom(this.elements.scroller, metrics, 'instant'),
+      position: null,
+      turn: this.latestTurn,
+    }
+    this.observation = { top: landing.metrics.top, landing }
+    return landing
   }
 
   private align(row: HTMLElement, offset: number, turn: number | null): ViewportLanding | null {

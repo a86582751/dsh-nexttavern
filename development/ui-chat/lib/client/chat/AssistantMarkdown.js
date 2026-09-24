@@ -1,24 +1,31 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/chat/AssistantMarkdown.tsx; edit the TypeScript source.
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { Fragment, memo, useMemo } from 'react';
+import { fileMediaUrl } from '@deepseek-ai/dsh-util-workspace-path';
 import { JsonBlock, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives';
 import { markdownLabels } from "../markdown-labels.js";
 import { ReasoningRow } from "./ReasoningRow.js";
 import { useSearchableHidden } from "./searchable-hidden.js";
 import css from './AssistantMarkdown.module.css';
 /**
- * Resolve an authored POSIX image path against the document's file API.
+ * Standalone fallback for image destinations (query/fragment suffixes are ignored).
+ * Chat fileImages resolves decoded file references against cwd; pathImages also
+ * serves this component outside that provider and accepts legacy image URL suffixes.
+ * Resolve an authored absolute image path against the document's file API.
  * @param base - canonical `document.baseURI` at render time.
- * @param value - authored markdown destination.
- * @returns an absolute HTTP(S) file-API URL, or undefined for unsupported
+ * @param value - authored Markdown destination; URL escapes are decoded once.
+ * @returns an absolute Web or Desktop file-API URL, or undefined for unsupported
  * protocols and non-local paths.
  */
 export function localPathMediaUrl(base, value) {
-    if (!value.startsWith('/') || value.startsWith('//'))
+    let path;
+    try {
+        path = decodeURIComponent(value.split(/[?#]/u)[0] ?? '');
+    }
+    catch {
         return undefined;
-    if (!base.startsWith('http:') && !base.startsWith('https:'))
-        return undefined;
-    return new URL(`api/file?path=${encodeURIComponent(value)}`, base).href;
+    } // Malformed URL escapes cannot identify a file.
+    return fileMediaUrl(base, path);
 }
 /** Reasoning block as the Think variant summary row (figma 39:28304). */
 export const AssistantMarkdown = memo(function AssistantMarkdown({ blocks, streaming, interrupted, renderMessageImages, groupPart, useDisclosure, reasoningHidden = false, usePresentation, revealProcess, mentions, t, }) {

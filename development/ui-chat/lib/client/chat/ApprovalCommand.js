@@ -24,7 +24,7 @@ export function ApprovalCommand({ callId, useChat }) {
     const command = useChat((snapshot) => {
         for (const node of snapshot.nodes.values()) {
             const root = node.kind === 'tool-call' ? node.data.root : undefined;
-            if (root !== undefined && root.callId === callId && !('kind' in root))
+            if (root !== undefined && root.callId === callId && !('kind' in root) && root.phase === 'start')
                 return commandOf(root);
         }
         return undefined;

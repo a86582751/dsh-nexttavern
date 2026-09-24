@@ -18,6 +18,7 @@ function reply(node) {
 }
 function sameSummary(left, right) {
     return left.running === right.running && left.runningDetail === right.runningDetail
+        && left.preparing === right.preparing
         && left.counts.length === right.counts.length && left.counts.every((value, index) => value.kind === right.counts[index]?.kind && value.count === right.counts[index].count);
 }
 function sameMembers(left, right) {
@@ -55,7 +56,7 @@ class ProcessGroup {
         const unchanged = nodes.length === this.nodes.length && nodes.every((node, index) => node === this.nodes[index]);
         const previous = this.snapshot.data;
         const activity = unchanged && previous.closed === closed ? previous.summary : processActivity(nodes);
-        const summary = closed ? { ...activity, running: undefined, runningDetail: '' } : activity;
+        const summary = closed ? { counts: activity.counts, running: undefined, runningDetail: '' } : activity;
         this.nodes = nodes;
         if (previous.closed !== closed || !sameSummary(previous.summary, summary)) {
             this.snapshot = {

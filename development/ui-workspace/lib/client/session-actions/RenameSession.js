@@ -14,9 +14,10 @@ import css from '../rows/WorkspaceBrowser.module.css';
  * @param props - owner share, menu open state, and the rename share.
  * @returns the row.
  */
-export function RenameSessionMenuItem({ sessionId, displayTitle, useMenuOpenState, requestSessionRename, t, }) {
+export function RenameSessionMenuItem({ sessionId, displayTitle, useMenuOpenState, useShortcuts, requestSessionRename, t, }) {
     const [, setMenuOpen] = useMenuOpenState();
-    return (_jsx(MenuItemButton, { icon: _jsx(IconEditOutlineRegular, {}), onSelect: () => {
+    const shortcut = useShortcuts(rows => rows.find(row => row.id === 'session.rename'));
+    return (_jsx(MenuItemButton, { shortcut: shortcut, icon: _jsx(IconEditOutlineRegular, {}), onSelect: () => {
             setMenuOpen(false);
             requestSessionRename(sessionId, displayTitle);
         }, children: t('rename') }));
@@ -63,7 +64,7 @@ function RenameForm({ request, renameSession, onSettle, t }) {
             setError(reason instanceof Error ? reason.message : String(reason));
         });
     };
-    return (_jsxs(Modal, { open: true, onClose: close, closeLabel: t('close'), title: t('rename.session.title'), footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", disabled: renaming, onClick: close, children: t('cancel') }), _jsx(Button, { variant: "primary", disabled: blocked, onClick: confirm, children: t('rename') })] })), children: [_jsx("input", { className: css.renameInput, value: draft, "aria-label": t('field.sessionName'), autoFocus: true, disabled: renaming, onFocus: (e) => { e.target.select(); }, onChange: (e) => { setDraft(e.target.value); setError(null); }, onCompositionStart: () => { composingRef.current = true; }, onCompositionEnd: () => { composingRef.current = false; }, onKeyDown: (e) => {
+    return (_jsxs(Modal, { open: true, onClose: close, closeLabel: t('close'), title: t('rename.session.title'), footer: (_jsxs(_Fragment, { children: [_jsx(Button, { variant: "outline", disabled: renaming, onClick: close, children: t('cancel') }), _jsx(Button, { variant: "primary", disabled: blocked, onClick: confirm, children: t('rename') })] })), children: [_jsx("input", { className: css.renameInput, value: draft, "aria-label": t('field.sessionName'), "data-modal-autofocus": true, disabled: renaming, onFocus: (e) => { e.target.select(); }, onChange: (e) => { setDraft(e.target.value); setError(null); }, onCompositionStart: () => { composingRef.current = true; }, onCompositionEnd: () => { composingRef.current = false; }, onKeyDown: (e) => {
                     if (e.key === 'Enter' && !composingRef.current) {
                         e.preventDefault();
                         confirm();

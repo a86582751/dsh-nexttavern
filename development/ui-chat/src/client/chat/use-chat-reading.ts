@@ -1,7 +1,8 @@
 /** Follow-tail ownership, saved-position restoration, and sampled reader movement. */
 import { useLayoutEffect, useState } from 'react'
 import type { ChatScrollPosition, ChatViewSlotProps } from '../contract/slots.ts'
-import type { ChatViewport, ViewportLanding, ViewportMetrics, ViewportScroll } from './use-chat-viewport.ts'
+import type { ChatViewport, ViewportLanding, ViewportScroll } from './use-chat-viewport.ts'
+import { useScrollFollow, type ScrollFollow } from './use-scroll-follow.ts'
 
 const FOLLOW_THRESHOLD = 24
 const SCROLL_SAMPLE_INTERVAL_MS = 500
@@ -33,6 +34,7 @@ export class ChatReading {
     private store: PositionStore,
     private state: ChatReadingState,
     private readonly onChange: (state: ChatReadingState) => void,
+    private readonly follow: ScrollFollow,
   ) {}
 
   /**
@@ -76,7 +78,7 @@ export class ChatReading {
 
   /** Land at the current floor and clear saved reader position. */
   followTail(): void {
-    const landing = this.viewport.scrollToBottom()
+    const landing = this.viewport.scrollToBottom(this.follow)
     if (landing === null) return
     this.cancelPending()
     this.commit(landing, true, this.viewport.latestTurn)
@@ -89,7 +91,7 @@ export class ChatReading {
     const landing = this.viewport.restore(saved)
     if (landing === null) return
     this.cancelPending()
-    const following = this.nearBottom(landing.metrics)
+    const following = this.follow.nearBottom(landing.metrics)
     this.commit(landing, following, following ? this.viewport.latestTurn : this.state.activeTurn, following)
     if (!this.state.followingTail && landing.position === null) {
       const position = this.viewport.capturePosition()
@@ -104,7 +106,7 @@ export class ChatReading {
    */
   acceptNavigation(landing: ViewportLanding): void {
     this.cancelPending()
-    const following = this.nearBottom(landing.metrics)
+    const following = this.follow.nearBottom(landing.metrics)
     this.commit(landing, following, landing.turn ?? (following ? this.viewport.latestTurn : this.state.activeTurn))
   }
 
@@ -153,10 +155,6 @@ export class ChatReading {
     else this.probeFrame = requestAnimationFrame(this.probe)
   }
 
-  private nearBottom(metrics: ViewportMetrics): boolean {
-    return metrics.floor - metrics.top <= FOLLOW_THRESHOLD + 1
-  }
-
   private commit(
     landing: ViewportLanding, followingTail: boolean, activeTurn: number | null, initialized = true,
   ): void {
@@ -166,6 +164,7 @@ export class ChatReading {
   }
 
   private publish(state: ChatReadingState): void {
+    this.follow.setFollowing(state.followingTail)
     if (state.initialized === this.state.initialized && state.followingTail === this.state.followingTail
       && state.activeTurn === this.state.activeTurn) return
     this.state = state
@@ -184,7 +183,7 @@ export class ChatReading {
     if (this.pending) return
     const scroll = this.viewport.readScroll()
     if (scroll === null) return
-    const activeTurn = this.nearBottom(scroll.metrics) ? this.viewport.latestTurn : this.viewport.readVisibleTurn(scroll.metrics)
+    const activeTurn = this.follow.nearBottom(scroll.metrics) ? this.viewport.latestTurn : this.viewport.readVisibleTurn(scroll.metrics)
     this.publish({ ...this.state, initialized: true, activeTurn })
   }
 
@@ -193,14 +192,14 @@ export class ChatReading {
     this.cancelPending()
     const scroll = this.viewport.readScroll()
     if (scroll === null) return
-    const followingTail = scroll.movedByReader ? this.nearBottom(scroll.metrics) : this.state.followingTail
+    const followingTail = this.follow.sample(scroll.metrics, scroll.movedByReader)
     let position: ChatScrollPosition | null = null
     if (!scroll.movedByReader && followingTail) this.followTail()
     else {
       position = followingTail ? null : this.viewport.capturePosition()
       this.viewport.acknowledge(scroll.metrics)
       if (followingTail || position !== null) this.store.save(position)
-      const activeTurn = this.nearBottom(scroll.metrics) ? this.viewport.latestTurn : this.viewport.readVisibleTurn(scroll.metrics)
+      const activeTurn = this.follow.nearBottom(scroll.metrics) ? this.viewport.latestTurn : this.viewport.readVisibleTurn(scroll.metrics)
       this.publish({ initialized: true, followingTail, activeTurn })
     }
     this.sampled?.({ position, movedByReader: scroll.movedByReader, followingTail })
@@ -222,7 +221,8 @@ export function useChatReading(
     followingTail: store.read() === null,
     activeTurn: initialTurn,
   }))
-  const [reading] = useState(() => new ChatReading(viewport, store, state, setState))
+  const follow = useScrollFollow(state.followingTail, FOLLOW_THRESHOLD + 1)
+  const [reading] = useState(() => new ChatReading(viewport, store, state, setState, follow))
   useLayoutEffect(() => { reading.setStore(store) }, [reading, store])
   useLayoutEffect(() => () => { reading.dispose() }, [reading])
   return { reading, state }

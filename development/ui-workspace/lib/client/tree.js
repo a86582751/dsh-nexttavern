@@ -168,10 +168,6 @@ function sectionMembers(members, pinned, archived) {
 function sessionTitle(session) {
     return session.blank ? '' : session.displayTitle;
 }
-/** The list projection alone owns the best-effort active-Schedule indicator. */
-function hasActiveSchedule(session) {
-    return (session.projectionValues?.schedule?.length ?? 0) > 0;
-}
 /** Build one group without projecting session lineage into presentation. */
 function buildGroup(key, workspaceId, cwd, createdAt, label, members) {
     return { key, workspaceId, cwd, createdAt, label, sessions: [...members] };
@@ -209,6 +205,10 @@ function groupByWorkspace(list, workspaces, archived, archivedFilter, ungroupedO
                 continue;
             members.push(summary);
         }
+        // The archived-only view lists archives, not the Workspace inventory, so
+        // a Workspace without archived Sessions contributes no group.
+        if (archivedFilter === 'only' && members.length === 0)
+            continue;
         groups.push(buildGroup(workspace.workspaceId, workspace.workspaceId, workspace.path, Date.parse(workspace.createdAt), workspace.title, members));
     }
     const stray = list.ids
@@ -243,7 +243,6 @@ function sessionNode(s, list, statuses, pinned, archived) {
         running: status?.running ?? s.running,
         runningSubagentCount: runningChildCount(list, s.id, statuses),
         completed: status?.completionUnread === true,
-        hasActiveSchedule: hasActiveSchedule(s),
         pinned: !archived.has(s.id) && pinned.has(s.id),
         archived: archived.has(s.id),
         updatedAt: s.updatedAt,
@@ -253,8 +252,9 @@ function sessionNode(s, list, statuses, pinned, archived) {
 /**
  * Derive the workspace browser groups with every session as a top-level row.
  *
- * Every group shows; sessions populate under expanded groups with pinned rows
- * leading in the selected local order. Blank sessions are
+ * Every group shows, except that the archived-only filter drops groups
+ * without visible members; sessions populate under expanded groups with
+ * pinned rows leading in the selected local order. Blank sessions are
  * excluded except for the selected provisional New Session row; archived
  * sessions keep their slots and appear per the archived filter. Content
  * search lives outside this derivation (see {@link deriveSearchResults}).
@@ -416,7 +416,6 @@ export function deriveSearchResults(list, workspaces, query, archivedSessionIds,
                     ? {}
                     : { pendingInteraction }),
                 completed: status?.completionUnread === true,
-                hasActiveSchedule: hasActiveSchedule(summary),
                 archived: archived.has(summary.id),
                 ...match === undefined ? {} : { snippet: match.snippet },
             };

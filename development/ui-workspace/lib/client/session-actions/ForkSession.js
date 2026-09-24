@@ -8,9 +8,10 @@ import { IconBranchOutlineRegular, MenuItemButton } from '@deepseek-ai/dsh-clien
  * @param props - owner share, menu open state, and the fork share.
  * @returns the row.
  */
-export function ForkSessionMenuItem({ sessionId, useMenuOpenState, forkSession, t }) {
+export function ForkSessionMenuItem({ sessionId, useMenuOpenState, useShortcuts, forkSession, t, }) {
     const [, setMenuOpen] = useMenuOpenState();
-    return (_jsx(MenuItemButton, { icon: _jsx(IconBranchOutlineRegular, {}), onSelect: () => {
+    const shortcut = useShortcuts(rows => rows.find(row => row.id === 'session.fork'));
+    return (_jsx(MenuItemButton, { shortcut: shortcut, icon: _jsx(IconBranchOutlineRegular, {}), onSelect: () => {
             setMenuOpen(false);
             forkSession(sessionId);
         }, children: t('menu.fork') }));

@@ -90,7 +90,7 @@ import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import { errorChain } from '@deepseek-ai/dsh-llm';
+import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command';
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query';
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
@@ -101,6 +101,9 @@ import { SessionHistoryController } from './history.js';
 import { SessionFileReferences } from '@deepseek-ai/dsh-api-session-controller';
 import { ApiSessionList } from './list.js';
 import { buildModelCatalog } from '@deepseek-ai/dsh-api-session-controller';
+// The published package re-exports buildModelCatalog but not the credential
+// probe, so that one adapter stays vendored from the same fixed upstream.
+import { hasProviderApiKey } from './catalog.js';
 import { installModelSelectionProjection } from './model-selection-projection.js';
 import { SessionSkillCatalog } from '@deepseek-ai/dsh-api-session-controller';
 import { SessionMediaReferences } from './media-references.js';
@@ -115,6 +118,7 @@ let SessionController = (() => {
     let _search_decorators;
     let _create_decorators;
     let _selectModel_decorators;
+    let _initializeDefaultModel_decorators;
     let _modelCatalog_decorators;
     let _canOpenWorkspacePath_decorators;
     let _openWorkspacePath_decorators;
@@ -136,6 +140,7 @@ let SessionController = (() => {
             _search_decorators = [Remote('search')];
             _create_decorators = [Remote('create')];
             _selectModel_decorators = [Remote('selectModel')];
+            _initializeDefaultModel_decorators = [Remote];
             _modelCatalog_decorators = [Remote('modelCatalog')];
             _canOpenWorkspacePath_decorators = [Remote];
             _openWorkspacePath_decorators = [Remote('openWorkspacePath')];
@@ -154,6 +159,7 @@ let SessionController = (() => {
             __esDecorate(this, null, _search_decorators, { kind: "method", name: "search", static: false, private: false, access: { has: obj => "search" in obj, get: obj => obj.search }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _create_decorators, { kind: "method", name: "create", static: false, private: false, access: { has: obj => "create" in obj, get: obj => obj.create }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _selectModel_decorators, { kind: "method", name: "selectModel", static: false, private: false, access: { has: obj => "selectModel" in obj, get: obj => obj.selectModel }, metadata: _metadata }, null, _instanceExtraInitializers);
+            __esDecorate(this, null, _initializeDefaultModel_decorators, { kind: "method", name: "initializeDefaultModel", static: false, private: false, access: { has: obj => "initializeDefaultModel" in obj, get: obj => obj.initializeDefaultModel }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _modelCatalog_decorators, { kind: "method", name: "modelCatalog", static: false, private: false, access: { has: obj => "modelCatalog" in obj, get: obj => obj.modelCatalog }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _canOpenWorkspacePath_decorators, { kind: "method", name: "canOpenWorkspacePath", static: false, private: false, access: { has: obj => "canOpenWorkspacePath" in obj, get: obj => obj.canOpenWorkspacePath }, metadata: _metadata }, null, _instanceExtraInitializers);
             __esDecorate(this, null, _openWorkspacePath_decorators, { kind: "method", name: "openWorkspacePath", static: false, private: false, access: { has: obj => "openWorkspacePath" in obj, get: obj => obj.openWorkspacePath }, metadata: _metadata }, null, _instanceExtraInitializers);
@@ -347,12 +353,29 @@ let SessionController = (() => {
             return this.commands.create(request);
         }
         /**
-         * Select one Session-local model after explicitly resuming the Session.
+         * Select one Session-local model after explicitly resuming the Session; save the default in the background.
          * @param request - Session identity and requested model selection.
-         * @returns the normalized selection installed for the Session.
+         * @returns the normalized selection installed for the Session, without waiting for default persistence.
          */
         selectModel(request) {
             return this.commands.selectModel(request);
+        }
+        /**
+         * Select the first available account model after login when no provider API key is configured.
+         * @returns after saving the first available model or retaining the existing default.
+         */
+        async initializeDefaultModel() {
+            const provider = 'deepseek-account';
+            if (await hasProviderApiKey(this.ctx))
+                return;
+            const catalog = await buildModelCatalog(this.ctx);
+            const model = catalog.groups.find(group => group.id === provider)?.models[0];
+            if (model === undefined)
+                throw new RemoteError('session/provider-models-unavailable', `provider "${provider}" has no available models`, { provider });
+            const selection = { provider, model: model.id,
+                ...model.reasoning?.defaultEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(model.reasoning.defaultEffort) },
+            };
+            await this.ctx.agentDefaultModel.saveSelection(selection);
         }
         /**
          * Describe every currently routable model for Host-generation selectors.

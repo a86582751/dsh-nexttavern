@@ -8,9 +8,15 @@ function lastStep(context) {
     return location.turn.steps.at(-1)?.step ?? 0;
 }
 function failureFrom(match) {
-    if (match.event.type !== 'turn/end' || match.event.data.reason.kind !== 'error')
+    if (match.event.type !== 'turn/end')
         return undefined;
-    const failure = match.event.data.reason.error;
+    const reason = match.event.data.reason;
+    const failure = reason.kind === 'error' ? reason.error
+        : reason.kind === 'aborted' && reason.reason.kind === 'hook'
+            && reason.reason.reason === 'deepseek-account/signed-out'
+            ? { message: 'Stopped because you signed out of DeepSeek.', code: 'ACCOUNT_SIGNED_OUT' } : undefined;
+    if (failure === undefined)
+        return undefined;
     const display = displayFailure(failure);
     return {
         seq: match.event.seq,
@@ -39,7 +45,9 @@ export const turnErrorDefinition = {
     match: (event) => {
         if (event.type === 'turn/start')
             return { id: String(event.data.turn), role: 'start' };
-        if (event.type === 'turn/end' && event.data.reason.kind === 'error') {
+        if (event.type === 'turn/end' && (event.data.reason.kind === 'error'
+            || (event.data.reason.kind === 'aborted' && event.data.reason.reason.kind === 'hook'
+                && event.data.reason.reason.reason === 'deepseek-account/signed-out'))) {
             return { id: String(event.data.turn), role: 'update' };
         }
         return null;

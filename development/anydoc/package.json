@@ -25,9 +25,9 @@
     "@firecrawl/anydoc": "0.2.4"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.3",
-    "@deepseek-ai/dsh-tools": "0.1.7-alpha.1",
-    "@deepseek-ai/dsh-fs": "0.1.7-alpha.1",
-    "@deepseek-ai/dsh-agent": "0.1.7-alpha.1"
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-tools": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-fs": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-agent": "0.1.7-rc.2"
   }
 }

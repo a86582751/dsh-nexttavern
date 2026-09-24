@@ -118,6 +118,16 @@ export class ProjectionValueStore {
   }
 
   /**
+   * Read the accepted Host watermark without subscribing or copying a value.
+   * @param key - projection key.
+   * @returns the current sequence, or undefined for absent and cached values.
+   */
+  seqOf(key: string): SessionSeqCursor | undefined {
+    const row = this.rows.get(key)
+    return row?.kind === 'sequenced' ? row.seq : undefined
+  }
+
+  /**
    * Read every current projection value as one reference-stable snapshot.
    * @returns The same frozen value map until a row changes.
    */

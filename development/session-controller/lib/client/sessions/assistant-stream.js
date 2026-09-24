@@ -4,6 +4,7 @@ import { expandAssistantStream } from '@deepseek-ai/dsh-llm/assistant-stream';
 /** Keeps transient Assistant presentation behind one settlement-aware interface. */
 export class ClientAssistantStream {
     activeAttempt;
+    retainedAttempt;
     pending = new Map();
     publishedSeqs = new Set();
     durableCursor = -1;
@@ -18,6 +19,7 @@ export class ClientAssistantStream {
         this.pending.clear();
         this.transientInGap = 0;
         this.activeAttempt = undefined;
+        this.retainedAttempt = undefined;
         const opening = baseline?.activeAttempt;
         if (opening !== undefined) {
             this.activeAttempt = {
@@ -74,13 +76,16 @@ export class ClientAssistantStream {
     }
     /**
      * Fold one dense transient frame and release its named durable settlement.
+     * Successful messages retain their transient rows until the owning Step ends;
+     * interrupted messages, failed attempts, and abandonment retire them immediately.
      * @param frame - next Assistant stream frame received by the follow connection.
      * @returns a transient, publication, or rebaseline decision, or `undefined` when no entry becomes visible.
      */
     acceptFrame(frame) {
         switch (frame.type) {
             case 'start':
-                if (this.activeAttempt !== undefined || this.pending.size > 0)
+                if (this.activeAttempt !== undefined || this.retainedAttempt !== undefined
+                    || this.pending.size > 0)
                     return { type: 'rebaseline' };
                 this.pending.clear();
                 this.activeAttempt = {
@@ -141,6 +146,10 @@ export class ClientAssistantStream {
                     return { type: 'rebaseline' };
                 }
                 this.pending.delete(frame.outcome.seq);
+                if (entry.event.type === 'assistant/message' && entry.event.data.interrupted !== true) {
+                    this.retainedAttempt = { attemptId: attempt.attemptId, turn: attempt.turn, step: attempt.step };
+                    return this.publish(entry);
+                }
                 this.publishedSeqs.add(entry.event.seq);
                 return { type: 'settlement', attemptId: attempt.attemptId, entry };
             }
@@ -158,6 +167,12 @@ export class ClientAssistantStream {
     }
     publish(entry) {
         this.publishedSeqs.add(entry.event.seq);
+        const retained = this.retainedAttempt;
+        if (retained !== undefined && entry.event.type === 'step/end'
+            && entry.event.data.turn === retained.turn && entry.event.data.step === retained.step) {
+            this.retainedAttempt = undefined;
+            return { type: 'publish', entry, retireAttemptId: retained.attemptId };
+        }
         return { type: 'publish', entry };
     }
 }

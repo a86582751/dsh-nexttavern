@@ -16,10 +16,15 @@ function projectionsBaseline(value) {
         asOfSeq: value.asOfSeq === -1 ? -1 : SessionSeq(value.asOfSeq),
     };
 }
-/** Messages requested per history page. */
+/** Minimum message count for ordinary history windows. */
 export const PAGE_MESSAGES = 50;
-/** Messages requested per page while a turn jump loops backwards (fewer, larger round trips). */
+const HISTORY_PAGE_OPTIONS = { maxMessages: 500, turnWindow: { minMessages: PAGE_MESSAGES, minTurns: 2 } };
+/** Minimum messages per page while a turn jump loops backwards. */
 export const JUMP_PAGE_MESSAGES = 200;
+const JUMP_PAGE_OPTIONS = {
+    ...HISTORY_PAGE_OPTIONS,
+    turnWindow: { ...HISTORY_PAGE_OPTIONS.turnWindow, minMessages: JUMP_PAGE_MESSAGES },
+};
 /**
  * Owns a session's event window, lifecycle state, and observable
  * snapshot. React bindings remain outside this data layer. Features see only
@@ -305,7 +310,7 @@ export class Session {
         this.openPromise = promise;
         return promise;
     }
-    /** Page up: pull one earlier page with the window's first seq as beforeSeq and prepend. */
+    /** Prepend one Turn-aligned page: at least 50 messages and two Turn starts, capped at 500 messages. */
     async loadOlder() {
         if (this.openState !== 'open' || !this.hasMore || this.loadingOlder)
             return;
@@ -315,7 +320,10 @@ export class Session {
         this.loadingOlder = true;
         this.notifier.markDirty();
         try {
-            await events.prepend({ beforeSeq: this.baseSeq, maxMessages: PAGE_MESSAGES });
+            await events.prepend({
+                beforeSeq: this.baseSeq,
+                ...HISTORY_PAGE_OPTIONS,
+            });
         }
         catch (error) {
             if (!isRemoteFailure(error)) {
@@ -364,7 +372,7 @@ export class Session {
                     if (generation !== this.openGeneration)
                         return;
                     const before = pending.beforeSeq;
-                    await events.prepend({ beforeSeq: before, maxMessages: JUMP_PAGE_MESSAGES });
+                    await events.prepend({ beforeSeq: before, ...JUMP_PAGE_OPTIONS });
                     // No-progress guard: an empty or dropped page that still claims more
                     // history must end the loop, not spin it.
                     if (pending.beforeSeq >= before)
@@ -505,10 +513,12 @@ export class Session {
     async dispose() {
         this.stopObservingInbox();
         // Unsettled echoes retire as failed so their owners can restore or
-        // release browser resources; echoes already scheduled as observed keep
-        // that settlement.
-        for (const requestId of [...this.submissionSettlements.keys()]) {
-            this.retireFailedSubmission(requestId);
+        // release browser resources; admitted echoes keep their observed outcome.
+        for (const [requestId, settlement] of [...this.submissionSettlements]) {
+            if (settlement.admitted !== undefined)
+                this.scheduleObservedRetirement(requestId, settlement.admitted);
+            else
+                this.retireFailedSubmission(requestId);
         }
         this.openGeneration++;
         const events = this.events;
@@ -533,7 +543,7 @@ export class Session {
         });
         this.events = events;
         try {
-            await events.open({ maxMessages: PAGE_MESSAGES });
+            await events.open(HISTORY_PAGE_OPTIONS);
             if (generation !== this.openGeneration || this.events !== events)
                 return;
             this.openState = 'open';
@@ -586,7 +596,7 @@ export class Session {
         if (projections !== undefined)
             this.projections.seed(projections);
         this.eventSource.replace(visible, hasMore);
-        // A new follow baseline replaces optimistic steering with Host-owned rows.
+        // A new follow baseline replaces confirmed optimistic inputs with Host-owned rows.
         // Receipt-backed inputs are accepted, not failed, even if their history is outside this window.
         if (projections !== undefined) {
             for (const [requestId, { receipt }] of this.submissionSettlements) {
@@ -599,7 +609,9 @@ export class Session {
             this.observeSubmissionEvent(entry.event);
         if (projections !== undefined) {
             const inbox = projections.values.inbox;
-            this.observeSteeringInsertions(inbox?.['next-step'] ?? [], 0, projections.asOfSeq);
+            for (const target of ['next-turn', 'next-step']) {
+                this.observeSubmissionInsertions(target, inbox?.[target] ?? [], 0, projections.asOfSeq);
+            }
         }
         this.notifier.markDirty();
     }
@@ -623,8 +635,12 @@ export class Session {
             this.notifier.markDirty();
             return;
         }
-        if (result?.type === 'publish' && this.appendLive(result.entry)) {
-            this.notifier.markDirty();
+        if (result?.type === 'publish') {
+            const changed = this.appendLive(result.entry);
+            if (result.retireAttemptId !== undefined)
+                this.eventSource.settleAssistant(result.retireAttemptId);
+            if (changed || result.retireAttemptId !== undefined)
+                this.notifier.markDirty();
         }
         else if (result?.type === 'transient') {
             this.eventSource.append(result.entry);
@@ -663,30 +679,29 @@ export class Session {
             return;
         if (event.type === 'agent/inbox/spliced') {
             const { target, start, removedCount = 0, inserted, outcome } = event.data;
-            if (target === 'next-step') {
-                for (const [requestId, settlement] of this.submissionSettlements) {
-                    const receipt = settlement.receipt;
-                    if (receipt === undefined || receipt.index === null || receipt.seq >= event.seq)
-                        continue;
-                    const removed = receipt.index >= start && receipt.index < start + removedCount;
-                    if (removed && outcome === 'canceled')
-                        this.retireFailedSubmission(requestId);
-                    else
-                        settlement.receipt = {
-                            ...receipt,
-                            seq: event.seq,
-                            index: removed ? null : receipt.index < start ? receipt.index : receipt.index + inserted.length - removedCount,
-                        };
-                }
-                this.observeSteeringInsertions(inserted, start, event.seq);
+            for (const [requestId, settlement] of this.submissionSettlements) {
+                const receipt = settlement.receipt;
+                if (receipt?.target !== target || receipt.index === null || receipt.seq >= event.seq)
+                    continue;
+                const removed = receipt.index >= start && receipt.index < start + removedCount;
+                if (removed && outcome === 'canceled')
+                    this.retireFailedSubmission(requestId);
+                else
+                    settlement.receipt = {
+                        ...receipt,
+                        seq: event.seq,
+                        index: removed ? null : receipt.index < start ? receipt.index : receipt.index + inserted.length - removedCount,
+                    };
             }
+            this.observeSubmissionInsertions(target, inserted, start, event.seq);
             for (const message of inserted)
                 this.observeSubmissionMessage(message, false);
             return;
         }
         if (event.type === 'request/context' || event.type === 'turn/end') {
             for (const [requestId, settlement] of this.submissionSettlements) {
-                if (settlement.receipt?.index === null && settlement.receipt.seq < event.seq)
+                if (settlement.admitted === undefined && settlement.receipt?.index === null
+                    && settlement.receipt.seq < event.seq)
                     this.retireFailedSubmission(requestId);
             }
             return;
@@ -694,34 +709,60 @@ export class Session {
         if (event.type === 'user/message')
             this.observeSubmissionMessage(event.data, true);
     }
-    observeSteeringInsertions(messages, start, seq) {
+    observeSubmissionInsertions(target, messages, start, seq) {
         for (const [index, message] of messages.entries()) {
             const source = message.source;
             if (source.kind !== 'user' || !('rpcId' in source))
                 continue;
             const settlement = this.submissionSettlements.get(source.rpcId);
-            if (settlement?.placement !== 'steering' || settlement.retiring || (settlement.receipt?.seq ?? -1) > seq)
+            if (settlement === undefined || settlement.placement === 'queued'
+                || settlement.retiring || (settlement.receipt?.seq ?? -1) > seq)
                 continue;
-            settlement.receipt = { seq, index: start + index, attachments: attachmentRefsIn(message.content) };
+            settlement.receipt = { target, seq, index: start + index, attachments: attachmentRefsIn(message.content) };
         }
     }
     observeSubmissionMessage(message, admitted) {
         const source = message.source;
         if (source.kind !== 'user' || !('rpcId' in source))
             return;
-        if (!admitted && this.submissionSettlements.get(source.rpcId)?.placement === 'steering')
+        const settlement = this.submissionSettlements.get(source.rpcId);
+        if (settlement === undefined || settlement.retiring)
             return;
-        this.scheduleObservedRetirement(source.rpcId, attachmentRefsIn(message.content));
+        if (!admitted) {
+            if (settlement.placement === 'queued')
+                this.scheduleObservedRetirement(source.rpcId, attachmentRefsIn(message.content));
+            return;
+        }
+        settlement.admitted = attachmentRefsIn(message.content);
+        this.retireAdmittedSubmission(source.rpcId);
     }
-    /** Retire non-steering echoes when the Inbox accepts their queue occurrences. */
+    /** Retire admitted Chat identities only after stale Inbox rows can no longer reappear. */
+    retireAdmittedSubmission(requestId) {
+        const settlement = this.submissionSettlements.get(requestId);
+        if (settlement?.admitted === undefined)
+            return;
+        const receipt = settlement.receipt;
+        if (receipt?.index === null
+            && (this.projections.seqOf('inbox') ?? -1) < receipt.seq)
+            return;
+        this.scheduleObservedRetirement(requestId, settlement.admitted);
+    }
+    /** Inbox acceptance retires queued echoes; its watermark completes admitted Chat handoffs. */
     observeSubmissionInbox() {
         if (this.submissionSettlements.size === 0)
             return;
         const inbox = this.projections.get('inbox');
         if (inbox === undefined)
             return;
-        for (const message of [...inbox['next-turn'], ...inbox['next-step']])
-            this.observeSubmissionMessage(message, false);
+        const seq = this.projections.seqOf('inbox');
+        for (const target of ['next-turn', 'next-step']) {
+            if (seq !== undefined)
+                this.observeSubmissionInsertions(target, inbox[target], 0, seq);
+            for (const message of inbox[target])
+                this.observeSubmissionMessage(message, false);
+        }
+        for (const requestId of this.submissionSettlements.keys())
+            this.retireAdmittedSubmission(requestId);
     }
     /**
      * Latch one observed settlement and remove the echo an animation frame
@@ -739,7 +780,7 @@ export class Session {
     /** Remove one unsettled echo immediately (prompt rejection, abort, or disposal). */
     retireFailedSubmission(requestId) {
         const settlement = this.submissionSettlements.get(requestId);
-        if (settlement === undefined || settlement.retiring)
+        if (settlement === undefined || settlement.retiring || settlement.admitted !== undefined)
             return;
         settlement.retiring = true;
         this.finishSubmission(requestId, { reason: 'failed' });

@@ -1,6 +1,7 @@
 // Generated from runtime/alpha3/compat/ui-workspace/src/client/index.ts; edit the TypeScript source.
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store';
 import { menuOpenStateFactory, } from "./contract/slots.js";
+import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from "./shortcuts.js";
 import { UiWorkspaceService } from "./navigation.js";
 import { createWorkspaceViewStore } from "./stores.js";
 import { WorkspaceBrowser } from "./rows/WorkspaceBrowser.js";
@@ -23,7 +24,7 @@ const NS = 'workspace';
  * declaration through `slots.inject()` instead of assuming order.
  */
 export const inject = [
-    'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout',
+    'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts',
 ];
 /**
  * Register the browser and picker once their slot declarations are on the
@@ -46,6 +47,7 @@ export function apply(ctx) {
     const uiWorkspace = new UiWorkspaceService(ctx, ctx.remote.directoryPicker, workspaces, sessions, viewInstance.actions, notify);
     ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } });
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries');
+    const shortcutControls = createWorkspaceShortcutControls();
     const searchSessions = async (query, signal) => {
         const result = await sessions.search(query, signal);
         if (!result.ok)
@@ -75,11 +77,9 @@ export function apply(ctx) {
     // the pending rename request and the notice on display. Each business
     // writes through its own injected callback and the surface reads through
     // its bound hook.
-    const renameRequest = createSnapshotStore(null);
+    const renameRequest = derive(shortcutControls.state, state => state.renameTarget);
     const archiveRequest = createSnapshotStore(null);
-    const requestSessionRename = (sessionId, currentTitle) => {
-        renameRequest.set({ sessionId, currentTitle });
-    };
+    const requestSessionRename = shortcutControls.rename;
     const unarchiveSession = (sessionId) => {
         uiWorkspace.unarchiveSession(sessionId).catch((reason) => {
             console.warn('session unarchive rejected:', reason);
@@ -122,6 +122,7 @@ export function apply(ctx) {
         },
         unarchiveSession,
     });
+    installWorkspaceShortcuts(ctx, uiWorkspace, shortcutControls, archiveInjected().archiveSession);
     const archiveConfirmInjected = () => ({
         hooks: { archiveRequest },
         settleSessionArchive: () => { archiveRequest.set(null); },
@@ -140,7 +141,7 @@ export function apply(ctx) {
     const renameInjected = () => ({ requestSessionRename });
     const renameDialogInjected = () => ({
         hooks: { renameRequest },
-        settleSessionRename: () => { renameRequest.set(null); },
+        settleSessionRename: shortcutControls.closeRename,
         renameSession,
     });
     const rowToastInjected = () => ({
@@ -165,7 +166,18 @@ export function apply(ctx) {
         },
         unarchiveSession: async (sessionId) => { await uiWorkspace.unarchiveSession(sessionId); },
         createWorkspace: input => workspaces.create(input),
-        hooks: { directoryFlow: browserFlowSource, hostInfo, presentation: presentationSource },
+        requestSearch: shortcutControls.search,
+        requestAddWorkspace: shortcutControls.add,
+        closeAddWorkspace: shortcutControls.closeAdd,
+        setDirectoryBusy: shortcutControls.directoryBusy,
+        dismissForkError: shortcutControls.dismissForkError,
+        hooks: {
+            directoryFlow: browserFlowSource,
+            hostInfo,
+            presentation: presentationSource,
+            workspaceShortcuts: shortcutControls.state,
+            shortcuts: ctx.shortcuts.catalog,
+        },
     });
     const pickerInjected = () => ({
         createWorkspace: input => workspaces.create(input),
@@ -184,9 +196,11 @@ export function apply(ctx) {
             // from the row's render occurrence (the owner passes the state pair
             // as hookContext).
             'sidebar.workspaces.session.menu.item': {
-                kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory } },
+                kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory, shortcuts: ctx.shortcuts.catalog } },
             },
             'sidebar.workspaces.session.row.action': { kind: 'list', scope: 'root' },
+            'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
+            'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
         },
         store: viewStore,
         inject: browserInjected,
@@ -215,8 +229,10 @@ export function apply(ctx) {
         yield ctx.slots.register({
             name: 'shell.overlay', id: 'workspace.session-archive', locale: NS, inject: archiveConfirmInjected,
         }, SessionArchiveConfirmDialog);
+        // The toast shares the browser's viewing store: it reads the archived
+        // filter to drop the archived notice's filter action once rows are visible.
         yield ctx.slots.register({
-            name: 'shell.overlay', id: 'workspace.row-toast', locale: NS, inject: rowToastInjected,
+            name: 'shell.overlay', id: 'workspace.row-toast', locale: NS, store: viewStore, inject: rowToastInjected,
         }, RowActionToast);
     });
     ctx.slots.inject('conversation.hero.workspace', () => ctx.slots.register({

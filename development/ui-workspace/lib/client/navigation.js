@@ -2,7 +2,6 @@
 /** Workspace archive and directory UI capability. */
 import { Service } from '@deepseek-ai/cordis';
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store';
-import { en, zh } from "./locales.js";
 import { pinOrderAccounts, pinOrderSource } from "./pin-order.js";
 /** Structured directory failure exposed to directory UI consumers. */
 export class DirectoryBrowseError extends Error {
@@ -228,13 +227,8 @@ class UiWorkspaceService extends Service {
         }
     }
     async initializeDefaultWorkspace(signal) {
-        const language = this.ctx.locale.getSnapshot().active.toLowerCase().split('-')[0];
-        const title = (language === 'zh' ? zh : en)['defaultWorkspace.title'];
         try {
-            return await this.workspaces.initializeDefault({
-                directoryName: language === 'zh' || language === 'en' ? title : 'default-workspace',
-                title,
-            }, signal);
+            return await this.workspaces.initializeDefault(signal);
         }
         catch (_error) {
             if (!signal.aborted)

@@ -411,7 +411,7 @@ var SessionEventStream = class extends import_client.RemoteJournalStream {
     for await (const frame of this.remote.session.follow({
       address: this.address,
       assistantStream: true,
-      ...request.maxMessages === void 0 ? {} : { maxMessages: request.maxMessages }
+      ...this.repairRequest(request)
     }, signal)) {
       if (frame.type === "snapshot") {
         for (const record of frame.records)
@@ -456,7 +456,10 @@ var SessionEventStream = class extends import_client.RemoteJournalStream {
   }
   /** @inheritdoc */
   repairRequest(request) {
-    return request.maxMessages === void 0 ? {} : { maxMessages: request.maxMessages };
+    return {
+      ...request.maxMessages === void 0 ? {} : { maxMessages: request.maxMessages },
+      ...request.turnWindow === void 0 ? {} : { turnWindow: request.turnWindow }
+    };
   }
 };
 
@@ -871,6 +874,15 @@ var ProjectionValueStore = class {
     return this.rows.get(key)?.value;
   }
   /**
+   * Read the accepted Host watermark without subscribing or copying a value.
+   * @param key - projection key.
+   * @returns the current sequence, or undefined for absent and cached values.
+   */
+  seqOf(key) {
+    const row = this.rows.get(key);
+    return row?.kind === "sequenced" ? row.seq : void 0;
+  }
+  /**
    * Read every current projection value as one reference-stable snapshot.
    * @returns The same frozen value map until a row changes.
    */
@@ -1242,6 +1254,7 @@ function exactKeys(record, keys, label) {
 // sessions/assistant-stream.js
 var ClientAssistantStream = class {
   activeAttempt;
+  retainedAttempt;
   pending = /* @__PURE__ */ new Map();
   publishedSeqs = /* @__PURE__ */ new Set();
   durableCursor = -1;
@@ -1256,6 +1269,7 @@ var ClientAssistantStream = class {
     this.pending.clear();
     this.transientInGap = 0;
     this.activeAttempt = void 0;
+    this.retainedAttempt = void 0;
     const opening = baseline?.activeAttempt;
     if (opening !== void 0) {
       this.activeAttempt = {
@@ -1312,13 +1326,15 @@ var ClientAssistantStream = class {
   }
   /**
    * Fold one dense transient frame and release its named durable settlement.
+   * Successful messages retain their transient rows until the owning Step ends;
+   * interrupted messages, failed attempts, and abandonment retire them immediately.
    * @param frame - next Assistant stream frame received by the follow connection.
    * @returns a transient, publication, or rebaseline decision, or `undefined` when no entry becomes visible.
    */
   acceptFrame(frame) {
     switch (frame.type) {
       case "start":
-        if (this.activeAttempt !== void 0 || this.pending.size > 0)
+        if (this.activeAttempt !== void 0 || this.retainedAttempt !== void 0 || this.pending.size > 0)
           return { type: "rebaseline" };
         this.pending.clear();
         this.activeAttempt = {
@@ -1373,6 +1389,10 @@ var ClientAssistantStream = class {
           return { type: "rebaseline" };
         }
         this.pending.delete(frame.outcome.seq);
+        if (entry.event.type === "assistant/message" && entry.event.data.interrupted !== true) {
+          this.retainedAttempt = { attemptId: attempt.attemptId, turn: attempt.turn, step: attempt.step };
+          return this.publish(entry);
+        }
         this.publishedSeqs.add(entry.event.seq);
         return { type: "settlement", attemptId: attempt.attemptId, entry };
       }
@@ -1386,6 +1406,11 @@ var ClientAssistantStream = class {
   }
   publish(entry) {
     this.publishedSeqs.add(entry.event.seq);
+    const retained = this.retainedAttempt;
+    if (retained !== void 0 && entry.event.type === "step/end" && entry.event.data.turn === retained.turn && entry.event.data.step === retained.step) {
+      this.retainedAttempt = void 0;
+      return { type: "publish", entry, retireAttemptId: retained.attemptId };
+    }
     return { type: "publish", entry };
   }
 };
@@ -1401,7 +1426,12 @@ function projectionsBaseline(value) {
   };
 }
 var PAGE_MESSAGES = 50;
+var HISTORY_PAGE_OPTIONS = { maxMessages: 500, turnWindow: { minMessages: PAGE_MESSAGES, minTurns: 2 } };
 var JUMP_PAGE_MESSAGES = 200;
+var JUMP_PAGE_OPTIONS = {
+  ...HISTORY_PAGE_OPTIONS,
+  turnWindow: { ...HISTORY_PAGE_OPTIONS.turnWindow, minMessages: JUMP_PAGE_MESSAGES }
+};
 var Session = class {
   sessionId;
   remote;
@@ -1670,7 +1700,7 @@ var Session = class {
     this.openPromise = promise;
     return promise;
   }
-  /** Page up: pull one earlier page with the window's first seq as beforeSeq and prepend. */
+  /** Prepend one Turn-aligned page: at least 50 messages and two Turn starts, capped at 500 messages. */
   async loadOlder() {
     if (this.openState !== "open" || !this.hasMore || this.loadingOlder)
       return;
@@ -1680,7 +1710,10 @@ var Session = class {
     this.loadingOlder = true;
     this.notifier.markDirty();
     try {
-      await events.prepend({ beforeSeq: this.baseSeq, maxMessages: PAGE_MESSAGES });
+      await events.prepend({
+        beforeSeq: this.baseSeq,
+        ...HISTORY_PAGE_OPTIONS
+      });
     } catch (error) {
       if (!(0, import_client2.isRemoteFailure)(error)) {
         console.error("[session-controller] loadOlder failed:", error);
@@ -1719,7 +1752,7 @@ var Session = class {
           if (generation !== this.openGeneration)
             return;
           const before = pending.beforeSeq;
-          await events.prepend({ beforeSeq: before, maxMessages: JUMP_PAGE_MESSAGES });
+          await events.prepend({ beforeSeq: before, ...JUMP_PAGE_OPTIONS });
           if (pending.beforeSeq >= before)
             return;
         }
@@ -1852,8 +1885,11 @@ var Session = class {
    */
   async dispose() {
     this.stopObservingInbox();
-    for (const requestId of [...this.submissionSettlements.keys()]) {
-      this.retireFailedSubmission(requestId);
+    for (const [requestId, settlement] of [...this.submissionSettlements]) {
+      if (settlement.admitted !== void 0)
+        this.scheduleObservedRetirement(requestId, settlement.admitted);
+      else
+        this.retireFailedSubmission(requestId);
     }
     this.openGeneration++;
     const events = this.events;
@@ -1878,7 +1914,7 @@ var Session = class {
     });
     this.events = events;
     try {
-      await events.open({ maxMessages: PAGE_MESSAGES });
+      await events.open(HISTORY_PAGE_OPTIONS);
       if (generation !== this.openGeneration || this.events !== events)
         return;
       this.openState = "open";
@@ -1937,7 +1973,9 @@ var Session = class {
       this.observeSubmissionEvent(entry.event);
     if (projections !== void 0) {
       const inbox = projections.values.inbox;
-      this.observeSteeringInsertions(inbox?.["next-step"] ?? [], 0, projections.asOfSeq);
+      for (const target of ["next-turn", "next-step"]) {
+        this.observeSubmissionInsertions(target, inbox?.[target] ?? [], 0, projections.asOfSeq);
+      }
     }
     this.notifier.markDirty();
   }
@@ -1961,8 +1999,12 @@ var Session = class {
       this.notifier.markDirty();
       return;
     }
-    if (result?.type === "publish" && this.appendLive(result.entry)) {
-      this.notifier.markDirty();
+    if (result?.type === "publish") {
+      const changed = this.appendLive(result.entry);
+      if (result.retireAttemptId !== void 0)
+        this.eventSource.settleAssistant(result.retireAttemptId);
+      if (changed || result.retireAttemptId !== void 0)
+        this.notifier.markDirty();
     } else if (result?.type === "transient") {
       this.eventSource.append(result.entry);
       this.notifier.markDirty();
@@ -1997,30 +2039,28 @@ var Session = class {
       return;
     if (event.type === "agent/inbox/spliced") {
       const { target, start, removedCount = 0, inserted, outcome } = event.data;
-      if (target === "next-step") {
-        for (const [requestId, settlement] of this.submissionSettlements) {
-          const receipt = settlement.receipt;
-          if (receipt === void 0 || receipt.index === null || receipt.seq >= event.seq)
-            continue;
-          const removed = receipt.index >= start && receipt.index < start + removedCount;
-          if (removed && outcome === "canceled")
-            this.retireFailedSubmission(requestId);
-          else
-            settlement.receipt = {
-              ...receipt,
-              seq: event.seq,
-              index: removed ? null : receipt.index < start ? receipt.index : receipt.index + inserted.length - removedCount
-            };
-        }
-        this.observeSteeringInsertions(inserted, start, event.seq);
+      for (const [requestId, settlement] of this.submissionSettlements) {
+        const receipt = settlement.receipt;
+        if (receipt?.target !== target || receipt.index === null || receipt.seq >= event.seq)
+          continue;
+        const removed = receipt.index >= start && receipt.index < start + removedCount;
+        if (removed && outcome === "canceled")
+          this.retireFailedSubmission(requestId);
+        else
+          settlement.receipt = {
+            ...receipt,
+            seq: event.seq,
+            index: removed ? null : receipt.index < start ? receipt.index : receipt.index + inserted.length - removedCount
+          };
       }
+      this.observeSubmissionInsertions(target, inserted, start, event.seq);
       for (const message of inserted)
         this.observeSubmissionMessage(message, false);
       return;
     }
     if (event.type === "request/context" || event.type === "turn/end") {
       for (const [requestId, settlement] of this.submissionSettlements) {
-        if (settlement.receipt?.index === null && settlement.receipt.seq < event.seq)
+        if (settlement.admitted === void 0 && settlement.receipt?.index === null && settlement.receipt.seq < event.seq)
           this.retireFailedSubmission(requestId);
       }
       return;
@@ -2028,34 +2068,58 @@ var Session = class {
     if (event.type === "user/message")
       this.observeSubmissionMessage(event.data, true);
   }
-  observeSteeringInsertions(messages, start, seq) {
+  observeSubmissionInsertions(target, messages, start, seq) {
     for (const [index, message] of messages.entries()) {
       const source = message.source;
       if (source.kind !== "user" || !("rpcId" in source))
         continue;
       const settlement = this.submissionSettlements.get(source.rpcId);
-      if (settlement?.placement !== "steering" || settlement.retiring || (settlement.receipt?.seq ?? -1) > seq)
+      if (settlement === void 0 || settlement.placement === "queued" || settlement.retiring || (settlement.receipt?.seq ?? -1) > seq)
         continue;
-      settlement.receipt = { seq, index: start + index, attachments: attachmentRefsIn(message.content) };
+      settlement.receipt = { target, seq, index: start + index, attachments: attachmentRefsIn(message.content) };
     }
   }
   observeSubmissionMessage(message, admitted) {
     const source = message.source;
     if (source.kind !== "user" || !("rpcId" in source))
       return;
-    if (!admitted && this.submissionSettlements.get(source.rpcId)?.placement === "steering")
+    const settlement = this.submissionSettlements.get(source.rpcId);
+    if (settlement === void 0 || settlement.retiring)
       return;
-    this.scheduleObservedRetirement(source.rpcId, attachmentRefsIn(message.content));
+    if (!admitted) {
+      if (settlement.placement === "queued")
+        this.scheduleObservedRetirement(source.rpcId, attachmentRefsIn(message.content));
+      return;
+    }
+    settlement.admitted = attachmentRefsIn(message.content);
+    this.retireAdmittedSubmission(source.rpcId);
   }
-  /** Retire non-steering echoes when the Inbox accepts their queue occurrences. */
+  /** Retire admitted Chat identities only after stale Inbox rows can no longer reappear. */
+  retireAdmittedSubmission(requestId) {
+    const settlement = this.submissionSettlements.get(requestId);
+    if (settlement?.admitted === void 0)
+      return;
+    const receipt = settlement.receipt;
+    if (receipt?.index === null && (this.projections.seqOf("inbox") ?? -1) < receipt.seq)
+      return;
+    this.scheduleObservedRetirement(requestId, settlement.admitted);
+  }
+  /** Inbox acceptance retires queued echoes; its watermark completes admitted Chat handoffs. */
   observeSubmissionInbox() {
     if (this.submissionSettlements.size === 0)
       return;
     const inbox = this.projections.get("inbox");
     if (inbox === void 0)
       return;
-    for (const message of [...inbox["next-turn"], ...inbox["next-step"]])
-      this.observeSubmissionMessage(message, false);
+    const seq = this.projections.seqOf("inbox");
+    for (const target of ["next-turn", "next-step"]) {
+      if (seq !== void 0)
+        this.observeSubmissionInsertions(target, inbox[target], 0, seq);
+      for (const message of inbox[target])
+        this.observeSubmissionMessage(message, false);
+    }
+    for (const requestId of this.submissionSettlements.keys())
+      this.retireAdmittedSubmission(requestId);
   }
   /**
    * Latch one observed settlement and remove the echo an animation frame
@@ -2075,7 +2139,7 @@ var Session = class {
   /** Remove one unsettled echo immediately (prompt rejection, abort, or disposal). */
   retireFailedSubmission(requestId) {
     const settlement = this.submissionSettlements.get(requestId);
-    if (settlement === void 0 || settlement.retiring)
+    if (settlement === void 0 || settlement.retiring || settlement.admitted !== void 0)
       return;
     settlement.retiring = true;
     this.finishSubmission(requestId, { reason: "failed" });

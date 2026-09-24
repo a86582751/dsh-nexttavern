@@ -262,7 +262,8 @@ function projectAssistant(context: ConversationNodeContext<AssistantState>): Ass
   const status = settled?.interrupted === true
     ? 'interrupted'
     : settled === undefined ? 'running' : 'settled'
-  const anchorSeq = state.firstVisibleSeq ?? settled?.seq ?? context.matches[0]?.event.seq ?? 0
+  const anchorSeq = (settled?.interrupted === true ? settled.seq : state.firstVisibleSeq ?? settled?.seq)
+    ?? context.matches[0]?.event.seq ?? 0
   const time = state.firstVisibleTime ?? settled?.time ?? context.matches[0]?.event.time ?? 0
   return {
     anchorSeq,

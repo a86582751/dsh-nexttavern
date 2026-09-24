@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "package": "dsh-nexttavern-llm-pi-ai",
   "upstreamPackage": "@deepseek-ai/dsh-llm-pi-ai",
-  "upstreamVersion": "0.1.7-alpha.1",
+  "upstreamVersion": "0.1.7-rc.2",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
-  "commit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
   "license": "MIT",
   "files": [
     {

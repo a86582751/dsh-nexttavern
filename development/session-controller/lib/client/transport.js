@@ -77,7 +77,7 @@ export class SessionEventStream extends RemoteJournalStream {
         for await (const frame of this.remote.session.follow({
             address: this.address,
             assistantStream: true,
-            ...(request.maxMessages === undefined ? {} : { maxMessages: request.maxMessages }),
+            ...this.repairRequest(request),
         }, signal)) {
             if (frame.type === 'snapshot') {
                 for (const record of frame.records)
@@ -122,6 +122,9 @@ export class SessionEventStream extends RemoteJournalStream {
     }
     /** @inheritdoc */
     repairRequest(request) {
-        return request.maxMessages === undefined ? {} : { maxMessages: request.maxMessages };
+        return {
+            ...(request.maxMessages === undefined ? {} : { maxMessages: request.maxMessages }),
+            ...(request.turnWindow === undefined ? {} : { turnWindow: request.turnWindow }),
+        };
     }
 }

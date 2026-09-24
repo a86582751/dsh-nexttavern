@@ -4,8 +4,9 @@ import { TRANSCRIPT_VIEW_MODES } from "../../chat-settings.js";
 import { PreferenceRow } from "./PreferenceRow.js";
 const LABELS = {
     compact: 'settings.transcript.compact',
+    standard: 'settings.transcript.standard',
     detailed: 'settings.transcript.detailed',
-    expanded: 'settings.transcript.expanded',
+    verbose: 'settings.transcript.verbose',
 };
 /**
  * Render the work-details mode selector.

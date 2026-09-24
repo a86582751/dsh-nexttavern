@@ -14,7 +14,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { HoverCard, IconAlarmClockOutlineRegular, IconArchiveOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular, IconNewChatOutlineRegular, IconPinFillRegular, IconTrashOutlineRegular, IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, Menu, relativeTime, StateDot, Tooltip, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { HoverCard, IconArchiveOutlineRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular, IconNewChatOutlineRegular, IconPinFillRegular, IconTrashOutlineRegular, IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, Menu, relativeTime, StateDot, Tooltip, } from '@deepseek-ai/dsh-client-ui-primitives';
 import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path';
 import css from './Rows.module.css';
 /** Row display title: blank rows show the localized New Session label. */
@@ -156,7 +156,7 @@ function rowHalf(e) {
  * @param props.t - the browser root's locale seat.
  * @returns the row element.
  */
-export function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag, home, t }) {
+export function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag, home, newShortcut, t }) {
     const row = group;
     // The ungrouped bucket has no workspace title: its label is dictionary copy.
     const label = row.workspaceId === undefined ? t('group.ungrouped') : row.label;
@@ -183,7 +183,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
                                 actions.rename();
                             else
                                 actions.delete();
-                        }, portal: true, closeOnPointerLeave: true, anchor: (_jsx("button", { type: "button", className: css.iconButton, "aria-label": t('actions.workspace.aria', { name: label }), onClick: (e) => { e.stopPropagation(); setMenuOpen(v => !v); }, children: _jsx(IconEllipsisOutlineRegular, {}) })) })), _jsx(Tooltip, { label: t('actions.newSession'), side: "bottom", align: "end", delayMs: 500, children: _jsx("button", { type: "button", className: css.iconButton, "aria-label": t('actions.newSession.aria', { name: label }), onClick: (e) => { e.stopPropagation(); onCreate(); }, children: _jsx(IconNewChatOutlineRegular, {}) }) })] })] }));
+                        }, portal: true, closeOnPointerLeave: true, anchor: (_jsx("button", { type: "button", className: css.iconButton, "aria-label": t('actions.workspace.aria', { name: label }), onClick: (e) => { e.stopPropagation(); setMenuOpen(v => !v); }, children: _jsx(IconEllipsisOutlineRegular, {}) })) })), _jsx(Tooltip, { label: t('actions.newSession'), shortcutKeys: newShortcut?.keys, side: "bottom", align: "end", delayMs: 500, children: _jsx("button", { type: "button", className: css.iconButton, "aria-keyshortcuts": newShortcut?.aria, "aria-label": t('actions.newSession.aria', { name: label }), onClick: (e) => { e.stopPropagation(); onCreate(); }, children: _jsx(IconNewChatOutlineRegular, {}) }) })] })] }));
     // The ungrouped bucket has no backing Workspace: no card to show.
     if (row.createdAt === undefined)
         return ownRow;
@@ -249,23 +249,22 @@ function sessionStatuses(node, t) {
 function SessionStatusDots({ statuses }) {
     return (_jsxs(_Fragment, { children: [_jsx(StateDot, { state: statuses[0].state }), statuses.map(status => (_jsx("span", { className: css.visuallyHidden, children: status.label }, status.label)))] }));
 }
-/** Non-interactive active-Schedule marker; the enclosing row remains the only action. */
-function ActiveScheduleIndicator({ t, search = false }) {
-    const label = t('schedule.active');
-    return (_jsx("span", { className: clsx(css.scheduleIndicator, search && css.searchScheduleIndicator), role: "img", "aria-label": label, title: label, children: _jsx(IconAlarmClockOutlineRegular, {}) }));
-}
 /** Non-interactive pinned-row marker; the enclosing row remains the only action. */
 function PinnedIndicator({ t }) {
     const label = t('row.pinned');
     return (_jsx("span", { className: css.pinIndicator, role: "img", "aria-label": label, title: label, children: _jsx(IconPinFillRegular, { size: 14 }) }));
 }
-/** Hover-card body: full title, relative time, and every relevant live status. */
-function SessionHoverContent({ node, now, t }) {
+/**
+ * Hover-card body: full title, relative time, the Session's own scheduled-task
+ * section, and every relevant live status. The task section sits above the
+ * status lines so they stay the card's trailing status line.
+ */
+function SessionHoverContent({ node, now, renderSlot, t }) {
     // On archived rows the archived line already says the session is inactive,
     // so resting statuses (idle/completed) drop; live activity still shows.
     const statuses = sessionStatuses(node, t)
         .filter(status => !(node.archived && (status.state === 'done' || status.state === 'idle')));
-    return (_jsxs("div", { className: css.hoverContent, children: [_jsx("div", { className: css.hoverTitle, children: displayTitle(node, t) }), !node.blank && _jsx("div", { className: css.hoverTime, children: hoverTimeLabel(node.updatedAt, now, t) }), statuses.map(status => (_jsxs("div", { className: css.hoverStatus, children: [_jsx(StateDot, { state: status.state }), _jsx("span", { children: status.label })] }, status.label))), node.archived && (_jsxs("div", { className: clsx(css.hoverStatus, css.hoverArchived), children: [_jsx(IconArchiveOutlineRegular, { size: 14 }), _jsx("span", { children: t('row.archived') })] }))] }));
+    return (_jsxs("div", { className: css.hoverContent, children: [_jsx("div", { className: css.hoverTitle, children: displayTitle(node, t) }), !node.blank && _jsx("div", { className: css.hoverTime, children: hoverTimeLabel(node.updatedAt, now, t) }), renderSlot('sidebar.session.row.hover', { sessionId: node.id }), statuses.map(status => (_jsxs("div", { className: css.hoverStatus, children: [_jsx(StateDot, { state: status.state }), _jsx("span", { children: status.label })] }, status.label))), node.archived && (_jsxs("div", { className: clsx(css.hoverStatus, css.hoverArchived), children: [_jsx(IconArchiveOutlineRegular, { size: 14 }), _jsx("span", { children: t('row.archived') })] }))] }));
 }
 /**
  * One flat search result: title, Workspace context, and optional content
@@ -283,25 +282,29 @@ export function SearchResultItem({ result, currentId, onOpen, onUnarchive, t }) 
     const selected = result.id === currentId;
     const statuses = sessionStatuses(result, t);
     const primaryStatus = statuses[0];
-    return (_jsxs("div", { className: clsx(css.searchResultRow, selected && css.selected, result.archived && css.archived), role: "treeitem", "aria-selected": selected, "aria-description": result.archived ? t('toast.archivedNotOpenable') : undefined, onClick: () => { onOpen(result.id); }, children: [_jsxs("span", { className: css.searchResultHeading, children: [_jsx("span", { className: css.slot, children: !result.archived && primaryStatus.state !== 'idle' && (_jsx(SessionStatusDots, { statuses: statuses })) }), _jsx("span", { className: css.searchResultTitle, children: result.title }), result.hasActiveSchedule && _jsx(ActiveScheduleIndicator, { t: t, search: true }), result.archived && (_jsx("span", { className: css.rowActions, children: _jsx(Tooltip, { label: t('actions.unarchive'), side: "bottom", align: "end", delayMs: 500, children: _jsx("button", { type: "button", className: css.iconButton, "aria-label": t('menu.unarchiveSession'), onClick: (e) => { e.stopPropagation(); onUnarchive(result.id); }, children: _jsx(IconUnarchiveOutlineRegular, { size: 14 }) }) }) }))] }), _jsxs("span", { className: css.searchResultMeta, children: [_jsx("span", { className: css.searchResultWorkspace, children: result.workspace || t('group.ungrouped') }), result.snippet !== undefined && (_jsx("span", { className: css.searchResultSnippet, children: result.snippet }))] })] }));
+    return (_jsxs("div", { className: clsx(css.searchResultRow, selected && css.selected, result.archived && css.archived), role: "treeitem", "aria-selected": selected, "aria-description": result.archived ? t('toast.archivedNotOpenable') : undefined, onClick: () => { onOpen(result.id); }, children: [_jsxs("span", { className: css.searchResultHeading, children: [_jsx("span", { className: css.slot, children: !result.archived && primaryStatus.state !== 'idle' && (_jsx(SessionStatusDots, { statuses: statuses })) }), _jsx("span", { className: css.searchResultTitle, children: result.title }), result.archived && (_jsx("span", { className: css.rowActions, children: _jsx(Tooltip, { label: t('actions.unarchive'), side: "bottom", align: "end", delayMs: 500, children: _jsx("button", { type: "button", className: css.iconButton, "aria-label": t('menu.unarchiveSession'), onClick: (e) => { e.stopPropagation(); onUnarchive(result.id); }, children: _jsx(IconUnarchiveOutlineRegular, { size: 14 }) }) }) }))] }), _jsxs("span", { className: css.searchResultMeta, children: [_jsx("span", { className: css.searchResultWorkspace, children: result.workspace || t('group.ungrouped') }), result.snippet !== undefined && (_jsx("span", { className: css.searchResultSnippet, children: result.snippet }))] })] }));
 }
 /**
- * One top-level 34px session row: status dot (pending user interaction outranks
- * own or descendant activity), title, relative time or compact pending label,
- * and the row actions menu.
+ * One top-level 32px session row: leading 16px cell (status dot, or the
+ * leading seat while the row's primary state is idle), title, relative time or
+ * compact pending label, and the row actions menu. A row that owns a state dot
+ * keeps that cell and renders no seat, so an ambient automation mark never
+ * appears beside the row's own state dot. An archived row keeps the cell blank:
+ * neither marker renders there, and its live status stays on the hover card.
  * @param props.node - derived session node.
  * @param props.currentId - selected session id (row highlight).
  * @param props.now - epoch ms for relative-time formatting.
  * @param props.onOpen - open a session by id.
  * @param props.onRenameRequest - open the rename dialog from a title double-click (id + current title).
- * @param props.renderSlot - render the row's `sidebar.workspaces.session.menu.item` and `sidebar.workspaces.session.row.action` lists.
+ * @param props.renderSlot - child-seat renderer for the row's action lists
+ * (`sidebar.workspaces.session.menu.item` / `sidebar.workspaces.session.row.action`),
+ * its leading decoration, and its hover-card section.
  * @param props.onReveal - scroll this row into view after search navigation, then acknowledge it.
  * @param props.drag - optional row-drag target wiring; blank rows cannot start a drag.
- * @param props.flat - omit the empty status slot in the hierarchy-free flat list.
  * @param props.t - the browser root's locale seat.
  * @returns the session row.
  */
-export function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, renderSlot, onReveal, drag, flat = false, t, }) {
+export function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest, renderSlot, onReveal, drag, t, }) {
     const row = node;
     const title = displayTitle(node, t);
     const selected = node.id === currentId;
@@ -325,7 +328,7 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest,
         onReveal();
     }, [onReveal]);
     // Figma session cell: pad 8, status slot 16, then a 4px title gap.
-    const ownRow = (_jsxs("div", { ref: rowRef, "data-row-key": `session:${node.id}`, className: clsx(css.sessionRow, selected && css.selected, menuOpen && css.menuOpen, row.archived && css.archived, flat && !showStatus && css.flatSessionRowWithoutStatus, drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter), role: "treeitem", "aria-selected": selected, "aria-description": row.archived ? t('toast.archivedNotOpenable') : undefined, onClick: () => { onOpen(node.id); }, onPointerEnter: marquee.enter, onPointerLeave: marquee.leave, draggable: draggable, onDragStart: !draggable
+    const ownRow = (_jsxs("div", { ref: rowRef, "data-row-key": `session:${node.id}`, className: clsx(css.sessionRow, selected && css.selected, menuOpen && css.menuOpen, row.archived && css.archived, drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter), role: "treeitem", "aria-selected": selected, "aria-description": row.archived ? t('toast.archivedNotOpenable') : undefined, onClick: () => { onOpen(node.id); }, onPointerEnter: marquee.enter, onPointerLeave: marquee.leave, draggable: draggable, onDragStart: !draggable
             ? undefined
             : (e) => {
                 e.dataTransfer.effectAllowed = 'move';
@@ -346,8 +349,10 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRenameRequest,
                     return;
                 e.preventDefault();
                 drag.drop(rowHalf(e));
-            }, children: [(!flat || showStatus) && (_jsx("span", { className: css.slot, children: !row.archived && showStatus && _jsx(SessionStatusDots, { statuses: statuses }) })), _jsx("span", { ref: titleRef, className: css.title, onDoubleClick: row.blank
+            }, children: [_jsx("span", { className: css.slot, children: !row.archived && !row.blank && (showStatus
+                    ? _jsx(SessionStatusDots, { statuses: statuses })
+                    : renderSlot('sidebar.session.row.leading', { sessionId: node.id })) }), _jsx("span", { ref: titleRef, className: css.title, onDoubleClick: row.blank
                     ? undefined
-                    : (e) => { e.stopPropagation(); onRenameRequest(node.id, row.title); }, children: title }), row.hasActiveSchedule && _jsx(ActiveScheduleIndicator, { t: t }), !row.blank && (_jsx("span", { className: css.time, "aria-hidden": primaryStatus.trailingLabel === undefined ? undefined : true, children: primaryStatus.trailingLabel ?? timeLabel(row.updatedAt, now, t) })), row.pinned && !row.archived && _jsx(PinnedIndicator, { t: t }), !row.blank && (_jsxs("span", { className: css.rowActions, onClick: (e) => { e.stopPropagation(); }, children: [_jsx(Menu, { open: menuOpen, onClose: () => { setMenuOpen(false); }, portal: true, closeOnPointerLeave: true, anchor: (_jsx("button", { type: "button", className: css.iconButton, "aria-label": t('actions.session.aria', { name: title }), onClick: () => { setMenuOpen(v => !v); }, children: _jsx(IconEllipsisOutlineRegular, {}) })), children: renderSlot('sidebar.workspaces.session.menu.item', { sessionId: node.id, displayTitle: row.title }, { hookContext: menuOpenState }) }), renderSlot('sidebar.workspaces.session.row.action', { sessionId: node.id, displayTitle: row.title })] }))] }));
-    return (_jsx(HoverCard, { anchor: ownRow, content: _jsx(SessionHoverContent, { node: node, now: now, t: t }), openDelayMs: 800, disabled: menuOpen || drag?.active === true, copyText: row.blank ? undefined : row.title, copyLabel: t('copy'), copiedLabel: t('hover.copied') }));
+                    : (e) => { e.stopPropagation(); onRenameRequest(node.id, row.title); }, children: title }), !row.blank && (_jsx("span", { className: css.time, "aria-hidden": primaryStatus.trailingLabel === undefined ? undefined : true, children: primaryStatus.trailingLabel ?? timeLabel(row.updatedAt, now, t) })), row.pinned && !row.archived && _jsx(PinnedIndicator, { t: t }), !row.blank && (_jsxs("span", { className: css.rowActions, onClick: (e) => { e.stopPropagation(); }, children: [_jsx(Menu, { open: menuOpen, onClose: () => { setMenuOpen(false); }, portal: true, closeOnPointerLeave: true, anchor: (_jsx("button", { type: "button", className: css.iconButton, "aria-label": t('actions.session.aria', { name: title }), onClick: () => { setMenuOpen(v => !v); }, children: _jsx(IconEllipsisOutlineRegular, {}) })), children: renderSlot('sidebar.workspaces.session.menu.item', { sessionId: node.id, displayTitle: row.title }, { hookContext: menuOpenState }) }), renderSlot('sidebar.workspaces.session.row.action', { sessionId: node.id, displayTitle: row.title })] }))] }));
+    return (_jsx(HoverCard, { anchor: ownRow, content: _jsx(SessionHoverContent, { node: node, now: now, renderSlot: renderSlot, t: t }), openDelayMs: 800, disabled: menuOpen || drag?.active === true, copyText: row.blank ? undefined : row.title, copyLabel: t('copy'), copiedLabel: t('hover.copied') }));
 }

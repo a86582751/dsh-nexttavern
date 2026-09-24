@@ -1,15 +1,28 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/tool.ts; edit the TypeScript source.
 import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-session/surface';
-import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from "./common.js";
+import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode, contextLocation } from "./common.js";
 const MAX_DEPTH = 256;
 const projectedBlocks = new WeakMap();
 function jsonArguments(value) {
     return JSON.stringify(value);
 }
 function rootCall(match) {
+    const event = match.event;
+    if (event.type === 'assistant/live-chunk') {
+        const chunk = event.data.chunk;
+        if (chunk.type !== 'tool-call-delta' || !chunk.name)
+            throw new Error('tool preparation requires a named call delta');
+        return {
+            phase: 'preparing',
+            callId: String(chunk.id), name: chunk.name,
+            turn: event.data.turn, step: event.data.step, time: event.time,
+            subCalls: [],
+        };
+    }
     if (match.event.type !== 'tool/call')
         throw new Error('tool-call start requires tool/call');
     return {
+        phase: 'start',
         callId: String(match.event.data.callId),
         name: match.event.data.name,
         argsRaw: match.event.data.arguments,
@@ -39,6 +52,7 @@ function rootResult(match, previous) {
 }
 function childCall(match, data) {
     return {
+        phase: 'start',
         callId: data.subCallId,
         parentCallId: data.parentCallId,
         name: data.name,
@@ -129,6 +143,8 @@ function updateDispatch(state, match) {
     return { ...state, children, parents };
 }
 function projectBlock(block, state, interruptedAt, visited = new Set(), depth = 1) {
+    if (!('kind' in block) && block.phase === 'preparing')
+        return block;
     if (visited.has(block.callId) || depth > MAX_DEPTH)
         return { ...block, subCalls: [] };
     const nextVisited = new Set(visited);
@@ -184,11 +200,16 @@ function fallbackState(context) {
         state = updateDispatch(state, candidate);
     return state;
 }
-/** Root Tool lifecycle and nested PTC dispatch Definition. */
+/** Root Tool preparation, dispatch, result, and nested PTC calls. */
 export const toolDefinition = {
     kind: 'tool-call',
     target: 'chat',
     match: (event) => {
+        if (event.type === 'assistant/live-chunk') {
+            const chunk = event.data.chunk;
+            return chunk.type === 'tool-call-delta' && chunk.name
+                ? { id: String(chunk.id), role: 'start' } : null;
+        }
         if (event.type === 'tool/call')
             return { id: String(event.data.callId), role: 'start' };
         if (event.type === 'tool/result' && isAppendSurfaceEvent(event)) {
@@ -204,21 +225,35 @@ export const toolDefinition = {
     },
     start: (_context, match) => ({ root: rootCall(match), children: new Map(), parents: new Map() }),
     update: (context, match) => {
+        if (match.event.type === 'tool/call')
+            return { ...context.state, root: rootCall(match) };
         if (match.event.type === 'tool/result') {
-            const running = 'kind' in context.state.root ? undefined : context.state.root;
+            const root = context.state.root;
+            const running = !('kind' in root) && root.phase === 'start' ? root : undefined;
             const result = rootResult(match, running);
             return result === undefined ? context.state : { ...context.state, root: result };
         }
         return updateDispatch(context.state, match);
     },
+    publication: match => match.event.type === 'assistant/live-chunk' ? 'animation-frame' : 'immediate',
     buildViewNode: (context) => {
+        const current = context.current.get('chat');
         const state = context.state ?? fallbackState(context);
-        if (state === undefined)
-            return null;
-        const projected = projectBlock(state.root, state, interruption(context));
+        if (state === undefined) {
+            return current == null ? null : current.visibility === 'hidden' ? current : { ...current, visibility: 'hidden' };
+        }
+        const interruptedAt = interruption(context);
+        const projected = projectBlock(state.root, state, interruptedAt);
         const anchor = context.start?.event.seq
             ?? ('kind' in state.root ? state.root.seq : context.matches[0]?.event.seq ?? 0);
-        return chatNode(context, 'tool-call', anchor, { root: projected });
+        const preparing = !('kind' in projected) && projected.phase === 'preparing';
+        const visibility = preparing && interruptedAt !== undefined ? 'hidden' : 'visible';
+        const location = contextLocation(context);
+        const data = current?.data.root === projected ? current.data : { root: projected };
+        if (current?.data === data && current.anchorSeq === anchor
+            && current.visibility === visibility && current.location === location)
+            return current;
+        return chatNode(context, 'tool-call', anchor, data, { visibility, location });
     },
 };
 /**

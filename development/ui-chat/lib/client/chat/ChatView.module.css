@@ -1,9 +1,22 @@
+.frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  /* Floating controls query this frame outside the clipped transcript. */
+  container-type: inline-size;
+}
+
 .root {
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
+
+  overflow-x: visible;
+  overflow-y: clip;
 }
 
 .scroll {
@@ -25,6 +38,7 @@
   overflow-anchor: none;
 }
 
+:global([data-conversation-scroll]) .frame,
 :global([data-conversation-scroll]) .root {
   flex: 0 0 auto;
   min-height: auto;
@@ -75,7 +89,7 @@
 }
 
 .callRow {
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 /* Selection still sets data-selected for details linkage; no outline —
@@ -100,7 +114,7 @@
 
 .older button {
   border: none;
-  border-radius: 14px;
+  border-radius: var(--dsw-radius-sm);
   padding: 4px 12px;
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
@@ -113,12 +127,13 @@
   opacity: 0.6;
 }
 
-/* Back-to-bottom: zero-height sticky slot so the control does not extend
-   scrollHeight; the button translates up into the viewport. Under the
-   conversation host, clearance sits above the sticky composer stack. */
+/* Floating controls sit outside the clipped transcript. A standalone Chat
+   anchors them to its frame; the shared host supplies the sticky scrollport. */
 .toBottomSlot {
-  position: sticky;
+  position: absolute;
+  right: 0;
   bottom: 16px;
+  left: 0;
   /* Above the sticky composer (z-index 7) so the control stays clickable and
      visible over the input card. Exception: while an @/slash menu is open the
      seat lifts to 9 (ui-conversation ConversationRoot) so the menu is never
@@ -127,11 +142,15 @@
   height: 0;
   display: flex;
   justify-content: flex-end;
-  padding-right: max(0px, calc((100% - var(--dsh-chat-content-width)) / 2));
+  padding-right: max(
+    calc(var(--dsh-composer-side-clearance) + 16px),
+    calc((100% - var(--dsh-chat-content-width)) / 2)
+  );
   pointer-events: none;
 }
 
 :global([data-conversation-scroll]) .toBottomSlot {
+  position: sticky;
   /* Clears the sticky composer stack (docks + input card + stats): the live
      height rides --dsh-composer-height (ConversationRoot's seat observer) so
      the control follows a growing textarea; the fallback covers the first

@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "package": "dsh-nexttavern-token-meter",
   "upstreamPackage": "@deepseek-ai/dsh-token-meter",
-  "upstreamVersion": "0.1.7-alpha.1",
+  "upstreamVersion": "0.1.7-rc.2",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
-  "commit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
   "license": "MIT",
   "files": [
     {
@@ -41,6 +41,26 @@
       "source": "src/usage-projection.ts",
       "upstream": "packages/llm/token-meter/src/usage-projection.ts",
       "upstreamSha256": "0126f8ee5c63c2ee848f732a28ed6c7e31f6adcdb43271d6cd0a6f260d0d3465"
+    },
+    {
+      "source": "src/client.ts",
+      "upstream": "packages/llm/token-meter/src/client.ts",
+      "upstreamSha256": "7f011c9fe730aeb01013ce695132a1b1c7282c4208ec4a92a6b08dbd189473f8"
+    },
+    {
+      "source": "src/projection.ts",
+      "upstream": "packages/llm/token-meter/src/projection.ts",
+      "upstreamSha256": "b29d847f6a2a8cfeb2f4666c6bf06f361258dd8d316ad8ed9e5b006792d541f0"
+    },
+    {
+      "source": "src/turn-usage.ts",
+      "upstream": "packages/llm/token-meter/src/turn-usage.ts",
+      "upstreamSha256": "5fcf1d4099616a221f9368c3148ca8ea0121e9e50cd3ebc5daefa004137fb6bd"
+    },
+    {
+      "source": "src/types.ts",
+      "upstream": "packages/llm/token-meter/src/types.ts",
+      "upstreamSha256": "d0c153b4ff135839c072b1c57056366003028fb2f5ba7ea745845580c5fcb08f"
     }
   ],
   "changes": [

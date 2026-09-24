@@ -52,6 +52,7 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
 /** Session commands whose activation policy is explicit at each Remote method. */
+import { modelAvailable } from './catalog.js';
 import { randomUUID } from 'node:crypto';
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { AttachmentError } from '@deepseek-ai/dsh-attachment';
@@ -138,14 +139,15 @@ export class SessionCommandController {
         return { sessionId, ...(agentPreset === undefined ? {} : { agentPreset }) };
     }
     /**
-     * Validate and install one Session-local model selection.
+     * Validate and install one Session-local model selection; save the default in the background.
      * @param request - Session identity and requested model selection.
-     * @returns the normalized selection installed for the Session.
+     * @returns the normalized selection installed for the Session, without waiting for default persistence.
      */
     async selectModel(request) {
         const agent = await this.resolveAgent(request.sessionId);
         return this.agents.serializeImageAdmission(agent, async () => {
             try {
+                await this.requireModel(request);
                 const resolved = await this.ctx.llm.resolveCallConfig({
                     provider: request.provider,
                     model: request.model,
@@ -161,12 +163,9 @@ export class SessionCommandController {
                         : { reasoningEffort: resolved.reasoningEffort }),
                 };
                 this.agents.selectForNextRequest(agent, selected);
-                try {
-                    await this.ctx.agentDefaultModel.saveSelection(selected);
-                }
-                catch (error) {
+                void this.ctx.agentDefaultModel.saveSelection(selected).catch((error) => {
                     this.ctx.logger.warn(`session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`);
-                }
+                });
                 return { selected: { ...selected } };
             }
             catch (error) {
@@ -314,10 +313,6 @@ export class SessionCommandController {
         const agent = await this.resolveAgent(request.sessionId);
         if (hasPromptRequest(agent, request.requestId))
             return { accepted: true };
-        const selection = this.agents.selectionFor(agent).current;
-        if (!routeServed(this.ctx, selection.provider)) {
-            throw new RemoteError('session/model-unavailable', `no adapter serves provider "${selection.provider}"; select a model for this session`, { provider: selection.provider, model: selection.model });
-        }
         const source = {
             kind: 'user',
             rpcId: request.requestId,
@@ -367,6 +362,11 @@ export class SessionCommandController {
             return { accepted: true };
         };
         return hasImage ? this.agents.serializeImageAdmission(agent, admit) : admit();
+    }
+    async requireModel(selection) {
+        if (!await modelAvailable(this.ctx, selection)) {
+            throw new RemoteError('session/model-unavailable', 'Select an available model before sending a message.', { provider: selection.provider, model: selection.model });
+        }
     }
     /**
      * Read one durable image after proving the Session log references it.
@@ -640,7 +640,4 @@ function referencedImage(events, attachmentId) {
             return found;
     }
     return undefined;
-}
-function routeServed(ctx, provider) {
-    return ctx.llm.listProviders().some(entry => entry.id === provider);
 }

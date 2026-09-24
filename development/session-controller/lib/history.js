@@ -116,7 +116,7 @@ export class SessionHistoryController {
             if (throughSeq >= 0 && sourceLog[throughSeq]?.seq !== throughSeq) {
                 throw new RemoteError('gateway/internal', `session log does not contain through seq ${String(throughSeq)}`, {});
             }
-            const page = paginate(sourceLog, beforeSeq, request.maxMessages ?? DEFAULT_MAX_MESSAGES, throughSeq);
+            const page = paginate(sourceLog, beforeSeq, request.maxMessages ?? DEFAULT_MAX_MESSAGES, throughSeq, request.turnWindow);
             const records = pageRecords(page.events);
             return {
                 records,
@@ -138,7 +138,7 @@ export class SessionHistoryController {
      * @returns a complete opening snapshot followed by gap-free durable events and opted-in assistant frames.
      */
     async *follow(request, signal) {
-        validateFollowRequest(request);
+        validateHistoryWindow(request);
         const { address } = request;
         const target = addressId(address);
         const buffered = new Deque();
@@ -199,7 +199,7 @@ export class SessionHistoryController {
                 signal.throwIfAborted();
                 const cursor = source.cursor;
                 snapshotCursor = cursor;
-                const page = paginate(events, undefined, request.maxMessages ?? DEFAULT_MAX_MESSAGES);
+                const page = paginate(events, undefined, request.maxMessages ?? DEFAULT_MAX_MESSAGES, cursor, request.turnWindow);
                 const assistantStream = request.assistantStream === true
                     ? this.assistantStreams.get(target)?.snapshot() ?? { revision: 0 }
                     : undefined;
@@ -328,15 +328,22 @@ function validatePageRequest(request) {
             || Object.is(request.beforeSeq, -0))) {
         throw new RemoteError('gateway/bad-request', 'beforeSeq must be a non-negative safe integer', {});
     }
+    validateHistoryWindow(request);
+}
+function validateHistoryWindow(request) {
     if (request.maxMessages !== undefined
         && (!Number.isSafeInteger(request.maxMessages) || request.maxMessages <= 0)) {
         throw new RemoteError('gateway/bad-request', 'maxMessages must be a positive safe integer', {});
     }
-}
-function validateFollowRequest(request) {
-    if (request.maxMessages !== undefined
-        && (!Number.isSafeInteger(request.maxMessages) || request.maxMessages <= 0)) {
-        throw new RemoteError('gateway/bad-request', 'maxMessages must be a positive safe integer', {});
+    const window = request.turnWindow;
+    if (window !== undefined) {
+        if (!Number.isSafeInteger(window.minMessages) || window.minMessages <= 0
+            || window.minMessages > (request.maxMessages ?? DEFAULT_MAX_MESSAGES)) {
+            throw new RemoteError('gateway/bad-request', 'turnWindow.minMessages must be a positive safe integer no greater than maxMessages', {});
+        }
+        if (!Number.isSafeInteger(window.minTurns) || window.minTurns <= 0) {
+            throw new RemoteError('gateway/bad-request', 'turnWindow.minTurns must be a positive safe integer', {});
+        }
     }
 }
 function addressId(address) {
@@ -386,12 +393,20 @@ function rejectNotFound(address) {
         childSessionId: address.childSessionId,
     });
 }
-function paginate(events, beforeSeq, maxMessages, throughSeq = events.at(-1)?.seq ?? -1) {
+function paginate(events, beforeSeq, maxMessages, throughSeq, turnWindow) {
     const end = SessionLogOffset(Math.min(throughSeq + 1, beforeSeq ?? throughSeq + 1));
     let count = 0;
+    let turns = 0;
     let cut = SessionLogOffset(0);
     for (let index = end - 1; index >= 0; index--) {
         const event = events[index];
+        if (turnWindow !== undefined && event.type === 'turn/start') {
+            turns++;
+            if (count >= turnWindow.minMessages && turns >= turnWindow.minTurns) {
+                cut = SessionLogOffset(index);
+                break;
+            }
+        }
         if (!MESSAGE_TYPES.has(event.type) || !isAppendSurfaceEvent(event))
             continue;
         count++;

@@ -29,6 +29,12 @@ function retrySeconds(milliseconds) {
     return Math.max(1, Math.ceil(milliseconds / 1_000));
 }
 function failureMessage(message, code, t) {
+    if (code === 'ACCOUNT_SIGNED_OUT')
+        return t('message.failure.accountSignedOut');
+    if (code === 'ACCOUNT_SIGN_IN_REQUIRED')
+        return t('message.failure.accountSignInRequired');
+    if (code === 'QUOTA' || code === 'ACCOUNT_QUOTA')
+        return t('message.failure.quota');
     return code === 'AUTH' ? t('message.failure.auth') : message;
 }
 function ModelRetryItem({ node, active, t }) {
@@ -74,7 +80,7 @@ function ModelRetryItem({ node, active, t }) {
 }
 /** Persistent, turn-positioned feedback for a terminal failure. */
 function TurnErrorItem({ node, t }) {
-    return (_jsxs("div", { className: css.turnErrorRow, role: "status", children: [_jsx(StateDot, { state: "error", className: css.turnErrorDot }), _jsxs("div", { className: css.turnErrorCopy, children: [_jsx("span", { className: css.turnErrorTitle, children: t('message.turnError') }), _jsx("span", { className: css.turnErrorMessage, children: failureMessage(node.message, node.code, t) })] }), node.code !== undefined && _jsx("code", { className: css.turnErrorCode, children: node.code })] }));
+    return (_jsxs("div", { className: css.turnErrorRow, role: "status", children: [_jsx(StateDot, { state: "error", className: css.turnErrorDot }), _jsxs("div", { className: css.turnErrorCopy, children: [_jsx("span", { className: css.turnErrorTitle, children: node.code === 'ACCOUNT_SIGNED_OUT' ? t('message.accountStopped') : t('message.turnError') }), _jsx("span", { className: css.turnErrorMessage, children: failureMessage(node.message, node.code, t) })] }), node.code !== undefined && _jsx("code", { className: css.turnErrorCode, children: node.code })] }));
 }
 /** Persistent, turn-positioned notice for a turn ended at the output-token cap. */
 function TurnMaxTokensItem({ t }) {

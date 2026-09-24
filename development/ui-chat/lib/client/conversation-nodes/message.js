@@ -8,6 +8,18 @@ function isCompactionCheckpoint(event) {
     const source = event.data.source;
     return source.kind === 'compact-checkpoint';
 }
+/** Context presentation shared by user-role injections and developer messages. */
+function contextMessage(event, message) {
+    return {
+        kind: 'context',
+        seq: event.seq,
+        time: event.time,
+        content: message.content,
+        source: message.source,
+        producer: contextProducer(message.source),
+        form: contextForm(message.source),
+    };
+}
 /** User, steering, and injected-context message classification Definition. */
 export const messageDefinition = {
     kind: 'input-message',
@@ -18,15 +30,12 @@ export const messageDefinition = {
                 ? { id: String(event.data.id), role: 'start' }
                 : null;
         }
-        // Developer history is persisted for V4; presentation is intentionally deferred.
-        if (event.type === 'developer/message')
-            throw new Error('Chat developer messages are not supported yet');
         return null;
     },
     start: (_context, match, reader) => {
-        if (match.event.type !== 'user/message')
-            throw new Error('input-message start requires user/message');
         const event = match.event;
+        if (event.type !== 'user/message')
+            throw new Error('input-message start requires user/message');
         if (event.data.source.kind !== 'user') {
             const nextTurn = reader.previous('inbox-next-turn')?.state;
             const nextStep = reader.previous('inbox-next-step')?.state;
@@ -39,14 +48,8 @@ export const messageDefinition = {
                 && (nextTurn?.claimSeq ?? -1) < turnStart && nextStep?.claimedHuman === false
                 && nextStep.currentClaimed.has(String(event.data.id));
             return {
-                kind: 'context',
+                ...contextMessage(event, event.data),
                 waking: nextTurn?.currentClaimed.has(String(event.data.id)) === true || idleSteer,
-                seq: event.seq,
-                time: event.time,
-                content: event.data.content,
-                source: event.data.source,
-                producer: contextProducer(event.data.source),
-                form: contextForm(event.data.source),
             };
         }
         const claimed = reader.previous('inbox-next-step')
@@ -79,10 +82,25 @@ export const messageDefinition = {
         return chatNode(context, waking ? 'turn-trigger' : context.state.kind, context.state.seq, context.state);
     },
 };
+/** Developer history uses the input-message lifecycle and context presentation. */
+export const developerMessageDefinition = {
+    ...messageDefinition,
+    kind: 'developer-message',
+    match: event => event.type === 'developer/message'
+        ? { id: String(event.data.message.id), role: 'start' }
+        : null,
+    start: (_context, match) => {
+        const event = match.event;
+        if (event.type !== 'developer/message')
+            throw new Error('developer-message start requires developer/message');
+        return contextMessage(event, event.data.message);
+    },
+};
 /**
- * Register the user, steering, and injected-context message contribution.
+ * Register user, steering, injected-context, and developer message contributions.
  * @param ctx - owning UI Conversation context.
  */
 export function registerMessageConversationNode(ctx) {
     ctx.uiConversation.events.register(messageDefinition);
+    ctx.uiConversation.events.register(developerMessageDefinition);
 }

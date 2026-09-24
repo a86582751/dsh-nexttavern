@@ -17,10 +17,11 @@ import browserCss from '../rows/WorkspaceBrowser.module.css';
  * @param props - owner share, the archive share, and the menu open state.
  * @returns the row.
  */
-export function ArchiveSessionMenuItem({ sessionId, useArchived, useMenuOpenState, archiveSession, unarchiveSession, t, }) {
+export function ArchiveSessionMenuItem({ sessionId, useArchived, useMenuOpenState, useShortcuts, archiveSession, unarchiveSession, t, }) {
     const [, setMenuOpen] = useMenuOpenState();
+    const shortcut = useShortcuts(rows => rows.find(row => row.id === 'session.archive'));
     const archived = useArchived(set => set.has(sessionId));
-    return (_jsx(MenuItemButton, { icon: archived ? _jsx(IconUnarchiveOutlineRegular, { size: 14 }) : _jsx(IconArchiveOutlineRegular, { size: 14 }), onSelect: () => {
+    return (_jsx(MenuItemButton, { shortcut: archived ? undefined : shortcut, icon: archived ? _jsx(IconUnarchiveOutlineRegular, { size: 14 }) : _jsx(IconArchiveOutlineRegular, { size: 14 }), onSelect: () => {
             setMenuOpen(false);
             (archived ? unarchiveSession : archiveSession)(sessionId);
         }, children: t(archived ? 'menu.unarchiveSession' : 'menu.archiveSession') }));

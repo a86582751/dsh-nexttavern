@@ -40,6 +40,8 @@ export function systemMessageDefinition(inspect) {
             ? { id: String(event.seq), role: 'start' }
             : null,
         start: (_context, match, reader) => {
+            if (match.event.type === 'assistant/live-chunk')
+                throw new Error('system-message requires a durable event');
             return inspect(reader.previous('system-message')?.state, match.event);
         },
         update: context => context.state,

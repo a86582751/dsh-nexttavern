@@ -1,11 +1,15 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/process-activity.ts; edit the TypeScript source.
 import { isRunningTool } from "../contract/chat-nodes.js";
 function activity(name) {
-    if (['read', 'read_image', 'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'].includes(name))
+    if (name === 'read')
         return 'read';
+    if (name === 'read_image')
+        return 'readImage';
     if (name === 'grep' || name === 'glob' || name.endsWith('_inspect'))
         return 'search';
-    if (['write', 'edit', 'apply_patch'].includes(name))
+    if (name === 'write')
+        return 'write';
+    if (name === 'edit' || name === 'apply_patch')
         return 'edit';
     if (['bash', 'pwsh', 'exec_command', 'write_stdin'].includes(name) || name.startsWith('terminal_'))
         return 'commands';
@@ -104,6 +108,7 @@ export function processActivity(nodes) {
     let running;
     let runningDetail = '';
     let runningTime = -Infinity;
+    let preparing;
     const visit = (tool) => {
         if (seen.has(tool.callId))
             return;
@@ -113,7 +118,10 @@ export function processActivity(nodes) {
             const kind = activity(call.name);
             if (isRunningTool(tool) && tool.time >= runningTime) {
                 running = kind;
-                runningDetail = liveToolDetail(tool.name, tool.argsRaw);
+                preparing = tool.phase === 'preparing';
+                runningDetail = tool.phase === 'preparing'
+                    ? kind === 'tools' ? tool.name : ''
+                    : liveToolDetail(tool.name, tool.argsRaw);
                 runningTime = tool.time;
             }
             counts.set(kind, (counts.get(kind) ?? 0) + 1);
@@ -131,5 +139,6 @@ export function processActivity(nodes) {
         counts: [...counts].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count),
         running,
         runningDetail,
+        ...preparing ? { preparing: true } : {},
     };
 }

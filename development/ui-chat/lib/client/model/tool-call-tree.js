@@ -32,6 +32,7 @@ export class ToolCallTree {
         if (event.type === 'tool/ptc-dispatch-start') {
             const data = event.data;
             const running = {
+                phase: 'start',
                 callId: data.subCallId,
                 parentCallId: data.parentCallId,
                 name: data.name,

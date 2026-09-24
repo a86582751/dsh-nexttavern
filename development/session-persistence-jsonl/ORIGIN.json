@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "package": "dsh-nexttavern-session-persistence-jsonl",
   "upstreamPackage": "@deepseek-ai/dsh-session-persistence-jsonl",
-  "upstreamVersion": "0.1.7-alpha.1",
+  "upstreamVersion": "0.1.7-rc.2",
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
-  "commit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
   "license": "MIT",
   "files": [
     {
@@ -66,6 +66,11 @@
       "source": "src/catalog-migration.ts",
       "upstream": "packages/session/session-persistence-jsonl/src/catalog-migration.ts",
       "upstreamSha256": "414ffd8d3ed6b80bb239f54916ec64e6b5f3d06ebc5a0d950922391271d612fa"
+    },
+    {
+      "source": "src/testing/generation.ts",
+      "upstream": "packages/session/session-persistence-jsonl/src/testing/generation.ts",
+      "upstreamSha256": "247585cd39569c8e157c8f13495403650563c545a9d35e2be2807e803800b7f3"
     }
   ],
   "changes": [

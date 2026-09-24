@@ -1,6 +1,7 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/chat/use-chat-reading.ts; edit the TypeScript source.
 /** Follow-tail ownership, saved-position restoration, and sampled reader movement. */
 import { useLayoutEffect, useState } from 'react';
+import { useScrollFollow } from "./use-scroll-follow.js";
 const FOLLOW_THRESHOLD = 24;
 const SCROLL_SAMPLE_INTERVAL_MS = 500;
 /** Owns reading policy and its cancellable sampling work, without DOM access. */
@@ -9,14 +10,16 @@ export class ChatReading {
     store;
     state;
     onChange;
+    follow;
     sampleTimer = null;
     probeFrame = null;
     sampled = null;
-    constructor(viewport, store, state, onChange) {
+    constructor(viewport, store, state, onChange, follow) {
         this.viewport = viewport;
         this.store = store;
         this.state = state;
         this.onChange = onChange;
+        this.follow = follow;
     }
     /**
      * Expose pending reader ownership to navigation and resize handlers.
@@ -55,7 +58,7 @@ export class ChatReading {
     }
     /** Land at the current floor and clear saved reader position. */
     followTail() {
-        const landing = this.viewport.scrollToBottom();
+        const landing = this.viewport.scrollToBottom(this.follow);
         if (landing === null)
             return;
         this.cancelPending();
@@ -72,7 +75,7 @@ export class ChatReading {
         if (landing === null)
             return;
         this.cancelPending();
-        const following = this.nearBottom(landing.metrics);
+        const following = this.follow.nearBottom(landing.metrics);
         this.commit(landing, following, following ? this.viewport.latestTurn : this.state.activeTurn, following);
         if (!this.state.followingTail && landing.position === null) {
             const position = this.viewport.capturePosition();
@@ -87,7 +90,7 @@ export class ChatReading {
      */
     acceptNavigation(landing) {
         this.cancelPending();
-        const following = this.nearBottom(landing.metrics);
+        const following = this.follow.nearBottom(landing.metrics);
         this.commit(landing, following, landing.turn ?? (following ? this.viewport.latestTurn : this.state.activeTurn));
     }
     /**
@@ -137,9 +140,6 @@ export class ChatReading {
         else
             this.probeFrame = requestAnimationFrame(this.probe);
     }
-    nearBottom(metrics) {
-        return metrics.floor - metrics.top <= FOLLOW_THRESHOLD + 1;
-    }
     commit(landing, followingTail, activeTurn, initialized = true) {
         if (followingTail)
             this.store.save(null);
@@ -148,6 +148,7 @@ export class ChatReading {
         this.publish({ initialized, followingTail, activeTurn });
     }
     publish(state) {
+        this.follow.setFollowing(state.followingTail);
         if (state.initialized === this.state.initialized && state.followingTail === this.state.followingTail
             && state.activeTurn === this.state.activeTurn)
             return;
@@ -169,7 +170,7 @@ export class ChatReading {
         const scroll = this.viewport.readScroll();
         if (scroll === null)
             return;
-        const activeTurn = this.nearBottom(scroll.metrics) ? this.viewport.latestTurn : this.viewport.readVisibleTurn(scroll.metrics);
+        const activeTurn = this.follow.nearBottom(scroll.metrics) ? this.viewport.latestTurn : this.viewport.readVisibleTurn(scroll.metrics);
         this.publish({ ...this.state, initialized: true, activeTurn });
     };
     flushSample = () => {
@@ -179,7 +180,7 @@ export class ChatReading {
         const scroll = this.viewport.readScroll();
         if (scroll === null)
             return;
-        const followingTail = scroll.movedByReader ? this.nearBottom(scroll.metrics) : this.state.followingTail;
+        const followingTail = this.follow.sample(scroll.metrics, scroll.movedByReader);
         let position = null;
         if (!scroll.movedByReader && followingTail)
             this.followTail();
@@ -188,7 +189,7 @@ export class ChatReading {
             this.viewport.acknowledge(scroll.metrics);
             if (followingTail || position !== null)
                 this.store.save(position);
-            const activeTurn = this.nearBottom(scroll.metrics) ? this.viewport.latestTurn : this.viewport.readVisibleTurn(scroll.metrics);
+            const activeTurn = this.follow.nearBottom(scroll.metrics) ? this.viewport.latestTurn : this.viewport.readVisibleTurn(scroll.metrics);
             this.publish({ initialized: true, followingTail, activeTurn });
         }
         this.sampled?.({ position, movedByReader: scroll.movedByReader, followingTail });
@@ -207,7 +208,8 @@ export function useChatReading(viewport, store, initialTurn) {
         followingTail: store.read() === null,
         activeTurn: initialTurn,
     }));
-    const [reading] = useState(() => new ChatReading(viewport, store, state, setState));
+    const follow = useScrollFollow(state.followingTail, FOLLOW_THRESHOLD + 1);
+    const [reading] = useState(() => new ChatReading(viewport, store, state, setState, follow));
     useLayoutEffect(() => { reading.setStore(store); }, [reading, store]);
     useLayoutEffect(() => () => { reading.dispose(); }, [reading]);
     return { reading, state };

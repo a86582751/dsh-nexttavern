@@ -55,13 +55,15 @@ function presetFixture(conflict = false, pathProbe?: Record<string, unknown>) {
       save(path.join(productRoot, 'preset/skills/path-probe/SKILL.md'), '# Bundled skill path probe')
     }
     save(path.join(productRoot, 'preset/agent.cordis.yml'), presetBody)
-    return {rows: [roleplayPresetEntry], peers: {'@deepseek-ai/dsh-agent-preset': '0.1.7-alpha.1'},
+    return {rows: [roleplayPresetEntry], peers: {'@deepseek-ai/dsh-agent-preset': '0.1.7-rc.2'},
       async initialize(ctx: any) {
         if (pathProbe) ctx.on('nexttavern/preset-path', (value: object) => Object.assign(pathProbe, value))
         await ctx.plugin(SessionStore)
         await ctx.plugin(Projections)
         await ctx.plugin(TypertRegistry)
         await ctx.plugin(SystemPrompt, {includeHarnessIdentity: false, includeRuntimeContext: false, persona: ''})
+        // rc.2 retired the mode-selection switch; a profile patch that still carries
+        // the field must keep mounting, and the saved default governs new sessions.
         await ctx.plugin(PresetRegistry, {default: 'custom', selectedDefault: 'custom', modeSelectionEnabled: false})
         await ctx.plugin(AgentPreset, {id: 'custom', plugins: []})
         if (conflict) await ctx.plugin(AgentPreset, {id: 'roleplay', name: 'Player preset', plugins: []})
@@ -76,7 +78,8 @@ test('ordinary product declaration retains registry policy and live Agents acros
   try {
     const roster = await f.ctx.agentPresets.remoteExportList()
     assert.equal(f.ctx.agentPresets.defaultId, 'custom')
-    assert.equal(roster.modeSelectionEnabled, false)
+    assert.equal(roster.modeSelectionEnabled, undefined, 'the retired selection switch is no longer published')
+    assert.equal(roster.presets.find((p: any) => p.id === 'custom')?.isDefault, true)
     const roleplay = await f.ctx.agentPresets.resolve('roleplay')
     assert.equal((await f.ctx.agentPresets.list()).find((p: any) => p.id === 'roleplay')?.name, 'NextTavern')
     assert.equal(roleplay.broken, undefined)

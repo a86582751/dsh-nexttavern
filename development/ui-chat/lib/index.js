@@ -2,7 +2,7 @@
 import z from '@deepseek-ai/schemastery';
 import { TRANSCRIPT_VIEW_FIELD } from './chat-settings.js';
 import { ChatSettingsFields } from './chat-settings.js';
-export { CHAT_SETTINGS_NAMESPACE, DEFAULT_TRANSCRIPT_VIEW_MODE, LEGACY_TRANSCRIPT_VIEW_MODE, TRANSCRIPT_VIEW_FIELD, TRANSCRIPT_VIEW_MODES, } from './chat-settings.js';
+export { CHAT_SETTINGS_NAMESPACE, DEFAULT_TRANSCRIPT_VIEW_MODE, LEGACY_TRANSCRIPT_VIEW_MODE, LEGACY_EXPANDED_TRANSCRIPT_VIEW_MODE, TRANSCRIPT_VIEW_FIELD, TRANSCRIPT_VIEW_MODES, } from './chat-settings.js';
 /** Live preferences projected to the browser. */
 export const Config = z.object({
     [TRANSCRIPT_VIEW_FIELD]: ChatSettingsFields[TRANSCRIPT_VIEW_FIELD].volatile(),

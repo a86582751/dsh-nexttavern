@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "package": "ui-chat",
-  "upstreamCommit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
+  "upstreamCommit": "477b4f420553e8a52c2fbccc464d7561b239c443",
   "upstreamRepository": "deepseek-ai/deepseek-harness",
   "sourceRoot": "packages/client/ui-chat/src",
   "packageMetadataSource": "packages/client/ui-chat/package.json",
   "licenseSource": "LICENSE",
-  "generatedAt": "2026-09-22",
+  "generatedAt": "2026-09-24",
   "notes": [
     "Extracted from the fixed upstream commit without reading the dirty upstream worktree.",
     "Upstream MIT notices are retained in LICENSE.upstream; maintained modifications are GPL-3.0-only.",
@@ -17,12 +17,12 @@
     {
       "path": "src/chat-settings.ts",
       "sourcePath": "packages/client/ui-chat/src/chat-settings.ts",
-      "originalSha256": "0d6ca83d674205add32b29b2811ddcdb749137a2cc65aded9b522099ce2841ff"
+      "originalSha256": "a4faeb70fce2d2850632fa9900076e0763d8f0c6993add2198b5331b58f6cac2"
     },
     {
       "path": "src/client/apply.ts",
       "sourcePath": "packages/client/ui-chat/src/client/apply.ts",
-      "originalSha256": "571bd71dcd10a02c72784c1ee676047bb86a56e4336a5a67a4ba6a81168176f0"
+      "originalSha256": "8948ecd7943051f1e3680a5a487e035f90ca198cde7eb66af5737d2ecd1179a7"
     },
     {
       "path": "src/client/chat/accessibility.module.css",
@@ -32,17 +32,17 @@
     {
       "path": "src/client/chat/ApprovalCommand.tsx",
       "sourcePath": "packages/client/ui-chat/src/client/chat/ApprovalCommand.tsx",
-      "originalSha256": "b12d9973dd751be1a3f8df31011655805902b11a891734b974179c31beec28f8"
+      "originalSha256": "5fe1d13f1072d5393d765ccfd8e61734ee5e75cf57949a45e14f392cc874d844"
     },
     {
       "path": "src/client/chat/AssistantMarkdown.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/AssistantMarkdown.module.css",
-      "originalSha256": "3eb239b689df5c8e28b836c0cd21cfadf6fe00d271ac4cd6abe4fbd802f4c572"
+      "originalSha256": "e10c5986e93070cf87bbd5c4a570a64a103c0d596d178ad4b8e170bbb6883908"
     },
     {
       "path": "src/client/chat/AssistantMarkdown.tsx",
       "sourcePath": "packages/client/ui-chat/src/client/chat/AssistantMarkdown.tsx",
-      "originalSha256": "f9651a5da362aebc0afa552d1b8aeb9c7dba1fdf72f0c205ea022aa912a96108"
+      "originalSha256": "ac98e943bde17e8f5e7ace6d16d0343297e7cb86da14d066eb6a856cf8363f07"
     },
     {
       "path": "src/client/chat/AssistantNodeView.tsx",
@@ -57,22 +57,22 @@
     {
       "path": "src/client/chat/ChatGroupSeat.tsx",
       "sourcePath": "packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx",
-      "originalSha256": "7c4b8a8b4d8eb6f0d994101fde7c33f81ddcfa512ea6cf82bfe975a6d0f54c6d"
+      "originalSha256": "ab89c1f8095a53b7a6aa46e46ac5db22cd2533a5248aa1a125d25eff612e6002"
     },
     {
       "path": "src/client/chat/ChatNodeSeat.tsx",
       "sourcePath": "packages/client/ui-chat/src/client/chat/ChatNodeSeat.tsx",
-      "originalSha256": "140a63acb10014f5b08d9040da1a3194d55ca94206b6fd7f02b2b7b9799e78eb"
+      "originalSha256": "e07866ad8348f0b3d7d88be05f230828500982a046acfdc0bbd1d5dd18b61d51"
     },
     {
       "path": "src/client/chat/ChatView.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/ChatView.module.css",
-      "originalSha256": "e9b0af73970d7b8449a59eaf382a0f46cfc37a316b04898a8db02bb5cffb040d"
+      "originalSha256": "d6f51ea3c7699f139c192ea4317c7ae5221a9ba6bb3cc621361c994bf12e736e"
     },
     {
       "path": "src/client/chat/ChatView.tsx",
       "sourcePath": "packages/client/ui-chat/src/client/chat/ChatView.tsx",
-      "originalSha256": "e9b97da3576f4ced67b06ddb5970aa4d1c53bb087e378fb65a91e1cf97aa9b28"
+      "originalSha256": "f27c88bee5687d4c61505569532352112497cf29a814ddd9ef6a3791c15ecf90"
     },
     {
       "path": "src/client/chat/CommandNodeView.tsx",
@@ -102,17 +102,17 @@
     {
       "path": "src/client/chat/ContextInjectionRow.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/ContextInjectionRow.module.css",
-      "originalSha256": "233b9e4d400343d4aadd91b6977fd9108c020168916acdf4996adf8774eb791f"
+      "originalSha256": "1877c8962bf9462e9763517873e13660e9e8ef3d3e385853b388a377cdd3c808"
     },
     {
       "path": "src/client/chat/ContextInjectionRow.tsx",
       "sourcePath": "packages/client/ui-chat/src/client/chat/ContextInjectionRow.tsx",
-      "originalSha256": "767edb440bffc2941c06a021d225f51b113d7b56ed6a6cbb0246690fa775e4db"
+      "originalSha256": "0cb1121df57c18d158ab077ebf3ad69675b97d78137b7d53699db3dfa22f6eb1"
     },
     {
       "path": "src/client/chat/GenericCommandCard.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/GenericCommandCard.module.css",
-      "originalSha256": "ebc5d385fe67531e20e9b04510b6a5b5eccba148dc421ce644c3c66a83744d3e"
+      "originalSha256": "593ca99a0e1d85915db85d7c69069c838070eba6ced984744342472f25812604"
     },
     {
       "path": "src/client/chat/GenericCommandCard.tsx",
@@ -127,7 +127,7 @@
     {
       "path": "src/client/chat/MessageIconActions.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/MessageIconActions.module.css",
-      "originalSha256": "1d521755be649207a9cb3f88173034bec2119cde2c502f514f35567afaf73b36"
+      "originalSha256": "b5e3ced5112bb676345eaa7d1bf7ec291b87f56ffa87579b6ece7b6ca6c72902"
     },
     {
       "path": "src/client/chat/MessageIconActions.tsx",
@@ -137,12 +137,12 @@
     {
       "path": "src/client/chat/MessageItem.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/MessageItem.module.css",
-      "originalSha256": "998c35f8b412380fb64819d8036f136dd0661d6fbc31692656c7ce0514fb9308"
+      "originalSha256": "3aafbe5f99bb3556187bedf8be19c5f0cf750e0774dcdd936205a0b4f4be8202"
     },
     {
       "path": "src/client/chat/MessageItem.tsx",
       "sourcePath": "packages/client/ui-chat/src/client/chat/MessageItem.tsx",
-      "originalSha256": "181844e9c1809607458dfdfbbffa50cbc16357d0696ae78a8ee13f86b5fd6354"
+      "originalSha256": "ae4f777114bfd175bc7655acdfc0a6356f3de5bf5f4c9df3b1d2d0b27073598d"
     },
     {
       "path": "src/client/chat/ReasoningRow.module.css",
@@ -172,7 +172,7 @@
     {
       "path": "src/client/chat/stat-dialog.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/stat-dialog.module.css",
-      "originalSha256": "2964d16ea331b8f024738e96920217c20c97dada06a9547cdf538f01a053e599"
+      "originalSha256": "5dd6d59fceff90b5f8ec4066f14982a161cb492532eabe538823665f9315715d"
     },
     {
       "path": "src/client/chat/stat-dialog.ts",
@@ -182,7 +182,7 @@
     {
       "path": "src/client/chat/StatsPills.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/StatsPills.module.css",
-      "originalSha256": "a0b532bcdd46645053ceab1f54b244535852b31d512a972a1bb988c63d3f4443"
+      "originalSha256": "409248425512a70d9287d0a67d2a045b9cd025e4cefb09c908e97c0ab5edb211"
     },
     {
       "path": "src/client/chat/StatsPills.tsx",
@@ -222,7 +222,7 @@
     {
       "path": "src/client/chat/TurnNavigator.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/TurnNavigator.module.css",
-      "originalSha256": "fd65a13a19fd3a9b47ff3a6c6ac35900255e24036dc50440205dae796a699372"
+      "originalSha256": "114ad82f41d9676dfd39ee6c8f9c239fcbbe343f9555dc9fbaea4814d9b8acdc"
     },
     {
       "path": "src/client/chat/TurnNavigator.tsx",
@@ -237,7 +237,7 @@
     {
       "path": "src/client/chat/TurnProcessNodeView.tsx",
       "sourcePath": "packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx",
-      "originalSha256": "74f563db1c1cb96a1f59182eac72f0fcab40776ebd03ae85af9c6e3029709aa2"
+      "originalSha256": "731a879e517c9ff28c7d833863e774745666cffe3a2fd2f9aa3fff1adcbc4a17"
     },
     {
       "path": "src/client/chat/TurnTailNodeView.module.css",
@@ -252,7 +252,7 @@
     {
       "path": "src/client/chat/TurnTriggerNodeView.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/TurnTriggerNodeView.module.css",
-      "originalSha256": "2f63055a3e73e3a7bde426064b939fbcc3f05b4617a09dfc8c93a5b0cd4b123d"
+      "originalSha256": "29bb7457616515327d7f23d96a1e29ad34523fa22d41e9332ce571a929aa0993"
     },
     {
       "path": "src/client/chat/TurnTriggerNodeView.tsx",
@@ -262,7 +262,7 @@
     {
       "path": "src/client/chat/TurnUsagePanel.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/chat/TurnUsagePanel.module.css",
-      "originalSha256": "9ca3824c9df99b36349e68311205a0d643a42343a08aaed44403f84277fcb4e2"
+      "originalSha256": "04bf7fd6d5e3a243225d66faf731774555a0c36a393415ae4f0479528f2f7fd4"
     },
     {
       "path": "src/client/chat/TurnUsagePanel.tsx",
@@ -282,7 +282,7 @@
     {
       "path": "src/client/chat/use-chat-reading.ts",
       "sourcePath": "packages/client/ui-chat/src/client/chat/use-chat-reading.ts",
-      "originalSha256": "ae7e094e73d8a604c3bcc491839a697dca1f13c29bdd53f692974b63895c91fe"
+      "originalSha256": "3b1394c43c1c73c17e1a087e40382e5445623fbea310793a2e8d2f16d3dbf41e"
     },
     {
       "path": "src/client/chat/use-chat-scroll.ts",
@@ -292,7 +292,7 @@
     {
       "path": "src/client/chat/use-chat-viewport.ts",
       "sourcePath": "packages/client/ui-chat/src/client/chat/use-chat-viewport.ts",
-      "originalSha256": "63532b856c9b37a72e2d774fe18c2db84a75a19381175e6930c4c13a2110c383"
+      "originalSha256": "171ab98296b21398b1909a4f346f23ee7988da8bf77bcbfac26ae9ad1dad1303"
     },
     {
       "path": "src/client/chat/use-disclosure.ts",
@@ -317,22 +317,22 @@
     {
       "path": "src/client/contract/chat-visibility.ts",
       "sourcePath": "packages/client/ui-chat/src/client/contract/chat-visibility.ts",
-      "originalSha256": "5928a3c4a28f6e6bd9ad4fc979ebe1f90024c2e83b66da00e5a2c4765ef25301"
+      "originalSha256": "e562d4b8d3a50891e29957763e1fa63cf8a204321257c534acaa89e3d5a486a5"
     },
     {
       "path": "src/client/contract/process-groups.ts",
       "sourcePath": "packages/client/ui-chat/src/client/contract/process-groups.ts",
-      "originalSha256": "354a6113f63a4da820c7824008fde6c7144096ca4400d039d8a9b8bd6a107324"
+      "originalSha256": "c918a12f1e719d3311b95b6a3b06f2c6d26c2cf8fca137dd2cae5539c20bb806"
     },
     {
       "path": "src/client/contract/slots.ts",
       "sourcePath": "packages/client/ui-chat/src/client/contract/slots.ts",
-      "originalSha256": "4bfe6f2b3d33d0ba4dc82f7ed93255ad4a2df16c6540937a07a658bd66d4d664"
+      "originalSha256": "99071c39ccc88d63505acf4cce7b2cf2a8b4cf5a9856b473e3ef11f8c7c52a7e"
     },
     {
       "path": "src/client/contract/snapshot.ts",
       "sourcePath": "packages/client/ui-chat/src/client/contract/snapshot.ts",
-      "originalSha256": "55c011d3c14fe268125cfaf51e6cdfcc2fe6bc096379b486af80fdddd913ba1c"
+      "originalSha256": "8392f513d36a0ce21d6b1e6e2c7f02b628bba8e84fd5c6d8e41146f8175fb10a"
     },
     {
       "path": "src/client/contract/store.ts",
@@ -352,7 +352,7 @@
     {
       "path": "src/client/conversation-nodes/assistant.ts",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/assistant.ts",
-      "originalSha256": "260d23dd62a6e53870130db4cb802f3b5f410761324226285c363816c973b454"
+      "originalSha256": "5e3c7279ddab97d2b0a479f8bb02f0005e78f9f58b1e97f4c487d60549594f5e"
     },
     {
       "path": "src/client/conversation-nodes/chat-snapshot-builder.ts",
@@ -392,7 +392,7 @@
     {
       "path": "src/client/conversation-nodes/message.ts",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/message.ts",
-      "originalSha256": "5fe85a85e9e5311fba2c258f0f8052b5fcbf0215c87ce339a5504a7808aacf69"
+      "originalSha256": "0ce690fcec8fb7776805750c1fbe2801861d714eadeaa6b62a3344d14095b621"
     },
     {
       "path": "src/client/conversation-nodes/partial.ts",
@@ -402,27 +402,27 @@
     {
       "path": "src/client/conversation-nodes/process-activity.ts",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/process-activity.ts",
-      "originalSha256": "2363e9d0fe8a060fd6d468368e1ffd52ae0565bed91a70ec7d5d187e0dda4809"
+      "originalSha256": "490b28f3fa34aaeee6f28af8e0b389b2646e3bb30f6f49b066c190b5eb98bb93"
     },
     {
       "path": "src/client/conversation-nodes/process-groups.ts",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/process-groups.ts",
-      "originalSha256": "989d4aff401539a10bb83feb4c6514582a3357b7f4ea880d1ad42c8b2559a027"
+      "originalSha256": "2d7188a9c35c846d0ec25c1de94b69cd5d77aa9c46ed44d94707a3794c18cd45"
     },
     {
       "path": "src/client/conversation-nodes/README.i18n.yaml",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/README.i18n.yaml",
-      "originalSha256": "3deecdd828bde0b8e1700693911a1c4fc2c9ed188085313d272787d8e4453f59"
+      "originalSha256": "bf421f8ce68ac7253484d0274d75f6c99a345391bffa3a5b1887f593488d8dbf"
     },
     {
       "path": "src/client/conversation-nodes/README.md",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/README.md",
-      "originalSha256": "ec4ae4cdcfd462c5be1d7b3ef51e887b3447e2a543f9be4885a93dd9d1a32740"
+      "originalSha256": "9345ec08a6646e8515cb4a9c8d14ae33ad35773f3de4c4bf346534f9c31c0c2c"
     },
     {
       "path": "src/client/conversation-nodes/README.zh.md",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/README.zh.md",
-      "originalSha256": "6f943046496d48c2536c3a194025a79850caaff01fcaa6289cb24ae9a0ca9972"
+      "originalSha256": "72c014c579427ca5c67c75b54e59b81afefa99a882730fd4506ea86e3182ae51"
     },
     {
       "path": "src/client/conversation-nodes/register.ts",
@@ -432,7 +432,7 @@
     {
       "path": "src/client/conversation-nodes/request-prompt.ts",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/request-prompt.ts",
-      "originalSha256": "0d0e919d47f9384f76a879d8295b44a61eac0a3d307cc539106beeda6af4844c"
+      "originalSha256": "dc5407a1e3d0536a83993e9eb55bbf84021ca82a23166c456c04180c812db8be"
     },
     {
       "path": "src/client/conversation-nodes/retry.ts",
@@ -442,12 +442,12 @@
     {
       "path": "src/client/conversation-nodes/tool.ts",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/tool.ts",
-      "originalSha256": "fc3b32b2e9c23d46729c2effc121ba5622b9d27a755b14a2b8f1f2fbe5f949b8"
+      "originalSha256": "46effcfeb407b69024593fa6d5129d1f3515d0b2f62bc6a8a004404870d8c985"
     },
     {
       "path": "src/client/conversation-nodes/turn-error.ts",
       "sourcePath": "packages/client/ui-chat/src/client/conversation-nodes/turn-error.ts",
-      "originalSha256": "6405644f563a06f287cd2b749248d42e48a7af0f8036f0896b9919bd3b5344ae"
+      "originalSha256": "7ec4c4c351ad404a56a0e402fa5fa27a620b7005b764a9eccff4a0538a0b7cc7"
     },
     {
       "path": "src/client/conversation-nodes/turn-max-tokens.ts",
@@ -477,17 +477,17 @@
     {
       "path": "src/client/index.ts",
       "sourcePath": "packages/client/ui-chat/src/client/index.ts",
-      "originalSha256": "15f180ac49f9dd9ddf18c2998b2574722c6ae5650916a135dfe75088aefad2c2"
+      "originalSha256": "174de3cdb3d13a5ecdaa2b614623028f96967b1b31d74d0cfe6b33174697f942"
     },
     {
       "path": "src/client/locale.ts",
       "sourcePath": "packages/client/ui-chat/src/client/locale.ts",
-      "originalSha256": "95473bf1db1631dcfdf9086c1be469f60efab8db4a87cedff13eb0046e98b04d"
+      "originalSha256": "145b3a96e158d1edd632c85cd0e17b7ac4c5aafe4d0208f01dd44e61776f20c7"
     },
     {
       "path": "src/client/markdown-labels.ts",
       "sourcePath": "packages/client/ui-chat/src/client/markdown-labels.ts",
-      "originalSha256": "01002e23c037e69f06d84208583a72657ddfb0daa90db2d3047a6fce2583261d"
+      "originalSha256": "ecb76d9db853ca785b532001c31df3be7d60f98e5bcd221b28196a18db94600a"
     },
     {
       "path": "src/client/model/conversation-context.ts",
@@ -502,7 +502,7 @@
     {
       "path": "src/client/model/tool-call-tree.ts",
       "sourcePath": "packages/client/ui-chat/src/client/model/tool-call-tree.ts",
-      "originalSha256": "3ccbf727b86781a8e8730b00c8f3e77c64a6300503f020212c460ca3a3673fc6"
+      "originalSha256": "4a7a6dc8c9878045cf070808d2e9935dd65abe3bb2266e906dd6de408dd883f7"
     },
     {
       "path": "src/client/performance-usage.ts",
@@ -512,7 +512,7 @@
     {
       "path": "src/client/presentation-policy.ts",
       "sourcePath": "packages/client/ui-chat/src/client/presentation-policy.ts",
-      "originalSha256": "462214cebd235e1a68ad832cd77a3a4b99256dbd421866cfa723bcd21c1f7a86"
+      "originalSha256": "bee42e3e81e43374ecd029879c94f3af606c5fbcd36fa6dd60223cb7db4fb6d9"
     },
     {
       "path": "src/client/settings/LinkOpeningRow.tsx",
@@ -527,7 +527,7 @@
     {
       "path": "src/client/settings/PreferenceRow.module.css",
       "sourcePath": "packages/client/ui-chat/src/client/settings/PreferenceRow.module.css",
-      "originalSha256": "bfca0e61fbbec61d9bbd8a231e0952da22eaf6fcce4d0e62de7af2ab06a11472"
+      "originalSha256": "1e1d409eb08a85038358d116378493b62593dcbce71033334882da78b2cd0741"
     },
     {
       "path": "src/client/settings/PreferenceRow.tsx",
@@ -537,7 +537,7 @@
     {
       "path": "src/client/settings/TranscriptViewRow.tsx",
       "sourcePath": "packages/client/ui-chat/src/client/settings/TranscriptViewRow.tsx",
-      "originalSha256": "c8a43c98ba5b10b1b7d6c4e96ad49b1700b84f4bae7db0ba4ea563a66fb71362"
+      "originalSha256": "da6f5f968a7039cdaef72dd1c7d83c4382de09d8ed011dbcee3bcd4b3d942447"
     },
     {
       "path": "src/client/stores.ts",
@@ -547,7 +547,7 @@
     {
       "path": "src/client/transcript-view.ts",
       "sourcePath": "packages/client/ui-chat/src/client/transcript-view.ts",
-      "originalSha256": "cd80656a67b2c9f648cf45008fc253da7769d4754c51c2bde2ea9c76efd8a15e"
+      "originalSha256": "1caaf2648baf2845a9f86cbbe80f1806787cf4b37b24e917d372f7545079c07d"
     },
     {
       "path": "src/css-modules.d.ts",
@@ -557,17 +557,22 @@
     {
       "path": "src/index.ts",
       "sourcePath": "packages/client/ui-chat/src/index.ts",
-      "originalSha256": "024db79acd8cb14751148799d7ebabe956bb25cc7009d4aed2d256be26f1fd99"
+      "originalSha256": "9834a5ac6a8ef01e2be2938c6f2a6edb69adf354f9c7dc0145053f8830b3a929"
     },
     {
-      "path": "package.json",
-      "sourcePath": "packages/client/ui-chat/package.json",
-      "originalSha256": "bc7e080ad8ffcd81a97a199717e80a41a5b40dcbd00f3f9577d1cef01c18c2ea"
+      "path": "src/client/chat/QuotaNoticeHost.tsx",
+      "sourcePath": "packages/client/ui-chat/src/client/chat/QuotaNoticeHost.tsx",
+      "originalSha256": "87e881c1501b51f312877c939bba430a0d456f408e26a335156c0fdac573f845"
     },
     {
-      "path": "LICENSE",
-      "sourcePath": "LICENSE",
-      "originalSha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be"
+      "path": "src/client/chat/use-process-scroll.ts",
+      "sourcePath": "packages/client/ui-chat/src/client/chat/use-process-scroll.ts",
+      "originalSha256": "3178e93c8ffec6274444dd700b6959d9f6d932db04c22d6483cde62baff47b56"
+    },
+    {
+      "path": "src/client/chat/use-scroll-follow.ts",
+      "sourcePath": "packages/client/ui-chat/src/client/chat/use-scroll-follow.ts",
+      "originalSha256": "0bab39adaa5560162047ef8a7fc525d335fc31ea0bd2e0eec8cd599f7a566bc5"
     }
   ]
 }

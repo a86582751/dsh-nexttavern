@@ -1,12 +1,12 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/transcript-view.ts; edit the TypeScript source.
 /** Host-backed work-details presentation policy. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store';
-import { DEFAULT_TRANSCRIPT_VIEW_MODE, LEGACY_TRANSCRIPT_VIEW_MODE, TRANSCRIPT_VIEW_FIELD, } from "../chat-settings.js";
+import { DEFAULT_TRANSCRIPT_VIEW_MODE, LEGACY_TRANSCRIPT_VIEW_MODE, LEGACY_EXPANDED_TRANSCRIPT_VIEW_MODE, TRANSCRIPT_VIEW_FIELD, } from "../chat-settings.js";
 /** Live work-details preference consumed by Chat and its Settings row. */
 export class TranscriptViewPolicy {
     host;
     unsubscribe;
-    /** Reactive current mode; defaults to Compact before Host settings arrive. */
+    /** Reactive current mode; defaults to Standard before Host settings arrive. */
     mode = createSnapshotStore(DEFAULT_TRANSCRIPT_VIEW_MODE);
     /**
      * @param host - durable Chat settings scope.
@@ -20,7 +20,7 @@ export class TranscriptViewPolicy {
     dispose() { this.unsubscribe(); }
     /**
      * Publish and persist one explicit user choice.
-     * @param mode - Compact, Detailed, or Expanded work details.
+     * @param mode - Compact, Standard, Detailed, or Verbose work details.
      */
     setMode(mode) {
         if (this.mode.getSnapshot() === mode)
@@ -33,7 +33,9 @@ export class TranscriptViewPolicy {
         const section = this.host.getSnapshot().value;
         if (section === undefined)
             return;
-        const mode = section.transcriptView === LEGACY_TRANSCRIPT_VIEW_MODE ? 'detailed' : section.transcriptView;
+        const saved = section.transcriptView;
+        const mode = saved === LEGACY_TRANSCRIPT_VIEW_MODE ? 'standard'
+            : saved === LEGACY_EXPANDED_TRANSCRIPT_VIEW_MODE ? 'detailed' : saved;
         if (this.mode.getSnapshot() !== mode)
             this.mode.set(mode);
     }

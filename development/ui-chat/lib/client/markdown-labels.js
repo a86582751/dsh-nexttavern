@@ -7,7 +7,7 @@
  */
 export function markdownLabels(t) {
     return {
-        code: { copyLabel: t('copy'), copiedLabel: t('copied') },
+        code: { copyLabel: t('copy'), copiedLabel: t('copied'), toolbarLabels: { codeLabel: t('codeBlock.title'), wrapLabel: t('codeBlock.wrap'), unwrapLabel: t('codeBlock.unwrap') } },
         footnotes: t('markdown.footnotes'),
     };
 }

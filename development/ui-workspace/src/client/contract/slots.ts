@@ -31,6 +31,12 @@
  * face and reading its own Host state through hooks that face injects, so a
  * client plugin's action lands beside them by `order` and needs nothing from
  * the browser beyond the row identity.
+ *
+ * The browser entry additionally declares two `list` seats per Session row
+ * (`sidebar.session.row.leading` / `sidebar.session.row.hover`) for ambient
+ * row decorations. Both take the row's Session identity and nothing else: a
+ * session-scoped seat would force a Session binding, which would activate and
+ * retain every listed Session.
  */
 import type {
   HostObservable, InjectFace, PropsHooks, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore, SlotHookFactory,
@@ -45,6 +51,8 @@ import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-contr
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionActivity, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
+import type { WorkspaceShortcutState } from '../shortcuts.ts'
 import type { createWorkspaceViewStore } from '../stores.ts'
 
 /**
@@ -105,6 +113,16 @@ export interface WorkspacePresentationProps {
   renderDefault: (overrides: Partial<WorkspaceBrowserProps>) => ReactNode
 }
 
+/**
+ * Owner share of the two Session-row schedule seats. Both receive only the
+ * row's Session identity: the occupant reads that Session's own scheduled
+ * tasks, and reading them activates nothing.
+ */
+export interface SessionRowScheduleOwnerProps {
+  /** Session this row shows; the occupant addresses its own data by this id. */
+  readonly sessionId: SessionId
+}
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
@@ -117,6 +135,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'sidebar.workspaces.header.action': { kind: 'list'; scope: 'root'; owner: WorkspaceSlotProps }
     /** Optional whole-browser presentation wrapper retaining the native browser as renderDefault. */
     'sidebar.workspaces.presentation': { kind: 'single'; scope: 'root'; owner: WorkspacePresentationProps }
+    /**
+     * Leading decoration of one Session row, in the 16px cell before the title
+     * that the row's own state dot otherwise occupies. A higher-priority state
+     * (a pending interaction, a new message, live activity) replaces the seat
+     * with that dot for the same row, so an occupant here never renders beside
+     * a status dot and is mounted only by a row whose primary state is idle.
+     * An archived row keeps that cell blank — neither its status dot nor this
+     * seat renders there, and its live status appears on the hover card only.
+     */
+    'sidebar.session.row.leading': { kind: 'list'; scope: 'root'; owner: SessionRowScheduleOwnerProps }
+    /**
+     * Section of the Session row's hover card between its relative time and
+     * its trailing status line. Mounted only while that card is open.
+     */
+    'sidebar.session.row.hover': { kind: 'list'; scope: 'root'; owner: SessionRowScheduleOwnerProps }
     /**
      * The rows of one Session's "..." menu, in ascending `order`. ui-workspace
      * registers the shipped rows here — `pin` (100), `rename` (200), `fork`
@@ -153,7 +186,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'root'
       owner: SessionRowOwnerProps
       hookContext: MenuOpenState
-      inject: { hooks: { menuOpenState: SlotHookFactory<'sidebar.workspaces.session.menu.item', UseMenuOpenState> } }
+      inject: { hooks: {
+        menuOpenState: SlotHookFactory<'sidebar.workspaces.session.menu.item', UseMenuOpenState>
+        shortcuts: HostObservable<readonly ShortcutCatalogEntry[]>
+      } }
     }
     /**
      * The hover buttons at the end of one Session row, in ascending `order`,
@@ -205,7 +241,19 @@ export type WorkspaceBrowserInjected = {
     hostInfo: HostObservable<RemoteHostFacts>
     /** True while the optional whole-browser presentation slot is occupied. */
     presentation: HostObservable<boolean>
+    workspaceShortcuts: HostObservable<WorkspaceShortcutState>
+    shortcuts: HostObservable<readonly ShortcutCatalogEntry[]>
   }
+  /** Open the browser search and focus its input. */
+  requestSearch: () => void
+  /** Request the existing directory picker. */
+  requestAddWorkspace: () => void
+  /** Consume the directory-picker opening request. */
+  closeAddWorkspace: () => void
+  /** Publish directory interaction occupancy for command availability. */
+  setDirectoryBusy: (busy: boolean) => void
+  /** Dismiss the shortcut's fork-failure notification. */
+  dismissForkError: () => void
   /**
    * Start a New Session in a Workspace: reuse-or-create its blank session and
    * open it; without an explicit workspace, inherit the current Session
@@ -410,10 +458,15 @@ export type SessionArchiveConfirmProps =
   & Omit<SessionArchiveConfirmInjected, 'hooks'>
   & PropsHooks<SessionArchiveConfirmInjected['hooks']>
 
-/** Props of the row toast entry in `shell.overlay`. */
+/**
+ * Props of the row toast entry in `shell.overlay`. The declared viewing store
+ * carries the archived filter; the archived notice omits its filter action
+ * when archived rows are already visible.
+ */
 export type RowToastProps =
   PropsRuntime<'shell.overlay'>
   & PropsLocale<'workspace'>
+  & PropsStore<WorkspaceViewStoreHandle>
   & Omit<RowToastInjected, 'hooks'>
   & PropsHooks<RowToastInjected['hooks']>
 
@@ -423,6 +476,8 @@ export type WorkspaceBrowserProps =
   & PropsRenderSlots<
     'sidebar.workspaces.directoryFlow' | 'sidebar.workspaces.before' | 'sidebar.workspaces.header.action'
     | 'sidebar.workspaces.presentation' | 'sidebar.workspaces.session.menu.item' | 'sidebar.workspaces.session.row.action'
+    | 'sidebar.session.row.leading'
+    | 'sidebar.session.row.hover'
   >
   & PropsStore<WorkspaceViewStoreHandle>
   & Omit<WorkspaceBrowserInjected, 'hooks'>

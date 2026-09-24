@@ -16,9 +16,9 @@
     "LICENSE"
   ],
   "peerDependencies": {
-    "@deepseek-ai/cordis": "4.0.3",
-    "@deepseek-ai/cordis-plugin-include": "1.0.8",
-    "@deepseek-ai/dsh-agent-preset-registry": "0.1.7-alpha.1",
-    "@deepseek-ai/dsh-agent-preset": "0.1.7-alpha.1"
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/cordis-plugin-include": "1.0.9",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-agent-preset": "0.1.7-rc.2"
   }
 }

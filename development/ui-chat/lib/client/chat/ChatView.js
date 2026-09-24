@@ -13,6 +13,7 @@ import { assertNever } from '@deepseek-ai/dsh-util-values';
 import { TurnNavigator } from "./TurnNavigator.js";
 import { mergeTurnRailItems } from "./turn-rail-items.js";
 import { useChatScroll } from "./use-chat-scroll.js";
+import { fileMediaUrl, resolveWorkspacePath } from '@deepseek-ai/dsh-util-workspace-path';
 import css from './ChatView.module.css';
 /** Host/OS refusal text for the file-open dialog; empty throws keep a locale fallback. */
 function openFailureMessage(error, fallback) {
@@ -20,31 +21,29 @@ function openFailureMessage(error, fallback) {
     return message === '' ? fallback : message;
 }
 /**
- * Prompt-RPC identities already rendered by durable material: user/steering
- * node sources plus queue occurrences. A submission echo whose identity
- * appears here is hidden in the same render, so the echo→durable swap is
- * atomic — no duplicate, no gap — regardless of when the echo leaves the
- * session snapshot.
+ * Durable input identities suppress matching echoes in the same render.
+ * The last input's Turn also distinguishes an empty opening control from
+ * one whose human input or trigger notice is already present.
  */
-function observedRpcIds(order, nodes, inbox) {
+function observedInputs(order, nodes) {
     const observed = new Set();
+    let lastInputTurn;
     for (const key of order) {
         const node = nodes.get(key);
-        if (node === undefined || (node.kind !== 'user' && node.kind !== 'steering'))
+        if (node === undefined || (node.kind !== 'user' && node.kind !== 'steering' && node.kind !== 'turn-trigger'))
+            continue;
+        if (node.location.kind === 'turn' || node.location.kind === 'step')
+            lastInputTurn = node.location.turn.turn;
+        if (node.kind === 'turn-trigger')
             continue;
         const source = node.data.source;
         if (source?.kind === 'user' && typeof source.rpcId === 'string')
             observed.add(source.rpcId);
     }
-    const pending = new Set();
-    for (const { source } of [...inbox?.['next-turn'] ?? [], ...inbox?.['next-step'] ?? []]) {
-        if (source.kind === 'user' && 'rpcId' in source)
-            pending.add(source.rpcId);
-    }
-    return { durable: observed, pending };
+    return { rpcIds: observed, lastInputTurn };
 }
-const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, ...seatProps }) {
-    return entries.map((entry) => {
+const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, pendingInputs, lastInputTurn, ...seatProps }) {
+    const rows = entries.map((entry) => {
         switch (entry.kind) {
             case 'node':
                 return _createElement(ChatNodeSeat, { ...seatProps, key: chatRenderKey(entry), nodeKey: entry.key, ...entry.groupPart === undefined ? {} : { groupPart: entry.groupPart } });
@@ -54,6 +53,18 @@ const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, ...seat
                 return assertNever(entry);
         }
     });
+    const pendingRows = pendingInputs.map(item => 'requestId' in item ? (_jsx(PendingSubmissionBubble, { submission: item, renderMessageImages: seatProps.renderMessageImages, t: seatProps.t }, item.requestId)) : (_jsx(PendingSteeringBubble, { content: item.content, renderMessageImages: seatProps.renderMessageImages, t: seatProps.t }, item.id)));
+    const tail = entries.at(-1);
+    const node = tail?.kind === 'node' ? seatProps.nodeStore.get(tail.key) : undefined;
+    // An empty opening control follows one local transcript echo, never steering.
+    // All rows share this keyed list so inserting the control keeps the echo mounted.
+    if (node?.kind === 'turn-process' && node.location.kind === 'turn'
+        && node.location.turn.status === 'open' && node.location.turn.turn !== lastInputTurn) {
+        const index = pendingInputs.findIndex(item => 'requestId' in item && item.placement === 'transcript');
+        if (index !== -1)
+            rows.splice(rows.length - 1, 0, ...pendingRows.splice(index, 1));
+    }
+    return [...rows, ...pendingRows];
 });
 /**
  * The chat view slot entry: pure component over the composed props; each
@@ -76,6 +87,13 @@ export function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess,
     const inbox = useProjection('inbox');
     // Workspace root off the session list row: path summaries display relative to it.
     const cwd = useSessions(s => s.byId[sessionId]?.cwd);
+    const fileImages = useMemo(() => ({
+        resolve: (path) => fileMediaUrl(document.baseURI, resolveWorkspacePath(cwd, path)),
+        labels: {
+            open: t('image.open'), loading: t('image.loading'), failed: t('image.failed'),
+            dialog: t('image.dialog'), close: t('image.close'),
+        },
+    }), [cwd, t]);
     const running = useSession(s => s.running);
     const openState = useSession(s => s.openState);
     const openError = useSession(s => s.openError);
@@ -114,27 +132,29 @@ export function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess,
     // Submission echoes still awaiting their durable counterpart. `order` is the
     // recompute trigger: durable user material always arrives as an append, and
     // every append replaces the order array.
-    const visibleSubmissions = useMemo(() => {
+    const [visibleSubmissions, lastInputTurn] = useMemo(() => {
         if (pendingSubmissions.length === 0)
-            return pendingSubmissions;
-        const observed = observedRpcIds(order, nodeStore, inbox);
-        return pendingSubmissions.filter(submission => (submission.placement !== 'queued' && !observed.durable.has(submission.requestId)
-            && (submission.placement === 'steering' || !observed.pending.has(submission.requestId))));
-    }, [pendingSubmissions, order, nodeStore, inbox]);
+            return [pendingSubmissions, undefined];
+        const observed = observedInputs(order, nodeStore);
+        return [pendingSubmissions.filter(submission => (submission.placement !== 'queued' && !observed.rpcIds.has(submission.requestId))), observed.lastInputTurn];
+    }, [pendingSubmissions, order, nodeStore]);
     const pendingInputs = useMemo(() => {
         const local = new Map(visibleSubmissions.map(submission => [submission.requestId, submission]));
-        const pending = inboxSteering.map((item) => {
+        // Admitted local identities outlive their bubbles until the Inbox claim watermark.
+        const localIds = new Set(pendingSubmissions.filter(submission => submission.placement !== 'queued')
+            .map(submission => submission.requestId));
+        const pending = inboxSteering.flatMap((item) => {
             const source = item.source;
             if (source.kind !== 'user' || !('rpcId' in source))
-                return item;
+                return [item];
             const submission = local.get(source.rpcId);
             if (submission === undefined)
-                return item;
+                return localIds.has(source.rpcId) ? [] : [item];
             local.delete(source.rpcId);
-            return submission;
+            return [submission];
         });
         return [...pending, ...local.values()];
-    }, [inboxSteering, visibleSubmissions]);
+    }, [inboxSteering, pendingSubmissions, visibleSubmissions]);
     const renderMessageImages = useCallback(owner => renderSlot('conversation.message.images', { ...owner, loadImage }), [loadImage, renderSlot]);
     const firstKey = order[0];
     const firstSeq = firstKey === undefined ? null : nodeStore.get(firstKey)?.anchorSeq ?? null;
@@ -150,7 +170,7 @@ export function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess,
         submissionId: visibleSubmissions.at(-1)?.requestId ?? null,
         loadedTurns: turnNavigationItems,
     });
-    return (_jsxs("div", { className: css.root, "data-chat-following-tail": scroll.followingTail ? '' : undefined, children: [_jsxs("div", { ref: scroll.listRef, className: css.scroll, children: [scroll.initialized && (_jsx(TurnNavigator, { items: railItems, activeTurn: scroll.activeTurn, busyTurn: scroll.busyTurn, onNavigate: scroll.navigateToTurn, t: t })), _jsxs("div", { ref: scroll.columnRef, className: css.column, "data-chat-flow": "", children: [openState === 'loading' && _jsx("div", { className: css.hint, children: t('chat.loadingHistory') }), openState === 'error' && openError !== null && (_jsx("div", { className: css.openError, children: t('chat.loadError', { message: openError.message, code: openError.code }) })), hasMore && (_jsx("div", { className: css.older, children: _jsx("button", { type: "button", disabled: loadingOlder, onClick: scroll.loadEarlier, children: loadingOlder ? t('loading') : t('chat.loadOlder') }) })), _jsx(MarkdownDelegateProvider, { openExternalLink: openExternalLink, openFile: requestOpenFile, children: _jsx(ChatNodeList, { entries: entries, nodeStore: nodeStore, useChatGroup: useChatGroup, useChatNode: useChatNode, useChatNodeProcess: useChatNodeProcess, usePresentation: usePresentation, useStore: useStore, actions: actions, cwd: cwd, openFile: requestOpenFile, openSkill: openSkill, inspectCall: inspectCall, forkAt: forkAt, loadImage: loadImage, renderMessageImages: renderMessageImages, fileMentions: fileMentions, renderSlot: renderSlot, t: t }) }), pendingInputs.map(item => 'requestId' in item ? (_jsx(PendingSubmissionBubble, { submission: item, renderMessageImages: renderMessageImages, t: t }, item.requestId)) : (_jsx(PendingSteeringBubble, { content: item.content, renderMessageImages: renderMessageImages, t: t }, item.id))), renderSlot('conversation.chat.roleplay-progress', { hasNativePending: pendingInputs.length > 0 })] }), !scroll.followingTail && (_jsx("div", { className: css.toBottomSlot, children: _jsx("button", { type: "button", className: css.toBottom, "aria-label": t('chat.toBottom'), onClick: scroll.returnToBottom, children: _jsx(IconChevronDownOutlineRegular, {}) }) }))] }), fileOpenError !== null && (_jsx(FileOpenErrorDialog, { message: fileOpenError.message, busy: fileOpenBusy, onClose: closeFileOpenError, onRetry: () => { requestOpenFile(fileOpenError.path); }, t: t }))] }));
+    return (_jsxs("div", { className: css.frame, children: [scroll.initialized && (_jsx(TurnNavigator, { items: railItems, activeTurn: scroll.activeTurn, busyTurn: scroll.busyTurn, onNavigate: scroll.navigateToTurn, t: t })), _jsx("div", { className: css.root, "data-chat-following-tail": scroll.followingTail ? '' : undefined, children: _jsx("div", { ref: scroll.listRef, className: css.scroll, children: _jsxs("div", { ref: scroll.columnRef, className: css.column, "data-chat-flow": "", children: [openState === 'loading' && _jsx("div", { className: css.hint, children: t('chat.loadingHistory') }), openState === 'error' && openError !== null && (_jsx("div", { className: css.openError, children: t('chat.loadError', { message: openError.message, code: openError.code }) })), hasMore && (_jsx("div", { className: css.older, children: _jsx("button", { type: "button", disabled: loadingOlder, onClick: scroll.loadEarlier, children: loadingOlder ? t('loading') : t('chat.loadOlder') }) })), _jsx(MarkdownDelegateProvider, { openExternalLink: openExternalLink, openFile: requestOpenFile, fileImages: fileImages, children: _jsx(ChatNodeList, { entries: entries, pendingInputs: pendingInputs, lastInputTurn: lastInputTurn, nodeStore: nodeStore, useChatGroup: useChatGroup, useChatNode: useChatNode, useChatNodeProcess: useChatNodeProcess, usePresentation: usePresentation, useStore: useStore, actions: actions, cwd: cwd, openFile: requestOpenFile, openSkill: openSkill, inspectCall: inspectCall, forkAt: forkAt, loadImage: loadImage, renderMessageImages: renderMessageImages, fileMentions: fileMentions, renderSlot: renderSlot, t: t }) }), renderSlot('conversation.chat.roleplay-progress', { hasNativePending: pendingInputs.length > 0 })] }) }) }), !scroll.followingTail && (_jsx("div", { className: css.toBottomSlot, children: _jsx("button", { type: "button", className: css.toBottom, "aria-label": t('chat.toBottom'), onClick: scroll.returnToBottom, children: _jsx(IconChevronDownOutlineRegular, {}) }) })), fileOpenError !== null && (_jsx(FileOpenErrorDialog, { message: fileOpenError.message, busy: fileOpenBusy, onClose: closeFileOpenError, onRetry: () => { requestOpenFile(fileOpenError.path); }, t: t }))] }));
 }
 /** In-page Host open-path refusal: the wire reason plus a retry of the same path. */
 function FileOpenErrorDialog({ message, busy, onClose, onRetry, t, }) {

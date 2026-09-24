@@ -193,6 +193,15 @@ localStorage behavior; those still require browser verification.
   global persona fields (`name`, `gender`).
 - Native cookie auth remains mandatory; no CSRF bypass/header changes.
 
+### Harness 0.1.7-rc.2 contract
+
+The CLI was re-checked against Harness `0.1.7-rc.2`; every request shape it sends kept its meaning (`session/page`, `session/prompt`, `session/fork`, `session/selectModel`, `session/list`, `workspace/create` and `workspace/follow`), so no command, flag or payload changed. Four details are worth knowing while reading results:
+
+- `workspace/initializeDefault` takes only a signal now and always creates `<Documents>/deepseek-harness/default-workspace`; the display name is localized by each client, so the stored title stays the directory name. `workspaces` therefore reads the registration, not a language-specific label.
+- `session/page` accepts an optional `turnWindow: {minMessages, minTurns}`. `history` keeps its explicit `--through-seq` plus `--limit` contract and does not send a window.
+- `request/header` events carry `reason` and an optional `startsSeries`. `reason: "change"` alone no longer means a new model-message series, so read that flag instead of inferring a series from the reason.
+- First-start and install diagnostics changed upstream: skipped profile bundles are reported once per launch with their reasons, the plugin manager records its package-manager run tree under `.plugin-manager/run.json`, and a lock whose recorded owner process no longer exists may be taken over. These are host-side behaviours the CLI observes; they add no request or retry of its own.
+
 Role-card import has no direct upload RPC. Source audit found the
 official `session/attachment` RPC is read-only: it proves an existing image
 reference is present in a session and returns its bytes. `session/prompt`

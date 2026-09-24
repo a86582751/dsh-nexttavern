@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "package": "ui-workspace",
-  "upstreamCommit": "c36a83ff6bb95e3f82cf79f9be7c724270a8aa61",
+  "upstreamCommit": "477b4f420553e8a52c2fbccc464d7561b239c443",
   "upstreamRepository": "deepseek-ai/deepseek-harness",
   "sourceRoot": "packages/client/ui-workspace/src",
   "packageMetadataSource": "packages/client/ui-workspace/package.json",
   "licenseSource": "LICENSE",
-  "generatedAt": "2026-09-22",
+  "generatedAt": "2026-09-24",
   "notes": [
     "Extracted from the fixed upstream commit without reading the dirty upstream worktree.",
     "Upstream MIT notices are retained in LICENSE.upstream; maintained modifications are GPL-3.0-only.",
@@ -17,22 +17,22 @@
     {
       "path": "src/client/contract/slots.ts",
       "sourcePath": "packages/client/ui-workspace/src/client/contract/slots.ts",
-      "originalSha256": "f955bc55a1381c8931a21f61591ff7935a98d00b18981230cf94a07338d1fc41"
+      "originalSha256": "5141cfef335bc6494ac98df7f4c4a70d60e08788cd6f98c864c1359273545a93"
     },
     {
       "path": "src/client/index.ts",
       "sourcePath": "packages/client/ui-workspace/src/client/index.ts",
-      "originalSha256": "47270afa9844b80b819c0c41a9cb5dde71268607c9b8b199072bb1aff412a424"
+      "originalSha256": "7baf048011cf24cf513c5b96ff3d03f290935b762a29e6393ab116aef53ac9d4"
     },
     {
       "path": "src/client/locales.ts",
       "sourcePath": "packages/client/ui-workspace/src/client/locales.ts",
-      "originalSha256": "99a06bb9bc5df5c5778b1e5a73e6924a3dbcccb60149b5a65b47dd8bee00b601"
+      "originalSha256": "448cea752f9daa196284e6a8da59c7acd944b3ad05590df5bddc6e153e43c113"
     },
     {
       "path": "src/client/navigation.ts",
       "sourcePath": "packages/client/ui-workspace/src/client/navigation.ts",
-      "originalSha256": "8262123f09b18a4554e5f1dc8634dda680da58fd8930efa953c4dee623e6a0ef"
+      "originalSha256": "0a7e8a1361027cb1eef367f3c316457c2594faa12b4c261b8b9cf4ceb7ef06ef"
     },
     {
       "path": "src/client/pin-order.ts",
@@ -52,27 +52,27 @@
     {
       "path": "src/client/rows/Rows.module.css",
       "sourcePath": "packages/client/ui-workspace/src/client/rows/Rows.module.css",
-      "originalSha256": "8f403afa300439b3be16c507871774c9d65047a81303b66013bbd458558dfdd9"
+      "originalSha256": "a9cd15eb625c5e01680de5ad770c573338bc9281ddea5dca9e53f5957356b2b8"
     },
     {
       "path": "src/client/rows/Rows.tsx",
       "sourcePath": "packages/client/ui-workspace/src/client/rows/Rows.tsx",
-      "originalSha256": "2b2f59907bbaf167d96db1af267ac5778a35313d0a8f4199c9666e93485b2a53"
+      "originalSha256": "082b047677cc5fd2be0fa038167e74fc83ec6463147a37cd812912206010614e"
     },
     {
       "path": "src/client/rows/WorkspaceBrowser.module.css",
       "sourcePath": "packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.module.css",
-      "originalSha256": "fb45108daa1eb55f0daa51f0102d7b7518f41f736c16d19818ab9f70269033f8"
+      "originalSha256": "208fe8d00ef6e4285bd41bc979bc2362895ab2d2026e82ebd255c0bce680fbde"
     },
     {
       "path": "src/client/rows/WorkspaceBrowser.tsx",
       "sourcePath": "packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx",
-      "originalSha256": "613f5346b11930820a783e2fc4e12c0f90c6a723681ebe2a8d4fb38e2305816e"
+      "originalSha256": "21549a2c39407538e3793822862903e95f56119253d9e6daa38b9a58c2df4650"
     },
     {
       "path": "src/client/session-actions/ArchiveSession.tsx",
       "sourcePath": "packages/client/ui-workspace/src/client/session-actions/ArchiveSession.tsx",
-      "originalSha256": "a4cb09ea9bdb2a53c1b9c2d0ef714096d98f5e8f8445e6262b00ac95a55c4b93"
+      "originalSha256": "d9c3c3819e119448b5bc8e26feefeb61896a1838e74b5d44bba4b68c538c8e1c"
     },
     {
       "path": "src/client/session-actions/derived.ts",
@@ -82,7 +82,7 @@
     {
       "path": "src/client/session-actions/ForkSession.tsx",
       "sourcePath": "packages/client/ui-workspace/src/client/session-actions/ForkSession.tsx",
-      "originalSha256": "a415b884e6695c135d3868e5370dd0081e7c19be794813888ef2196ec2ae8708"
+      "originalSha256": "4945d0ce8244d41376c691b93b12b6681ec84d4e888d4a4389467d8a0156ba7c"
     },
     {
       "path": "src/client/session-actions/PinSession.tsx",
@@ -92,12 +92,12 @@
     {
       "path": "src/client/session-actions/RenameSession.tsx",
       "sourcePath": "packages/client/ui-workspace/src/client/session-actions/RenameSession.tsx",
-      "originalSha256": "5bfe9ef689d4070a3d542a81c582e9b4158d64de6b73ce2db53faa80b02b4158"
+      "originalSha256": "8c7b071c2486fdd825e4d37da76830f18cae381a6ccacea557a1681cd0ff1c93"
     },
     {
       "path": "src/client/session-actions/RowActionToast.tsx",
       "sourcePath": "packages/client/ui-workspace/src/client/session-actions/RowActionToast.tsx",
-      "originalSha256": "14ba697834b8233a8ee696ca196084195268496f6dadab3343e0f3967a03c3c6"
+      "originalSha256": "9e7707fa5ae2d04ad95b959f9c870ed3b8cd495ca2a392b4524d1326a83ec140"
     },
     {
       "path": "src/client/stores.ts",
@@ -107,7 +107,7 @@
     {
       "path": "src/client/tree.ts",
       "sourcePath": "packages/client/ui-workspace/src/client/tree.ts",
-      "originalSha256": "7d8d09208c2959ddadb3a2b17e8f579e4c9f4c2cc58d0f3f939b3144b6de03a5"
+      "originalSha256": "b527769d23ba74a55945b7ad5fa804b8974b7b053e67cab8bb11841d976e5ecf"
     },
     {
       "path": "src/client/WorkspacePicker.module.css",
@@ -117,7 +117,7 @@
     {
       "path": "src/client/WorkspacePicker.tsx",
       "sourcePath": "packages/client/ui-workspace/src/client/WorkspacePicker.tsx",
-      "originalSha256": "df2b735a1b0f09de33057b2b45998c2fc9fbb93e8b4db4cbac1561cccd22378f"
+      "originalSha256": "af191bd56477312bb097d0d85038d6aa70784ccc361fb6be12813f6587121f25"
     },
     {
       "path": "src/css-modules.d.ts",
@@ -130,14 +130,9 @@
       "originalSha256": "7a4f9356cd158169c0e87d92eee6871ca6b1527851fb905a9c5ab8d9e87cd864"
     },
     {
-      "path": "package.json",
-      "sourcePath": "packages/client/ui-workspace/package.json",
-      "originalSha256": "c187bf3a56f989fc405a70aa0a9fb2d94e1d744bf6119d0636c998088849b5b7"
-    },
-    {
-      "path": "LICENSE",
-      "sourcePath": "LICENSE",
-      "originalSha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be"
+      "path": "src/client/shortcuts.ts",
+      "sourcePath": "packages/client/ui-workspace/src/client/shortcuts.ts",
+      "originalSha256": "c91dac141704262235e8fd21c90dc1d1eff5d05db624519280ec2c1bdb06c235"
     }
   ]
 }

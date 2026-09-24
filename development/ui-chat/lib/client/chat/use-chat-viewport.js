@@ -1,6 +1,7 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/chat/use-chat-viewport.ts; edit the TypeScript source.
 /** Turn-aware DOM scrolling and geometry, without history-loading or follow policy. */
 import { useLayoutEffect, useRef, useState } from 'react';
+import { scrollMetrics, ScrollFollow } from "./use-scroll-follow.js";
 const READING_INTENTS = ['wheel', 'touchstart', 'pointerdown', 'keydown', 'beforematch'];
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 /** Owns one Chat scrollport's DOM operations, event listeners, and size observer. */
@@ -105,8 +106,7 @@ export class ChatViewport {
         const scroller = this.elements?.scroller;
         if (scroller === undefined)
             return null;
-        const height = scroller.clientHeight;
-        return { top: scroller.scrollTop, height, floor: Math.max(0, scroller.scrollHeight - height) };
+        return scrollMetrics(scroller);
     }
     anchor(key, identity = 'position') {
         if (this.elements === null)
@@ -303,6 +303,7 @@ export class ChatViewport {
     get preserving() { return this.paging !== null; }
     /**
      * Compensate inner scrolling first, then the outer scrollport, within their actual scroll ranges.
+     * An inner write pauses its bound follow controller so the reading anchor takes priority.
      * @returns the actual landing, or null when no visible retained row remains.
      */
     preserve() {
@@ -328,10 +329,17 @@ export class ChatViewport {
         }
         if (group !== null && group.body.contains(row)) {
             const top = row.getBoundingClientRect().top - group.body.getBoundingClientRect().top;
-            const floor = Math.max(0, group.body.scrollHeight - group.body.clientHeight);
-            const target = Math.max(0, Math.min(floor, group.body.scrollTop + top - group.top));
-            if (group.body.scrollTop !== target)
-                group.body.scrollTop = target;
+            const metrics = scrollMetrics(group.body);
+            const target = Math.max(0, Math.min(metrics.floor, metrics.top + top - group.top));
+            if (metrics.top !== target) {
+                const follow = ScrollFollow.forElement(group.body);
+                if (follow === undefined)
+                    group.body.scrollTop = target;
+                else {
+                    follow.jump(group.body, metrics, target);
+                    follow.setFollowing(false);
+                }
+            }
         }
         const metrics = this.metrics();
         if (metrics === null)
@@ -342,11 +350,20 @@ export class ChatViewport {
     }
     /**
      * Align the scrollport with its current floor.
+     * @param follow - independent follow intent and scrolling controller.
      * @returns the actual floor landing, or null while detached.
      */
-    scrollToBottom() {
+    scrollToBottom(follow) {
         const metrics = this.metrics();
-        return metrics === null ? null : this.write(metrics.floor, metrics, this.latestTurn);
+        if (metrics === null || this.elements === null)
+            return null;
+        const landing = {
+            metrics: follow.toBottom(this.elements.scroller, metrics, 'instant'),
+            position: null,
+            turn: this.latestTurn,
+        };
+        this.observation = { top: landing.metrics.top, landing };
+        return landing;
     }
     align(row, offset, turn) {
         const metrics = this.metrics();

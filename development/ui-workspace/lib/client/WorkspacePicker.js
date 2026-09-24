@@ -2,6 +2,7 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
 import { useCallback, useEffect, useState } from 'react';
 import { Button, IconFolderCloseRegular, IconPlusOutlineRegular, Menu, Modal, } from '@deepseek-ai/dsh-client-ui-primitives';
+import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace';
 import css from './WorkspacePicker.module.css';
 const ADD_WORKSPACE = '::add-workspace';
 /**
@@ -9,7 +10,7 @@ const ADD_WORKSPACE = '::add-workspace';
  * @param props - owner-controlled flow props.
  * @returns menu + dialog elements.
  */
-export function WorkspacePickFlow({ t, open, anchorRef, useWorkspaces, createWorkspace, useDirectoryFlow, renderDirectoryFlow, onPick, onClose, addOnly = false, side = 'bottom', selectedId, }) {
+export function WorkspacePickFlow({ t, open, anchorRef, useWorkspaces, createWorkspace, useDirectoryFlow, renderDirectoryFlow, onPick, onClose, addOnly = false, onBusyChange, side = 'bottom', selectedId, }) {
     const workspaceSnapshot = useWorkspaces(state => state);
     const workspaces = workspaceSnapshot.items;
     const getAnchorRect = useCallback(() => anchorRef?.current?.getBoundingClientRect() ?? null, [anchorRef]);
@@ -22,6 +23,7 @@ export function WorkspacePickFlow({ t, open, anchorRef, useWorkspaces, createWor
     // menu action stays disabled — a late outcome must not race a concurrent
     // selection or adoption.
     const flowBusy = flowOpen || pickingFolder;
+    useEffect(() => { onBusyChange?.(flowBusy); }, [flowBusy, onBusyChange]);
     // The occupied hole gates the picking affordance: with no composed flow the
     // entry simply is not there (the seam's documented no-flow default). The
     // framework-bound hook keeps occupancy live: flow plugins activate (and
@@ -45,7 +47,7 @@ export function WorkspacePickFlow({ t, open, anchorRef, useWorkspaces, createWor
     const items = pinAdd
         ? workspaces.map(workspace => ({
             id: workspace.workspaceId,
-            label: workspace.title,
+            label: workspaceDisplayTitle(workspace.title, t('workspace.defaultName')),
             icon: _jsx(IconFolderCloseRegular, { size: 16 }),
             disabled: flowBusy,
         }))

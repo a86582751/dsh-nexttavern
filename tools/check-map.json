@@ -2405,7 +2405,7 @@
     {
       "id": "controller-browser-vendor-dsh-util-workspace-path-lib-index-js",
       "source": "build-tools/node_modules/@deepseek-ai/dsh-util-workspace-path/lib/index.js",
-      "sha256": "e7ffbf3b2b0dec523226e294eb0fcc5903d9d9938bd472ae5d8179cbead5bfad"
+      "sha256": "5129d81b46c8f62ef084817af6a8e149724b7e69a253c40e3594805148742528"
     },
     {
       "id": "controller-browser-vendor-dsh-util-crypto-lib-index-js",
@@ -4120,6 +4120,67 @@
     {
       "id": "nexttavern-retired-harness-replay",
       "source": "tools/harness-patches.json"
+    },
+    {
+      "id": "compat-session-controller-catalog-ts",
+      "source": "development/session-controller/src/catalog.ts"
+    },
+    {
+      "id": "compat-session-controller-catalog-js",
+      "source": "development/session-controller/lib/catalog.js"
+    },
+    {
+      "id": "compat-token-meter-turn-usage-ts",
+      "source": "development/token-meter/src/turn-usage.ts"
+    },
+    {
+      "id": "compat-token-meter-turn-usage-js",
+      "source": "development/token-meter/lib/turn-usage.js"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-src-testing-generation-ts",
+      "source": "development/session-persistence-jsonl/src/testing/generation.ts"
+    },
+    {
+      "id": "compat-session-persistence-jsonl-lib-testing-generation-js",
+      "source": "development/session-persistence-jsonl/lib/testing/generation.js"
+    },
+    {
+      "id": "compat-ui-chat-src-client-chat-QuotaNoticeHost-ts-source",
+      "source": "development/ui-chat/src/client/chat/QuotaNoticeHost.tsx"
+    },
+    {
+      "id": "compat-ui-chat-client-chat-QuotaNoticeHost-js-bundle",
+      "source": "development/ui-chat/lib/client/chat/QuotaNoticeHost.js"
+    },
+    {
+      "id": "compat-ui-chat-src-client-chat-use-process-scroll-ts-source",
+      "source": "development/ui-chat/src/client/chat/use-process-scroll.ts"
+    },
+    {
+      "id": "compat-ui-chat-client-chat-use-process-scroll-js-bundle",
+      "source": "development/ui-chat/lib/client/chat/use-process-scroll.js"
+    },
+    {
+      "id": "compat-ui-chat-src-client-chat-use-scroll-follow-ts-source",
+      "source": "development/ui-chat/src/client/chat/use-scroll-follow.ts"
+    },
+    {
+      "id": "compat-ui-chat-client-chat-use-scroll-follow-js-bundle",
+      "source": "development/ui-chat/lib/client/chat/use-scroll-follow.js"
+    },
+    {
+      "id": "compat-ui-workspace-src-client-shortcuts-ts-source",
+      "source": "development/ui-workspace/src/client/shortcuts.ts"
+    },
+    {
+      "id": "compat-ui-workspace-client-shortcuts-js-bundle",
+      "source": "development/ui-workspace/lib/client/shortcuts.js"
+    },
+    {
+      "id": "ui-browser-vendor-deepseek-ai-dsh-api-workspace-controller-lib-types-default-workspace-js",
+      "source": "build-tools/node_modules/@deepseek-ai/dsh-api-workspace-controller/lib/types/default-workspace.js",
+      "sha256": "cc90ea42884d81e406eaa4efb4d56bb3bb84d56deb01d3dab2da3af0ba0b0508"
     },
     {
       "id": "quality-registry",
@@ -9416,7 +9477,9 @@
         "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/surface.js",
         "build-tools/node_modules/@deepseek-ai/dsh-session/lib/types/types.js",
         "build-tools/node_modules/@deepseek-ai/dsh-util-values/lib/index.js",
-        "development/session-controller/src/archived-session-gate.ts"
+        "development/session-controller/src/archived-session-gate.ts",
+        "development/session-controller/src/catalog.ts",
+        "development/session-controller/lib/catalog.js"
       ]
     },
     {
@@ -12393,7 +12456,13 @@
         "lib/ui/build-client.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "development/ui-chat/package.json"
+        "development/ui-chat/package.json",
+        "development/ui-chat/src/client/chat/QuotaNoticeHost.tsx",
+        "development/ui-chat/lib/client/chat/QuotaNoticeHost.js",
+        "development/ui-chat/src/client/chat/use-process-scroll.ts",
+        "development/ui-chat/lib/client/chat/use-process-scroll.js",
+        "development/ui-chat/src/client/chat/use-scroll-follow.ts",
+        "development/ui-chat/lib/client/chat/use-scroll-follow.js"
       ],
       "browser": {
         "moduleId": "dsh-nexttavern-ui-chat",
@@ -12443,7 +12512,10 @@
         "lib/ui/build-client.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "development/ui-workspace/package.json"
+        "development/ui-workspace/package.json",
+        "development/ui-workspace/src/client/shortcuts.ts",
+        "development/ui-workspace/lib/client/shortcuts.js",
+        "build-tools/node_modules/@deepseek-ai/dsh-api-workspace-controller/lib/types/default-workspace.js"
       ],
       "browser": {
         "moduleId": "dsh-nexttavern-ui-workspace",
@@ -12488,6 +12560,129 @@
       "kind": "typescript-module",
       "entry": "src/operations/product-assembly.mts",
       "id": "product-assembly-build"
+    },
+    {
+      "id": "compat-session-controller-catalog-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-controller-catalog-js",
+      "entry": "development/session-controller/src/catalog.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-controller/src/catalog.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-token-meter-turn-usage-build",
+      "kind": "typescript-module",
+      "artifact": "compat-token-meter-turn-usage-js",
+      "entry": "development/token-meter/src/turn-usage.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/token-meter/src/turn-usage.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-persistence-jsonl-testing-generation-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-persistence-jsonl-lib-testing-generation-js",
+      "entry": "development/session-persistence-jsonl/src/testing/generation.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session-persistence-jsonl/src/testing/generation.ts",
+        "development/session-persistence-jsonl/src/generation.ts",
+        "development/session-persistence-jsonl/src/index.ts",
+        "development/session-persistence-jsonl/src/lease.ts",
+        "development/session-persistence-jsonl/src/migration-verifier.ts",
+        "development/session-persistence-jsonl/src/storage.ts",
+        "development/session-persistence-jsonl/src/win32.ts",
+        "development/session-persistence-jsonl/src/worker.ts",
+        "development/session-persistence-jsonl/src/zstd-private-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd-public-decoder.ts",
+        "development/session-persistence-jsonl/src/zstd.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "development/session-format/src/catalog.ts",
+        "development/session-format/src/index.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/storage-contract.ts",
+        "development/session-persistence-jsonl/src/catalog-migration.ts"
+      ],
+      "typeContext": "session-storage"
+    },
+    {
+      "id": "compat-ui-chat-client-chat-QuotaNoticeHost-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-ui-chat-client-chat-QuotaNoticeHost-js-bundle",
+      "entry": "development/ui-chat/src/client/chat/QuotaNoticeHost.tsx",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/ui-chat/src/client/chat/QuotaNoticeHost.tsx",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/ui-chat/src/css-modules.d.ts"
+      ],
+      "typeContext": "ui-compat-client"
+    },
+    {
+      "id": "compat-ui-chat-client-chat-use-process-scroll-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-ui-chat-client-chat-use-process-scroll-js-bundle",
+      "entry": "development/ui-chat/src/client/chat/use-process-scroll.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/ui-chat/src/client/chat/use-process-scroll.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/ui-chat/src/css-modules.d.ts"
+      ],
+      "typeContext": "ui-compat-client"
+    },
+    {
+      "id": "compat-ui-chat-client-chat-use-scroll-follow-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-ui-chat-client-chat-use-scroll-follow-js-bundle",
+      "entry": "development/ui-chat/src/client/chat/use-scroll-follow.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/ui-chat/src/client/chat/use-scroll-follow.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/ui-chat/src/css-modules.d.ts"
+      ],
+      "typeContext": "ui-compat-client"
+    },
+    {
+      "id": "compat-ui-workspace-client-shortcuts-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-ui-workspace-client-shortcuts-js-bundle",
+      "entry": "development/ui-workspace/src/client/shortcuts.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/ui-workspace/src/client/shortcuts.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/ui-workspace/src/css-modules.d.ts"
+      ],
+      "typeContext": "ui-compat-client"
     }
   ],
   "typeScript": {
