@@ -664,9 +664,12 @@ export function createMemoryRetrieval(deps: Dependencies) {
         };
     }
     async function mutate(session: Session, body: Record<string, unknown>) {
-        await ensureSessionHistory(session);
+        // Claim the lane synchronously. An awaited gate in front of it would let a
+        // rebuild queued in the same tick register first and clear the space the
+        // caller is still switching away from; readiness is verified in-lane.
         const run = mutation.catch(() => {
         }).then(async () => {
+            await ensureSessionHistory(session);
             await migration;
             const cfg = settings();
             if (body.expectedRevision !== (body.action === 'activate-adaptation-provider' ? cfg.adaptationRevision : cfg.revision))
