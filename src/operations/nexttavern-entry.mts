@@ -11,6 +11,7 @@ import {capture, composition, loaderEntry, productWanted, providerDisabledExpres
 import {inspectBundledPackages} from './bundled-package-bootstrap.mjs'
 import {bindPackagePreparation, createOwnedPackagePreparation,
   type PackagePreparationScheduler} from './nexttavern-package-preparation.mjs'
+import {createOwnedMarketInstallation} from './nexttavern-market.mjs'
 
 const productRoot = fileURLToPath(new URL('../../', import.meta.url))
 const productRequire = createRequire(new URL('../../package.json', import.meta.url))
@@ -62,6 +63,7 @@ export default class NextTavernEntry extends EntryTree {
   private epoch = 0
   private hostFiber?: Fiber
   private preparation?: PackagePreparationScheduler
+  private market?: PackagePreparationScheduler
 
   constructor(ctx: Context, private config: NextTavernEntryConfig) {
     // Capture before super attaches the product's subtree to its main entry.
@@ -77,6 +79,11 @@ export default class NextTavernEntry extends EntryTree {
     // Bound while this instance owns the profile, so a manager change notice
     // reaching the host is never left without a schedule.
     bindPackagePreparation(ctx, this.preparationState())
+    // The market round rides the same notices. It installs a missing upstream
+    // market through the host's own pnpm path, and only after this install's
+    // durable references were prepared, so that one package-manager run also
+    // relinks them.
+    bindPackagePreparation(ctx, this.marketState())
 
     ctx.on('loader/patch-context', (entry, next) => {
       // Include starts new rows before removing old rows. Uninstall may remove
@@ -150,6 +157,24 @@ export default class NextTavernEntry extends EntryTree {
   private peerManifestResolver() {
     const packages = this.ctx.get('pluginPackages')
     return packages ? (name: string, parentURL: string) => packages.packageOf(name, parentURL)?.manifestPath : undefined
+  }
+
+  /**
+   * The deferred round that brings the upstream market onto a profile that does
+   * not have one. It never runs inside the loading lifecycle, and it reads the
+   * host's manager service late because that service may load after this one.
+   */
+  private marketState(): PackagePreparationScheduler {
+    if (this.market) return this.market
+    const {name: profile, home, installAnchor} = this.ctx.profileContext
+    this.market = createOwnedMarketInstallation({
+      productRoot, hostAnchor: installAnchor, home, profile,
+      manager: () => this.ctx.get('pluginManager'),
+      references: this.preparationState(),
+      resolvePeerManifest: this.peerManifestResolver(),
+      logger: this.ctx.logger,
+    })
+    return this.market
   }
 
   private rows(): EntryOptions[] {
@@ -260,6 +285,9 @@ export default class NextTavernEntry extends EntryTree {
       // another component's transaction. The first activation of this instance
       // takes the attempt; a re-activation keeps the same one.
       this.preparationState().schedule()
+      // Deferred as well: a profile that already has a market only records the
+      // reuse, and a missing one is resolved before anything is installed.
+      this.marketState().schedule()
     } catch (error) {
       // A hot reconfiguration failure does not dispose the main entry. Its
       // init-generator cleanup alone cannot restore services in this path.
@@ -282,6 +310,7 @@ export default class NextTavernEntry extends EntryTree {
     // begins a profile write transaction; an already running one finishes
     // inside its own lock and is awaited by nobody here.
     this.preparation?.close()
+    this.market?.close()
     this.stopping = (async () => {
       // Mark our transient rows synchronously, before host disposal yields.
       // Calling entry.update here would also stop their providers too early;

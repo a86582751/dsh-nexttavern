@@ -23,6 +23,7 @@
         "plugin-bundled-dependencies*",
         "plugin-package-preparation*",
         "nexttavern-package-preparation*",
+        "nexttavern-market*",
         "runtime/alpha3/compat/anydoc/*",
         "runtime/alpha3/compat/pi-ai/*",
         "runtime/alpha3/compat/token-meter/*",
@@ -3104,6 +3105,20 @@
     },
     {
       "id": "test:plugin-package-preparation.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler"
+      ],
+      "cache": true,
+      "timeoutMs": 60000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:nexttavern-market.test.mts",
       "action": "test",
       "modules": [
         "plugin-lifecycle"
