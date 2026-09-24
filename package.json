@@ -179,6 +179,6 @@
     "test": "node lib/operations/quality-cli.mjs tests",
     "check": "node lib/operations/quality-cli.mjs",
     "build:modules": "node tools/build-modules.mjs --write",
-    "build": "node lib/ui/build-client.mjs src/ui/client.ts lib/client.js dsh-nexttavern"
+    "build": "node lib/ui/build-client.mjs lib/ui/client.js lib/client.js dsh-nexttavern"
   }
 }
