@@ -322,6 +322,7 @@
         "public-*",
         "protected-packages*",
         "bundled-package-bootstrap*",
+        "product-assembly*",
         "test-temp*",
         "tool-resolution*",
         "qwen-*",

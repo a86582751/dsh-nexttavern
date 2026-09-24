@@ -243,7 +243,7 @@ export function createOwnedPackagePreparation(facts: OwnedPackageFacts): Package
       // generations those records describe. A mismatch in either half leaves the
       // decision - and every write - to the locked transaction, which is also
       // the only reader of member bytes.
-      if (recorded && referencesCurrent(recorded, identity.packages)
+      if (recorded && referencesCurrent(recorded, [...identity.packages, ...identity.bundles])
         && durableReferencesIntact(facts.home, facts.profile, recorded.values())) return {state: 'current'}
       let version: string
       try {

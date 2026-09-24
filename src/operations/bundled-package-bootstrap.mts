@@ -13,10 +13,21 @@ export interface BundledPackageSpec {
   version: string
   files: ProtectedFile[]
 }
+/**
+ * One optional activation layer the product ships, as release assembly
+ * inventoried it. A bundle is not a compatibility package: it carries its own
+ * `dsh.bundle.patch`, so it belongs in the profile's bundle roster and its
+ * bytes travel under the same inventory gate as every other member.
+ */
+export interface BundledBundleSpec extends BundledPackageSpec {
+  /** Package-root relative directory the shipped tree lives in. */
+  path: string
+}
 interface BundleInventory {
   schemaVersion: 1
   productVersion: string
   packages: BundledPackageSpec[]
+  bundles?: BundledBundleSpec[]
 }
 interface PackageMetadata {
   name: string
@@ -25,7 +36,7 @@ interface PackageMetadata {
   bundleDependencies?: string[]
   peerDependencies?: Record<string, string>
   peerDependenciesMeta?: Record<string, {optional?: boolean}>
-  dsh?: {bundle?: unknown}
+  dsh?: {bundle?: {patch?: unknown}}
 }
 const readJson = <T,>(file: string) => JSON.parse(fs.readFileSync(file, 'utf8')) as T
 export type PeerManifestResolver = (name: string, parentURL: string) => string | undefined
@@ -124,7 +135,27 @@ export function readBundleIdentity(productRoot: string) {
     return {name: spec.name, version: spec.version, files: spec.files,
       generation: protectedGeneration({name: spec.name, version: spec.version, files: spec.files})}
   })
-  return {productRoot, rootManifest, metadata: product, version: product.version, packages}
+  // Bundles ship beside their consumers instead of inside `node_modules`, so
+  // they carry their own package-root relative directory and reuse the same
+  // inventory gate: the profile later pins these exact bytes and lists the
+  // name in its own bundle roster.
+  const bundles = (inventory.bundles ?? []).map(spec => {
+    if (typeof spec.name !== 'string' || !/^dsh-nexttavern-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(spec.name)
+      || seen.has(spec.name) || typeof spec.version !== 'string' || !spec.version.trim()
+      || typeof spec.path !== 'string' || spec.path === '' || path.isAbsolute(spec.path)
+      || spec.path.includes('\\') || !Array.isArray(spec.files)) {
+      throw Error('Invalid or duplicate bundled activation layer')
+    }
+    seen.add(spec.name)
+    const source = contained(productRoot, spec.path)
+    if (!fs.existsSync(source) || !fs.statSync(source).isDirectory()) {
+      throw Error('Bundled activation layer is missing: ' + spec.name)
+    }
+    return {name: spec.name, version: spec.version, files: spec.files, path: spec.path, source,
+      generation: protectedGeneration({name: spec.name, version: spec.version, files: spec.files}),
+      bundle: true as const}
+  })
+  return {productRoot, rootManifest, metadata: product, version: product.version, packages, bundles}
 }
 
 /**
@@ -158,7 +189,20 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string, 
     // write them can reuse this verification instead of reading the tree again.
     return {...spec, source, entry}
   })
-  return {productRoot: identity.productRoot, version: identity.version, packages}
+  // The activation layers take the opposite side of the compatibility gate:
+  // a compatibility package that declared `dsh.bundle` was already rejected,
+  // and a shipped bundle without one could never compose a loader entry.
+  const bundles = identity.bundles.map(spec => {
+    const source = fs.realpathSync(spec.source)
+    const metadata = readJson<PackageMetadata>(path.join(source, 'package.json'))
+    if (metadata.name !== spec.name || metadata.version !== spec.version
+      || typeof metadata.dsh?.bundle?.patch !== 'string' || metadata.dsh.bundle.patch === '') {
+      throw Error('Bundled activation layer identity differs: ' + spec.name)
+    }
+    verifyProtectedPackage(source, spec)
+    return {...spec, source}
+  })
+  return {productRoot: identity.productRoot, version: identity.version, packages, bundles}
 }
 
 /**
@@ -214,14 +258,16 @@ export async function bootstrapBundledPackages(options: {
     // This round's own admission is the verification the write plan reuses:
     // both run inside the same writer lock, so the plan never re-reads a tree
     // this call just hashed.
-    const verifiedSources: VerifiedProtectedSource[] = bundle.packages.map(({source, generation}) => ({source, generation}))
-    const prepared = prepareProtectedPackages({...options, packages: bundle.packages, verifiedSources})
+    const members = [...bundle.packages, ...bundle.bundles]
+    const verifiedSources: VerifiedProtectedSource[] = members.map(({source, generation}) => ({source, generation}))
+    const prepared = prepareProtectedPackages({...options, packages: members, verifiedSources})
     return {
       schemaVersion: 1 as const,
       state: 'bundled-runtime-prepared' as const,
       version: bundle.version,
       runtimeSource: 'product-bundle' as const,
       modules: bundle.packages.map(({name, version, entry}) => ({name, version, entry})),
+      bundles: bundle.bundles.map(({name, version, source}) => ({name, version, source})),
       profileGraph: 'relink-pending' as const,
       recovered,
       prepared,

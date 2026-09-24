@@ -12,6 +12,13 @@ export interface ProtectedPackageInput {
   version: string
   source: string
   files: ProtectedFile[]
+  /**
+   * An owned bundle is the product's optional activation layer: its own
+   * `dsh.bundle.patch` contributes a loader entry, so the profile must also
+   * list it in `dsh.profile.bundles` or that patch layer never composes.
+   * Compatibility packages have no activation layer and never appear there.
+   */
+  bundle?: true
 }
 /**
  * One source tree a caller already admitted with this module's own gate.
@@ -27,6 +34,7 @@ export interface ProtectedPackageRecord {
   files: ProtectedFile[]
   directory: string
   reference: string
+  bundle?: true
 }
 /**
  * One durable reference as a receipt records it, with the generation its bytes
@@ -89,16 +97,68 @@ export function protectedGeneration(input: Pick<ProtectedPackageInput, 'name' | 
 const generationOf = (input: Pick<ProtectedPackageInput, 'name' | 'version'>, files: ProtectedFile[]) =>
   digest(JSON.stringify({name: input.name, version: input.version, files}))
 
-function recordFor(home: string, profile: string, input: Pick<ProtectedPackageInput, 'name' | 'version' | 'files'>): ProtectedPackageRecord {
+function recordFor(home: string, profile: string,
+  input: Pick<ProtectedPackageInput, 'name' | 'version' | 'files' | 'bundle'>, source?: string): ProtectedPackageRecord {
   if (!/^dsh-nexttavern-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(input.name)) throw Error('Only independently named NextTavern child packages may be protected')
   if (typeof input.version !== 'string' || !input.version) throw Error('Protected package version is required')
   const files = normalizedFiles(input.files)
   for (const file of files) contained(home, file.path)
   if (!files.some(file => file.path === 'package.json')) throw Error('Protected inventory must include package.json')
+  if (input.bundle === true && source !== undefined) assertBundleActivationLayer(source, input.name)
   const generation = generationOf(input, files)
   const directory = `maintenance/fixed-packages/${input.name}/${generation}`
   const reference = 'file:' + path.relative(contained(home, `profiles/${profile}`), contained(home, directory)).replaceAll('\\', '/')
-  return {name: input.name, version: input.version, files, directory, reference}
+  return input.bundle === true
+    ? {name: input.name, version: input.version, files, directory, reference, bundle: true}
+    : {name: input.name, version: input.version, files, directory, reference}
+}
+
+/**
+ * An owned bundle is only useful with its activation layer, so a record that
+ * claims to be one must carry a patch file this tree actually contains. The
+ * compatibility packages take the opposite gate in the bundle admission, which
+ * rejects any `dsh.bundle` declaration.
+ */
+function assertBundleActivationLayer(source: string, name: string): void {
+  const metadata = JSON.parse(fs.readFileSync(contained(source, 'package.json'), 'utf8')) as
+    {dsh?: {bundle?: {patch?: unknown}}}
+  const patch = metadata.dsh?.bundle?.patch
+  if (typeof patch !== 'string' || patch === '') throw Error('Owned bundle has no activation layer: ' + name)
+  // The manifest names the patch the way DSH reads it (`./cordis.patch.yml`),
+  // and the containment gate rejects a leading `./`, so normalise first.
+  const relative = patch.replace(/^\.\//, '')
+  if (!fs.existsSync(contained(source, relative))) throw Error('Owned bundle patch file is missing: ' + name)
+}
+
+/**
+ * The profile's own bundle roster, in its existing order. Only entries this
+ * installer owns are edited: the product's compatibility packages have no
+ * activation layer, and a third-party bundle a person installed is never
+ * reordered or removed.
+ */
+function profileBundles(manifest: ProfileManifest): string[] {
+  const dsh = manifest.dsh
+  if (dsh === undefined) return []
+  if (!dsh || typeof dsh !== 'object' || Array.isArray(dsh)) throw Error('Invalid profile dsh section')
+  const profile = (dsh as Record<string, unknown>).profile
+  if (profile === undefined) return []
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) throw Error('Invalid profile dsh.profile section')
+  const bundles = (profile as Record<string, unknown>).bundles
+  if (bundles === undefined) return []
+  if (!Array.isArray(bundles) || bundles.some(name => typeof name !== 'string' || name === '')) {
+    throw Error('Invalid profile dsh.profile.bundles')
+  }
+  return [...bundles as string[]]
+}
+
+function setProfileBundles(manifest: ProfileManifest, bundles: string[]): void {
+  const dsh = manifest.dsh === undefined || manifest.dsh === null || typeof manifest.dsh !== 'object'
+    || Array.isArray(manifest.dsh) ? {} : {...manifest.dsh as Record<string, unknown>}
+  const profile = dsh.profile === undefined || dsh.profile === null || typeof dsh.profile !== 'object'
+    || Array.isArray(dsh.profile) ? {} : {...dsh.profile as Record<string, unknown>}
+  profile.bundles = bundles
+  dsh.profile = profile
+  manifest.dsh = dsh
 }
 
 /** The same inventory gate protects a runtime bundle and its later durable copy. */
@@ -164,15 +224,23 @@ export function durableReferencesIntact(home: string, profile: string, reference
     const dependencies = dependencyMap(manifest.dependencies, 'dependencies')
     const others = ['devDependencies', 'optionalDependencies', 'peerDependencies']
       .map(field => dependencyMap(manifest[field], field))
+    const roster = new Set(profileBundles(manifest))
     const names = new Set<string>()
     for (const reference of references) {
       if (dependencies[reference.name] !== reference.reference) return false
       if (others.some(map => Object.hasOwn(map, reference.name))) return false
       names.add(reference.name)
+      // An owned bundle is only composed when the roster still lists it, so a
+      // profile that dropped the name needs the locked transaction, not a
+      // fast path that would leave its activation layer silently missing.
+      if (reference.bundle === true && !roster.has(reference.name)) return false
       const directory = contained(root, reference.directory)
       const metadata = JSON.parse(fs.readFileSync(
-        contained(directory, 'package.json'), 'utf8')) as {name?: unknown; version?: unknown}
+        contained(directory, 'package.json'), 'utf8')) as
+        {name?: unknown; version?: unknown; dsh?: {bundle?: {patch?: unknown}}}
       if (metadata?.name !== reference.name || metadata.version !== reference.version) return false
+      if (reference.bundle === true
+        && (typeof metadata.dsh?.bundle?.patch !== 'string' || metadata.dsh.bundle.patch === '')) return false
       if (JSON.stringify(inventory(directory)) !== JSON.stringify(reference.files.map(file => file.path).sort())) {
         return false
       }
@@ -250,6 +318,7 @@ export function planProtectedPackages(options: {home: string; profile: string; p
         throw Error('Protected profile reference changed: ' + item.name)
       }
       verifyProtectedPackage(contained(home, item.directory), canonical)
+      if (canonical.bundle === true) assertBundleActivationLayer(contained(home, item.directory), item.name)
       return canonical
     })
   }
@@ -260,7 +329,7 @@ export function planProtectedPackages(options: {home: string; profile: string; p
   const reused = new Map(previous.map(record => [record.directory, record]))
   const emptyGenerations: string[] = []
   const next = options.packages.map(input => {
-    const record = recordFor(home, profile, input)
+    const record = recordFor(home, profile, input, input.source)
     if (nextNames.has(record.name)) throw Error('Duplicate protected package: ' + record.name)
     nextNames.add(record.name)
     if (otherDependencies.some(map => Object.hasOwn(map, record.name))
@@ -292,6 +361,15 @@ export function planProtectedPackages(options: {home: string; profile: string; p
   }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
   for (const record of previous) if (!nextNames.has(record.name)) delete dependencies[record.name]
   manifest.dependencies = dependencies
+  // The installer owns the activation layer of the bundles it ships: a name
+  // the profile lost is restored, and a name it no longer ships is dropped.
+  // Every entry a person or another installer added keeps its own position.
+  const ownedBundles = next.filter(record => record.bundle === true).map(record => record.name)
+  const previouslyOwned = new Set(previous.filter(record => record.bundle === true).map(record => record.name))
+  const roster = profileBundles(manifest)
+  const merged = roster.filter(name => !previouslyOwned.has(name) || ownedBundles.includes(name))
+  for (const name of ownedBundles) if (!merged.includes(name)) merged.push(name)
+  if (JSON.stringify(merged) !== JSON.stringify(roster)) setProfileBundles(manifest, merged)
   const receipt: ProtectedReceipt = {schemaVersion: 1, state: 'references-prepared', profile, packages: next}
   const updates = [
     {path: manifestPath, before: digest(manifestBytes), bytes: Buffer.from(JSON.stringify(manifest, null, 2) + '\n')},

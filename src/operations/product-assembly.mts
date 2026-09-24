@@ -10,20 +10,26 @@ interface ProductRecipe {
   packageArtifact: string
   patchArtifact: string
   packages: {packageArtifact: string; assembly?: string; resources?: {artifact: string; path: string}[]}[]
+  /**
+   * Optional activation layers that ship beside the owned packages. Each one
+   * names a registered delivery layout, so the payload path stays a single
+   * entry in the shared manifest instead of a second list here.
+   */
+  bundles?: {layout: string}[]
   /** Exact library versions every owned package's ordinary dependencies resolve to. */
   bundleLibraries?: Record<string, string>
 }
 interface Plan {
   artifacts: {id: string; source: string; public?: {path?: string}}[]
   product: ProductRecipe
-  publicRelease: {packageName: string; candidateVersion: string}
+  publicRelease: {packageName: string; candidateVersion: string; layoutPaths?: Record<string, string>}
 }
 interface Metadata {
   name: string
   version: string
   dependencies?: Record<string, string>
   bundleDependencies?: string[]
-  dsh?: {bundle?: unknown}
+  dsh?: {bundle?: {patch?: unknown}}
 }
 const json = <T,>(file: string): T => JSON.parse(fs.readFileSync(file, 'utf8')) as T
 const save = (file: string, value: unknown) => {
@@ -216,7 +222,33 @@ export function assembleProduct(options: {
       sha256: createHash('sha256').update(fs.readFileSync(inside(output, file))).digest('hex')}))
     return {name: pkg.name, version: pkg.version, files, excludedVendoredFiles: excluded}
   })
-  const inventory = {schemaVersion: 1, productVersion: metadata.version, packages: packages.map(({excludedVendoredFiles, ...row}) => row)}
+  // The activation layers travel in the same inventory as the compatibility
+  // packages: the profile later pins these exact bytes and lists the name in
+  // its own bundle roster, so a bundle that is absent, renamed or edited
+  // between assembly and installation is rejected rather than installed.
+  const bundles = (plan.product.bundles ?? []).map(row => {
+    const base = plan.publicRelease.layoutPaths?.[row.layout]
+    if (typeof base !== 'string' || base === '') {
+      throw Error('Bundle recipe names an unregistered delivery layout: ' + row.layout)
+    }
+    const directory = inside(packageRoot, base)
+    if (!fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) {
+      throw Error('Bundled activation layer is missing from the candidate: ' + base)
+    }
+    const bundle = json<Metadata>(path.join(directory, 'package.json'))
+    const patch = bundle.dsh?.bundle?.patch
+    if (typeof patch !== 'string' || patch === '') throw Error('Bundle declares no activation layer: ' + base)
+    // DSH reads the declaration as `./cordis.patch.yml`; the containment gate
+    // wants the path without that prefix.
+    if (!fs.existsSync(inside(directory, patch.replace(/^\.\//, '')))) {
+      throw Error('Bundle patch file is missing: ' + base)
+    }
+    return {name: bundle.name, version: bundle.version, path: base,
+      files: regularPackageFiles(directory).map(file => ({path: file,
+        sha256: createHash('sha256').update(fs.readFileSync(path.join(directory, file))).digest('hex')}))}
+  })
+  const inventory = {schemaVersion: 1, productVersion: metadata.version,
+    packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles}
   const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
     .map(item => ({package: row.name, ...item})))
   save(path.join(packageRoot, 'package.json'), metadata)
