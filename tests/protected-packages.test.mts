@@ -15,7 +15,20 @@ after(() => cleanupTestDirectory(temporary))
 const compiled = path.join(temporary, 'protected-packages.mjs')
 await require('esbuild').build({entryPoints: [fileURLToPath(new URL('../src/operations/protected-packages.mts', import.meta.url))],
   outfile: compiled, bundle: true, platform: 'node', format: 'esm', logLevel: 'silent'})
-const {planProtectedPackages, prepareProtectedPackages, recoverProtectedPackages} = await import(pathToFileURL(compiled).href)
+const {planProtectedPackages, prepareProtectedPackages, protectedGeneration, recoverProtectedPackages,
+  readPreparedProfile, durableReferencesIntact} = await import(pathToFileURL(compiled).href) as {
+    planProtectedPackages(options: object): {changes: {path: string}[]; receipt: {clientClaims: string[]}
+      clientClaims: {names: string[]; state: string; detail?: string}}
+    prepareProtectedPackages(options: object): {receipt: {clientClaims: string[]; packages: {directory: string}[]}
+      clientClaims: {names: string[]; state: string; detail?: string}}
+    protectedGeneration(input: object): string
+    recoverProtectedPackages(home: string): {state: string} | null
+    readPreparedProfile(home: string, profile: string): {references: Map<string, unknown>; clientClaims: string[]} | null
+    durableReferencesIntact(home: string, profile: string, references: Iterable<unknown>,
+      clientClaims: readonly string[]): boolean}
+const yaml = require('yaml') as {parse(text: string): unknown[]}
+const include = await import(pathToFileURL(require.resolve('@deepseek-ai/cordis-plugin-include')).href) as
+  {applyEntryPatches(data: unknown[], patches: unknown[] | undefined, warn: (message: string) => void): {id: string}[]}
 const write = (file: string, value: unknown) => {
   fs.mkdirSync(path.dirname(file), {recursive: true})
   fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n')
@@ -126,6 +139,32 @@ test('reused generations are rechecked under the home lock without rewriting the
   assert.equal(fs.existsSync(path.join(f.home, plan.receipt.packages[0].directory, 'index.js')), false)
 })
 
+test('a caller-admitted generation is not read again, while any other record or tree still is', () => {
+  const f = fixture('admitted-sources')
+  const input = source(f.root)
+  const admitted = [{source: fs.realpathSync(input.source), generation: protectedGeneration(input)}]
+  // A member the record never named is visible only to the inventory gate, so
+  // this is exactly what a repeated read catches and an admitted generation
+  // does not: the durable copy is defined by the record, never by the tree.
+  write(path.join(input.source, 'unregistered.js'), 'not part of the admitted generation')
+  assert.throws(() => planProtectedPackages({...f, packages: [input]}), /inventory differs/)
+  for (const mismatch of [
+    {source: admitted[0]!.source, generation: '0'.repeat(64)},
+    {source: fs.realpathSync(f.root), generation: admitted[0]!.generation},
+  ]) {
+    assert.throws(() => planProtectedPackages({...f, packages: [input], verifiedSources: [mismatch]}), /inventory differs/)
+  }
+  const plan = planProtectedPackages({...f, packages: [input], verifiedSources: admitted})
+  const directory = plan.receipt.packages[0]!.directory
+  assert.deepEqual(plan.changes.filter(change => change.path.startsWith(directory + '/')).map(change => change.path),
+    [directory + '/index.js', directory + '/package.json'], 'the write set is the admitted record, never the tree')
+  // Reuse never accepts changed bytes: the same members are still read for the
+  // transaction and must match the digests this admission stands for.
+  fs.appendFileSync(path.join(input.source, 'index.js'), '\n')
+  assert.throws(() => planProtectedPackages({...f, packages: [input], verifiedSources: admitted}),
+    /Protected source changed during planning/)
+})
+
 test('pnpm overrides and patches cannot bypass owned file references', () => {
   const f = fixture('pnpm-overrides')
   const input = source(f.root)
@@ -140,6 +179,72 @@ test('pnpm overrides and patches cannot bypass owned file references', () => {
   }
   write(f.manifest, {...accepted, pnpm: {overrides: {'unrelated-plugin': '2.0.0'}}})
   assert.doesNotThrow(() => planProtectedPackages({...f, packages: [input]}))
+})
+
+/**
+ * A client-only owned package is a browser half this product mounts itself, so
+ * the profile's patch layer has to name it: that is what a manager scanning the
+ * layer reads before it mounts a second Loader source for the same bundle.
+ */
+test('a client-only child is claimed in the profile patch layer, once, without rewriting it', () => {
+  const f = fixture('client-claim')
+  const layer = path.join(f.home, 'profiles/web/cordis.patch.yml')
+  const user = '# user-owned comment\n[]\n'
+  write(layer, user)
+  const input = {...source(f.root), client: true as const}
+  const plain = source(f.root, 'dsh-nexttavern-pi-ai')
+  const result = prepareProtectedPackages({...f, packages: [input, plain]})
+  assert.deepEqual(result.receipt.clientClaims, [input.name])
+  assert.deepEqual(result.clientClaims, {names: [input.name], state: 'declared'})
+  const claimed = fs.readFileSync(layer, 'utf8')
+  // The template ships a bare empty document; appending after it would leave
+  // two top-level YAML nodes in one file, which no profile boots from.
+  assert.ok(claimed.startsWith('# user-owned comment\n# []\n'), claimed)
+  assert.ok(claimed.includes(`    - id: ${input.name}\n      disabled: true\n`), claimed)
+  assert.ok(!claimed.includes(plain.name), 'a package with a host half of its own is never claimed')
+  // The claim is also a real Loader row source: composed on its own it adds one
+  // disabled row and warns about nothing, so it can never mount anything.
+  const warnings: string[] = []
+  assert.deepEqual(include.applyEntryPatches([], yaml.parse(claimed), (message) => warnings.push(message)),
+    [{id: input.name, disabled: true}])
+  assert.deepEqual(warnings, [])
+  // Repeating the round writes nothing at all: the layer is append-only, and a
+  // name it already holds stays exactly as the person wrote it.
+  const repeated = planProtectedPackages({...f, packages: [input, plain]})
+  assert.equal(repeated.clientClaims.state, 'current')
+  assert.deepEqual(repeated.changes, [])
+  assert.equal(fs.readFileSync(layer, 'utf8'), claimed)
+  // The read-only decision names the claim too: a layer someone cleaned out
+  // sends the profile back through the round instead of leaving it claimed
+  // only in the receipt.
+  const prepared = readPreparedProfile(f.home, 'web')!
+  assert.deepEqual(prepared.clientClaims, [input.name])
+  assert.equal(durableReferencesIntact(f.home, 'web', prepared.references.values(), prepared.clientClaims), true)
+  write(layer, user)
+  assert.equal(durableReferencesIntact(f.home, 'web', prepared.references.values(), prepared.clientClaims), false)
+  // A profile with no patch layer at all gets exactly one.
+  const bare = fixture('client-claim-no-layer')
+  const bareInput = {...source(bare.root), client: true as const}
+  assert.equal(fs.existsSync(path.join(bare.home, 'profiles/web/cordis.patch.yml')), false)
+  assert.equal(prepareProtectedPackages({...bare, packages: [bareInput]}).clientClaims.state, 'declared')
+  assert.match(fs.readFileSync(path.join(bare.home, 'profiles/web/cordis.patch.yml'), 'utf8'),
+    new RegExp(`^    - id: ${bareInput.name}$`, 'mu'))
+})
+
+test('a patch layer that cannot take an appended block is reported, never rewritten', () => {
+  const f = fixture('claim-refused')
+  const layer = path.join(f.home, 'profiles/web/cordis.patch.yml')
+  const flow = '[{id: ui-skin-nexttavern, disabled: true}]\n'
+  write(layer, flow)
+  const input = {...source(f.root), client: true as const}
+  const result = prepareProtectedPackages({...f, packages: [input]})
+  assert.equal(result.clientClaims.state, 'refused')
+  assert.match(String(result.clientClaims.detail), /flow structure/)
+  assert.equal(fs.readFileSync(layer, 'utf8'), flow, 'an unusable layer is left exactly as it is')
+  assert.deepEqual(result.receipt.clientClaims, [input.name])
+  const prepared = readPreparedProfile(f.home, 'web')!
+  assert.equal(durableReferencesIntact(f.home, 'web', prepared.references.values(), prepared.clientClaims), true,
+    'a layer nothing can be appended to is not a reason to run the round again')
 })
 
 test('a dead preparing owner is recoverable before a journal exists', () => {
@@ -171,11 +276,18 @@ test('a dead preparing owner is recoverable before a journal exists', () => {
 
 test('a failed write restores metadata through the existing journal', () => {
   const f = fixture('recovery')
-  const input = source(f.root)
+  const layer = path.join(f.home, 'profiles/web/cordis.patch.yml')
+  write(layer, '[]\n')
+  const beforeLayer = fs.readFileSync(layer)
+  const input = {...source(f.root), client: true as const}
   const before = fs.readFileSync(f.manifest)
   const plan = planProtectedPackages({...f, packages: [input]})
-  assert.throws(() => applyTransaction({root: f.home, backup: f.backup, files: plan.changes, failAfter: 1}), /Injected/)
+  // Every write, so the claim the round appends is certainly in the write set
+  // this rollback has to undo.
+  assert.throws(() => applyTransaction({root: f.home, backup: f.backup, files: plan.changes,
+    failAfter: plan.changes.length}), /Injected/)
   assert.deepEqual(fs.readFileSync(f.manifest), before)
+  assert.deepEqual(fs.readFileSync(layer), beforeLayer)
 })
 
 for (const crashAfter of [1, 3, 4]) test(`discover and recover a dead installer after write ${crashAfter}`, () => {

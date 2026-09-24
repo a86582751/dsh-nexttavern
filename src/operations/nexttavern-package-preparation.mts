@@ -4,7 +4,7 @@ import type {Context} from '@deepseek-ai/cordis'
 import {dirname, join} from 'node:path'
 import {bootstrapBundledPackages, isWriterLockBusy, readBundleIdentity,
   type PeerManifestResolver} from './bundled-package-bootstrap.mjs'
-import {durableReferencesIntact, readPreparedReferences,
+import {durableReferencesIntact, readPreparedProfile,
   type PreparedReference} from './protected-packages.mjs'
 
 /**
@@ -227,9 +227,9 @@ function referencesCurrent(recorded: Map<string, PreparedReference>,
  */
 export function bundleReferencesCurrent(productRoot: string, home: string, profile: string): boolean {
   const identity = readBundleIdentity(productRoot)
-  const recorded = readPreparedReferences(home, profile)
-  return Boolean(recorded && referencesCurrent(recorded, [...identity.packages, ...identity.bundles])
-    && durableReferencesIntact(home, profile, recorded.values()))
+  const prepared = readPreparedProfile(home, profile)
+  return Boolean(prepared && referencesCurrent(prepared.references, [...identity.packages, ...identity.bundles])
+    && durableReferencesIntact(home, profile, prepared.references.values(), prepared.clientClaims))
 }
 
 /**
@@ -247,7 +247,7 @@ export function createOwnedPackagePreparation(facts: OwnedPackageFacts): Package
     inspect: () => {
       // Logging only: the shipped bundle versions each owned package, so a
       // single recorded version names it; mixed versions stay unnamed.
-      const versions = new Set([...readPreparedReferences(facts.home, facts.profile)?.values() ?? []]
+      const versions = new Set([...readPreparedProfile(facts.home, facts.profile)?.references.values() ?? []]
         .map(item => item.version))
       return {installedVersion: versions.size === 1 ? [...versions][0]! : null}
     },
@@ -267,6 +267,10 @@ export function createOwnedPackagePreparation(facts: OwnedPackageFacts): Package
           lockWaitMs: facts.lockWaitMs ?? LOCK_WAIT_MS,
         })
         version = prepared.version
+        if (prepared.clientClaims.state === 'refused') {
+          facts.logger?.warn('NextTavern could not claim its client-only Loader rows in the profile patch layer: '
+            + String(prepared.clientClaims.detail))
+        }
       } catch (error) {
         // A lock the host held for longer than that bound is a busy profile,
         // not a rejected bundle: the next notice or activation retries it.

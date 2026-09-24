@@ -5,6 +5,8 @@ import {applyTransaction, contained, digest, recoverInterruptedTransaction, type
 
 const transactionPurpose = 'prepare-protected-package-references'
 const receiptName = '.nexttavern-protected-packages.json'
+/** The profile's own patch layer, the file a client-only claim has to reach. */
+const patchLayerName = 'cordis.patch.yml'
 
 export interface ProtectedFile {path: string; sha256: string}
 export interface ProtectedPackageInput {
@@ -19,6 +21,16 @@ export interface ProtectedPackageInput {
    * Compatibility packages have no activation layer and never appear there.
    */
   bundle?: true
+  /**
+   * A compatibility package that is only a client half (`dsh.client`, no
+   * `dsh.bundle`). Its Loader row belongs to this product's own subtree: the
+   * host half mounts it together with the browser half, so another manager
+   * that mounts installed client-only packages on its own would compose a
+   * second Loader source for the same browser bundle. The claim in the
+   * profile's patch layer is what tells such a manager to leave the name
+   * alone; see {@link clientClaimBlock}.
+   */
+  client?: true
 }
 /**
  * One source tree a caller already admitted with this module's own gate.
@@ -47,6 +59,101 @@ interface ProtectedReceipt {
   state: 'references-prepared'
   profile: string
   packages: ProtectedPackageRecord[]
+  /**
+   * Owned client-only packages whose Loader row this profile's patch layer
+   * claims. Recorded so the read-only decision can see that the claim is part
+   * of the durable state; a package-manager upgrade changes the bundle's
+   * members, which invalidates that decision anyway, so this list never has to
+   * be recomputed from the installed tree.
+   */
+  clientClaims: string[]
+}
+
+/**
+ * The profile patch layer's own vocabulary for the claim, kept as the single
+ * place that spells it: a person reading the layer later has to be able to see
+ * which rows this installer owns, and a manager scanning the layer has to
+ * recognise the ids.
+ */
+function clientClaimBlock(names: readonly string[]): string {
+  const comment = [
+    '# NextTavern owns the Loader rows of its client-only packages: its own bundle',
+    '# layer mounts each browser half together with its host half, so a manager that',
+    '# mounts installed client-only packages by itself (dshmarket\'s client-only',
+    '# shim) has to skip a name claimed here. These rows are inert labels for that',
+    '# claim: `disabled` keeps them out of every composition, and the ids are what',
+    '# such a manager scans for. Removing them brings the second Loader source back',
+    '# and breaks this profile the next time the product itself is switched off.',
+  ].join('\n')
+  return `${comment}\n- insert:\n` + names.map(name => `    - id: ${name}\n      disabled: true\n`).join('')
+}
+
+/**
+ * Whether one patch layer names `id` anywhere: the same line-wise read a
+ * manager performs before it decides that a name is not its own to mount. An
+ * exact id or package name is enough, so a person may rewrite the claim by
+ * hand into any shape their loader accepts. Deliberately not a YAML parse:
+ * the read-only path runs on whatever the profile happens to hold.
+ */
+function patchLayerMentions(text: string, id: string): boolean {
+  const rowId = id.replace(/^@/, '').replace(/[^a-z0-9-]/gi, '-').toLowerCase()
+  for (const line of text.split(/\r?\n/)) {
+    const declared = /^\s*-?\s*id:\s*['"]?([A-Za-z0-9._/@-]+)/.exec(line)?.[1]
+    if (declared === id || declared === rowId) return true
+    if (/^\s*name:\s*['"]?([^'"\s]+)/.exec(line)?.[1] === id) return true
+  }
+  return false
+}
+
+/**
+ * Why this patch layer cannot take an appended block, or null when it can.
+ *
+ * The profile template ships a bare `[]` placeholder, and appending after it
+ * would put two top-level nodes in one document — the exact YAML error a hand
+ * edit runs into. Comments only, that placeholder, and a block sequence are
+ * appendable; a flow-style row list or a document that is not a list at all is
+ * refused, and the caller keeps its read-only verdict instead of writing a
+ * file it would have to guess about.
+ */
+function clientClaimRefusal(text: string): string | null {
+  const core = text.replace(/^[ \t]*#.*$/gmu, '').trim()
+  if (core === '' || core === '[]' || core === '[ ]') return null
+  const last = text.split(/\r?\n/).map(line => line.trim())
+    .filter(line => line !== '' && !line.startsWith('#')).pop() ?? ''
+  if (/^[[{]/u.test(last)) return 'the patch layer ends in a top-level flow structure'
+  if (!core.startsWith('-')) return 'the patch layer is not a top-level entry list'
+  return null
+}
+
+/** The claim block appended to a layer this module already admitted. */
+function clientClaimBytes(text: string, names: readonly string[]): Buffer {
+  const core = text.replace(/^[ \t]*#.*$/gmu, '').trim()
+  const body = core === '[]' || core === '[ ]'
+    ? text.replace(/^[ \t]*\[[ \t]*\][ \t]*(?:#.*)?(?:\r?\n|$)/mu, '# []\n')
+    : text
+  return Buffer.from((body === '' || body.endsWith('\n') ? body : `${body}\n`) + clientClaimBlock(names))
+}
+
+/**
+ * The claim rows this profile's patch layer still has to take, and the write
+ * that would add them.
+ *
+ * The layer is append-only for this installer: a name already named there is
+ * left exactly as the person wrote it, and nothing this product ever wrote is
+ * edited or removed. `update` is null both when every name is already claimed
+ * and when the layer cannot take an appended block at all.
+ */
+function planClientClaim(home: string, profile: string, names: readonly string[]) {
+  const relative = `profiles/${profile}/${patchLayerName}`
+  const file = contained(home, relative)
+  const current = fs.existsSync(file) ? fs.readFileSync(file) : null
+  const text = current?.toString('utf8') ?? ''
+  const missing = names.filter(name => !patchLayerMentions(text, name))
+  if (!missing.length) return {missing, update: null, detail: undefined as string | undefined}
+  const refusal = clientClaimRefusal(text)
+  if (refusal !== null) return {missing, update: null, detail: refusal}
+  return {missing, update: {path: relative, before: current === null ? null : digest(current),
+    bytes: clientClaimBytes(text, missing)}, detail: undefined as string | undefined}
 }
 interface ProfileManifest {
   dependencies?: Record<string, string>
@@ -184,21 +291,49 @@ export function verifyProtectedPackage(root: string, record: Pick<ProtectedPacka
  * follows from them are all pure functions of the receipt. A receipt that is
  * missing, foreign or not canonical returns null, which leaves the decision to
  * the locked transaction instead of to this read.
+ *
+ * A receipt that predates the client claim returns null on purpose: its
+ * references may be current, but a profile that never declared the claim keeps
+ * working only until the next market startup mounts a second Loader source for
+ * one of these packages. That profile takes the locked round once, which adds
+ * both the field and the rows it names.
  */
-export function readPreparedReferences(home: string, profile: string): Map<string, PreparedReference> | null {
+export interface PreparedProfile {
+  references: Map<string, PreparedReference>
+  /** Owned client-only packages that receipt declares as patch-layer rows. */
+  clientClaims: string[]
+}
+
+/** What one round could do about the profile patch layer's client claim. */
+export interface ClientClaimState {
+  /** Owned client-only names this round claims in the profile's patch layer. */
+  names: string[]
+  /**
+   * `declared` wrote the block, `current` found every name already named
+   * there, `refused` left a layer alone that cannot take an appended block,
+   * and `none` means this product ships no client-only package at all.
+   */
+  state: 'none' | 'declared' | 'current' | 'refused'
+  /** Why the layer refused the block; present with `refused` only. */
+  detail?: string
+}
+
+export function readPreparedProfile(home: string, profile: string): PreparedProfile | null {
   try {
     const root = fs.realpathSync(home)
     const receipt = JSON.parse(fs.readFileSync(
       contained(root, `profiles/${profile}/${receiptName}`), 'utf8')) as ProtectedReceipt
     if (receipt?.schemaVersion !== 1 || receipt.profile !== profile
-      || receipt.state !== 'references-prepared' || !Array.isArray(receipt.packages)) return null
+      || receipt.state !== 'references-prepared' || !Array.isArray(receipt.packages)
+      || !Array.isArray(receipt.clientClaims)
+      || receipt.clientClaims.some(name => typeof name !== 'string')) return null
     const recorded = new Map<string, PreparedReference>()
     for (const item of receipt.packages) {
       const record = recordFor(root, profile, item)
       if (recorded.has(record.name)) return null
       recorded.set(record.name, {...record, generation: generationOf(record, record.files)})
     }
-    return recorded
+    return {references: recorded, clientClaims: [...receipt.clientClaims]}
   } catch {
     return null
   }
@@ -211,11 +346,13 @@ export function readPreparedReferences(home: string, profile: string): Map<strin
  * that must decide whether that transaction is needed: the profile's own
  * `dependencies` name every recorded reference and no other dependency map
  * claims one of those names, no pnpm override shadows them, and each generation
- * directory still holds the identity and the file set its name promises. No
- * member's bytes are read here - only the locked transaction verifies those and
- * only it may write - so a mismatch means "run the round", never "repair".
+ * directory still holds the identity and the file set its name promises, and
+ * the patch layer still claims every client-only package the receipt recorded.
+ * No member's bytes are read here - only the locked transaction verifies those
+ * and only it may write - so a mismatch means "run the round", never "repair".
  */
-export function durableReferencesIntact(home: string, profile: string, references: Iterable<PreparedReference>): boolean {
+export function durableReferencesIntact(home: string, profile: string,
+  references: Iterable<PreparedReference>, clientClaims: readonly string[]): boolean {
   try {
     const root = fs.realpathSync(home)
     const manifest = JSON.parse(fs.readFileSync(
@@ -246,6 +383,15 @@ export function durableReferencesIntact(home: string, profile: string, reference
       }
     }
     assertNoResolutionOverride(manifest, names)
+    if (clientClaims.length) {
+      const layer = contained(root, `profiles/${profile}/${patchLayerName}`)
+      const text = fs.existsSync(layer) ? fs.readFileSync(layer, 'utf8') : ''
+      // A layer that cannot take the block has nothing left for the round to
+      // do; every other layer still has to name every claimed row, because the
+      // next manager startup is what composes a second Loader source without.
+      if (clientClaimRefusal(text) === null
+        && clientClaims.some(name => !patchLayerMentions(text, name))) return false
+    }
     return true
   } catch {
     return false
@@ -370,15 +516,24 @@ export function planProtectedPackages(options: {home: string; profile: string; p
   const merged = roster.filter(name => !previouslyOwned.has(name) || ownedBundles.includes(name))
   for (const name of ownedBundles) if (!merged.includes(name)) merged.push(name)
   if (JSON.stringify(merged) !== JSON.stringify(roster)) setProfileBundles(manifest, merged)
-  const receipt: ProtectedReceipt = {schemaVersion: 1, state: 'references-prepared', profile, packages: next}
-  const updates = [
+  // The product's own Loader rows for its client-only packages are part of the
+  // profile's durable state, so the same round that pins the bytes also claims
+  // them in the profile's patch layer. Nothing here edits or removes what the
+  // layer already holds, and a layer that cannot take the block is reported
+  // instead of being rewritten.
+  const clientClaims = options.packages.filter(input => input.client === true)
+    .map(input => input.name).sort()
+  const claim = clientClaims.length ? planClientClaim(home, profile, clientClaims) : null
+  const receipt: ProtectedReceipt = {schemaVersion: 1, state: 'references-prepared', profile, packages: next, clientClaims}
+  const updates: {path: string; before: string | null; bytes: Buffer}[] = [
     {path: manifestPath, before: digest(manifestBytes), bytes: Buffer.from(JSON.stringify(manifest, null, 2) + '\n')},
     {path: receiptPath, before: receiptBytes ? digest(receiptBytes) : null, bytes: Buffer.from(JSON.stringify(receipt, null, 2) + '\n')},
   ]
+  if (claim?.update) updates.push(claim.update)
   changes.push(...updates.filter(file => digest(file.bytes) !== file.before))
   const assertUnchanged = () => {
     // Reused generations are read-only dependencies, not transactional writes.
-    // Verify them and both metadata preimages again after acquiring the lock.
+    // Verify them and every metadata preimage again after acquiring the lock.
     for (const record of reused.values()) verifyProtectedPackage(contained(home, record.directory), record)
     for (const directory of emptyGenerations) {
       const target = contained(home, directory)
@@ -390,7 +545,13 @@ export function planProtectedPackages(options: {home: string; profile: string; p
       if (current !== update.before) throw Error('Protected metadata changed since planning: ' + update.path)
     }
   }
-  return {home, profile, changes, receipt, assertUnchanged, requiresRelink: true as const}
+  const claimState: ClientClaimState = {names: clientClaims, state: 'none'}
+  if (claim?.update) claimState.state = 'declared'
+  else if (claim?.detail !== undefined) {
+    claimState.state = 'refused'
+    claimState.detail = claim.detail
+  } else if (claim) claimState.state = 'current'
+  return {home, profile, changes, receipt, assertUnchanged, requiresRelink: true as const, clientClaims: claimState}
 }
 
 /** Explicit crash recovery before replanning; a live home owner is never stopped. */
@@ -413,5 +574,6 @@ export function prepareProtectedPackages(options: {
   const plan = planProtectedPackages(options)
   const transaction = plan.changes.length ? applyTransaction({root: plan.home, backup: options.backup,
     files: plan.changes, purpose: transactionPurpose, assertUnchanged: plan.assertUnchanged}) : null
-  return {state: 'references-prepared' as const, requiresRelink: true as const, receipt: plan.receipt, transaction}
+  return {state: 'references-prepared' as const, requiresRelink: true as const, receipt: plan.receipt,
+    clientClaims: plan.clientClaims, transaction}
 }

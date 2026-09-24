@@ -36,7 +36,7 @@ interface PackageMetadata {
   bundleDependencies?: string[]
   peerDependencies?: Record<string, string>
   peerDependenciesMeta?: Record<string, {optional?: boolean}>
-  dsh?: {bundle?: {patch?: unknown}}
+  dsh?: {bundle?: {patch?: unknown}; client?: unknown}
 }
 const readJson = <T,>(file: string) => JSON.parse(fs.readFileSync(file, 'utf8')) as T
 export type PeerManifestResolver = (name: string, parentURL: string) => string | undefined
@@ -187,7 +187,12 @@ export function inspectBundledPackages(productRoot: string, hostAnchor: string, 
     verifyPeers(metadataPath, metadata, hostManifest, identity.rootManifest, ownedNames, resolveManifest)
     // The generation names exactly these bytes, so the transaction that may
     // write them can reuse this verification instead of reading the tree again.
-    return {...spec, source, entry}
+    // A package without an activation layer that declares `dsh.client` is a
+    // browser half: this product's own Loader row mounts it, and no manager may
+    // mount a second one. Admission is where that is knowable, because the
+    // identity-only read that decides whether a round is needed must not read
+    // these bytes at all - the profile receipt carries the claim instead.
+    return {...spec, source, entry, ...(metadata.dsh?.client === undefined ? {} : {client: true as const})}
   })
   // The activation layers take the opposite side of the compatibility gate:
   // a compatibility package that declared `dsh.bundle` was already rejected,
@@ -271,6 +276,7 @@ export async function bootstrapBundledPackages(options: {
       profileGraph: 'relink-pending' as const,
       recovered,
       prepared,
+      clientClaims: prepared.clientClaims,
     }
   }, options.lockWaitMs === undefined ? undefined : {waitMs: options.lockWaitMs})
   // Coordinate with supported host writers, not merely our home transaction.
