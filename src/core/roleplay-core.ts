@@ -23,6 +23,7 @@ import {
 } from './roleplay-data.js'
 import {
   eventsOf,
+  sessionEventsIfReady,
   surfaceEvents,
   surfaceEntries,
   isCompletedTurnEnd,
@@ -566,9 +567,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
 
   const isRoleplaySession = (session: ContextSession | null | undefined) => {
     if (!session) return false
-    if(eventsOf(session).some(e=>e?.type==='subagent/descriptor'&&Number(e.seq)>=Number(session.inheritedEventCount??0)))return false
+    const events = sessionEventsIfReady(session)
+    if (events === null) return session.header?.agentPreset === 'roleplay'
+    if(events.some(e=>e?.type==='subagent/descriptor'&&Number(e.seq)>=Number(session.inheritedEventCount??0)))return false
     let preset = session.header?.agentPreset
-    for (const e of eventsOf(session)) {
+    for (const e of events) {
       if (e && e.type === 'agent-preset/selected' && e.data?.agentPreset) preset = e.data.agentPreset
     }
     return preset === 'roleplay'

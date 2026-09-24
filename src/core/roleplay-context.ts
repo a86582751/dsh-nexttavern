@@ -81,6 +81,21 @@ export function eventsOf(session: ContextSession | null | undefined): readonly C
   return sessionEvents(session)
 }
 
+/**
+ * Classification predicates run for every agent, including sessions this
+ * product does not own. There is no live observation to await then, and the
+ * alpha.6 predicate answered from the header instead of failing; only a read
+ * that needs the actual events must await readiness first.
+ */
+export function sessionEventsIfReady<E>(session: {events?: readonly E[]; log?: readonly E[]} | null | undefined): readonly E[] | null {
+  try {
+    return sessionEvents<E>(session)
+  } catch (error) {
+    if ((error as {code?: unknown} | null)?.code === 'SESSION_HISTORY_NOT_READY') return null
+    throw error
+  }
+}
+
 export function lastSeq(session: ContextSession) {
   if (Number.isSafeInteger(session?.seq)) return Number(session.seq) - 1
   const events = eventsOf(session)

@@ -62,6 +62,14 @@ async function bench({ tables = new Map(), result = () => panel, otherResult = (
     on(name, fn) { if (!hooks.has(name)) hooks.set(name, []); hooks.get(name).push(fn); return () => {} },
     provide(name, value) { services.set(name, value) }, get: name => services.get(name),
   }
+  // The owned session-format addon provides this service in production; the
+  // loaded view supplies the same contract so edit recovery can run.
+  ctx.nexttavernMessageEdits = {
+    append: (session, targetSeq, identity, message) => session.append('roleplay/message-edit', { schemaVersion: 1, targetSeq, ...identity, text: message }),
+    latest: (events, targetSeq) => events.filter(event => event?.type === 'roleplay/message-edit').findLast(event => event.data?.targetSeq === targetSeq) ?? null,
+    current: (_session, events) => [...new Map(events.filter(event => event?.type === 'roleplay/message-edit')
+      .map(event => [event.data.targetSeq, event])).values()],
+  }
   await apply(ctx, { statusRetryMs: 60_000, workerProvider: 'fixture-worker', workerModel: 'fixture-worker' })
   const session = { id: 'status-fixture', header: { agentPreset: 'roleplay' }, events: [], surface: { nodes: [] }, seq: 0 }
   sessions.set(session.id, session)
@@ -212,7 +220,9 @@ for (const legacyReady of [false, true]) {
     await b.table('cards').put(`${b.session.id}__npc`,{name:'管理员',content:'值守庭院'})
     b.begin(); await b.emit('session/event',b.session,b.finish())
     const parentRecord=structuredClone(b.current()), count=b.calls.length
-    const child={...b.session,id:`status-clone-${legacyReady}`,header:{agentPreset:'roleplay',parentSession:b.session.id,seedLength:b.session.seq},events:structuredClone(b.session.events),surface:structuredClone(b.session.surface)}
+    // Alpha.7 states the inherited prefix length on the session itself; only the
+    // parent identity stays in the header.
+    const child={...b.session,id:`status-clone-${legacyReady}`,inheritedEventCount:b.session.seq,header:{agentPreset:'roleplay',parentSession:b.session.id},events:structuredClone(b.session.events),surface:structuredClone(b.session.surface)}
     b.sessions.set(child.id,child)
     if(legacyReady) {
       await b.table('branch').put(`${child.id}__meta`,{inheritanceState:'ready',inheritedFrom:b.session.id,inheritedAtSeedLength:b.session.seq})
@@ -220,9 +230,9 @@ for (const legacyReady of [false, true]) {
       await b.table('status').put(`${child.id}__panel`,parentRecord)
       await b.table('cards').put(`${child.id}__npc`,b.table('cards').get(`${b.session.id}__npc`))
     }
-    const response=await b.routes.get('/api/roleplay/state').fetch(new Request(`https://fixture.test/api/roleplay/state?sessionId=${child.id}`))
-    const state=await response.json()
-    assert.equal(state.statusPanel?.sessionId,child.id,'cloned status must be visible under child ownership')
+      const response=await b.routes.get('/api/roleplay/state').fetch(new Request(`https://fixture.test/api/roleplay/state?sessionId=${child.id}`))
+      const state=await response.json()
+      assert.equal(state.statusPanel?.sessionId,child.id,'cloned status must be visible under child ownership')
     assert.deepEqual(state.statusPanel.panel,parentRecord.panel)
     assert.deepEqual(b.current(),parentRecord,'parent state is immutable')
     assert.equal(b.calls.length,count,'state inheritance does not regenerate status')
@@ -242,7 +252,7 @@ for(const invalid of ['edited-prefix','outside-seed']) {
   const b=await bench()
   try {
     b.begin();await b.emit('session/event',b.session,b.finish())
-    const child={...b.session,id:`status-clone-${invalid}`,header:{agentPreset:'roleplay',parentSession:b.session.id,seedLength:invalid==='outside-seed'?2:b.session.seq},events:structuredClone(b.session.events),surface:structuredClone(b.session.surface)}
+    const child={...b.session,id:`status-clone-${invalid}`,inheritedEventCount:invalid==='outside-seed'?2:b.session.seq,header:{agentPreset:'roleplay',parentSession:b.session.id},events:structuredClone(b.session.events),surface:structuredClone(b.session.surface)}
     if(invalid==='edited-prefix')child.events[1].data.content=text('修改过的行动')
     b.sessions.set(child.id,child)
     const response=await b.routes.get('/api/roleplay/state').fetch(new Request(`https://fixture.test/api/roleplay/state?sessionId=${child.id}`))

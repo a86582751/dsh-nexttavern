@@ -1,5 +1,6 @@
 // Generated from runtime/alpha3/src/memory/roleplay-memory-engine.ts; edit the TypeScript source.
 import { sessionEvents, ensureSessionHistory } from '../core/session-history.js';
+import { sessionEventsIfReady } from '../core/roleplay-context.js';
 // roleplay-memory-engine.js — roleplay preset 的记忆/压缩引擎。
 //
 // 提供本 preset isolate group 内的 `compaction` 服务（command-compact 与
@@ -91,7 +92,10 @@ export async function apply(ctx, config = {}) {
             return false;
         let preset = session.header?.agentPreset;
         const seed = Number(session.inheritedEventCount ?? 0);
-        for (const event of eventsOf(session)) {
+        const events = sessionEventsIfReady(session);
+        if (events === null)
+            return preset === 'roleplay';
+        for (const event of events) {
             const type = event?.type;
             if (type === 'subagent/descriptor' && Number(event.seq) >= seed)
                 return false;

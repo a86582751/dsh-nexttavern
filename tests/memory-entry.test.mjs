@@ -108,7 +108,9 @@ assert.deepEqual(memory.inject, ['sessions', 'llm', 'tokenMeter', 'agentDefaultM
     h.session.events = Array.from({ length: count }, (_, seq) => ({ seq, get type() { reads++; return seq === count - 1 ? 'agent-preset/selected' : 'assistant/chunk' }, data: { agentPreset: 'roleplay' } }))
     assert.match((await h.invoke('unrecognized')).text, /用法/)
     assert.equal(reads, count, 'roleplay classification scans the history once')
-    h.session.header.seedLength = 1
+    // Alpha.7 keeps the inherited prefix length on the session itself, so the
+    // classification boundary follows `inheritedEventCount`.
+    h.session.inheritedEventCount = 1
     h.session.events[0] = { seq: 0, type: 'subagent/descriptor', data: {} }
     assert.match((await h.invoke('unrecognized')).text, /用法/, 'inherited descriptors do not classify a child as a task session')
     h.session.events[1] = { seq: 1, type: 'subagent/descriptor', data: {} }

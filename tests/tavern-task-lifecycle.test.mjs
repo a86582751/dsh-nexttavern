@@ -361,7 +361,9 @@ for(const background of [false,true]) {
  const add=(type,data)=>{const event={seq:session.events.length,type,data};session.events.push(event);session.surface.nodes.push(event.seq);return event}
  add('user/message',{source:{kind:'user'},content:[{type:'text',text:'visible'}]})
  assert.deepEqual(host.taskStory(session).map(({seq,text})=>({seq,text})),[{seq:0,text:'visible'},{seq:4,text:'archived'}],'visible projection wins without changing evidence order')
- const source={plugin:'roleplay-tasks',form:'phase',stage:'character-cast'}
+ // Alpha.7 rejects the retired `kind: 'plugin'` wrapper; owned task sources
+ // identify themselves with `kind`.
+ const source={kind:'roleplay-tasks',form:'phase',stage:'character-cast'}
  add('user/message',{source});assert.deepEqual(host.clusterPhase(session),source)
  add('turn/start',{turn:2});assert.equal(host.clusterPhase(session),null)
  let iterations=0,indexReads=0

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import {branchScope,belongsToBranch,durableSeq,provenanceSeqOf,scopedLedgerItems,textOf,lastSeqOf,estimateTokens,adaptationIsActive,adaptationTurns} from '../lib/memory/memory-provenance.js'
-const fork={id:'child',header:{parentSession:'root',seedLength:5},events:[{seq:3},{seq:9}]}
+// Alpha.7 stores the fork-inherited prefix length on the session
+// (native `inheritedEventCount`); the header keeps only the parent identity.
+const fork={id:'child',header:{parentSession:'root'},inheritedEventCount:5,events:[{seq:3},{seq:9}]}
 assert.deepEqual(branchScope(fork),{isFork:true,seedLength:5})
 assert.deepEqual(branchScope({id:'root',header:{}}),{isFork:false,seedLength:null})
 assert.equal(durableSeq(4),4);assert.equal(durableSeq(-1),null);assert.equal(durableSeq(1.2),null)

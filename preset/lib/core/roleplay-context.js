@@ -13,6 +13,22 @@ export function assertWorkspaceSession(session) {
 export function eventsOf(session) {
     return sessionEvents(session);
 }
+/**
+ * Classification predicates run for every agent, including sessions this
+ * product does not own. There is no live observation to await then, and the
+ * alpha.6 predicate answered from the header instead of failing; only a read
+ * that needs the actual events must await readiness first.
+ */
+export function sessionEventsIfReady(session) {
+    try {
+        return sessionEvents(session);
+    }
+    catch (error) {
+        if (error?.code === 'SESSION_HISTORY_NOT_READY')
+            return null;
+        throw error;
+    }
+}
 export function lastSeq(session) {
     if (Number.isSafeInteger(session?.seq))
         return Number(session.seq) - 1;
