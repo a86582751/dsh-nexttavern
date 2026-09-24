@@ -1,7 +1,9 @@
-"""Ephemeral SSH worker: standard DSH token exchange, then one HTTP request.
+"""Ephemeral worker: standard DSH credential use, then one HTTP request.
 
-No service/plugin installation, credential copying or authentication changes.
-The launch token and browser cookie stay inside this remote process.
+It runs either over SSH on the DSH host or inside the CLI process against a
+directly reachable host/port. No service/plugin installation, credential
+copying or authentication changes. The launch token and browser cookie stay
+inside this process and are never printed.
 """
 import base64
 import errno
@@ -22,6 +24,49 @@ import uuid
 
 UPLOAD_ROOT = os.path.join(os.environ.get('DSH_HOME', os.path.expanduser('~/.dsh')), 'roleplay', 'cli-imports')
 MAX_WS_MESSAGE = 32 * 1024 * 1024
+HOST_PATTERN = re.compile(r'\[?[A-Za-z0-9_.:-]+\]?')
+
+
+def endpoint(value):
+    """Validate the direct endpoint; the default is loopback."""
+    scheme = str(value.get('scheme') or 'http').lower()
+    if scheme not in ('http', 'https'): raise ValueError('scheme')
+    host = str(value.get('host') or '127.0.0.1').strip()
+    if not HOST_PATTERN.fullmatch(host) or host.startswith('-') or ('[' in host) != (']' in host):
+        raise ValueError('host')
+    if ':' in host and not host.startswith('['): raise ValueError('host')
+    try:
+        port = int(value.get('port', 3081))
+    except (TypeError, ValueError):
+        raise ValueError('port') from None
+    if not 1 <= port <= 65535: raise ValueError('port')
+    authority = f'{host}:{port}'
+    return scheme, host, port, authority, f'{scheme}://{authority}'
+
+
+def is_loopback(host):
+    value = host.strip('[]').casefold()
+    if value == 'localhost': return True
+    if value in ('::1', '0:0:0:0:0:0:0:1'): return True
+    parts = value.split('.')
+    return len(parts) == 4 and parts[0] == '127' and all(part.isdigit() and 0 <= int(part) <= 255 for part in parts)
+
+
+def explicit_cookie(value):
+    """Return an operator-supplied cookie, or None. Never logs its value."""
+    direct = os.environ.get('DSH_DEBUG_COOKIE')
+    if direct and '\n' not in direct and '\r' not in direct:
+        return direct.strip()
+    path = value.get('cookie_file') or os.environ.get('DSH_DEBUG_COOKIE_FILE')
+    if not path: return None
+    try:
+        with open(os.path.abspath(os.path.expanduser(str(path))), 'r', encoding='utf-8-sig') as handle:
+            line = handle.readline().strip()
+    except OSError:
+        raise ValueError('cookie file unreadable') from None
+    if line.lower().startswith('cookie:'): line = line.split(':', 1)[1].strip()
+    if not line or '=' not in line: raise ValueError('cookie file has no Cookie header value')
+    return line
 
 
 def _ws_frame(payload, opcode=1):
@@ -86,13 +131,14 @@ def _ws_message(sock, buffer, deadline):
         return opcode, b''.join(parts)
 
 
-def read_workspace_baseline(port, cookie, timeout, endpoint='workspace/follow'):
+def read_workspace_baseline(port, cookie, timeout, stream_endpoint='workspace/follow', host='127.0.0.1'):
     deadline = time.monotonic() + timeout
     key = base64.b64encode(os.urandom(16)).decode('ascii')
-    sock = socket.create_connection(('127.0.0.1', port), timeout=timeout)
+    authority = f'{host}:{port}'
+    sock = socket.create_connection((host.strip('[]'), port), timeout=timeout)
     stream_id = None
     try:
-        request = (f'GET /api/remote.mux HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n'
+        request = (f'GET /api/remote.mux HTTP/1.1\r\nHost: {authority}\r\n'
                    f'Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n'
                    f'Sec-WebSocket-Version: 13\r\nCookie: {cookie}\r\n\r\n').encode()
         sock.settimeout(max(0, deadline - time.monotonic()))
@@ -107,7 +153,7 @@ def read_workspace_baseline(port, cookie, timeout, endpoint='workspace/follow'):
         if not header.startswith(b'HTTP/1.1 101'): raise ValueError('WebSocket handshake rejected')
         buffer = bytearray(header.split(b'\r\n\r\n', 1)[1])
         stream_id = str(uuid.uuid4())
-        sock.sendall(_ws_frame(json.dumps({'type': 'open', 'streamId': stream_id, 'endpoint': endpoint, 'payload': {'args': {}}}, separators=(',', ':'))))
+        sock.sendall(_ws_frame(json.dumps({'type': 'open', 'streamId': stream_id, 'endpoint': stream_endpoint, 'payload': {'args': {}}}, separators=(',', ':'))))
         while True:
             kind, raw = _ws_message(sock, buffer, deadline)
             if kind == 9:
@@ -430,7 +476,7 @@ def stage_as_service_identity(plan, workspace, identity):
         raise WorkspaceUploadError('workspace-upload-service', 'Configured service identity is invalid; no workspace file was written')
     identity_matches = (os.geteuid(), os.getegid()) == (uid, gid) and set(os.getgroups()) == set(groups)
     if not identity_matches and os.geteuid() != 0:
-        raise WorkspaceUploadError('workspace-upload-service', 'SSH worker cannot switch to the configured service identity; no workspace file was written')
+        raise WorkspaceUploadError('workspace-upload-service', 'Worker cannot switch to the configured service identity; no workspace file was written')
     read_fd, write_fd = os.pipe()
     child = os.fork()
     if child == 0:
@@ -477,7 +523,7 @@ def stage_as_service_identity(plan, workspace, identity):
 
 
 def project_response(data, plan):
-    """Bound native list data before crossing SSH; never mutate API objects."""
+    """Bound native list data before crossing the transport; never mutate API objects."""
     if plan.get('summary') != 'sessions' or data.get('result', {}).get('ok') is not True:
         return data
     value = data['result']['value']
@@ -490,7 +536,7 @@ def project_response(data, plan):
             rows.append(item)
     offset = max(0, int(plan.get('offset', 0)))
     limit = min(200, max(1, int(plan.get('limit', 20))))
-    summary = {'items': rows[offset:offset+limit], 'total': len(rows), 'nextCursor': str(offset+limit) if offset+limit<len(rows) else None, 'source': 'native session/list, projected before SSH', 'omitted': ['contextHeaders', 'contextTimeline', 'turnOutline', 'other non-list projections']}
+    summary = {'items': rows[offset:offset+limit], 'total': len(rows), 'nextCursor': str(offset+limit) if offset+limit<len(rows) else None, 'source': 'native session/list, projected before transfer', 'omitted': ['contextHeaders', 'contextTimeline', 'turnOutline', 'other non-list projections']}
     return {**data, 'result': {**data['result'], 'value': summary}}
 
 
@@ -499,12 +545,13 @@ def run(value):
     dsh_home = os.path.abspath(os.path.expanduser(value.get('dsh_home') or os.environ.get('DSH_HOME', '~/.dsh')))
     UPLOAD_ROOT = os.path.join(dsh_home, 'roleplay', 'cli-imports')
     plan = value['plan']
+    scheme, host, port, authority, base = endpoint(value)
+    loopback = is_loopback(host)
+    if plan.get('action') in ('upload-card', 'upload-workspace') and not loopback:
+        return {'ok': False, 'error': {'code': 'upload-requires-ssh',
+            'message': 'File staging runs on the DSH host; use --target ssh for a non-loopback endpoint'}}
     if plan.get('action') == 'upload-card':
         return stage_card(plan)
-    port = int(value.get('port', 3081))
-    if not 1 <= port <= 65535:
-        raise ValueError('port')
-    base = f'http://127.0.0.1:{port}'
     path = plan.get('path')
     if plan.get('action') != 'upload-workspace':
         if not isinstance(path, str):
@@ -516,49 +563,56 @@ def run(value):
     service = value.get('service', 'deepseek-harness')
     if not re.fullmatch(r'[a-zA-Z0-9_.@-]+', service):
         raise ValueError('service')
-    try:
-        journal = subprocess.run(['journalctl', '-u', service, '-n', '1', '--grep', 'token=', '-o', 'cat', '--no-pager'], capture_output=True, text=True, timeout=8, check=True)
-        tokens = re.findall(r'[?&]token=([A-Za-z0-9_-]+)', journal.stdout)
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        tokens = []
     jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(jar))
-    cookie = None
-    if tokens:
-        with opener.open(base + '/?token=' + urllib.parse.quote(tokens[-1]), timeout=timeout) as response:
-            response.read(4096)
-        cookie = '; '.join(f'{item.name}={item.value}' for item in jar)
-    else:
-        # Some installations never log launch tokens. A server administrator
-        # already owns this native credential. Sign a 60-second loopback-only
-        # browser credential using the existing v1 scheme, entirely on-server.
-        # Fail closed on a changed record shape. Never modify the credential file.
-        code = r'''
+    try:
+        cookie = explicit_cookie(value)
+    except ValueError as error:
+        return {'ok': False, 'error': {'code': 'cookie-file', 'message': str(error)}}
+    if cookie is None:
+        if not loopback:
+            return {'ok': False, 'error': {'code': 'auth-unavailable',
+                'message': 'A non-loopback endpoint needs an operator cookie: set DSH_DEBUG_COOKIE, or configure --cookie-file during init; no authentication was changed'}}
+        try:
+            journal = subprocess.run(['journalctl', '-u', service, '-n', '1', '--grep', 'token=', '-o', 'cat', '--no-pager'], capture_output=True, text=True, timeout=8, check=True)
+            tokens = re.findall(r'[?&]token=([A-Za-z0-9_-]+)', journal.stdout)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            tokens = []
+        if tokens:
+            with opener.open(base + '/?token=' + urllib.parse.quote(tokens[-1]), timeout=timeout) as response:
+                response.read(4096)
+            cookie = '; '.join(f'{item.name}={item.value}' for item in jar)
+        else:
+            # Some installations never log launch tokens. A server administrator
+            # already owns this native credential. Sign a 60-second loopback-only
+            # browser credential using the existing v1 scheme, entirely on-server.
+            # Fail closed on a changed record shape. Never modify the credential file.
+            code = r'''
 const fs=require('node:fs'),crypto=require('node:crypto'),yaml=require('yaml');
 const record=yaml.parse(fs.readFileSync(process.argv[2],'utf8')).records?.['client-connection/browser-session'];
 if(record?.kind!=='grant'||record.payload?.version!==1)throw Error('unsupported credential');
 const secret=Buffer.from(record.payload.secret,'base64url');if(secret.length!==32)throw Error('bad secret');
-const authority='127.0.0.1:'+process.argv[1],now=Date.now();
+const authority=process.argv[3]+':'+process.argv[1],now=Date.now();
 const body=Buffer.from(JSON.stringify({version:1,authority,issuedAt:now,expiresAt:now+60000})).toString('base64url');
 const name='dsh-auth-'+crypto.createHash('sha256').update(authority).digest('base64url');
 process.stdout.write(name+'=v1.'+body+'.'+crypto.createHmac('sha256',secret).update(body).digest('base64url'));
 '''
-        harness_root = value.get('harness_root') or os.environ.get('DSH_HARNESS_ROOT')
-        if not harness_root or not os.path.isdir(harness_root):
-            return {'ok': False, 'error': {'code': 'auth-unavailable', 'message': 'Set harness_root/DSH_HARNESS_ROOT for the native credential adapter, or use a service with a launch token'}}
-        signed = subprocess.run(['node', '-e', code, str(port), os.path.join(dsh_home, '.credentials.yaml')], cwd=harness_root, capture_output=True, text=True, timeout=8)
-        if signed.returncode or not signed.stdout.startswith('dsh-auth-'):
-            return {'ok': False, 'error': {'code': 'auth-unavailable', 'message': 'Native server credential unavailable or unsupported; no auth configuration was changed'}}
-        cookie = signed.stdout
+            harness_root = value.get('harness_root') or os.environ.get('DSH_HARNESS_ROOT')
+            if not harness_root or not os.path.isdir(harness_root):
+                return {'ok': False, 'error': {'code': 'auth-unavailable', 'message': 'Set harness_root/DSH_HARNESS_ROOT for the native credential adapter, or use a service with a launch token'}}
+            signed = subprocess.run(['node', '-e', code, str(port), os.path.join(dsh_home, '.credentials.yaml'), host], cwd=harness_root, capture_output=True, text=True, timeout=8)
+            if signed.returncode or not signed.stdout.startswith('dsh-auth-'):
+                return {'ok': False, 'error': {'code': 'auth-unavailable', 'message': 'Native server credential unavailable or unsupported; no auth configuration was changed'}}
+            cookie = signed.stdout
     if plan.get('stream'):
         try:
-            return {'ok': True, 'value': read_workspace_baseline(port, cookie or '', timeout)}
+            return {'ok': True, 'value': read_workspace_baseline(port, cookie or '', timeout, host=host)}
         except Exception as error:
             return {'ok': False, 'error': {'code': 'workspace-stream', 'message': str(error)}}
     if plan.get('action') == 'upload-workspace':
         try:
             session_value = exact_session_metadata(opener, base, cookie, plan.get('sessionId'), timeout)
-            workspace_value = read_workspace_baseline(port, cookie or '', timeout)
+            workspace_value = read_workspace_baseline(port, cookie or '', timeout, host=host)
             workspace = resolve_workspace(plan.get('sessionId'), session_value, workspace_value)
             return stage_as_service_identity(plan, workspace, service_identity(service))
         except WorkspaceUploadError as error:
@@ -595,5 +649,5 @@ if __name__ == '__main__':
         result = run(json.load(sys.stdin))
     except Exception as error:
         # Never include exception URLs (the token exchange URL contains a secret).
-        result = {'ok': False, 'error': {'code': type(error).__name__, 'message': 'SSH worker request failed; a timed-out write may already have been accepted. Read state before retrying.'}}
+        result = {'ok': False, 'error': {'code': type(error).__name__, 'message': 'Worker request failed; a timed-out write may already have been accepted. Read state before retrying.'}}
     print(json.dumps(result, ensure_ascii=True))

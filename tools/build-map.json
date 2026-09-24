@@ -5510,10 +5510,6 @@
         "source": "tests/quality-runner.test.mjs"
       },
       {
-        "id": "public-gitignore",
-        "source": ".gitignore"
-      },
-      {
         "id": "compat-session-controller-agent-ts",
         "source": "development/session-controller/src/agent.ts"
       },

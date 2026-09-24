@@ -42,10 +42,10 @@ function setup(name: string, protectedProfile = false) {
   const profile = path.join(root, protectedProfile ? 'home/profiles/web' : 'profile')
   const host = path.join(root, 'host-peer')
   const original = path.join(root, 'user-anydoc')
-  pkg(host, 'fixture-host-peer', '1.0.0', {}, 'export const singleton = {}')
+  pkg(host, '@deepseek-ai/fixture-host-peer', '1.0.0', {}, 'export const singleton = {}')
   pkg(original, 'dsh-plugin-anydoc', '1.0.0', {}, 'export const owner = "user-original"')
   write(path.join(profile, 'package.json'), {name: 'fixture-profile', private: true, type: 'module',
-    dependencies: {'fixture-host-peer': 'file:' + path.relative(profile, host).replaceAll('\\', '/'),
+    dependencies: {'@deepseek-ai/fixture-host-peer': 'file:' + path.relative(profile, host).replaceAll('\\', '/'),
       'dsh-plugin-anydoc': 'file:' + path.relative(profile, original).replaceAll('\\', '/'),
       // Reuse the installed host helper and its own peer tree; do not construct
       // another framework installation in this small package fixture.
@@ -61,12 +61,15 @@ function setup(name: string, protectedProfile = false) {
 function product(root: string, version: string, kind: 'bundled' | 'relative-file', bootstrap = false) {
   const source = path.join(root, 'source-' + version)
   const member = kind === 'bundled' ? 'node_modules/dsh-nexttavern-anydoc' : 'vendor/anydoc'
-  pkg(path.join(source, member), 'dsh-nexttavern-anydoc', version, {peerDependencies: {'fixture-host-peer': '1.0.0'}},
-    `export {singleton} from 'fixture-host-peer'; export const owner = ${JSON.stringify(version)}`)
+  pkg(path.join(source, member), 'dsh-nexttavern-anydoc', version, {peerDependencies: {'@deepseek-ai/fixture-host-peer': '1.0.0'}},
+    `export {singleton} from '@deepseek-ai/fixture-host-peer'; export const owner = ${JSON.stringify(version)}`)
   pkg(source, 'dsh-nexttavern', version, {
     dependencies: {'dsh-nexttavern-anydoc': kind === 'bundled' ? version : 'file:vendor/anydoc'},
     ...(kind === 'bundled' ? {bundleDependencies: ['dsh-nexttavern-anydoc']} : {}),
-    ...(bootstrap ? {peerDependencies: {'@deepseek-ai/dsh-atomic-write': '0.1.2-alpha.3'}} : {}),
+    // The host package manager this fixture reuses states its own version; a
+    // stale pin here fails the strict peer check instead of exercising bootstrap.
+    ...(bootstrap ? {peerDependencies: {'@deepseek-ai/dsh-atomic-write':
+      JSON.parse(fs.readFileSync(require.resolve('@deepseek-ai/dsh-atomic-write/package.json'), 'utf8')).version}} : {}),
   }, 'export {singleton, owner} from "dsh-nexttavern-anydoc"')
   if (bootstrap) {
     require('esbuild').buildSync({
@@ -115,11 +118,11 @@ test('bundled private plugins survive unrelated installs, reinstalls, explicit d
     'const root = require.resolve("dsh-nexttavern");',
     'const owned = createRequire(root).resolve("dsh-nexttavern-anydoc");',
     'const load = file => import(pathToFileURL(file).href);',
-    'const [product, peer, original] = await Promise.all([load(root), load(require.resolve("fixture-host-peer")),',
+    'const [product, peer, original] = await Promise.all([load(root), load(require.resolve("@deepseek-ai/fixture-host-peer")),',
     '  load(require.resolve("dsh-plugin-anydoc"))]);',
     'console.log(JSON.stringify({root, owned, rootReal: fs.realpathSync(root), ownedReal: fs.realpathSync(owned),',
     '  owner: product.owner, original: original.owner, peerShared: product.singleton === peer.singleton,',
-    '  peerPath: createRequire(owned).resolve("fixture-host-peer"), hostPath: require.resolve("fixture-host-peer")}));',
+    '  peerPath: createRequire(owned).resolve("@deepseek-ai/fixture-host-peer"), hostPath: require.resolve("@deepseek-ai/fixture-host-peer")}));',
   ].join('\n'))
   const observe = () => {
     const result = JSON.parse(cli(path.join(fixture.profile, 'observe.mjs'), [], fixture.profile))
@@ -158,8 +161,8 @@ test('bundled private plugins survive unrelated installs, reinstalls, explicit d
 test('external fixed-package references survive pnpm relinking without reverting to a registry package', () => {
   const fixture = setup('fixed-directory')
   const stable = path.join(fixture.root, 'fixed-packages', 'dsh-nexttavern-anydoc')
-  pkg(stable, 'dsh-nexttavern-anydoc', '0.0.0-fixture.1', {peerDependencies: {'fixture-host-peer': '1.0.0'}},
-    'export {singleton} from "fixture-host-peer"; export const owner = "fixed-compatibility"')
+  pkg(stable, 'dsh-nexttavern-anydoc', '0.0.0-fixture.1', {peerDependencies: {'@deepseek-ai/fixture-host-peer': '1.0.0'}},
+    'export {singleton} from "@deepseek-ai/fixture-host-peer"; export const owner = "fixed-compatibility"')
   const profileFile = path.join(fixture.profile, 'package.json')
   const metadata = JSON.parse(fs.readFileSync(profileFile, 'utf8'))
   const specification = 'file:../fixed-packages/dsh-nexttavern-anydoc'
@@ -173,8 +176,8 @@ test('external fixed-package references survive pnpm relinking without reverting
     'import fs from "node:fs";',
     'const require = createRequire(import.meta.url);',
     'const entry = require.resolve("dsh-nexttavern-anydoc");',
-    'const host = require.resolve("fixture-host-peer");',
-    'const childHost = createRequire(entry).resolve("fixture-host-peer");',
+    'const host = require.resolve("@deepseek-ai/fixture-host-peer");',
+    'const childHost = createRequire(entry).resolve("@deepseek-ai/fixture-host-peer");',
     'const plugin = await import(pathToFileURL(entry).href);',
     'const peer = await import(pathToFileURL(host).href);',
     'console.log(JSON.stringify({entry: fs.realpathSync(entry), host, childHost,',
@@ -229,7 +232,7 @@ test('installed bundle bootstrap prepares durable pins without relinking the run
     'import {pathToFileURL} from "node:url";',
     'import {bootstrap} from "dsh-nexttavern";',
     'const require = createRequire(import.meta.url);',
-    'const peer = await import(pathToFileURL(require.resolve("fixture-host-peer")).href);',
+    'const peer = await import(pathToFileURL(require.resolve("@deepseek-ai/fixture-host-peer")).href);',
     'const result = await bootstrap(JSON.parse(process.argv[2]));',
     // Import compatibility code only after inventory, pins and peer checks.
     'const {owner, singleton} = await import(pathToFileURL(result.modules[0].entry).href);',
@@ -269,12 +272,38 @@ test('installed bundle bootstrap prepares durable pins without relinking the run
   assert.throws(bootstrap, (error: any) => /Protected package hash differs/.test(String(error.stderr)))
   assert.equal(hash(manifestFile), originalManifest)
   fs.writeFileSync(ownedEntry, originalEntry)
-  const duplicatePeer = path.join(ownedRoot, 'node_modules/fixture-host-peer')
-  pkg(duplicatePeer, 'fixture-host-peer', '1.0.0')
-  assert.throws(bootstrap, (error: any) => /different host peer/.test(String(error.stderr)))
+  const duplicatePeer = path.join(ownedRoot, 'node_modules/@deepseek-ai/fixture-host-peer')
+  pkg(duplicatePeer, '@deepseek-ai/fixture-host-peer', '1.0.0')
+  // A second copy inside the owned package is an extra file the inventory never
+  // admitted, so the inventory gate rejects it before peer identity is compared.
+  assert.throws(bootstrap, (error: any) => /Protected package file inventory differs/.test(String(error.stderr)))
   for (const file of ['package.json', 'index.js']) fs.unlinkSync(path.join(duplicatePeer, file))
   fs.rmdirSync(duplicatePeer)
   fs.rmdirSync(path.dirname(duplicatePeer))
+  assert.equal(hash(manifestFile), originalManifest)
+  // A third-party ordinary dependency must travel with the product, so declaring
+  // one as a shared peer is rejected before any resolution.
+  const thirdParty = path.join(ownedRoot, 'node_modules/fixture-host-peer')
+  pkg(thirdParty, 'fixture-host-peer', '1.0.0')
+  const ownedManifestFile = path.join(ownedRoot, 'package.json')
+  const ownedManifest = JSON.parse(fs.readFileSync(ownedManifestFile, 'utf8'))
+  write(ownedManifestFile, {...ownedManifest, peerDependencies: {
+    ...ownedManifest.peerDependencies, 'fixture-host-peer': '1.0.0'}})
+  write(path.join(installedRoot, 'nexttavern.dependencies.json'), {
+    ...JSON.parse(originalInventory.toString()),
+    packages: (JSON.parse(originalInventory.toString()).packages as {name: string; files: {path: string; sha256: string}[]}[])
+      .map(row => row.name !== 'dsh-nexttavern-anydoc' ? row : {...row,
+        files: [
+          ...row.files.filter(file => file.path !== 'package.json'),
+          {path: 'package.json', sha256: hash(ownedManifestFile)},
+          ...['package.json', 'index.js'].map(file => ({path: `node_modules/fixture-host-peer/${file}`,
+            sha256: hash(path.join(thirdParty, file))})),
+        ].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)}),
+  })
+  assert.throws(bootstrap, (error: any) => /Third-party peer is not a host service/.test(String(error.stderr)))
+  fs.writeFileSync(path.join(installedRoot, 'nexttavern.dependencies.json'), originalInventory)
+  write(ownedManifestFile, ownedManifest)
+  fs.rmSync(thirdParty, {recursive: true})
   assert.equal(hash(manifestFile), originalManifest)
   const profileLock = manifestFile + '.lock'
   fs.writeFileSync(profileLock, String(process.pid) + '\n', {flag: 'wx'})

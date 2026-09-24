@@ -2153,10 +2153,6 @@
       "source": "tests/quality-runner.test.mjs"
     },
     {
-      "id": "public-gitignore",
-      "source": ".gitignore"
-    },
-    {
       "id": "plugin-fork-controller-fixture-test",
       "source": "tests/plugin-fork-controller-fixture.mts"
     },

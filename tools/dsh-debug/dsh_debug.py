@@ -13,8 +13,9 @@ import sys
 import uuid
 from urllib.parse import urlencode
 
-VERSION = '1.4.0'
+VERSION = '1.6.0'
 CONFIG = Path.home() / '.dsh-debug' / 'config.json'
+HOST_PATTERN = re.compile(r'\[?[A-Za-z0-9_.:-]+\]?')
 
 
 class CliError(Exception):
@@ -35,15 +36,21 @@ def parse(argv):
     parser.add_argument('--timeout', type=int, default=30, help='HTTP deadline, 1–120 seconds; timeout does not cancel a write')
     parser.add_argument('--version', action='version', version=VERSION)
     sub = parser.add_subparsers(dest='command', required=True)
-    sub.add_parser('doctor', help='Verify SSH and authenticated API reachability')
-    init = sub.add_parser('init', help='Save non-secret SSH connection settings')
-    init.add_argument('--ssh-host', required=True)
-    init.add_argument('--ssh-key', required=True)
+    sub.add_parser('doctor', help='Verify the configured target and authenticated API reachability')
+    init = sub.add_parser('init', help='Save non-secret target settings: SSH, or a directly reachable host/port')
+    init.add_argument('--target', choices=['ssh', 'local'], default='ssh',
+        help='ssh (default) or local: reuse the same worker in this process against --host:--port')
+    init.add_argument('--ssh-host', help='Required for --target ssh')
+    init.add_argument('--ssh-key', help='Required for --target ssh')
+    init.add_argument('--ssh-port', type=int, default=22, help='--target ssh only; non-default SSH port')
+    init.add_argument('--host', default='127.0.0.1', help='--target local only; reachable DSH host (wrap a bare IPv6 literal in brackets)')
+    init.add_argument('--scheme', choices=['http', 'https'], default='http', help='--target local only')
+    init.add_argument('--cookie-file', help='--target local only; file holding the Cookie header for a non-loopback host (referenced, never copied)')
     init.add_argument('--port', type=int, default=3081)
-    init.add_argument('--remote-python', default='/usr/bin/python3')
-    init.add_argument('--dsh-home', help='Remote DSH_HOME; defaults to the remote environment or ~/.dsh')
-    init.add_argument('--harness-root', help='Remote Harness installation root for the native credential adapter')
-    init.add_argument('--service', default='deepseek-harness', help='Remote systemd unit, when available')
+    init.add_argument('--remote-python', default='/usr/bin/python3', help='--target ssh only')
+    init.add_argument('--dsh-home', help='Target DSH_HOME; defaults to that environment or ~/.dsh')
+    init.add_argument('--harness-root', help='Harness installation root for the native credential adapter')
+    init.add_argument('--service', default='deepseek-harness', help='Target systemd unit, when available')
     p = sub.add_parser('create', help='Create a native roleplay session (no model call)')
     location = p.add_mutually_exclusive_group(required=True)
     location.add_argument('--cwd', help='Existing server directory (legacy, leaves the session ungrouped)')
@@ -437,26 +444,38 @@ def cluster_write_settings(args):
     return {'preserve': 'enabled/defaultRoute/other characters', 'change': change}
 
 
+def endpoint_parts(config):
+    """Validate a directly reachable endpoint; a bare IPv6 literal must be bracketed."""
+    scheme = str(config.get('scheme') or 'http').lower()
+    if scheme not in ('http', 'https'):
+        raise CliError('config', 'scheme must be http or https')
+    host = str(config.get('host') or '127.0.0.1').strip()
+    if not HOST_PATTERN.fullmatch(host) or host.startswith('-') or ('[' in host) != (']' in host):
+        raise CliError('config', 'Run dsh-debug init with a valid host')
+    if ':' in host and not host.startswith('['):
+        raise CliError('config', 'Bracket a bare IPv6 host, for example [::1]')
+    try:
+        port = int(config.get('port', 3081))
+    except (TypeError, ValueError):
+        raise CliError('config', 'port must be 1-65535') from None
+    if not 1 <= port <= 65535: raise CliError('config', 'port must be 1-65535')
+    return scheme, host, port
+
+
+def target_name(config):
+    return str(config.get('target') or ('local' if config.get('local') else 'ssh')).lower()
+
+
 def load_config(path):
     file = Path(path)
     result = json.loads(file.read_text(encoding='utf-8-sig')) if file.exists() else {}
-    for key in ['ssh_host', 'ssh_key', 'remote_python', 'port', 'service', 'dsh_home', 'harness_root']:
+    for key in ['target', 'ssh_host', 'ssh_key', 'ssh_port', 'remote_python', 'host', 'scheme', 'cookie_file',
+                'port', 'service', 'dsh_home', 'harness_root']:
         if os.environ.get('DSH_DEBUG_' + key.upper()): result[key] = os.environ['DSH_DEBUG_' + key.upper()]
     return result
 
 
-def transport(config, plan):
-    host, key = config.get('ssh_host', ''), config.get('ssh_key', '')
-    if not re.fullmatch(r'[a-zA-Z0-9_.@-]+',
-         host) or host.startswith('-'): raise CliError('config',
-         'Run dsh-debug init with a valid SSH destination')
-    if not Path(key).is_file(): raise CliError('config', 'SSH key file missing')
-    python = config.get('remote_python', '/usr/bin/python3')
-    if not re.fullmatch(r'/[a-zA-Z0-9_./-]+', python): raise CliError('config', 'Invalid remote Python path')
-    code = base64.b64encode(Path(__file__).with_name('http_worker.py').read_bytes()).decode('ascii')
-    # Send worker code through stdin too: Windows CreateProcess has a small
-    # command-line limit, and worker growth must not break every CLI command.
-    command = shlex.quote(python) + ' -c ' + shlex.quote("import sys,base64;exec(compile(base64.b64decode(sys.stdin.readline()),'<dsh-worker>','exec'))")
+def worker_packet(config, plan):
     packet = {'plan': plan,
          'port': config.get('port',
              3081),
@@ -466,10 +485,63 @@ def transport(config, plan):
              30),
          'dsh_home': config.get('dsh_home'),
          'harness_root': config.get('harness_root')}
+    if target_name(config) == 'local':
+        scheme, host, port = endpoint_parts(config)
+        packet.update({'scheme': scheme, 'host': host, 'port': port})
+        if config.get('cookie_file'): packet['cookie_file'] = str(Path(config['cookie_file']).expanduser())
+    return packet
+
+
+def local_transport(config, plan):
+    """Run the exact same single-file worker in this process.
+
+    Direct targets keep the SSH worker's contract, allowlist and credential
+    handling; only the process boundary and the SSH key are gone. A loopback
+    host uses the native DSH credential; any other host must carry its own
+    cookie file, and the value stays inside this process.
+    """
+    worker = Path(__file__).with_name('http_worker.py')
+    if not worker.is_file(): raise CliError('config', 'Local worker file missing next to the CLI')
+    namespace = {'__name__': 'dsh-debug-local-worker', '__file__': str(worker)}
+    exec(compile(worker.read_text(encoding='utf-8'), str(worker), 'exec'), namespace)
+    run = namespace.get('run')
+    if not callable(run): raise CliError('config', 'Local worker exposes no run entry')
+    try:
+        return run(worker_packet(config, plan))
+    except TimeoutError:
+        raise CliError('transport-timeout',
+             'Request outcome unknown; inspect the request ID / operation before retrying') from None
+    except CliError:
+        raise
+    except Exception as error:
+        # Exception text may embed the token exchange URL; never echo it.
+        raise CliError(type(error).__name__, 'Local DSH worker request failed') from None
+
+
+def ssh_transport(config, plan):
+    host, key = config.get('ssh_host', ''), config.get('ssh_key', '')
+    if not re.fullmatch(r'[a-zA-Z0-9_.@-]+',
+         host) or host.startswith('-'): raise CliError('config',
+         'Run dsh-debug init with a valid SSH destination')
+    if not Path(key).is_file(): raise CliError('config', 'SSH key file missing')
+    try:
+        ssh_port = int(config.get('ssh_port', 22))
+    except (TypeError, ValueError):
+        raise CliError('config', 'ssh_port must be 1-65535') from None
+    if not 1 <= ssh_port <= 65535: raise CliError('config', 'ssh_port must be 1-65535')
+    python = config.get('remote_python', '/usr/bin/python3')
+    if not re.fullmatch(r'/[a-zA-Z0-9_./-]+', python): raise CliError('config', 'Invalid remote Python path')
+    code = base64.b64encode(Path(__file__).with_name('http_worker.py').read_bytes()).decode('ascii')
+    # Send worker code through stdin too: Windows CreateProcess has a small
+    # command-line limit, and worker growth must not break every CLI command.
+    command = shlex.quote(python) + ' -c ' + shlex.quote("import sys,base64;exec(compile(base64.b64decode(sys.stdin.readline()),'<dsh-worker>','exec'))")
+    packet = worker_packet(config, plan)
     try:
         process = subprocess.run(['ssh',
                  '-i',
                  key,
+                 '-p',
+                 str(ssh_port),
                  '-o',
                  'IdentitiesOnly=yes',
                  '-o',
@@ -493,13 +565,21 @@ def transport(config, plan):
     except ValueError: raise CliError('transport-json', 'SSH worker returned invalid JSON') from None
 
 
+def transport(config, plan):
+    """Select the target: remote SSH by default, or a directly reachable host/port."""
+    target = target_name(config)
+    if target == 'local': return local_transport(config, plan)
+    if target != 'ssh': raise CliError('config', 'target must be ssh or local')
+    return ssh_transport(config, plan)
+
+
 # Keep handlers local: the CLI archive and remote worker have single-file loading contracts.
 def dry_run_result(args, plan):
     if args.command in ['upload-card', 'upload']:
         safe = {key: value for key, value in plan.items() if key != 'fileData'}
         safe['fileData'] = '<base64 omitted>'
         if args.command == 'upload-card':
-            workflow = ['validate local file', 'upload via SSH worker'] + (['queue native import prompt'] if args.import_card else [])
+            workflow = ['validate local file', 'stage on the configured DSH host'] + (['queue native import prompt'] if args.import_card else [])
         else:
             workflow = [
                 'validate local regular file and SHA-256',
@@ -813,10 +893,26 @@ def execute(args, config, transport=transport):
     if args.command == 'workspaces':
         return call(plan)
     if args.command == 'doctor':
+        target = target_name(config)
         call(plan)
+        if target == 'local':
+            scheme, host, port = endpoint_parts(config)
+            endpoint = f'{scheme}://{host}:{port}'
+            explicit = bool(config.get('cookie_file')
+                or os.environ.get('DSH_DEBUG_COOKIE_FILE')
+                or os.environ.get('DSH_DEBUG_COOKIE'))
+            auth = ('explicit cookie referenced for this run; never printed, copied or stored'
+                if explicit else
+                'native DSH browser credential signed for the loopback authority inside the CLI process')
+        else:
+            ssh_port = int(config.get('ssh_port', 22))
+            endpoint = str(config.get('ssh_host', '')) + ('' if ssh_port == 22 else f':{ssh_port}')
+            auth = 'SSH + native DSH browser credential, signed/exchanged only on server'
         return {'version': VERSION,
              'reachable': True,
-             'auth': 'SSH + native DSH browser credential, signed/exchanged only on server',
+             'target': target,
+             'endpoint': endpoint,
+             'auth': auth,
              'credentialsReturned': False,
              'newServerEndpoint': False}
     if args.command == 'download' and Path(args.out).exists(): raise CliError('exists', 'Download target already exists; choose a new --out path')
@@ -852,15 +948,31 @@ def main():
             path = Path(args.config)
             if path.exists(): raise CliError('exists', 'Config already exists; edit it explicitly')
             path.parent.mkdir(parents=True, exist_ok=True)
-            value = {'ssh_host': args.ssh_host,
-                 'ssh_key': str(Path(args.ssh_key).resolve()),
+            if args.target == 'ssh' and not (args.ssh_host and args.ssh_key):
+                raise CliError('arguments', '--target ssh requires --ssh-host and --ssh-key; '
+                    'use --target local for a directly reachable DSH host/port')
+            if not 1 <= args.port <= 65535: raise CliError('arguments', 'port must be 1-65535')
+            value = {'target': args.target,
                  'port': args.port,
-                 'remote_python': args.remote_python,
                  'service': args.service,
                  'dsh_home': args.dsh_home,
                  'harness_root': args.harness_root}
+            if args.target == 'ssh':
+                if not 1 <= args.ssh_port <= 65535: raise CliError('arguments', 'ssh port must be 1-65535')
+                value['ssh_host'] = args.ssh_host
+                value['ssh_key'] = str(Path(args.ssh_key).resolve())
+                value['ssh_port'] = args.ssh_port
+                value['remote_python'] = args.remote_python
+            else:
+                endpoint_parts({'scheme': args.scheme, 'host': args.host, 'port': args.port})
+                value['scheme'] = args.scheme
+                value['host'] = args.host
+                if args.cookie_file:
+                    cookie_file = Path(args.cookie_file).expanduser()
+                    if not cookie_file.is_file(): raise CliError('arguments', 'cookie file not found')
+                    value['cookie_file'] = str(cookie_file.resolve())
             path.write_text(json.dumps(value, indent=2), encoding='utf-8')
-            result = {'config': str(path), 'secretsStored': False}
+            result = {'config': str(path), 'target': args.target, 'secretsStored': False, 'cookieStored': False}
         else:
             config = load_config(args.config)
             config['timeout'] = args.timeout
