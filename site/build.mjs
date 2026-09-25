@@ -437,7 +437,14 @@ function toolPath(name) {
       .filter(Boolean)[0];
     return found || null;
   } catch (error) {
-    return null;
+    // Some images ship without `which`; running the tool itself is the
+    // authoritative check and also proves it starts on this machine.
+    try {
+      execFileSync(name, ['-version'], { stdio: ['ignore', 'ignore', 'ignore'] });
+      return name;
+    } catch {
+      return null;
+    }
   }
 }
 

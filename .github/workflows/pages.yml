@@ -41,6 +41,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.16.0'
+      - name: Ensure ffmpeg for screenshot compression
+        run: command -v ffmpeg >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
       - name: Render the documentation site
         run: node site/build.mjs --out artifacts/site
       - uses: actions/configure-pages@v5
