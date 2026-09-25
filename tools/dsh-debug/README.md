@@ -201,6 +201,7 @@ The CLI was re-checked against Harness `0.1.7-rc.2`; every request shape it send
 - `session/page` accepts an optional `turnWindow: {minMessages, minTurns}`. `history` keeps its explicit `--through-seq` plus `--limit` contract and does not send a window.
 - `request/header` events carry `reason` and an optional `startsSeries`. `reason: "change"` alone no longer means a new model-message series, so read that flag instead of inferring a series from the reason.
 - First-start and install diagnostics changed upstream: skipped profile bundles are reported once per launch with their reasons, the plugin manager records its package-manager run tree under `.plugin-manager/run.json`, and a lock whose recorded owner process no longer exists may be taken over. These are host-side behaviours the CLI observes; they add no request or retry of its own.
+- Regenerating once stays the caller's single action. The alpha.7 acceptance saw one regeneration leave two turns in the child session; the user's ruling (2026-09-25) is that this is a **CLI-side defect**, so the CLI does not re-send or de-duplicate to compensate and the tavern product is not asked to carry extra logic for it. Report the observation instead of hiding it.
 
 Role-card import has no direct upload RPC. Source audit found the
 official `session/attachment` RPC is read-only: it proves an existing image

@@ -152,6 +152,39 @@ test('unrelated native settings updates retain product providers and browser own
   } finally {await f.close()}
 })
 
+test('a replaced provider keeps an official settings namespace and its own profile row', async t => {
+  if (await nativeCase(t.name, import.meta.url)) return
+  const f = await fixture({settings:true})
+  const settle = async () => {for (let round = 0; round < 4; round += 1) {
+    await f.ctx.loader.await(); await new Promise(resolve => setImmediate(resolve))
+  }}
+  try {
+    const namespaces = () => (f.ctx.settings.describe() as {ns: string}[]).map(row => row.ns)
+    assert.ok(namespaces().includes('meter'), 'the rehomed provider publishes its settings namespace')
+    const addressed = (f.ctx.configEditor.entries() as {options: {id: string; name: string}}[])
+      .find(entry => entry.options.id === 'meter')
+    assert.ok(addressed, 'the addressable set carries the mounted replacement')
+    const mounted = addressed.options.name
+    assert.notEqual(mounted, f.original, 'the addressable row is the replacement, not the disabled profile row')
+    await f.ctx.settings.replace('meter', {value: 'from-settings'})
+    await settle()
+    assert.ok(namespaces().includes('meter'), 'the namespace survives its own write')
+    const document = fs.readFileSync(f.patchPath, 'utf8')
+    assert.match(document, /id: meter/)
+    assert.equal(document.includes(mounted), false,
+      'the profile keeps the declared specifier instead of pinning this install path')
+    assert.ok(document.includes(f.original), 'the profile row still names the declared module')
+    assert.deepEqual({...f.ctx.get('entryProbe')}, {owner:'owned', value:'from-settings'})
+    assert.equal([...f.ctx.loader.entries()].find(entry => entry.options.id === 'nexttavern')?.fiber?.state, 2,
+      'the written generation still admits the product')
+    // The official manager rewrites the document row list, never the rows the
+    // settings write already persisted there: keep them and add the switch.
+    await f.update([...f.profileRows(), {id:'nexttavern',disabled:true}])
+    assert.deepEqual({...f.ctx.get('entryProbe')}, {owner:'official', value:'from-settings'},
+      'the same profile row feeds the native provider when the product stands down')
+  } finally {await f.close()}
+})
+
 test('product activation failure releases resources and fails startup explicitly', async t => {
   if (await nativeCase(t.name, import.meta.url)) return
   await assert.rejects(fixture({fail:true}), causedBy('owned provider failed'))

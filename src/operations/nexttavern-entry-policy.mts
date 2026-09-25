@@ -51,7 +51,19 @@ export function composition(ctx: Context): CompositionState {
   // native fallback written into an earlier inserted row during rollback.
   const composed = Array.isArray(patches) ? profileApi.composeEntries([patches]) : undefined
   if (previous && isDeepStrictEqual(previous.patches, composed)) return previous
-  const plan = capture(ctx, patches)
+  let plan: ProfilePlan
+  try {
+    plan = capture(ctx, patches)
+  } catch (error) {
+    // This function is what the `disabled` expression evaluates, and Loader
+    // runs that expression while it applies rows: throwing here aborts the row
+    // application instead of reporting anything to a caller. Keep the last
+    // admitted generation in that window — a rejected update's rollback, or a
+    // document write that has not reached the Include row yet — and leave the
+    // strict rejection to the update hook, which calls `capture` directly.
+    if (!previous) throw error
+    return previous
+  }
   const acceptedPlan = previous?.plan
   const state = previous ?? {plan, restoring: false, applying: false, patches: plan.rows,
     nativeFibers: new Set<Fiber>()}

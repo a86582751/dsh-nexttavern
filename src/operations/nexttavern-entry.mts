@@ -12,6 +12,7 @@ import {inspectBundledPackages} from './bundled-package-bootstrap.mjs'
 import {bindPackagePreparation, createOwnedPackagePreparation,
   type PackagePreparationScheduler} from './nexttavern-package-preparation.mjs'
 import {createOwnedMarketInstallation} from './nexttavern-market.mjs'
+import {mountSettingsBridge, type RehomedSettingsRow, type SettingsBridge} from './nexttavern-settings-bridge.mjs'
 
 const productRoot = fileURLToPath(new URL('../../', import.meta.url))
 const productRequire = createRequire(new URL('../../package.json', import.meta.url))
@@ -62,6 +63,7 @@ export default class NextTavernEntry extends EntryTree {
   private released = false
   private epoch = 0
   private hostFiber?: Fiber
+  private settingsBridge?: SettingsBridge
   private preparation?: PackagePreparationScheduler
   private market?: PackagePreparationScheduler
 
@@ -175,6 +177,22 @@ export default class NextTavernEntry extends EntryTree {
       logger: this.ctx.logger,
     })
     return this.market
+  }
+
+  /**
+   * The replaced provider rows as this activation mounted them, for the
+   * settings bridge: each carries the id it kept and the profile-declared
+     * specifier the official editor matches its document row by.
+   */
+  private rehomedSettingsRows(): RehomedSettingsRow[] {
+    const declared = new Map(this.config.providers.map(provider => [provider.id, provider.original]))
+    return [...this.entries()].flatMap(entry => {
+      const original = declared.get(entry.options.id)
+      // The id, not the current module, identifies a replacement: a settings
+      // write presents the profile specifier on this very row for the length
+      // of the write, and the row must stay addressable throughout.
+      return original === undefined ? [] : [{id: entry.options.id, declared: original, entry}]
+    })
   }
 
   private rows(): EntryOptions[] {
@@ -312,6 +330,15 @@ export default class NextTavernEntry extends EntryTree {
     this.preparation?.close()
     this.market?.close()
     this.stopping = (async () => {
+      // Stop advertising replaced rows for settings before the rows drain: the
+      // adapter must never outlive the composition it describes. Advertising
+      // stops synchronously — the row-disabling below must not wait — and the
+      // host methods it wrapped come back with the child fiber.
+      const bridge = this.settingsBridge
+      this.settingsBridge = undefined
+      bridge?.close()
+      if (bridge) void bridge.dispose().catch(error => this.ctx.logger?.warn?.(
+        `nexttavern: settings adapter release failed: ${String(error)}`))
       // Mark our transient rows synchronously, before host disposal yields.
       // Calling entry.update here would also stop their providers too early;
       // root.stop below owns that disposal, after route handles have drained.
@@ -381,6 +408,11 @@ export default class NextTavernEntry extends EntryTree {
       // cannot be mistaken for an unchanged pre-existing failure.
       throw new Error(`NextTavern activation failed for profile generation ${version}`, {cause})
     }
+    // Replaced providers keep their volatile configuration on the official
+    // settings page only through this adapter, and only while they run. It
+    // rides the product fiber, so a stopped product publishes nothing, and it
+    // loads by itself whenever a settings surface exists.
+    this.settingsBridge = mountSettingsBridge(this.ctx, () => this.rehomedSettingsRows())
     this.state.previousPlan = undefined
   }
 }

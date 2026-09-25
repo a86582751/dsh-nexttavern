@@ -38,6 +38,7 @@ export async function nativeCase(title: string, testUrl: string) {
 
 interface FixtureOptions {
   disabled?: boolean; fail?: boolean; slowRelease?: boolean; failingAddon?: boolean; missingOwned?: boolean
+  settings?: boolean
   pendingNestedAddon?: boolean
   lateNativeDependency?: boolean
   hostMode?: 'active' | 'failed' | 'pending'
@@ -94,6 +95,7 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   const modules = [
     ['nexttavern-entry', new URL('../lib/operations/nexttavern-entry.mjs', import.meta.url)],
     ['nexttavern-entry-policy', new URL('../lib/operations/nexttavern-entry-policy.mjs', import.meta.url)],
+    ['nexttavern-settings-bridge', new URL('../lib/operations/nexttavern-settings-bridge.mjs', import.meta.url)],
     ['nexttavern-profile-plan', new URL('../lib/operations/nexttavern-profile-plan.mjs', import.meta.url)],
     ['nexttavern-lifecycle', new URL('../lib/operations/nexttavern-lifecycle.mjs', import.meta.url)],
     ['bundled-package-bootstrap', new URL('../lib/operations/bundled-package-bootstrap.mjs', import.meta.url)],
@@ -136,11 +138,24 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     write(metadata, {name, type: 'module', version: '0.0.0-fixture',
       exports: {'.': './index.mjs', './client': './client.js'},
       dsh: {client: {platform: 'web', inject: []}}})
-    write(host, `export default function(ctx,config) {
-      ctx.productProbe.attempt(${JSON.stringify(owner)}, config.value);
-      if (${JSON.stringify(owner)} === 'owned' && (ctx.productProbe.fail || config.value === 'reject')) throw Error('owned provider failed');
-      ctx.effect(() => ctx.productProbe.acquire(${JSON.stringify(owner)}, config));
-      ctx.provide(config.service, {owner:${JSON.stringify(owner)}, value:config.value});
+    const self = JSON.stringify(owner)
+    // The settings fixture gives the provider the shape a replaced package
+    // really has: a Config schema whose live field is volatile, so the official
+    // settings service can publish the namespace and write through Loader.
+    write(host, options.settings ? `import z from '@deepseek-ai/schemastery';
+      export const Config = z.object({service: z.string().default('entryProbe'),
+        value: z.string().default('original').volatile()});
+      export function apply(ctx, config) {
+        const read = () => typeof config.value?.get === 'function' ? config.value.get() : config.value;
+        ctx.productProbe.attempt(${self}, read());
+        if (${self} === 'owned' && (ctx.productProbe.fail || read() === 'reject')) throw Error('owned provider failed');
+        ctx.effect(() => ctx.productProbe.acquire(${self}, {...config, value: read()}));
+        ctx.provide(config.service, {owner:${self}, value:read()});
+      }` : `export default function(ctx,config) {
+      ctx.productProbe.attempt(${self}, config.value);
+      if (${self} === 'owned' && (ctx.productProbe.fail || config.value === 'reject')) throw Error('owned provider failed');
+      ctx.effect(() => ctx.productProbe.acquire(${self}, config));
+      ctx.provide(config.service, {owner:${self}, value:config.value});
     }`)
     write(client, `window.__ModuleLoader__.load({id:${JSON.stringify(name)},factory:()=>({})});`)
     packages.push(metadata, host, client)
@@ -183,9 +198,13 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   write(manifest, {private: true, dsh: {profile: {bundles: ['fixture-base','dsh-nexttavern']}}})
   write(path.join(dir, 'node_modules/fixture-base/package.json'), {name: 'fixture-base',
     dsh: {bundle: {patch: './patch.json'}}})
-  write(path.join(dir, 'node_modules/fixture-base/patch.json'), [{insert: [...providers.map(row=>({
-    id:row.id,name:row.original,disabled:options.disabled ?? false,config:row.config,
-  })), ...(options.lateNativeDependency ? [{id:'late-native',name:pathToFileURL(lateNative).href}] : [])]}])
+  write(path.join(dir, 'node_modules/fixture-base/patch.json'), [{insert: [
+    ...(options.settings ? [{id:'config-editor',name:'cordis:fixture-editor'},
+      {id:'settings',name:'cordis:fixture-settings'}] : []),
+    ...providers.map(row=>({
+      id:row.id,name:row.original,disabled:options.disabled ?? false,config:row.config,
+    })),
+    ...(options.lateNativeDependency ? [{id:'late-native',name:pathToFileURL(lateNative).href}] : [])]}])
   write(path.join(productDir, 'patch.json'), [
     ...providers.map(row=>({id:row.id,name:row.original,disabled:{__jsExpr:policy.providerDisabledExpression}})),
     {insert: [{id: 'nexttavern', name: pathToFileURL(path.join(productDir, 'lib/operations/nexttavern-entry.mjs')).href,
@@ -237,6 +256,11 @@ async function prepareFixture(root: string, options: FixtureOptions) {
   }
   try {
     await ctx.plugin(Loader)
+    if (options.settings) {
+      const {default: ConfigEditor} = await load('@deepseek-ai/dsh-config-editor')
+      const {default: Settings} = await load('@deepseek-ai/dsh-settings')
+      Object.assign(ctx.loader.builtins, {'fixture-editor': ConfigEditor, 'fixture-settings': Settings})
+    }
     await custom?.initialize(ctx)
     await productAddons?.initialize(ctx)
     ctx.provide('webServer', {register: () => () => {}})
@@ -252,7 +276,8 @@ async function prepareFixture(root: string, options: FixtureOptions) {
     assert.equal(productEntry?.fiber?.state, 2, 'requested product must be ACTIVE')
     await ctx.plugin(ClientModuleRegistry)
     return {ctx, active, changes, attempts, original, before, releaseEntered, releaseGate,
-      productDir, profileManifest:manifest,
+      productDir, profileManifest:manifest, patchPath,
+      profileRows: () => api.loadOptionalPatches('fixture', patchPath) ?? [],
       graph: () => ctx.clientModules.graph().entries.map((entry: {id: string}) => entry.id),
       async update(patches: unknown[], selected = true) {
         write(manifest, {private: true, dsh: {profile: {bundles: ['fixture-base', ...(selected ? ['dsh-nexttavern'] : [])]}}})

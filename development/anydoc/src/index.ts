@@ -41,8 +41,14 @@ export function apply(ctx: Context) {
       return !('outputFilePath' in args) || !args.outputFilePath
     },
     async execute(args, exec) {
-      const world = exec.agent?.ctx ?? ctx
-      const fs = world.fs
+      // A preset scope resolves host services through its declaring Loader, so
+      // the calling agent's own tree may carry no filesystem at all: reading
+      // `agent.ctx.fs` there throws "cannot get property "fs" without inject".
+      // Prefer the agent-scoped provider when it resolves — that keeps the read
+      // on the same instance the session's other tools use — and fall back to
+      // this tool's injected provider, which is that same shared instance in
+      // every composition that mounts one for the profile.
+      const fs = exec.agent?.ctx?.get?.('fs') ?? ctx.fs
       const cwd = exec.agent?.session.header.cwd
       try {
         if (args.outputFilePath && (args.offset !== undefined || args.limit !== undefined)) {
@@ -54,13 +60,16 @@ export function apply(ctx: Context) {
           throw Error('offset 必须是非负整数')
         }
         const {markdown, target, version} = await reader.read(fs, args.filePath, args.format, cwd, exec.signal)
-        world.emit('fs/observed', target, {kind: 'present', version}, exec)
+        // Dispatch from this plugin's own context, like the native file tools:
+        // the observations must reach the profile-mounted policy, while the
+        // actor argument keeps the calling session identifiable.
+        ctx.emit('fs/observed', target, {kind: 'present', version}, exec)
         if (args.outputFilePath) {
           const output = await fs.resolve(args.outputFilePath, {cwd, signal: exec.signal})
           if (output.targetKey === target.targetKey) throw Error('输出路径不能覆盖输入文档')
-          const intent = await world.waterfall('fs/write-intent', output, exec, () => undefined)
+          const intent = await ctx.waterfall('fs/write-intent', output, exec, () => undefined)
           const written = await fs.writeText(output, markdown, intent, exec.signal)
-          world.emit('fs/observed', output, {kind: 'present', version: written.version}, exec)
+          ctx.emit('fs/observed', output, {kind: 'present', version: written.version}, exec)
           return `已转换 "${args.filePath}" 并写入 "${output.displayPath}"（${markdown.length} 字符，完整文档）。`
         }
         return JSON.stringify({filePath: target.displayPath, ...documentPage(markdown, args.offset, args.limit)})

@@ -70,6 +70,7 @@ export function parseRequest(args: string[]): CheckRequest {
   const request: CheckRequest = {command: '', targets: [], plan: false, force: false, portable: false}
   const values: Record<string, keyof CheckRequest> = {
     '--base': 'base', '--bundle': 'bundle', '--out': 'output', '--inputs': 'inputs',
+    '--foundation': 'foundation',
     '--upgrade-from': 'upgradeFrom', '--upgrade-sha256': 'upgradeSha256', '--run': 'run',
   }
   for (let i = 0; i < args.length; i++) {

@@ -102,6 +102,10 @@ export async function executeTask(context: CheckContext, plan: CheckPlan, task: 
   if (task.action === 'candidate') {
     const args = ['--out', path.resolve(context.root, request.output!), '--skip-installers']
     if (request.inputs) args.push('--inputs', path.resolve(context.root, request.inputs))
+    // `private` is the maintainer's own deployment build: it keeps the first
+    // preset section's content policy text that a published package must not
+    // carry. Public stays the default so no other caller can select it by accident.
+    if (request.foundation) args.push('--foundation', request.foundation)
     return node(mapped('release/build-public-from-pins.mjs'), args)
   }
   if (task.action === 'archive' || task.action === 'install') {

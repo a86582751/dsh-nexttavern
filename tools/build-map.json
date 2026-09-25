@@ -2380,6 +2380,15 @@
       ]
     },
     {
+      "artifact": "nexttavern-settings-bridge",
+      "source": "src/operations/nexttavern-settings-bridge.mts",
+      "banner": "runtime/alpha3/src/operations/nexttavern-settings-bridge.mts",
+      "primaryOutput": "lib/operations/nexttavern-settings-bridge.mjs",
+      "outputs": [
+        "lib/operations/nexttavern-settings-bridge.mjs"
+      ]
+    },
+    {
       "artifact": "compat-anydoc-lib-document-reader-js",
       "source": "development/anydoc/src/document-reader.ts",
       "banner": "runtime/alpha3/compat/anydoc/src/document-reader.ts",
@@ -6148,6 +6157,14 @@
       {
         "id": "nexttavern-entry",
         "source": "lib/operations/nexttavern-entry.mjs"
+      },
+      {
+        "id": "nexttavern-settings-bridge-typescript",
+        "source": "src/operations/nexttavern-settings-bridge.mts"
+      },
+      {
+        "id": "nexttavern-settings-bridge",
+        "source": "lib/operations/nexttavern-settings-bridge.mjs"
       },
       {
         "id": "compat-anydoc-src-document-reader-ts",
@@ -13409,12 +13426,28 @@
           "src/operations/bundled-package-bootstrap.mts",
           "src/operations/nexttavern-package-preparation.mts",
           "src/operations/nexttavern-market.mts",
+          "src/operations/nexttavern-settings-bridge.mts",
           "src/operations/protected-packages.mts",
           "src/operations/public-transaction.mts"
         ],
         "kind": "typescript-module",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
         "banner": "runtime/alpha3/src/operations/nexttavern-entry.mts"
+      },
+      {
+        "id": "nexttavern-settings-bridge-typed-build",
+        "artifact": "nexttavern-settings-bridge",
+        "entry": "src/operations/nexttavern-settings-bridge.mts",
+        "inputs": [
+          "src/operations/nexttavern-settings-bridge.mts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "kind": "typescript-module",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "banner": "runtime/alpha3/src/operations/nexttavern-settings-bridge.mts"
       },
       {
         "id": "compat-anydoc-document-reader-js-build",

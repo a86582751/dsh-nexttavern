@@ -44,6 +44,7 @@ export interface CheckRequest {
   bundle?: string
   output?: string
   inputs?: string
+  foundation?: string
   upgradeFrom?: string
   upgradeSha256?: string
   run?: string

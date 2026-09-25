@@ -2737,6 +2737,14 @@
       "source": "lib/operations/nexttavern-entry.mjs"
     },
     {
+      "id": "nexttavern-settings-bridge-typescript",
+      "source": "src/operations/nexttavern-settings-bridge.mts"
+    },
+    {
+      "id": "nexttavern-settings-bridge",
+      "source": "lib/operations/nexttavern-settings-bridge.mjs"
+    },
+    {
       "id": "compat-anydoc-src-document-reader-ts",
       "source": "development/anydoc/src/document-reader.ts"
     },
@@ -10035,8 +10043,23 @@
         "src/operations/bundled-package-bootstrap.mts",
         "src/operations/nexttavern-package-preparation.mts",
         "src/operations/nexttavern-market.mts",
+        "src/operations/nexttavern-settings-bridge.mts",
         "src/operations/protected-packages.mts",
         "src/operations/public-transaction.mts"
+      ],
+      "kind": "typescript-module",
+      "builder": "tools/build-modules.mjs"
+    },
+    {
+      "id": "nexttavern-settings-bridge-typed-build",
+      "artifact": "nexttavern-settings-bridge",
+      "entry": "src/operations/nexttavern-settings-bridge.mts",
+      "inputs": [
+        "src/operations/nexttavern-settings-bridge.mts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ],
       "kind": "typescript-module",
       "builder": "tools/build-modules.mjs"
