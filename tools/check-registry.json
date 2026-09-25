@@ -358,6 +358,8 @@
         "runtime/alpha3/operations/*",
         "runtime/alpha3/deploy/*",
         "deployment/*",
+        "release/public/site/*",
+        "site/*",
         "windows-setup*",
         "linux-setup*",
         ".gitignore"

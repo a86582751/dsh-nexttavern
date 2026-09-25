@@ -1741,6 +1741,30 @@
       "source": ".github/workflows/verify.yml"
     },
     {
+      "id": "public-pages-workflow",
+      "source": ".github/workflows/pages.yml"
+    },
+    {
+      "id": "public-docs-site-builder",
+      "source": "site/build.mjs"
+    },
+    {
+      "id": "public-docs-site-config",
+      "source": "site/site.config.mjs"
+    },
+    {
+      "id": "public-docs-site-stylesheet",
+      "source": "site/theme/site.css"
+    },
+    {
+      "id": "public-docs-site-client",
+      "source": "site/theme/site.js"
+    },
+    {
+      "id": "public-docs-site-readme",
+      "source": "site/README.md"
+    },
+    {
       "id": "public-build-modules",
       "source": "lib/operations/public-build-modules.mjs"
     },
