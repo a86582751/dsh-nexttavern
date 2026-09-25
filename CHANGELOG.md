@@ -91,6 +91,8 @@ No new production deployment, paid story generation, supplier latency or cache b
 
 The v0.2.5 release was rebuilt twice after its first cut. That first build shipped the skin as package files only, with no profile dependency and no loader entry, so players could neither see nor enable it; the second cut fixed the packaging and the third relicensed the code. Only this final cut is published, and the two earlier builds have been taken down.
 
+The same version was recut once more on 2026-09-26. The packaged presets had shipped the maintainer's own first section and a default aesthetic whose text aimed at producing explicit content; published packages now ship that section with an empty body, and that aesthetic reads as intimacy literature — the same section order, pacing, sensory saturation and tension, without the sentences that taught the former. Both rewrites are applied at delivery time from the maintainer's sources, so the maintainer's own repository and deployment keep the original wording.
+
 ## 0.1.2 Preview - 2026-09-12
 
 - Ship the optional `@isund/dsh-auth-webserver` source, installable archive, license, contract tests and sanitized environment template for Cloudflare Access public access.
