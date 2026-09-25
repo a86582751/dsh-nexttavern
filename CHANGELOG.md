@@ -26,6 +26,8 @@
 
 No new production deployment, paid story generation, supplier latency or cache benchmark was performed for this release. The Windows installers are not code-signed and were not validated on a clean Win11 VM or a real ARM64 device; the Linux installer is new in this release and the listed distributions and architectures are the tested envelope. Synthetic embedding evaluation is not a human-labelled or long-term quality guarantee, and coarse-mode novel coverage does not guarantee understanding of every detail.
 
+The same version was recut once more on 2026-09-26. The packaged presets had shipped the maintainer's own first section and a default aesthetic whose text aimed at producing explicit content; published packages now ship that section with an empty body, and that aesthetic reads as intimacy literature — the same section order, pacing, sensory saturation and tension, without the sentences that taught the former. Both rewrites are applied at delivery time from the maintainer's sources, so the maintainer's own repository and deployment keep the original wording.
+
 ## 0.1.2 Preview - 2026-09-12
 
 - Ship the optional `@isund/dsh-auth-webserver` source, installable archive, license, contract tests and sanitized environment template for Cloudflare Access public access.
