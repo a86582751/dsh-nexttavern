@@ -113,8 +113,16 @@ async function bench() {
     const response = await handler.fetch(new Request(`https://fixture.test${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }))
     return { status: response.status, body: await response.json() }
   }
+  // The state route is a GET with a query parameter; drive the handler directly
+  // with the same credentials-free request the browser sends.
+  const callState = async sessionId => {
+    const handler = routes.get('/api/roleplay/state')
+    assert(handler, 'missing route /api/roleplay/state')
+    const response = await handler.fetch(new Request(`https://fixture.test/api/roleplay/state?sessionId=${encodeURIComponent(String(sessionId))}`))
+    return { status: response.status, body: await response.json() }
+  }
   const dispose = () => cleanups.reverse().forEach(fn => fn())
-  return { table, sessions, enableAppend, emit, callRoute, dispose, calls, ctx,
+  return { table, sessions, enableAppend, emit, callRoute, callState, dispose, calls, ctx,
     panel: id => table('status').get(`${id}__panel`) }
 }
 
@@ -231,6 +239,172 @@ const checked = async (name, fn) => { await fn(); checks.push(name); console.log
     })
 
     await checked('the suite made no provider call', () => assert(b.calls.length > 0, 'maintenance ran through the stub'))
+  } finally { b.dispose() }
+}
+
+// 删除玩家消息产生的截断子分支停在最后一条存活回合的边界上：它不会重放玩家
+// 输入，所以边界的状态栏与决策卡必须由程序补回（0 次模型调用）。重生/改后发送
+// 的子分支仍不继承父分支的待选卡，等自己的 Phase B 出新卡。
+{
+  const b = await bench()
+  try {
+    const rootId = 'trunc-root'
+    await b.table('status').put(`${rootId}__spec`, { text: '显示当前位置', templateHtml: '<section class="author-status"></section>' })
+    const root = b.enableAppend({ id: rootId, header: { agentPreset: 'roleplay' }, events: [], seq: 0, surface: { nodes: [] } })
+    b.sessions.set(root.id, root)
+    const appendTurn = (session, turn, body, marker, { complete = true } = {}) => {
+      session.append('turn/start', { turn })
+      session.append('user/message', { id: `u-${session.id}-${turn}`, source: { kind: 'user' }, content: text(body) }, 'append')
+      session.append('assistant/message', { turn, message: { id: `a-${session.id}-${turn}`, content: text(`庭院剧情 ${marker}`) } }, 'append')
+      return complete ? session.append('turn/end', { turn, reason: { kind: 'completed' } }) : null
+    }
+    const storyTurn = async (session, turn, body, marker) => {
+      const end = appendTurn(session, turn, body, marker)
+      await b.emit('session/event', session, end)
+      return end
+    }
+    const catalogDisk = { value: null }
+    const catalog = createConversationCatalog({ read: () => catalogDisk.value, write: async value => { catalogDisk.value = structuredClone(value) } })
+    b.ctx.provide('tavernConversations', { ...catalog, ready: Promise.resolve() })
+    let forks = 0
+    b.ctx.sessionController.forkPrepared = async (request, beforePublish) => {
+      const childId = `session-trunc-child-${++forks}`
+      const source = b.sessions.get(request.sessionId)
+      assert(source, 'the fork source must exist')
+      await beforePublish({ sourceSessionId: request.sessionId, childSessionId: childId, seedLength: request.atSeq + 1 })
+      const seed = source.events.slice(0, request.atSeq + 1)
+      // Native forks carry the visible surface of the seed; without it the child
+      // would look like it has no boundary turn at all.
+      const nodes = seed.filter(event => event.surfaceOp === 'append').map(event => event.seq)
+      const child = b.enableAppend({ id: childId, inheritedEventCount: seed.length, header: { agentPreset: 'roleplay', parentSession: source.id }, events: structuredClone(seed), seq: seed.length, surface: { nodes } })
+      b.sessions.set(childId, child)
+      return { sessionId: childId }
+    }
+    const deleteUserChild = async (sourceId, messageId) => {
+      const prepared = await b.callRoute('/api/roleplay/branch', { action: 'prepare', sessionId: sourceId, messageId, kind: 'delete-user' })
+      assert.equal(prepared.status, 200, JSON.stringify(prepared.body))
+      const created = await b.callRoute('/api/roleplay/branch', { action: 'create-worldline', operationId: prepared.body.operationId })
+      assert.equal(created.status, 200, JSON.stringify(created.body))
+      const childId = created.body.childSessionId
+      const registered = await b.callRoute('/api/roleplay/branch', { action: 'register', operationId: prepared.body.operationId, childSessionId: childId, promptText: '' })
+      assert.equal(registered.status, 200, JSON.stringify(registered.body))
+      assert.equal(registered.body.truncated, true)
+      return childId
+    }
+    const stateOf = async sessionId => (await b.callState(sessionId)).body
+    // Phase B is snapshot-driven and this fixture drives the turn-end maintenance
+    // directly, so the card record a real turn would publish is seeded from the
+    // status panel it reuses (same shape as the durable records in production).
+    const cardFromPanel = (panelRecord, turn, seq) => ({
+      schemaVersion: 1,
+      source: 'auto',
+      provenance: { ...(panelRecord?.provenance ?? {}), reusedFrom: 'status', statusSeq: seq },
+      sessionId: root.id,
+      atSeq: seq,
+      seq,
+      turnId: turn,
+      question: '',
+      options: (panelRecord?.panel?.options ?? []).map(option => ({ label: option.label, description: option.description, heart: option.heart === true })),
+      multiSelect: false,
+      answered: false,
+      choiceIndex: null,
+      time: Date.now(),
+    })
+
+    // --- 被删的回合还没结算：父分支仍停在边界的面板与卡片上 ---
+    await storyTurn(root, 1, '走入庭院 1', 1)
+    const parentCardKey = `${root.id}__current`
+    const turnOneCard = cardFromPanel(b.panel(root.id), 1, 2)
+    assert.equal(turnOneCard.options[0].label, '沿路前进-1')
+    // 玩家输入消费掉待选卡：这正是删除那条消息前的父分支状态。
+    await b.table('decision').put(parentCardKey, { ...turnOneCard, answered: true, superseded: true, supersededAt: Date.now(), supersededReason: 'player-input' })
+    // 第二轮的正文已经可见但还没有 turn/end：删除按钮的锚点已经存在，局后维护
+    // 尚未把父分支的面板与卡推进到被删回合。
+    appendTurn(root, 2, '走入庭院 2', 2, { complete: false })
+    const callsBeforeTruncate = b.calls.length
+    const truncatedChild = await deleteUserChild(root.id, `a-${root.id}-2`)
+
+    await checked('a truncation child gets the boundary card back instead of losing it forever', async () => {
+      const state = await stateOf(truncatedChild)
+      assert.equal(state.sessionId, truncatedChild)
+      assert.equal(state.decision?.turnId, 1, 'the surviving turn owns the next-step card')
+      assert.equal(state.decision?.seq, 2)
+      assert.equal(state.decision?.answered, false, 'the deleted input must not leave the card answered')
+      assert.equal(state.decision?.superseded, false)
+      assert.equal(state.decision?.supersededReason, undefined)
+      assert.equal(state.decision?.inheritedFrom, root.id)
+      assert.equal(state.decision?.options?.[0]?.label, '沿路前进-1', 'the card keeps the options the player saw')
+      assert.equal(state.statusPanel?.atSeq, 2, 'the status bar keeps showing the truncation point')
+      assert.match(state.statusPanel?.panel?.html ?? '', /庭院-1/)
+      const meta = b.table('branch').get(`${truncatedChild}__meta`)
+      assert.equal(meta?.truncatedFrom, root.id)
+      assert.equal(meta?.boundaryState?.decision, 'inherited', 'the carry is recorded as durable evidence')
+      assert.equal(meta?.boundaryState?.status, 'existing')
+      assert.equal(b.calls.length, callsBeforeTruncate, 'the carry must not call a maintenance worker')
+    })
+
+    // --- 被删回合的维护已经跑完：父分支的面板与卡都越过了 seed ---
+    await b.emit('session/event', root, root.append('turn/end', { turn: 2, reason: { kind: 'completed' } }))
+    await b.table('decision').put(parentCardKey, cardFromPanel(b.panel(root.id), 2, 6))
+    await checked('the source worldline really moved past the truncation boundary', () => {
+      assert.match(b.panel(root.id).panel.html, /庭院-2/)
+      assert.equal(b.table('decision').get(parentCardKey).turnId, 2)
+    })
+    const callsBeforeLateTruncate = b.calls.length
+    const lateChild = await deleteUserChild(root.id, `a-${root.id}-2`)
+
+    await checked('a truncation after the deleted turn settled rebuilds card and panel from the boundary turn', async () => {
+      const state = await stateOf(lateChild)
+      assert.equal(state.statusPanel?.atSeq, 2, 'the boundary panel is copied from the parent turn record')
+      assert.match(state.statusPanel?.panel?.html ?? '', /庭院-1/)
+      assert.doesNotMatch(state.statusPanel?.panel?.html ?? '', /庭院-2/)
+      assert.equal(state.decision?.turnId, 1)
+      assert.equal(state.decision?.options?.[0]?.label, '沿路前进-1')
+      assert.equal(state.decision?.rebuiltFromStatus, true, 'no extra decision worker call is needed')
+      const meta = b.table('branch').get(`${lateChild}__meta`)
+      assert.equal(meta?.boundaryState?.decision, 'rebuilt')
+      assert.equal(meta?.boundaryState?.status, 'copied')
+      assert.equal(b.calls.length, callsBeforeLateTruncate, 'rebuilding reuses the committed status result')
+    })
+
+    // --- 升级前留下的截断子分支：刷新状态即补回，不需要新的模型调用 ---
+    await checked('refreshing a truncation child that lost its card restores it', async () => {
+      await b.table('decision').delete(`${lateChild}__current`)
+      const metaKey = `${lateChild}__meta`
+      await b.table('branch').put(metaKey, { ...b.table('branch').get(metaKey), boundaryState: undefined })
+      const callsBeforeRepair = b.calls.length
+      const state = await stateOf(lateChild)
+      assert.equal(state.decision?.turnId, 1, 'a refresh repairs a child truncated before the fix')
+      assert.equal(state.decision?.options?.[0]?.label, '沿路前进-1')
+      assert.equal(b.calls.length, callsBeforeRepair, 'the repair reuses durable records only')
+    })
+
+    await checked('an inherited boundary panel still owned by the parent is rehomed to the child', async () => {
+      const panelKey = `${lateChild}__panel`
+      const metaKey = `${lateChild}__meta`
+      await b.table('status').put(panelKey, { ...b.table('status').get(panelKey), sessionId: root.id, branchId: root.id })
+      await b.table('branch').put(metaKey, { ...b.table('branch').get(metaKey), boundaryState: undefined })
+      const callsBeforeRebind = b.calls.length
+      const state = await stateOf(lateChild)
+      assert.equal(state.statusPanel?.atSeq, 2, 'the boundary panel must be addressable by the child again')
+      assert.match(state.statusPanel?.panel?.html ?? '', /庭院-1/)
+      assert.equal(b.table('branch').get(metaKey)?.boundaryState?.status, 'rebound')
+      assert.equal(b.calls.length, callsBeforeRebind, 'rebinding is program-only work')
+    })
+
+    // --- 重生子分支仍不继承父分支的待选卡（它自己的 Phase B 出卡）---
+    const regenPrepared = await b.callRoute('/api/roleplay/branch', { action: 'prepare', sessionId: root.id, messageId: `a-${root.id}-2`, kind: 'regenerate' })
+    assert.equal(regenPrepared.status, 200, JSON.stringify(regenPrepared.body))
+    const regenCreated = await b.callRoute('/api/roleplay/branch', { action: 'create-worldline', operationId: regenPrepared.body.operationId })
+    const regenChildId = regenCreated.body.childSessionId
+    const regenRegistered = await b.callRoute('/api/roleplay/branch', { action: 'register', operationId: regenPrepared.body.operationId, childSessionId: regenChildId, requestId: 'trunc-regen', promptText: '走入庭院 2' })
+    assert.equal(regenRegistered.status, 200, JSON.stringify(regenRegistered.body))
+
+    await checked('a replay child keeps the parent card out until its own turn lands', async () => {
+      const state = await stateOf(regenChildId)
+      assert.equal(state.decision ?? null, null, 'regenerate publishes its own card after its own Phase B')
+      assert.equal(b.table('branch').get(`${regenChildId}__meta`)?.boundaryState ?? null, null)
+    })
   } finally { b.dispose() }
 }
 

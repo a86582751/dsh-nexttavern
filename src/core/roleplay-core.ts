@@ -809,7 +809,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   //    当下的活动版本继承；记忆/场景/状态属于剧情正史，必须裁到 seedLength，
   //    绝不能把父会话在分叉点之后发生的剧情泄漏到子分支。───────────────
 
-  const { ensureBranch: initializeBranch } = createRoleplayInheritance({
+  const { ensureBranch: initializeBranch, carryTruncationBoundary } = createRoleplayInheritance({
     ensureState,
     cloneBranchRecord,
     T,
@@ -818,7 +818,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     cloneContextWindow,
     ctx,
     statusSource,
-    statusFixedContext
+    statusFixedContext,
+    normalizeDecisionRecord
   })
   async function ensureBranch(session: ContextSession, options?: InheritanceOptions) {
     return initializeBranch(session, options)
@@ -1075,6 +1076,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     T,
     awaitImportBarrier,
     ensureBranch,
+    carryTruncationBoundary,
     buildForkLookupIndex,
     reconcileCanonicalPlayerVariants,
     statusRecoveredSessions,

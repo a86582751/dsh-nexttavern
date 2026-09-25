@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { keyOf, durableSeq, provenanceSeq, rollLogEntries, rollLogRecord, recordSha256 } from './roleplay-data.js'
-import { eventsOf, surfaceEntries, visibleCompactionCheckpoint } from './roleplay-context.js'
+import { eventsOf, surfaceEntries, visibleCompactionCheckpoint, canonicalAssistantForTurn } from './roleplay-context.js'
 import { importActiveKey } from './roleplay-import.js'
-import type { InheritanceDependencies, InheritanceSession, InheritanceOptions } from './roleplay-inheritance-types.js'
+import type { InheritanceDependencies, InheritanceDecision, InheritanceSession, InheritanceOptions, TruncationBoundaryCarry } from './roleplay-inheritance-types.js'
 import type { DirectorNotes } from '../memory/memory-history.js'
 
 export function createRoleplayInheritance(deps: InheritanceDependencies) {
-  const { ensureState, cloneBranchRecord, T, clusterLoreVisible, contextWindowKey, cloneContextWindow, ctx, statusSource, statusFixedContext } = deps
+  const { ensureState, cloneBranchRecord, T, clusterLoreVisible, contextWindowKey, cloneContextWindow, ctx, statusSource, statusFixedContext, normalizeDecisionRecord } = deps
   async function ensureBranch(session: InheritanceSession, { cadenceAnchorSeq = null, cadenceTurn = null }: InheritanceOptions = {}) {
     const st = ensureState(session.id)
     if (st.branchReady) return
@@ -232,5 +232,161 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
     })()
     await st.branchPreparing
   }
-  return { ensureBranch }
+
+  // ── 截断子分支的边界状态 ────────────────────────────────────────────────
+  // 删除某条玩家消息及其后续内容的子分支不会立刻重放玩家输入，所以父分支在
+  // 截断点的状态栏与决策卡就是它自己的“下一步 UI”。fork 本身不继承决策卡
+  // （重生/改后发送的子分支由 Phase B 生成自己的新卡），这里只在子分支仍停在
+  // 截断边界时用程序补回：状态栏取自父分支同一回合已提交的面板；决策卡优先复用
+  // 被删除输入消费掉的那张卡（改回未回答），否则用边界回合的状态选项重建。
+  // 三条路径都不调用模型、不增加请求，也不改写父分支的任何记录。
+  async function carryTruncationBoundary(session: InheritanceSession): Promise<TruncationBoundaryCarry | null> {
+    const parentId = String(session.header?.parentSession ?? '')
+    const meta = cloneBranchRecord(T.branch.get(keyOf(session.id, 'meta'))) as {truncatedFrom?: unknown; boundaryState?: unknown} | null | undefined
+    // 只有截断子分支（register 时写过 truncatedFrom）带边界状态；重生/改后发送
+    // 的子分支走它们自己的 Phase B。boundaryState 是幂等与持久证据标记。
+    if (!parentId || String(meta?.truncatedFrom ?? '') !== parentId || meta?.boundaryState) return null
+    const seedLength = Number(session.inheritedEventCount)
+    if (!Number.isSafeInteger(seedLength) || seedLength <= 0) return null
+    const entries = surfaceEntries(session)
+    // 已经写出自己正文的子分支不再停在截断边界，边界状态交给它自己的维护流程。
+    if (entries.some((entry) => Number(entry.seq) >= seedLength)) return null
+    let boundaryTurn = -1
+    let boundarySeq = -1
+    for (const entry of entries) {
+      const seq = Number(entry.seq)
+      const turn = Number(entry.turn)
+      if (entry.kind !== 'assistant' || !Number.isSafeInteger(seq) || seq >= seedLength || !Number.isSafeInteger(turn)) continue
+      if (canonicalAssistantForTurn(session, turn)?.seq !== seq) continue
+      if (seq > boundarySeq) {
+        boundaryTurn = turn
+        boundarySeq = seq
+      }
+    }
+    if (boundarySeq < 0) return null
+    const turnKey = (sessionId: string) => keyOf(sessionId, `turn-${boundaryTurn}-${boundarySeq}`)
+    const result: TruncationBoundaryCarry = {
+      schemaVersion: 1,
+      turn: boundaryTurn,
+      seq: boundarySeq,
+      status: 'existing',
+      decision: 'unavailable',
+      carriedAt: Date.now(),
+    }
+    // 状态栏：边界面板若已被父分支复制过来，只需按同一份 provenance 重新归属
+    // （owner 字段仍指向父分支时状态读取会拒绝它）；被删回合的维护已经把父分支
+    // 当前面板推到 seed 之外时，改用同一回合已提交的状态结果补一份。
+    const childPanelKey = keyOf(session.id, 'panel')
+    const childPanelNow = T.status.get(childPanelKey)
+    if (Number(childPanelNow?.atSeq ?? -1) === boundarySeq) {
+      if (String(childPanelNow?.sessionId ?? '') !== session.id || String(childPanelNow?.branchId ?? '') !== session.id) {
+        await T.status.put(childPanelKey, {
+          ...cloneBranchRecord(childPanelNow),
+          sessionId: session.id,
+          branchId: session.id,
+        })
+        result.status = 'rebound'
+      }
+    } else {
+      const parentStatus = T.status.get(turnKey(parentId))
+      const readableParent = parentStatus && parentStatus.state === 'completed' && parentStatus.stale !== true ? parentStatus : null
+      const boundaryPanel = readableParent?.result && typeof readableParent.result === 'object' ? readableParent.result : null
+      if (readableParent && boundaryPanel) {
+        await T.status.put(turnKey(session.id), {
+          ...cloneBranchRecord(readableParent),
+          sessionId: session.id,
+          branchId: session.id,
+          publicationState: 'published',
+          publicationError: null,
+        })
+        await T.status.put(childPanelKey, {
+          ...cloneBranchRecord(boundaryPanel),
+          sessionId: session.id,
+          branchId: session.id,
+        })
+        result.status = 'copied'
+      } else result.status = 'unavailable'
+    }
+    const decisionKey = keyOf(session.id, 'current')
+    const existingDecision = normalizeDecisionRecord(T.decision.get(decisionKey))
+    const existingTurn = Number(existingDecision?.turnId)
+    if (existingDecision && Number.isSafeInteger(existingTurn) && existingTurn >= boundaryTurn) {
+      // 子分支已经有边界回合（或更晚回合）的卡：玩家已消费的卡不复活。
+      result.decision = 'existing'
+    } else {
+      const parentDecision = normalizeDecisionRecord(T.decision.get(keyOf(parentId, 'current')))
+      // 只有“被玩家输入消费掉”的边界卡才在截断点重新待选；被正文编辑等其它
+      // 原因失效的卡依据已经变化，不能复活。
+      const consumedCard = parentDecision
+        && Number(parentDecision.turnId) === boundaryTurn
+        && Number(parentDecision.seq) === boundarySeq
+        && (parentDecision.superseded !== true || parentDecision.supersededReason === 'player-input')
+        && Array.isArray(parentDecision.options) && parentDecision.options.length > 0
+        ? parentDecision : null
+      const childPanel = T.status.get(keyOf(session.id, 'panel'))
+      const panelOptions = childPanel?.stale !== true && Number(childPanel?.atSeq ?? -1) === boundarySeq
+        ? childPanel?.panel?.options ?? []
+        : []
+      const revived: InheritanceDecision | null = consumedCard
+        ? {
+            ...consumedCard,
+            sessionId: session.id,
+            atSeq: boundarySeq,
+            seq: boundarySeq,
+            turnId: boundaryTurn,
+            answered: false,
+            choiceIndex: null,
+            choiceLabel: undefined,
+            customText: undefined,
+            answeredAt: undefined,
+            superseded: false,
+            supersededAt: undefined,
+            supersededReason: undefined,
+            inheritedFrom: parentId,
+            inheritedBoundaryTurn: boundaryTurn,
+            inheritedBoundarySeq: boundarySeq,
+            revivedAt: Date.now(),
+          }
+        : null
+      const rebuilt: InheritanceDecision | null = revived ? null : (() => {
+        const options = normalizeDecisionRecord({ options: panelOptions })?.options?.slice(0, 3) ?? []
+        if (!options.length) return null
+        return {
+          schemaVersion: 1,
+          source: 'auto',
+          provenance: { ...(childPanel?.provenance ?? {}), reusedFrom: 'status', statusSeq: boundarySeq },
+          sessionId: session.id,
+          atSeq: boundarySeq,
+          seq: boundarySeq,
+          turnId: boundaryTurn,
+          question: '',
+          options,
+          multiSelect: false,
+          answered: false,
+          choiceIndex: null,
+          inheritedFrom: parentId,
+          inheritedBoundaryTurn: boundaryTurn,
+          inheritedBoundarySeq: boundarySeq,
+          rebuiltFromStatus: true,
+          revivedAt: Date.now(),
+        }
+      })()
+      const card = revived ?? rebuilt
+      if (card) {
+        await T.decision.put(decisionKey, card)
+        result.decision = revived ? 'inherited' : 'rebuilt'
+      }
+    }
+    // 决策仍不可得时不写标记，保留重试：父分支的迟到维护提交边界卡之后，
+    // 下一次读取状态仍能把它补进子分支。
+    if (result.decision !== 'unavailable') {
+      await T.branch.put(keyOf(session.id, 'meta'), {
+        ...(cloneBranchRecord(meta) ?? {}),
+        boundaryState: result,
+        updatedAt: Date.now(),
+      })
+    }
+    return result
+  }
+  return { ensureBranch, carryTruncationBoundary }
 }

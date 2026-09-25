@@ -635,7 +635,7 @@ export async function apply(ctx, config = {}) {
     //    需要在子会话首次使用时惰性建立。卡片/规则属于创作配置，按 fork
     //    当下的活动版本继承；记忆/场景/状态属于剧情正史，必须裁到 seedLength，
     //    绝不能把父会话在分叉点之后发生的剧情泄漏到子分支。───────────────
-    const { ensureBranch: initializeBranch } = createRoleplayInheritance({
+    const { ensureBranch: initializeBranch, carryTruncationBoundary } = createRoleplayInheritance({
         ensureState,
         cloneBranchRecord,
         T,
@@ -644,7 +644,8 @@ export async function apply(ctx, config = {}) {
         cloneContextWindow,
         ctx,
         statusSource,
-        statusFixedContext
+        statusFixedContext,
+        normalizeDecisionRecord
     });
     async function ensureBranch(session, options) {
         return initializeBranch(session, options);
@@ -881,6 +882,7 @@ export async function apply(ctx, config = {}) {
         T,
         awaitImportBarrier,
         ensureBranch,
+        carryTruncationBoundary,
         buildForkLookupIndex,
         reconcileCanonicalPlayerVariants,
         statusRecoveredSessions,
