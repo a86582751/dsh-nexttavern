@@ -170,17 +170,28 @@ a:hover {
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
+  display: block;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  /* The plate is baked into the image; the radius only shapes the shadow. */
   border-radius: 9px;
-  background: linear-gradient(140deg, var(--accent-strong), var(--accent) 55%, #c9752a);
-  color: #201405;
-  font-size: 12.5px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), var(--shadow-sm);
+  box-shadow: 0 1px 2px rgba(58, 33, 8, 0.3), 0 8px 16px -12px rgba(58, 33, 8, 0.75);
+}
+
+.brand-mark img,
+.brand-word img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.brand-word {
+  display: block;
+  width: 122px;
+  height: 30px;
+  flex: none;
+  filter: drop-shadow(0 2px 4px rgba(58, 33, 8, 0.28));
 }
 
 .brand small {
@@ -1894,6 +1905,16 @@ main {
 
   .brand small {
     display: none;
+  }
+
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .brand-word {
+    width: 100px;
+    height: 25px;
   }
 
   .section {

@@ -11,7 +11,10 @@
 export const site = {
     title: 'NextTavern 文档',
     productName: 'dsh-NextTavern',
-    brandMark: 'NT',
+    // 品牌标识直接搬皮肤自己的看板娘：头像（art/brand-mark.webp）加上她倚着
+    // 的 "Next Tavern" 木牌（art/brand-word.webp），不再用 "NT" 字标本；
+    // 来源见 art/README.md。
+    brandMark: { mark: 'brand-mark.webp', word: 'brand-word.webp', wordAlt: 'NextTavern' },
     lang: 'zh-CN',
     description: 'dsh-NextTavern 使用文档：一键安装、角色卡导入、记忆系统、预设与文风、世界线分支、小说导出与公网访问。',
     keywords: ['DSH', 'DeepSeek Harness', '角色扮演', '酒馆', 'SillyTavern', 'NextTavern'],
@@ -28,18 +31,20 @@ export const site = {
         // 标语与首图不写在这里：首页用自有皮肤 dsh-nexttavern-amber 同款的
         // 打字机标语轮换，标语在构建时从皮肤源码读取（见 build.mjs
         //「the skin's own words」一节），避免出现第二份口径。
-        artCaption: '自有皮肤 dsh-nexttavern-amber 的鲸鱼娘立绘',
+        // 轮换图说的是同一句话：只是皮肤立绘轮播，不逐张换标签，因为皮肤包
+        // 为了体积只收录了其中几张，逐图点名会对不上。
+        artCaption: 'Welcome to the Next Generation Tavern',
         // 首图轮换；文件在 site/art/，来源与出图记录见 art/README.md。
         art: [
-            { file: 'tavern-day-shelf.webp', label: '日间 · 酒架上取酒', alt: '日间酒馆里踩着梯子取酒瓶的鲸鱼娘立绘' },
-            { file: 'tavern-day-fireplace.webp', label: '日间 · 壁炉添柴', alt: '日间酒馆壁炉前添柴的鲸鱼娘立绘' },
-            { file: 'tavern-day-counter.webp', label: '日间 · 吧台落笔', alt: '日间酒馆吧台前伏案写字的鲸鱼娘立绘' },
-            { file: 'tavern-day-dusting.webp', label: '日间 · 擦拭酒瓶', alt: '日间酒馆吧台前擦拭酒瓶的鲸鱼娘立绘' },
-            { file: 'tavern-day-door.webp', label: '日间 · 提灯推门', alt: '日间酒馆门口提灯回望的鲸鱼娘立绘' },
-            { file: 'tavern-day-garden.webp', label: '日间 · 打理绿植', alt: '日间酒馆窗边浇花的鲸鱼娘立绘' },
-            { file: 'tavern-night-window.webp', label: '夜间 · 窗边捧杯', alt: '夜间窗边捧着杯子的鲸鱼娘立绘' },
-            { file: 'tavern-night-desk.webp', label: '夜间 · 书桌夜读', alt: '夜间书桌前读书的鲸鱼娘立绘' },
-            { file: 'tavern-night-candle.webp', label: '夜间 · 烛火圆窗', alt: '夜里握着蜡烛望向圆窗星空的鲸鱼娘立绘' }
+            { file: 'tavern-day-shelf.webp', alt: '日间酒馆里踩着梯子取酒瓶的鲸鱼娘立绘' },
+            { file: 'tavern-day-fireplace.webp', alt: '日间酒馆壁炉前添柴的鲸鱼娘立绘' },
+            { file: 'tavern-day-counter.webp', alt: '日间酒馆吧台前伏案写字的鲸鱼娘立绘' },
+            { file: 'tavern-day-dusting.webp', alt: '日间酒馆吧台前擦拭酒瓶的鲸鱼娘立绘' },
+            { file: 'tavern-day-door.webp', alt: '日间酒馆门口提灯回望的鲸鱼娘立绘' },
+            { file: 'tavern-day-garden.webp', alt: '日间酒馆窗边浇花的鲸鱼娘立绘' },
+            { file: 'tavern-night-window.webp', alt: '夜间窗边捧着杯子的鲸鱼娘立绘' },
+            { file: 'tavern-night-desk.webp', alt: '夜间书桌前读书的鲸鱼娘立绘' },
+            { file: 'tavern-night-candle.webp', alt: '夜里握着蜡烛望向圆窗星空的鲸鱼娘立绘' }
         ],
         lead: '把原生 Agent Loop 带进长篇角色扮演：AI 主动查阅世界、整理记忆、推演人物，你掌握方向，一起把故事写下去。',
         primary: { label: '快速开始', href: 'quickstart.html' },

@@ -501,6 +501,36 @@ if (site.hero.art?.length && heroArt.length < 2) {
   problems.push('Hero art needs at least two pictures to rotate');
 }
 
+/**
+ * The lockup is the amber skin's own keeper art, not a text monogram: her head
+ * on the site's amber plate (`art/brand-mark.webp`) next to the "Next Tavern"
+ * sign she leans on (`art/brand-word.webp`). The tab icon is the same head,
+ * bled to the edges, in `art/favicon.png`. All three are committed bytes and
+ * are written as-is, so the published brand cannot drift from the skin.
+ */
+const brandAsset = file => {
+  const source = path.join(artRoot, file);
+  if (!fs.existsSync(source)) {
+    problems.push('Brand asset missing: site/art/' + file);
+    return { url: 'assets/art/' + file, bytes: null };
+  }
+  return { url: 'assets/art/' + file, bytes: fs.readFileSync(source) };
+};
+
+const brandMark = brandAsset(site.brandMark.mark);
+const brandWord = brandAsset(site.brandMark.word);
+const favicon = brandAsset('favicon.png');
+
+/**
+ * The head is decorative; the wooden sign spells the name, so it carries the
+ * alternate text and the link keeps a readable name in every reader.
+ */
+function brandMarkTag() {
+  return '<span class="brand-mark"><img src="' + brandMark.url + '" alt="" aria-hidden="true" decoding="async"></span>' +
+    '<span class="brand-word"><img src="' + brandWord.url + '" alt="' + escapeHtml(site.brandMark.wordAlt) +
+    '" decoding="async"></span>';
+}
+
 /* --------------------------------------------------------------- media */
 
 const MEDIA_EXT = /\.(png|jpe?g|webp|gif|avif)$/i;
@@ -722,8 +752,8 @@ function header(activeId) {
     '  <button class="icon-button menu-toggle" type="button" data-nav-toggle aria-label="打开目录" aria-expanded="false">',
     '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
     '  </button>',
-    '  <a class="brand" href="index.html"><span class="brand-mark">' + escapeHtml(site.brandMark) + '</span>' +
-    '<span>' + escapeHtml(site.productName) + ' <small>文档</small></span></a>',
+    '  <a class="brand" href="index.html">' + brandMarkTag() +
+    '<small>文档</small></a>',
     '  <span class="chip hide-md"><span class="dot"></span>最新发布 <b>v' + escapeHtml(site.releaseVersion) + '</b></span>',
     '  <span class="spacer"></span>',
     '  <div class="topbar-actions">',
@@ -802,8 +832,8 @@ function footer() {
     '<footer class="site-footer">',
     '  <div class="footer-inner">',
     '    <div class="footer-brand">',
-    '      <a class="brand" href="index.html"><span class="brand-mark">' + escapeHtml(site.brandMark) + '</span>' +
-    '<span>' + escapeHtml(site.productName) + '</span></a>',
+    '      <a class="brand" href="index.html">' + brandMarkTag() +
+    '</a>',
     '      <p>' + escapeHtml(site.footer.blurb) + '</p>',
     '      <p class="footer-note">文档站内容与仓库文档同源生成；截图由维护者提供，不代表默认安装外观。</p>',
     '    </div>',
@@ -833,7 +863,8 @@ function shell({ id, title, description, body, classes }) {
     '<meta property="og:type" content="website">',
     '<meta property="og:title" content="' + escapeHtml(fullTitle) + '">',
     '<meta property="og:description" content="' + escapeHtml(description) + '">',
-    '<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">',
+    '<link rel="icon" type="image/png" sizes="180x180" href="' + favicon.url + '">',
+    '<link rel="apple-touch-icon" href="' + favicon.url + '">',
     '<link rel="stylesheet" href="assets/site.css">',
     '<script>(function(){try{var t=localStorage.getItem("nexttavern-docs-theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";}document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>',
     '</head>',
@@ -1011,12 +1042,10 @@ function landingPage() {
     '    <figure class="hero-shot">',
     '      <div class="hero-art" data-hero-art>' + heroArt.map((item, index) => [
       '<img src="' + item.url + '" alt="' + escapeHtml(item.alt) + '"' +
-      (item.label ? ' data-label="' + escapeHtml(item.label) + '"' : '') +
       (item.width ? ' width="' + item.width + '" height="' + item.height + '"' : '') +
       (index === 0 ? ' class="is-active" fetchpriority="high"' : ' loading="lazy"') + '>'
     ].join('')).join('') + '</div>',
-    '      <figcaption>' + escapeHtml(hero.artCaption) + ' · <b data-hero-art-label>' +
-    escapeHtml(heroArt[0]?.label ?? '') + '</b></figcaption>',
+    '      <figcaption>' + escapeHtml(hero.artCaption) + '</figcaption>',
     '    </figure>',
     '  </div>',
     '</section>',
@@ -1083,16 +1112,13 @@ function writeAssets() {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, item.bytes);
   }
-  const favicon = [
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">',
-    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">',
-    '<stop offset="0" stop-color="#ffc775"/><stop offset=".55" stop-color="#f0a137"/><stop offset="1" stop-color="#c9752a"/>',
-    '</linearGradient></defs>',
-    '<rect width="64" height="64" rx="16" fill="url(#g)"/>',
-    '<text x="32" y="42" font-family="Segoe UI, sans-serif" font-size="26" font-weight="700" fill="#201405" text-anchor="middle">NT</text>',
-    '</svg>'
-  ].join('');
-  writeText(path.join(outDir, 'assets/favicon.svg'), favicon);
+  // Brand bytes: the lockup art and the tab icon, again copied verbatim.
+  for (const asset of [brandMark, brandWord, favicon]) {
+    if (!asset.bytes) continue;
+    const file = path.join(outDir, asset.url);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, asset.bytes);
+  }
   writeText(path.join(outDir, 'robots.txt'), 'User-agent: *\nAllow: /\n');
   writeText(path.join(outDir, '.nojekyll'), '');
 }

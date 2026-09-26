@@ -1805,6 +1805,18 @@
       "source": "site/art/tavern-night-candle.webp"
     },
     {
+      "id": "public-docs-site-brand-mark",
+      "source": "site/art/brand-mark.webp"
+    },
+    {
+      "id": "public-docs-site-brand-word",
+      "source": "site/art/brand-word.webp"
+    },
+    {
+      "id": "public-docs-site-favicon",
+      "source": "site/art/favicon.png"
+    },
+    {
       "id": "public-build-modules",
       "source": "lib/operations/public-build-modules.mjs"
     },

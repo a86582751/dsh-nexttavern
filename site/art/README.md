@@ -24,3 +24,19 @@
 批次目录 `artifacts/test-temp/skin-art/` 是维护仓库里的一次性工作区，随
 `artifacts/` 清理，不随公开仓库交付；需要替换或新增立绘时，从该批次（或新
 的一批）重新导出同样的尺寸与格式，并同步更新本表与 `hero.art`。
+
+## 品牌标识
+
+站点头像与木牌字标同样取自皮肤自己的看板娘，不使用 "NT" 之类的字标本
+（"NT" 会被读成别的词）：
+
+| 交付文件 | 来源 | 用途 |
+| --- | --- | --- |
+| `brand-mark.webp` | `work/keeper-day-full.png`（日间看板娘）裁出头像，置于站点琥珀色圆角底板上 | 顶栏／页脚品牌标 |
+| `brand-word.webp` | `gen/20260916_011809_sign2-night2_01.png`（夜间那面正面 "Next Tavern" 木牌）取木牌内的字标横带 | 顶栏／页脚品牌字标 |
+| `favicon.png` | 与 `brand-mark.webp` 同源的满幅版本 | 浏览器标签图标、apple-touch-icon |
+
+生成脚本在维护仓库的 `artifacts/test-temp/skin-art/work/mkbrand.py`（一次性
+工具，不随仓库交付）；三个文件都由生成器原样复制到 `assets/art/`。
+首页标语栏是固定一句 `Welcome to the Next Generation Tavern`，不随轮换图
+改字——皮肤包为了体积只收录了少数几张立绘，逐图点名会对不上。

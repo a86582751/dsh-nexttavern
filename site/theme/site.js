@@ -105,15 +105,12 @@
     if (!box) return;
     var frames = Array.prototype.slice.call(box.querySelectorAll('img'));
     if (calm || frames.length < 2) return;
-    var caption = document.querySelector('[data-hero-art-label]');
     var index = 0;
 
     window.setInterval(function () {
       frames[index].classList.remove('is-active');
       index = (index + 1) % frames.length;
       frames[index].classList.add('is-active');
-      var label = frames[index].getAttribute('data-label');
-      if (caption && label) caption.textContent = label;
     }, HERO_SHOT_MS);
   })();
 
