@@ -124,14 +124,16 @@ export const site = {
         lead: '截图由维护者提供，包含个人主题与示例故事，不代表默认安装外观。',
         link: { label: '全部截图', href: 'screenshots.html' },
         items: [
-            { src: 'screenshots/play.png', title: '沉浸式游玩', caption: '自有琥珀皮肤的正文阅读' },
+            { src: 'screenshots/play.png', title: '沉浸式游玩', caption: '正文、状态栏与决策卡' },
             { src: 'screenshots/worldlines.png', title: '世界线与分支', caption: '同一对话里管理版本与分支' },
             { src: 'screenshots/memory.png', title: '记忆系统', caption: '窗口、笔记与检索设置' },
             { src: 'screenshots/retrieval.png', title: '混合检索', caption: '关键词、语义与混合三种方式' },
             { src: 'screenshots/characters.png', title: '角色集群', caption: '主要角色独立推演' },
             { src: 'screenshots/presets.png', title: '预设系统', caption: '文风、模式与作用范围' },
             { src: 'screenshots/novel.png', title: '长文本转角色卡', caption: '整本小说读成一张卡' },
-            { src: 'screenshots/export.png', title: '小说导出', caption: '把世界线整理成小说稿' }
+            { src: 'screenshots/export.png', title: '小说导出', caption: '把世界线整理成小说稿' },
+            { src: 'screenshots/skin-day.png', title: '自有琥珀皮肤 · 日间', caption: '整套界面重绘的日间主题' },
+            { src: 'screenshots/skin-night.png', title: '自有琥珀皮肤 · 夜间', caption: '同一套设计 token 的夜间主题' }
         ]
     },
     groups: [
