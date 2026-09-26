@@ -841,7 +841,7 @@ function footer() {
     '  </div>',
     '  <div class="footer-base">',
     '    <span>© ' + new Date().getUTCFullYear() + ' ' + escapeHtml(site.productName) + ' · 文档以 <a href="' + site.licenseUrl + '">' + escapeHtml(site.licenseName) + '</a> 分发</span>',
-    '    <span>构建于 ' + buildDate() + ' · <a href="' + site.repoUrl + '/tree/main/docs">本站源码</a></span>',
+    '    <span>构建于 ' + buildDate() + ' · <a href="' + site.repoUrl + '/tree/main/site">本站源码</a></span>',
     '  </div>',
     '</footer>'
   ].join('\n');
