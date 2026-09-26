@@ -972,7 +972,11 @@ main {
 }
 
 .hero h1 {
-  min-height: 1.14em;
+  /* The greeting types itself out, and the lines are not the same length: a
+     short one occupies a single line while a long one wraps to two. Reserving
+     two lines keeps the lead, the buttons and the facts below from jumping on
+     every cycle; `heroTitleLines` is re-checked by the build. */
+  min-height: calc(var(--hero-title-lines, 2) * 1.14em);
   margin: 0 0 20px;
   color: var(--text-strong);
   font-size: clamp(34px, 4.6vw, 54px);

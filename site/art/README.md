@@ -32,11 +32,17 @@
 
 | 交付文件 | 来源 | 用途 |
 | --- | --- | --- |
-| `brand-mark.webp` | `work/keeper-day-full.png`（日间看板娘）裁出头像，置于站点琥珀色圆角底板上 | 顶栏／页脚品牌标 |
+| `brand-mark.webp` | `icon/20260926_183945_icon-d_01.png`：以 `work/keeper-day-full.png` 为角色参考、用 Seedream 5.0 Pro 重跑的应用图标式半身像（暖橙背景），切圆角 | 顶栏／页脚品牌标 |
 | `brand-word.webp` | `gen/20260916_011809_sign2-night2_01.png`（夜间那面正面 "Next Tavern" 木牌）取木牌内的字标横带 | 顶栏／页脚品牌字标 |
-| `favicon.png` | 与 `brand-mark.webp` 同源的满幅版本 | 浏览器标签图标、apple-touch-icon |
+| `favicon.png` | 与 `brand-mark.webp` 同一张图，满幅不切圆角 | 浏览器标签图标、apple-touch-icon |
 
-生成脚本在维护仓库的 `artifacts/test-temp/skin-art/work/mkbrand.py`（一次性
-工具，不随仓库交付）；三个文件都由生成器原样复制到 `assets/art/`。
+最初的头像版本直接把看板娘的头部裁成方形，34 像素下像一张奇怪的证件照，因此照着
+应用图标（app icon）的形式重跑了一版：角色半身填满方图、暖色背景、四角圆润。
+同批候选留在 `icon/`：`icon-b`（微笑＋底部 "NextTavern" 木条，最接近参考形式）、
+`icon-d`（大笑特写，最终选用，因为缩放后仍最清楚）、`icon-e`（大笑＋底部木条）。
+
+生成脚本在维护仓库的 `artifacts/test-temp/skin-art/` 下（一次性工具，不随仓库
+交付）：`mkicon.py` 产出 `brand-mark.webp` 与 `favicon.png`，`work/mkbrand.py`
+产出 `brand-word.webp`。三个文件都由生成器原样复制到 `assets/art/`。
 首页标语栏是固定一句 `Welcome to the Next Generation Tavern`，不随轮换图
 改字——皮肤包为了体积只收录了少数几张立绘，逐图点名会对不上。
