@@ -25,11 +25,25 @@ export const site = {
     harnessLine: 'DeepSeek Harness 0.1.7',
     hero: {
         eyebrow: 'DSH 角色扮演 Agent',
-        title: '创作一个世界\n走进它，再把它带走',
+        // 标语与首图不写在这里：首页用自有皮肤 dsh-nexttavern-amber 同款的
+        // 打字机标语轮换，标语在构建时从皮肤源码读取（见 build.mjs
+        //「the skin's own words」一节），避免出现第二份口径。
+        artCaption: '自有皮肤 dsh-nexttavern-amber 的鲸鱼娘立绘',
+        // 首图轮换；文件在 site/art/，来源与出图记录见 art/README.md。
+        art: [
+            { file: 'tavern-day-shelf.webp', label: '日间 · 酒架上取酒', alt: '日间酒馆里踩着梯子取酒瓶的鲸鱼娘立绘' },
+            { file: 'tavern-day-fireplace.webp', label: '日间 · 壁炉添柴', alt: '日间酒馆壁炉前添柴的鲸鱼娘立绘' },
+            { file: 'tavern-day-counter.webp', label: '日间 · 吧台落笔', alt: '日间酒馆吧台前伏案写字的鲸鱼娘立绘' },
+            { file: 'tavern-day-dusting.webp', label: '日间 · 擦拭酒瓶', alt: '日间酒馆吧台前擦拭酒瓶的鲸鱼娘立绘' },
+            { file: 'tavern-day-door.webp', label: '日间 · 提灯推门', alt: '日间酒馆门口提灯回望的鲸鱼娘立绘' },
+            { file: 'tavern-day-garden.webp', label: '日间 · 打理绿植', alt: '日间酒馆窗边浇花的鲸鱼娘立绘' },
+            { file: 'tavern-night-window.webp', label: '夜间 · 窗边捧杯', alt: '夜间窗边捧着杯子的鲸鱼娘立绘' },
+            { file: 'tavern-night-desk.webp', label: '夜间 · 书桌夜读', alt: '夜间书桌前读书的鲸鱼娘立绘' },
+            { file: 'tavern-night-candle.webp', label: '夜间 · 烛火圆窗', alt: '夜里握着蜡烛望向圆窗星空的鲸鱼娘立绘' }
+        ],
         lead: '把原生 Agent Loop 带进长篇角色扮演：AI 主动查阅世界、整理记忆、推演人物，你掌握方向，一起把故事写下去。',
         primary: { label: '快速开始', href: 'quickstart.html' },
         secondary: { label: '核心能力', href: 'capabilities.html' },
-        image: { src: 'images/cover.png', alt: 'dsh-NextTavern：创作一个世界，走进它，再把它带走。' },
         facts: [
             { label: '最新发布', value: '0.2.5' },
             { label: '运行宿主', value: 'DeepSeek Harness' },

@@ -5,6 +5,11 @@
 - `build.mjs`：静态站点生成器（Markdown → HTML、图片压缩、离线搜索索引、链接与锚点校验）。
 - `site.config.mjs`：导航分组、落地页文案与每个页面引用的章节选择器。
 - `theme/site.css`、`theme/site.js`：主题与交互（深浅色、目录抽屉、搜索、截图灯箱、代码复制）。
+- `art/`：首页轮换用的鲸鱼娘立绘，来源与出图批次见 `art/README.md`。
+
+首页不使用第二份口径的宣传语：标语打字机从皮肤 `dsh-nexttavern-amber` 的源码里读
+`HEADLINE_GROUPS`（缺锚点即构建失败），首图轮换用 `art/` 里的自有立绘——两者都和
+皮肤保持同一来源。
 
 ## 运行
 

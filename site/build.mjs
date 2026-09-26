@@ -424,6 +424,83 @@ function bodyFor(page) {
   return parts.join('\n\n');
 }
 
+/* ---------------------------------------------------- the skin's own words */
+
+/**
+ * The hero does not keep a second copy of the amber skin's voice or pictures:
+ * the greeting typewriter's lines and the whale-girl art are read out of the
+ * skin source, which stays their single origin. The public checkout keeps the
+ * skin at `skins/dsh-nexttavern-amber/`, the maintainer tree at
+ * `runtime/alpha3/preset/skins/nexttavern-amber/`; a layout that carries
+ * neither fails the build instead of publishing a hero with missing pieces.
+ */
+const skinClientCandidates = [
+  path.join(publicRoot, 'skins/dsh-nexttavern-amber/src/client.ts'),
+  path.join(publicRoot, 'skins/dsh-nexttavern-amber/lib/client.js'),
+  path.join(repoRoot, 'runtime/alpha3/preset/skins/nexttavern-amber/src/client.ts'),
+  path.join(repoRoot, 'runtime/alpha3/preset/skins/nexttavern-amber/lib/client.js')
+];
+
+const skinClient = (() => {
+  for (const file of skinClientCandidates) if (fs.existsSync(file)) return readText(file);
+  problems.push('Skin source not found; looked for ' + skinClientCandidates.join(', '));
+  return '';
+})();
+
+/** The greeting lines the skin itself types out (`HEADLINE_GROUPS`). Extracted
+ * rather than copied so the site cannot drift into copy the skin never says. */
+const heroTaglines = (() => {
+  const anchor = skinClient.indexOf('HEADLINE_GROUPS');
+  const open = anchor === -1 ? -1 : skinClient.indexOf('= [', anchor);
+  const close = open === -1 ? -1 : skinClient.indexOf('\n]', open);
+  if (open === -1 || close === -1) {
+    problems.push('HEADLINE_GROUPS not found in the skin source; the hero typewriter has no lines');
+    return [];
+  }
+  const lines = [...skinClient.slice(open, close).matchAll(/'([^']*)'/g)].map(match => match[1]);
+  if (lines.length < 2) problems.push('HEADLINE_GROUPS looks empty in the skin source');
+  return lines;
+})();
+
+/** Intrinsic WebP size, so the hero art keeps its box before it decodes. */
+function webpSize(buffer) {
+  if (buffer.length < 30 || buffer.toString('ascii', 0, 4) !== 'RIFF') return null;
+  const fourcc = buffer.toString('ascii', 12, 16);
+  if (fourcc === 'VP8X') {
+    return { width: buffer.readUIntLE(24, 3) + 1, height: buffer.readUIntLE(27, 3) + 1 };
+  }
+  if (fourcc === 'VP8 ') {
+    return { width: buffer.readUInt16LE(26) & 0x3fff, height: buffer.readUInt16LE(28) & 0x3fff };
+  }
+  if (fourcc === 'VP8L') {
+    const bits = buffer.readUInt32LE(21);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+  }
+  return null;
+}
+
+/**
+ * The landing hero's whale-girl art: the files live next to the generator in
+ * `site/art/`, curated from the batch that produced the amber skin, and
+ * `art/README.md` maps each one back to the run it came from. A missing file
+ * fails the build instead of leaving an empty frame in the rotation.
+ */
+const artRoot = path.join(here, 'art');
+const heroArt = [];
+for (const item of site.hero.art ?? []) {
+  const file = path.join(artRoot, item.file);
+  if (!fs.existsSync(file)) {
+    problems.push('Hero art missing: site/art/' + item.file);
+    continue;
+  }
+  const bytes = fs.readFileSync(file);
+  const size = webpSize(bytes) ?? {};
+  heroArt.push({ ...item, url: 'assets/art/' + item.file, bytes, width: size.width, height: size.height });
+}
+if (site.hero.art?.length && heroArt.length < 2) {
+  problems.push('Hero art needs at least two pictures to rotate');
+}
+
 /* --------------------------------------------------------------- media */
 
 const MEDIA_EXT = /\.(png|jpe?g|webp|gif|avif)$/i;
@@ -858,7 +935,6 @@ function renderPage(page, position) {
 
 function landingPage() {
   const hero = site.hero;
-  const cover = mediaRecords.get(hero.image.src) ?? { url: hero.image.src };
   const tabs = site.quickInstall.tabs.map((tab, index) => {
     const selected = index === 0;
     return [
@@ -918,8 +994,12 @@ function landingPage() {
     '  <div class="hero-inner">',
     '    <div>',
     '      <span class="eyebrow">' + escapeHtml(hero.eyebrow) + '</span>',
-    '      <h1>' + hero.title.split('\n').map((line, index) =>
-      index === 0 ? escapeHtml(line) : '<em>' + escapeHtml(line) + '</em>').join('<br>') + '</h1>',
+    // The skin's own greeting typewriter: the first line is rendered so the
+    // headline still reads without JavaScript, the rest ride along as data.
+    '      <h1 class="hero-title"><span class="hero-typed" data-hero-typed>' +
+      escapeHtml(heroTaglines[0] ?? '') + '</span><span class="hero-caret" aria-hidden="true"></span></h1>',
+    '      <script type="application/json" id="hero-taglines">' +
+      JSON.stringify(heroTaglines).replace(/</g, '\\u003c') + '</script>',
     '      <p class="lead">' + escapeHtml(hero.lead) + '</p>',
     '      <div class="cta-row">',
     '        <a class="button primary" href="' + hero.primary.href + '">' + escapeHtml(hero.primary.label) + ' →</a>',
@@ -929,9 +1009,14 @@ function landingPage() {
       '<div><span>' + escapeHtml(fact.label) + '</span><b>' + escapeHtml(fact.value) + '</b></div>').join('') + '</div>',
     '    </div>',
     '    <figure class="hero-shot">',
-    '      <img src="' + cover.url + '" alt="' + escapeHtml(hero.image.alt) + '"' +
-    (cover.width ? ' width="' + cover.width + '" height="' + cover.height + '"' : '') + ' fetchpriority="high">',
-    '      <figcaption>' + escapeHtml(hero.image.alt) + '</figcaption>',
+    '      <div class="hero-art" data-hero-art>' + heroArt.map((item, index) => [
+      '<img src="' + item.url + '" alt="' + escapeHtml(item.alt) + '"' +
+      (item.label ? ' data-label="' + escapeHtml(item.label) + '"' : '') +
+      (item.width ? ' width="' + item.width + '" height="' + item.height + '"' : '') +
+      (index === 0 ? ' class="is-active" fetchpriority="high"' : ' loading="lazy"') + '>'
+    ].join('')).join('') + '</div>',
+    '      <figcaption>' + escapeHtml(hero.artCaption) + ' · <b data-hero-art-label>' +
+    escapeHtml(heroArt[0]?.label ?? '') + '</b></figcaption>',
     '    </figure>',
     '  </div>',
     '</section>',
@@ -977,7 +1062,7 @@ function landingPage() {
 /* ------------------------------------------------------------------ run */
 
 function collectImageSources() {
-  const sources = new Set([site.hero.image.src]);
+  const sources = new Set();
   site.showcase.items.forEach(item => sources.add(item.src));
   for (const page of allPages) {
     const markdown = bodyFor(page);
@@ -991,6 +1076,13 @@ function collectImageSources() {
 function writeAssets() {
   copyFile(path.join(themeRoot, 'site.css'), path.join(outDir, 'assets/site.css'));
   copyFile(path.join(themeRoot, 'site.js'), path.join(outDir, 'assets/site.js'));
+  // The hero art is committed at its display size; it is written as-is so the
+  // repository copy and the published bytes stay identical.
+  for (const item of heroArt) {
+    const file = path.join(outDir, item.url);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, item.bytes);
+  }
   const favicon = [
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">',
     '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">',

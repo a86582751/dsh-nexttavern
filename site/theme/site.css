@@ -961,6 +961,7 @@ main {
 }
 
 .hero h1 {
+  min-height: 1.14em;
   margin: 0 0 20px;
   color: var(--text-strong);
   font-size: clamp(34px, 4.6vw, 54px);
@@ -970,12 +971,36 @@ main {
   white-space: pre-line;
 }
 
-.hero h1 em {
-  font-style: normal;
+/* The skin's greeting typewriter. The gradient spans the typed element, so it
+   rescales with the line instead of shifting colour mid-word. */
+.hero-typed {
   background: linear-gradient(96deg, var(--accent-strong), var(--accent) 45%, var(--violet));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+.hero-caret {
+  display: inline-block;
+  width: 3px;
+  height: 0.92em;
+  margin-left: 8px;
+  vertical-align: -0.08em;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent), var(--violet));
+  animation: hero-caret 1.05s steps(1, end) infinite;
+}
+
+@keyframes hero-caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .hero .lead {
@@ -1073,13 +1098,30 @@ main {
   opacity: 0.28;
 }
 
-.hero-shot img {
+.hero-art {
   position: relative;
-  display: block;
-  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
+  background: var(--surface);
   box-shadow: var(--shadow-lg);
+}
+
+/* Stacked frames crossfading in place: every picture shares one 16:9 box, so
+   the rotation never shifts the hero. */
+.hero-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 900ms ease;
+}
+
+.hero-art img.is-active {
+  opacity: 1;
 }
 
 .hero-shot figcaption {

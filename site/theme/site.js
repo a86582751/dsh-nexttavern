@@ -33,6 +33,90 @@
 
   applyTheme(readTheme());
 
+  /* -------------------------------------------------------------- hero */
+
+  /* The hero speaks with the amber skin's voice: the same greeting lines, typed
+     and deleted like the skin's own headline, and the same whale-girl art
+     rotating in place. Both stand still when the visitor asks for less motion
+     or the script never runs, because the first line and first picture are
+     rendered into the HTML. */
+  var calm = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var HERO_TYPE_MS = 105;
+  var HERO_DELETE_MS = 55;
+  var HERO_HOLD_MS = 4500;
+  var HERO_GAP_MS = 620;
+  var HERO_SHOT_MS = 6000;
+
+  function readHeroLines() {
+    var holder = document.getElementById('hero-taglines');
+    if (!holder) return [];
+    try {
+      var parsed = JSON.parse(holder.textContent || '[]');
+      return Object.prototype.toString.call(parsed) === '[object Array]' ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  (function typeHero() {
+    var target = document.querySelector('[data-hero-typed]');
+    var lines = readHeroLines();
+    if (!target || calm || lines.length < 2) return;
+    var index = 0;
+    var column = 0;
+    var deleting = false;
+
+    function step() {
+      var line = String(lines[index]);
+      if (deleting) {
+        column -= 1;
+        target.textContent = line.slice(0, Math.max(column, 0));
+        if (column <= 0) {
+          deleting = false;
+          index = (index + 1) % lines.length;
+          window.setTimeout(step, HERO_GAP_MS);
+          return;
+        }
+        window.setTimeout(step, HERO_DELETE_MS);
+        return;
+      }
+      column += 1;
+      target.textContent = line.slice(0, column);
+      if (column >= line.length) {
+        deleting = true;
+        window.setTimeout(step, HERO_HOLD_MS);
+        return;
+      }
+      window.setTimeout(step, HERO_TYPE_MS);
+    }
+
+    // The first line is already on screen; start by finishing it, then rotate.
+    column = String(lines[0]).length;
+    window.setTimeout(function () {
+      deleting = true;
+      step();
+    }, HERO_HOLD_MS);
+  })();
+
+  (function rotateHeroArt() {
+    var box = document.querySelector('[data-hero-art]');
+    if (!box) return;
+    var frames = Array.prototype.slice.call(box.querySelectorAll('img'));
+    if (calm || frames.length < 2) return;
+    var caption = document.querySelector('[data-hero-art-label]');
+    var index = 0;
+
+    window.setInterval(function () {
+      frames[index].classList.remove('is-active');
+      index = (index + 1) % frames.length;
+      frames[index].classList.add('is-active');
+      var label = frames[index].getAttribute('data-label');
+      if (caption && label) caption.textContent = label;
+    }, HERO_SHOT_MS);
+  })();
+
   document.addEventListener('click', function (event) {
     var toggle = event.target.closest('[data-theme-toggle]');
     if (!toggle) return;
