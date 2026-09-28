@@ -141,6 +141,14 @@ async function createHarness(modulePath, workspace) {
   return { ctx, execute, tables, session, tools, promptSections, sessions, fetchRoutes }
 }
 
+async function coldHarness(modulePath, workspace, previous) {
+  const restored = await createHarness(modulePath, workspace)
+  for (const [name, table] of previous.tables) {
+    for (const [key, value] of table.data) await restored.tables.get(name).put(key, value)
+  }
+  return restored
+}
+
 function writeLines(path, lines, finalNewline = false) {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, `${lines.join('\n')}${finalNewline ? '\n' : ''}`, 'utf8')
@@ -373,16 +381,29 @@ try {
     await readAll(legacy.execute,begin.importId,lines.length)
     const staged=await legacy.execute('rp_card_import_stage',{import_id:begin.importId,use_suggested:true})
     assert.equal(staged.ok,true,staged.error)
-    legacy.tables.get('cards').failPut=()=>true
-    const interrupted=await legacy.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:sha256(normalizedSource)})
+    const coldStaging=await coldHarness(modulePath,scratch,legacy)
+    const resumed=await coldStaging.execute('rp_card_import_begin',{source_file:'legacy-v1.json'})
+    assert.equal(resumed.ok,true,resumed.error)
+    assert.equal(resumed.resumed,true,'cold begin reuses the persisted v4 staging task')
+    assert.equal(resumed.status,'staging','cold importSummary keeps the staging state')
+    assert.equal(resumed.normalizedSha256,sha256(normalizedSource),'cold summary validates the old full projection')
+    coldStaging.tables.get('cards').failPut=()=>true
+    const interrupted=await coldStaging.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:sha256(normalizedSource)})
     assert.equal(interrupted.ok,false,'schema-v4 activation must keep rollback available after a failed write')
-    assert.equal(legacy.tables.get('cards').data.size,0,'failed schema-v4 activation rolls back partial card writes')
-    const finalized=await legacy.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:sha256(normalizedSource)})
+    assert.equal(coldStaging.tables.get('cards').data.size,0,'failed schema-v4 activation rolls back partial card writes')
+    const retryCold=await coldHarness(modulePath,scratch,coldStaging)
+    const finalized=await retryCold.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:sha256(normalizedSource)})
     assert.equal(finalized.ok,true,finalized.error)
-    const active=legacy.tables.get('branch').get(`${legacy.session.id}__import-active`)
+    const active=retryCold.tables.get('branch').get(`${legacy.session.id}__import-active`)
     assert.equal(active.importId,begin.importId)
-    assert.equal(legacy.tables.get('branch').get(key).schemaVersion,4,'finalized legacy records remain readable in their original schema')
-    assert.ok([...legacy.tables.get('cards').data.values()].some(item=>item.content.includes('Legacy full source remains readable.')))
+    assert.equal(retryCold.tables.get('branch').get(key).schemaVersion,4,'finalized legacy records remain readable in their original schema')
+    assert.ok([...retryCold.tables.get('cards').data.values()].some(item=>item.content.includes('Legacy full source remains readable.')))
+    const activeCold=await coldHarness(modulePath,scratch,retryCold)
+    const stateRoute=activeCold.fetchRoutes.find(route=>route.path==='/api/roleplay/state')
+    const state=await stateRoute.fetch(new Request(`https://fixture.test/api/roleplay/state?sessionId=${activeCold.session.id}`)).then(reply=>reply.json())
+    assert.equal(state.cardImport.status,'active','cold state loads the persisted v4 active record')
+    assert.equal(state.cardImport.normalizedSha256,sha256(normalizedSource),'cold state rechecks v4 integrity through importSummary')
+    assert.equal(state.cardImport.sourceRecordSessionId,activeCold.session.id)
   }
   const { execute, tables, session } = harness
 
@@ -803,6 +824,15 @@ try {
     assert.equal(rootAvatar.headers.get('x-content-type-options'),'nosniff')
     assert.match(rootAvatar.headers.get('etag') ?? '',/^"[a-f0-9]{64}"$/)
     const rootBytes=Buffer.from(await rootAvatar.arrayBuffer())
+    const coldPng=await coldHarness(modulePath,scratch,h)
+    const coldAvatarRoute=coldPng.fetchRoutes.find(route=>route.path==='/api/roleplay/card-avatar')
+    const coldAvatar=await coldAvatarRoute.fetch(new Request(`https://fixture.test/api/roleplay/card-avatar?sessionId=${coldPng.session.id}`))
+    assert.equal(coldAvatar.status,200,'cold avatar route accepts a persisted v4 PNG active record')
+    assert.deepEqual(Buffer.from(await coldAvatar.arrayBuffer()),rootBytes)
+    const coldStateRoute=coldPng.fetchRoutes.find(route=>route.path==='/api/roleplay/state')
+    const coldState=await coldStateRoute.fetch(new Request(`https://fixture.test/api/roleplay/state?sessionId=${coldPng.session.id}`)).then(reply=>reply.json())
+    assert.equal(coldState.cardImport.status,'active')
+    assert.equal(coldState.cardImport.format,'png-v1')
     let parentId=h.session.id
     for(const childId of ['avatar-child','avatar-grandchild']){
       h.sessions.set(childId,{id:childId,header:{agentPreset:'roleplay',cwd:scratch,parentSession:parentId,seedLength:0},log:[],seq:0,surface:{nodes:[]}})
