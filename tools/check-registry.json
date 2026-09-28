@@ -1132,6 +1132,20 @@
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
+      "id": "test:roleplay-card-workflow.test.mjs",
+      "action": "test",
+      "artifact": "roleplay-card-workflow-contract",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
       "id": "test:tavern-card.test.mjs",
       "action": "test",
       "artifact": "tavern-card-test",

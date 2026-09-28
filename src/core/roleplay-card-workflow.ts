@@ -9,6 +9,9 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
   const { T, storyBranchIsActive, modelPolicy, statusFixedContext, nativeTask, driveStructuredImport,
     CARD_CLASSIFICATION_GUIDE, archiveImported, libraryFor, resourceName, tavernTasks, taskAgents, ctx } = deps
   const cardWorkflowKey=(id: string)=>`tavern_cardjob__${id}`
+  // UI requests and the main loop can resume the same durable job at once.
+  // Keep one in-process driver per generation; a restart still resumes from storage.
+  const running=new Map<string,Promise<void>>()
   const cardWorkflows=(session: {id: string})=>[...T.branch.entries()].filter(([k,j])=>k.startsWith('tavern_cardjob__')&&(j as CardWorkflowJob).sessionId===session.id).map(([,j])=>cloneRecord(j as CardWorkflowJob))
   const activeCardWorkflow=(session: {id: string})=>cardWorkflows(session).find(j=>['queued','running','waiting-main'].includes(j.status))
   function assertCardWorkflow(session: CardWorkflowSession,record: CardWorkflowRecord | null | undefined) {
@@ -36,6 +39,14 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
   async function resumeCardWorkflows(session: ContextSession,agent?: CardWorkflowAgent,signal?: AbortSignal) {
     const job=activeCardWorkflow(session)
     if(!job)return
+    const runKey=`${job.id}:${job.generation}`
+    const existing=running.get(runKey)
+    if(existing)return existing
+    const work=runCardWorkflow(session,job,agent,signal)
+    running.set(runKey,work)
+    try {await work} finally {if(running.get(runKey)===work)running.delete(runKey)}
+  }
+  async function runCardWorkflow(session: ContextSession,job: CardWorkflowJob,agent?: CardWorkflowAgent,signal?: AbortSignal) {
     assertWorkspaceSession(session)
     const source={workflowId:job.id,workflowType:'card',generation:job.generation,events:[]}
     try {

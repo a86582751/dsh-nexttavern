@@ -1585,6 +1585,10 @@
       "source": "tests/conversation-view-state.test.mjs"
     },
     {
+      "id": "roleplay-card-workflow-contract",
+      "source": "tests/roleplay-card-workflow.test.mjs"
+    },
+    {
       "id": "inventory-runtime-alpha3-build-tools-package-lock-json",
       "source": "build-tools/package-lock.json"
     },
