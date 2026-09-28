@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs'
 import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
-import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernOpeningCandidates, compileTavernExtensionInventory, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
+import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernOpeningCandidates, compileTavernExtensionInventory, compileTavernExtensionInventoryV1, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/tavern-card-legacy-v1.json', import.meta.url), 'utf8'))
 assert.equal(legacy.schemaVersion, 1)
@@ -84,7 +84,7 @@ const extensionsSource = {spec:'chara_card_v3',spec_version:'3.0',data:{name:'Ex
 }}}
 const extensionsDecoded = decodeTavernCard(Buffer.from(JSON.stringify(extensionsSource)),'.json')
 const inventory = compileTavernExtensionInventory(extensionsDecoded)
-assert.equal(inventory.schemaVersion,1)
+assert.equal(inventory.schemaVersion,2)
 assert.equal(inventory.sourceSha256,extensionsDecoded.sourceSha256)
 assert.equal(inventory.entries.length,8,'all top-level extension keys, including unknowns, are inventoried')
 assert.deepEqual(inventory.entries.map(item=>item.key),[...inventory.entries.map(item=>item.key)].sort())
@@ -97,6 +97,44 @@ assert.equal(byKey.risuai.status,'unexecuted','manual trigger presence does not 
 assert.equal(byKey.RubyAnalyzer.status,'requires-review','presence without a verified active preset does not schedule model calls')
 assert.equal(byKey.cfMvuVarGroups.phase,'state')
 assert.equal(byKey.depth_prompt.phase,'prompt')
+assert.equal(byKey.depth_prompt.status,'requires-review','a depth without prompt text is not a complete placement descriptor')
+assert.equal(byKey.cfMvuVarGroups.status,'requires-review','groups without names are preserved for review')
+const describedExtension = extensions => compileTavernExtensionInventory(decodeTavernCard(Buffer.from(JSON.stringify({
+  name:'Described',extensions})),'.json')).entries
+const inertDepth = describedExtension({depth_prompt:{prompt:'',depth:4,role:'system'}})[0]
+assert.equal(inertDepth.status,'inactive-empty')
+assert.equal(inertDepth.reason,'empty-prompt')
+assert.deepEqual([inertDepth.detail.kind,inertDepth.detail.depth,inertDepth.detail.role,inertDepth.detail.promptChars],
+  ['depth-prompt',4,'system',0])
+const activeDepth = describedExtension({depth_prompt:{prompt:'Synthetic instruction',depth:2,role:'system'}})[0]
+assert.equal(activeDepth.status,'unexecuted')
+assert.equal(activeDepth.reason,'prompt-runtime-not-wired')
+assert.equal(activeDepth.detail.promptChars,'Synthetic instruction'.length)
+assert.notEqual(activeDepth.detail.promptSha256,inertDepth.detail.promptSha256)
+assert.equal(describedExtension({depth_prompt:{prompt:'x',depth:'2',role:'system'}})[0].status,'requires-review',
+  'numeric-looking text cannot silently become placement depth')
+const groups = describedExtension({cfMvuVarGroups:[{name:'Synthetic group',fields:[
+  {name:'Flag',type:'boolean',defaultValue:'false'},
+  {name:'Level',type:'number',defaultValue:'0'},
+  {name:'Note',type:'string',defaultValue:''},
+]}]})[0]
+assert.equal(groups.status,'unexecuted')
+assert.equal(groups.reason,'state-runtime-not-wired')
+assert.deepEqual(groups.detail.groups[0].fields.map(field=>field.type),['boolean','number','string'])
+assert.deepEqual(groups.detail.groups[0].fields.map(field=>field.sourcePointer),[
+  '/extensions/cfMvuVarGroups/0/fields/0','/extensions/cfMvuVarGroups/0/fields/1',
+  '/extensions/cfMvuVarGroups/0/fields/2'])
+assert.ok(!JSON.stringify(groups.detail).includes('defaultValue'),'descriptor does not parse or duplicate defaults')
+assert.equal(describedExtension({cfMvuVarGroups:[{name:'Synthetic group',fields:[{name:'Flag',type:'script'}]}]})[0].status,
+  'requires-review','unknown field types are retained without state execution')
+const frozenV1Source='{"name":"Legacy","extensions":{"depth_prompt":{"depth":4},"other":true}}'
+const frozenV1=compileTavernExtensionInventoryV1(decodeTavernCard(Buffer.from(frozenV1Source),'.json'))
+assert.equal(JSON.stringify(frozenV1),
+  '{"schemaVersion":1,"sourceSha256":"3b9b20c3ab7622d77172bc6789b3ebcca5d6ed2dfcb1958c3bd7bdf33bb3a0bb","entries":['+
+  '{"key":"depth_prompt","sourcePointer":"/extensions/depth_prompt","valueSha256":"66e41417846f7e0228488fab3d0bb022511edb046b0f176536ca34d9eb402209","valueType":"object","capability":"prompt-placement","phase":"prompt","status":"unexecuted"},'+
+  '{"key":"other","sourcePointer":"/extensions/other","valueSha256":"b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b","valueType":"boolean","capability":"unknown","phase":"archive","status":"archive-only"}]}',
+  'persisted v1 inventory bytes must remain stable for old v5 integrity checks')
+assert.equal(compileTavernExtensionInventory(decodeTavernCard(Buffer.from(frozenV1Source),'.json')).schemaVersion,2)
 assert.equal(byKey.chaoshen_jixieshi.phase,'interaction')
 assert.equal(byKey.card_agent.phase,'interaction')
 const reorderedExtensions = structuredClone(extensionsSource)

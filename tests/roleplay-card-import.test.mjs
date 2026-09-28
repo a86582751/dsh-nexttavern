@@ -6,7 +6,8 @@ import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {deflateSync} from 'node:zlib'
 import {createHash} from 'node:crypto'
-import {decodeTavernCard, projectTavernCard, pngCrc} from '../lib/core/tavern-card.js'
+import {decodeTavernCard, projectTavernCard, compileTavernExtensionInventoryV1, pngCrc} from '../lib/core/tavern-card.js'
+import {importSummary} from '../lib/core/roleplay-import-record.js'
 
 class MockTable {
   constructor(name) {
@@ -286,7 +287,9 @@ try {
   {
     const tavern = await createHarness(modulePath, scratch)
     const data = {spec:'chara_card_v3',spec_version:'3.0',vendor_extension:{keep:'wrapper-source-preserved'},data:{name:'Native Tavern',description:'Full character details.',
-      first_mes:'Original opening.',extensions:{kept:true},character_book:{entries:[{keys:['tower'],content:'Seven steps.',enabled:false}]}}}
+      first_mes:'Original opening.',extensions:{kept:true,cfMvuVarGroups:Array.from({length:9},(_,i)=>({
+        name:`Vitals ${i}`,fields:[{name:'HP',type:'number',defaultValue:'10'}]}))},
+      character_book:{entries:[{keys:['tower'],content:'Seven steps.',enabled:false}]}}}
     writeFileSync(join(scratch,'native-card.json'),JSON.stringify(data))
     const begin = await tavern.execute('rp_card_import_begin',{source_file:'native-card.json'})
     assert.equal(begin.ok,true,'native import must accept structured JSON without anydoc')
@@ -295,10 +298,16 @@ try {
     const importedRecord=tavern.tables.get('branch').get(importKey)
     assert.equal(importedRecord.schemaVersion,5)
     assert.equal(importedRecord.normalizer,'tavern-fields-v2')
-    assert.equal(importedRecord.extensionInventory.schemaVersion,1)
-    assert.deepEqual(importedRecord.extensionInventory.entries.map(item=>item.key),['kept'])
-    assert.equal(begin.extensionInventory.total,1)
+    assert.equal(importedRecord.extensionInventory.schemaVersion,2)
+    assert.deepEqual(importedRecord.extensionInventory.entries.map(item=>item.key),['cfMvuVarGroups','kept'])
+    assert.equal(begin.extensionInventory.total,2)
     assert.equal(begin.extensionInventory.counts['archive-only'],1,'unknown extensions remain visible and inert')
+    assert.equal(begin.extensionInventory.counts.unexecuted,1,'recognized variables remain inert before P2')
+    assert.equal(begin.extensionInventory.entries[0].detail.fieldCount,9)
+    assert.equal(begin.extensionInventory.entries[0].detail.groups.length,8)
+    assert.equal(begin.extensionInventory.entries[0].detail.omittedGroups,1)
+    assert.ok(!JSON.stringify(begin.extensionInventory.entries[0].detail).includes('defaultValue'),
+      'tool summary excludes untrusted field defaults and full variable group detail')
     assert.equal(begin.extensionInventory.omitted,0)
     assert.ok(importedRecord.rawSource.includes('wrapper-source-preserved'))
     assert.ok(!importedRecord.normalizedSource.includes('wrapper-source-preserved'),'new compact projection avoids duplicating the full structured JSON')
@@ -312,6 +321,12 @@ try {
     assert.equal(staged.ok,true); assert.equal(staged.coverage,1)
     const stagedRecord=tavern.tables.get('branch').get(importKey)
     assert.equal(stagedRecord.assignmentProof.kind,'deterministic-suggested')
+    const currentInventory=stagedRecord.extensionInventory
+    stagedRecord.extensionInventory=compileTavernExtensionInventoryV1(
+      decodeTavernCard(readFileSync(join(scratch,'native-card.json')),'.json'))
+    assert.equal(importSummary(stagedRecord).extensionInventory.schemaVersion,1,
+      'a persisted v5 record with the former inventory version remains readable')
+    stagedRecord.extensionInventory=currentInventory
     const originalProof=structuredClone(stagedRecord.fieldProof)
     stagedRecord.fieldProof.pointerSha256='0'.repeat(64)
     assert.equal((await tavern.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:begin.normalizedSha256})).ok,false)

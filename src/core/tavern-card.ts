@@ -347,10 +347,31 @@ export interface TavernExtensionCapability {
     | 'opaque-provenance' | 'unknown'
   readonly phase: 'prompt' | 'state' | 'interaction' | 'analysis' | 'archive'
   readonly status: 'unexecuted' | 'requires-optional-analysis' | 'requires-review'
-    | 'archive-only' | 'unexpected-shape'
+    | 'archive-only' | 'unexpected-shape' | 'inactive-empty'
+  readonly reason?: 'empty-prompt' | 'prompt-runtime-not-wired' | 'state-runtime-not-wired'
+    | 'unverified-structure'
+  readonly detail?: TavernDepthPromptDetail | TavernVariableGroupsDetail
+}
+export interface TavernDepthPromptDetail {
+  readonly schemaVersion: 1
+  readonly kind: 'depth-prompt'
+  readonly promptSha256: string
+  readonly promptChars: number
+  readonly depth: number
+  readonly role: string | null
+}
+export interface TavernVariableGroupsDetail {
+  readonly schemaVersion: 1
+  readonly kind: 'variable-groups'
+  readonly groups: readonly {
+    sourcePointer: string
+    nameSha256: string
+    fields: readonly { sourcePointer: string; nameSha256: string; type: 'boolean' | 'number' | 'string';
+      sourceSha256: string }[]
+  }[]
 }
 export interface TavernExtensionInventory {
-  readonly schemaVersion: 1
+  readonly schemaVersion: 1 | 2
   readonly sourceSha256: string
   readonly entries: readonly TavernExtensionCapability[]
 }
@@ -361,11 +382,42 @@ const canonicalJson = (value: unknown): string => {
   return JSON.stringify(value)
 }
 
-// This is an inventory, not an extension executor. Only the top-level key and
-// coarse JSON shape are interpreted; the complete value stays in sourceEnvelope.
-export function compileTavernExtensionInventory(decoded: DecodedTavernCard): TavernExtensionInventory {
+function compileDepthPrompt(value: unknown): TavernDepthPromptDetail | null {
+  if (!object(value) || typeof value.prompt !== 'string'
+    || typeof value.depth !== 'number' || !Number.isSafeInteger(value.depth)
+    || value.depth < 0 || value.depth > 1000
+    || (value.role !== undefined && typeof value.role !== 'string')) return null
+  return {schemaVersion:1, kind:'depth-prompt', promptSha256:digest(value.prompt),
+    promptChars:value.prompt.length, depth:value.depth, role:typeof value.role === 'string' ? value.role : null}
+}
+
+function compileVariableGroups(value: unknown, pointer: string): TavernVariableGroupsDetail | null {
+  if (!Array.isArray(value) || value.length > 64) return null
+  const groups: TavernVariableGroupsDetail['groups'][number][] = []
+  let fieldCount = 0
+  for (const [groupIndex, group] of value.entries()) {
+    if (!object(group) || typeof group.name !== 'string' || !group.name
+      || !Array.isArray(group.fields) || group.fields.length > 128) return null
+    fieldCount += group.fields.length
+    if (fieldCount > 2048) return null
+    const fields: TavernVariableGroupsDetail['groups'][number]['fields'][number][] = []
+    for (const [fieldIndex, field] of group.fields.entries()) {
+      if (!object(field) || typeof field.name !== 'string' || !field.name
+        || !['boolean','number','string'].includes(String(field.type))) return null
+      fields.push({sourcePointer:`${pointer}/${groupIndex}/fields/${fieldIndex}`,
+        nameSha256:digest(field.name), type:field.type as 'boolean'|'number'|'string',
+        sourceSha256:digest(canonicalJson(field))})
+    }
+    groups.push({sourcePointer:`${pointer}/${groupIndex}`,nameSha256:digest(group.name),fields})
+  }
+  return {schemaVersion:1,kind:'variable-groups',groups}
+}
+
+// This is an inventory, not an extension executor. V2 records bounded metadata
+// for known shapes; full values remain in sourceEnvelope and never run here.
+function compileTavernExtensionInventoryVersion(decoded: DecodedTavernCard, schemaVersion: 1 | 2): TavernExtensionInventory {
   const extensions = decoded.data.extensions
-  if (extensions === undefined) return {schemaVersion:1, sourceSha256:decoded.sourceSha256, entries:[]}
+  if (extensions === undefined) return {schemaVersion, sourceSha256:decoded.sourceSha256, entries:[]}
   if (!object(extensions)) fail('角色卡 extensions 必须是对象')
   const keys = Object.keys(extensions).sort()
   if (keys.length > 4096) fail('角色卡 extensions 字段数量超限')
@@ -381,6 +433,7 @@ export function compileTavernExtensionInventory(decoded: DecodedTavernCard): Tav
   const root = decoded.document.data === decoded.data ? '/data' : ''
   const entries = keys.map(key => {
     const value = extensions[key]
+    const sourcePointer = `${root}/extensions/${pointerSegment(key)}`
     const valueType = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
     const match = known[key]
     const manualTrigger = key === 'risuai' && object(value) && Array.isArray(value.triggerscript)
@@ -396,14 +449,33 @@ export function compileTavernExtensionInventory(decoded: DecodedTavernCard): Tav
         : rubyTasks.length === 0 && object(rubyPreset) && object(rubyPreset.startupTask)
           && rubyPreset.startupTask.enabled === false ? 'archive-only' : 'requires-review'
       : 'requires-review'
-    const status = match && key !== 'odysseia_trace' && valueType !== match.shape ? 'unexpected-shape'
+    const detail = key === 'depth_prompt' ? compileDepthPrompt(value)
+      : key === 'cfMvuVarGroups' ? compileVariableGroups(value,sourcePointer) : null
+    const legacyStatus = match && key !== 'odysseia_trace' && valueType !== match.shape ? 'unexpected-shape'
       : capability === 'optional-analysis' ? rubyStatus
         : capability === 'unknown' || capability === 'opaque-provenance' ? 'archive-only' : 'unexecuted'
-    return {key, sourcePointer:`${root}/extensions/${pointerSegment(key)}`,
+    const status = schemaVersion === 1 ? legacyStatus
+      : (key === 'depth_prompt' || key === 'cfMvuVarGroups') && !detail ? 'requires-review'
+        : key === 'depth_prompt' && detail?.kind === 'depth-prompt' && detail.promptChars === 0 ? 'inactive-empty'
+          : legacyStatus
+    const reason = status === 'inactive-empty' ? 'empty-prompt'
+      : status === 'requires-review' && (key === 'depth_prompt' || key === 'cfMvuVarGroups')
+        ? 'unverified-structure' : key === 'depth_prompt' ? 'prompt-runtime-not-wired'
+          : key === 'cfMvuVarGroups' ? 'state-runtime-not-wired' : undefined
+    return {key, sourcePointer,
       valueSha256:digest(canonicalJson(value)), valueType:valueType as TavernExtensionCapability['valueType'],
-      capability, phase, status} satisfies TavernExtensionCapability
+      capability, phase, status, ...(schemaVersion === 2 && reason ? {reason} : {}),
+      ...(schemaVersion === 2 && detail ? {detail} : {})} satisfies TavernExtensionCapability
   })
-  return {schemaVersion:1, sourceSha256:decoded.sourceSha256, entries}
+  return {schemaVersion, sourceSha256:decoded.sourceSha256, entries}
+}
+
+export function compileTavernExtensionInventoryV1(decoded: DecodedTavernCard): TavernExtensionInventory {
+  return compileTavernExtensionInventoryVersion(decoded, 1)
+}
+
+export function compileTavernExtensionInventory(decoded: DecodedTavernCard): TavernExtensionInventory {
+  return compileTavernExtensionInventoryVersion(decoded, 2)
 }
 
 // The compact projection has no duplicate raw JSON. Hash every parsed node in

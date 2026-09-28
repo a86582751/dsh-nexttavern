@@ -2,7 +2,7 @@
 // state or import locks live here; validation remains usable by export/readback.
 import { sha256, cloneRecord, stableJson } from './roleplay-data.js';
 import { readCardSource, decodeTavernCard, projectTavernCard, projectTavernCardCompact,
-  compileTavernFieldCoverage, compileTavernExtensionInventory } from './tavern-card.js';
+  compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1 } from './tavern-card.js';
 import type { DecodedTavernCard } from './tavern-card.js';
 import type {
   ImportRecord,
@@ -118,8 +118,11 @@ export const assertImportRecordIntegrity = (record: ImportRecord) => {
         throw new Error('结构化字段覆盖证明与原件不一致');
     }
     if (record.extensionInventory !== undefined) {
+      const inventory = record.extensionInventory;
+      const expected = inventory.schemaVersion === 1 ? compileTavernExtensionInventoryV1(decoded)
+        : inventory.schemaVersion === 2 ? compileTavernExtensionInventory(decoded) : null;
       if (record.schemaVersion !== 5
-        || stableJson(compileTavernExtensionInventory(decoded)) !== stableJson(record.extensionInventory))
+        || expected === null || stableJson(expected) !== stableJson(inventory))
         throw new Error('结构化扩展能力清单与原件不一致');
     }
   }
@@ -403,8 +406,18 @@ export const importSummary = (record: ImportRecord) => {
   const coverage = importCoverage(record);
   const extensionEntries = record.extensionInventory?.entries ?? [];
   const extensionCounts = { unexecuted: 0, 'requires-optional-analysis': 0,
-    'requires-review': 0, 'archive-only': 0, 'unexpected-shape': 0 };
+    'requires-review': 0, 'archive-only': 0, 'unexpected-shape': 0, 'inactive-empty': 0 };
   for (const entry of extensionEntries) extensionCounts[entry.status]++;
+  const visibleExtensions = extensionEntries.slice(0, 64).map(entry => {
+    if (entry.detail?.kind !== 'variable-groups') return entry;
+    const groups = entry.detail.groups;
+    // The durable proof keeps every field, while tool responses stay bounded.
+    return {...entry, detail: {schemaVersion: entry.detail.schemaVersion, kind: entry.detail.kind,
+      groupCount: groups.length, fieldCount: groups.reduce((sum, group) => sum + group.fields.length, 0),
+      groups: groups.slice(0, 8).map(group => ({sourcePointer: group.sourcePointer,
+        nameSha256: group.nameSha256, fieldCount: group.fields.length})),
+      omittedGroups: Math.max(0, groups.length - 8)}};
+  });
   return {
     importId: record.importId,
     sourceFile: record.sourceFile,
@@ -429,7 +442,7 @@ export const importSummary = (record: ImportRecord) => {
       schemaVersion: record.extensionInventory.schemaVersion,
       total: extensionEntries.length,
       counts: extensionCounts,
-      entries: extensionEntries.slice(0, 64),
+      entries: visibleExtensions,
       omitted: Math.max(0, extensionEntries.length - 64),
     } } : {}),
     ...(record.sourceEnvelope
