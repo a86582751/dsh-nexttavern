@@ -112,6 +112,44 @@ function parseJson(bytes: Buffer): unknown {
   return doc
 }
 export { pngCrc }
+function decodeCardBase64(encoded: string): Buffer {
+  // A repeated-group regexp consumes V8's stack on otherwise valid multi-MB cards.
+  // Validate one quartet at a time, including the unused tail bits that Buffer's
+  // permissive decoder would silently accept as a non-canonical spelling.
+  const length = encoded.length
+  if (!length || length % 4 !== 0 || length > Math.ceil(CARD_LIMITS.jsonBytes / 3) * 4) {
+    fail('PNG 角色卡 Base64 无效或大小超限')
+  }
+  const alphabet = (code: number): number => {
+    if (code >= 65 && code <= 90) return code - 65
+    if (code >= 97 && code <= 122) return code - 71
+    if (code >= 48 && code <= 57) return code + 4
+    if (code === 43) return 62
+    if (code === 47) return 63
+    return -1
+  }
+  let padding = 0
+  if (encoded.charCodeAt(length - 1) === 61) padding++
+  if (encoded.charCodeAt(length - 2) === 61) padding++
+  if (length / 4 * 3 - padding > CARD_LIMITS.jsonBytes) fail('PNG 角色卡 Base64 无效或大小超限')
+  for (let offset = 0; offset < length; offset += 4) {
+    const a = alphabet(encoded.charCodeAt(offset))
+    const b = alphabet(encoded.charCodeAt(offset + 1))
+    const c = encoded.charCodeAt(offset + 2)
+    const d = encoded.charCodeAt(offset + 3)
+    const tail = offset === length - 4
+    if (a < 0 || b < 0) fail('PNG 角色卡 Base64 无效或大小超限')
+    if (c === 61) {
+      if (!tail || d !== 61 || b & 15) fail('PNG 角色卡 Base64 无效或大小超限')
+    } else {
+      const third = alphabet(c)
+      if (third < 0 || (d === 61 ? !tail || !!(third & 3) : alphabet(d) < 0)) {
+        fail('PNG 角色卡 Base64 无效或大小超限')
+      }
+    }
+  }
+  return Buffer.from(encoded, 'base64')
+}
 function pngPayload(bytes: Buffer) {
   if (!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) fail('PNG 签名无效')
   const cards = new Map<string, Buffer>(), avatar = [bytes.subarray(0,8)]
@@ -133,8 +171,7 @@ function pngPayload(bytes: Buffer) {
       if (key === 'chara' || key === 'ccv3') {
         if (cards.has(key)) fail('PNG 重复角色卡数据块')
         const encoded = data.toString('latin1',zero+1)
-        if (encoded.length > Math.ceil(CARD_LIMITS.jsonBytes/3)*4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) fail('PNG 角色卡 Base64 无效或大小超限')
-        cards.set(key, Buffer.from(encoded,'base64'))
+        cards.set(key, decodeCardBase64(encoded))
       }
     }
     // Avatar is the image only. Keep the complete untouched PNG in raw source.

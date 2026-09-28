@@ -48,13 +48,14 @@ const pngChunk = (type, data = Buffer.alloc(0), corrupt = false) => {
   checksum.writeUInt32BE(crc >>> 0)
   return Buffer.concat([header, body, checksum])
 }
-const pngImage = ({ chara, ccv3, corruptType, omitIend = false, tail = Buffer.alloc(0) } = {}) => {
+const pngImage = ({ chara, ccv3, textChunks = [], corruptType, omitIend = false, tail = Buffer.alloc(0) } = {}) => {
   const signature = Buffer.from([137,80,78,71,13,10,26,10])
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1, 0); ihdr.writeUInt32BE(1, 4); ihdr[8] = 8; ihdr[9] = 6
   const text = (key, value) => pngChunk('tEXt', Buffer.concat([Buffer.from(key, 'latin1'), Buffer.from([0]), value]))
   const chunks = [pngChunk('IHDR', ihdr), pngChunk('IDAT', Buffer.from([0]))]
   if (chara !== undefined) chunks.push(text('chara', chara))
   if (ccv3 !== undefined) chunks.push(text('ccv3', ccv3))
+  for (const [key, value] of textChunks) chunks.push(text(key, value))
   if (corruptType) {
     const index = chunks.findIndex(chunk => chunk.subarray(4, 8).toString('ascii') === corruptType)
     if (index >= 0) {
@@ -83,6 +84,29 @@ assert.throws(() => decodeTavernCard(pngImage({ chara: Buffer.from(cardV2, 'asci
 assert.throws(() => decodeTavernCard(pngImage({ chara: Buffer.from(cardV2, 'ascii'), omitIend: true }), '.png'), /IEND|边界/)
 assert.throws(() => decodeTavernCard(pngImage({ chara: Buffer.from('%%%%', 'ascii') }), '.png'), /Base64/)
 assert.throws(() => decodeTavernCard(pngImage({ chara: Buffer.from('eyJ4IjoxfQ==é', 'utf8') }), '.png'), /Base64/)
+const syntheticCard = (encodedLength, spec = 'chara_card_v3') => {
+  const base = JSON.stringify({spec, spec_version: '3.0', data: {name: 'Synthetic', description: ''}})
+  const jsonBytes = encodedLength / 4 * 3 - (encodedLength === 5_713_564 ? 2 : 0)
+  const encoded = Buffer.from(base.replace('"description":""', `"description":"${'x'.repeat(jsonBytes - Buffer.byteLength(base))}"`)).toString('base64')
+  assert.equal(encoded.length, encodedLength)
+  return encoded
+}
+for (const length of [4_981_248, 5_713_564]) {
+  const encoded = syntheticCard(length)
+  const large = decodeTavernCard(pngImage({ccv3: Buffer.from(encoded, 'ascii')}), '.png')
+  assert.equal(large.format, 'png-v3', 'multi-MB valid Base64 must not overflow the regexp stack')
+  assert.throws(() => projectTavernCard(large), /投影字符数/, 'old full-source projection has a separate 5M-character budget')
+  assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from(encoded.slice(0, -1) + '!', 'ascii')}), '.png'), /Base64/)
+}
+assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from('Zg==', 'ascii')}), '.png'), /JSON/)
+assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from('Zh==', 'ascii')}), '.png'), /Base64/, 'unused bits must be canonical')
+assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from('Zm9=', 'ascii')}), '.png'), /Base64/, 'one-padding tail bits must be canonical')
+assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from(cardV3.slice(0, -1) + 'A', 'ascii')}), '.png'), /Base64/)
+assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from(cardV3, 'ascii'), textChunks: [['ccv3', Buffer.from(cardV3, 'ascii')]]}), '.png'), /重复/)
+assert.throws(() => decodeTavernCard(pngImage({textChunks: [['CCV3', Buffer.from(cardV3, 'ascii')]]}), '.png'), /不含/)
+assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from(cardV3, 'ascii'), corruptType: 'tEXt'}), '.png'), /CRC/)
+const overJson = Buffer.from(JSON.stringify({name: 'Synthetic', description: 'x'.repeat(5_000_000)})).toString('base64')
+assert.throws(() => decodeTavernCard(pngImage({chara: Buffer.from(overJson, 'ascii')}), '.png'), /Base64|大小/)
 const avatarOnly = decodeTavernCard(pngImage({ chara: Buffer.from(cardV2, 'ascii') }), '.png')
 assert.ok(Buffer.from(avatarOnly.avatarBase64, 'base64').subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])))
 assert.equal(Buffer.from(avatarOnly.avatarBase64, 'base64').includes(Buffer.from('chara')), false, 'avatar must omit card metadata')
