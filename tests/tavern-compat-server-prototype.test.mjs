@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {readFileSync} from 'node:fs'
-import {evaluateTavernPrototype} from './tavern-compat-server-evaluator.mjs'
+import {evaluateTavernPrototype,TAVERN_TEMPLATE_LIMITS} from './tavern-compat-server-evaluator.mjs'
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/tavern-compat-contract-v1.json', import.meta.url), 'utf8'))
 const digest = value => createHash('sha256').update(value).digest('hex')
@@ -62,7 +62,11 @@ const memory = await evaluateTavernPrototype({kind: 'ejs',
 assert.equal(memory.ok, false, 'VM memory exhaustion must reject the template')
 assert.notEqual(memory.reason, 'hard-timeout', 'the VM budget should reject allocation before the parent deadline')
 const output = await evaluateTavernPrototype({kind: 'ejs', source: '<%= "x".repeat(100000) %>', snapshot})
-assert.deepEqual(output, {ok: false, reason: 'output-limit'})
-assert.deepEqual(await evaluateTavernPrototype({kind: 'ejs', source: 'x'.repeat(16_385), snapshot}),
-  {ok: false, reason: 'input-limit'})
+assert.equal(output.reason, 'output-limit')
+assert.deepEqual(output.diagnostic, {schemaVersion: 1, reason: 'output-limit', limit: 'outputChars',
+  observed: output.diagnostic.observed, allowed: TAVERN_TEMPLATE_LIMITS.outputChars})
+assert.ok(output.diagnostic.observed > output.diagnostic.allowed)
+const sourceLimit = await evaluateTavernPrototype({kind: 'ejs', source: 'x'.repeat(16_385), snapshot})
+assert.deepEqual(sourceLimit, {ok: false, reason: 'input-limit', diagnostic: {schemaVersion: 1,
+  reason: 'input-limit', limit: 'sourceChars', observed: 16_385, allowed: 16_384}})
 console.log('tavern server isolation prototype=ok (EJS, schema, no Node globals, hard stop, budgets)')
