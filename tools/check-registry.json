@@ -75,6 +75,8 @@
         "roleplay-import*",
         "roleplay-card-import*",
         "tavern-card*",
+        "tavern-compat*",
+        "manifests/sillytavern-compatibility-p0-*",
         "tavern-conversion*"
       ]
     },
@@ -1133,6 +1135,20 @@
       "id": "test:tavern-card.test.mjs",
       "action": "test",
       "artifact": "tavern-card-test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ]
+    },
+    {
+      "id": "test:tavern-compat-server-prototype.test.mjs",
+      "action": "test",
+      "artifact": "tavern-compat-server-prototype-test",
       "modules": [
         "card-import"
       ],

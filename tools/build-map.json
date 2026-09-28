@@ -5179,6 +5179,82 @@
         "source": ".github/workflows/verify.yml"
       },
       {
+        "id": "public-pages-workflow",
+        "source": ".github/workflows/pages.yml"
+      },
+      {
+        "id": "public-docs-site-builder",
+        "source": "site/build.mjs"
+      },
+      {
+        "id": "public-docs-site-config",
+        "source": "site/site.config.mjs"
+      },
+      {
+        "id": "public-docs-site-stylesheet",
+        "source": "site/theme/site.css"
+      },
+      {
+        "id": "public-docs-site-client",
+        "source": "site/theme/site.js"
+      },
+      {
+        "id": "public-docs-site-readme",
+        "source": "site/README.md"
+      },
+      {
+        "id": "public-docs-site-art-readme",
+        "source": "site/art/README.md"
+      },
+      {
+        "id": "public-docs-site-art-day-shelf",
+        "source": "site/art/tavern-day-shelf.webp"
+      },
+      {
+        "id": "public-docs-site-art-day-fireplace",
+        "source": "site/art/tavern-day-fireplace.webp"
+      },
+      {
+        "id": "public-docs-site-art-day-counter",
+        "source": "site/art/tavern-day-counter.webp"
+      },
+      {
+        "id": "public-docs-site-art-day-dusting",
+        "source": "site/art/tavern-day-dusting.webp"
+      },
+      {
+        "id": "public-docs-site-art-day-door",
+        "source": "site/art/tavern-day-door.webp"
+      },
+      {
+        "id": "public-docs-site-art-day-garden",
+        "source": "site/art/tavern-day-garden.webp"
+      },
+      {
+        "id": "public-docs-site-art-night-window",
+        "source": "site/art/tavern-night-window.webp"
+      },
+      {
+        "id": "public-docs-site-art-night-desk",
+        "source": "site/art/tavern-night-desk.webp"
+      },
+      {
+        "id": "public-docs-site-art-night-candle",
+        "source": "site/art/tavern-night-candle.webp"
+      },
+      {
+        "id": "public-docs-site-brand-mark",
+        "source": "site/art/brand-mark.webp"
+      },
+      {
+        "id": "public-docs-site-brand-word",
+        "source": "site/art/brand-word.webp"
+      },
+      {
+        "id": "public-docs-site-favicon",
+        "source": "site/art/favicon.png"
+      },
+      {
         "id": "public-build-modules",
         "source": "lib/operations/public-build-modules.mjs"
       },

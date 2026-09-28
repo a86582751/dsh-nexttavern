@@ -1,0 +1,116 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NextTavern frame isolation prototype</title>
+<h1>Frame isolation prototype</h1>
+<p id="status">Starting</p>
+<div id="frame-root"></div>
+<button id="switch">Switch branch</button>
+<pre id="results"></pre>
+<script>
+const status = document.querySelector('#status')
+const results = document.querySelector('#results')
+const frameRoot = document.querySelector('#frame-root')
+const attempts = []
+const accepted = []
+let current = null
+
+function report(name, passed) {
+  attempts.push({name, passed})
+  results.textContent = JSON.stringify({attempts, accepted}, null, 2)
+}
+
+function childRuntime() {
+  let port = null
+  let context = null
+  let parentBlocked = false
+  try { void parent.document.body.innerHTML } catch { parentBlocked = true }
+  parent.postMessage({type: 'ready', nonce: window.name, parentBlocked}, '*')
+  addEventListener('message', event => {
+    if (event.source === parent && event.data?.type === 'probe-stale' && event.data?.nonce === window.name) {
+      setTimeout(() => port?.postMessage({type: 'send', requestId: 'stale-probe', nonce: window.name,
+        sessionId: context?.sessionId, branchId: context?.branchId,
+        revision: context?.revision, text: 'stale operation'}), 10)
+      return
+    }
+    if (event.source !== parent || event.data?.type !== 'bind' || event.data?.nonce !== window.name) return
+    port = event.ports[0]
+    context = event.data.context
+    port.postMessage({type: 'bound', nonce: window.name})
+  })
+  document.querySelector('#send').addEventListener('click', () => {
+    if (!port || !context) return
+    port.postMessage({type: 'send', requestId: 'button-1', nonce: window.name,
+      sessionId: context.sessionId, branchId: context.branchId,
+      revision: context.revision, text: 'synthetic player action'})
+  })
+}
+
+function mount(branchId) {
+  const nonce = crypto.randomUUID()
+  const context = {sessionId: 'synthetic-session', branchId, revision: 1}
+  const frame = document.createElement('iframe')
+  frame.sandbox = 'allow-scripts'
+  frame.name = nonce
+  frame.title = 'Untrusted card control'
+  frame.srcdoc = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; connect-src \'none\'">'
+    + '<button id="send">Send from card</button><script>(' + childRuntime.toString() + ')()<' + '/script>'
+  frameRoot.append(frame)
+  const record = {frame, nonce, context, port: null, active: true, sent: new Set()}
+  current = record
+  status.textContent = `Mounted ${branchId}; click “Send from card”`
+  return record
+}
+
+function dispose(record, remove = true) {
+  record.active = false
+  record.port?.close()
+  if (remove) record.frame.remove()
+  else record.frame.hidden = true
+}
+
+addEventListener('message', event => {
+  const record = current
+  if (!record?.active || event.source !== record.frame.contentWindow || event.origin !== 'null'
+    || event.data?.type !== 'ready' || event.data?.nonce !== record.nonce) return
+  let parentReadDenied = false
+  try { void record.frame.contentWindow.document.body } catch { parentReadDenied = true }
+  report('opaque origin denied from parent', parentReadDenied)
+  report('parent DOM denied from child', event.data.parentBlocked === true)
+  const pair = new MessageChannel()
+  record.port = pair.port1
+  pair.port1.onmessage = message => {
+    const request = message.data
+    if (!record.active || current !== record || request?.nonce !== record.nonce) return
+    if (request.type === 'bound') {
+      report('typed handshake', true)
+      return
+    }
+    if (request.type !== 'send' || request.sessionId !== record.context.sessionId
+      || request.branchId !== record.context.branchId || request.revision !== record.context.revision
+      || typeof request.text !== 'string' || request.text.length > 1024
+      || typeof request.requestId !== 'string' || record.sent.has(request.requestId)) return
+    record.sent.add(request.requestId)
+    accepted.push({branchId: record.context.branchId, requestId: request.requestId, text: request.text})
+    status.textContent = `Accepted ${accepted.length} operation(s) on ${record.context.branchId}`
+    results.textContent = JSON.stringify({attempts, accepted}, null, 2)
+  }
+  record.frame.contentWindow.postMessage({type: 'bind', nonce: record.nonce, context: record.context}, '*', [pair.port2])
+})
+
+document.querySelector('#switch').addEventListener('click', () => {
+  const previous = current
+  const before = accepted.length
+  const hadPort = previous.port instanceof MessagePort
+  previous.frame.contentWindow.postMessage({type: 'probe-stale', nonce: previous.nonce}, '*')
+  dispose(previous, false)
+  mount(previous.context.branchId === 'main' ? 'fork' : 'main')
+  setTimeout(() => {
+    report('old branch send rejected after port cleanup',
+      hadPort && previous.active === false && accepted.length === before)
+    previous.frame.remove()
+  }, 80)
+})
+
+mount('main')
+window.tavernPrototype = {get results() { return {attempts, accepted, branch: current?.context.branchId} }}
+</script>

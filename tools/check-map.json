@@ -1333,6 +1333,18 @@
       "source": "tests/tavern-card.test.mjs"
     },
     {
+      "id": "tavern-compat-server-prototype-test",
+      "source": "tests/tavern-compat-server-prototype.test.mjs"
+    },
+    {
+      "id": "tavern-compat-frame-prototype-fixture",
+      "source": "tests/fixtures/tavern-compat-frame-prototype.html"
+    },
+    {
+      "id": "tavern-compat-contract-v1-fixture",
+      "source": "tests/fixtures/tavern-compat-contract-v1.json"
+    },
+    {
       "id": "worldbook-passive-test",
       "source": "tests/worldbook-passive.test.mjs"
     },

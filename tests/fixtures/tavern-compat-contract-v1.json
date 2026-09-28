@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "sourceUtf8": "{\"spec\":\"chara_card_v3\",\"spec_version\":\"3.0\",\"data\":{\"name\":\"Camp Guide\",\"first_mes\":\"A quiet camp.\"}}",
+  "hashPolicy": {
+    "schemaVersion": 1,
+    "rawText": "SHA-256 over the exact UTF-8 sourceUtf8 or field text",
+    "structured": "SHA-256 over canonicalJsonV1: recursively sort object keys by UTF-16 code units, keep array order, JSON.stringify scalar values",
+    "packagePreimage": "cardPackage with packageSha256 omitted",
+    "statePreimage": "stateSnapshot.scopes",
+    "promptPreimageFields": [
+      "packageSha256",
+      "stateRevision",
+      "sessionFamilyId",
+      "worldlineId",
+      "turnId",
+      "attemptId"
+    ]
+  },
+  "cardPackage": {
+    "schemaVersion": 1,
+    "compilerVersion": "synthetic-p0-v1",
+    "sourceSha256": "f3a7fca8a04ec2ceb7b4a60720f3b18ba2947cf020b2d621a2da19ec36cd9e67",
+    "sourceFormat": "json-v3",
+    "spec": "chara_card_v3",
+    "rawResourceId": "synthetic-card",
+    "projectionVersion": "tavern-fields-v2",
+    "packageSha256": "4a96be6319f5ffdaad2e8a38fbf596511382c52ce895aad8aa17e09bd6e0747b",
+    "greetings": [
+      {
+        "id": "opening-0",
+        "sourcePointer": "/data/first_mes",
+        "text": "A quiet camp.",
+        "sourceSha256": "38c09196f5cf1c02227aca2f3470895aabb04efdeed337ae557a0d4e71ef27ed"
+      }
+    ],
+    "lore": [
+      {
+        "id": "entry-0",
+        "sourcePointer": "/data/character_book/entries/0",
+        "enabled": true,
+        "position": "before-character",
+        "content": "The camp has one gate."
+      }
+    ],
+    "capabilities": [
+      {
+        "id": "fixed-fields",
+        "status": "interpreted"
+      },
+      {
+        "id": "unknown-extension",
+        "status": "preserved-unexecuted"
+      }
+    ]
+  },
+  "stateSnapshot": {
+    "schemaVersion": 1,
+    "packageSha256": "4a96be6319f5ffdaad2e8a38fbf596511382c52ce895aad8aa17e09bd6e0747b",
+    "sessionFamilyId": "family-synthetic",
+    "worldlineId": "main",
+    "sourceSeq": 7,
+    "messageVersion": 1,
+    "attemptId": "attempt-1",
+    "revision": 3,
+    "valueSha256": "d7fb525b0459a7b15bdc46a6a2d43529c0ff017f142bec94f489867ee8264f41",
+    "scopes": {
+      "card": {
+        "maxHp": 10
+      },
+      "chat": {
+        "hp": 7
+      },
+      "message": {},
+      "script": {},
+      "global": {}
+    }
+  },
+  "statePatch": {
+    "schemaVersion": 1,
+    "sourceSeq": 8,
+    "messageVersion": 1,
+    "attemptId": "attempt-1",
+    "expectedRevision": 3,
+    "requestId": "turn-8-state",
+    "operations": [
+      {
+        "op": "add",
+        "scope": "chat",
+        "path": "/hp",
+        "value": 1
+      }
+    ]
+  },
+  "promptPlan": {
+    "schemaVersion": 1,
+    "inputSha256": "c0c1a41fbadd05901a75bc67dae23fd388d7a275c56445dcec45ae31f87fc6d5",
+    "packageSha256": "4a96be6319f5ffdaad2e8a38fbf596511382c52ce895aad8aa17e09bd6e0747b",
+    "stateRevision": 3,
+    "sessionFamilyId": "family-synthetic",
+    "worldlineId": "main",
+    "turnId": "turn-8",
+    "attemptId": "attempt-1",
+    "items": [
+      {
+        "entryId": "entry-0",
+        "sourcePointer": "/data/character_book/entries/0",
+        "reason": "constant",
+        "position": "before-character",
+        "role": "system",
+        "depth": 0,
+        "order": 0,
+        "tokenBudget": 128,
+        "contentSha256": "c65fbd0e0ce8492ab6dbb457ef611ac75e665d9401a102b28ca52e66bffe6323"
+      }
+    ]
+  },
+  "frameMessage": {
+    "schemaVersion": 1,
+    "type": "request",
+    "frameEpoch": 1,
+    "nonce": "synthetic-nonce",
+    "packageSha256": "4a96be6319f5ffdaad2e8a38fbf596511382c52ce895aad8aa17e09bd6e0747b",
+    "sessionFamilyId": "family-synthetic",
+    "worldlineId": "main",
+    "messageSeq": 8,
+    "messageVersion": 1,
+    "requestId": "button-1",
+    "capability": "send",
+    "payload": {
+      "text": "synthetic player action"
+    }
+  }
+}
