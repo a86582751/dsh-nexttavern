@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs'
 import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
-import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
+import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernOpeningCandidates, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/tavern-card-legacy-v1.json', import.meta.url), 'utf8'))
 assert.equal(legacy.schemaVersion, 1)
@@ -53,6 +53,30 @@ assert.equal(bookCoverage.dispositions['archive-only'], 2, 'unknown entry field 
 assert.notEqual(coverage({name:'Book', character_book:{entries:[{content:'C', keys:['two','one'],
   secondary_keys:['three'], enabled:false, extensions:{script:'inert'}, 'keys/0':'archive'}]}}).pointerSha256,
 bookCoverage.pointerSha256, 'array order changes the pointer proof')
+const openingSource = {spec:'chara_card_v3', spec_version:'3.0', data:{name:'Guide',
+  first_mes:'Hello {{user}} and {{char}}.', alternate_greetings:['', '{{user_gender}} / {{mystery}}',
+    '{{{char}}} {{unterminated', 'Last {{user}}']}}
+const openingDecoded = decodeTavernCard(Buffer.from(JSON.stringify(openingSource)), '.json')
+const openings = compileTavernOpeningCandidates(openingDecoded, {user:'Player', char:'Guide', user_gender:'they'})
+assert.deepEqual(openings.map(item => item.sourcePointer), ['/data/first_mes', '/data/alternate_greetings/0',
+  '/data/alternate_greetings/1', '/data/alternate_greetings/2', '/data/alternate_greetings/3'])
+assert.deepEqual(openings.map(item => item.label), ['默认开场','备选开场 1','备选开场 2','备选开场 3','备选开场 4'])
+assert.deepEqual(openings.map(item => item.renderedText), ['Hello Player and Guide.', '',
+  'they / {{mystery}}', '{{{char}}} {{unterminated', 'Last Player'])
+assert.deepEqual(openings[2].macros.map(item => item.status), ['resolved','unknown'])
+assert.ok(openings[3].macros.every(item => item.status === 'malformed'))
+assert.match(openings[0].sourceSha256, /^[a-f0-9]{64}$/)
+assert.equal(openings[0].rawText, openingSource.data.first_mes)
+assert.equal(compileTavernOpeningCandidates(openingDecoded)[0].renderedText, openingSource.data.first_mes,
+  'missing explicit identity context preserves source macros')
+assert.equal(compileTavernOpeningCandidates(openingDecoded, {user:'{{char}}',char:'Guide'})[0].renderedText,
+  'Hello {{char}} and Guide.', 'replacement values are never rescanned as macros')
+assert.equal(compileTavernOpeningCandidates(decodeTavernCard(Buffer.from('{"name":"V1","first_mes":"Hi"}'),'.json'))[0].sourcePointer,
+  '/first_mes')
+for (const alternate_greetings of [null, {}, [42], Array(2049).fill('x')]) {
+  const bad = decodeTavernCard(Buffer.from(JSON.stringify({name:'Bad',alternate_greetings})), '.json')
+  assert.throws(() => compileTavernOpeningCandidates(bad), /备选开场/)
+}
 assert.throws(() => decodeTavernCard(Buffer.from(JSON.stringify({name:'Limit', items:Array(100001).fill(0)})),'.json'),
   /数量/, 'oversized trees are rejected before field compilation')
 const longCard = decodeTavernCard(Buffer.from(JSON.stringify({ name: 'Long', description: 'line\r\n'.repeat(100000) })), '.json')

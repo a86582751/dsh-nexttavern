@@ -274,6 +274,58 @@ export function projectTavernCardCompact(decoded: DecodedTavernCard) {
   return projectTavernCardVersion(decoded, false)
 }
 
+export interface TavernOpeningContext {
+  readonly user?: string
+  readonly char?: string
+  readonly user_gender?: string
+}
+export interface TavernOpeningCandidate {
+  readonly index: number
+  readonly sourcePointer: string
+  readonly sourceSha256: string
+  readonly label: string
+  readonly rawText: string
+  readonly renderedText: string
+  readonly macros: readonly { name: string; status: 'resolved' | 'missing-context' | 'unknown' | 'malformed' }[]
+}
+
+// An import can show every author opening before selecting one. Expansion is
+// optional and pure: only explicitly supplied, bounded identity values may
+// replace known macros. Unknown and malformed tokens remain visible verbatim.
+export function compileTavernOpeningCandidates(
+  decoded: DecodedTavernCard, context: TavernOpeningContext = {},
+): TavernOpeningCandidate[] {
+  const alternate = decoded.data.alternate_greetings
+  if (alternate !== undefined && (!Array.isArray(alternate) || alternate.length > CARD_LIMITS.entries
+    || alternate.some(value => typeof value !== 'string'))) fail('备选开场格式或数量无效')
+  const values = [decoded.data.first_mes, ...(alternate as string[] | undefined ?? [])]
+  const root = decoded.document.data === decoded.data ? '/data' : ''
+  const candidates: TavernOpeningCandidate[] = []
+  const known = new Set(['user', 'char', 'user_gender'])
+  for (const [index, raw] of values.entries()) {
+    if (raw === undefined) continue
+    if (typeof raw !== 'string') fail('开场正文格式无效')
+    const macros: TavernOpeningCandidate['macros'][number][] = []
+    let cursor = 0, brokenDelimiter = false
+    const renderedText = raw.replace(/\{\{([^{}]*)\}\}/g, (token, name: string, at: number) => {
+      if (/\{\{|\}\}/.test(raw.slice(cursor, at))) brokenDelimiter = true
+      const malformed = raw[at - 1] === '{' || raw[at + token.length] === '}' || !name
+      const value = known.has(name) ? context[name as keyof TavernOpeningContext] : undefined
+      const status = malformed ? 'malformed' : !known.has(name) ? 'unknown'
+        : typeof value !== 'string' || !value || value.length > 512 ? 'missing-context' : 'resolved'
+      macros.push({name, status})
+      cursor = at + token.length
+      return status === 'resolved' ? value! : token
+    })
+    // A broken delimiter is not a supported token and must never disappear.
+    if (brokenDelimiter || /\{\{|\}\}/.test(raw.slice(cursor))) macros.push({name:'', status:'malformed'})
+    candidates.push({index, sourcePointer:index === 0 ? `${root}/first_mes`
+      : `${root}/alternate_greetings/${index - 1}`, sourceSha256:digest(raw),
+    label:index === 0 ? '默认开场' : `备选开场 ${index}`, rawText:raw, renderedText, macros})
+  }
+  return candidates
+}
+
 export interface TavernFieldCoverage {
   readonly schemaVersion: 1
   readonly sourceSha256: string
