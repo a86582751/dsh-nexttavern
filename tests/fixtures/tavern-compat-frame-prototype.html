@@ -111,6 +111,21 @@ document.querySelector('#switch').addEventListener('click', () => {
   }, 80)
 })
 
+addEventListener('pagehide', () => {
+  if (!current) return
+  const hadPort = current.port instanceof MessagePort
+  dispose(current)
+  try { sessionStorage.setItem('tavern-prototype-refresh-cleanup', String(hadPort && !current.active)) } catch {}
+  current = null
+})
+
 mount('main')
+try {
+  const refreshed = sessionStorage.getItem('tavern-prototype-refresh-cleanup')
+  if (refreshed !== null) {
+    report('refresh closed old frame port', refreshed === 'true')
+    sessionStorage.removeItem('tavern-prototype-refresh-cleanup')
+  }
+} catch {}
 window.tavernPrototype = {get results() { return {attempts, accepted, branch: current?.context.branchId} }}
 </script>
