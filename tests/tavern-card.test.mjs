@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs'
 import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
-import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernOpeningCandidates, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
+import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernOpeningCandidates, compileTavernExtensionInventory, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/tavern-card-legacy-v1.json', import.meta.url), 'utf8'))
 assert.equal(legacy.schemaVersion, 1)
@@ -76,6 +76,53 @@ assert.equal(compileTavernOpeningCandidates(decodeTavernCard(Buffer.from('{"name
 for (const alternate_greetings of [null, {}, [42], Array(2049).fill('x')]) {
   const bad = decodeTavernCard(Buffer.from(JSON.stringify({name:'Bad',alternate_greetings})), '.json')
   assert.throws(() => compileTavernOpeningCandidates(bad), /备选开场/)
+}
+const extensionsSource = {spec:'chara_card_v3',spec_version:'3.0',data:{name:'Extensions',extensions:{
+  depth_prompt:{depth:4},cfMvuVarGroups:[{fields:[]}],chaoshen_jixieshi:{protocol:'declared'},
+  card_agent:{binding_id:'b'},risuai:{triggerscript:[{type:'manual',effect:[]}]},
+  RubyAnalyzer:{presets:[]},odysseia_trace:'opaque bytes', 'other/~key':{unknown:true},
+}}}
+const extensionsDecoded = decodeTavernCard(Buffer.from(JSON.stringify(extensionsSource)),'.json')
+const inventory = compileTavernExtensionInventory(extensionsDecoded)
+assert.equal(inventory.schemaVersion,1)
+assert.equal(inventory.sourceSha256,extensionsDecoded.sourceSha256)
+assert.equal(inventory.entries.length,8,'all top-level extension keys, including unknowns, are inventoried')
+assert.deepEqual(inventory.entries.map(item=>item.key),[...inventory.entries.map(item=>item.key)].sort())
+const byKey=Object.fromEntries(inventory.entries.map(item=>[item.key,item]))
+assert.equal(byKey['other/~key'].sourcePointer,'/data/extensions/other~1~0key')
+assert.equal(byKey['other/~key'].status,'archive-only')
+assert.equal(byKey.odysseia_trace.status,'archive-only','opaque trace is never decoded')
+assert.equal(byKey.risuai.capability,'manual-trigger')
+assert.equal(byKey.risuai.status,'unexecuted','manual trigger presence does not execute an effect')
+assert.equal(byKey.RubyAnalyzer.status,'requires-review','presence without a verified active preset does not schedule model calls')
+assert.equal(byKey.cfMvuVarGroups.phase,'state')
+assert.equal(byKey.depth_prompt.phase,'prompt')
+assert.equal(byKey.chaoshen_jixieshi.phase,'interaction')
+assert.equal(byKey.card_agent.phase,'interaction')
+const reorderedExtensions = structuredClone(extensionsSource)
+reorderedExtensions.data.extensions=Object.fromEntries(Object.entries(reorderedExtensions.data.extensions).reverse())
+assert.deepEqual(compileTavernExtensionInventory(decodeTavernCard(Buffer.from(JSON.stringify(reorderedExtensions)),'.json')).entries,
+  inventory.entries,'extension value hashes and ordering are stable under object key reordering')
+const alteredExtensions = structuredClone(extensionsSource)
+alteredExtensions.data.extensions.depth_prompt.depth=5
+assert.notEqual(compileTavernExtensionInventory(decodeTavernCard(Buffer.from(JSON.stringify(alteredExtensions)),'.json')).entries
+  .find(item=>item.key==='depth_prompt').valueSha256,byKey.depth_prompt.valueSha256)
+const undeclaredRisuai = {name:'No manual trigger',extensions:{risuai:{triggerscript:[{type:'automatic'}]}}}
+assert.equal(compileTavernExtensionInventory(decodeTavernCard(Buffer.from(JSON.stringify(undeclaredRisuai)),'.json'))
+  .entries[0].status,'archive-only','a RisuAI key alone does not prove manual-trigger semantics')
+const rubyStatus=RubyAnalyzer=>compileTavernExtensionInventory(decodeTavernCard(Buffer.from(JSON.stringify({
+  name:'Synthetic Ruby',extensions:{RubyAnalyzer}})),'.json')).entries[0].status
+assert.equal(rubyStatus({activePresetId:'a',presets:[{id:'a',tasks:[{enabled:true}],
+  startupTask:{enabled:false}}]}),'requires-optional-analysis','enabled active tasks require optional analysis')
+assert.equal(rubyStatus({activePresetId:'a',presets:[{id:'a',tasks:[],startupTask:{enabled:false}}]}),
+  'archive-only','empty active task list and disabled startup task imply no current card-level analysis')
+assert.equal(rubyStatus({activePresetId:'missing',presets:[{id:'a',tasks:[{enabled:true}]}]}),
+  'requires-review','an unmatched active preset cannot borrow another preset tasks')
+assert.equal(rubyStatus({activePresetId:'a',presets:[{id:'a',tasks:[],startupTask:{enabled:true}}]}),
+  'requires-review','startup behavior is not inferred from an empty task list')
+for(const extensions of [null, [], 'code']){
+  assert.throws(()=>compileTavernExtensionInventory(decodeTavernCard(Buffer.from(JSON.stringify({name:'Bad',extensions})),'.json')),
+    /extensions 必须是对象/)
 }
 assert.throws(() => decodeTavernCard(Buffer.from(JSON.stringify({name:'Limit', items:Array(100001).fill(0)})),'.json'),
   /数量/, 'oversized trees are rejected before field compilation')

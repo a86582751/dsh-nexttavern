@@ -337,6 +337,75 @@ export interface TavernFieldCoverage {
 
 const pointerSegment = (value: string): string => value.replace(/~/g, '~0').replace(/\//g, '~1')
 
+export interface TavernExtensionCapability {
+  readonly key: string
+  readonly sourcePointer: string
+  readonly valueSha256: string
+  readonly valueType: 'null' | 'array' | 'object' | 'string' | 'number' | 'boolean'
+  readonly capability: 'prompt-placement' | 'state-schema' | 'ui-state-protocol'
+    | 'greeting-worldbook-binding' | 'manual-trigger' | 'optional-analysis'
+    | 'opaque-provenance' | 'unknown'
+  readonly phase: 'prompt' | 'state' | 'interaction' | 'analysis' | 'archive'
+  readonly status: 'unexecuted' | 'requires-optional-analysis' | 'requires-review'
+    | 'archive-only' | 'unexpected-shape'
+}
+export interface TavernExtensionInventory {
+  readonly schemaVersion: 1
+  readonly sourceSha256: string
+  readonly entries: readonly TavernExtensionCapability[]
+}
+
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (object(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`
+  return JSON.stringify(value)
+}
+
+// This is an inventory, not an extension executor. Only the top-level key and
+// coarse JSON shape are interpreted; the complete value stays in sourceEnvelope.
+export function compileTavernExtensionInventory(decoded: DecodedTavernCard): TavernExtensionInventory {
+  const extensions = decoded.data.extensions
+  if (extensions === undefined) return {schemaVersion:1, sourceSha256:decoded.sourceSha256, entries:[]}
+  if (!object(extensions)) fail('角色卡 extensions 必须是对象')
+  const keys = Object.keys(extensions).sort()
+  if (keys.length > 4096) fail('角色卡 extensions 字段数量超限')
+  const known: Record<string, {capability:TavernExtensionCapability['capability']; phase:TavernExtensionCapability['phase']; shape:'array'|'object'}> = {
+    depth_prompt:{capability:'prompt-placement',phase:'prompt',shape:'object'},
+    cfMvuVarGroups:{capability:'state-schema',phase:'state',shape:'array'},
+    chaoshen_jixieshi:{capability:'ui-state-protocol',phase:'interaction',shape:'object'},
+    card_agent:{capability:'greeting-worldbook-binding',phase:'interaction',shape:'object'},
+    risuai:{capability:'manual-trigger',phase:'interaction',shape:'object'},
+    RubyAnalyzer:{capability:'optional-analysis',phase:'analysis',shape:'object'},
+    odysseia_trace:{capability:'opaque-provenance',phase:'archive',shape:'object'},
+  }
+  const root = decoded.document.data === decoded.data ? '/data' : ''
+  const entries = keys.map(key => {
+    const value = extensions[key]
+    const valueType = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+    const match = known[key]
+    const manualTrigger = key === 'risuai' && object(value) && Array.isArray(value.triggerscript)
+      && value.triggerscript.some(item => object(item) && item.type === 'manual')
+    const capability = key === 'risuai' && !manualTrigger ? 'unknown' : match?.capability ?? 'unknown'
+    const phase = key === 'risuai' && !manualTrigger ? 'archive' : match?.phase ?? 'archive'
+    const rubyPreset = key === 'RubyAnalyzer' && object(value) && typeof value.activePresetId === 'string'
+      && Array.isArray(value.presets)
+      ? value.presets.find(preset => object(preset) && preset.id === value.activePresetId) : undefined
+    const rubyTasks = object(rubyPreset) ? rubyPreset.tasks : undefined
+    const rubyStatus = Array.isArray(rubyTasks)
+      ? rubyTasks.some(task => object(task) && task.enabled === true) ? 'requires-optional-analysis'
+        : rubyTasks.length === 0 && object(rubyPreset) && object(rubyPreset.startupTask)
+          && rubyPreset.startupTask.enabled === false ? 'archive-only' : 'requires-review'
+      : 'requires-review'
+    const status = match && key !== 'odysseia_trace' && valueType !== match.shape ? 'unexpected-shape'
+      : capability === 'optional-analysis' ? rubyStatus
+        : capability === 'unknown' || capability === 'opaque-provenance' ? 'archive-only' : 'unexecuted'
+    return {key, sourcePointer:`${root}/extensions/${pointerSegment(key)}`,
+      valueSha256:digest(canonicalJson(value)), valueType:valueType as TavernExtensionCapability['valueType'],
+      capability, phase, status} satisfies TavernExtensionCapability
+  })
+  return {schemaVersion:1, sourceSha256:decoded.sourceSha256, entries}
+}
+
 // The compact projection has no duplicate raw JSON. Hash every parsed node in
 // sorted pointer order, including array/object containers and empty ones. The
 // source envelope permits recomputation without storing a second full tree.

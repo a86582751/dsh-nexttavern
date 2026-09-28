@@ -2,7 +2,7 @@
 // state or import locks live here; validation remains usable by export/readback.
 import { sha256, cloneRecord, stableJson } from './roleplay-data.js';
 import { readCardSource, decodeTavernCard, projectTavernCard, projectTavernCardCompact,
-  compileTavernFieldCoverage } from './tavern-card.js';
+  compileTavernFieldCoverage, compileTavernExtensionInventory } from './tavern-card.js';
 import type { DecodedTavernCard } from './tavern-card.js';
 import type {
   ImportRecord,
@@ -116,6 +116,11 @@ export const assertImportRecordIntegrity = (record: ImportRecord) => {
       if (record.schemaVersion !== 5
         || stableJson(compileTavernFieldCoverage(decoded)) !== stableJson(record.fieldProof))
         throw new Error('结构化字段覆盖证明与原件不一致');
+    }
+    if (record.extensionInventory !== undefined) {
+      if (record.schemaVersion !== 5
+        || stableJson(compileTavernExtensionInventory(decoded)) !== stableJson(record.extensionInventory))
+        throw new Error('结构化扩展能力清单与原件不一致');
     }
   }
   const expectedStarts = computeLineStarts(normalizedSource);
@@ -396,6 +401,10 @@ export const validateAssignmentIdentities = (assignments: readonly ImportAssignm
 export const importSummary = (record: ImportRecord) => {
   assertImportRecordIntegrity(record);
   const coverage = importCoverage(record);
+  const extensionEntries = record.extensionInventory?.entries ?? [];
+  const extensionCounts = { unexecuted: 0, 'requires-optional-analysis': 0,
+    'requires-review': 0, 'archive-only': 0, 'unexpected-shape': 0 };
+  for (const entry of extensionEntries) extensionCounts[entry.status]++;
   return {
     importId: record.importId,
     sourceFile: record.sourceFile,
@@ -416,6 +425,13 @@ export const importSummary = (record: ImportRecord) => {
     sourceChars: coverage.sourceChars,
     createdAt: record.createdAt,
     activatedAt: record.activatedAt ?? null,
+    ...(record.extensionInventory ? { extensionInventory: {
+      schemaVersion: record.extensionInventory.schemaVersion,
+      total: extensionEntries.length,
+      counts: extensionCounts,
+      entries: extensionEntries.slice(0, 64),
+      omitted: Math.max(0, extensionEntries.length - 64),
+    } } : {}),
     ...(record.sourceEnvelope
 
 

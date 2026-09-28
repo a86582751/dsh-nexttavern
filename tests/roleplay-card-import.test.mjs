@@ -295,6 +295,11 @@ try {
     const importedRecord=tavern.tables.get('branch').get(importKey)
     assert.equal(importedRecord.schemaVersion,5)
     assert.equal(importedRecord.normalizer,'tavern-fields-v2')
+    assert.equal(importedRecord.extensionInventory.schemaVersion,1)
+    assert.deepEqual(importedRecord.extensionInventory.entries.map(item=>item.key),['kept'])
+    assert.equal(begin.extensionInventory.total,1)
+    assert.equal(begin.extensionInventory.counts['archive-only'],1,'unknown extensions remain visible and inert')
+    assert.equal(begin.extensionInventory.omitted,0)
     assert.ok(importedRecord.rawSource.includes('wrapper-source-preserved'))
     assert.ok(!importedRecord.normalizedSource.includes('wrapper-source-preserved'),'new compact projection avoids duplicating the full structured JSON')
     assert.equal((await tavern.execute('rp_card_import_stage',{import_id:begin.importId,use_suggested:true})).ok,true,
@@ -311,6 +316,11 @@ try {
     stagedRecord.fieldProof.pointerSha256='0'.repeat(64)
     assert.equal((await tavern.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:begin.normalizedSha256})).ok,false)
     stagedRecord.fieldProof=originalProof
+    const originalInventory=structuredClone(stagedRecord.extensionInventory)
+    stagedRecord.extensionInventory.entries[0].valueSha256='0'.repeat(64)
+    assert.equal((await tavern.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:begin.normalizedSha256})).ok,false,
+      'changed extension proof cannot be activated')
+    stagedRecord.extensionInventory=originalInventory
     const result=await tavern.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:begin.normalizedSha256})
     assert.equal(result.ok,true,result.error)
     assert.ok([...tavern.tables.get('branch').data.values()].some(r=>r?.name==='雾港灯塔：值守者与七级台阶.json'),'import archives use the LLM thematic title while retaining original bytes')
@@ -376,6 +386,7 @@ try {
       lineCount:lines.length,normalizedChars:normalizedSource.length,normalizedSha256:sha256(normalizedSource),
       readRanges:[],nextReadCursor:1,reviewComplete:false,assignments:[]})
     delete record.fieldProof
+    delete record.extensionInventory
     delete record.assignmentProof
     await legacy.tables.get('branch').put(key,record)
     await readAll(legacy.execute,begin.importId,lines.length)
@@ -804,6 +815,7 @@ try {
       lines:oldLines,lineStarts:oldStarts,lineCount:oldLines.length,normalizedChars:oldProjection.text.length,
       normalizedSha256:oldHash,readRanges:[],nextReadCursor:1,reviewComplete:false,assignments:[]})
     delete legacyRecord.fieldProof
+    delete legacyRecord.extensionInventory
     delete legacyRecord.assignmentProof
     await h.tables.get('branch').put(legacyRecordKey,legacyRecord)
     await readAll(h.execute,begin.importId,oldLines.length)
