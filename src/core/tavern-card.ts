@@ -207,7 +207,9 @@ export function decodeTavernCard(bytes: unknown, extension: string): DecodedTave
     sourceSha256:digest(bytes), ...(png ? {pngChunk:png.chunk, avatarBase64:png.avatar.toString('base64'), avatarSha256:digest(png.avatar)} : {}) }
 }
 
-export function projectTavernCard(decoded: DecodedTavernCard) {
+// Keep this projection's bytes and spans stable for persisted schema-v4 records.
+// New imports omit the duplicate raw document; sourceEnvelope owns those bytes.
+function projectTavernCardVersion(decoded: DecodedTavernCard, includeFullArchive: boolean) {
   const d = decoded.data, assignments: CardAssignment[] = [], sections: string[] = [], worldbook: WorldbookEntry[] = []
   let line = 1
   const add = (text: unknown, target: string, metadata: Record<string, unknown> = {}) => {
@@ -254,12 +256,22 @@ export function projectTavernCard(decoded: DecodedTavernCard) {
   }
   // Preserve every known/unknown extension, alternative greeting and asset URI
   // without treating an arbitrary extension as executable JS or a fetch URL.
-  add('## 完整结构化原件（只归档，不注入剧情）\n' + JSON.stringify(decoded.document,null,2), 'archive-only', {name:'Original structured fields'})
+  if (includeFullArchive) {
+    add('## 完整结构化原件（只归档，不注入剧情）\n' + JSON.stringify(decoded.document,null,2),
+      'archive-only', {name:'Original structured fields'})
+  }
   const text = sections.join('')
   if (text.length>5_000_000 || line>1_000_001) fail('角色卡投影字符数或行数超限；拒绝静默截断')
   return {text, assignments, worldbook, cardId,
     warnings:['creator_notes、alternate_greetings、tags/creator/version、assets/source 和未知扩展完整归档，不作为当前开场或运行指令；不会自动下载资源或执行扩展脚本。',
       ...(worldbook.length ? ['世界书保留 enabled、constant、关键词与 use_regex/selective；递归、概率、深度和插入位置扩展仅归档。'] : [])]}
+}
+
+export function projectTavernCard(decoded: DecodedTavernCard) {
+  return projectTavernCardVersion(decoded, true)
+}
+export function projectTavernCardCompact(decoded: DecodedTavernCard) {
+  return projectTavernCardVersion(decoded, false)
 }
 
 export function cardContentText(value:unknown) {

@@ -12,6 +12,7 @@ import {
   importCoverage,
   validateAssignmentIdentities,
   importSummary,
+  projectStructuredImport,
 } from './roleplay-import-record.js';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -26,7 +27,7 @@ import {
   stableImportId,
 } from './roleplay-data.js';
 import { lastSeq, eventsOf } from './roleplay-context.js';
-import { decodeTavernCard, projectTavernCard, fenceCardContent } from './tavern-card.js';
+import { decodeTavernCard, projectTavernCardCompact, fenceCardContent } from './tavern-card.js';
 import { registerCardExport } from './card-export.js';
 import { cardCodeBlocks, statusTemplateDiagnostics } from '../status-template.js';
 import { isInlinePending } from './tavern-tasks.js';
@@ -545,7 +546,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
           try {
             if (['.png', '.json'].includes(source.extension)) {
               decoded = decodeTavernCard(rawBytes, source.extension);
-              projected = projectTavernCard(decoded);
+              projected = projectTavernCardCompact(decoded);
             }
           }
           catch (error) {
@@ -597,7 +598,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               0,
               200);
           const record: ImportRecord = {
-            schemaVersion: decoded ? 4 : 3,
+            schemaVersion: decoded ? 5 : 3,
             importId,
             workflowId: workflow?.id,
             workflowGeneration: workflow?.generation,
@@ -606,7 +607,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             workspaceRoot: source.workspaceRoot,
             sourceBytes: rawBytes.length,
             sourceMtimeMs: source.sourceMtimeMs,
-            normalizer: decoded ? 'tavern-fields-v1' : IMPORT_NORMALIZER,
+            normalizer: decoded ? 'tavern-fields-v2' : IMPORT_NORMALIZER,
             ...(decoded
 
 
@@ -898,7 +899,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                     throw new Error('只有结构化 PNG/JSON 原件支持建议映射');
                   const decoded = decodeTavernCard(Buffer.from(record.sourceEnvelope.base64, 'base64'), record.sourceEnvelope.extension);
                   args = {
-                    ...args, replace_all: true, assignments: projectTavernCard(decoded).assignments
+                    ...args, replace_all: true, assignments: projectStructuredImport(record, decoded).assignments
                   };
                 }
                 if (!Array.isArray(args.assignments))
@@ -1147,7 +1148,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 return {
                   ok: false, error: `import 当前状态为 ${String(record.status)}，不能激活`
                 };
-              if (![3, 4].includes(record.schemaVersion))
+              if (![3, 4, 5].includes(record.schemaVersion))
                 return {
                   ok: false, error: '旧版 staging 记录缺少全文审阅证明；请重新执行 rp_card_import_begin'
                 };
@@ -1253,7 +1254,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
 
 
 
-                ? projectTavernCard(decodeTavernCard(Buffer.from(record.sourceEnvelope.base64, 'base64'), record.sourceEnvelope.extension))
+                ? projectStructuredImport(record,
+                  decodeTavernCard(Buffer.from(record.sourceEnvelope.base64, 'base64'), record.sourceEnvelope.extension))
 
 
 

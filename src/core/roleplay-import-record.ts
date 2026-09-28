@@ -1,7 +1,8 @@
 // Frozen import evidence and source-span validation. No table writes, workflow
 // state or import locks live here; validation remains usable by export/readback.
 import { sha256, cloneRecord } from './roleplay-data.js';
-import { readCardSource, decodeTavernCard, projectTavernCard } from './tavern-card.js';
+import { readCardSource, decodeTavernCard, projectTavernCard, projectTavernCardCompact } from './tavern-card.js';
+import type { DecodedTavernCard } from './tavern-card.js';
 import type {
   ImportRecord,
   ImportAssignment,
@@ -53,10 +54,16 @@ const lineStartsOf = (record: ImportRecord) => {
     return record.lineStarts;
   return computeLineStarts(String(record.normalizedSource ?? ''));
 };
+export const projectStructuredImport = (record: ImportRecord, decoded: DecodedTavernCard) => {
+  if (record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1') return projectTavernCard(decoded);
+  if (record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2') return projectTavernCardCompact(decoded);
+  throw new Error('结构化导入投影版本不匹配');
+};
 export const assertImportRecordIntegrity = (record: ImportRecord) => {
   if (!record || typeof record !== 'object')
     throw new Error('导入记录损坏或不存在');
-  const structured = record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1';
+  const structured = (record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1')
+    || (record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2');
   if (!structured && (record.schemaVersion !== 3 || record.normalizer !== IMPORT_NORMALIZER)) {
     throw new Error('导入记录版本或规范化器不匹配；请从不可变 raw source 重新 begin');
   }
@@ -101,7 +108,8 @@ export const assertImportRecordIntegrity = (record: ImportRecord) => {
     const decoded = decodeTavernCard(bytes, envelope.extension);
     if (decoded.format !== envelope.format || decoded.sourceSha256 !== envelope.sourceSha256 || record.rawSha256 !== envelope.sourceSha256)
       throw new Error('结构化原件格式或来源证据不一致');
-    if (JSON.stringify(decoded.document, null, 2) !== record.rawSource || projectTavernCard(decoded).text !== normalizedSource)
+    if (JSON.stringify(decoded.document, null, 2) !== record.rawSource
+      || projectStructuredImport(record, decoded).text !== normalizedSource)
       throw new Error('结构化原件与投影不一致');
   }
   const expectedStarts = computeLineStarts(normalizedSource);

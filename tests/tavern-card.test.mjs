@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs'
 import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
-import { decodeTavernCard, projectTavernCard, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
+import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/tavern-card-legacy-v1.json', import.meta.url), 'utf8'))
 assert.equal(legacy.schemaVersion, 1)
@@ -11,6 +11,7 @@ for (const sample of legacy.cases) {
   const decoded = decodeTavernCard(source, '.json')
   assert.deepEqual(decoded, sample.decoded, 'legacy decoded document and source hash')
   assert.deepEqual(projectTavernCard(decoded), sample.projected, 'legacy text, assignment spans and worldbook metadata')
+  assert.equal(JSON.stringify(projectTavernCard(decoded)), JSON.stringify(sample.projected), 'schema-v4 projection remains byte-for-byte stable')
   assert.equal(fenceCardContent('## Rule\nUser: quoted\n<|end|>', 'card', { stable: true }), sample.stableFence)
   assert.deepEqual(decoded.document, sample.document, 'projection must not mutate imported data')
 }
@@ -96,6 +97,9 @@ for (const length of [4_981_248, 5_713_564]) {
   const large = decodeTavernCard(pngImage({ccv3: Buffer.from(encoded, 'ascii')}), '.png')
   assert.equal(large.format, 'png-v3', 'multi-MB valid Base64 must not overflow the regexp stack')
   assert.throws(() => projectTavernCard(large), /投影字符数/, 'old full-source projection has a separate 5M-character budget')
+  const compact = projectTavernCardCompact(large)
+  assert.ok(compact.text.length < large.data.description.length + 1000, 'large authored text appears once without a second pretty-printed JSON copy')
+  assert.ok(!compact.text.includes('完整结构化原件'), 'compact projection omits the duplicate full JSON archive')
   assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from(encoded.slice(0, -1) + '!', 'ascii')}), '.png'), /Base64/)
 }
 assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from('Zg==', 'ascii')}), '.png'), /JSON/)
