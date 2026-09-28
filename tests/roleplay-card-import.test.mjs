@@ -289,11 +289,20 @@ try {
     assert.equal(importedRecord.normalizer,'tavern-fields-v2')
     assert.ok(importedRecord.rawSource.includes('wrapper-source-preserved'))
     assert.ok(!importedRecord.normalizedSource.includes('wrapper-source-preserved'),'new compact projection avoids duplicating the full structured JSON')
-    assert.equal((await tavern.execute('rp_card_import_stage',{import_id:begin.importId,use_suggested:true})).ok,false,'review remains mandatory')
+    assert.equal((await tavern.execute('rp_card_import_stage',{import_id:begin.importId,use_suggested:true})).ok,true,
+      'schema-v5 structured proof permits suggested mapping without model review')
+    assert.equal(tavern.tables.get('branch').get(importKey).reviewComplete,false,
+      'program mapping is not a forged full-text model review')
     let cursor=1
     while(cursor!==null) cursor=(await tavern.execute('rp_card_import_chunk',{import_id:begin.importId,cursor,max_lines:300})).nextCursor
     const staged=await tavern.execute('rp_card_import_stage',{import_id:begin.importId,use_suggested:true,resource_title:'雾港灯塔：值守者与七级台阶'})
     assert.equal(staged.ok,true); assert.equal(staged.coverage,1)
+    const stagedRecord=tavern.tables.get('branch').get(importKey)
+    assert.equal(stagedRecord.assignmentProof.kind,'deterministic-suggested')
+    const originalProof=structuredClone(stagedRecord.fieldProof)
+    stagedRecord.fieldProof.pointerSha256='0'.repeat(64)
+    assert.equal((await tavern.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:begin.normalizedSha256})).ok,false)
+    stagedRecord.fieldProof=originalProof
     const result=await tavern.execute('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:begin.normalizedSha256})
     assert.equal(result.ok,true,result.error)
     assert.ok([...tavern.tables.get('branch').data.values()].some(r=>r?.name==='雾港灯塔：值守者与七级台阶.json'),'import archives use the LLM thematic title while retaining original bytes')
@@ -358,6 +367,8 @@ try {
     Object.assign(record,{schemaVersion:4,normalizer:'tavern-fields-v1',normalizedSource,lines,lineStarts,
       lineCount:lines.length,normalizedChars:normalizedSource.length,normalizedSha256:sha256(normalizedSource),
       readRanges:[],nextReadCursor:1,reviewComplete:false,assignments:[]})
+    delete record.fieldProof
+    delete record.assignmentProof
     await legacy.tables.get('branch').put(key,record)
     await readAll(legacy.execute,begin.importId,lines.length)
     const staged=await legacy.execute('rp_card_import_stage',{import_id:begin.importId,use_suggested:true})
@@ -709,29 +720,18 @@ try {
     const configured=await models.fetch(new Request('https://fixture.test/api/roleplay/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:h.session.id,scope:'session',settings:{allMain:false,routes:{'card-import':{provider:'fixture',model:'reader'}}}})}))
     assert.equal(configured.status,200)
     let spawns=0
-    h.ctx.subagents.start=async(provider,request)=>{
-      spawns++;assert.equal(provider,'spawn');assert.equal(request.agentOptions.model,'reader')
-      for(const word of ['核心设定','剧情指引','文风特化','世界书','人物知情边界'])assert.ok(request.prompt[0].text.includes(word),`native import worker must receive ${word}`)
-      const child={id:'reader-child',header:{agentPreset:'roleplay',cwd:scratch,parentSession:h.session.id},events:[{seq:0,type:'subagent/descriptor',data:{version:3,mode:'one-shot',provider:'spawn',label:request.label}}],surface:{nodes:[]}}
-      h.sessions.set(child.id,child)
-      const exec={agent:{session:child,options:{...request.agentOptions,subagentDepth:1}},signal:request.signal}
-      const result=(async()=>{
-        const call=(name,args)=>h.tools.get(name).execute(args,exec)
-        const begin=await call('rp_card_import_begin',{source_file:'native-worker.json'})
-        assert.equal(begin.ok,true)
-        let cursor=1
-        while(cursor!==null)cursor=(await call('rp_card_import_chunk',{import_id:begin.importId,cursor,max_lines:300})).nextCursor
-        assert.equal((await call('rp_card_import_stage',{import_id:begin.importId,use_suggested:true})).ok,true)
-        assert.equal((await call('rp_card_import_finalize',{import_id:begin.importId,expected_sha256:begin.normalizedSha256})).ok,true)
-        return {stopReason:'completed',output:[{type:'text',text:'完整读卡完成'}]}
-      })()
-      return {id:child.id,localAgent:exec.agent,result,async dispose(){}}
-    }
+    h.ctx.subagents.start=async()=>{spawns++;throw new Error('structured import must not spawn a classification task')}
     const imported=await h.execute('rp_card_import_begin',{source_file:'native-worker.json'})
-    assert.equal(imported.ok,true);assert.equal(spawns,1)
-    assert.equal(imported.job.status,'completed')
-    assert.ok(imported.job.resourceId)
-    assert.ok([...h.tables.get('cards').data.keys()].every(key=>key.startsWith(`${h.session.id}__`)),'child writes only its fixed parent branch')
+    assert.equal(imported.ok,true);assert.equal(spawns,0)
+    const pending=h.tables.get('branch').get(`${h.session.id}__import-${imported.importId}`)
+    assert.equal(pending.schemaVersion,5)
+    assert.equal(pending.fieldProof.schemaVersion,1)
+    assert.equal(pending.reviewComplete,false,'programmatic field proof is distinct from model review')
+    const mapped=await h.execute('rp_card_import_stage',{import_id:imported.importId,use_suggested:true})
+    assert.equal(mapped.ok,true,mapped.error)
+    assert.equal((await h.execute('rp_card_import_finalize',{import_id:imported.importId,expected_sha256:imported.normalizedSha256})).ok,true)
+    assert.equal(spawns,0,'configured card-import worker route must not classify structured JSON')
+    assert.ok([...h.tables.get('cards').data.keys()].every(key=>key.startsWith(`${h.session.id}__`)),'writes stay on the source branch')
     await models.fetch(new Request('https://fixture.test/api/roleplay/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:h.session.id,scope:'session',settings:{allMain:false,routes:{'card-export':{provider:'fixture',model:'exporter'}}}})}))
     h.ctx.subagents.start=async(provider,request)=>{
       spawns++;assert.equal(provider,'spawn');assert.equal(request.agentOptions.model,'exporter')
@@ -746,7 +746,7 @@ try {
       return {id:child.id,localAgent:exec.agent,result,async dispose(){}}
     }
     const exported=await h.execute('rp_card_export_begin',{})
-    assert.equal(exported.ok,true);assert.equal(exported.job.status,'completed');assert.equal(spawns,2)
+    assert.equal(exported.ok,true);assert.equal(exported.job.status,'completed');assert.equal(spawns,1)
   }
   {
     const h=await createHarness(modulePath,scratch)
@@ -782,6 +782,8 @@ try {
     Object.assign(legacyRecord,{schemaVersion:4,normalizer:'tavern-fields-v1',normalizedSource:oldProjection.text,
       lines:oldLines,lineStarts:oldStarts,lineCount:oldLines.length,normalizedChars:oldProjection.text.length,
       normalizedSha256:oldHash,readRanges:[],nextReadCursor:1,reviewComplete:false,assignments:[]})
+    delete legacyRecord.fieldProof
+    delete legacyRecord.assignmentProof
     await h.tables.get('branch').put(legacyRecordKey,legacyRecord)
     await readAll(h.execute,begin.importId,oldLines.length)
     assert.equal((await h.execute('rp_card_import_stage',{import_id:begin.importId,use_suggested:true})).ok,true)

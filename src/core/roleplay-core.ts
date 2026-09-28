@@ -142,8 +142,8 @@ export const inject = [
 ]
 
 const DEFAULT_CONFIG = {
-  workerProvider: null as string | null,
-  workerModel: null as string | null,
+  workerProvider: 'deepseek-official' as string | null,
+  workerModel: 'deepseek-flash' as string | null,
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
@@ -439,6 +439,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       await novelExports.drive(session, job.id, agent, signal)
     }
   }
+  // The workflow host is registered before import tools; only the ready hook
+  // invokes this driver, after the importer installs it below.
+  let structuredImportDriver: ReturnType<typeof registerRoleplayImports>['driveStructuredImport'] | undefined
   const {
     cardWorkflowKey,
     cardWorkflows,
@@ -453,6 +456,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     modelPolicy,
     statusFixedContext: (...args) => statusFixedContext(...args),
     nativeTask,
+    driveStructuredImport: (...args) => {
+      if (!structuredImportDriver) throw new Error('结构化导入执行器尚未注册')
+      return structuredImportDriver(...args)
+    },
     CARD_CLASSIFICATION_GUIDE,
     archiveImported,
     libraryFor,
@@ -937,8 +944,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   }
 
   // ── 可审计的来源跨度式读卡导入 ────────────────────────────────────────────
-  // 模型只负责判断“哪几行属于哪个栏目”；真正写入的正文由后端从已归档的
-  // normalizedSource 截取。这样模型无法在工具参数里把 20K 原卡改写成 3K 摘要。
+  // PNG/JSON 由程序按版本化投影生成字段证明；MD 仍由模型判断栏目。
+  // 真正写入的正文始终从归档 normalizedSource 的跨度物化。
 
   const {
     importRecordKey,
@@ -947,6 +954,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     awaitImportBarrier,
     importSummary,
     assertImportRecordIntegrity,
+    driveStructuredImport,
   } = registerRoleplayImports({
     beforeWrite: beforeAdaptationWrite,
     ctx,
@@ -968,6 +976,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     RULE_IMPORT_FIELDS,
     archiveImported
   })
+  structuredImportDriver = driveStructuredImport
 
   registerCardAuthoring({
     ctx,
@@ -1246,6 +1255,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     novelExports,
     modelPolicy,
     beginCardWorkflow,
+    resumeCardWorkflows,
     cardWorkflows,
     cardWorkflowKey,
     tavernTasks,

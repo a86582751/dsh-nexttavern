@@ -16,8 +16,8 @@ export interface CardWorkflowJob extends Record<string, unknown> {
   sessionId: string
   generation: string
   status: string
-  selection: TaskSelection
-  execution: TaskSelection['execution']
+  selection?: TaskSelection
+  execution: TaskSelection['execution'] | 'deterministic'
   source: {sourceFile: string | null; sha256: string}
   openingRequested?: boolean
 }
@@ -38,6 +38,8 @@ export interface CardWorkflowDependencies {
     source: {workflowId: string; workflowType: string; generation: string; events: {seq: number; hash: string}[]}; signal?: AbortSignal;
     timeoutMs: number; tools: string[]; system: string; user: string; validate(): Promise<CardWorkflowResult>
   }): Promise<CardWorkflowResult>
+  driveStructuredImport(session: CardWorkflowSession, job: CardWorkflowJob,
+    agent?: CardWorkflowAgent, signal?: AbortSignal): Promise<CardWorkflowResult>
   CARD_CLASSIFICATION_GUIDE: string
   archiveImported(session: CardWorkflowSession, record: CardWorkflowRecord): Promise<{id?: string; resourceId?: unknown} | null>
   libraryFor(session: CardWorkflowSession): ReturnType<typeof createTavernLibrary>

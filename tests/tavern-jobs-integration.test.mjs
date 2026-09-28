@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
 import { apply } from '../lib/core/roleplay-core.js'
@@ -7,7 +7,11 @@ import { createTavernLibrary } from '../lib/core/tavern-library.js'
 import { pngCrc } from '../lib/core/tavern-card.js'
 
 class Table extends Map {
-  async put(key, value) { this.set(key, structuredClone(value)) }
+  async put(key, value) {
+    if(this.failPut?.(key,value)){this.failPut=null;throw new Error('injected table write failure')}
+    if(this.holdPut)await this.holdPut(key,value)
+    this.set(key, structuredClone(value))
+  }
   async update(key, update) { const value = update(structuredClone(this.get(key))); await this.put(key, value); return value }
 }
 
@@ -140,6 +144,83 @@ try {
     await tools.get('rp_task_submit').execute({ id: job.id, generation: job.generation, result: value(input) }, { agent, signal })
     return input
   }
+
+  writeFileSync(join(workspace,'structured-fastpath.json'),JSON.stringify({spec:'chara_card_v3',spec_version:'3.0',
+    data:{name:'Local Import',description:'A synthetic card.',extensions:{unknown:{retained:true}}}}))
+  const structured = await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,kind:'card-import',sourceFile:'structured-fastpath.json'})
+  assert.equal(structured.response.status,202)
+  assert.equal(structured.body.job.execution,'deterministic')
+  assert.equal(structured.body.job.status,'completed',structured.body.job.error)
+  assert.ok(structured.body.job.resourceId)
+  assert.equal(spawns,0,'structured UI import cannot start a classification worker')
+  assert.equal(direct,0,'structured UI import cannot call the model stream')
+  const structuredRecord=[...table('branch').values()].find(row=>row?.workflowId===structured.body.job.id&&row?.importId)
+  assert.equal(structuredRecord?.schemaVersion,5)
+  assert.equal(structuredRecord?.reviewComplete,false)
+  assert.equal(structuredRecord?.fieldProof?.schemaVersion,1)
+  assert.equal(structuredRecord?.assignmentProof?.kind,'deterministic-suggested')
+  const repeated=await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,action:'retry',jobId:structured.body.job.id})
+  assert.equal(repeated.body.job.status,'completed','completed structured job remains immutable on retry')
+  assert.equal([...table('branch').values()].filter(row=>row?.workflowId===structured.body.job.id&&row?.importId).length,1)
+  const importLibrary=createTavernLibrary({workspace,table:table('branch')})
+  const uploadedSource=await importLibrary.archive({name:'uploaded.json',type:'application/json',
+    bytes:Buffer.from(JSON.stringify({name:'Uploaded',description:'A library-backed card.'})),
+    source:{sessionId:session.id}})
+  const uploaded=await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,kind:'card-import',resourceId:uploadedSource.id})
+  assert.equal(uploaded.response.status,202,JSON.stringify(uploaded.body))
+  assert.equal(uploaded.body.job.status,'completed',uploaded.body.job.error)
+  assert.equal(uploaded.body.job.execution,'deterministic','library upload uses the same program path')
+  writeFileSync(join(workspace,'recoverable.json'),JSON.stringify({name:'Recoverable',description:'One durable source.'}))
+  table('cards').failPut=()=>true
+  const interrupted=await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,kind:'card-import',sourceFile:'recoverable.json'})
+  assert.equal(interrupted.body.job.status,'failed')
+  const failedRecord=[...table('branch').values()].find(row=>row?.workflowId===interrupted.body.job.id&&row?.importId)
+  assert.ok(failedRecord?.importId,'retry must retain the staged import identity')
+  const recovered=await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,action:'retry',jobId:interrupted.body.job.id})
+  assert.equal(recovered.body.job.id,interrupted.body.job.id)
+  assert.equal(recovered.body.job.status,'completed',recovered.body.job.error)
+  assert.equal([...table('branch').values()].filter(row=>row?.workflowId===interrupted.body.job.id&&row?.importId).length,1)
+  writeFileSync(join(workspace,'changed-source.json'),'{"name":')
+  const invalid=await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,kind:'card-import',sourceFile:'changed-source.json'})
+  assert.equal(invalid.body.job.status,'failed')
+  writeFileSync(join(workspace,'changed-source.json'),'{"name":"Changed"}')
+  const changed=await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,action:'retry',jobId:invalid.body.job.id})
+  assert.equal(changed.body.job.id,invalid.body.job.id)
+  assert.equal(changed.body.job.status,'failed')
+  assert.match(changed.body.job.error,/来源在任务期间改变/)
+  writeFileSync(join(workspace,'cancel-running.json'),JSON.stringify({name:'Cancelled',description:'No partial activation.'}))
+  let releaseImport,enteredImport
+  const heldImport=new Promise(resolve=>{releaseImport=resolve})
+  const entered=new Promise(resolve=>{enteredImport=resolve})
+  table('branch').holdPut=async(key,value)=>{
+    if(key.startsWith(`${session.id}__import-`)&&value?.sourceFile?.endsWith('cancel-running.json')){
+      enteredImport()
+      await heldImport
+    }
+  }
+  const starting=request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,kind:'card-import',sourceFile:'cancel-running.json'})
+  await entered
+  const pendingCancel=[...table('branch').values()].find(row=>row?.kind==='card-import'
+    &&row?.source?.sourceFile?.endsWith('cancel-running.json'))
+  assert.ok(pendingCancel)
+  const cancelledImport=await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,action:'cancel',jobId:pendingCancel.id})
+  assert.equal(cancelledImport.body.job.status,'cancelled')
+  table('branch').holdPut=null
+  releaseImport()
+  await starting
+  assert.equal(table('branch').get(`tavern_cardjob__${pendingCancel.id}`).status,'cancelled')
+  assert.ok(![...table('cards').values()].some(row=>row?.content?.includes('No partial activation.')))
+  assert.equal(spawns,0)
+  assert.equal(direct,0)
 
   // Explicit all-main overrides the legacy worker default and must never call
   // spawn or ctx.llm.stream.

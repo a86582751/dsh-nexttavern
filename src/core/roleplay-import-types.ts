@@ -1,4 +1,5 @@
 import type { ContextSession } from './roleplay-context.js'
+import type { TavernFieldCoverage } from './tavern-card.js'
 import type { CardAssignment } from './tavern-card.js'
 
 export interface SourceSpan { startLine: number; endLine: number }
@@ -75,6 +76,9 @@ export interface ImportRecord extends Record<string, unknown> {
   sourceMtimeMs: number
   normalizer: string
   sourceEnvelope?: { schemaVersion: number; extension: string; format: string; base64: string; sourceSha256: string; warnings?: string[] }
+  fieldProof?: TavernFieldCoverage
+  assignmentProof?: { schemaVersion: 1; kind: 'deterministic-suggested';
+    sourceSha256: string; normalizedSha256: string; suggestedSha256: string; stagedSha256: string }
   mode?: string
   rawSource: string
   normalizedSource: string

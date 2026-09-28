@@ -50,13 +50,15 @@ export interface JobRoutesDependencies {
     connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
     sessionController: {resolveAgent(id: string): PromiseLike<{agent?: JobRouteAgent} | null | undefined>}
   }
-  T: {branch: {entries(): Iterable<[string, unknown]>; put(key: string, value: unknown): unknown | PromiseLike<unknown>}}
+  T: {branch: {get(key: string): unknown; entries(): Iterable<[string, unknown]>;
+    put(key: string, value: unknown): unknown | PromiseLike<unknown>}}
   resolveRoleplaySession(id: string | null | undefined): Promise<HostSession | null | undefined>
   novelExports: ReturnType<typeof createNovelExports<HostSession, HostAgent | undefined>>
   modelPolicy: TaskHost['modelPolicy']
   tavernTasks: TaskHost['tavernTasks']
   taskAgents: Map<string, JobRouteAgent>
   beginCardWorkflow: CardWorkflows['beginCardWorkflow']
+  resumeCardWorkflows: CardWorkflows['resumeCardWorkflows']
   cardWorkflows: CardWorkflows['cardWorkflows']
   cardWorkflowKey: CardWorkflows['cardWorkflowKey']
   libraryFor: Resources['libraryFor']

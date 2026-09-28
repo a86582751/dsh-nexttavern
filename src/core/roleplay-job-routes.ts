@@ -9,7 +9,8 @@ import { assertWorkspaceSession } from './roleplay-context.js'
 import { assertSteeringAgent } from './roleplay-task-tools.js'
 import type { JobRouteAgent, JobRouteBody, JobRouteRecord, JobRoutesDependencies, MaintenanceRoutesDependencies, MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 
-export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow, cardWorkflows, cardWorkflowKey, tavernTasks, taskAgents, libraryFor, migrateResources}: JobRoutesDependencies) {
+export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow,
+  resumeCardWorkflows, cardWorkflows, cardWorkflowKey, tavernTasks, taskAgents, libraryFor, migrateResources}: JobRoutesDependencies) {
   const latestChildJobs=()=>{
     const latest=new Map<string | undefined, JobRouteRecord>()
     for(const [key,raw] of T.branch.entries()){
@@ -33,6 +34,10 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
     assertSteeringAgent(agent)
     const job=kind==='novel-export'?await novelExports.begin(session,await modelPolicy.resolve(session,kind,agent))
       :await beginCardWorkflow(session,kind,sourceFile,agent)
+    if(job.execution==='deterministic'){
+      await resumeCardWorkflows(session,agent)
+      return (T.branch.get(cardWorkflowKey(job.id)) as typeof job | undefined) ?? job
+    }
     agent.steer(taskPhaseMessage('management','请完成酒馆管理中刚启动的任务。不要续写剧情。',{jobId:job.id,jobKind:kind}))
     return job
   }
@@ -52,16 +57,20 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
       if(body.action) {
         if(body.action!=='retry'&&body.action!=='cancel')throw new Error('未知任务操作')
         const novel=novelExports.list(session).find(j=>j.id===body.jobId),card=cardWorkflows(session).find(j=>j.id===body.jobId)
-        let job
+        let job: {id: string; generation?: string}
         if(novel)job=await novelExports[body.action](session,body.jobId!)
         else if(card){
           if(card.status==='completed')return jsonResponse(200,{ok:true,job:publicJob(card)})
-          job={...card,generation:randomUUID(),status:body.action==='cancel'?'cancelled':'queued',error:null};await T.branch.put(cardWorkflowKey(card.id),job)
+          const updated={...card,generation:randomUUID(),status:body.action==='cancel'?'cancelled':'queued',error:null}
+          job=updated;await T.branch.put(cardWorkflowKey(card.id),updated)
           if(body.action==='retry')for(const [recordKey,record] of ([...T.branch.entries()] as [string, JobRouteRecord][]).filter(([,v])=>v?.workflowId===card.id))await T.branch.put(recordKey,{...record,workflowGeneration:job.generation})
         }
         else job=await tavernTasks[body.action](session,body.jobId!)
         if(novel||card)for(const task of tavernTasks.list(session).filter(t=>(t.source as {workflowId?: string} | undefined)?.workflowId===job.id&&!['completed','cancelled','stale'].includes(t.status)))await tavernTasks.cancel(session,task.id)
-        if(body.action==='retry')agent.steer(taskPhaseMessage('management','继续尚未完成的酒馆任务。'))
+        if(body.action==='retry'&&card?.execution==='deterministic'){
+          await resumeCardWorkflows(session,agent)
+          job=T.branch.get(cardWorkflowKey(card.id)) as typeof job
+        }else if(body.action==='retry')agent.steer(taskPhaseMessage('management','继续尚未完成的酒馆任务。'))
         return jsonResponse(200,{ok:true,job:publicJob(job)})
       }
       if(!['novel-export','card-export','card-import'].includes(body.kind))throw new Error('未知任务用途')

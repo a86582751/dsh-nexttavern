@@ -274,6 +274,71 @@ export function projectTavernCardCompact(decoded: DecodedTavernCard) {
   return projectTavernCardVersion(decoded, false)
 }
 
+export interface TavernFieldCoverage {
+  readonly schemaVersion: 1
+  readonly sourceSha256: string
+  readonly nodeCount: number
+  readonly pointerSha256: string
+  readonly dispositions: Readonly<Record<'interpreted' | 'preserved-unexecuted'
+    | 'preserved-unselected' | 'archive-only', number>>
+}
+
+const pointerSegment = (value: string): string => value.replace(/~/g, '~0').replace(/\//g, '~1')
+
+// The compact projection has no duplicate raw JSON. Hash every parsed node in
+// sorted pointer order, including array/object containers and empty ones. The
+// source envelope permits recomputation without storing a second full tree.
+// "Interpreted" means projected/retained as structured data, not that a
+// worldbook matcher, regex, or extension was executed during import.
+export function compileTavernFieldCoverage(decoded: DecodedTavernCard): TavernFieldCoverage {
+  const hash = createHash('sha256')
+  const dataRoot = decoded.document.data === decoded.data ? '/data' : ''
+  const dispositions = { interpreted: 0, 'preserved-unexecuted': 0,
+    'preserved-unselected': 0, 'archive-only': 0 }
+  const mapped = new Set(['name', 'description', 'personality', 'scenario', 'first_mes',
+    'mes_example', 'system_prompt', 'post_history_instructions'])
+  let nodeCount = 0
+  const classify = (segments: readonly string[]): keyof typeof dispositions => {
+    const path = dataRoot ? segments[0] === 'data' ? segments.slice(1) : [] : segments
+    if (path.includes('extensions')) return 'preserved-unexecuted'
+    if (path[0] === 'alternate_greetings') return 'preserved-unselected'
+    if (path.length === 1 && path[0] !== undefined && mapped.has(path[0])) return 'interpreted'
+    if (path[0] === 'character_book' && (path.length === 1
+      || (path[1] === 'entries' && path.length === 2))) return 'interpreted'
+    if (path[0] === 'character_book' && path[1] === 'entries' && path.length >= 3) {
+      if (path.length === 3) return 'interpreted'
+      const field = path[3]
+      if (field !== undefined && ['content', 'keys', 'key', 'secondary_keys', 'keysecondary', 'enabled',
+        'disable', 'constant', 'selective', 'case_sensitive', 'use_regex',
+        'insertion_order', 'order', 'name', 'comment'].includes(field)
+        && (path.length === 4 || (['keys', 'key', 'secondary_keys', 'keysecondary'].includes(field)
+          && path.length === 5))) return 'interpreted'
+    }
+    return 'archive-only'
+  }
+  const visit = (value: unknown, pointer: string, segments: string[]): void => {
+    nodeCount++
+    const kind = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+    const disposition = classify(segments)
+    dispositions[disposition]++
+    if (Array.isArray(value)) {
+      hash.update(JSON.stringify([pointer, kind, value.length, disposition]) + '\n')
+      for (const [index, item] of value.entries()) visit(item, `${pointer}/${index}`, [...segments, String(index)])
+      return
+    }
+    if (object(value)) {
+      const keys = Object.keys(value).sort()
+      hash.update(JSON.stringify([pointer, kind, keys.length, disposition]) + '\n')
+      for (const key of keys) visit(value[key], `${pointer}/${pointerSegment(key)}`, [...segments, key])
+      return
+    }
+    hash.update(JSON.stringify([pointer, kind, value, disposition]) + '\n')
+  }
+  visit(decoded.document, '', [])
+  return { schemaVersion: 1, sourceSha256: decoded.sourceSha256, nodeCount,
+    pointerSha256: hash.digest('hex'), dispositions }
+}
+
 export function cardContentText(value:unknown) {
   return String(value ?? '').replace(/<\|/g,'＜|').replace(/\|>/g,'|＞')
     .replace(/\[\/?INST\]/gi, m => m.replace('[','［').replace(']','］'))

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs'
 import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
-import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
+import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/tavern-card-legacy-v1.json', import.meta.url), 'utf8'))
 assert.equal(legacy.schemaVersion, 1)
@@ -15,6 +15,46 @@ for (const sample of legacy.cases) {
   assert.equal(fenceCardContent('## Rule\nUser: quoted\n<|end|>', 'card', { stable: true }), sample.stableFence)
   assert.deepEqual(decoded.document, sample.document, 'projection must not mutate imported data')
 }
+const coverageDocument = {spec:'chara_card_v3',spec_version:'3.0',data:{name:'Synthetic',
+  description:'A guide.',alternate_greetings:['Second opening.'],extensions:{helper:{source:'inert'}},
+  character_book:{entries:[{content:'One gate.',keys:['gate'],enabled:false}]},'odd/~key':'retained'}}
+const covered = compileTavernFieldCoverage(decodeTavernCard(Buffer.from(JSON.stringify(coverageDocument)),'.json'))
+assert.equal(covered.schemaVersion,1)
+assert.match(covered.pointerSha256,/^[a-f0-9]{64}$/)
+assert.ok(covered.dispositions.interpreted>=5)
+assert.equal(covered.dispositions['preserved-unexecuted'],3,'extension container and contents remain unexecuted')
+assert.equal(covered.dispositions['preserved-unselected'],2,'unselected greeting array and value are both covered')
+assert.ok(covered.dispositions['archive-only']>=1)
+assert.equal(Object.values(covered.dispositions).reduce((sum, count) => sum + count, 0), covered.nodeCount,
+  'every pointer, including containers, has exactly one disposition')
+const reordered = {...coverageDocument,data:{...coverageDocument.data}}
+reordered.data = Object.fromEntries(Object.entries(reordered.data).reverse())
+assert.equal(compileTavernFieldCoverage(decodeTavernCard(Buffer.from(JSON.stringify(reordered)),'.json')).pointerSha256,
+  covered.pointerSha256,'pointer proof is independent of object key order')
+const changed = structuredClone(coverageDocument)
+changed.data.extensions.helper.source = 'different inert data'
+assert.notEqual(compileTavernFieldCoverage(decodeTavernCard(Buffer.from(JSON.stringify(changed)),'.json')).pointerSha256,
+  covered.pointerSha256,'every preserved field contributes to the pointer proof')
+const coverage = document => compileTavernFieldCoverage(decodeTavernCard(Buffer.from(JSON.stringify(document)), '.json'))
+const emptyCoverage = coverage({name:'Empty', extensions:{}, alternate_greetings:[],
+  character_book:{entries:[]}, 'a/b':{}, 'a~b':[], '':null})
+assert.equal(emptyCoverage.nodeCount, 9, 'empty containers and the empty-key pointer are covered')
+assert.equal(emptyCoverage.dispositions['preserved-unexecuted'], 1)
+assert.equal(emptyCoverage.dispositions['preserved-unselected'], 1)
+assert.notEqual(coverage({name:'Empty', extensions:{}, alternate_greetings:[],
+  character_book:{entries:[]}, 'a~1b':{}, 'a~b':[], '':null}).pointerSha256,
+emptyCoverage.pointerSha256, 'literal slash and tilde in object keys use distinct escaped pointers')
+const bookCoverage = coverage({name:'Book', character_book:{entries:[{content:'C', keys:['one','two'],
+  secondary_keys:['three'], enabled:false, extensions:{script:'inert'}, 'keys/0':'archive'}]}})
+assert.equal(bookCoverage.dispositions.interpreted, 11,
+  'entry, key arrays and each key element are explicitly interpreted as structured fields')
+assert.equal(bookCoverage.dispositions['preserved-unexecuted'], 2)
+assert.equal(bookCoverage.dispositions['archive-only'], 2, 'unknown entry field and root remain archive-only')
+assert.notEqual(coverage({name:'Book', character_book:{entries:[{content:'C', keys:['two','one'],
+  secondary_keys:['three'], enabled:false, extensions:{script:'inert'}, 'keys/0':'archive'}]}}).pointerSha256,
+bookCoverage.pointerSha256, 'array order changes the pointer proof')
+assert.throws(() => decodeTavernCard(Buffer.from(JSON.stringify({name:'Limit', items:Array(100001).fill(0)})),'.json'),
+  /数量/, 'oversized trees are rejected before field compilation')
 const longCard = decodeTavernCard(Buffer.from(JSON.stringify({ name: 'Long', description: 'line\r\n'.repeat(100000) })), '.json')
 const originalSplit = String.prototype.split
 let lineSplits = 0, longProjection
