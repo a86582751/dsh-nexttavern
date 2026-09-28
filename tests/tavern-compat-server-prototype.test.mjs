@@ -13,6 +13,13 @@ const canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(
     : JSON.stringify(value)
 assert.equal(fixture.schemaVersion, 1)
 assert.equal(fixture.hashPolicy.schemaVersion, 1)
+assert.equal(fixture.ownership.schemaVersion, 1)
+assert.equal(fixture.ownership.cardPackage.activation, 'existing-import-transaction')
+assert.equal(fixture.ownership.state.commit, 'canonical-assistant-finalize')
+assert.equal(fixture.ownership.state.globalNamespace, 'player+card-package')
+assert.equal(fixture.ownership.state.crossPlayerOrPackage, false)
+assert.equal(fixture.ownership.promptPlan.input, 'frozen-turn-attempt')
+assert.equal(fixture.ownership.frameMessage.onWorldlineChange, 'revoke-old-epoch')
 const {packageSha256, ...packageBody} = fixture.cardPackage
 assert.equal(fixture.cardPackage.sourceSha256, digest(fixture.sourceUtf8))
 assert.equal(packageSha256, digest(canonical(packageBody)))

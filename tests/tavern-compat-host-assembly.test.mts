@@ -25,6 +25,11 @@ test('bounded author EJS reaches real Agent assembly and fails closed per branch
       [fork.id, '<%= getvar("hp") %> <% activateWI("camp") %><%= getwi("camp") %>'],
     ])
     const observed: string[] = []
+    let requestCalls = 0
+    fixture.ctx.on('agent/request', async (_payload: unknown, next: () => Promise<unknown>) => {
+      requestCalls++
+      return next()
+    }, {global: true})
     fixture.ctx.on('system-prompt/assemble', async (_draft: unknown, context: {agent?: {session?: {id: string}}}, next: () => Promise<any>) => {
       const assembly = await next()
       const branchId = context.agent?.session?.id
@@ -49,8 +54,11 @@ test('bounded author EJS reaches real Agent assembly and fails closed per branch
       {name: 'tavern:prototype', text: '9 Fork camp.'})
 
     const before = forkResolved.agent.session.snapshotEvents()
+    const requestsBeforeFailure = requestCalls
     templates.set(fork.id, '<% while (true) {} %>')
     await assert.rejects(fixture.requestSelection(forkResolved.agent), /author template rejected/)
+    assert.equal(requestCalls, requestsBeforeFailure,
+      'a rejected assembly cannot reach the native agent/request waterfall')
     assert.deepEqual(forkResolved.agent.session.snapshotEvents(), before,
       'failed assembly must not write branch state or start a model request')
     assert.deepEqual((await fixture.requestSelection(resolved.agent)).assembly.contexts

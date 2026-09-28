@@ -16,6 +16,13 @@
       "attemptId"
     ]
   },
+  "ownership": {
+    "schemaVersion": 1,
+    "cardPackage": {"writer": "card-compiler", "activation": "existing-import-transaction", "onFailure": "no-partial-settings"},
+    "state": {"writer": "state-reducer", "commit": "canonical-assistant-finalize", "globalNamespace": "player+card-package", "crossPlayerOrPackage": false},
+    "promptPlan": {"writer": "native-prepare-assemble", "input": "frozen-turn-attempt", "onFailure": "reject-unresolved-entry"},
+    "frameMessage": {"writer": "parent-capability-bridge", "writeCommit": "native-command-queue", "onWorldlineChange": "revoke-old-epoch"}
+  },
   "cardPackage": {
     "schemaVersion": 1,
     "compilerVersion": "synthetic-p0-v1",

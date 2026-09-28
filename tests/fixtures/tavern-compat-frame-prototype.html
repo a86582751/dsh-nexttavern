@@ -63,9 +63,12 @@ function mount(branchId) {
 
 function dispose(record, remove = true) {
   record.active = false
-  record.port?.close()
+  const port = record.port
+  if (port) port.close()
+  record.port = null
   if (remove) record.frame.remove()
   else record.frame.hidden = true
+  return port instanceof MessagePort
 }
 
 addEventListener('message', event => {
@@ -114,8 +117,8 @@ document.querySelector('#switch').addEventListener('click', () => {
 addEventListener('pagehide', () => {
   if (!current) return
   const hadPort = current.port instanceof MessagePort
-  dispose(current)
-  try { sessionStorage.setItem('tavern-prototype-refresh-cleanup', String(hadPort && !current.active)) } catch {}
+  const closed = dispose(current)
+  try { sessionStorage.setItem('tavern-prototype-refresh-cleanup', String(hadPort && closed && current.port === null && !current.active)) } catch {}
   current = null
 })
 
