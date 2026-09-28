@@ -39,13 +39,15 @@ export async function prepareControllerHost(ctx: any, options: {
   workspaces?: any[]
   deferPersistence?: boolean
   nativeFileUploads?: boolean
+  includeRuntimeContext?: boolean
 }) {
   const uploadResolvers = new Set<unknown>()
   let declaration: any
 
   async function writePreset(duplicate = false) {
     const row = {id: 'persona', name: '@deepseek-ai/dsh-persona', config: {
-      prefix: 'Cold probe {{provider}}/{{model}}', complete: true, includeRuntimeContext: false,
+      prefix: 'Cold probe {{provider}}/{{model}}', complete: true,
+      includeRuntimeContext: options.includeRuntimeContext ?? false,
     }}
     const rows = duplicate ? [row, {...row, id: 'conflicting-persona'}] : [row]
     await declaration?.dispose()
@@ -62,7 +64,8 @@ export async function prepareControllerHost(ctx: any, options: {
   }
   await ctx.plugin(PointQuery)
   await ctx.plugin(TypertRegistry)
-  await ctx.plugin(SystemPrompt, {includeHarnessIdentity: false, includeRuntimeContext: false, persona: ''})
+  await ctx.plugin(SystemPrompt, {includeHarnessIdentity: false,
+    includeRuntimeContext: options.includeRuntimeContext ?? false, persona: ''})
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(LocalFileSystem, {cwd: options.directory})
@@ -115,6 +118,7 @@ export async function controllerFixture(options: {
   controllerPackage?: {name: string; baseUrl: string}
   workspaces?: any[]
   nativeFileUploads?: boolean
+  includeRuntimeContext?: boolean
 } = {}) {
   const Controller = options.Controller ?? SessionController
   const dir = createTestDirectory('plugin-fork-controller-')
@@ -160,6 +164,7 @@ export async function controllerFixture(options: {
       Persistence: options.Persistence,
       workspaces: options.workspaces,
       nativeFileUploads: options.nativeFileUploads,
+      includeRuntimeContext: options.includeRuntimeContext,
     })
     writePreset = preparedHost.writePreset
     uploadResolverCount = preparedHost.uploadResolverCount
@@ -201,7 +206,7 @@ export async function controllerFixture(options: {
       const request = await agentEvents(ctx, agent).waterfall('agent/request', {
         config: {provider: 'unselected', model: 'unselected', reasoningEffort: 'inherited'},
       }, async () => ({provider: 'unselected', model: 'unselected', reasoningEffort: 'inherited'}))
-      return {request, prompt: renderPrompt(assembly)}
+      return {request, prompt: renderPrompt(assembly), assembly}
     },
     async close() {
       try { await ctx.fiber.dispose() }

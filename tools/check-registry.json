@@ -1152,12 +1152,34 @@
       "modules": [
         "card-import"
       ],
+      "inputs": [
+        "tavern-compat-server-evaluator-test"
+      ],
       "depends": [
         "generated"
       ],
       "requires": [
         "compiler"
       ]
+    },
+    {
+      "id": "test:tavern-compat-host-assembly.test.mts",
+      "action": "test",
+      "artifact": "tavern-compat-host-assembly-test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [
+        "tavern-compat-server-evaluator-test",
+        "plugin-fork-controller-fixture-test"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 30000
     },
     {
       "id": "test:worldbook-passive.test.mjs",
