@@ -355,6 +355,9 @@ function assertCurrentAssistantStreams(events) {
         if (!isDeepStrictEqual(event.data.usage, assembler.usage)) {
             throw new Error(`seed assistant/message at index ${index} usage disagrees with its embedded stream`);
         }
+        if (event.data.message.source.kind !== 'model') {
+            throw new Error(`seed assistant/message at index ${index} has a non-model embedded stream`);
+        }
         if (!isDeepStrictEqual(event.data.message.source.replayState, assembler.replayState)) {
             throw new Error(`seed assistant/message at index ${index} replay state disagrees with its embedded stream`);
         }

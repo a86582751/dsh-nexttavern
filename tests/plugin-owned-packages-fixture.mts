@@ -1,12 +1,13 @@
 /** Small generated-package fixtures sharing the locked host peers; never a Harness install. */
-import {cp, mkdir, readFile, symlink} from 'node:fs/promises'
+import {cp, mkdir, readFile, readdir, symlink} from 'node:fs/promises'
 import {existsSync} from 'node:fs'
 import {createRequire} from 'node:module'
 import {fileURLToPath, pathToFileURL} from 'node:url'
 import path from 'node:path'
 import {createTestDirectory, cleanupTestDirectory} from '../src/operations/test-temp.mts'
 
-export async function ownedPackages(units: readonly string[], extraPeers: readonly string[] = []) {
+export async function ownedPackages(units: readonly string[], extraPeers: readonly string[] = [],
+  options: {localSession?: boolean} = {}) {
   const directory = createTestDirectory('owned-compat-packages-')
   const modules = path.join(directory, 'node_modules')
   const peers = fileURLToPath(new URL('../build-tools/node_modules/', import.meta.url))
@@ -26,7 +27,27 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
       await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
       await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
     }
-    await symlink(path.join(peers, '@deepseek-ai'), path.join(modules, '@deepseek-ai'), 'junction')
+    if (options.localSession) {
+      const scope = path.join(modules, '@deepseek-ai')
+      const lockedScope = path.join(peers, '@deepseek-ai')
+      await mkdir(scope)
+      for (const name of await readdir(lockedScope)) {
+        if (name === 'dsh-session' || name === 'dsh-session-persistence') continue
+        await symlink(path.join(lockedScope, name), path.join(scope, name), 'junction')
+      }
+      const localSession = fileURLToPath(new URL(`${packageRoot}session/`, import.meta.url))
+      for (const [name, source] of [
+        ['dsh-session', localSession],
+        ['dsh-session-persistence', path.join(lockedScope, 'dsh-session-persistence')],
+      ]) {
+        const installed = path.join(scope, name)
+        await mkdir(installed)
+        await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
+        await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
+      }
+    } else {
+      await symlink(path.join(peers, '@deepseek-ai'), path.join(modules, '@deepseek-ai'), 'junction')
+    }
     await symlink(path.dirname(hostRequire.resolve('zod/package.json')), path.join(modules, 'zod'), 'junction')
     for (const name of extraPeers) {
       if (!/^[a-z][a-z0-9-]*$/.test(name)) throw Error('Invalid extra fixture peer')

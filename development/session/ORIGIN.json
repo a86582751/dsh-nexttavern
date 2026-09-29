@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/dsh-session",
+  "upstreamPackage": "@deepseek-ai/dsh-session",
+  "upstreamVersion": "0.1.7-rc.2",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "upstreamPath": "packages/core/session",
+  "license": "MIT",
+  "changes": [
+    "Assistant events accept schemaVersion 1 programmatic provenance with nonempty producer, origin, and operationId during adoption and fork validation; live append relies on the Agent commit input guard before the persistence barrier",
+    "Model source continues to require provider and model; system, tool, and other role validation is unchanged",
+    "Independent maintained package identity; 31 relative TypeScript import/export specifiers use generated .js paths for the shared compiler"
+  ],
+  "formalForkSynchronized": false
+}

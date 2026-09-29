@@ -1,0 +1,29 @@
+{
+  "name": "@deepseek-ai/dsh-session",
+  "description": "NextTavern maintained DSH session compat fork; not an upstream release",
+  "version": "0.1.7-rc.2",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": { "types": "./src/index.ts", "default": "./lib/index.js" },
+    "./invariant": { "types": "./src/invariant.ts", "default": "./lib/invariant.js" },
+    "./types": { "types": "./src/types.ts", "default": "./lib/types.js" },
+    "./fork": { "types": "./src/fork.ts", "default": "./lib/fork.js" },
+    "./surface": { "types": "./src/surface.ts", "default": "./lib/surface.js" },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "lib", "LICENSE", "LICENSE.upstream", "NOTICE", "ORIGIN.json"],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-scope": "0.1.7-rc.2",
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-invariants": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-llm": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-brand": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-util-values": "0.1.7-rc.2"
+  }
+}

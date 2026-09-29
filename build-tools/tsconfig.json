@@ -7,7 +7,7 @@
     "baseUrl": ".",
     "preserveSymlinks": true,
     "lib": [
-      "ES2023",
+      "ES2024",
       "DOM",
       "DOM.Iterable"
     ],
@@ -34,10 +34,10 @@
         "./node_modules/@earendil-works/pi-ai/dist/*"
       ],
       "dsh-nexttavern-session-format": [
-        "../development/session-format/src/index.ts"
+        "../compat/session-format/src/index.ts"
       ],
       "dsh-nexttavern-session-format/*": [
-        "../development/session-format/src/*.ts"
+        "../compat/session-format/src/*.ts"
       ]
     },
     "newLine": "lf"

@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/dsh-llm",
+  "upstreamPackage": "@deepseek-ai/dsh-llm",
+  "upstreamVersion": "0.1.7-rc.2",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "license": "MIT",
+  "files": [
+    {
+      "source": "src/adapter-failure.ts",
+      "upstream": "packages/llm/llm/src/adapter-failure.ts",
+      "upstreamSha256": "533507191d814fc7b3df5ae65076b2ebc4134bbb47a2bbd9bb7309d7e7f9241b"
+    },
+    {
+      "source": "src/api-key.ts",
+      "upstream": "packages/llm/llm/src/api-key.ts",
+      "upstreamSha256": "16bf926a82b0c0c1d4adbee78e2a1eebe260f100285795edb8330f3fe46141a4"
+    },
+    {
+      "source": "src/assembler.ts",
+      "upstream": "packages/llm/llm/src/assembler.ts",
+      "upstreamSha256": "a2d065645058a70195a504b101e9eed23df3eaced3def868d602f3a863b03887"
+    },
+    {
+      "source": "src/assistant-stream.ts",
+      "upstream": "packages/llm/llm/src/assistant-stream.ts",
+      "upstreamSha256": "9ff074108132ef0ffeefffd8e7967d05db4c6bef1689242807ef7a1d2105dfeb"
+    },
+    {
+      "source": "src/attribution.ts",
+      "upstream": "packages/llm/llm/src/attribution.ts",
+      "upstreamSha256": "031f0a29b75498b9208ab2ede0a32b755c925f1a992562dd23970cff7caea075"
+    },
+    {
+      "source": "src/brand.ts",
+      "upstream": "packages/llm/llm/src/brand.ts",
+      "upstreamSha256": "a3a3f22174353af8aea34a9a439986530bffcc6df6339e55612fd5a1fa4fb14c"
+    },
+    {
+      "source": "src/call-config.ts",
+      "upstream": "packages/llm/llm/src/call-config.ts",
+      "upstreamSha256": "c2ead88240db88af3199235389585d2ddc566312d8976d9648a5f5190d32e6c6"
+    },
+    {
+      "source": "src/content.ts",
+      "upstream": "packages/llm/llm/src/content.ts",
+      "upstreamSha256": "e679f0972cef3f6301c4a9f321ee288ef0a63223ec51c093349c186cdc81ff35"
+    },
+    {
+      "source": "src/error.ts",
+      "upstream": "packages/llm/llm/src/error.ts",
+      "upstreamSha256": "63df8344d49df8f90054852c1de81bc6e56c11de11179e37dcad882be5758035"
+    },
+    {
+      "source": "src/index.ts",
+      "upstream": "packages/llm/llm/src/index.ts",
+      "upstreamSha256": "95364943b5c48dba3cb2239981a6ebe89393b55927b4d646ee72a581f23e6914"
+    },
+    {
+      "source": "src/invariant.ts",
+      "upstream": "packages/llm/llm/src/invariant.ts",
+      "upstreamSha256": "ba2fd65ba8a0d886b5f21810f5f5d008984ac64387b024de0237ff71a7e483bd"
+    },
+    {
+      "source": "src/message.ts",
+      "upstream": "packages/llm/llm/src/message.ts",
+      "upstreamSha256": "5826fb32bc3d6e2221a7a39cc8b4fecc57282540a332417bb9f2ac3522b5c7da"
+    },
+    {
+      "source": "src/retry-policy.ts",
+      "upstream": "packages/llm/llm/src/retry-policy.ts",
+      "upstreamSha256": "eee2423a0152096026446dd651f29678e0c504f0349a91758720f01f74efa871"
+    },
+    {
+      "source": "src/types.ts",
+      "upstream": "packages/llm/llm/src/types.ts",
+      "upstreamSha256": "f5206fd5daf18d3899202c96ca0edb6e7c1a10ddc535edead062ed28f2261b2d"
+    }
+  ],
+  "changes": [
+    "Assistant messages may declare versioned programmatic provenance without model provider or model identity",
+    "Model-only replay state filtering remains guarded by the model source discriminant",
+    "Generated .js import paths and independent maintained package identity"
+  ],
+  "formalForkSynchronized": false
+}

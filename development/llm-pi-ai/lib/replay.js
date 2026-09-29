@@ -157,11 +157,11 @@ function foreignAssistant(message) {
     return {
         role: 'assistant',
         content,
-        // Deliberately never equals a catalog API: absent replay state is foreign
-        // even if source names the same provider/model as this request.
+        // Deliberately never equals a catalog API: model output without replay
+        // state and programmatic prose are both provider-neutral history.
         api: 'dsh-foreign',
-        provider: source.provider,
-        model: source.model,
+        provider: source.kind === 'model' ? source.provider : 'programmatic',
+        model: source.kind === 'model' ? source.model : source.origin,
         usage: emptyPiUsage(),
         stopReason: content.some(piece => piece.type === 'toolCall') ? 'toolUse' : 'stop',
         timestamp: 0,
@@ -234,7 +234,7 @@ function replayedAssistant(message, source, rawState) {
  */
 export function toPiAssistant(message, onDegrade) {
     const source = message.source;
-    if (source.replayState === undefined)
+    if (source.kind !== 'model' || source.replayState === undefined)
         return foreignAssistant(message);
     try {
         return replayedAssistant(message, source, source.replayState);

@@ -13,6 +13,8 @@ function safeSum(values) {
     return total;
 }
 function messageRoute(message) {
+    if (message.source.kind !== 'model')
+        return undefined;
     const { provider, model } = message.source;
     return provider.length > 0 && model.length > 0 ? { provider, model } : undefined;
 }
