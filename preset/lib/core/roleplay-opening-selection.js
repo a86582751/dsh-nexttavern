@@ -80,7 +80,9 @@ export function createRoleplayOpeningSelection(deps) {
                 || !previous.messageId)
                 throw new Error('未知或损坏的开场选择 schema');
             if (previous.operationId !== operationId || previous.index !== index
-                || previous.sourceSha256 !== candidate.sourceSha256)
+                || previous.sourceSha256 !== candidate.sourceSha256
+                || !samePointer(previous.source.pointer, catalog.source.pointer)
+                || previous.source.rawSha256 !== catalog.source.rawSha256)
                 throw new Error('已存在不同的开场选择；需先完成或显式迁移');
             if (previous.status === 'completed')
                 return previous;
