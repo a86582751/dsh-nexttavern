@@ -20,6 +20,7 @@ export interface JobRouteBody {
   kind: string
   resourceId?: string
   sourceFile?: unknown
+  requestId?: string
 }
 // Shared storage contains task, workflow and import/export records.
 export interface JobRouteRecord {
@@ -28,6 +29,7 @@ export interface JobRouteRecord {
   status: string
   source?: {workflowId?: string}
   workflowId?: string
+  clientRequestId?: string
   progress?: unknown
   execution?: unknown
   actualRoute?: unknown

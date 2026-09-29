@@ -26,16 +26,18 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
     return {id:job.id,parentJobId:job.source?.workflowId??null,kind:job.kind,status:job.status,progress:job.progress,
       execution:child?.execution??job.execution,actualRoute:child?.actualRoute??job.actualRoute,
       error:job.error??null,failure:taskValidationFailure(job)??job.failure??null,validationFailures:job.validationFailures??0,
+      requestId:job.clientRequestId??null,
       resourceId:job.resourceId??job.result?.resourceId??null,createdAt:job.createdAt,completedAt:job.completedAt??null,
       failedAt:job.failedAt??(job.status==='failed'?job.updatedAt??null:null)}
   }
-  async function startExportJob(session: ContextSession,kind: string,agent?: HostAgent,sourceFile?: unknown) {
+  async function startExportJob(session: ContextSession,kind: string,agent?: HostAgent,
+    sourceFile?: unknown,requestId?: string) {
     assertWorkspaceSession(session)
     assertSteeringAgent(agent)
     const job=kind==='novel-export'?await novelExports.begin(session,await modelPolicy.resolve(session,kind,agent))
-      :await beginCardWorkflow(session,kind,sourceFile,agent)
+      :await beginCardWorkflow(session,kind,sourceFile,agent,requestId)
     if(job.execution==='deterministic'){
-      await resumeCardWorkflows(session,agent)
+      if(['queued','running','waiting-main'].includes(job.status)) await resumeCardWorkflows(session,agent)
       return (T.branch.get(cardWorkflowKey(job.id)) as typeof job | undefined) ?? job
     }
     agent.steer(taskPhaseMessage('management','请完成酒馆管理中刚启动的任务。不要续写剧情。',{jobId:job.id,jobKind:kind}))
@@ -61,7 +63,8 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
         if(novel)job=await novelExports[body.action](session,body.jobId!)
         else if(card){
           if(card.status==='completed')return jsonResponse(200,{ok:true,job:publicJob(card)})
-          const updated={...card,generation:randomUUID(),status:body.action==='cancel'?'cancelled':'queued',error:null}
+          const updated={...card,generation:randomUUID(),status:body.action==='cancel'?'cancelled':'queued',
+            error:null,failedAt:null}
           job=updated;await T.branch.put(cardWorkflowKey(card.id),updated)
           if(body.action==='retry')for(const [recordKey,record] of ([...T.branch.entries()] as [string, JobRouteRecord][]).filter(([,v])=>v?.workflowId===card.id))await T.branch.put(recordKey,{...record,workflowGeneration:job.generation})
         }
@@ -76,7 +79,7 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
       if(!['novel-export','card-export','card-import'].includes(body.kind))throw new Error('未知任务用途')
       assertWorkspaceSession(session)
       const sourceFile=body.resourceId?libraryFor(session).metadata(body.resourceId).path:body.sourceFile
-      const job=await startExportJob(session,body.kind,agent,sourceFile)
+      const job=await startExportJob(session,body.kind,agent,sourceFile,body.requestId)
       return jsonResponse(202,{ok:true,job:publicJob(job)})
     }catch(error){return jsonResponse(400,{ok:false,error:String((error as Error).message)})}
   }}),'roleplay: persistent jobs route')

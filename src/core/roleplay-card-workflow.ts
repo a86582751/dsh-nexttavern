@@ -12,6 +12,19 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
   // UI requests and the main loop can resume the same durable job at once.
   // Keep one in-process driver per generation; a restart still resumes from storage.
   const running=new Map<string,Promise<void>>()
+  const starting=new Map<string,Promise<void>>()
+  async function withStartLock<T>(sessionId:string,work:()=>Promise<T>):Promise<T> {
+    const previous=starting.get(sessionId)??Promise.resolve()
+    let release!:()=>void
+    const gate=new Promise<void>(resolve=>{release=resolve})
+    const queued=previous.catch(()=>{}).then(()=>gate)
+    starting.set(sessionId,queued)
+    await previous.catch(()=>{})
+    try{return await work()}finally{
+      release()
+      if(starting.get(sessionId)===queued)starting.delete(sessionId)
+    }
+  }
   const cardWorkflows=(session: {id: string})=>[...T.branch.entries()].filter(([k,j])=>k.startsWith('tavern_cardjob__')&&(j as CardWorkflowJob).sessionId===session.id).map(([,j])=>cloneRecord(j as CardWorkflowJob))
   const activeCardWorkflow=(session: {id: string})=>cardWorkflows(session).find(j=>['queued','running','waiting-main'].includes(j.status))
   function assertCardWorkflow(session: CardWorkflowSession,record: CardWorkflowRecord | null | undefined) {
@@ -20,21 +33,44 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     if(!job||job.sessionId!==session.id||['cancelled','stale','failed'].includes(job.status)||record.workflowGeneration!==job.generation||!storyBranchIsActive(session))throw new Error('角色卡任务授权已取消或来源已失效')
     if(job.kind==='card-import'&&record.rawSha256!==job.source.sha256)throw new Error('角色卡任务来源哈希不匹配')
   }
-  async function beginCardWorkflow(session: CardWorkflowSession,kind: string,sourceFile: unknown,agent?: CardWorkflowAgent) {
+  async function beginCardWorkflow(session: CardWorkflowSession,kind: string,sourceFile: unknown,
+    agent?: CardWorkflowAgent,clientRequestId?: string) {
+    return withStartLock(session.id,async()=>{
     if(!['card-import','card-export'].includes(kind))throw new Error('角色卡任务类型无效')
+    if(clientRequestId!==undefined && (typeof clientRequestId!=='string' || kind!=='card-import'
+      || !/^[A-Za-z0-9_-]{1,128}$/.test(clientRequestId)))throw new Error('角色卡请求 requestId 无效')
+    const source=kind==='card-import'?readCardSource(session.header.cwd,sourceFile):null
+    const sourceHash=source?sha256(source.bytes):recordSha256(statusFixedContext(session))
+    if(clientRequestId){
+      const matches=cardWorkflows(session).filter(job=>job.clientRequestId===clientRequestId)
+      if(matches.length>1)throw new Error('角色卡请求身份重复，拒绝选择不确定任务')
+      const previous=matches[0]
+      if(previous){
+        if(previous.kind!==kind || previous.source.sourceFile!==source?.sourcePath
+          || previous.source.sha256!==sourceHash)throw new Error('角色卡 requestId 已绑定不同来源')
+        return previous
+      }
+    }
     const active=activeCardWorkflow(session)
     if(active&&active.kind!==kind)throw new Error('当前会话已有另一项角色卡任务，请先完成或取消')
-    const source=kind==='card-import'?readCardSource(session.header.cwd,sourceFile):null
-    if(active){if(source&&(active.source.sha256!==sha256(source.bytes)
-      || active.source.sourceFile!==source.sourcePath))throw new Error('当前会话正在读取另一张卡，请先完成或取消');return active}
+    if(active){
+      if(source&&(active.source.sha256!==sourceHash
+        || active.source.sourceFile!==source.sourcePath))throw new Error('当前会话正在读取另一张卡，请先完成或取消')
+      if(clientRequestId&&active.clientRequestId!==clientRequestId)
+        throw new Error('当前会话已有不同 requestId 的导入任务，请查看现有 job')
+      return active
+    }
     const deterministic = kind === 'card-import' && source !== null && ['.png', '.json'].includes(source.extension)
     const selection=deterministic?undefined:await modelPolicy.resolve(session,kind,agent)
     const id=randomUUID()
     const job={schemaVersion:1,id,kind,sessionId:session.id,branchId:session.id,generation:randomUUID(),
       ...(selection?{selection,actualRoute:selection.actualRoute}:{}),execution:deterministic?'deterministic':selection!.execution,
-      status:'queued',createdAt:Date.now(),progress:{done:0,total:1},source:{sourceFile:source?.sourcePath??null,sha256:source?sha256(source.bytes):recordSha256(statusFixedContext(session))}}
+      status:'queued',createdAt:Date.now(),progress:{done:0,total:1},
+      ...(clientRequestId?{clientRequestId}:{}),
+      source:{sourceFile:source?.sourcePath??null,sha256:sourceHash}}
     await T.branch.put(cardWorkflowKey(id),job)
     return job
+    })
   }
   async function resumeCardWorkflows(session: ContextSession,agent?: CardWorkflowAgent,signal?: AbortSignal) {
     const job=activeCardWorkflow(session)
@@ -85,7 +121,11 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
           progress:{done:1,total:1},completedAt:Date.now()})
     }catch(error){
       const live=T.branch.get(cardWorkflowKey(job.id)) as CardWorkflowJob | undefined
-      if(live?.generation===job.generation&&live.status!=='cancelled')await T.branch.put(cardWorkflowKey(job.id),{...live,status:isInlinePending(error)?'waiting-main':'failed',error:isInlinePending(error)?null:String((error as Error).message)})
+      if(live?.generation===job.generation&&live.status!=='cancelled')await T.branch.put(cardWorkflowKey(job.id),{
+        ...live,status:isInlinePending(error)?'waiting-main':'failed',
+        error:isInlinePending(error)?null:String((error as Error).message),
+        ...(isInlinePending(error)?{}:{failedAt:Date.now()}),
+      })
       if(isInlinePending(error))throw error
     }
   }
