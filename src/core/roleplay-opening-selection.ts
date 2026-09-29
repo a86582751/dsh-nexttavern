@@ -92,7 +92,18 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   }
   const current = (source: OpeningSource) => {
     const pointer = deps.table.get(deps.importActiveKey(source.sessionId)) as ImportPointer | undefined
-    return !!pointer && samePointer(pointer, source.pointer)
+    if (!pointer || !samePointer(pointer, source.pointer)) return false
+    const record = deps.table.get(deps.importRecordKey(source.sourceRecordSessionId, source.importId)) as ImportRecord | undefined
+    return !!record && record.status === 'active' && record.rawSha256 === source.rawSha256
+      && record.normalizedSha256 === source.normalizedSha256
+      && record.activation?.transactionId === source.transactionId
+  }
+  const readIntent = (source: OpeningSource): OpeningIntent | null => {
+    const intent = deps.table.get(openingIntentKey(source.sessionId, source.importId)) as OpeningIntent | undefined
+    if (!intent || !current(source) || intent.schemaVersion !== 2 || intent.sessionId !== source.sessionId
+      || intent.source.importId !== source.importId || !samePointer(intent.source.pointer, source.pointer)
+      || intent.source.rawSha256 !== source.rawSha256) return null
+    return intent
   }
   const complete = async (key: string, intent: OpeningIntent, turn: number): Promise<OpeningIntent> => {
     if (!Number.isSafeInteger(turn) || turn < 0) throw new Error('原生开场缺少 durable turn')
@@ -160,9 +171,11 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       if (intent.schemaVersion !== 2 || intent.sessionId !== sessionId || intent.source.importId !== importId
         || !validHash(intent.renderedSha256) || hash(intent.renderedText) !== intent.renderedSha256
         || !intent.messageId) throw new Error('未知或损坏的开场选择 schema')
+      if (!current(intent.source)) return null
       if (intent.status === 'completed') return intent
       const found = await deps.findOpeningByOperationId(intent)
+      if (!current(intent.source)) return null
       return found.status === 'committed' ? complete(key, intent, found.turn!) : intent
     })
-  return {readCatalog, select, recover}
+  return {readCatalog, readIntent, select, recover}
 }

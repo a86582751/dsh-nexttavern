@@ -2,14 +2,12 @@ import {jsonResponse} from './roleplay-state.js'
 import {createHash} from 'node:crypto'
 import type {ContextSession} from './roleplay-context.js'
 import type {TavernOpeningContext} from './tavern-card.js'
-import type {createRoleplayOpeningSelection, OpeningTable} from './roleplay-opening-selection.js'
-import {openingIntentKey} from './roleplay-opening-selection.js'
+import type {createRoleplayOpeningSelection} from './roleplay-opening-selection.js'
 
 type OpeningSelection = ReturnType<typeof createRoleplayOpeningSelection>
 
 interface OpeningRoutesDependencies {
   ctx: {effect(work: () => unknown, label?: string): unknown; connection: {fetch: {register(route: unknown): unknown}}}
-  table: OpeningTable
   resolveRoleplaySession(id: unknown): Promise<ContextSession | null | undefined>
   selection: OpeningSelection
   canCommit(sessionId: string): Promise<boolean>
@@ -20,7 +18,7 @@ interface OpeningRoutesDependencies {
 
 /** Selection belongs to the active session; the route never accepts source bytes or text from a client. */
 export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
-  const {ctx, table, resolveRoleplaySession, selection, canCommit,
+  const {ctx, resolveRoleplaySession, selection, canCommit,
     openingContext, legacyOpeningAlreadyRequested, priorOpeningInHistory} = deps
   ctx.effect(() => ctx.connection.fetch.register({
     requestBody:'buffered', path:'/api/roleplay/openings', methods:['GET','POST'],
@@ -32,9 +30,7 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
         if (!session) return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
         const context = openingContext(session.id)
         const catalog = selection.readCatalog(session.id,context)
-        const intent = table.get(openingIntentKey(session.id,catalog.source.importId)) as {
-          status?: string; index?: number; operationId?: string; committedTurn?: number
-        } | undefined
+        const intent = selection.readIntent(catalog.source)
         const legacyDisplayed = legacyOpeningAlreadyRequested(session.id,catalog.source.importId)
         const priorOpening = priorOpeningInHistory(session)
         if (!body) return jsonResponse(200,{ok:true,

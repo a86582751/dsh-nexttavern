@@ -1030,7 +1030,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       } catch { return {status:'unknown' as const} }
     },
   })
-  registerOpeningRoutes({ctx,table:openingTable,resolveRoleplaySession,selection:openingSelection,
+  registerOpeningRoutes({ctx,resolveRoleplaySession,selection:openingSelection,
     openingContext:sessionId => {
       const user = userValues(sessionId)
       const prefix = `${sessionId}__`

@@ -1,10 +1,9 @@
 // Generated from runtime/alpha3/src/core/roleplay-opening-routes.ts; edit the TypeScript source.
 import { jsonResponse } from './roleplay-state.js';
 import { createHash } from 'node:crypto';
-import { openingIntentKey } from './roleplay-opening-selection.js';
 /** Selection belongs to the active session; the route never accepts source bytes or text from a client. */
 export function registerOpeningRoutes(deps) {
-    const { ctx, table, resolveRoleplaySession, selection, canCommit, openingContext, legacyOpeningAlreadyRequested, priorOpeningInHistory } = deps;
+    const { ctx, resolveRoleplaySession, selection, canCommit, openingContext, legacyOpeningAlreadyRequested, priorOpeningInHistory } = deps;
     ctx.effect(() => ctx.connection.fetch.register({
         requestBody: 'buffered', path: '/api/roleplay/openings', methods: ['GET', 'POST'],
         fetch: async (request) => {
@@ -16,7 +15,7 @@ export function registerOpeningRoutes(deps) {
                     return jsonResponse(404, { ok: false, error: '角色扮演会话不存在' });
                 const context = openingContext(session.id);
                 const catalog = selection.readCatalog(session.id, context);
-                const intent = table.get(openingIntentKey(session.id, catalog.source.importId));
+                const intent = selection.readIntent(catalog.source);
                 const legacyDisplayed = legacyOpeningAlreadyRequested(session.id, catalog.source.importId);
                 const priorOpening = priorOpeningInHistory(session);
                 if (!body)

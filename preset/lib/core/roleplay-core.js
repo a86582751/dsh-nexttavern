@@ -846,7 +846,7 @@ export async function apply(ctx, config = {}) {
             }
         },
     });
-    registerOpeningRoutes({ ctx, table: openingTable, resolveRoleplaySession, selection: openingSelection,
+    registerOpeningRoutes({ ctx, resolveRoleplaySession, selection: openingSelection,
         openingContext: sessionId => {
             const user = userValues(sessionId);
             const prefix = `${sessionId}__`;

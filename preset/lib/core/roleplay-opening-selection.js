@@ -36,7 +36,20 @@ export function createRoleplayOpeningSelection(deps) {
     };
     const current = (source) => {
         const pointer = deps.table.get(deps.importActiveKey(source.sessionId));
-        return !!pointer && samePointer(pointer, source.pointer);
+        if (!pointer || !samePointer(pointer, source.pointer))
+            return false;
+        const record = deps.table.get(deps.importRecordKey(source.sourceRecordSessionId, source.importId));
+        return !!record && record.status === 'active' && record.rawSha256 === source.rawSha256
+            && record.normalizedSha256 === source.normalizedSha256
+            && record.activation?.transactionId === source.transactionId;
+    };
+    const readIntent = (source) => {
+        const intent = deps.table.get(openingIntentKey(source.sessionId, source.importId));
+        if (!intent || !current(source) || intent.schemaVersion !== 2 || intent.sessionId !== source.sessionId
+            || intent.source.importId !== source.importId || !samePointer(intent.source.pointer, source.pointer)
+            || intent.source.rawSha256 !== source.rawSha256)
+            return null;
+        return intent;
     };
     const complete = async (key, intent, turn) => {
         if (!Number.isSafeInteger(turn) || turn < 0)
@@ -116,10 +129,14 @@ export function createRoleplayOpeningSelection(deps) {
             || !validHash(intent.renderedSha256) || hash(intent.renderedText) !== intent.renderedSha256
             || !intent.messageId)
             throw new Error('未知或损坏的开场选择 schema');
+        if (!current(intent.source))
+            return null;
         if (intent.status === 'completed')
             return intent;
         const found = await deps.findOpeningByOperationId(intent);
+        if (!current(intent.source))
+            return null;
         return found.status === 'committed' ? complete(key, intent, found.turn) : intent;
     });
-    return { readCatalog, select, recover };
+    return { readCatalog, readIntent, select, recover };
 }
