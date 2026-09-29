@@ -89,6 +89,12 @@ export class SystemPromptProjection {
     const nodes = this.systemNodes()
     const head = nodes[0]
     if (head === undefined) {
+      // Readable assistant-only history cannot acquire a late protected head.
+      // Stop before a system append or model request; the loop closes this
+      // failed step/turn without making the existing transcript cold-corrupt.
+      if (this.session.surface.nodes.length > 0) {
+        throw new Error('session surface has no protected system prompt head')
+      }
       return [{ message: createSystemMessage(rendered), intent: { surfaceOp: 'append' } }]
     }
     const latest = nodes.findLast(node => node.text !== '') ?? head

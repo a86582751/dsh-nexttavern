@@ -296,6 +296,14 @@ export class ReactLoopAgent implements Agent {
         return { kind: 'unknown', reason: 'session already has an open turn' }
       }
 
+      // Assistant-only transcripts are readable, but a later system prompt
+      // cannot acquire their protected head. Refuse a new turn before writing
+      // behind that history; exact committed retries above remain read-only.
+      const surfaceHead = this.session.surface.nodes[0]
+      if (surfaceHead !== undefined && this.session.eventAt(surfaceHead)?.type !== 'system/message') {
+        return { kind: 'unknown', reason: 'session surface has no protected system prompt head' }
+      }
+
       const phase: Phase = this.phase
       if (phase.kind !== 'maintenance') return { kind: 'unknown', reason: 'maintenance reservation was lost' }
       const turn = phase.lastTurn + 1
@@ -310,6 +318,15 @@ export class ReactLoopAgent implements Agent {
         this.session.append('turn/start', { turn })
         phase.lastTurn = turn
         this.session.append('step/start', { turn, step })
+        // The first surface node must already own the system slot when the
+        // next real request is admitted. An empty native head records no
+        // prompt and invokes no assembly hooks; ordinary prompt reconciliation
+        // can replace it or append an in-history update without moving story.
+        if (surfaceHead === undefined) {
+          for (const { message, intent } of this.systemPrompt.project('', { inHistory: false, startsSeries: true })) {
+            this.session.append('system/message', { turn, step, message }, intent)
+          }
+        }
         this.session.append('assistant/message', { turn, step, message, stream: [] }, { surfaceOp: 'append' })
         this.session.append('step/end', { turn, step })
         this.session.append('turn/end', { turn, reason: { kind: 'completed' } })
