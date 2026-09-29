@@ -71,6 +71,29 @@ const hidden=messages=>messages.filter(m=>m.source?.kind==='roleplay-context')
 const hiddenText=messages=>hidden(messages).map(m=>m.content[0].text).join('\n')
 const anchor=(messages,form)=>messages.find(m=>m.source?.kind==='roleplay-context'&&m.source.form===form)
 
+// A blank opening branch uses the selected alternate greeting captured by the
+// native choice, even though the card's scene table still holds first_mes.
+{
+ const h=await harness(()=>{throw new Error('opening reference needs no auxiliary model')})
+ try {
+  const selected='备选第一幕：雪夜钟声'
+  const sourceHash='a'.repeat(64)
+  await h.table('opening').put(`${h.session.id}__scene`,{text:'默认第一幕：晴天'})
+  await h.table('branch').put(`${h.session.id}__import-active`,{importId:'card-1',
+   normalizedSha256:sourceHash,transactionId:'tx-1',coverageSha256:'b'.repeat(64)})
+  await h.table('branch').put(`${h.session.id}__import-card-1`,{importId:'card-1',status:'active',
+   normalizedSha256:sourceHash,activation:{transactionId:'tx-1'}})
+  await h.table('branch').put(`${h.session.id}__opening-reference`,{schemaVersion:1,
+   importId:'card-1',normalizedSha256:sourceHash,transactionId:'tx-1',renderedText:selected,
+   renderedSha256:createHash('sha256').update(selected).digest('hex')})
+  h.begin(1)
+  const messages=await h.prepare(1)
+  assert.match(hiddenText(messages),/备选第一幕：雪夜钟声/)
+  assert.doesNotMatch(hiddenText(messages),/默认第一幕：晴天/)
+  assert.equal(h.calls.length,0)
+ } finally {h.dispose()}
+}
+
 // High-frequency assembly is deterministic. Even an explicit auxiliary model
 // must not run scene/recall inference before the main author can write.
 {

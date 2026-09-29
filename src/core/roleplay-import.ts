@@ -55,6 +55,20 @@ import type { ExportMaterial } from './card-export-projection.js';
 export function importActiveKey(sessionId: string) {
   return keyOf(sessionId, 'import-active');
 }
+/** A source is active only when its pointer and durable activation record agree. */
+export function activeOpeningSource(branch: {get(key: string): unknown}, sessionId: string) {
+  const pointer = branch.get(importActiveKey(sessionId)) as ImportPointer | undefined;
+  if (!pointer || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(pointer.importId ?? ''))
+    || !/^[a-f0-9]{64}$/.test(String(pointer.normalizedSha256 ?? ''))
+    || typeof pointer.transactionId !== 'string' || !pointer.transactionId) return null;
+  const owner = pointer.sourceRecordSessionId ?? sessionId;
+  const record = branch.get(keyOf(owner, `import-${pointer.importId}`)) as ImportRecord | undefined;
+  if (record?.status !== 'active' || record.importId !== pointer.importId
+    || record.normalizedSha256 !== pointer.normalizedSha256
+    || record.activation?.transactionId !== pointer.transactionId) return null;
+  return {importId: pointer.importId, normalizedSha256: pointer.normalizedSha256,
+    transactionId: pointer.transactionId, sourceRecordSessionId: owner};
+}
 const errorMessage = (error: unknown) => (error as {
   message?: unknown;
 } | null)?.message ?? error;

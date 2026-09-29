@@ -61,7 +61,8 @@ export {
 
 import { resolve } from 'node:path'
 
-import { registerRoleplayImports, importActiveKey } from './roleplay-import.js'
+import { registerRoleplayImports, importActiveKey, activeOpeningSource } from './roleplay-import.js'
+import { provenImportPreludeAssistants } from './tavern-task-retirement.js'
 import { internalTaskSeqs } from './tavern-tasks.js'
 
 import { createNovelExports } from './novel-export.js'
@@ -718,12 +719,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     authorContext: session => residentAuthorContext(T, session.id),
     adaptationScope: session => ctx.get('tavernConversations')?.rootOf(session.id) ?? session.id,
     importPromptCheckpoint: session => {
-      const checkpoint = T.branch.get(importActiveKey(session.id)) as {
-        importId?: unknown
-        normalizedSha256?: unknown
-      } | null
-      if (typeof checkpoint?.importId !== 'string'
-        || typeof checkpoint.normalizedSha256 !== 'string') return null
+      const checkpoint = activeOpeningSource(T.branch, session.id)
+      if (!checkpoint) return null
       return {
         importId: checkpoint.importId,
         normalizedSha256: checkpoint.normalizedSha256,
@@ -1048,13 +1045,24 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         : undefined
       return job?.openingRequested === true
     },
-    priorOpeningInHistory:session => eventsOf(session).some(event => {
-      if (event.type !== 'assistant/message') return false
-      const source = event.data?.message?.source as
-        {kind?:unknown;producer?:unknown;origin?:unknown} | undefined
-      return source?.kind === 'programmatic' && source.producer === 'dsh-nexttavern'
-        && typeof source.origin === 'string' && source.origin.startsWith('card-opening:')
-    }),
+    priorOpeningInHistory:session => {
+      const prelude = provenImportPreludeAssistants(session,
+        activeOpeningSource(T.branch, session.id))
+      const inherited = T.branch.get(keyOf(session.id, 'meta')) as
+        {freshBranchFrom?: unknown} | undefined
+      if (typeof inherited?.freshBranchFrom === 'string' && inherited.freshBranchFrom) return true
+      const internal = internalTaskSeqs(session)
+      return surfaceEvents(session).some(event => event.type === 'assistant/message'
+        && !internal.has(event.seq) && !prelude.has(event.seq)
+        && textOf(event.data?.message?.content).trim())
+        || eventsOf(session).some(event => {
+          if (event.type !== 'assistant/message') return false
+          const source = event.data?.message?.source as
+            {kind?:unknown;producer?:unknown;origin?:unknown} | undefined
+          return source?.kind === 'programmatic' && source.producer === 'dsh-nexttavern'
+            && typeof source.origin === 'string' && source.origin.startsWith('card-opening:')
+        })
+    },
     canCommit:async sessionId => {
       const found = await ctx.sessionController.resolveAgent(sessionId)
       return typeof (found?.agent as {commitProgrammaticAssistant?:unknown} | undefined)?.commitProgrammaticAssistant === 'function'

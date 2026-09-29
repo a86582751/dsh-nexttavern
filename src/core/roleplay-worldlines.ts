@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { completedAssistantReceiptForTurn } from './roleplay-context.js'
 import { createWorldlineSurface } from './roleplay-worldline-surface.js'
+import { activeOpeningSource } from './roleplay-import.js'
+import { provenImportPreludeAssistants } from './tavern-task-retirement.js'
 export { assertBranchSession } from './roleplay-worldline-surface.js'
 import type {
   WorldlineDependencies,
@@ -344,12 +346,21 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     const generatedOpening = source?.kind === 'model' && group?.anchor?.openingOnly === true
       && group.members.some(member => !member.deleted && member.sessionId === session.id
         && member.assistantMessageId === messageId && Number(member.assistantSeq) === seq)
+    const active = activeOpeningSource(T.branch, session.id)
+    const inheritedSource = generatedOpening ? group?.anchor.openingSource : null
+    const openingImportId = originalOpening ? String(source.origin).slice('card-opening:'.length)
+      : inheritedSource?.importId
+    const sourceMatches = !!active && active.importId === openingImportId
+      && (!inheritedSource || (inheritedSource.normalizedSha256 === active.normalizedSha256
+        && inheritedSource.transactionId === active.transactionId))
+    const importPrelude = provenImportPreludeAssistants(session, active)
     if (!messageId || event?.type !== 'assistant/message' || assistantMessageId(event) !== messageId
-      || (!originalOpening && !generatedOpening)
+      || (!originalOpening && !generatedOpening) || !sourceMatches
       || !Number.isSafeInteger(turn) || turn < 1
       || !events.some(item => item.type === 'turn/start' && Number(item.data?.turn) === turn
         && Number(item.seq) < seq!)
-      || surfaceEntries(session).some(item => item.kind === 'assistant' && Number(item.seq) < seq!)
+      || surfaceEntries(session).some(item => item.kind === 'assistant'
+        && Number(item.seq) < seq! && !importPrelude.has(item.seq))
       || events.some(item => item.type === 'user/message' && item.data?.source?.kind === 'user'
         && Number(item.seq) <= seq! && turnForEvent(session, item) === turn)
       || !events.some(item => item.type === 'turn/end' && Number(item.data?.turn) === turn
@@ -367,6 +378,22 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       expectedSeedLength: 0,
       promptText: '',
       openingOnly: true,
+      openingSource: generatedOpening ? inheritedSource! : (() => {
+        const intent = T.branch.get(keyOf(session.id, `opening-choice-${active!.importId}`)) as
+          {schemaVersion?: number; status?: string; sessionId?: string; operationId?: string;
+            messageId?: string; renderedText?: string; renderedSha256?: string;
+            source?: {importId?: string; normalizedSha256?: string; transactionId?: string}} | undefined
+        const selected = intent?.schemaVersion === 2 && intent.status === 'completed'
+          && intent.sessionId === session.id && intent.operationId === source.operationId
+          && intent.messageId === messageId && intent.source?.importId === active!.importId
+          && intent.source?.normalizedSha256 === active!.normalizedSha256
+          && intent.source.transactionId === active!.transactionId
+          && typeof intent.renderedText === 'string'
+          && sha256(intent.renderedText) === intent.renderedSha256
+        return {schemaVersion: 1 as const, importId: active!.importId,
+          normalizedSha256: active!.normalizedSha256, transactionId: active!.transactionId,
+          ...(selected ? {renderedText: intent!.renderedText, renderedSha256: intent!.renderedSha256} : {})}
+      })(),
     }
   }
 
@@ -429,6 +456,11 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       })
       if (existingMembership) throw new Error('首轮分支会话已经绑定其他分支操作')
       await copyStaticBranchConfig(source.id, child.id)
+      const openingSource = operation.anchor.openingSource
+      if (openingSource?.renderedText && openingSource.renderedSha256
+        && sha256(openingSource.renderedText) === openingSource.renderedSha256) {
+        await T.branch.put(keyOf(child.id, 'opening-reference'), cloneBranchRecord(openingSource))
+      }
       await T.branch.put(keyOf(child.id, 'meta'), {
         createdAt: Date.now(), lastTurn: 0, lastSeq: -1,
         freshBranchFrom: source.id, inheritedAtSeedLength: 0,

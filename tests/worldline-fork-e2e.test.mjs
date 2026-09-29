@@ -11,9 +11,12 @@
 // fail, recover - and reads the state panel, the decision card, the director
 // notes and the worldbook on both sides of the fork.
 import assert from 'node:assert/strict'
+import {createHash} from 'node:crypto'
 import { createConversationCatalog } from '../lib/core/tavern-conversations.js'
 import { directorNotesForBranch } from '../lib/memory/roleplay-memory-engine.js'
 import { apply } from '../lib/core/roleplay-core.js'
+import {provenImportPreludeAssistants} from '../lib/core/tavern-task-retirement.js'
+import {activeOpeningSource} from '../lib/core/roleplay-import.js'
 import {ownedPackages} from './plugin-owned-packages-fixture.mts'
 import {after} from 'node:test'
 
@@ -59,7 +62,7 @@ async function bench() {
   const ctx = {
     nexttavernMessageEdits: {append: appendMessageEdit, latest: latestMessageEdit, current: currentMessageEdits},
     storageDomain: { async open() { return { table, close() {} } } },
-    sessions: { get: id => sessions.get(id) },
+    sessions: { get: id => sessions.get(id), async flush() { return true } },
     sessionController: {
       async resolveAgent(id) {
         const session = sessions.get(id)
@@ -404,6 +407,252 @@ const checked = async (name, fn) => { await fn(); checks.push(name); console.log
       const state = await stateOf(regenChildId)
       assert.equal(state.decision ?? null, null, 'regenerate publishes its own card after its own Phase B')
       assert.equal(b.table('branch').get(`${regenChildId}__meta`)?.boundaryState ?? null, null)
+    })
+  } finally { b.dispose() }
+}
+
+{
+  const b = await bench()
+  try {
+    const source = b.enableAppend({id: 'opening-root', header: {agentPreset: 'roleplay'},
+      events: [], seq: 0, surface: {nodes: []}})
+    b.sessions.set(source.id, source)
+    const sourceText = 'fixture source'
+    const sourceHash = createHash('sha256').update(sourceText).digest('hex')
+    const selectedText = '备选作者开场'
+    b.table('branch').set(`${source.id}__import-active`, {importId:'import-1',
+      normalizedSha256:sourceHash, transactionId:'tx1', coverageSha256:'b'.repeat(64)})
+    b.table('branch').set(`${source.id}__import-import-1`, {schemaVersion:3,
+      importId:'import-1',status:'active',normalizer:'utf8-lf+anydoc-deescape-v2',
+      rawSource:sourceText,normalizedSource:sourceText,rawSha256:sourceHash,
+      normalizedSha256:sourceHash,rawChars:sourceText.length,normalizedChars:sourceText.length,
+      sourceBytes:Buffer.byteLength(sourceText),lineCount:1,lines:[sourceText],lineStarts:[0],
+      assignments:[],activation:{transactionId:'tx1'}})
+    b.table('branch').set(`${source.id}__opening-choice-import-1`, {schemaVersion:2,
+      status:'completed', sessionId:source.id, operationId:'author-opening-op',
+      messageId:'author-opening', renderedText:selectedText,
+      renderedSha256:createHash('sha256').update(selectedText).digest('hex'),
+      source:{importId:'import-1',normalizedSha256:sourceHash,transactionId:'tx1'}})
+    b.table('opening').set(`${source.id}__scene`, {text:'默认作者开场'})
+    await checked('a visible legacy model opening and an inherited blank child refuse another author opening', async () => {
+      const cardBytes = Buffer.from(JSON.stringify({spec:'chara_card_v2',spec_version:'2.0',
+        data:{name:'Fixture',first_mes:'默认作者开场'}}))
+      const rawHash = createHash('sha256').update(cardBytes).digest('hex')
+      const legacy = b.enableAppend({id:'legacy-model-opening',header:{agentPreset:'roleplay'},
+        events:[],seq:0,surface:{nodes:[]}})
+      b.sessions.set(legacy.id,legacy)
+      b.table('branch').set(`${legacy.id}__import-active`, {importId:'legacy-card',
+        normalizedSha256:sourceHash,transactionId:'legacy-tx',coverageSha256:'b'.repeat(64)})
+      b.table('branch').set(`${legacy.id}__import-legacy-card`, {schemaVersion:5,
+        importId:'legacy-card',sessionId:legacy.id,status:'active',rawSha256:rawHash,
+        normalizedSha256:sourceHash,activation:{transactionId:'legacy-tx'},
+        sourceEnvelope:{schemaVersion:1,extension:'.json',format:'json-v2',
+          base64:cardBytes.toString('base64'),sourceSha256:rawHash}})
+      legacy.append('turn/start',{turn:1})
+      legacy.append('assistant/message',{turn:1,step:1,stream:[],message:{id:'old-model',
+        role:'assistant',content:text('旧模型开场'),source:{kind:'model',provider:'fixture',model:'fixture'}}},'append')
+      legacy.append('turn/end',{turn:1,reason:{kind:'completed'}})
+      const duplicate = await b.callRoute('/api/roleplay/openings',{sessionId:legacy.id,
+        action:'select',index:0,operationId:'duplicate',expectedRenderedSha256:'0'.repeat(64)})
+      assert.equal(duplicate.status,409,JSON.stringify(duplicate.body))
+      assert.match(duplicate.body.error,/已有可见开场或剧情/)
+      const blank = b.enableAppend({id:'blank-opening-child',header:{agentPreset:'roleplay'},
+        events:[],seq:0,surface:{nodes:[]}})
+      b.sessions.set(blank.id,blank)
+      b.table('branch').set(`${blank.id}__import-active`, {importId:'legacy-card',
+        sourceRecordSessionId:legacy.id,normalizedSha256:sourceHash,
+        transactionId:'legacy-tx',coverageSha256:'b'.repeat(64)})
+      b.table('branch').set(`${blank.id}__meta`, {freshBranchFrom:legacy.id})
+      const inherited = await b.callRoute('/api/roleplay/openings',{sessionId:blank.id,
+        action:'select',index:0,operationId:'duplicate-child',expectedRenderedSha256:'0'.repeat(64)})
+      assert.equal(inherited.status,409,JSON.stringify(inherited.body))
+      assert.match(inherited.body.error,/已有可见开场或剧情/)
+    })
+    source.append('turn/start', {turn: 1})
+    source.append('user/message', {id: 'import-task', role: 'user',
+      source: {kind: 'roleplay-tasks', form: 'phase', stage: 'management'},
+      content: text('导入角色卡')}, 'append')
+    source.append('assistant/message', {turn: 1, step: 1, stream: [],
+      message: {id: 'import-call', role: 'assistant', content: [
+        {type:'tool-call',id:'import-begin',name:'rp_card_import_begin',arguments:'{}'}],
+        source: {kind: 'model', provider: 'fixture', model: 'fixture'}}}, 'append')
+    source.append('tool/result', {message:{source:{kind:'tool',callId:'import-begin'},
+      toolCallId:'import-begin',role:'tool',content:[{type:'tool-result',toolCallId:'import-begin',
+        content:text(JSON.stringify({ok:true,status:'active',resumed:true,
+          job:{status:'completed'},importId:'import-1',normalizedSha256:sourceHash,
+          activatedAt:1000,coverage:1}))}]}}, 'append')
+    source.append('assistant/message', {turn: 1, step: 2, stream: [],
+      message: {id: 'import-receipt', role: 'assistant', content: text('导入完成'),
+        source: {kind: 'model', provider: 'fixture', model: 'fixture'}}}, 'append')
+    source.append('turn/end', {turn: 1, reason: {kind: 'completed'}})
+    source.append('turn/start', {turn: 2})
+    source.append('step/start', {turn: 2, step: 1})
+    const original = source.append('assistant/message', {turn: 2, step: 1, stream: [],
+      message: {id: 'author-opening', role: 'assistant', content: text('作者原始开场'),
+        source: {kind: 'programmatic', schemaVersion: 1, producer: 'dsh-nexttavern',
+          origin: 'card-opening:import-1', operationId: 'author-opening-op'}}}, 'append')
+    source.append('step/end', {turn: 2, step: 1})
+    source.append('turn/end', {turn: 2, reason: {kind: 'completed'}})
+    const catalog = createConversationCatalog({read: () => null, write: async () => {}})
+    let dropMarkReady = true
+    b.ctx.provide('tavernConversations', {...catalog, ready: Promise.resolve(),
+      markReady: async id => {
+        if (dropMarkReady) { dropMarkReady = false; throw Error('lost markReady acknowledgement') }
+        return catalog.markReady(id)
+      }})
+    let modelCalls = 0, dropBeforeTurn = false, busyOnce = false
+    const resolveAgent = b.ctx.sessionController.resolveAgent
+    b.ctx.sessionController.resolveAgent = async id => {
+      const found = await resolveAgent(id)
+      if (!found.agent) return found
+      return {...found, agent: {...found.agent, generateProgrammaticAssistant: async input => {
+        if (busyOnce) { busyOnce = false; return {kind:'busy'} }
+        if (dropBeforeTurn) throw Error('process stopped before native turn/start')
+        modelCalls++
+        const child = found.agent.session
+        child.append('turn/start', {turn: 1})
+        child.append('step/start', {turn: 1, step: 1})
+        child.append('assistant/message', {turn: 1, step: 1, stream: [], message: {
+          id: input.messageId, role: 'assistant', content: text('模型新开场'),
+          source: {kind: 'model', provider: 'fixture', model: 'fixture'}}}, 'append')
+        child.append('step/end', {turn: 1, step: 1})
+        child.append('turn/end', {turn: 1, reason: {kind: 'completed'}})
+        return {kind: 'committed', turn: 1, messageId: input.messageId}
+      }}}
+    }
+    const sourceState = await b.callState(source.id)
+    assert.deepEqual(activeOpeningSource(b.table('branch'),source.id),
+      {importId:'import-1',normalizedSha256:sourceHash,transactionId:'tx1',sourceRecordSessionId:source.id})
+    assert.ok(provenImportPreludeAssistants(source,{importId:'import-1',normalizedSha256:sourceHash})
+      .has(source.events.find(event => event.data?.message?.id === 'import-receipt').seq),
+      'the exact direct begin result proves the visible import prelude')
+    assert.deepEqual(sourceState.body.programmaticOpeningActionAnchor,
+      {messageId: 'author-opening', seq: original.seq, turn: 2},
+      'hidden import assistant does not displace the author opening')
+    const wrong = await b.callRoute('/api/roleplay/branch', {action: 'prepare', kind: 'opening-regenerate',
+      sessionId: source.id, messageId: 'author-opening', seq: original.seq + 1})
+    assert.equal(wrong.status, 400, 'a mismatched assistant seq cannot become an opening anchor')
+    const prepared = await b.callRoute('/api/roleplay/branch', {action: 'prepare', kind: 'opening-regenerate',
+      sessionId: source.id, messageId: 'author-opening', seq: original.seq})
+    assert.equal(prepared.status, 200, JSON.stringify(prepared.body))
+    const created = await b.callRoute('/api/roleplay/branch', {action: 'create-worldline',
+      operationId: prepared.body.operationId})
+    assert.equal(created.status, 200, JSON.stringify(created.body))
+    const childId = created.body.childSessionId
+    const generated = await b.callRoute('/api/roleplay/branch', {action: 'generate-opening',
+      operationId: prepared.body.operationId, childSessionId: childId})
+    assert.equal(generated.status, 500, 'the lost catalog acknowledgement leaves exact prose to reconcile')
+    assert.equal(b.table('branch').get(`${childId}__opening-reference`)?.renderedText, selectedText,
+      'the selected alternate opening survives the blank native child')
+    await checked('model opening branch has exact assistant identity and no player message', async () => {
+      const child = b.sessions.get(childId)
+      assert(child)
+      assert.equal(child.events.filter(event => event.type === 'user/message').length, 0)
+      assert.equal(child.events.find(event => event.type === 'assistant/message')?.data.message.source.kind, 'model')
+      assert.equal(source.events.find(event => event.type === 'assistant/message'
+        && event.data.message.id === 'author-opening')?.data.message.source.kind, 'programmatic')
+      const status = await b.callRoute('/api/roleplay/branch', {action: 'operation-status',
+        operationId: prepared.body.operationId})
+      assert.equal(status.body.status, 'completed')
+      assert.equal(status.body.assistantMessageId, `opening-regenerate-${prepared.body.operationId}`)
+      assert.equal(catalog.snapshot().worldlines[childId]?.status, 'ready')
+      const retried = await b.callRoute('/api/roleplay/branch', {action: 'generate-opening',
+        operationId: prepared.body.operationId, childSessionId: childId})
+      assert.equal(retried.body.status, 'completed')
+      assert.equal(modelCalls, 1, 'lost responses cannot issue another model request')
+      const childState = await b.callState(childId)
+      assert.deepEqual(childState.body.programmaticOpeningActionAnchor,
+        {messageId: `opening-regenerate-${prepared.body.operationId}`, seq: 2, turn: 1},
+        'a generated opening remains eligible through its exact active group member')
+      const next = await b.callRoute('/api/roleplay/branch', {action: 'prepare', kind: 'opening-regenerate',
+        sessionId: childId, ...childState.body.programmaticOpeningActionAnchor})
+      assert.equal(next.status, 200, JSON.stringify(next.body))
+    })
+    await checked('a crash before native turn admission becomes a failed child without replaying a model call', async () => {
+      const preparedAgain = await b.callRoute('/api/roleplay/branch', {action: 'prepare',
+        kind: 'opening-regenerate', sessionId: source.id, messageId: 'author-opening', seq: original.seq})
+      assert.equal(preparedAgain.status, 200)
+      const createdAgain = await b.callRoute('/api/roleplay/branch', {action: 'create-worldline',
+        operationId: preparedAgain.body.operationId})
+      assert.equal(createdAgain.status, 200)
+      dropBeforeTurn = true
+      const interrupted = await b.callRoute('/api/roleplay/branch', {action: 'generate-opening',
+        operationId: preparedAgain.body.operationId, childSessionId: createdAgain.body.childSessionId})
+      assert.equal(interrupted.status, 500)
+      const status = await b.callRoute('/api/roleplay/branch', {action: 'operation-status',
+        operationId: preparedAgain.body.operationId})
+      assert.equal(status.body.status, 'failed')
+      assert.equal(status.body.failure?.code, 'OPENING_GENERATION_UNKNOWN')
+      assert.equal(catalog.snapshot().worldlines[createdAgain.body.childSessionId]?.status, 'failed')
+      assert.equal(modelCalls, 1, 'the uncertain operation never receives an automatic second model call')
+      dropBeforeTurn = false
+    })
+    await checked('a card switch invalidates both opening preparation and a reserved old anchor', async () => {
+      const preparedOld = await b.callRoute('/api/roleplay/branch', {action:'prepare',
+        kind:'opening-regenerate', sessionId:source.id, messageId:'author-opening', seq:original.seq})
+      assert.equal(preparedOld.status, 200)
+      const createdOld = await b.callRoute('/api/roleplay/branch', {action:'create-worldline',
+        operationId:preparedOld.body.operationId})
+      assert.equal(createdOld.status, 200)
+      const oldPointer = b.table('branch').get(`${source.id}__import-active`)
+      const replacementText = 'replacement source'
+      const replacementHash = createHash('sha256').update(replacementText).digest('hex')
+      b.table('branch').set(`${source.id}__import-active`, {importId:'import-2',
+        normalizedSha256:replacementHash, transactionId:'tx2', coverageSha256:'d'.repeat(64)})
+      b.table('branch').set(`${source.id}__import-import-2`, {schemaVersion:3,
+        importId:'import-2',status:'active',normalizer:'utf8-lf+anydoc-deescape-v2',
+        rawSource:replacementText,normalizedSource:replacementText,rawSha256:replacementHash,
+        normalizedSha256:replacementHash,rawChars:replacementText.length,
+        normalizedChars:replacementText.length,sourceBytes:Buffer.byteLength(replacementText),
+        lineCount:1,lines:[replacementText],lineStarts:[0],assignments:[],
+        activation:{transactionId:'tx2'}})
+      const switchedState = await b.callState(source.id)
+      assert.equal(switchedState.body.programmaticOpeningActionAnchor, null)
+      const noPrepare = await b.callRoute('/api/roleplay/branch', {action:'prepare',
+        kind:'opening-regenerate', sessionId:source.id, messageId:'author-opening', seq:original.seq})
+      assert.equal(noPrepare.status, 400)
+      const noGenerate = await b.callRoute('/api/roleplay/branch', {action:'generate-opening',
+        operationId:preparedOld.body.operationId, childSessionId:createdOld.body.childSessionId})
+      assert.equal(noGenerate.body.failure?.code, 'OPENING_SOURCE_CHANGED')
+      assert.equal(modelCalls, 1)
+      b.table('branch').set(`${source.id}__import-active`, oldPointer)
+    })
+    await checked('a busy native agent keeps the same child and accepts one later admission', async () => {
+      const preparedBusy = await b.callRoute('/api/roleplay/branch', {action:'prepare',
+        kind:'opening-regenerate', sessionId:source.id, messageId:'author-opening', seq:original.seq})
+      const createdBusy = await b.callRoute('/api/roleplay/branch', {action:'create-worldline',
+        operationId:preparedBusy.body.operationId})
+      busyOnce = true
+      const deferred = await b.callRoute('/api/roleplay/branch', {action:'generate-opening',
+        operationId:preparedBusy.body.operationId, childSessionId:createdBusy.body.childSessionId})
+      assert.equal(deferred.status, 202)
+      assert.equal(deferred.body.operationState, 'waiting-agent')
+      assert.equal(deferred.body.requestAccepted, false)
+      const pending = await b.callRoute('/api/roleplay/branch', {action:'operation-status',
+        operationId:preparedBusy.body.operationId})
+      assert.equal(pending.body.status, 'pending')
+      assert.equal(pending.body.requestAccepted, false)
+      assert.equal(modelCalls, 1)
+      const accepted = await b.callRoute('/api/roleplay/branch', {action:'generate-opening',
+        operationId:preparedBusy.body.operationId, childSessionId:createdBusy.body.childSessionId})
+      assert.equal(accepted.body.status, 'completed')
+      assert.equal(accepted.body.childSessionId, createdBusy.body.childSessionId)
+      assert.equal(modelCalls, 2)
+    })
+    await checked('a definite invalidated source fails its reserved child before model admission', async () => {
+      const preparedAgain = await b.callRoute('/api/roleplay/branch', {action: 'prepare',
+        kind: 'opening-regenerate', sessionId: source.id, messageId: 'author-opening', seq: original.seq})
+      assert.equal(preparedAgain.status, 200)
+      const createdAgain = await b.callRoute('/api/roleplay/branch', {action: 'create-worldline',
+        operationId: preparedAgain.body.operationId})
+      assert.equal(createdAgain.status, 200)
+      source.surface.nodes = source.surface.nodes.filter(seq => seq !== original.seq)
+      const rejected = await b.callRoute('/api/roleplay/branch', {action: 'generate-opening',
+        operationId: preparedAgain.body.operationId, childSessionId: createdAgain.body.childSessionId})
+      assert.equal(rejected.status, 409)
+      assert.equal(rejected.body.failure?.code, 'OPENING_SOURCE_CHANGED')
+      assert.equal(catalog.snapshot().worldlines[createdAgain.body.childSessionId]?.status, 'failed')
+      assert.equal(modelCalls, 2, 'source rejection cannot add a model call after the busy retry')
     })
   } finally { b.dispose() }
 }

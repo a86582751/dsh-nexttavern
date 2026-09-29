@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { keyOf, sha256, recordSha256, textOf, provenanceSeq, estimateTokens, durableSeq, stableJson, cloneRecord } from './roleplay-data.js'
 import { eventsOf, surfaceEvents, surfaceEntries, lastSeq, visibleCompactionCheckpoint, roleplayWindowCutStartIndex } from './roleplay-context.js'
 import { fenceCardContent } from './tavern-card.js'
+import { activeOpeningSource } from './roleplay-import.js'
 import { internalTaskSeqs, isInlinePending } from './tavern-tasks.js'
 import type { PreparationDependencies, PreparationSession, ContextWindow, WindowMetadata, MemoryPreparation, PreparationPayload, PreparationWriteState, PreparationSnapshot } from './roleplay-preparation-types.js'
 import type { ContextMessage } from './roleplay-context.js'
@@ -338,11 +339,22 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     // 要求模型输出第一幕（原文或适度润色），而不是跳过开场直接开下一幕
     const storyStarted = surfaceEntries(session).some((entry) => entry.kind === 'assistant')
     if (!storyStarted) {
-      const opening = T.opening.get(keyOf(branchId, 'scene'))
-      if (opening?.text) {
+      const active = activeOpeningSource(T.branch, branchId)
+      const selected = T.branch.get(keyOf(branchId, 'opening-reference')) as
+        {schemaVersion?: number; importId?: string; normalizedSha256?: string;
+          transactionId?: string; renderedText?: string; renderedSha256?: string} | undefined
+      const selectedText = selected?.schemaVersion === 1 && active
+        && selected.importId === active.importId
+        && selected.normalizedSha256 === active.normalizedSha256
+        && selected.transactionId === active.transactionId
+        && typeof selected.renderedText === 'string'
+        && sha256(selected.renderedText) === selected.renderedSha256
+        ? selected.renderedText : null
+      const openingText = selectedText ?? T.opening.get(keyOf(branchId, 'scene'))?.text
+      if (openingText) {
         const regenerateOpening = !!(payload.agent as typeof payload.agent &
           {programmaticGeneration?: {operationId: string} | null}).programmaticGeneration
-        sections.push(`[初始剧情]（分类写入的作者开场剧情）\n${fenceCardContent(opening.text, 'opening')}\n\n【本轮要求】${regenerateOpening
+        sections.push(`[初始剧情]（分类写入的作者开场剧情）\n${fenceCardContent(openingText, 'opening')}\n\n【本轮要求】${regenerateOpening
           ? '以作者原始开场为背景与风格参考，创作一段新的第一幕；不要照抄原文，不要假设玩家已经输入。'
           : '请完整输出作者原始第一幕，不提前续写；'}围栏符号和资料说明不属于正文。`)
       }

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { keyOf, durableSeq, sha256, recordSha256 } from './roleplay-data.js'
 import { eventsOf, surfaceEvents } from './roleplay-context.js'
 import { jsonResponse } from './roleplay-state.js'
+import { activeOpeningSource } from './roleplay-import.js'
 import type { BranchRouteSession, StoredBranchOperation, BranchRouteBody, BranchRouteError, ForkReservation, BranchRoutesDependencies } from './roleplay-branch-routes-types.js'
 
 export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText}: BranchRoutesDependencies) {
@@ -42,7 +43,7 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
   async function openingOutcome(operation: StoredBranchOperation, child: BranchRouteSession | null) {
     const childId = operation.childSessionId ?? operation.reservedChildSessionId ?? null
     if (!operation.groupId || !child) {
-      if (operation.state === 'generating') {
+      if (operation.state === 'generating' || operation.state === 'waiting-agent') {
         const message = '开场生成中的世界线无法恢复；原世界线已保留，请重新创建分支'
         const failure = {schemaVersion: 1 as const, code: 'OPENING_CHILD_LOST', message, at: Date.now()}
         await updateOperation(forkOperationKey(operation.operationId), current => ({...cloneBranchRecord(current),
@@ -70,7 +71,11 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
         childSessionId: child.id, registered: true, requestAccepted: true,
         assistantMessageId: member.assistantMessageId, conversations}
     }
-    if (member?.failed || operation.state === 'generating') {
+    if (operation.state === 'waiting-agent' && member && !member.failed) return {ok: true, status: 'pending',
+      operationState: 'waiting-agent', operationId: operation.operationId,
+      childSessionId: child.id, registered: true, requestAccepted: false,
+      assistantMessageId: null}
+    if (member?.failed || operation.state === 'generating' || operation.state === 'waiting-agent') {
       const active = member?.failed ? null : await ctx.sessionController.resolveAgent(child.id)
       if (!member?.failed && active?.agent?.status === 'running') return {ok: true, status: 'pending',
         operationState: 'generating', operationId: operation.operationId,
@@ -308,24 +313,50 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
                 }
                 const found = await ctx.sessionController.resolveAgent(childId)
                 const agent = found?.agent
+                if (operation.state === 'waiting-agent' && agent?.status !== 'idle') {
+                  return jsonResponse(202, await openingOutcome(operation, child))
+                }
                 if (!agent || agent.status !== 'idle' || !agent.generateProgrammaticAssistant) {
                   return failOpeningBeforeGeneration(operation, agent?.status === 'running'
                     ? 'OPENING_CHILD_BUSY' : 'OPENING_NATIVE_UNAVAILABLE',
                   '新世界线当前无法受理开场生成；原世界线已保留，请稍后重新创建分支')
                 }
                 let registration: Awaited<ReturnType<typeof registerNativeFork>>
-                try { registration = await registerNativeFork({...operation, requestId: operationId}, child) }
-                catch { return failOpeningBeforeGeneration(operation, 'OPENING_REGISTER_FAILED',
-                  '开场分支登记失败；原世界线已保留，请重新创建分支') }
+                if (operation.state === 'waiting-agent' && operation.groupId && operation.ordinal) {
+                  registration = {groupId: operation.groupId, ordinal: operation.ordinal,
+                    total: 0, playerTotal: 0}
+                } else {
+                  try { registration = await registerNativeFork({...operation, requestId: operationId}, child) }
+                  catch { return failOpeningBeforeGeneration(operation, 'OPENING_REGISTER_FAILED',
+                    '开场分支登记失败；原世界线已保留，请重新创建分支') }
+                }
                 if (!registration) return failOpeningBeforeGeneration(operation, 'OPENING_REGISTER_FAILED',
                   '开场分支登记失败；原世界线已保留，请重新创建分支')
+                // Fresh first-turn children receive their static card state in
+                // registerNativeFork/bootstrapChildBranch, not at reservation.
+                const childSource = activeOpeningSource(T.branch, childId)
+                const expectedSource = operation.anchor.openingSource
+                if (!expectedSource || !childSource
+                  || childSource.importId !== expectedSource.importId
+                  || childSource.normalizedSha256 !== expectedSource.normalizedSha256
+                  || childSource.transactionId !== expectedSource.transactionId) {
+                  return failOpeningBeforeGeneration(operation, 'OPENING_SOURCE_CHANGED',
+                    '新世界线的角色卡来源已变化；原世界线已保留，请重新创建分支')
+                }
+                const retainedRegistration = operation.registration ?? registration
                 operation = await updateOperation(key, current => ({...cloneBranchRecord(current),
                   requestId: operationId, childSessionId: childId, groupId: registration.groupId,
-                  ordinal: registration.ordinal, registration, state: 'generating', consumed: true,
+                  ordinal: registration.ordinal, registration: retainedRegistration,
+                  state: 'generating', consumed: true,
                   generatingAt: Date.now()}))
-                await agent.generateProgrammaticAssistant({operationId,
+                const generation = await agent.generateProgrammaticAssistant({operationId,
                   messageId: `opening-regenerate-${operationId}`,
                   instruction: '请根据当前角色、世界设定与规则，直接创作一段全新的开场剧情正文。此轮没有玩家输入；不要假装玩家说过话，也不要解释任务。'})
+                if (generation.kind === 'busy') {
+                  operation = await updateOperation(key, current => ({...cloneBranchRecord(current),
+                    state: 'waiting-agent', requestAccepted: false}))
+                  return jsonResponse(202, await openingOutcome(operation, child))
+                }
                 return jsonResponse(200, await openingOutcome(operation, child))
               })
             }

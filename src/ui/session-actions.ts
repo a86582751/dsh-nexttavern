@@ -8,6 +8,7 @@ interface BranchRequest<A extends string> extends Record<string, unknown> {actio
 interface BranchResult extends SaveReply {
   conversations?: ConversationCatalog
   status?: string
+  operationState?: string
   childSessionId?: string
   assistantMessageId?: string
   registered?: boolean
@@ -294,10 +295,12 @@ export function createRoleplayActions({sessionsService,
   const waitForBranchOperation = async (operationId: string,
        timeoutMs = 15 * 60 * 1000,
        options: {requireRequestAdmission?: boolean;
-       admissionGraceMs?: number} = {}) => {
+       admissionGraceMs?: number;
+       openingRetryChildId?: string} = {}) => {
     const deadline = now() + timeoutMs
     let transientFailures = 0
     let notAcceptedSince: number | null = null
+    let lastOpeningRetryAt = -Infinity
     while (now() < deadline) {
       let result: BranchReply<string> | undefined
       try {
@@ -311,6 +314,24 @@ export function createRoleplayActions({sessionsService,
       }
       if (result?.status === 'completed') return result
       if (result?.status === 'failed') throw new Error(result.error || '分支生成失败')
+      if (options.openingRetryChildId && result?.status === 'pending'
+        && result.operationState === 'waiting-agent'
+        && result.registered === true && result.requestAccepted === false
+        && result.childSessionId === options.openingRetryChildId
+        && now() - lastOpeningRetryAt >= 3000) {
+        // The server has durably registered this exact child, but the Agent did
+        // not accept a model request. Reuse the same operation; never retry an
+        // unknown, generating, or already accepted request.
+        lastOpeningRetryAt = now()
+        try {
+          const retried = await branchRequest({action:'generate-opening',operationId,
+            childSessionId:options.openingRetryChildId})
+          if (retried.status === 'completed') return retried
+        } catch (error) {
+          if (Number.isFinite(errorDetails(error).status)
+            && Number(errorDetails(error).status) < 500) throw error
+        }
+      }
       if (options.requireRequestAdmission && result?.registered === true && result?.requestAccepted === false) {
         if (notAcceptedSince === null) notAcceptedSince = now()
         if (now() - notAcceptedSince >= Number(options.admissionGraceMs ?? 15000)) {
@@ -485,7 +506,8 @@ export function createRoleplayActions({sessionsService,
       }
     }
     try {
-      if (generated?.status !== 'completed') await waitForBranchOperation(prepared.operationId)
+      if (generated?.status !== 'completed') await waitForBranchOperation(prepared.operationId,
+        15 * 60 * 1000,{openingRetryChildId:childId})
       invalidateState(sourceSessionId)
       invalidateState(childId)
       await openSessionPreservingView(childId,sourceSessionId)

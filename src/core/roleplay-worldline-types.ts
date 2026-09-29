@@ -23,6 +23,8 @@ export interface ForkAnchor {
   promptText: string
   recoveryOnly?: boolean
   openingOnly?: boolean
+  openingSource?: {schemaVersion: 1; importId: string; normalizedSha256: string; transactionId: string;
+    renderedText?: string; renderedSha256?: string}
 }
 export interface PlayerTarget {
   sessionId: string

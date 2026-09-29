@@ -1,7 +1,8 @@
 import { keyOf, recordSha256 } from './roleplay-data.js'
 import { eventsOf, canonicalAssistantForTurn, readRoleplayActivity, surfaceEntries } from './roleplay-context.js'
 import { internalTaskSeqs } from './tavern-tasks.js'
-import { importActiveKey } from './roleplay-import.js'
+import { importActiveKey, activeOpeningSource } from './roleplay-import.js'
+import { provenImportPreludeAssistants } from './tavern-task-retirement.js'
 import type { StoryEvent } from './roleplay-worldline-types.js'
 import type { ImportRecord } from './roleplay-import-types.js'
 import type { StateSession, StateDependencies, StatePreparation, FailedTurnGroup } from './roleplay-state-types.js'
@@ -65,7 +66,10 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, c
       const messageId = canonical && assistantMessageId(canonical as StoryEvent)
       if (messageId) assistantActionAnchorsByTurn[String(turn)] = { seq:Number(canonical.seq), messageId }
     }
-    const firstStoryAssistant = surfaceEntries(session).find(entry => entry.kind === 'assistant')
+    const importPrelude = provenImportPreludeAssistants(session,
+      activeOpeningSource(T.branch, session.id))
+    const firstStoryAssistant = surfaceEntries(session).find(entry => entry.kind === 'assistant'
+      && !importPrelude.has(entry.seq))
     const openingEvent = firstStoryAssistant
       ? eventsOf(session).find(event => event.type === 'assistant/message'
         && Number(event.seq) === Number(firstStoryAssistant.seq)) : null
@@ -76,7 +80,8 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, c
     const openingProjection = openingMessageId ? branchGroupsByMessageId[openingMessageId] : null
     const openingGroup = openingProjection?.groupId
       ? T.branch.get(`fork-group-${openingProjection.groupId}`) as
-        {anchor?: {openingOnly?: boolean}; members?: {sessionId?: string; assistantMessageId?: string;
+        {anchor?: {openingOnly?: boolean; openingSource?: {importId?: string;
+          normalizedSha256?: string; transactionId?: string}}; members?: {sessionId?: string; assistantMessageId?: string;
           assistantSeq?: number; deleted?: boolean}[]} | null | undefined : null
     const generatedOpening = openingSource?.kind === 'model' && openingGroup?.anchor?.openingOnly === true
       && openingGroup.members?.some(member => !member.deleted && member.sessionId === session.id
@@ -85,13 +90,21 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, c
       && openingSource.producer === 'dsh-nexttavern' && typeof openingSource.origin === 'string'
       && /^card-opening:[a-zA-Z0-9_-]{1,64}$/.test(openingSource.origin)
       && typeof openingSource.operationId === 'string' && !!openingSource.operationId
+    const activeOpening = activeOpeningSource(T.branch, session.id)
+    const inheritedOpening = generatedOpening ? openingGroup?.anchor?.openingSource : undefined
+    const openingSourceValid = !!activeOpening && (originalOpening
+      ? openingSource?.origin === `card-opening:${activeOpening.importId}`
+      : generatedOpening && inheritedOpening?.importId === activeOpening.importId
+        && inheritedOpening.normalizedSha256 === activeOpening.normalizedSha256
+        && inheritedOpening.transactionId === activeOpening.transactionId)
     const openingTurn = Number(openingEvent?.data?.turn)
     const openingTurnStart = eventsOf(session).findLast(event => event.type === 'turn/start'
       && Number(event.seq) < openingSeq && Number(event.data?.turn) === openingTurn)
     const programmaticOpeningActionAnchor = openingEvent && openingTurnStart
       && Number.isSafeInteger(openingTurn) && openingTurn > 0
-      && (originalOpening || generatedOpening)
-      && !surfaceEntries(session).some(entry => entry.kind === 'assistant' && Number(entry.seq) < openingSeq)
+      && (originalOpening || generatedOpening) && openingSourceValid
+      && !surfaceEntries(session).some(entry => entry.kind === 'assistant'
+        && Number(entry.seq) < openingSeq && !importPrelude.has(entry.seq))
       && !eventsOf(session).some(event => event.type === 'user/message' && event.data?.source?.kind === 'user'
         && Number(event.seq) > Number(openingTurnStart?.seq) && Number(event.seq) <= openingSeq)
       && eventsOf(session).some(event => event.type === 'turn/end' && Number(event.data?.turn) === openingTurn

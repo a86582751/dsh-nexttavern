@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import { retireCompletedTaskContexts, internalTaskSeqs, taskStorySeqs, inlineTaskInstruction } from '../lib/core/tavern-tasks.js'
+import {provenImportPreludeAssistants} from '../lib/core/tavern-task-retirement.js'
 import { selectedStoryHistory } from '../lib/memory/roleplay-memory-engine.js'
 import {taskHash} from '../lib/core/tavern-task-primitives.js'
 {
@@ -29,7 +30,7 @@ import {taskHash} from '../lib/core/tavern-task-primitives.js'
    session.append=(type,data,options)=>{const {id,...stableData}=data;receipts.push({type,data:stableData,options})}
    assert.deepEqual([...taskStorySeqs(session)],scenario.storySeqs)
    assert.deepEqual([...internalTaskSeqs(session)],scenario.internalSeqs)
-   assert.equal(retireCompletedTaskContexts(session,scenario.currentTurn),scenario.retired)
+   assert.equal(retireCompletedTaskContexts(session,scenario.currentTurn),scenario.retired,scenario.kind)
    // Compare historical business receipts under the current wire field names.
    // This test-only normalization is not an old-session migration path.
    const expected=structuredClone(scenario.receipts)
@@ -175,5 +176,37 @@ for(const variant of ['active','failed-import','failed-turn','current','foreign-
  assert.equal(JSON.stringify(t.events.slice(0,count)),raw)
  assert.ok([notes,player,storyPhase,opening].every(e=>t.surface.nodes.includes(e.seq)))
  if(variant==='active'){assert.ok(!t.surface.nodes.includes(begin.seq));assert.equal(t.events.at(-1).data.source.jobKind,'card-import');assert.equal(retireCompletedTaskContexts(t,3),0)}
+ else assert.deepEqual(t.surface.nodes,before)
+}
+// The direct PNG/JSON driver completes stage/finalize inside begin. Its exact
+// result is sufficient only while the same durable import remains active.
+for (const variant of ['active','stale','failed-proof','missing-result']) {
+ const t={id:`direct-${variant}`,events:[],surface:{nodes:[]},append(type,data,options={}){
+  const event={seq:this.events.length,type,data:structuredClone(data),...options};this.events.push(event)
+  if(options.surfaceOp==='append')this.surface.nodes.push(event.seq)
+  if(options.surfaceOp?.op==='replace'){
+   const first=this.surface.nodes.indexOf(options.surfaceOp.startSeq)
+   const last=this.surface.nodes.indexOf(options.surfaceOp.endSeq)
+   this.surface.nodes.splice(first,last-first+1,event.seq)
+  }
+  return event
+ }}
+ const put=(type,data,visible=true)=>t.append(type,data,visible?{surfaceOp:'append'}:{})
+ put('turn/start',{turn:1},false)
+ put('user/message',{source:{kind:'user'},content:[{type:'text',text:'import card'}]})
+ const begin=put('assistant/message',{turn:1,message:{content:[{type:'tool-call',id:'call-1',name:'rp_card_import_begin'}]}})
+ if(variant!=='missing-result')put('tool/result',{message:{source:{kind:'tool',callId:'call-1'},
+  role:'tool',toolCallId:'call-1',content:[{type:'tool-result',toolCallId:'call-1',content:[{type:'text',
+   text:JSON.stringify({ok:true,status:variant==='failed-proof'?'staging':'active',resumed:true,
+    job:{status:'completed'},activatedAt:1000,normalizedSha256:'a'.repeat(64),importId:'card',coverage:1})}]}]}})
+ const prose=put('assistant/message',{turn:1,message:{content:[{type:'text',text:'导入完成'}]}})
+ put('turn/end',{turn:1,reason:{kind:'completed'}},false)
+ const source={importId:'card',normalizedSha256:variant==='stale'?'b'.repeat(64):'a'.repeat(64),opening:'作者开场'}
+ const prelude=provenImportPreludeAssistants(t,source)
+ assert.equal(prelude.has(prose.seq),variant==='active',variant)
+ const before=[...t.surface.nodes]
+ const retired=retireCompletedTaskContexts(t,2,source)
+ assert.equal(retired>0,variant==='active',variant)
+ if(variant==='active')assert.ok(!t.surface.nodes.includes(begin.seq))
  else assert.deepEqual(t.surface.nodes,before)
 }
