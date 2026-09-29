@@ -140,6 +140,7 @@ export interface CardWorkflow {
   kind: string
   generation: string
   execution: string
+  status: string
   source: { sourceFile: string | null }
 }
 export interface ImportResource { id?: string; resourceId?: string; name?: string }
@@ -152,7 +153,8 @@ export interface CardImportDependencies {
   RULE_IMPORT_FIELDS: Record<string, string>
   activeCardWorkflow(session: ImportSession): CardWorkflow | undefined
   assertCardWorkflow(session: ImportSession, record: unknown): void
-  beginCardWorkflow(session: ImportSession, kind: string, sourceFile: string | null, agent?: ImportExec['agent']): Promise<CardWorkflow>
+  beginCardWorkflow(session: ImportSession, kind: string, sourceFile: string | null,
+    agent?: ImportExec['agent'], clientRequestId?: string): Promise<CardWorkflow>
   resumeCardWorkflows(session: ImportSession, agent?: ImportExec['agent'], signal?: AbortSignal): Promise<unknown>
   cardWorkflowKey(id: string): string
   libraryFor(session: ImportSession): { archive(input: { name: string; type: string; bytes: Buffer; source: Record<string, unknown> }): Promise<ImportResource> }

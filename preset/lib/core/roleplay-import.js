@@ -15,6 +15,9 @@ const errorMessage = (error) => error?.message ?? error;
 export function registerRoleplayImports(deps) {
     const { ctx, T, CARD_CLASSIFICATION_GUIDE, activeCardWorkflow, assertCardWorkflow, beginCardWorkflow, resumeCardWorkflows, cardWorkflowKey, libraryFor, resourceName, completeCardWorkflow, ensureBranch, RULE_TEXT_FIELDS, ensureState, simpleTool, sessionOf, RULE_IMPORT_FIELDS, archiveImported, } = deps;
     const importHandlers = new Map();
+    // Only the in-process structured driver can bypass its own outer dispatch.
+    // An external tool call must never wait on the driver that called it.
+    const structuredDriverExecs = new WeakSet();
     const importTool = (name, description, parameters, execute) => {
         importHandlers.set(name, execute);
         return simpleTool(name, description, parameters, execute);
@@ -370,7 +373,7 @@ export function registerRoleplayImports(deps) {
         }
         return staging;
     };
-    ctx.effect(() => ctx.tools.register(importTool('rp_card_import_begin', '开始无损读卡导入。PNG/JSON 由程序编译字段并保留原件，可直接用 use_suggested 建立映射；Markdown/TXT 仍需分页全文审阅。返回 import_id 与来源证明。', {
+    ctx.effect(() => ctx.tools.register(importTool('rp_card_import_begin', '开始无损读卡导入。PNG/JSON 默认由程序完成映射与激活；重试应复用 request_id。显式 merge 和 Markdown/TXT 保留分页审阅与手动 stage/finalize。返回任务及来源证明。', {
         type: 'object',
         properties: {
             source_file: {
@@ -378,6 +381,9 @@ export function registerRoleplayImports(deps) {
             },
             mode: {
                 type: 'string', enum: ['replace', 'merge'], description: '完整新卡默认 replace；仅明确导入补充包时使用 merge'
+            },
+            request_id: {
+                type: 'string', description: '同一 PNG/JSON 导入操作的稳定请求标识；重试原样复用'
             },
         },
         required: ['source_file'],
@@ -389,17 +395,32 @@ export function registerRoleplayImports(deps) {
             return {
                 ok: false, error: 'source_file 不能为空'
             };
+        if (args.request_id !== undefined && typeof args.request_id !== 'string')
+            return { ok: false, error: 'request_id 必须是字符串' };
+        if (args.mode === 'merge' && args.request_id !== undefined)
+            return { ok: false, error: 'merge 手动导入不接受程序任务 request_id' };
         await deps.beforeWrite?.(exec);
-        if (!eventsOf(exec.agent?.session).some(e => e.type === 'subagent/descriptor')) {
+        if (args.mode !== 'merge' && !eventsOf(exec.agent?.session).some(e => e.type === 'subagent/descriptor')) {
             let job;
             try {
-                job = await beginCardWorkflow(session, 'card-import', requestedPath, exec.agent);
+                job = await beginCardWorkflow(session, 'card-import', requestedPath, exec.agent, args.request_id);
             }
             catch (error) {
                 return {
                     ok: false,
                     error: String(error.message)
                 };
+            }
+            if (job.status === 'completed' || job.status === 'failed') {
+                const live = T.branch.get(cardWorkflowKey(job.id));
+                if (job.status === 'failed')
+                    return { ok: false, job: live ?? job,
+                        error: String(live?.error ?? '角色卡任务失败，请从任务列表重试') };
+                const imported = [...T.branch.entries()].map(([, value]) => value)
+                    .find(value => value?.workflowId === job.id && value.status === 'active');
+                if (!imported)
+                    throw new Error('已完成任务缺少 active 来源记录');
+                return { ok: true, ...importSummary(imported), job: live ?? job, resumed: true };
             }
             if (job.execution === 'spawn') {
                 try {
@@ -412,6 +433,27 @@ export function registerRoleplayImports(deps) {
                 return {
                     ok: true, job: T.branch.get(cardWorkflowKey(job.id)), pending: true
                 };
+            }
+            if (job.execution === 'deterministic' && !structuredDriverExecs.has(exec)) {
+                try {
+                    await resumeCardWorkflows(session, exec.agent, exec.signal);
+                }
+                catch (error) {
+                    if (!isInlinePending(error))
+                        throw error;
+                }
+                const live = T.branch.get(cardWorkflowKey(job.id));
+                if (live?.status !== 'completed')
+                    return {
+                        ok: live?.status === 'waiting-main', job: live ?? job,
+                        pending: live?.status === 'waiting-main',
+                        error: live?.status === 'failed' ? String(live.error ?? '程序导入失败') : undefined,
+                    };
+                const imported = [...T.branch.entries()].map(([, value]) => value)
+                    .find(value => value?.workflowId === job.id && value.status === 'active');
+                if (!imported)
+                    throw new Error('程序导入完成但缺少 active 来源记录');
+                return { ok: true, ...importSummary(imported), job: live, resumed: true };
             }
         }
         const workflow = activeCardWorkflow(session);
@@ -1570,6 +1612,7 @@ export function registerRoleplayImports(deps) {
                 throw new Error('角色卡来源在任务期间改变');
         };
         const exec = { agent: { session }, signal };
+        structuredDriverExecs.add(exec);
         const invoke = async (name, args) => {
             const handler = importHandlers.get(name);
             if (!handler)
