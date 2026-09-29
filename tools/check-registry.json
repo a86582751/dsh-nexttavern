@@ -15,6 +15,9 @@
         "plugin-fork*",
         "plugin-owned-controller*",
         "runtime/alpha3/compat/session-controller/*",
+        "runtime/alpha3/compat/agent-loop/*",
+        "runtime/alpha3/compat/llm/*",
+        "runtime/alpha3/compat/session/*",
         "plugin-native-projection*",
         "plugin-owned-protocol*",
         "plugin-thirdparty-scope*",
@@ -74,6 +77,8 @@
       "patterns": [
         "roleplay-import*",
         "roleplay-card-import*",
+        "roleplay-opening-selection*",
+        "roleplay-opening-routes*",
         "tavern-card*",
         "tavern-compat*",
         "manifests/sillytavern-compatibility-p0-*",
@@ -200,6 +205,7 @@
         "bounded-regex*",
         "toast-confirm*",
         "management-panels*",
+        "opening-panel*",
         "panel-state*",
         "reader-status*"
       ]
@@ -326,6 +332,8 @@
         "protected-packages*",
         "bundled-package-bootstrap*",
         "product-assembly*",
+        "native-fork-product-assembly*",
+        "native-fork-host-plan*",
         "test-temp*",
         "tool-resolution*",
         "qwen-*",
@@ -1144,6 +1152,51 @@
       "requires": [
         "compiler"
       ]
+    },
+    {
+      "id": "test:roleplay-opening-selection.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-opening-routes.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:native-fork-host-plan.test.mts",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
       "id": "test:tavern-card.test.mjs",
@@ -4011,6 +4064,24 @@
     },
     {
       "id": "test:plugin-product-assembly.test.mts",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "inputs": [],
+      "cache": false,
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "timeoutMs": 90000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:native-fork-product-assembly.test.mts",
       "action": "test",
       "modules": [
         "operations"

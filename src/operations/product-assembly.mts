@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {createHash} from 'node:crypto'
 import {execFileSync} from 'node:child_process'
+import {createRequire} from 'node:module'
 import {assembleOwnedDependency, regularPackageFiles} from './owned-dependency.mjs'
 import {contained as inside} from './public-transaction.mjs'
 
@@ -25,6 +26,8 @@ interface ProductRecipe {
    * dependency that fails to load on a supported platform.
    */
   bundlePlatforms?: string[]
+  /** Unapplied, exact host replacement payloads; never profile dependencies. */
+  hostForks?: {name: string; version: string; source: string; target: string}[]
 }
 interface Plan {
   artifacts: {id: string; source: string; public?: {path?: string}}[]
@@ -34,6 +37,7 @@ interface Plan {
 interface Metadata {
   name: string
   version: string
+  license?: string
   dependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   bundleDependencies?: string[]
@@ -43,6 +47,104 @@ const json = <T,>(file: string): T => JSON.parse(fs.readFileSync(file, 'utf8')) 
 const save = (file: string, value: unknown) => {
   fs.mkdirSync(path.dirname(file), {recursive: true})
   fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n')
+}
+
+const hostForkNames = ['@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-session',
+  '@deepseek-ai/dsh-agent-loop'] as const
+const safeRelative = (value: string) => typeof value === 'string' && value !== ''
+  && !value.includes('\\') && !value.includes(':') && !value.startsWith('/')
+  && value.split('/').every(part => part !== '' && part !== '.' && part !== '..')
+
+/** Stage a complete, manifest-registered fork tree without activating it. */
+export function stageHostForks(repo: string, packageRoot: string, plan: Plan) {
+  const compilerRequire = createRequire(new URL('../../build-tools/package.json', import.meta.url))
+  const ts = compilerRequire('typescript') as typeof import('../../build-tools/node_modules/typescript/lib/typescript.js')
+  const forkCompilerOptions = {target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022,
+    moduleResolution: ts.ModuleResolutionKind.Bundler, verbatimModuleSyntax: true,
+    newLine: ts.NewLineKind.LineFeed}
+  const recipes = plan.product.hostForks ?? []
+  if (recipes.length !== hostForkNames.length
+    || recipes.some((row, index) => row.name !== hostForkNames[index])) {
+    throw Error('Host fork recipe must name exactly the three rc.2 packages in order')
+  }
+  const registered = new Set(plan.artifacts.map(row => row.source))
+  const rows = recipes.map(row => {
+    if (row.version !== '0.1.7-rc.2' || !safeRelative(row.source)
+      || !safeRelative(row.target) || row.target !== `host-overrides/${row.name}`) {
+      throw Error('Invalid host fork identity or delivery target: ' + row.name)
+    }
+    const source = inside(repo, row.source)
+    if (!fs.statSync(source).isDirectory() || fs.lstatSync(source).isSymbolicLink()) {
+      throw Error('Host fork source is not a regular directory: ' + row.source)
+    }
+    const metadata = json<Metadata>(inside(repo, `${row.source}/package.json`))
+    if (metadata.name !== row.name || metadata.version !== row.version || metadata.license !== 'MIT') {
+      throw Error('Host fork package identity mismatch: ' + row.name)
+    }
+    const files = regularPackageFiles(source).sort()
+    if (!files.length || !files.includes('LICENSE') || !files.includes('LICENSE.upstream')
+      || !files.includes('package.json') || !files.some(file => file === 'ORIGIN.json' || file === 'ORIGIN.md')) {
+      throw Error('Host fork provenance or license is missing: ' + row.name)
+    }
+    if (files.includes('ORIGIN.json')) {
+      const origin = json<{package?: string; upstreamVersion?: string; license?: string; commit?: string}>(
+        path.join(source, 'ORIGIN.json'))
+      if (origin.package !== row.name || origin.upstreamVersion !== row.version
+        || origin.license !== 'MIT' || !/^[0-9a-f]{40}$/.test(origin.commit ?? '')) {
+        throw Error('Host fork origin mismatch: ' + row.name)
+      }
+    } else {
+      const origin = fs.readFileSync(path.join(source, 'ORIGIN.md'), 'utf8')
+      if (!origin.includes('Version: ' + row.version) || !origin.includes('License: MIT')
+        || !/^Commit: [0-9a-f]{40}$/m.test(origin)) throw Error('Host fork origin mismatch: ' + row.name)
+    }
+    for (const file of files) {
+      if (!safeRelative(file) || !registered.has(`${row.source}/${file}`)
+        || file.startsWith('node_modules/') || file.startsWith('.git/')) {
+        throw Error('Unregistered host fork member: ' + row.name + '/' + file)
+      }
+      if (fs.lstatSync(path.join(source, file)).isSymbolicLink()) {
+        throw Error('Symbolic link in host fork: ' + row.name + '/' + file)
+      }
+      if (file.startsWith('lib/') && /\.[cm]?js$/.test(file)) {
+        const sourceFile = file.replace(/^lib\//, 'src/').replace(/\.mjs$/, '.mts')
+          .replace(/\.cjs$/, '.cts').replace(/\.js$/, '.ts')
+        if (!files.includes(sourceFile)) throw Error('Host fork generated JavaScript has no source: ' + file)
+        const banner = `// Generated from ${row.source}/${sourceFile}; edit the TypeScript source.\n`
+        if (!fs.readFileSync(path.join(source, file), 'utf8').startsWith(banner)) {
+          throw Error('Host fork generated JavaScript is stale or unverified: ' + file)
+        }
+        const body = fs.readFileSync(path.join(source, file), 'utf8')
+        const expected = ts.transpileModule(fs.readFileSync(path.join(source, sourceFile), 'utf8'), {
+          fileName: path.join(source, sourceFile), compilerOptions: forkCompilerOptions,
+        }).outputText.replace(/\r\n/g, '\n')
+        if (body.slice(banner.length).replace(/\r\n/g, '\n') !== expected) {
+          throw Error('Host fork generated JavaScript differs from its TypeScript source: ' + file)
+        }
+        const imports = body.matchAll(/(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\()\s*['"](\.[^'"]+)['"]/g)
+        for (const match of imports) {
+          const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), match[1]!))
+          if (!safeRelative(target) || !files.includes(target)) {
+            throw Error(`Host fork relative import is missing or escapes its tree: ${file} -> ${match[1]}`)
+          }
+        }
+      }
+    }
+    return {row, source, files}
+  })
+  return rows.map(({row, source, files}) => {
+    const destination = inside(packageRoot, row.target)
+    if (fs.existsSync(destination)) throw Error('Host fork destination already exists: ' + row.target)
+    const inventory = files.map(file => {
+      const from = path.join(source, file)
+      const to = inside(destination, file)
+      fs.mkdirSync(path.dirname(to), {recursive: true})
+      fs.copyFileSync(from, to)
+      return {path: file, sha256: createHash('sha256').update(fs.readFileSync(to)).digest('hex')}
+    })
+    return {name: row.name, version: row.version, path: row.target,
+      status: 'unapplied-host-override' as const, files: inventory}
+  })
 }
 
 /**
@@ -296,8 +398,9 @@ export function assembleProduct(options: {
       files: regularPackageFiles(directory).map(file => ({path: file,
         sha256: createHash('sha256').update(fs.readFileSync(path.join(directory, file))).digest('hex')}))}
   })
+  const hostForks = stageHostForks(repo, packageRoot, plan)
   const inventory = {schemaVersion: 1, productVersion: metadata.version,
-    packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles}
+    packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles, hostForks}
   const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
     .map(item => ({package: row.name, ...item})))
   save(path.join(packageRoot, 'package.json'), metadata)

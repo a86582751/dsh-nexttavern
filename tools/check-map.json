@@ -1,6 +1,346 @@
 {
   "artifacts": [
     {
+      "id": "compat-session-fork-ts",
+      "source": "development/session/src/fork.ts"
+    },
+    {
+      "id": "compat-session-fork-js",
+      "source": "development/session/lib/fork.js"
+    },
+    {
+      "id": "compat-session-index-ts",
+      "source": "development/session/src/index.ts"
+    },
+    {
+      "id": "compat-session-index-js",
+      "source": "development/session/lib/index.js"
+    },
+    {
+      "id": "compat-session-invariant-ts",
+      "source": "development/session/src/invariant.ts"
+    },
+    {
+      "id": "compat-session-invariant-js",
+      "source": "development/session/lib/invariant.js"
+    },
+    {
+      "id": "compat-session-known-event-types-ts",
+      "source": "development/session/src/known-event-types.ts"
+    },
+    {
+      "id": "compat-session-known-event-types-js",
+      "source": "development/session/lib/known-event-types.js"
+    },
+    {
+      "id": "compat-session-preparation-ts",
+      "source": "development/session/src/preparation.ts"
+    },
+    {
+      "id": "compat-session-preparation-js",
+      "source": "development/session/lib/preparation.js"
+    },
+    {
+      "id": "compat-session-repair-ts",
+      "source": "development/session/src/repair.ts"
+    },
+    {
+      "id": "compat-session-repair-js",
+      "source": "development/session/lib/repair.js"
+    },
+    {
+      "id": "compat-session-request-header-ts",
+      "source": "development/session/src/request-header.ts"
+    },
+    {
+      "id": "compat-session-request-header-js",
+      "source": "development/session/lib/request-header.js"
+    },
+    {
+      "id": "compat-session-seq-ranges-ts",
+      "source": "development/session/src/seq-ranges.ts"
+    },
+    {
+      "id": "compat-session-seq-ranges-js",
+      "source": "development/session/lib/seq-ranges.js"
+    },
+    {
+      "id": "compat-session-surface-ts",
+      "source": "development/session/src/surface.ts"
+    },
+    {
+      "id": "compat-session-surface-js",
+      "source": "development/session/lib/surface.js"
+    },
+    {
+      "id": "compat-session-tool-history-ts",
+      "source": "development/session/src/tool-history.ts"
+    },
+    {
+      "id": "compat-session-tool-history-js",
+      "source": "development/session/lib/tool-history.js"
+    },
+    {
+      "id": "compat-session-types-ts",
+      "source": "development/session/src/types.ts"
+    },
+    {
+      "id": "compat-session-types-js",
+      "source": "development/session/lib/types.js"
+    },
+    {
+      "id": "compat-session-package-json",
+      "source": "development/session/package.json"
+    },
+    {
+      "id": "compat-session-origin-json",
+      "source": "development/session/ORIGIN.json"
+    },
+    {
+      "id": "compat-session-license",
+      "source": "development/session/LICENSE"
+    },
+    {
+      "id": "compat-session-license-upstream",
+      "source": "development/session/LICENSE.upstream"
+    },
+    {
+      "id": "compat-session-notice",
+      "source": "development/session/NOTICE"
+    },
+    {
+      "id": "compat-llm-adapter-failure-ts",
+      "source": "development/llm/src/adapter-failure.ts"
+    },
+    {
+      "id": "compat-llm-adapter-failure-js",
+      "source": "development/llm/lib/adapter-failure.js"
+    },
+    {
+      "id": "compat-llm-api-key-ts",
+      "source": "development/llm/src/api-key.ts"
+    },
+    {
+      "id": "compat-llm-api-key-js",
+      "source": "development/llm/lib/api-key.js"
+    },
+    {
+      "id": "compat-llm-assembler-ts",
+      "source": "development/llm/src/assembler.ts"
+    },
+    {
+      "id": "compat-llm-assembler-js",
+      "source": "development/llm/lib/assembler.js"
+    },
+    {
+      "id": "compat-llm-assistant-stream-ts",
+      "source": "development/llm/src/assistant-stream.ts"
+    },
+    {
+      "id": "compat-llm-assistant-stream-js",
+      "source": "development/llm/lib/assistant-stream.js"
+    },
+    {
+      "id": "compat-llm-attribution-ts",
+      "source": "development/llm/src/attribution.ts"
+    },
+    {
+      "id": "compat-llm-attribution-js",
+      "source": "development/llm/lib/attribution.js"
+    },
+    {
+      "id": "compat-llm-brand-ts",
+      "source": "development/llm/src/brand.ts"
+    },
+    {
+      "id": "compat-llm-brand-js",
+      "source": "development/llm/lib/brand.js"
+    },
+    {
+      "id": "compat-llm-call-config-ts",
+      "source": "development/llm/src/call-config.ts"
+    },
+    {
+      "id": "compat-llm-call-config-js",
+      "source": "development/llm/lib/call-config.js"
+    },
+    {
+      "id": "compat-llm-content-ts",
+      "source": "development/llm/src/content.ts"
+    },
+    {
+      "id": "compat-llm-content-js",
+      "source": "development/llm/lib/content.js"
+    },
+    {
+      "id": "compat-llm-error-ts",
+      "source": "development/llm/src/error.ts"
+    },
+    {
+      "id": "compat-llm-error-js",
+      "source": "development/llm/lib/error.js"
+    },
+    {
+      "id": "compat-llm-index-ts",
+      "source": "development/llm/src/index.ts"
+    },
+    {
+      "id": "compat-llm-index-js",
+      "source": "development/llm/lib/index.js"
+    },
+    {
+      "id": "compat-llm-invariant-ts",
+      "source": "development/llm/src/invariant.ts"
+    },
+    {
+      "id": "compat-llm-invariant-js",
+      "source": "development/llm/lib/invariant.js"
+    },
+    {
+      "id": "compat-llm-message-ts",
+      "source": "development/llm/src/message.ts"
+    },
+    {
+      "id": "compat-llm-message-js",
+      "source": "development/llm/lib/message.js"
+    },
+    {
+      "id": "compat-llm-retry-policy-ts",
+      "source": "development/llm/src/retry-policy.ts"
+    },
+    {
+      "id": "compat-llm-retry-policy-js",
+      "source": "development/llm/lib/retry-policy.js"
+    },
+    {
+      "id": "compat-llm-types-ts",
+      "source": "development/llm/src/types.ts"
+    },
+    {
+      "id": "compat-llm-types-js",
+      "source": "development/llm/lib/types.js"
+    },
+    {
+      "id": "compat-llm-package-json",
+      "source": "development/llm/package.json"
+    },
+    {
+      "id": "compat-llm-origin-json",
+      "source": "development/llm/ORIGIN.json"
+    },
+    {
+      "id": "compat-llm-license",
+      "source": "development/llm/LICENSE"
+    },
+    {
+      "id": "compat-llm-license-upstream",
+      "source": "development/llm/LICENSE.upstream"
+    },
+    {
+      "id": "compat-llm-notice",
+      "source": "development/llm/NOTICE"
+    },
+    {
+      "id": "compat-agent-loop-agent-ts",
+      "source": "development/agent-loop/src/agent.ts"
+    },
+    {
+      "id": "compat-agent-loop-agent-js",
+      "source": "development/agent-loop/lib/agent.js"
+    },
+    {
+      "id": "compat-agent-loop-assistant-stream-ts",
+      "source": "development/agent-loop/src/assistant-stream.ts"
+    },
+    {
+      "id": "compat-agent-loop-assistant-stream-js",
+      "source": "development/agent-loop/lib/assistant-stream.js"
+    },
+    {
+      "id": "compat-agent-loop-constants-ts",
+      "source": "development/agent-loop/src/constants.ts"
+    },
+    {
+      "id": "compat-agent-loop-constants-js",
+      "source": "development/agent-loop/lib/constants.js"
+    },
+    {
+      "id": "compat-agent-loop-inbox-ts",
+      "source": "development/agent-loop/src/inbox.ts"
+    },
+    {
+      "id": "compat-agent-loop-inbox-js",
+      "source": "development/agent-loop/lib/inbox.js"
+    },
+    {
+      "id": "compat-agent-loop-index-ts",
+      "source": "development/agent-loop/src/index.ts"
+    },
+    {
+      "id": "compat-agent-loop-index-js",
+      "source": "development/agent-loop/lib/index.js"
+    },
+    {
+      "id": "compat-agent-loop-invariant-ts",
+      "source": "development/agent-loop/src/invariant.ts"
+    },
+    {
+      "id": "compat-agent-loop-invariant-js",
+      "source": "development/agent-loop/lib/invariant.js"
+    },
+    {
+      "id": "compat-agent-loop-runtime-context-ts",
+      "source": "development/agent-loop/src/runtime-context.ts"
+    },
+    {
+      "id": "compat-agent-loop-runtime-context-js",
+      "source": "development/agent-loop/lib/runtime-context.js"
+    },
+    {
+      "id": "compat-agent-loop-tool-calls-ts",
+      "source": "development/agent-loop/src/tool-calls.ts"
+    },
+    {
+      "id": "compat-agent-loop-tool-calls-js",
+      "source": "development/agent-loop/lib/tool-calls.js"
+    },
+    {
+      "id": "compat-agent-loop-package-json",
+      "source": "development/agent-loop/package.json"
+    },
+    {
+      "id": "compat-agent-loop-origin-md",
+      "source": "development/agent-loop/ORIGIN.md"
+    },
+    {
+      "id": "compat-agent-loop-license",
+      "source": "development/agent-loop/LICENSE"
+    },
+    {
+      "id": "compat-agent-loop-license-upstream",
+      "source": "development/agent-loop/LICENSE.upstream"
+    },
+    {
+      "id": "compat-agent-loop-readme-md",
+      "source": "development/agent-loop/README.md"
+    },
+    {
+      "id": "compat-agent-loop-readme-zh-md",
+      "source": "development/agent-loop/README.zh.md"
+    },
+    {
+      "id": "compat-agent-loop-readme-i18n-yaml",
+      "source": "development/agent-loop/README.i18n.yaml"
+    },
+    {
+      "id": "compat-agent-loop-tsconfig-json",
+      "source": "development/agent-loop/tsconfig.json"
+    },
+    {
+      "id": "compat-agent-loop-tsdown-config-ts",
+      "source": "development/agent-loop/tsdown.config.ts"
+    },
+    {
       "id": "public-windows-setup-guide",
       "source": "INSTALL-WINDOWS.md"
     },
@@ -425,6 +765,14 @@
       "source": "lib/ui/management-panels.js"
     },
     {
+      "id": "opening-panel-typescript",
+      "source": "src/ui/opening-panel.ts"
+    },
+    {
+      "id": "opening-panel",
+      "source": "lib/ui/opening-panel.js"
+    },
+    {
       "id": "user-info-typescript",
       "source": "src/ui/user-info.ts"
     },
@@ -783,6 +1131,22 @@
     {
       "id": "roleplay-card-workflow",
       "source": "lib/core/roleplay-card-workflow.js"
+    },
+    {
+      "id": "roleplay-opening-selection-typescript",
+      "source": "src/core/roleplay-opening-selection.ts"
+    },
+    {
+      "id": "roleplay-opening-selection",
+      "source": "lib/core/roleplay-opening-selection.js"
+    },
+    {
+      "id": "roleplay-opening-routes-typescript",
+      "source": "src/core/roleplay-opening-routes.ts"
+    },
+    {
+      "id": "roleplay-opening-routes",
+      "source": "lib/core/roleplay-opening-routes.js"
     },
     {
       "id": "roleplay-resource-bridge-types-typescript",
@@ -1339,6 +1703,14 @@
     {
       "id": "tavern-compat-server-evaluator-test",
       "source": "tests/tavern-compat-server-evaluator.mjs"
+    },
+    {
+      "id": "tavern-compat-loader-host-test",
+      "source": "tests/tavern-compat-loader-host.mjs"
+    },
+    {
+      "id": "tavern-compat-loader-host-contract",
+      "source": "tests/tavern-compat-loader-host.test.mjs"
     },
     {
       "id": "tavern-compat-host-assembly-test",
@@ -4301,6 +4673,501 @@
   ],
   "builds": [
     {
+      "id": "compat-session-fork-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-fork-js",
+      "entry": "development/session/src/fork.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/fork.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-index-js",
+      "entry": "development/session/src/index.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/index.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-invariant-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-invariant-js",
+      "entry": "development/session/src/invariant.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/invariant.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-known-event-types-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-known-event-types-js",
+      "entry": "development/session/src/known-event-types.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/known-event-types.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-preparation-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-preparation-js",
+      "entry": "development/session/src/preparation.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/preparation.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-repair-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-repair-js",
+      "entry": "development/session/src/repair.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/repair.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-request-header-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-request-header-js",
+      "entry": "development/session/src/request-header.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/request-header.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-seq-ranges-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-seq-ranges-js",
+      "entry": "development/session/src/seq-ranges.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/seq-ranges.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-surface-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-surface-js",
+      "entry": "development/session/src/surface.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/surface.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-tool-history-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-tool-history-js",
+      "entry": "development/session/src/tool-history.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/tool-history.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-types-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-types-js",
+      "entry": "development/session/src/types.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/types.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-adapter-failure-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-adapter-failure-js",
+      "entry": "development/llm/src/adapter-failure.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/adapter-failure.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-api-key-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-api-key-js",
+      "entry": "development/llm/src/api-key.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/api-key.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-assembler-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-assembler-js",
+      "entry": "development/llm/src/assembler.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/assembler.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-assistant-stream-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-assistant-stream-js",
+      "entry": "development/llm/src/assistant-stream.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/assistant-stream.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-attribution-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-attribution-js",
+      "entry": "development/llm/src/attribution.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/attribution.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-brand-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-brand-js",
+      "entry": "development/llm/src/brand.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/brand.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-call-config-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-call-config-js",
+      "entry": "development/llm/src/call-config.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/call-config.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-content-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-content-js",
+      "entry": "development/llm/src/content.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/content.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-error-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-error-js",
+      "entry": "development/llm/src/error.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/error.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-index-js",
+      "entry": "development/llm/src/index.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/index.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-invariant-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-invariant-js",
+      "entry": "development/llm/src/invariant.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/invariant.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-message-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-message-js",
+      "entry": "development/llm/src/message.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/message.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-retry-policy-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-retry-policy-js",
+      "entry": "development/llm/src/retry-policy.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/retry-policy.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-llm-types-build",
+      "kind": "typescript-module",
+      "artifact": "compat-llm-types-js",
+      "entry": "development/llm/src/types.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/llm/src/types.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-agent-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-agent-js",
+      "entry": "development/agent-loop/src/agent.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/agent.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-assistant-stream-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-assistant-stream-js",
+      "entry": "development/agent-loop/src/assistant-stream.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/assistant-stream.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-constants-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-constants-js",
+      "entry": "development/agent-loop/src/constants.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/constants.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-inbox-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-inbox-js",
+      "entry": "development/agent-loop/src/inbox.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/inbox.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-index-js",
+      "entry": "development/agent-loop/src/index.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/index.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-invariant-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-invariant-js",
+      "entry": "development/agent-loop/src/invariant.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/invariant.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-runtime-context-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-runtime-context-js",
+      "entry": "development/agent-loop/src/runtime-context.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/runtime-context.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-tool-calls-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-tool-calls-js",
+      "entry": "development/agent-loop/src/tool-calls.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/tool-calls.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
       "id": "skin-nexttavern-index-js-build",
       "kind": "typescript-module",
       "artifact": "skin-nexttavern-index",
@@ -5003,6 +5870,7 @@
         "src/ui/client.ts",
         "src/ui/telemetry-panels.ts",
         "src/ui/management-panels.ts",
+        "src/ui/opening-panel.ts",
         "src/ui/user-info.ts",
         "src/ui/author-panels.ts",
         "src/ui/activity-view.ts",
@@ -5092,8 +5960,23 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "src/ui/management-panels.ts",
+        "src/ui/opening-panel.ts",
         "src/ui/panel-state.ts",
         "src/ui/settings-projection.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "opening-panel-js",
+      "kind": "typescript-module",
+      "artifact": "opening-panel",
+      "entry": "src/ui/opening-panel.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/opening-panel.ts",
         "build-tools/tsconfig.json",
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
@@ -6640,6 +7523,44 @@
         "src/memory/memory-provenance.ts",
         "src/core/tavern-task-retirement.ts",
         "src/core/card-adaptation-context.ts"
+      ]
+    },
+    {
+      "id": "roleplay-opening-selection-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-opening-selection",
+      "entry": "src/core/roleplay-opening-selection.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "roleplay-opening-routes-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-opening-routes",
+      "entry": "src/core/roleplay-opening-routes.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-opening-routes.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-state.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     },
     {
@@ -8246,6 +9167,8 @@
       "inputs": [
         "src/core/roleplay-core.ts",
         "src/core/roleplay-core-types.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-opening-routes.ts",
         "build-tools/tsconfig.json",
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",

@@ -261,7 +261,7 @@ export class ReactLoopAgent implements Agent {
           return { kind: 'unknown', reason: 'operation id belongs to a different message' }
         }
         const closed = this.session.snapshotEvents().some(candidate => candidate.type === 'turn/end'
-          && candidate.data.turn === event.data.turn)
+          && candidate.data.turn === event.data.turn && candidate.data.reason.kind === 'completed')
         if (!closed) return { kind: 'unknown', reason: 'assistant turn has no closing boundary' }
         try {
           if (!await this.ctx.sessions.flush(this.session)) {
@@ -328,10 +328,12 @@ export class ReactLoopAgent implements Agent {
       const messageExists = events.some(event => event.type === 'assistant/message'
         && event.data.turn === turn && event.data.step === step)
       if (stepStarted && !stepEnded) this.session.append('step/end', { turn, step })
+      const stepClosed = this.session.snapshotEvents().some(event => event.type === 'step/end'
+        && event.data.turn === turn && event.data.step === step)
       if (!events.some(event => event.type === 'turn/end' && event.data.turn === turn)) {
         this.session.append('turn/end', {
           turn,
-          reason: messageExists
+          reason: messageExists && stepClosed
             ? { kind: 'completed' }
             : { kind: 'error', error: { code: 'UNKNOWN', message: 'programmatic assistant append failed' } },
         })

@@ -1022,7 +1022,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
           || source.producer !== 'dsh-nexttavern' || source.origin !== `card-opening:${intent.source.importId}`
           || message?.content?.length !== 1 || block?.type !== 'text' || block.text !== intent.renderedText
           || !Number.isSafeInteger(turn) || !eventsOf(session).some(item => item.type === 'turn/end'
-            && item.data?.turn === turn)) return {status:'unknown' as const}
+            && item.data?.turn === turn && item.data?.reason?.kind === 'completed')) {
+          return {status:'unknown' as const}
+        }
         if (!await ctx.sessions.flush(session)) return {status:'unknown' as const}
         return {status:'committed' as const,turn:Number(turn)}
       } catch { return {status:'unknown' as const} }
