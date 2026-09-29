@@ -20,6 +20,11 @@ export interface OpeningSource {
   readonly pointer: ImportPointer
 }
 export interface OpeningCatalog { readonly source: OpeningSource; readonly candidates: readonly TavernOpeningCandidate[] }
+export type OpeningRejectionCode = 'PROGRAMMATIC_IDENTITY_CONFLICT' | 'PROGRAMMATIC_OPEN_TURN'
+  | 'PROGRAMMATIC_MISSING_SYSTEM_HEAD'
+const isRejectionCode = (value: unknown): value is OpeningRejectionCode =>
+  value === 'PROGRAMMATIC_IDENTITY_CONFLICT' || value === 'PROGRAMMATIC_OPEN_TURN'
+  || value === 'PROGRAMMATIC_MISSING_SYSTEM_HEAD'
 export interface OpeningIntent {
   readonly schemaVersion: 2
   readonly sessionId: string
@@ -34,6 +39,8 @@ export interface OpeningIntent {
   readonly revision: number
   readonly status: 'pending' | 'busy' | 'unknown' | 'completed'
   readonly committedTurn?: number
+  /** Optional in schema v2: the last no-write refusal, never a durability or retry proof. */
+  readonly rejectionCode?: OpeningRejectionCode
 }
 export interface OpeningTable {
   get(key: string): unknown
@@ -44,6 +51,7 @@ export interface OpeningAppendResult {
   /** committed means the native Agent acknowledged a durable flush. */
   readonly turn?: number
   readonly messageId?: string
+  readonly code?: OpeningRejectionCode
 }
 export interface OpeningLookupResult {
   /** absent requires a durable log/flush check; unknown must not start another append. */
@@ -107,7 +115,8 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   }
   const complete = async (key: string, intent: OpeningIntent, turn: number): Promise<OpeningIntent> => {
     if (!Number.isSafeInteger(turn) || turn < 0) throw new Error('原生开场缺少 durable turn')
-    const next: OpeningIntent = {...intent, status:'completed', revision:intent.revision + 1, committedTurn:turn}
+    const {rejectionCode: _previousRejection, ...retained} = intent
+    const next: OpeningIntent = {...retained, status:'completed', revision:intent.revision + 1, committedTurn:turn}
     await deps.table.put(key, next)
     return next
   }
@@ -120,7 +129,11 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       if (result.messageId !== intent.messageId) throw new Error('原生开场 messageId 回执不匹配')
       return complete(key, intent, result.turn!)
     }
-    const next: OpeningIntent = {...intent, status:result.kind, revision:intent.revision + 1}
+    // A newer busy/uncertain receipt supersedes the previous refusal. Only the
+    // three native no-write codes may persist; arbitrary adapter text may not.
+    const {rejectionCode: _previousRejection, ...retained} = intent
+    const next: OpeningIntent = {...retained, status:result.kind, revision:intent.revision + 1,
+      ...(result.kind === 'unknown' && isRejectionCode(result.code) ? {rejectionCode:result.code} : {})}
     await deps.table.put(key, next)
     return {status:'busy', intent:next}
   }
@@ -175,6 +188,8 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       if (intent.status === 'completed') return intent
       const found = await deps.findOpeningByOperationId(intent)
       if (!current(intent.source)) return null
+      // A log lookup confirms durability only. Keep the latest refusal as
+      // historical diagnosis; it must not stand in for a fresh admission check.
       return found.status === 'committed' ? complete(key, intent, found.turn!) : intent
     })
   return {readCatalog, readIntent, select, recover}

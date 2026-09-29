@@ -203,7 +203,8 @@ export class ReactLoopAgent {
                 if (message.id !== input.messageId || message.source.producer !== input.source.producer
                     || message.source.origin !== input.source.origin || message.content.length !== 1
                     || message.content[0]?.type !== 'text' || message.content[0].text !== input.text) {
-                    return { kind: 'unknown', reason: 'operation id belongs to a different message' };
+                    return { kind: 'unknown', reason: 'operation id belongs to a different message',
+                        code: 'PROGRAMMATIC_IDENTITY_CONFLICT' };
                 }
                 const closed = this.session.snapshotEvents().some(candidate => candidate.type === 'turn/end'
                     && candidate.data.turn === event.data.turn && candidate.data.reason.kind === 'completed');
@@ -223,17 +224,19 @@ export class ReactLoopAgent {
                 return { kind: 'unknown', reason: 'earlier append stopped before its message boundary' };
             }
             if (assistantEvents.some(event => event.data.message.id === input.messageId)) {
-                return { kind: 'unknown', reason: 'message id already belongs to another operation' };
+                return { kind: 'unknown', reason: 'message id already belongs to another operation',
+                    code: 'PROGRAMMATIC_IDENTITY_CONFLICT' };
             }
             if (this.loopCtx.sessionProjections.stateOf(this.session, 'turnBoundary')?.openTurnStartSeq != null) {
-                return { kind: 'unknown', reason: 'session already has an open turn' };
+                return { kind: 'unknown', reason: 'session already has an open turn', code: 'PROGRAMMATIC_OPEN_TURN' };
             }
             // Assistant-only transcripts are readable, but a later system prompt
             // cannot acquire their protected head. Refuse a new turn before writing
             // behind that history; exact committed retries above remain read-only.
             const surfaceHead = this.session.surface.nodes[0];
             if (surfaceHead !== undefined && this.session.eventAt(surfaceHead)?.type !== 'system/message') {
-                return { kind: 'unknown', reason: 'session surface has no protected system prompt head' };
+                return { kind: 'unknown', reason: 'session surface has no protected system prompt head',
+                    code: 'PROGRAMMATIC_MISSING_SYSTEM_HEAD' };
             }
             const phase = this.phase;
             if (phase.kind !== 'maintenance')

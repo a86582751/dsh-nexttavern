@@ -78,7 +78,7 @@ import { createRoleplayInheritance } from './roleplay-inheritance.js'
 import { createResourceBridge } from './roleplay-resource-bridge.js'
 import { createCardWorkflows } from './roleplay-card-workflow.js'
 import {createRoleplayOpeningSelection} from './roleplay-opening-selection.js'
-import type {OpeningIntent} from './roleplay-opening-selection.js'
+import type {OpeningIntent, OpeningRejectionCode} from './roleplay-opening-selection.js'
 import {registerOpeningRoutes} from './roleplay-opening-routes.js'
 import { createRoleplayService } from './roleplay-service.js'
 import {createSessionHistory, ensureSessionHistory} from './session-history.js'
@@ -995,7 +995,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const agent = found?.agent as (CoreAgent & {commitProgrammaticAssistant?: (input: {
         operationId:string; messageId:string; text:string; source:{kind:'programmatic'; schemaVersion:1;
           producer:string; origin:string; operationId:string}
-      }) => Promise<{kind:'committed';turn:number;messageId:string} | {kind:'busy'} | {kind:'unknown';reason:string}>}) | undefined
+      }) => Promise<{kind:'committed';turn:number;messageId:string} | {kind:'busy'}
+        | {kind:'unknown';reason:string;code?:OpeningRejectionCode}>}) | undefined
       if (!agent?.commitProgrammaticAssistant) throw new Error('原生开场提交能力未就绪')
       return agent.commitProgrammaticAssistant({operationId:request.operationId,messageId:request.messageId,
         text:request.text,source:{kind:'programmatic',schemaVersion:1,producer:'dsh-nexttavern',

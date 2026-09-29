@@ -1,4 +1,5 @@
 import type * as ReactAPI from 'react'
+import type {OpeningRejectionCode} from '../core/roleplay-opening-selection.js'
 
 interface OpeningCandidate {
   index: number
@@ -14,12 +15,23 @@ interface OpeningReply {
   legacyDisplayed: boolean
   priorOpening: boolean
   candidates: OpeningCandidate[]
-  selection: {status:string;index:number;operationId:string;committedTurn?:number} | null
+  selection: {status:string;index:number;operationId:string;committedTurn?:number;
+    rejectionCode?:OpeningRejectionCode} | null
 }
 interface OpeningPanelDependencies {
   React: typeof ReactAPI
   jsonFetch<T>(url:string,init?:RequestInit):Promise<T>
   toast(text:string):void
+}
+
+const rejectionMessage = (code: OpeningRejectionCode | undefined): string | null => {
+  if (code === 'PROGRAMMATIC_IDENTITY_CONFLICT')
+    return '上次提交被拒绝：这次开场的操作标识与会话中的消息不一致。重复选择无法解决，请先核对状态。'
+  if (code === 'PROGRAMMATIC_MISSING_SYSTEM_HEAD')
+    return '上次提交被拒绝：当前会话的旧消息结构不支持追加开场。重复选择无法解决，请先核对状态。'
+  if (code === 'PROGRAMMATIC_OPEN_TURN')
+    return '上次提交被拒绝：会话当时还有未结束的回合。请等待回合结束并核对状态，再重试同一次选择。'
+  return null
 }
 
 export function createOpeningPanel({React,jsonFetch,toast}:OpeningPanelDependencies) {
@@ -52,16 +64,21 @@ export function createOpeningPanel({React,jsonFetch,toast}:OpeningPanelDependenc
     if (!data) return error ? React.createElement('p',{className:'dsh-rp-error',role:'alert'},error) : null
     const selected = data.candidates.find(candidate => candidate.index === index)
     const fixed = data.selection
+    const diagnosis = fixed?.status === 'unknown' ? rejectionMessage(fixed.rejectionCode) : null
+    const blockedRetry = fixed?.status === 'unknown' &&
+      (fixed.rejectionCode === 'PROGRAMMATIC_IDENTITY_CONFLICT'
+        || fixed.rejectionCode === 'PROGRAMMATIC_MISSING_SYSTEM_HEAD')
     const choose = async () => {
-      if (!selected || busy || fixed && fixed.index !== selected.index) return
+      if (!selected || busy || blockedRetry || fixed && fixed.index !== selected.index) return
       setBusy(true)
       try {
         const operationId = fixed?.operationId ?? crypto.randomUUID()
-        const reply = await jsonFetch<{selection:{status:string}}>(
+        const reply = await jsonFetch<{selection:{status:string;rejectionCode?:OpeningRejectionCode}}>(
           '/api/roleplay/openings',{method:'POST',headers:{'content-type':'application/json'},
             body:JSON.stringify({sessionId,action:'select',index:selected.index,
               expectedRenderedSha256:selected.renderedSha256,operationId})})
-        toast(reply.selection.status === 'completed' ? '开场已写入原生会话' : '开场提交待确认，请核对状态')
+        toast(reply.selection.status === 'completed' ? '开场已写入原生会话'
+          : rejectionMessage(reply.selection.rejectionCode) ?? '开场提交待确认，请核对状态')
         await load(true)
       } catch (cause) {
         toast('开场选择失败：' + String((cause as Error).message ?? cause))
@@ -83,8 +100,8 @@ export function createOpeningPanel({React,jsonFetch,toast}:OpeningPanelDependenc
         React.createElement('button',{className:'dsh-rp-btn',onClick:() => void load(true)},'刷新')),
       React.createElement('p',{className:'dsh-rp-muted'},
         fixed?.status === 'completed' ? `已写入第 ${fixed.committedTurn} 回合` :
-          fixed ? '开场提交待确认；使用同一次操作核对，不会重复生成。' :
-            '开场来自已激活角色卡。选择后作为一条原生助理消息写入，不请求模型。'),
+          diagnosis ?? (fixed ? '开场提交待确认；使用同一次操作核对，不会重复生成。' :
+            '开场来自已激活角色卡。选择后作为一条原生助理消息写入，不请求模型。')),
       !data.available ? React.createElement('p',{className:'dsh-rp-error'},
         data.priorOpening ? '当前会话已有开场消息；再次导入或创建分支不会自动写第二条。'
           : data.legacyDisplayed ? '这张卡已请求旧版开场；为避免重复消息，暂不能再次选择。'
@@ -99,7 +116,7 @@ export function createOpeningPanel({React,jsonFetch,toast}:OpeningPanelDependenc
         {className:'dsh-rp-muted'},'部分占位符没有可验证的上下文，将保留原样。') : null,
       React.createElement('div',{className:'dsh-rp-row'},
         React.createElement('button',{className:'dsh-rp-btn',disabled:busy || !selected || !data.available
-          || fixed?.status === 'completed' || !!fixed && fixed.index !== index,
+          || blockedRetry || fixed?.status === 'completed' || !!fixed && fixed.index !== index,
           onClick:() => void choose()},busy ? '处理中…' : fixed ? '重试同一次选择' : '使用此开场'),
         fixed && fixed.status !== 'completed' ? React.createElement('button',
           {className:'dsh-rp-btn',disabled:busy,onClick:() => void recover()},'核对状态') : null))

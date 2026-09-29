@@ -43,12 +43,12 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
             renderedSha256:createHash('sha256').update(candidate.renderedText).digest('hex'),
             text:candidate.renderedText,macros:candidate.macros})),
           selection:intent ? {status:intent.status,index:intent.index,operationId:intent.operationId,
-            committedTurn:intent.committedTurn} : null})
+            committedTurn:intent.committedTurn,rejectionCode:intent.rejectionCode} : null})
         if (body.action === 'recover') {
           const recovered = await selection.recover(session.id,catalog.source.importId)
           return jsonResponse(200,{ok:true,selection:recovered ? {status:recovered.status,
             index:recovered.index,operationId:recovered.operationId,
-            committedTurn:recovered.committedTurn} : null})
+            committedTurn:recovered.committedTurn,rejectionCode:recovered.rejectionCode} : null})
         }
         if (legacyDisplayed) return jsonResponse(409,{ok:false,
           error:'该导入已请求旧版模型开场；需先按消息历史明确迁移，避免重复开场'})
@@ -68,7 +68,7 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
         const selected = pending ? result.intent : result
         return jsonResponse(pending ? 202 : 200,{ok:true,
           selection:{status:selected.status,index:selected.index,operationId:selected.operationId,
-            committedTurn:selected.committedTurn}})
+            committedTurn:selected.committedTurn,rejectionCode:selected.rejectionCode}})
       } catch(error) {
         return jsonResponse(409,{ok:false,error:String((error as Error).message)})
       }
