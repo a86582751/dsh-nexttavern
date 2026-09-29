@@ -203,21 +203,18 @@ The CLI was re-checked against Harness `0.1.7-rc.2`; every request shape it send
 - First-start and install diagnostics changed upstream: skipped profile bundles are reported once per launch with their reasons, the plugin manager records its package-manager run tree under `.plugin-manager/run.json`, and a lock whose recorded owner process no longer exists may be taken over. These are host-side behaviours the CLI observes; they add no request or retry of its own.
 - Regenerating once stays the caller's single action. The alpha.7 acceptance saw one regeneration leave two turns in the child session; the user's ruling (2026-09-25) is that this is a **CLI-side defect**, so the CLI does not re-send or de-duplicate to compensate and the tavern product is not asked to carry extra logic for it. Report the observation instead of hiding it.
 
-Role-card import has no direct upload RPC. Source audit found the
-official `session/attachment` RPC is read-only: it proves an existing image
-reference is present in a session and returns its bytes. `session/prompt`
-accepts already-admitted image attachment references, but no native upload or
-file-ingest RPC/HTTP route is registered. Role-card import is otherwise only
-the model tool sequence `rp_card_import_begin` → `rp_card_import_chunk` →
-`rp_card_import_stage` → `rp_card_import_finalize`.
-The CLI now supports staging a local `.md`, `.txt`, `.json`, or `.png` file
-under `roleplay/cli-imports` inside the configured remote DSH_HOME
-with a UUID filename, exclusive create, 20 MiB limit, SHA-256 verification,
-realpath containment, and mode 0600. Upload alone sends zero model requests.
-Only explicit `--import` queues one native prompt referring to the server path;
-it returns admission and requires `activity`/`jobs` verification for import
-completion and resource registration. It never embeds the card bytes in the
-prompt or treats the file as executable instructions.
+Role-card import has no direct native upload RPC. The official
+`session/attachment` RPC remains read-only. Without `--import`, `upload-card`
+stages a local `.md`, `.txt`, `.json`, or `.png` file under the configured
+DSH_HOME `roleplay/cli-imports` directory without starting an import. With
+`--import`, it uses the registered Workspace upload path for the exact Session,
+stores content-addressed bytes under that Session's `.dsh-card-imports`, and
+submits one `/api/roleplay/jobs` request with the supplied request ID. Retrying
+the same ID and source returns the durable job; a changed source is rejected.
+PNG/JSON jobs use the programmatic path with zero classification prompts;
+Markdown/TXT keep the existing native model task. Inspect the returned job and
+`jobs` before treating an import as complete. Neither path embeds card bytes in
+a player prompt or executes card content.
 
 `upload` is the general file path for an exact Session that is already a member
 of one registered native Workspace. `--dir` is required and is a relative
