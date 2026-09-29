@@ -478,6 +478,83 @@ export function compileTavernExtensionInventory(decoded: DecodedTavernCard): Tav
   return compileTavernExtensionInventoryVersion(decoded, 2)
 }
 
+export type TavernCapabilityStatus = 'interpreted' | 'preserved-unexecuted'
+  | 'missing-external-resource' | 'requires-optional-analysis'
+export interface TavernCapabilityEntry {
+  readonly sourcePointer: string
+  readonly valueSha256: string
+  readonly status: TavernCapabilityStatus
+  readonly capability: 'card-field' | 'opening' | 'worldbook' | 'extension' | 'asset' | 'archive'
+  readonly reason: 'structured-projection' | 'opening-candidate' | 'worldbook-projection'
+    | 'extension-runtime-not-wired' | 'extension-requires-review' | 'opaque-archive'
+    | 'external-asset-not-bundled' | 'optional-analysis-not-run'
+}
+export interface TavernCapabilityReport {
+  readonly schemaVersion: 1
+  readonly sourceSha256: string
+  readonly entries: readonly TavernCapabilityEntry[]
+  readonly counts: Readonly<Record<TavernCapabilityStatus, number>>
+}
+
+// A card is only a source of declarations. This report does not resolve URLs,
+// execute extensions, or imply that optional analysis has run. "Missing" means
+// the referenced asset bytes were not bundled in the card itself.
+export function compileTavernCapabilityReport(decoded: DecodedTavernCard): TavernCapabilityReport {
+  const root = decoded.document.data === decoded.data ? '/data' : ''
+  const entries: TavernCapabilityEntry[] = []
+  const add = (pointer: string, value: unknown, status: TavernCapabilityStatus,
+    capability: TavernCapabilityEntry['capability'], reason: TavernCapabilityEntry['reason']) => {
+    if (entries.length >= 8192) fail('角色卡能力报告条目数量超限')
+    entries.push({sourcePointer:pointer, valueSha256:digest(canonicalJson(value)), status, capability, reason})
+  }
+  const projected = new Set(['name', 'description', 'personality', 'scenario', 'mes_example',
+    'system_prompt', 'post_history_instructions'])
+  for (const key of Object.keys(decoded.data).sort()) {
+    const value = decoded.data[key]
+    const pointer = `${root}/${pointerSegment(key)}`
+    if (key === 'extensions') {
+      if (!object(value)) fail('角色卡 extensions 必须是对象')
+      const inventory = compileTavernExtensionInventory(decoded)
+      for (const item of inventory.entries) {
+        const optional = item.status === 'requires-optional-analysis'
+        add(item.sourcePointer, value[item.key], optional ? 'requires-optional-analysis' : 'preserved-unexecuted',
+          'extension', optional ? 'optional-analysis-not-run' : item.status === 'requires-review'
+            || item.status === 'unexpected-shape' ? 'extension-requires-review'
+              : item.status === 'archive-only' || item.status === 'inactive-empty'
+                ? 'opaque-archive' : 'extension-runtime-not-wired')
+      }
+      continue
+    }
+    if (key === 'assets' && Array.isArray(value)) {
+      if (value.length > CARD_LIMITS.entries) fail('角色卡资源数量超限')
+      for (const [index, asset] of value.entries()) {
+        const uri = object(asset) ? asset.uri : undefined
+        const external = typeof uri === 'string' && uri.length > 0 && !uri.startsWith('data:')
+        add(`${pointer}/${index}`, asset, external ? 'missing-external-resource' : 'preserved-unexecuted',
+          'asset', external ? 'external-asset-not-bundled' : 'opaque-archive')
+      }
+      continue
+    }
+    if (key === 'first_mes' || key === 'alternate_greetings') {
+      if (key === 'alternate_greetings') compileTavernOpeningCandidates(decoded)
+      add(pointer, value, 'interpreted', 'opening', 'opening-candidate')
+    } else if (key === 'character_book') {
+      add(pointer, value, 'interpreted', 'worldbook', 'worldbook-projection')
+    } else if (projected.has(key)) {
+      add(pointer, value, 'interpreted', 'card-field', 'structured-projection')
+    } else {
+      add(pointer, value, 'preserved-unexecuted', 'archive', 'opaque-archive')
+    }
+  }
+  entries.sort((a, b) => a.sourcePointer < b.sourcePointer ? -1 : a.sourcePointer > b.sourcePointer ? 1 : 0)
+  const counts: Record<TavernCapabilityStatus, number> = {
+    interpreted:0, 'preserved-unexecuted':0, 'missing-external-resource':0,
+    'requires-optional-analysis':0,
+  }
+  for (const entry of entries) counts[entry.status]++
+  return {schemaVersion:1, sourceSha256:decoded.sourceSha256, entries, counts}
+}
+
 // The compact projection has no duplicate raw JSON. Hash every parsed node in
 // sorted pointer order, including array/object containers and empty ones. The
 // source envelope permits recomputation without storing a second full tree.

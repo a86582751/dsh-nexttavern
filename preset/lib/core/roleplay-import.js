@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { keyOf, safeId, sha256, stableJson, cloneRecord, recordSha256, deescapeMarkdown, stableImportId, } from './roleplay-data.js';
 import { lastSeq, eventsOf } from './roleplay-context.js';
-import { readCardSource, decodeTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernExtensionInventory, fenceCardContent } from './tavern-card.js';
+import { readCardSource, decodeTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernCapabilityReport, fenceCardContent } from './tavern-card.js';
 import { registerCardExport } from './card-export.js';
 import { cardCodeBlocks, statusTemplateDiagnostics } from '../status-template.js';
 import { isInlinePending } from './tavern-tasks.js';
@@ -507,6 +507,7 @@ export function registerRoleplayImports(deps) {
             normalizer: decoded ? 'tavern-fields-v2' : IMPORT_NORMALIZER,
             ...(decoded ? { fieldProof: compileTavernFieldCoverage(decoded) } : {}),
             ...(decoded ? { extensionInventory: compileTavernExtensionInventory(decoded) } : {}),
+            ...(decoded ? { capabilityReport: compileTavernCapabilityReport(decoded) } : {}),
             ...(decoded
                 ? {
                     sourceEnvelope: {

@@ -2,7 +2,8 @@
 // state or import locks live here; validation remains usable by export/readback.
 import { sha256, cloneRecord, stableJson } from './roleplay-data.js';
 import { readCardSource, decodeTavernCard, projectTavernCard, projectTavernCardCompact,
-  compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1 } from './tavern-card.js';
+  compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1,
+  compileTavernCapabilityReport } from './tavern-card.js';
 import type { DecodedTavernCard } from './tavern-card.js';
 import type {
   ImportRecord,
@@ -124,6 +125,11 @@ export const assertImportRecordIntegrity = (record: ImportRecord) => {
       if (record.schemaVersion !== 5
         || expected === null || stableJson(expected) !== stableJson(inventory))
         throw new Error('结构化扩展能力清单与原件不一致');
+    }
+    if (record.capabilityReport !== undefined) {
+      if (record.schemaVersion !== 5 || record.capabilityReport.schemaVersion !== 1
+        || stableJson(compileTavernCapabilityReport(decoded)) !== stableJson(record.capabilityReport))
+        throw new Error('结构化能力报告与原件不一致');
     }
   }
   const expectedStarts = computeLineStarts(normalizedSource);
@@ -405,6 +411,7 @@ export const importSummary = (record: ImportRecord) => {
   assertImportRecordIntegrity(record);
   const coverage = importCoverage(record);
   const extensionEntries = record.extensionInventory?.entries ?? [];
+  const capabilityEntries = record.capabilityReport?.entries ?? [];
   const extensionCounts = { unexecuted: 0, 'requires-optional-analysis': 0,
     'requires-review': 0, 'archive-only': 0, 'unexpected-shape': 0, 'inactive-empty': 0 };
   for (const entry of extensionEntries) extensionCounts[entry.status]++;
@@ -444,6 +451,13 @@ export const importSummary = (record: ImportRecord) => {
       counts: extensionCounts,
       entries: visibleExtensions,
       omitted: Math.max(0, extensionEntries.length - 64),
+    } } : {}),
+    ...(record.capabilityReport ? { capabilityReport: {
+      schemaVersion: record.capabilityReport.schemaVersion,
+      total: capabilityEntries.length,
+      counts: record.capabilityReport.counts,
+      entries: capabilityEntries.slice(0, 64),
+      omitted: Math.max(0, capabilityEntries.length - 64),
     } } : {}),
     ...(record.sourceEnvelope
 
