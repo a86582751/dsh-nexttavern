@@ -7,6 +7,7 @@ interface SetReply extends SaveReply {recordVersions:Record<string,unknown> & {c
 interface BranchRequest<A extends string> extends Record<string, unknown> {action: A; childSessionId?: string; sessionId?: string}
 interface BranchResult extends SaveReply {
   conversations?: ConversationCatalog
+  operationId?: string
   status?: string
   operationState?: string
   childSessionId?: string
@@ -53,7 +54,7 @@ interface ActionDependencies {
   loadConversations(): Promise<unknown>
   toast(text: string): void
   fetch?: typeof globalThis.fetch
-  storage?: Pick<Storage, 'getItem' | 'setItem' | 'key' | 'length'>
+  storage?: Pick<Storage, 'getItem' | 'setItem' | 'key' | 'length'> & Partial<Pick<Storage, 'removeItem'>>
   now?(): number
   wait?(ms: number): Promise<void>
 }
@@ -78,6 +79,10 @@ export function createRoleplayActions({sessionsService,
   const localStorage = {
     getItem:(key: string)=>(storage ?? globalThis.localStorage).getItem(key),
     setItem:(key: string,value: string)=>(storage ?? globalThis.localStorage).setItem(key,value),
+    removeItem:(key: string)=>{
+      if (storage) storage.removeItem?.(key)
+      else globalThis.localStorage.removeItem(key)
+    },
     key:(index: number)=>(storage ?? globalThis.localStorage).key(index),
     get length(){return (storage ?? globalThis.localStorage).length},
   }
@@ -479,14 +484,107 @@ export function createRoleplayActions({sessionsService,
     sourceSessionId: string; messageId: string; seq: number
   }) => withSession(sourceSessionId, async sourceBinding => {
     if (sourceBinding.session.getSnapshot?.()?.running) throw new Error('请等待当前一轮完成后再重新生成开场')
-    const prepared = await branchRequest({
-      action:'prepare', kind:'opening-regenerate', sessionId:sourceSessionId, messageId, seq,
-    })
+    // Keep only the operation identity, never the card or generated text. A
+    // reload must consult the durable server operation before issuing a new one.
+    const key = `dsh.nexttavern.opening-regenerate.v1.${encodeURIComponent(JSON.stringify([sourceSessionId,messageId,seq]))}`
+    type OpeningIndex = {schemaVersion: 1; sourceSessionId: string; messageId: string;
+      seq: number; operationId: string; childSessionId?: string; createdAt: number}
+    const clearIndex = () => {
+      try { localStorage.removeItem(key) } catch {}
+    }
+    let index: OpeningIndex | null = null
+    let saved: string | null
+    try {
+      saved = localStorage.getItem(key)
+    } catch {
+      // An unreadable index may still refer to an admitted generation. Never
+      // interpret a storage error as absence and prepare another operation.
+      throw new Error('无法读取开场操作恢复标识；为避免重复生成，已停止提交。请检查浏览器站点存储后重试')
+    }
+    if (saved) {
+      try {
+        const parsed: unknown = JSON.parse(saved)
+        if (parsed && typeof parsed === 'object') {
+          const record = parsed as Partial<OpeningIndex>
+          if (record.schemaVersion === 1 && record.sourceSessionId === sourceSessionId
+            && record.messageId === messageId && record.seq === seq
+            && typeof record.operationId === 'string' && record.operationId.length > 0
+            && typeof record.createdAt === 'number' && Number.isFinite(record.createdAt)
+            && (record.childSessionId === undefined || typeof record.childSessionId === 'string')) {
+            index = record as OpeningIndex
+          }
+        }
+      } catch {}
+      if (!index) clearIndex()
+    }
+    let observed: BranchReply<string> | null = null
+    if (index) {
+      observed = await branchRequest({action:'operation-status',operationId:index.operationId})
+      if (observed.operationId && observed.operationId !== index.operationId) {
+        throw new Error('开场操作标识与服务端回执不一致；已停止提交')
+      }
+      if (index.childSessionId && observed.childSessionId
+        && index.childSessionId !== observed.childSessionId) {
+        throw new Error('开场操作的会话标识已变化；已停止提交，请核对操作状态')
+      }
+      if (observed.status === 'failed') {
+        clearIndex()
+        throw new Error(observed.error || '上一次开场生成失败；请再次点击创建新分支')
+      }
+      if (observed.status === 'prepared' && now() - index.createdAt > 15 * 60 * 1000) {
+        clearIndex()
+        throw new Error('上一次开场操作已过期；请再次点击创建新分支')
+      }
+      if (!['prepared','pending','completed'].includes(String(observed.status))) {
+        throw new Error('开场操作状态无法确认；已停止提交，请稍后重试')
+      }
+    } else {
+      const prepared = await branchRequest({
+        action:'prepare', kind:'opening-regenerate', sessionId:sourceSessionId, messageId, seq,
+      })
+      index = {schemaVersion:1,sourceSessionId,messageId,seq,
+        operationId:prepared.operationId,createdAt:now()}
+      // If the identity cannot be persisted, do not start a model request that
+      // the next page load cannot safely find again.
+      try { localStorage.setItem(key,JSON.stringify(index)) }
+      catch {
+        throw new Error(`无法保存开场操作恢复标识；尚未提交模型请求。请检查浏览器站点存储后重试（操作 ${prepared.operationId}）`)
+      }
+    }
+    const operationId = index.operationId
+    const assertOpeningChild = (reply: BranchReply<string>, childId: string) => {
+      if (reply.operationId && reply.operationId !== operationId) {
+        throw new Error('开场操作标识与服务端回执不一致；已停止提交')
+      }
+      if (reply.childSessionId && reply.childSessionId !== childId) {
+        throw new Error('开场操作的会话标识已变化；已停止提交，请核对操作状态')
+      }
+    }
+    if (observed?.status === 'pending' || observed?.status === 'completed') {
+      const childId = observed.childSessionId
+      if (!childId) throw new Error('开场操作缺少会话标识；已停止提交，请核对操作状态')
+      if (observed.status === 'pending') {
+        const settled = await waitForBranchOperation(operationId,
+          15 * 60 * 1000,{openingRetryChildId:childId})
+        assertOpeningChild(settled,childId)
+      }
+      invalidateState(sourceSessionId)
+      invalidateState(childId)
+      await openSessionPreservingView(childId,sourceSessionId)
+      clearIndex()
+      return childId
+    }
     const created = await retryBranchMutation({
-      action:'create-worldline', operationId:prepared.operationId, sessionId:sourceSessionId,
+      action:'create-worldline', operationId, sessionId:sourceSessionId,
     })
     const childId = created.childSessionId
     if (!childId) throw new Error('开场新分支缺少会话标识；请核对操作状态')
+    assertOpeningChild(created,childId)
+    if (index.childSessionId && index.childSessionId !== childId) {
+      throw new Error('开场操作的会话标识已变化；已停止提交，请核对操作状态')
+    }
+    index.childSessionId = childId
+    try { localStorage.setItem(key,JSON.stringify(index)) } catch {}
     if (created.conversations) acceptConversations(created.conversations)
     await sessionsService.refresh()
     await loadConversations()
@@ -497,7 +595,7 @@ export function createRoleplayActions({sessionsService,
     let generated: BranchReply<string> | null = null
     try {
       generated = await branchRequest({
-        action:'generate-opening', operationId:prepared.operationId, childSessionId:childId,
+        action:'generate-opening', operationId, childSessionId:childId,
       })
     } catch (error) {
       if (Number.isFinite(errorDetails(error).status) && Number(errorDetails(error).status) < 500) {
@@ -505,12 +603,17 @@ export function createRoleplayActions({sessionsService,
         throw error
       }
     }
+    if (generated) assertOpeningChild(generated,childId)
     try {
-      if (generated?.status !== 'completed') await waitForBranchOperation(prepared.operationId,
-        15 * 60 * 1000,{openingRetryChildId:childId})
+      if (generated?.status !== 'completed') {
+        const settled = await waitForBranchOperation(operationId,
+          15 * 60 * 1000,{openingRetryChildId:childId})
+        assertOpeningChild(settled,childId)
+      }
       invalidateState(sourceSessionId)
       invalidateState(childId)
       await openSessionPreservingView(childId,sourceSessionId)
+      clearIndex()
       return childId
     } catch (error) {
       await openSessionPreservingView(sourceSessionId,childId)

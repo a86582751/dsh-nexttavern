@@ -2,6 +2,42 @@
   "schemaVersion": 3,
   "modules": [
     {
+      "artifact": "native-fork-host-plan-bundle",
+      "source": "src/native-fork-host-plan.mts",
+      "banner": "release/src/native-fork-host-plan.mts",
+      "primaryOutput": "tools/native-fork-host-plan.mjs",
+      "outputs": [
+        "tools/native-fork-host-plan.mjs"
+      ]
+    },
+    {
+      "artifact": "native-fork-host-apply-bundle",
+      "source": "src/native-fork-host-apply.mts",
+      "banner": "release/src/native-fork-host-apply.mts",
+      "primaryOutput": "tools/native-fork-host-apply.mjs",
+      "outputs": [
+        "tools/native-fork-host-apply.mjs"
+      ]
+    },
+    {
+      "artifact": "native-fork-host-activation-bundle",
+      "source": "src/native-fork-host-activation.mts",
+      "banner": "release/src/native-fork-host-activation.mts",
+      "primaryOutput": "tools/native-fork-host-activation.mjs",
+      "outputs": [
+        "tools/native-fork-host-activation.mjs"
+      ]
+    },
+    {
+      "artifact": "native-fork-host-cli-bundle",
+      "source": "src/native-fork-host-cli.mts",
+      "banner": "release/src/native-fork-host-cli.mts",
+      "primaryOutput": "tools/native-fork-host-cli.mjs",
+      "outputs": [
+        "tools/native-fork-host-cli.mjs"
+      ]
+    },
+    {
       "artifact": "compat-session-fork-js",
       "source": "development/session/src/fork.ts",
       "banner": "runtime/alpha3/compat/session/src/fork.ts",
@@ -5961,6 +5997,38 @@
         "source": "tests/run.mjs"
       },
       {
+        "id": "native-fork-host-plan-source",
+        "source": "src/native-fork-host-plan.mts"
+      },
+      {
+        "id": "native-fork-host-apply-source",
+        "source": "src/native-fork-host-apply.mts"
+      },
+      {
+        "id": "native-fork-host-activation-source",
+        "source": "src/native-fork-host-activation.mts"
+      },
+      {
+        "id": "native-fork-host-cli-source",
+        "source": "src/native-fork-host-cli.mts"
+      },
+      {
+        "id": "native-fork-host-plan-bundle",
+        "source": "tools/native-fork-host-plan.mjs"
+      },
+      {
+        "id": "native-fork-host-apply-bundle",
+        "source": "tools/native-fork-host-apply.mjs"
+      },
+      {
+        "id": "native-fork-host-activation-bundle",
+        "source": "tools/native-fork-host-activation.mjs"
+      },
+      {
+        "id": "native-fork-host-cli-bundle",
+        "source": "tools/native-fork-host-cli.mjs"
+      },
+      {
         "id": "public-transaction-schema",
         "source": "schemas/public-transaction.v1.json"
       },
@@ -8338,6 +8406,76 @@
       }
     ],
     "builds": [
+      {
+        "id": "native-fork-host-plan-build",
+        "kind": "typescript-module",
+        "artifact": "native-fork-host-plan-bundle",
+        "entry": "src/native-fork-host-plan.mts",
+        "typeContext": "host-fork",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/native-fork-host-plan.mts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "release/src/native-fork-host-plan.mts"
+      },
+      {
+        "id": "native-fork-host-apply-build",
+        "kind": "typescript-module",
+        "artifact": "native-fork-host-apply-bundle",
+        "entry": "src/native-fork-host-apply.mts",
+        "typeContext": "host-fork",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/native-fork-host-apply.mts",
+          "src/native-fork-host-plan.mts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "release/src/native-fork-host-apply.mts"
+      },
+      {
+        "id": "native-fork-host-activation-build",
+        "kind": "typescript-module",
+        "artifact": "native-fork-host-activation-bundle",
+        "entry": "src/native-fork-host-activation.mts",
+        "typeContext": "host-fork",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/native-fork-host-activation.mts",
+          "src/native-fork-host-apply.mts",
+          "src/native-fork-host-plan.mts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "release/src/native-fork-host-activation.mts"
+      },
+      {
+        "id": "native-fork-host-cli-build",
+        "kind": "typescript-module",
+        "artifact": "native-fork-host-cli-bundle",
+        "entry": "src/native-fork-host-cli.mts",
+        "typeContext": "host-fork",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/native-fork-host-cli.mts",
+          "src/native-fork-host-activation.mts",
+          "src/native-fork-host-apply.mts",
+          "src/native-fork-host-plan.mts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "release/src/native-fork-host-cli.mts"
+      },
       {
         "id": "compat-session-fork-build",
         "kind": "typescript-module",
@@ -17482,6 +17620,9 @@
         },
         "session-storage": {
           "exactOptionalPropertyTypes": true
+        },
+        "host-fork": {
+          "rewriteRelativeImportExtensions": true
         },
         "ui-compat-client": {
           "rewriteRelativeImportExtensions": true,

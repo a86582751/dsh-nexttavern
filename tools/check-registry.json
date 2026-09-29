@@ -82,6 +82,7 @@
         "tavern-card*",
         "tavern-compat*",
         "manifests/sillytavern-compatibility-p0-*",
+        "manifests/sillytavern-compatibility-p1-*",
         "tavern-conversion*"
       ]
     },
@@ -334,6 +335,8 @@
         "product-assembly*",
         "native-fork-product-assembly*",
         "native-fork-host-plan*",
+        "native-fork-host-apply*",
+        "native-fork-host-activation*",
         "test-temp*",
         "tool-resolution*",
         "qwen-*",
@@ -1154,10 +1157,41 @@
       ]
     },
     {
+      "id": "test:programmatic-agent-commit.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
       "id": "test:roleplay-opening-selection.test.mts",
       "action": "test",
       "modules": [
         "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:programmatic-opening-ui.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import",
+        "reader"
       ],
       "depends": [
         "generated"
@@ -1185,6 +1219,36 @@
     },
     {
       "id": "test:native-fork-host-plan.test.mts",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:native-fork-host-apply.test.mts",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:native-fork-host-activation.test.mts",
       "action": "test",
       "modules": [
         "operations"
