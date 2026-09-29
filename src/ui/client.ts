@@ -235,7 +235,7 @@ export function apply(ctx: ClientContext) {
       { name: 'conversation.chat.roleplay-progress', id: 'roleplay-progress', order: 10, inject: sessionId => ({ sessionId }) },
       DeferredPlayerInput))
 
-  const { saveState, runMaintenance, replaceMessage, forkAndPrompt, forkWithoutUserTurn, openNativeBranch, retryBranchMutation } = createRoleplayActions(
+  const { saveState, runMaintenance, replaceMessage, forkAndPrompt, regenerateProgrammaticOpening, forkWithoutUserTurn, openNativeBranch, retryBranchMutation } = createRoleplayActions(
     {
       sessionsService,
       workspacesService,
@@ -284,6 +284,7 @@ export function apply(ctx: ClientContext) {
       runCommand,
       replaceMessage,
       forkAndPrompt,
+      regenerateProgrammaticOpening,
       forkWithoutUserTurn,
       openNativeBranch,
       retryBranchMutation

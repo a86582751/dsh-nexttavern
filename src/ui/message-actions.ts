@@ -8,6 +8,11 @@ interface BranchGroup {
     }[];
 }
 export interface MessageActionState extends StateReply {
+    programmaticOpeningActionAnchor?: {
+        messageId: string;
+        seq: number;
+        turn: number;
+    } | null;
     userActionsBySeq?: Record<string, {
         assistantMessageId?: string;
         group?: BranchGroup;
@@ -30,6 +35,7 @@ export interface MessageActionState extends StateReply {
 }
 type Actions = ReturnType<typeof createRoleplayActions>;
 interface ComponentDependencies extends Pick<Actions, 'replaceMessage' | 'forkAndPrompt' | 'forkWithoutUserTurn' | 'openNativeBranch' | 'retryBranchMutation'> {
+    regenerateProgrammaticOpening?: (input: {sourceSessionId: string; messageId: string; seq: number}) => Promise<unknown>;
     React: typeof ReactAPI;
     isRoleplaySession(id: string): boolean;
     fetchState(id: string, force?: boolean): Promise<MessageActionState>;
@@ -69,6 +75,12 @@ interface AssistantActionProps {
     messageId?: string;
     text?: string;
 }
+export function isProgrammaticOpeningAction(state: MessageActionState | null, turn: number | undefined, messageId: string) {
+    const anchor = state?.programmaticOpeningActionAnchor;
+    return !!anchor && !!messageId && messageId === anchor.messageId
+        && Number.isSafeInteger(anchor.seq) && anchor.seq >= 0
+        && Number.isSafeInteger(anchor.turn) && anchor.turn >= 0 && turn === anchor.turn;
+}
 export function createMessageActionComponents({
     React,
     isRoleplaySession,
@@ -82,6 +94,7 @@ export function createMessageActionComponents({
     runCommand,
     replaceMessage,
     forkAndPrompt,
+    regenerateProgrammaticOpening,
     forkWithoutUserTurn,
     openNativeBranch,
     retryBranchMutation
@@ -433,6 +446,7 @@ export function createMessageActionComponents({
         // failed maintenance still owns its ordinary regenerate/version actions.
         const anchor = state?.assistantActionAnchorsByTurn?.[String(props.turn)];
         const messageId = String(props.messageId || anchor?.messageId || '');
+        const programmaticOpening = isProgrammaticOpeningAction(state, props.turn, messageId);
         const initialText = String(props.text || (anchor && state?.surfaceNodes?.find(node => node.seq === anchor.seq)?.text) || '');
         const [busy, setBusy] = React.useState(false);
         const [editing, setEditing] = React.useState(false);
@@ -504,14 +518,18 @@ export function createMessageActionComponents({
                 }),
             ]
             : null, actionIconButton(recoveryAvailable ? '恢复失败轮次并生成 Agent 回复' : '重新生成 Agent 回复', ICONS.regenerate, () => {
-            perform(() => forkAndPrompt({
+            perform(() => programmaticOpening ? regenerateProgrammaticOpening!({
+                sourceSessionId: sessionId,
+                messageId,
+                seq: state!.programmaticOpeningActionAnchor!.seq
+            }) : forkAndPrompt({
                 sourceSessionId: sessionId,
                 messageId: recoveryAvailable ? undefined : messageId || undefined,
                 userSeq: recoveryAvailable ? recoverySeq : undefined,
                 kind: 'regenerate'
             }));
         }, {
-            disabled: busy || (!messageId && !recoveryAvailable)
+            disabled: busy || (!messageId && !recoveryAvailable) || (programmaticOpening && !regenerateProgrammaticOpening)
         }), actionIconButton(inherited ? '请先切换到该版本所属会话再编辑' : '直接修改当前 Agent 回复', ICONS.edit, () => setEditing(true), {
             disabled: busy || recoveryAvailable || inherited || !messageId || !initialText
         }), actionIconButton(group && members.length > 1 ? '删除当前回复分支' : '至少生成两个版本后才能删除', ICONS.trash, () => {

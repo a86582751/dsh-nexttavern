@@ -8,6 +8,8 @@ interface BranchRequest<A extends string> extends Record<string, unknown> {actio
 interface BranchResult extends SaveReply {
   conversations?: ConversationCatalog
   status?: string
+  childSessionId?: string
+  assistantMessageId?: string
   registered?: boolean
   requestAccepted?: boolean
   alreadyAccepted?: boolean
@@ -452,6 +454,48 @@ export function createRoleplayActions({sessionsService,
     })
   }
 
+  const regenerateProgrammaticOpening = async ({sourceSessionId,messageId,seq}: {
+    sourceSessionId: string; messageId: string; seq: number
+  }) => withSession(sourceSessionId, async sourceBinding => {
+    if (sourceBinding.session.getSnapshot?.()?.running) throw new Error('请等待当前一轮完成后再重新生成开场')
+    const prepared = await branchRequest({
+      action:'prepare', kind:'opening-regenerate', sessionId:sourceSessionId, messageId, seq,
+    })
+    const created = await retryBranchMutation({
+      action:'create-worldline', operationId:prepared.operationId, sessionId:sourceSessionId,
+    })
+    const childId = created.childSessionId
+    if (!childId) throw new Error('开场新分支缺少会话标识；请核对操作状态')
+    if (created.conversations) acceptConversations(created.conversations)
+    await sessionsService.refresh()
+    await loadConversations()
+    await copyModelSelection(sourceBinding,childId)
+
+    // Once the server may have admitted generation, a lost response is not
+    // permission to submit another model request or delete the reserved child.
+    let generated: BranchReply<string> | null = null
+    try {
+      generated = await branchRequest({
+        action:'generate-opening', operationId:prepared.operationId, childSessionId:childId,
+      })
+    } catch (error) {
+      if (Number.isFinite(errorDetails(error).status) && Number(errorDetails(error).status) < 500) {
+        await openSessionPreservingView(sourceSessionId,childId)
+        throw error
+      }
+    }
+    try {
+      if (generated?.status !== 'completed') await waitForBranchOperation(prepared.operationId)
+      invalidateState(sourceSessionId)
+      invalidateState(childId)
+      await openSessionPreservingView(childId,sourceSessionId)
+      return childId
+    } catch (error) {
+      await openSessionPreservingView(sourceSessionId,childId)
+      throw error
+    }
+  })
+
   const forkWithoutUserTurn = async ({ sourceSessionId, messageId }: {sourceSessionId: string; messageId?: string}) => {
     const prepared = await branchRequest({
       action: 'prepare', sessionId: sourceSessionId, messageId, kind: 'delete-user',
@@ -489,6 +533,7 @@ export function createRoleplayActions({sessionsService,
       waitForBranchOperation,
       replaceMessage,
       forkAndPrompt,
+      regenerateProgrammaticOpening,
       forkWithoutUserTurn,
       openNativeBranch}
 }
