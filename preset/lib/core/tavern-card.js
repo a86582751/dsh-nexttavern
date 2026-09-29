@@ -471,6 +471,75 @@ export function compileTavernExtensionInventoryV1(decoded) {
 export function compileTavernExtensionInventory(decoded) {
     return compileTavernExtensionInventoryVersion(decoded, 2);
 }
+const boundedLabel = (value) => typeof value === 'string'
+    && value.length > 0 && value.length <= 256;
+export function compileTavernExtensionInventoryV3(decoded) {
+    const extensions = decoded.data.extensions;
+    if (extensions === undefined)
+        return { schemaVersion: 3, sourceSha256: decoded.sourceSha256, entries: [] };
+    if (!object(extensions))
+        fail('角色卡 extensions 必须是对象');
+    if (Object.keys(extensions).length > 4096)
+        fail('角色卡 extensions 字段数量超限');
+    const root = decoded.document.data === decoded.data ? '/data' : '';
+    const entries = [];
+    const pointer = (key) => `${root}/extensions/${key}`;
+    if (Object.hasOwn(extensions, 'chaoshen_jixieshi')) {
+        const value = extensions.chaoshen_jixieshi;
+        const names = ['embedded_worldbook_id', 'embedded_worldbook_version', 'opening_protocol', 'opening_mode',
+            'ui_panel_version', 'ui_panel_id', 'ui_mode', 'ui_source', 'mvu_protocol_version', 'mvu_loader_id',
+            'mvu_remote_ref', 'mvu_remote_fallback', 'mvu_commit', 'mvu_initvar_id'];
+        const valid = object(value) && names.every(name => boundedLabel(value[name]));
+        const identifiers = Object.fromEntries(names.map(name => [name, {
+                sourcePointer: `${pointer('chaoshen_jixieshi')}/${name}`,
+                valueSha256: object(value) && boundedLabel(value[name]) ? digest(value[name]) : null,
+            }]));
+        entries.push({ key: 'chaoshen_jixieshi', sourcePointer: pointer('chaoshen_jixieshi'),
+            status: valid ? 'unexecuted' : 'requires-review', reason: valid ? 'protocol-loader-fallback-declared'
+                : 'invalid-protocol-declaration', detail: { kind: 'ui-mvu-protocol', identifiers } });
+    }
+    if (Object.hasOwn(extensions, 'card_agent')) {
+        const value = extensions.card_agent;
+        const declaration = object(value) ? value : {};
+        const valid = boundedLabel(declaration.binding_id)
+            && Array.isArray(declaration.greetings) && declaration.greetings.length <= CARD_LIMITS.entries
+            && Array.isArray(declaration.worldbooks) && declaration.worldbooks.length <= CARD_LIMITS.entries;
+        const greetingCount = valid ? declaration.greetings.length : 0;
+        const worldbookCount = valid ? declaration.worldbooks.length : 0;
+        const references = valid ? [
+            ...declaration.greetings.map((item, index) => ({ kind: 'greeting', index,
+                sourcePointer: `${pointer('card_agent')}/greetings/${index}`,
+                status: object(item) && boundedLabel(item.id) && boundedLabel(item.name)
+                    ? 'requires-review' : 'invalid' })),
+            ...declaration.worldbooks.map((item, index) => ({ kind: 'worldbook', index,
+                sourcePointer: `${pointer('card_agent')}/worldbooks/${index}`,
+                status: object(item) && boundedLabel(item.id) && boundedLabel(item.name)
+                    ? 'requires-review' : 'invalid' })),
+        ] : [];
+        const validReferences = valid && references.every(ref => ref.status !== 'invalid');
+        entries.push({ key: 'card_agent', sourcePointer: pointer('card_agent'),
+            status: validReferences ? 'requires-review' : 'unsupported',
+            reason: validReferences ? references.length > 0 ? 'opaque-binding-references'
+                : 'empty-binding-declaration' : 'invalid-binding-reference',
+            detail: { kind: 'greeting-worldbook-binding', bindingIdSha256: valid ? digest(declaration.binding_id) : null,
+                greetingCount, worldbookCount, references } });
+    }
+    if (Object.hasOwn(extensions, 'risuai')) {
+        const value = extensions.risuai;
+        const triggers = object(value) ? value.triggerscript : undefined;
+        const valid = Array.isArray(triggers) && triggers.length <= CARD_LIMITS.entries;
+        const manual = valid ? triggers.map((item, index) => ({ sourcePointer: `${pointer('risuai')}/triggerscript/${index}`,
+            status: object(item) && item.type === 'manual' && Array.isArray(item.effect)
+                && item.effect.length <= CARD_LIMITS.entries ? 'unsupported' : 'requires-review',
+            effectCount: object(item) && Array.isArray(item.effect) ? item.effect.length : null })) : [];
+        const allManual = valid && manual.length > 0 && manual.every(item => item.status === 'unsupported');
+        entries.push({ key: 'risuai', sourcePointer: pointer('risuai'), status: allManual ? 'unsupported' : 'requires-review',
+            reason: allManual ? 'manual-trigger-runtime-not-wired' : valid && manual.length === 0
+                ? 'empty-trigger-declaration' : 'invalid-trigger-declaration',
+            detail: { kind: 'manual-triggers', triggers: manual } });
+    }
+    return { schemaVersion: 3, sourceSha256: decoded.sourceSha256, entries };
+}
 // A card is only a source of declarations. This report does not resolve URLs,
 // execute extensions, or imply that optional analysis has run. "Missing" means
 // the referenced asset bytes were not bundled in the card itself.

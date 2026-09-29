@@ -30,7 +30,7 @@ import {
 } from './roleplay-data.js';
 import { lastSeq, eventsOf } from './roleplay-context.js';
 import { readCardSource, decodeTavernCard, projectTavernCardCompact, compileTavernFieldCoverage,
-  compileTavernExtensionInventory, compileTavernCapabilityReport,
+  compileTavernExtensionInventory, compileTavernExtensionInventoryV3, compileTavernCapabilityReport,
   fenceCardContent } from './tavern-card.js';
 import { registerCardExport } from './card-export.js';
 import { cardCodeBlocks, statusTemplateDiagnostics } from '../status-template.js';
@@ -621,6 +621,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             normalizer: decoded ? 'tavern-fields-v2' : IMPORT_NORMALIZER,
             ...(decoded ? { fieldProof: compileTavernFieldCoverage(decoded) } : {}),
             ...(decoded ? { extensionInventory: compileTavernExtensionInventory(decoded) } : {}),
+            ...(decoded ? { extensionDeclarations: compileTavernExtensionInventoryV3(decoded) } : {}),
             ...(decoded ? { capabilityReport: compileTavernCapabilityReport(decoded) } : {}),
             ...(decoded
 

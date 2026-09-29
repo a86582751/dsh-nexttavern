@@ -3,6 +3,7 @@
 import { sha256, cloneRecord, stableJson } from './roleplay-data.js';
 import { readCardSource, decodeTavernCard, projectTavernCard, projectTavernCardCompact,
   compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1,
+  compileTavernExtensionInventoryV3,
   compileTavernCapabilityReport } from './tavern-card.js';
 import type { DecodedTavernCard } from './tavern-card.js';
 import type {
@@ -125,6 +126,11 @@ export const assertImportRecordIntegrity = (record: ImportRecord) => {
       if (record.schemaVersion !== 5
         || expected === null || stableJson(expected) !== stableJson(inventory))
         throw new Error('结构化扩展能力清单与原件不一致');
+    }
+    if (record.extensionDeclarations !== undefined) {
+      if (record.schemaVersion !== 5 || record.extensionDeclarations.schemaVersion !== 3
+        || stableJson(compileTavernExtensionInventoryV3(decoded)) !== stableJson(record.extensionDeclarations))
+        throw new Error('结构化扩展声明证明与原件不一致');
     }
     if (record.capabilityReport !== undefined) {
       if (record.schemaVersion !== 5 || record.capabilityReport.schemaVersion !== 1
@@ -411,6 +417,7 @@ export const importSummary = (record: ImportRecord) => {
   assertImportRecordIntegrity(record);
   const coverage = importCoverage(record);
   const extensionEntries = record.extensionInventory?.entries ?? [];
+  const declarationEntries = record.extensionDeclarations?.entries ?? [];
   const capabilityEntries = record.capabilityReport?.entries ?? [];
   const extensionCounts = { unexecuted: 0, 'requires-optional-analysis': 0,
     'requires-review': 0, 'archive-only': 0, 'unexpected-shape': 0, 'inactive-empty': 0 };
@@ -451,6 +458,15 @@ export const importSummary = (record: ImportRecord) => {
       counts: extensionCounts,
       entries: visibleExtensions,
       omitted: Math.max(0, extensionEntries.length - 64),
+    } } : {}),
+    ...(record.extensionDeclarations ? { extensionDeclarations: {
+      schemaVersion: record.extensionDeclarations.schemaVersion,
+      total: declarationEntries.length,
+      entries: declarationEntries.map(entry => ({key: entry.key, sourcePointer: entry.sourcePointer,
+        status: entry.status, reason: entry.reason,
+        detailKind: entry.detail.kind,
+        referenceCount: Array.isArray(entry.detail.references) ? entry.detail.references.length : 0,
+        triggerCount: Array.isArray(entry.detail.triggers) ? entry.detail.triggers.length : 0})),
     } } : {}),
     ...(record.capabilityReport ? { capabilityReport: {
       schemaVersion: record.capabilityReport.schemaVersion,
