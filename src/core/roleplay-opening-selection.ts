@@ -21,10 +21,13 @@ export interface OpeningSource {
 }
 export interface OpeningCatalog { readonly source: OpeningSource; readonly candidates: readonly TavernOpeningCandidate[] }
 export type OpeningRejectionCode = 'PROGRAMMATIC_IDENTITY_CONFLICT' | 'PROGRAMMATIC_OPEN_TURN'
-  | 'PROGRAMMATIC_MISSING_SYSTEM_HEAD'
+  | 'PROGRAMMATIC_MISSING_SYSTEM_HEAD' | 'PROGRAMMATIC_UNATTRIBUTED_FAILURE'
+  | 'PROGRAMMATIC_INCOMPLETE_TURN'
 const isRejectionCode = (value: unknown): value is OpeningRejectionCode =>
   value === 'PROGRAMMATIC_IDENTITY_CONFLICT' || value === 'PROGRAMMATIC_OPEN_TURN'
   || value === 'PROGRAMMATIC_MISSING_SYSTEM_HEAD'
+  || value === 'PROGRAMMATIC_UNATTRIBUTED_FAILURE'
+  || value === 'PROGRAMMATIC_INCOMPLETE_TURN'
 export interface OpeningIntent {
   readonly schemaVersion: 2
   readonly sessionId: string
@@ -39,7 +42,7 @@ export interface OpeningIntent {
   readonly revision: number
   readonly status: 'pending' | 'busy' | 'unknown' | 'completed'
   readonly committedTurn?: number
-  /** Optional in schema v2: the last no-write refusal, never a durability or retry proof. */
+  /** Optional in schema v2: the last refusal or partial-turn diagnosis, never a durability or retry proof. */
   readonly rejectionCode?: OpeningRejectionCode
 }
 export interface OpeningTable {
@@ -57,6 +60,7 @@ export interface OpeningLookupResult {
   /** absent requires a durable log/flush check; unknown must not start another append. */
   readonly status: 'committed' | 'absent' | 'unknown'
   readonly turn?: number
+  readonly code?: OpeningRejectionCode
 }
 export interface OpeningSelectionDeps {
   readonly table: OpeningTable
@@ -130,12 +134,21 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       return complete(key, intent, result.turn!)
     }
     // A newer busy/uncertain receipt supersedes the previous refusal. Only the
-    // three native no-write codes may persist; arbitrary adapter text may not.
+    // native diagnosis codes may persist; arbitrary adapter text may not.
     const {rejectionCode: _previousRejection, ...retained} = intent
     const next: OpeningIntent = {...retained, status:result.kind, revision:intent.revision + 1,
       ...(result.kind === 'unknown' && isRejectionCode(result.code) ? {rejectionCode:result.code} : {})}
     await deps.table.put(key, next)
     return {status:'busy', intent:next}
+  }
+  const diagnose = async (key: string, intent: OpeningIntent, found: OpeningLookupResult): Promise<OpeningIntent> => {
+    if (found.status !== 'unknown' || !isRejectionCode(found.code)
+      || intent.status === 'unknown' && intent.rejectionCode === found.code) return intent
+    const next: OpeningIntent = {...intent,status:'unknown',rejectionCode:found.code,revision:intent.revision + 1}
+    // A diagnostic refresh must not turn a successful native lookup into a
+    // storage failure. Retain the last durable intent if annotation cannot save.
+    try { await deps.table.put(key,next); return next }
+    catch { return intent }
   }
   const select = (sessionId: string, index: number, operationId: string,
     context: TavernOpeningContext = {}): Promise<OpeningIntent | {status:'busy'; intent: OpeningIntent}> =>
@@ -163,7 +176,8 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
         if (found.status === 'committed') return complete(key, previous, found.turn!)
         if (found.status === 'absent' && current(previous.source))
           return append(key, previous)
-        return {status:'busy', intent:previous}
+        if (!current(previous.source)) return {status:'busy',intent:previous}
+        return {status:'busy', intent:await diagnose(key,previous,found)}
       }
       if (Buffer.byteLength(candidate.renderedText, 'utf8') > 65_536)
         throw new Error('开场正文超过持久选择上限')
@@ -188,9 +202,8 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       if (intent.status === 'completed') return intent
       const found = await deps.findOpeningByOperationId(intent)
       if (!current(intent.source)) return null
-      // A log lookup confirms durability only. Keep the latest refusal as
-      // historical diagnosis; it must not stand in for a fresh admission check.
-      return found.status === 'committed' ? complete(key, intent, found.turn!) : intent
+      // Uncertain lookup can explain a refusal without authorizing another append.
+      return found.status === 'committed' ? complete(key, intent, found.turn!) : diagnose(key,intent,found)
     })
   return {readCatalog, readIntent, select, recover}
 }

@@ -317,6 +317,15 @@
       ]
     },
     {
+      "artifact": "compat-agent-loop-programmatic-commit-js",
+      "source": "development/agent-loop/src/programmatic-commit.ts",
+      "banner": "runtime/alpha3/compat/agent-loop/src/programmatic-commit.ts",
+      "primaryOutput": "development/agent-loop/lib/programmatic-commit.js",
+      "outputs": [
+        "development/agent-loop/lib/programmatic-commit.js"
+      ]
+    },
+    {
       "artifact": "compat-agent-loop-runtime-context-js",
       "source": "development/agent-loop/src/runtime-context.ts",
       "banner": "runtime/alpha3/compat/agent-loop/src/runtime-context.ts",
@@ -4335,6 +4344,14 @@
       {
         "id": "compat-agent-loop-invariant-js",
         "source": "development/agent-loop/lib/invariant.js"
+      },
+      {
+        "id": "compat-agent-loop-programmatic-commit-ts",
+        "source": "development/agent-loop/src/programmatic-commit.ts"
+      },
+      {
+        "id": "compat-agent-loop-programmatic-commit-js",
+        "source": "development/agent-loop/lib/programmatic-commit.js"
       },
       {
         "id": "compat-agent-loop-runtime-context-ts",
@@ -8971,6 +8988,22 @@
           "build-tools/package-lock.json"
         ],
         "banner": "runtime/alpha3/compat/agent-loop/src/invariant.ts"
+      },
+      {
+        "id": "compat-agent-loop-programmatic-commit-build",
+        "kind": "typescript-module",
+        "artifact": "compat-agent-loop-programmatic-commit-js",
+        "entry": "development/agent-loop/src/programmatic-commit.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/agent-loop/src/programmatic-commit.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/compat/agent-loop/src/programmatic-commit.ts"
       },
       {
         "id": "compat-agent-loop-runtime-context-build",

@@ -289,6 +289,14 @@
       "source": "development/agent-loop/lib/invariant.js"
     },
     {
+      "id": "compat-agent-loop-programmatic-commit-ts",
+      "source": "development/agent-loop/src/programmatic-commit.ts"
+    },
+    {
+      "id": "compat-agent-loop-programmatic-commit-js",
+      "source": "development/agent-loop/lib/programmatic-commit.js"
+    },
+    {
       "id": "compat-agent-loop-runtime-context-ts",
       "source": "development/agent-loop/src/runtime-context.ts"
     },
@@ -5229,6 +5237,21 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "development/agent-loop/src/invariant.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-programmatic-commit-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-programmatic-commit-js",
+      "entry": "development/agent-loop/src/programmatic-commit.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/programmatic-commit.ts",
         "build-tools/tsconfig.json",
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",

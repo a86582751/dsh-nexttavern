@@ -79,6 +79,14 @@ export class SystemPromptProjection {
     return nodes
   }
 
+  /** Reject an unreadable future system write before a caller consumes pending input. */
+  assertCanProject(): void {
+    const head = this.session.surface.nodes[0]
+    if (head !== undefined && this.session.eventAt(head)?.type !== 'system/message') {
+      throw new Error('session surface has no protected system prompt head')
+    }
+  }
+
   /**
    * Reconcile effective text and retained nodes with the prepared route and series.
    * @param rendered - the fully rendered system prompt; `''` when none is active.
@@ -86,15 +94,10 @@ export class SystemPromptProjection {
    * @returns ordered per-node updates; an empty list means no update is needed.
    */
   project(rendered: string, input: SystemPromptDecisionInput): SystemPromptCommit[] {
+    this.assertCanProject()
     const nodes = this.systemNodes()
     const head = nodes[0]
     if (head === undefined) {
-      // Readable assistant-only history cannot acquire a late protected head.
-      // Stop before a system append or model request; the loop closes this
-      // failed step/turn without making the existing transcript cold-corrupt.
-      if (this.session.surface.nodes.length > 0) {
-        throw new Error('session surface has no protected system prompt head')
-      }
       return [{ message: createSystemMessage(rendered), intent: { surfaceOp: 'append' } }]
     }
     const latest = nodes.findLast(node => node.text !== '') ?? head

@@ -272,6 +272,17 @@ export interface RequestContext {
  */
 export type RequestHeaderReason = 'initial' | 'resume' | 'change' | 'series'
 
+/** Durable identity of programmatic input claimed by a turn, without storing its text. */
+export interface ProgrammaticTurnIdentity {
+  schemaVersion: 1
+  operationId: string
+  messageId: string
+  producer: string
+  origin: string
+  /** Lowercase SHA-256 of the exact input text; the input body remains caller-owned. */
+  textSha256: string
+}
+
 /**
  * The merge-extensible, append-only source of truth for an agent interaction.
  * Message history is derived from this log. Every event is lossless JSON and
@@ -285,7 +296,7 @@ export interface SessionEventMap {
    * step; otherwise the following identified `user/message` event or batch
    * records the messages entering the step.
    */
-  'turn/start': { turn: number }
+  'turn/start': { turn: number; programmatic?: ProgrammaticTurnIdentity }
   /**
    * Closes turn `turn` with the {@link TurnEndReason} that ended it. A turn
    * with no entered step has no `step/start` or `step/end`. The loop does not await a

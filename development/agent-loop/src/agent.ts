@@ -16,7 +16,7 @@ import type {
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
 import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
-import type { AssistantMessage, GenerateOptions, LlmCallConfig, Message, PreparedLlmCall, ProgrammaticAssistantMessageSource } from '@deepseek-ai/dsh-llm'
+import type { AssistantMessage, GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
 import {
   LlmError,
   createAssistantMessage,
@@ -27,6 +27,8 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import {inspectProgrammaticCommit, programmaticTurnIdentity} from './programmatic-commit.js'
+import type {ProgrammaticCommitInput, ProgrammaticAssistantRejectionCode} from './programmatic-commit.js'
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { EpochHeader, RequestContext, Session, SessionEvent, SessionId, SessionSeq, TurnEndReason, UserMessage } from '@deepseek-ai/dsh-session'
@@ -55,23 +57,19 @@ type Phase =
 type StepEndReason = Extract<TurnEndReason, { kind: 'completed' | 'max-tokens' }>
 
 /** A caller-owned, stable identity for an assistant turn with no model request. */
-export interface ProgrammaticAssistantCommit {
-  operationId: string
-  messageId: string
-  text: string
-  source: ProgrammaticAssistantMessageSource
-}
+export interface ProgrammaticAssistantCommit extends ProgrammaticCommitInput {}
 
-/** Known admission refusals carry no new Session writes; durability failures have no code. */
-export type ProgrammaticAssistantRejectionCode =
-  | 'PROGRAMMATIC_IDENTITY_CONFLICT'
-  | 'PROGRAMMATIC_OPEN_TURN'
-  | 'PROGRAMMATIC_MISSING_SYSTEM_HEAD'
+/** A code explains an admission refusal or an existing partial turn; it never proves durability. */
+export type {ProgrammaticAssistantRejectionCode} from './programmatic-commit.js'
 
 export type ProgrammaticAssistantCommitResult =
   | { kind: 'committed'; turn: number; messageId: string }
   | { kind: 'unknown'; reason: string; code?: ProgrammaticAssistantRejectionCode }
   | { kind: 'busy' }
+
+export type ProgrammaticAssistantLookupResult =
+  | {status:'committed';turn:number} | {status:'absent'}
+  | {status:'unknown';code?:ProgrammaticAssistantRejectionCode}
 
 export interface ProgrammaticAssistantGeneration {
   operationId: string
@@ -245,60 +243,30 @@ export class ReactLoopAgent implements Agent {
 
   /**
    * Append one complete assistant turn without entering the request pipeline.
-   * The operation id lives in the message source so retries can inspect the
-   * append-only log after a lost flush acknowledgement. A partial append is
-   * never rolled back or continued by a second writer.
+   * The operation identity is in the first turn record as well as the message,
+   * so a cold retry can recognize a failure before the message existed. Flush
+   * still owns durability; a partial turn is never continued by a second writer.
    */
   async commitProgrammaticAssistant(input: ProgrammaticAssistantCommit): Promise<ProgrammaticAssistantCommitResult> {
     if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned) return { kind: 'busy' }
-    const validIdentity = (value: unknown): value is string => typeof value === 'string'
-      && value.length > 0 && value.length <= 256 && value.trim() === value
-      && !/[\u0000-\u001f\u007f]/u.test(value)
-    if (!input || !validIdentity(input.operationId) || !validIdentity(input.messageId)
-      || !input.source || input.source.kind !== 'programmatic' || input.source.schemaVersion !== 1
-      || input.source.operationId !== input.operationId || !validIdentity(input.source.producer)
-      || !validIdentity(input.source.origin) || typeof input.text !== 'string'
-      || new TextEncoder().encode(input.text).length > 65_536) {
-      throw new Error('invalid programmatic assistant commit identity, source, or text')
-    }
+    const identity = programmaticTurnIdentity(input)
     return this.runMaintenance<ProgrammaticAssistantCommitResult>(async () => {
       // Include inherited history: the operation may have committed before a
       // resume, or the flush acknowledgement may have been lost.
-      const assistantEvents = this.session.snapshotEvents()
-        .filter((event): event is SessionEvent<'assistant/message'> => event.type === 'assistant/message')
-      const matching = assistantEvents.filter(event => event.data.message.source.kind === 'programmatic'
-          && event.data.message.source.operationId === input.operationId)
-      if (matching.length > 0) {
-        if (matching.length !== 1) return { kind: 'unknown', reason: 'multiple messages have this operation id' }
-        const event = matching[0]!
-        const message = event.data.message
-        if (message.source.kind !== 'programmatic') {
-          return { kind: 'unknown', reason: 'operation source changed during retry inspection' }
-        }
-        if (message.id !== input.messageId || message.source.producer !== input.source.producer
-          || message.source.origin !== input.source.origin || message.content.length !== 1
-          || message.content[0]?.type !== 'text' || message.content[0].text !== input.text) {
-          return { kind: 'unknown', reason: 'operation id belongs to a different message',
-            code: 'PROGRAMMATIC_IDENTITY_CONFLICT' }
-        }
-        const closed = this.session.snapshotEvents().some(candidate => candidate.type === 'turn/end'
-          && candidate.data.turn === event.data.turn && candidate.data.reason.kind === 'completed')
-        if (!closed) return { kind: 'unknown', reason: 'assistant turn has no closing boundary' }
+      const inspection = inspectProgrammaticCommit(this.session.snapshotEvents(), input, identity)
+      if (inspection.kind === 'unknown') return inspection
+      if (inspection.kind === 'complete') {
         try {
           if (!await this.ctx.sessions.flush(this.session)) {
             return { kind: 'unknown', reason: 'no durable session listener confirmed the flush' }
           }
-          return { kind: 'committed', turn: event.data.turn, messageId: input.messageId }
+          return { kind: 'committed', turn: inspection.turn, messageId: input.messageId }
         } catch {
           return { kind: 'unknown', reason: 'session flush did not confirm durability' }
         }
       }
       if (this.uncertainProgrammaticOperations.has(input.operationId)) {
         return { kind: 'unknown', reason: 'earlier append stopped before its message boundary' }
-      }
-      if (assistantEvents.some(event => event.data.message.id === input.messageId)) {
-        return { kind: 'unknown', reason: 'message id already belongs to another operation',
-          code: 'PROGRAMMATIC_IDENTITY_CONFLICT' }
       }
       if (this.loopCtx.sessionProjections.stateOf(this.session, 'turnBoundary')?.openTurnStartSeq != null) {
         return { kind: 'unknown', reason: 'session already has an open turn', code: 'PROGRAMMATIC_OPEN_TURN' }
@@ -324,7 +292,7 @@ export class ReactLoopAgent implements Agent {
         source: input.source,
       })
       try {
-        this.session.append('turn/start', { turn })
+        this.session.append('turn/start', { turn, programmatic: identity })
         phase.lastTurn = turn
         this.session.append('step/start', { turn, step })
         // The first surface node must already own the system slot when the
@@ -340,7 +308,13 @@ export class ReactLoopAgent implements Agent {
         this.session.append('step/end', { turn, step })
         this.session.append('turn/end', { turn, reason: { kind: 'completed' } })
       } catch {
-        this.uncertainProgrammaticOperations.add(input.operationId)
+        if (this.session.snapshotEvents().some(event => event.type === 'turn/start'
+          && event.data.programmatic?.operationId === input.operationId)) {
+          // An append acknowledgement can fail after the first event was accepted.
+          // Keep the next turn number ahead of that durable ownership boundary.
+          phase.lastTurn = Math.max(phase.lastTurn, turn)
+          this.uncertainProgrammaticOperations.add(input.operationId)
+        }
         this.closePartialProgrammaticTurn(turn, step)
         return { kind: 'unknown', reason: 'append stopped before a complete turn was confirmed' }
       }
@@ -352,6 +326,26 @@ export class ReactLoopAgent implements Agent {
       } catch {
         return { kind: 'unknown', reason: 'session flush did not confirm durability' }
       }
+    })
+  }
+
+  /** Confirm an exact operation under the same reservation as its writer; never append on lookup. */
+  async lookupProgrammaticAssistantCommit(input: ProgrammaticAssistantCommit): Promise<ProgrammaticAssistantLookupResult> {
+    if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned) return {status:'unknown'}
+    const identity = programmaticTurnIdentity(input)
+    return this.runMaintenance<ProgrammaticAssistantLookupResult>(async () => {
+      const inspection = inspectProgrammaticCommit(this.session.snapshotEvents(), input, identity)
+      if (inspection.kind === 'unknown') return {status:'unknown',...(inspection.code ? {code:inspection.code} : {})}
+      if (inspection.kind === 'absent' && this.uncertainProgrammaticOperations.has(input.operationId)) {
+        return {status:'unknown'}
+      }
+      if (this.loopCtx.sessionProjections.stateOf(this.session, 'turnBoundary')?.openTurnStartSeq != null) {
+        return {status:'unknown',code:'PROGRAMMATIC_OPEN_TURN'}
+      }
+      try {
+        if (!await this.ctx.sessions.flush(this.session)) return {status:'unknown'}
+        return inspection.kind === 'complete' ? {status:'committed',turn:inspection.turn} : {status:'absent'}
+      } catch { return {status:'unknown'} }
     })
   }
 
@@ -498,6 +492,9 @@ export class ReactLoopAgent implements Agent {
   private async preStep(target: InboxTarget, position: { turn: number; step: number }): Promise<PreparedStep> {
     /* v8 ignore next -- private callers establish the running phase before proposing a step */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)
+    // A readable old assistant-only transcript cannot acquire a later system
+    // head. Refuse before claim, leaving the original input durably pending.
+    this.systemPrompt.assertCanProject()
     const signal = this.phase.abort.signal
     const claimed = this.inbox.claim(target, position.turn)
     const assembled = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal))

@@ -1004,13 +1004,28 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
     findOpeningByOperationId:async (intent:OpeningIntent) => {
       try {
+        const found = await ctx.sessionController.resolveAgent(intent.sessionId)
+        const agent = found?.agent as (CoreAgent & {lookupProgrammaticAssistantCommit?: (input: {
+          operationId:string;messageId:string;text:string;source:{kind:'programmatic';schemaVersion:1;
+            producer:string;origin:string;operationId:string}
+        }) => Promise<{status:'committed';turn:number} | {status:'absent'}
+          | {status:'unknown';code?:OpeningRejectionCode}>}) | undefined
+        if (agent?.lookupProgrammaticAssistantCommit) {
+          return await agent.lookupProgrammaticAssistantCommit({operationId:intent.operationId,messageId:intent.messageId,
+            text:intent.renderedText,source:{kind:'programmatic',schemaVersion:1,producer:'dsh-nexttavern',
+              origin:`card-opening:${intent.source.importId}`,operationId:intent.operationId}})
+        }
         const session = ctx.sessions.get(intent.sessionId)
         if (!session) return {status:'unknown' as const}
-        const matching = eventsOf(session).filter(event => event.type === 'assistant/message'
+        const history = eventsOf(session)
+        if (history.some(event => event.type === 'turn/start' && event.data
+          && Object.hasOwn(event.data,'programmatic'))) return {status:'unknown' as const}
+        const matching = history.filter(event => event.type === 'assistant/message'
           && (event.data?.message?.source as {kind?:unknown;operationId?:unknown} | undefined)?.kind === 'programmatic'
           && (event.data?.message?.source as {operationId?:unknown} | undefined)?.operationId === intent.operationId)
-        if (!matching.length) return await ctx.sessions.flush(session)
-          ? {status:'absent' as const} : {status:'unknown' as const}
+        // Older writers cannot prove that an absent assistant was never attempted.
+        // Exact old successes remain confirmable; retry requires the owned lookup contract.
+        if (!matching.length) return {status:'unknown' as const}
         if (matching.length !== 1) return {status:'unknown' as const}
         const event = matching[0]!
         const message = event.data?.message

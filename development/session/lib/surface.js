@@ -115,15 +115,38 @@ export function deriveEventMessage(event, projectedMessages) {
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+const PROGRAMMATIC_TURN_IDENTITY_FIELDS = new Set([
+    'schemaVersion', 'operationId', 'messageId', 'producer', 'origin', 'textSha256',
+]);
+/** Admit the complete v1 identity only; extra fields could otherwise retain caller text. */
+function validateProgrammaticTurnIdentity(value, subject) {
+    if (!isRecord(value) || value['schemaVersion'] !== 1
+        || Object.keys(value).some(key => !PROGRAMMATIC_TURN_IDENTITY_FIELDS.has(key))) {
+        throw new Error(`${subject} has invalid programmatic identity`);
+    }
+    for (const field of ['operationId', 'messageId', 'producer', 'origin']) {
+        const identity = value[field];
+        if (typeof identity !== 'string' || identity.length < 1 || identity.length > 256
+            || identity !== identity.trim() || /[\u0000-\u001f\u007f-\u009f]/.test(identity)) {
+            throw new Error(`${subject} has invalid programmatic identity ${field}`);
+        }
+    }
+    if (typeof value['textSha256'] !== 'string' || !/^[a-f0-9]{64}$/.test(value['textSha256'])) {
+        throw new Error(`${subject} has invalid programmatic identity textSha256`);
+    }
+}
 /**
- * Reject noncanonical request-header fields, developer roles/content, and contradictory tool failure metadata.
+ * Reject noncanonical programmatic identities, request-header fields, developer roles/content, and tool failure metadata.
  * This does not validate complete event payloads or embedded provider streams.
  * @param event - event whose locally related payload fields are inspected.
  * @param subject - event location to include in validation errors.
- * @throws when request-header fields, developer roles/content, or tool failure metadata are invalid.
+ * @throws when programmatic identities, request-header fields, developer roles/content, or tool failure metadata are invalid.
  */
 export function validateSessionEventData(event, subject) {
     const data = event.data;
+    if (event.type === 'turn/start' && isRecord(data) && Object.hasOwn(data, 'programmatic')) {
+        validateProgrammaticTurnIdentity(data['programmatic'], subject);
+    }
     if (SURFACE_EVENT_TYPES.has(event.type) && isRecord(data)) {
         const message = event.type === 'user/message' ? data : data['message'];
         if (isRecord(message)) {
