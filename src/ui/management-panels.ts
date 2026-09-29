@@ -569,6 +569,7 @@ export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast,
             [loading, setLoading] = React.useState(false);
         // Tickets invalidate late list/preview responses after cleanup or a newer request.
         const listSequence = React.useRef(0), previewSequence = React.useRef(0), capabilitySequence = React.useRef(0);
+        const importRequests = React.useRef(new Map<string, string>());
         const loadCapabilities = React.useCallback(async () => {
             const ticket = ++capabilitySequence.current;
             try {
@@ -648,17 +649,23 @@ export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast,
                 title: '载入当前人设', confirmLabel: '确认载入'
             }))
                 return;
+            const requestKey = `${sessionId}:${resource.id}`;
+            const requestId = importRequests.current.get(requestKey) ?? crypto.randomUUID();
+            importRequests.current.set(requestKey, requestId);
             try {
-                await jsonFetch('/api/roleplay/jobs', {
+                const reply = await jsonFetch<{job?: {status?: string; error?: unknown}}>('/api/roleplay/jobs', {
                     method: 'POST',
                     headers: {
                         'content-type': 'application/json'
                     },
                     body: JSON.stringify({
-                        sessionId, kind: 'card-import', resourceId: resource.id
+                        sessionId, kind: 'card-import', resourceId: resource.id, requestId
                     })
                 });
-                toast('已创建角色卡导入任务');
+                if (reply.job?.status === 'completed') importRequests.current.delete(requestKey);
+                toast(reply.job?.status === 'failed'
+                    ? `导入任务失败，请在任务列表重试：${String(reply.job.error ?? '原因未返回')}`
+                    : reply.job?.status === 'completed' ? '角色卡已导入，请选择开场' : '角色卡导入任务已创建');
                 setOpeningRefresh(value => value + 1);
             }
             catch (e) {
