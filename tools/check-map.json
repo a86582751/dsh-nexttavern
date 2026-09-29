@@ -773,6 +773,14 @@
       "source": "lib/ui/management-panels.js"
     },
     {
+      "id": "card-import-request-typescript",
+      "source": "src/ui/card-import-request.ts"
+    },
+    {
+      "id": "card-import-request",
+      "source": "lib/ui/card-import-request.js"
+    },
+    {
       "id": "opening-panel-typescript",
       "source": "src/ui/opening-panel.ts"
     },
@@ -5991,6 +5999,7 @@
         "src/ui/client.ts",
         "src/ui/telemetry-panels.ts",
         "src/ui/management-panels.ts",
+        "src/ui/card-import-request.ts",
         "src/ui/opening-panel.ts",
         "src/ui/user-info.ts",
         "src/ui/author-panels.ts",
@@ -6081,9 +6090,24 @@
       "builder": "tools/build-modules.mjs",
       "inputs": [
         "src/ui/management-panels.ts",
+        "src/ui/card-import-request.ts",
         "src/ui/opening-panel.ts",
         "src/ui/panel-state.ts",
         "src/ui/settings-projection.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "card-import-request-js",
+      "kind": "typescript-module",
+      "artifact": "card-import-request",
+      "entry": "src/ui/card-import-request.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/card-import-request.ts",
         "build-tools/tsconfig.json",
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
@@ -8548,6 +8572,8 @@
         "src/ui/telemetry-panels.ts",
         "lib/ui/management-panels.js",
         "src/ui/management-panels.ts",
+        "lib/ui/card-import-request.js",
+        "src/ui/card-import-request.ts",
         "lib/ui/user-info.js",
         "src/ui/user-info.ts",
         "lib/ui/author-panels.js",

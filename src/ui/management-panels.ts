@@ -1,6 +1,8 @@
 import type * as ReactAPI from 'react';
 import { fetchRoleplayText, updatePanelDraft } from './panel-state.js';
 import {createOpeningPanel} from './opening-panel.js';
+import {createCardImportRequestJournal} from './card-import-request.js';
+import type {CardImportRequestStorage} from './card-import-request.js';
 import type { PanelDraft } from './panel-state.js';
 import {
     buildModelSettings,
@@ -120,6 +122,7 @@ interface ExportJob {
     };
 }
 interface ManagementDependencies {
+    importRequestStorage?: CardImportRequestStorage;
     React: typeof ReactAPI;
     sessionDrafts: Map<string, ModelDraft>;
     jsonFetch<T>(url: string, init?: RequestInit): Promise<T>;
@@ -132,8 +135,11 @@ interface ManagementDependencies {
          onClick: ReactAPI.MouseEventHandler<HTMLButtonElement>,
          extra?: ReactAPI.ButtonHTMLAttributes<HTMLButtonElement>): ReactAPI.ReactElement;
 }
-export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn }: ManagementDependencies) {
+export function createManagementPanels({
+    React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn, importRequestStorage,
+}: ManagementDependencies) {
     const OpeningPanel = createOpeningPanel({React,jsonFetch,toast});
+    const importRequestJournal = createCardImportRequestJournal({storage: importRequestStorage});
     function CharacterClusterPanel({ sessionId }: {
         sessionId: string;
     }) {
@@ -569,7 +575,6 @@ export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast,
             [loading, setLoading] = React.useState(false);
         // Tickets invalidate late list/preview responses after cleanup or a newer request.
         const listSequence = React.useRef(0), previewSequence = React.useRef(0), capabilitySequence = React.useRef(0);
-        const importRequests = React.useRef(new Map<string, string>());
         const loadCapabilities = React.useCallback(async () => {
             const ticket = ++capabilitySequence.current;
             try {
@@ -649,11 +654,12 @@ export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast,
                 title: '载入当前人设', confirmLabel: '确认载入'
             }))
                 return;
-            const requestKey = `${sessionId}:${resource.id}`;
-            const requestId = importRequests.current.get(requestKey) ?? crypto.randomUUID();
-            importRequests.current.set(requestKey, requestId);
             try {
-                const reply = await jsonFetch<{job?: {status?: string; error?: unknown}}>('/api/roleplay/jobs', {
+                // Persist before admission, so a lost response and full reload
+                // both replay the original server job instead of importing twice.
+                const {index, reused} = importRequestJournal.prepare(sessionId, resource.id);
+                const requestId = index.requestId;
+                const reply = await jsonFetch<{job?: {status?: string; requestId?: string; error?: unknown}}>('/api/roleplay/jobs', {
                     method: 'POST',
                     headers: {
                         'content-type': 'application/json'
@@ -662,14 +668,25 @@ export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast,
                         sessionId, kind: 'card-import', resourceId: resource.id, requestId
                     })
                 });
-                if (reply.job?.status === 'completed') importRequests.current.delete(requestKey);
-                toast(reply.job?.status === 'failed'
-                    ? `导入任务失败，请在任务列表重试：${String(reply.job.error ?? '原因未返回')}`
-                    : reply.job?.status === 'completed' ? '角色卡已导入，请选择开场' : '角色卡导入任务已创建');
+                if (reply.job?.status === 'completed') {
+                    if (reply.job.requestId !== requestId) {
+                        throw new Error('导入完成回执与原请求标识不一致；已保留恢复标识，请核对原导入任务后重试');
+                    }
+                    if (!importRequestJournal.complete(index)) {
+                        throw new Error('导入完成回执对应旧请求，当前恢复标识已变化；请核对当前角色卡和开场');
+                    }
+                    toast(reused ? '原导入任务已完成，请核对当前角色卡和开场' : '角色卡已导入，请选择开场');
+                } else if (reply.job?.status === 'failed') {
+                    toast(`导入任务失败，请在任务列表重试：${String(reply.job.error ?? '原因未返回')}`);
+                } else if (['queued', 'running', 'waiting-main'].includes(reply.job?.status ?? '')) {
+                    toast('角色卡导入任务处理中；再次点击会确认同一任务');
+                } else {
+                    toast('导入任务状态无法确认；已保留恢复标识，请稍后再次点击确认同一任务');
+                }
                 setOpeningRefresh(value => value + 1);
             }
             catch (e) {
-                toast('导入任务失败：' + String(errorMessage(e)));
+                toast('角色卡导入：' + String(errorMessage(e)));
             }
         };
         const pendingItems = Array.isArray(data?.pending) ? data.pending : [];

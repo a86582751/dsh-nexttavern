@@ -726,6 +726,15 @@
       ]
     },
     {
+      "artifact": "card-import-request",
+      "source": "src/ui/card-import-request.ts",
+      "banner": "runtime/alpha3/src/ui/card-import-request.ts",
+      "primaryOutput": "lib/ui/card-import-request.js",
+      "outputs": [
+        "lib/ui/card-import-request.js"
+      ]
+    },
+    {
       "artifact": "opening-panel",
       "source": "src/ui/opening-panel.ts",
       "banner": "runtime/alpha3/src/ui/opening-panel.ts",
@@ -4784,6 +4793,14 @@
       {
         "id": "management-panels",
         "source": "lib/ui/management-panels.js"
+      },
+      {
+        "id": "card-import-request-typescript",
+        "source": "src/ui/card-import-request.ts"
+      },
+      {
+        "id": "card-import-request",
+        "source": "lib/ui/card-import-request.js"
       },
       {
         "id": "opening-panel-typescript",
@@ -9776,6 +9793,7 @@
           "src/ui/client.ts",
           "src/ui/telemetry-panels.ts",
           "src/ui/management-panels.ts",
+          "src/ui/card-import-request.ts",
           "src/ui/opening-panel.ts",
           "src/ui/user-info.ts",
           "src/ui/author-panels.ts",
@@ -9868,6 +9886,7 @@
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
         "inputs": [
           "src/ui/management-panels.ts",
+          "src/ui/card-import-request.ts",
           "src/ui/opening-panel.ts",
           "src/ui/panel-state.ts",
           "src/ui/settings-projection.ts",
@@ -9877,6 +9896,21 @@
           "build-tools/package-lock.json"
         ],
         "banner": "runtime/alpha3/src/ui/management-panels.ts"
+      },
+      {
+        "id": "card-import-request-js",
+        "kind": "typescript-module",
+        "artifact": "card-import-request",
+        "entry": "src/ui/card-import-request.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/ui/card-import-request.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/src/ui/card-import-request.ts"
       },
       {
         "id": "opening-panel-js",
