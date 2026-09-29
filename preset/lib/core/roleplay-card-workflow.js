@@ -11,6 +11,15 @@ export function createCardWorkflows(deps) {
     // Keep one in-process driver per generation; a restart still resumes from storage.
     const running = new Map();
     const starting = new Map();
+    const withToolCallIdentity = (job, toolCallId) => {
+        if (!toolCallId)
+            return job.toolCallIds;
+        if (job.toolCallIds?.includes(toolCallId))
+            return job.toolCallIds;
+        if ((job.toolCallIds?.length ?? 0) >= 16)
+            throw new Error('当前导入已关联过多工具调用，请等待原调用完成后重试');
+        return [...(job.toolCallIds ?? []), toolCallId];
+    };
     async function withStartLock(sessionId, work) {
         const previous = starting.get(sessionId) ?? Promise.resolve();
         let release;
@@ -38,17 +47,23 @@ export function createCardWorkflows(deps) {
         if (job.kind === 'card-import' && record.rawSha256 !== job.source.sha256)
             throw new Error('角色卡任务来源哈希不匹配');
     }
-    async function beginCardWorkflow(session, kind, sourceFile, agent, clientRequestId) {
+    async function beginCardWorkflow(session, kind, sourceFile, agent, clientRequestId, toolCallId) {
         return withStartLock(session.id, async () => {
             if (!['card-import', 'card-export'].includes(kind))
                 throw new Error('角色卡任务类型无效');
             if (clientRequestId !== undefined && (typeof clientRequestId !== 'string' || kind !== 'card-import'
                 || !/^[A-Za-z0-9_-]{1,128}$/.test(clientRequestId)))
                 throw new Error('角色卡请求 requestId 无效');
+            if (toolCallId !== undefined && (typeof toolCallId !== 'string' || kind !== 'card-import'
+                || toolCallId.length < 1 || toolCallId.length > 256))
+                throw new Error('角色卡工具调用身份无效');
             const source = kind === 'card-import' ? readCardSource(session.header.cwd, sourceFile) : null;
             const sourceHash = source ? sha256(source.bytes) : recordSha256(statusFixedContext(session));
-            if (clientRequestId) {
-                const matches = cardWorkflows(session).filter(job => job.clientRequestId === clientRequestId);
+            if (clientRequestId || toolCallId) {
+                const jobs = cardWorkflows(session);
+                const byRequest = clientRequestId ? jobs.filter(job => job.clientRequestId === clientRequestId) : [];
+                const byCall = toolCallId ? jobs.filter(job => job.toolCallIds?.includes(toolCallId)) : [];
+                const matches = [...new Map([...byRequest, ...byCall].map(job => [job.id, job])).values()];
                 if (matches.length > 1)
                     throw new Error('角色卡请求身份重复，拒绝选择不确定任务');
                 const previous = matches[0];
@@ -56,7 +71,17 @@ export function createCardWorkflows(deps) {
                     if (previous.kind !== kind || previous.source.sourceFile !== source?.sourcePath
                         || previous.source.sha256 !== sourceHash)
                         throw new Error('角色卡 requestId 已绑定不同来源');
-                    return previous;
+                    if (clientRequestId && previous.clientRequestId && previous.clientRequestId !== clientRequestId)
+                        throw new Error('角色卡 requestId 与工具调用身份指向不同任务');
+                    const toolCallIds = withToolCallIdentity(previous, toolCallId);
+                    const next = { ...previous,
+                        ...(clientRequestId ? { clientRequestId } : {}),
+                        ...(toolCallIds ? { toolCallIds } : {}) };
+                    if ((toolCallIds?.length ?? 0) !== (previous.toolCallIds?.length ?? 0)
+                        || (!previous.clientRequestId && Boolean(clientRequestId))) {
+                        await T.branch.put(cardWorkflowKey(previous.id), next);
+                    }
+                    return next;
                 }
             }
             const active = activeCardWorkflow(session);
@@ -66,9 +91,16 @@ export function createCardWorkflows(deps) {
                 if (source && (active.source.sha256 !== sourceHash
                     || active.source.sourceFile !== source.sourcePath))
                     throw new Error('当前会话正在读取另一张卡，请先完成或取消');
-                if (clientRequestId && active.clientRequestId !== clientRequestId)
+                if (clientRequestId && active.clientRequestId && active.clientRequestId !== clientRequestId)
                     throw new Error('当前会话已有不同 requestId 的导入任务，请查看现有 job');
-                return active;
+                const next = { ...active,
+                    ...(clientRequestId ? { clientRequestId } : {}),
+                    ...(toolCallId ? { toolCallIds: withToolCallIdentity(active, toolCallId) } : {}) };
+                if ((next.toolCallIds?.length ?? 0) !== (active.toolCallIds?.length ?? 0)
+                    || (!active.clientRequestId && Boolean(clientRequestId))) {
+                    await T.branch.put(cardWorkflowKey(active.id), next);
+                }
+                return next;
             }
             const deterministic = kind === 'card-import' && source !== null && ['.png', '.json'].includes(source.extension);
             const selection = deterministic ? undefined : await modelPolicy.resolve(session, kind, agent);
@@ -77,6 +109,7 @@ export function createCardWorkflows(deps) {
                 ...(selection ? { selection, actualRoute: selection.actualRoute } : {}), execution: deterministic ? 'deterministic' : selection.execution,
                 status: 'queued', createdAt: Date.now(), progress: { done: 0, total: 1 },
                 ...(clientRequestId ? { clientRequestId } : {}),
+                ...(toolCallId ? { toolCallIds: [toolCallId] } : {}),
                 source: { sourceFile: source?.sourcePath ?? null, sha256: sourceHash } };
             await T.branch.put(cardWorkflowKey(id), job);
             return job;

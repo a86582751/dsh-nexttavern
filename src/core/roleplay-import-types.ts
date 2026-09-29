@@ -121,6 +121,7 @@ export interface ImportSession extends ContextSession {
   header: { cwd: string; origin?: string; seedLength?: unknown }
 }
 export interface ImportExec {
+  callId?: string
   agent?: { session?: ImportSession; options?: { subagentDepth?: number } }
   signal?: AbortSignal
 }
@@ -154,7 +155,7 @@ export interface CardImportDependencies {
   activeCardWorkflow(session: ImportSession): CardWorkflow | undefined
   assertCardWorkflow(session: ImportSession, record: unknown): void
   beginCardWorkflow(session: ImportSession, kind: string, sourceFile: string | null,
-    agent?: ImportExec['agent'], clientRequestId?: string): Promise<CardWorkflow>
+    agent?: ImportExec['agent'], clientRequestId?: string, toolCallId?: string): Promise<CardWorkflow>
   resumeCardWorkflows(session: ImportSession, agent?: ImportExec['agent'], signal?: AbortSignal): Promise<unknown>
   cardWorkflowKey(id: string): string
   libraryFor(session: ImportSession): { archive(input: { name: string; type: string; bytes: Buffer; source: Record<string, unknown> }): Promise<ImportResource> }

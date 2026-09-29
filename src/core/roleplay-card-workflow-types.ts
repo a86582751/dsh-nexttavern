@@ -20,6 +20,7 @@ export interface CardWorkflowJob extends Record<string, unknown> {
   execution: TaskSelection['execution'] | 'deterministic'
   source: {sourceFile: string | null; sha256: string}
   clientRequestId?: string
+  toolCallIds?: string[]
   openingRequested?: boolean
 }
 export interface CardWorkflowDependencies {

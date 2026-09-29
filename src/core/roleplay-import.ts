@@ -88,6 +88,15 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
     return simpleTool(name, description, parameters, execute);
   };
   const importRecordKey = (sessionId: string, importId: unknown) => keyOf(sessionId, `import-${safeId(importId)}`);
+  const activeImportForWorkflow = (sessionId: string, workflowId: string) => {
+    const record = ([...T.branch.entries()].map(([, value]) => value as ImportRecord)
+      .find(value => value?.sessionId === sessionId && value.workflowId === workflowId && value.status === 'active'));
+    if (!record) return null;
+    const pointer = T.branch.get(importActiveKey(sessionId)) as ImportPointer | undefined;
+    return pointer?.importId === record.importId
+      && (!pointer.normalizedSha256 || pointer.normalizedSha256 === record.normalizedSha256)
+      ? record : null;
+  };
   registerCardExport(
     ctx,
     {
@@ -478,7 +487,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
     () => ctx.tools.register(
       importTool(
         'rp_card_import_begin',
-        '开始无损读卡导入。PNG/JSON 默认由程序完成映射与激活；重试应复用 request_id。显式 merge 和 Markdown/TXT 保留分页审阅与手动 stage/finalize。返回任务及来源证明。',
+        '开始无损读卡导入。PNG/JSON 默认由程序完成映射与激活；外部重试应复用 request_id；省略时同一宿主工具调用仍以 callId 幂等，新的工具调用可显式重新导入同源。显式 merge 和 Markdown/TXT 保留分页审阅与手动 stage/finalize。返回任务及来源证明。',
         {
           type: 'object',
           properties: {
@@ -511,7 +520,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             let job;
             try {
               job = await beginCardWorkflow(session, 'card-import', requestedPath, exec.agent,
-                args.request_id as string | undefined);
+                args.request_id as string | undefined, exec.callId);
             }
             catch (error) {
               return {
@@ -525,9 +534,9 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               const live = T.branch.get(cardWorkflowKey(job.id)) as CardWorkflowJob | undefined;
               if (job.status === 'failed') return {ok:false,job:live ?? job,
                 error:String(live?.error ?? '角色卡任务失败，请从任务列表重试')};
-              const imported = [...T.branch.entries()].map(([, value]) => value as ImportRecord)
-                .find(value => value?.workflowId === job.id && value.status === 'active');
-              if (!imported) throw new Error('已完成任务缺少 active 来源记录');
+              const imported = activeImportForWorkflow(session.id, job.id);
+              if (!imported) return {ok:false,stale:true,
+                error:'该导入任务已完成，但其角色卡已被后续导入替换；如需重新导入，请发起新的工具调用'};
               return {ok:true,...importSummary(imported),job:live ?? job,resumed:true};
             }
             if (job.execution === 'spawn') {
@@ -554,9 +563,9 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 pending: live?.status === 'waiting-main',
                 error: live?.status === 'failed' ? String(live.error ?? '程序导入失败') : undefined,
               };
-              const imported = [...T.branch.entries()].map(([, value]) => value as ImportRecord)
-                .find(value => value?.workflowId === job.id && value.status === 'active');
-              if (!imported) throw new Error('程序导入完成但缺少 active 来源记录');
+              const imported = activeImportForWorkflow(session.id, job.id);
+              if (!imported) return {ok:false,stale:true,
+                error:'该导入任务已完成，但其角色卡已被后续导入替换；如需重新导入，请发起新的工具调用'};
               return {ok:true, ...importSummary(imported), job:live, resumed:true};
             }
           }
