@@ -1,8 +1,8 @@
 // Generated from runtime/alpha3/src/core/roleplay-import-record.ts; edit the TypeScript source.
 // Frozen import evidence and source-span validation. No table writes, workflow
 // state or import locks live here; validation remains usable by export/readback.
-import { sha256, cloneRecord } from './roleplay-data.js';
-import { readCardSource, decodeTavernCard, projectTavernCard } from './tavern-card.js';
+import { sha256, cloneRecord, stableJson } from './roleplay-data.js';
+import { readCardSource, decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1 } from './tavern-card.js';
 export const IMPORT_NORMALIZER = 'utf8-lf+anydoc-deescape-v2';
 const IMPORT_SOURCE_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.png', '.json']);
 // Hard limits protect the storage domain and the synchronous line/span
@@ -46,10 +46,18 @@ const lineStartsOf = (record) => {
         return record.lineStarts;
     return computeLineStarts(String(record.normalizedSource ?? ''));
 };
+export const projectStructuredImport = (record, decoded) => {
+    if (record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1')
+        return projectTavernCard(decoded);
+    if (record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2')
+        return projectTavernCardCompact(decoded);
+    throw new Error('结构化导入投影版本不匹配');
+};
 export const assertImportRecordIntegrity = (record) => {
     if (!record || typeof record !== 'object')
         throw new Error('导入记录损坏或不存在');
-    const structured = record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1';
+    const structured = (record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1')
+        || (record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2');
     if (!structured && (record.schemaVersion !== 3 || record.normalizer !== IMPORT_NORMALIZER)) {
         throw new Error('导入记录版本或规范化器不匹配；请从不可变 raw source 重新 begin');
     }
@@ -87,8 +95,22 @@ export const assertImportRecordIntegrity = (record) => {
         const decoded = decodeTavernCard(bytes, envelope.extension);
         if (decoded.format !== envelope.format || decoded.sourceSha256 !== envelope.sourceSha256 || record.rawSha256 !== envelope.sourceSha256)
             throw new Error('结构化原件格式或来源证据不一致');
-        if (JSON.stringify(decoded.document, null, 2) !== record.rawSource || projectTavernCard(decoded).text !== normalizedSource)
+        if (JSON.stringify(decoded.document, null, 2) !== record.rawSource
+            || projectStructuredImport(record, decoded).text !== normalizedSource)
             throw new Error('结构化原件与投影不一致');
+        if (record.fieldProof !== undefined) {
+            if (record.schemaVersion !== 5
+                || stableJson(compileTavernFieldCoverage(decoded)) !== stableJson(record.fieldProof))
+                throw new Error('结构化字段覆盖证明与原件不一致');
+        }
+        if (record.extensionInventory !== undefined) {
+            const inventory = record.extensionInventory;
+            const expected = inventory.schemaVersion === 1 ? compileTavernExtensionInventoryV1(decoded)
+                : inventory.schemaVersion === 2 ? compileTavernExtensionInventory(decoded) : null;
+            if (record.schemaVersion !== 5
+                || expected === null || stableJson(expected) !== stableJson(inventory))
+                throw new Error('结构化扩展能力清单与原件不一致');
+        }
     }
     const expectedStarts = computeLineStarts(normalizedSource);
     if (!Array.isArray(record.lineStarts) || record.lineStarts.length !== expectedStarts.length
@@ -99,6 +121,25 @@ export const assertImportRecordIntegrity = (record) => {
         throw new Error('导入记录行内容元数据不一致');
     if (record.lines.some((line, index) => line !== expectedLines[index]))
         throw new Error('导入记录行内容与规范化原文不一致');
+    if (record.assignmentProof !== undefined)
+        assertDeterministicAssignmentProof(record);
+    return true;
+};
+// Activation adds a materialization hash to each assignment. The deterministic
+// stage proof covers the original classification and remains stable afterward.
+export const deterministicAssignmentHash = (assignments) => sha256(stableJson(assignments.map(({ materializedSha256: _materialized, ...staged }) => staged)));
+export const assertDeterministicAssignmentProof = (record) => {
+    const proof = record.assignmentProof;
+    if (record.schemaVersion !== 5 || record.normalizer !== 'tavern-fields-v2'
+        || !record.fieldProof || proof?.schemaVersion !== 1 || proof.kind !== 'deterministic-suggested'
+        || !record.sourceEnvelope || proof.sourceSha256 !== record.rawSha256
+        || proof.normalizedSha256 !== record.normalizedSha256
+        || proof.stagedSha256 !== deterministicAssignmentHash(record.assignments ?? []))
+        throw new Error('程序字段映射证明缺失或与 staging 不一致');
+    const decoded = decodeTavernCard(Buffer.from(record.sourceEnvelope.base64, 'base64'), record.sourceEnvelope.extension);
+    if (stableJson(compileTavernFieldCoverage(decoded)) !== stableJson(record.fieldProof)
+        || proof.suggestedSha256 !== sha256(stableJson(projectStructuredImport(record, decoded).assignments)))
+        throw new Error('程序字段映射证明与原件不一致');
     return true;
 };
 export const assertAssignmentBudget = (assignments) => {
@@ -340,6 +381,22 @@ export const validateAssignmentIdentities = (assignments) => {
 export const importSummary = (record) => {
     assertImportRecordIntegrity(record);
     const coverage = importCoverage(record);
+    const extensionEntries = record.extensionInventory?.entries ?? [];
+    const extensionCounts = { unexecuted: 0, 'requires-optional-analysis': 0,
+        'requires-review': 0, 'archive-only': 0, 'unexpected-shape': 0, 'inactive-empty': 0 };
+    for (const entry of extensionEntries)
+        extensionCounts[entry.status]++;
+    const visibleExtensions = extensionEntries.slice(0, 64).map(entry => {
+        if (entry.detail?.kind !== 'variable-groups')
+            return entry;
+        const groups = entry.detail.groups;
+        // The durable proof keeps every field, while tool responses stay bounded.
+        return { ...entry, detail: { schemaVersion: entry.detail.schemaVersion, kind: entry.detail.kind,
+                groupCount: groups.length, fieldCount: groups.reduce((sum, group) => sum + group.fields.length, 0),
+                groups: groups.slice(0, 8).map(group => ({ sourcePointer: group.sourcePointer,
+                    nameSha256: group.nameSha256, fieldCount: group.fields.length })),
+                omittedGroups: Math.max(0, groups.length - 8) } };
+    });
     return {
         importId: record.importId,
         sourceFile: record.sourceFile,
@@ -360,6 +417,13 @@ export const importSummary = (record) => {
         sourceChars: coverage.sourceChars,
         createdAt: record.createdAt,
         activatedAt: record.activatedAt ?? null,
+        ...(record.extensionInventory ? { extensionInventory: {
+                schemaVersion: record.extensionInventory.schemaVersion,
+                total: extensionEntries.length,
+                counts: extensionCounts,
+                entries: visibleExtensions,
+                omitted: Math.max(0, extensionEntries.length - 64),
+            } } : {}),
         ...(record.sourceEnvelope
             ? {
                 format: record.sourceEnvelope.format, suggestedMapping: true,

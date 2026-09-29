@@ -76,6 +76,9 @@ import { createRoleplayDecision, taskCancellation } from './roleplay-decision.js
 import { createRoleplayInheritance } from './roleplay-inheritance.js'
 import { createResourceBridge } from './roleplay-resource-bridge.js'
 import { createCardWorkflows } from './roleplay-card-workflow.js'
+import {createRoleplayOpeningSelection} from './roleplay-opening-selection.js'
+import type {OpeningIntent} from './roleplay-opening-selection.js'
+import {registerOpeningRoutes} from './roleplay-opening-routes.js'
 import { createRoleplayService } from './roleplay-service.js'
 import {createSessionHistory, ensureSessionHistory} from './session-history.js'
 import { createRoleplayTaskHost } from './roleplay-task-host.js'
@@ -142,8 +145,8 @@ export const inject = [
 ]
 
 const DEFAULT_CONFIG = {
-  workerProvider: 'deepseek-official' as string | null,
-  workerModel: 'deepseek-flash' as string | null,
+  workerProvider: null as string | null,
+  workerModel: null as string | null,
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
@@ -977,6 +980,82 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     archiveImported
   })
   structuredImportDriver = driveStructuredImport
+
+  const openingTable = {get:(key:string) => T.branch.get(key),
+    put:async (key:string,value:OpeningIntent) => {await T.branch.put(key,value)}}
+  const openingSelection = createRoleplayOpeningSelection({
+    table:openingTable,
+    importActiveKey,
+    importRecordKey,
+    withLock:(key,action) => {
+      const prefix = 'opening-choice:'
+      if (!key.startsWith(prefix)) throw new Error('开场选择锁身份无效')
+      return withImportLock(key.slice(prefix.length),'opening-choice',action)
+    },
+    appendOpening:async request => {
+      const found = await ctx.sessionController.resolveAgent(request.sessionId)
+      const agent = found?.agent as (CoreAgent & {commitProgrammaticAssistant?: (input: {
+        operationId:string; messageId:string; text:string; source:{kind:'programmatic'; schemaVersion:1;
+          producer:string; origin:string; operationId:string}
+      }) => Promise<{kind:'committed';turn:number;messageId:string} | {kind:'busy'} | {kind:'unknown';reason:string}>}) | undefined
+      if (!agent?.commitProgrammaticAssistant) throw new Error('原生开场提交能力未就绪')
+      return agent.commitProgrammaticAssistant({operationId:request.operationId,messageId:request.messageId,
+        text:request.text,source:{kind:'programmatic',schemaVersion:1,producer:'dsh-nexttavern',
+          origin:`card-opening:${request.source.importId}`,operationId:request.operationId}})
+    },
+    findOpeningByOperationId:async (intent:OpeningIntent) => {
+      try {
+        const session = ctx.sessions.get(intent.sessionId)
+        if (!session) return {status:'unknown' as const}
+        const matching = eventsOf(session).filter(event => event.type === 'assistant/message'
+          && (event.data?.message?.source as {kind?:unknown;operationId?:unknown} | undefined)?.kind === 'programmatic'
+          && (event.data?.message?.source as {operationId?:unknown} | undefined)?.operationId === intent.operationId)
+        if (!matching.length) return await ctx.sessions.flush(session)
+          ? {status:'absent' as const} : {status:'unknown' as const}
+        if (matching.length !== 1) return {status:'unknown' as const}
+        const event = matching[0]!
+        const message = event.data?.message
+        const source = message?.source as {schemaVersion?:unknown;producer?:unknown;origin?:unknown} | undefined
+        const block = message?.content?.[0] as {type?:unknown;text?:unknown} | undefined
+        const turn = event.data?.turn
+        if (message?.id !== intent.messageId || source?.schemaVersion !== 1
+          || source.producer !== 'dsh-nexttavern' || source.origin !== `card-opening:${intent.source.importId}`
+          || message?.content?.length !== 1 || block?.type !== 'text' || block.text !== intent.renderedText
+          || !Number.isSafeInteger(turn) || !eventsOf(session).some(item => item.type === 'turn/end'
+            && item.data?.turn === turn)) return {status:'unknown' as const}
+        if (!await ctx.sessions.flush(session)) return {status:'unknown' as const}
+        return {status:'committed' as const,turn:Number(turn)}
+      } catch { return {status:'unknown' as const} }
+    },
+  })
+  registerOpeningRoutes({ctx,table:openingTable,resolveRoleplaySession,selection:openingSelection,
+    openingContext:sessionId => {
+      const user = userValues(sessionId)
+      const prefix = `${sessionId}__`
+      const cards = [...T.cards.entries()].filter(([key,card]) => key.startsWith(prefix)
+        && card?.kind !== 'user').sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0)
+      return {user:user.name,user_gender:user.gender,char:String(cards[0]?.[1]?.name ?? '角色')}
+    },
+    legacyOpeningAlreadyRequested:(sessionId,importId) => {
+      const pointer = T.branch.get(importActiveKey(sessionId)) as {sourceRecordSessionId?:string} | undefined
+      const record = T.branch.get(importRecordKey(pointer?.sourceRecordSessionId ?? sessionId,importId)) as
+        {workflowId?:string} | undefined
+      const job = record?.workflowId
+        ? T.branch.get(cardWorkflowKey(record.workflowId)) as {openingRequested?:boolean} | undefined
+        : undefined
+      return job?.openingRequested === true
+    },
+    priorOpeningInHistory:session => eventsOf(session).some(event => {
+      if (event.type !== 'assistant/message') return false
+      const source = event.data?.message?.source as
+        {kind?:unknown;producer?:unknown;origin?:unknown} | undefined
+      return source?.kind === 'programmatic' && source.producer === 'dsh-nexttavern'
+        && typeof source.origin === 'string' && source.origin.startsWith('card-opening:')
+    }),
+    canCommit:async sessionId => {
+      const found = await ctx.sessionController.resolveAgent(sessionId)
+      return typeof (found?.agent as {commitProgrammaticAssistant?:unknown} | undefined)?.commitProgrammaticAssistant === 'function'
+    }})
 
   registerCardAuthoring({
     ctx,

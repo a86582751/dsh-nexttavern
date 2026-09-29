@@ -34,6 +34,7 @@ type ModuleDependencies = Parameters<typeof import('./roleplay-import.js').regis
   | Parameters<typeof import('./roleplay-settings-routes.js').registerSettingsRoutes>[0]
   | Parameters<typeof import('./roleplay-telemetry-routes.js').registerTelemetryRoutes>[0]
   | Parameters<typeof import('./roleplay-job-routes.js').registerJobRoutes>[0]
+  | Parameters<typeof import('./roleplay-opening-routes.js').registerOpeningRoutes>[0]
   | Parameters<typeof import('./roleplay-job-routes.js').registerMaintenanceRoute>[0]
   | Parameters<typeof import('./roleplay-branch-routes.js').registerBranchRoutes>[0]
   | Parameters<typeof import('./roleplay-panel-routes.js').registerAvatarRoute>[0]

@@ -34,10 +34,10 @@
         "./node_modules/@earendil-works/pi-ai/dist/*"
       ],
       "dsh-nexttavern-session-format": [
-        "../compat/session-format/src/index.ts"
+        "../development/session-format/src/index.ts"
       ],
       "dsh-nexttavern-session-format/*": [
-        "../compat/session-format/src/*.ts"
+        "../development/session-format/src/*.ts"
       ]
     },
     "newLine": "lf"

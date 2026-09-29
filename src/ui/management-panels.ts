@@ -1,5 +1,6 @@
 import type * as ReactAPI from 'react';
 import { fetchRoleplayText, updatePanelDraft } from './panel-state.js';
+import {createOpeningPanel} from './opening-panel.js';
 import type { PanelDraft } from './panel-state.js';
 import {
     buildModelSettings,
@@ -121,6 +122,7 @@ interface ManagementDependencies {
          extra?: ReactAPI.ButtonHTMLAttributes<HTMLButtonElement>): ReactAPI.ReactElement;
 }
 export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn }: ManagementDependencies) {
+    const OpeningPanel = createOpeningPanel({React,jsonFetch,toast});
     function CharacterClusterPanel({ sessionId }: {
         sessionId: string;
     }) {
@@ -534,6 +536,7 @@ export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast,
             [type, setType] = React.useState('all'),
             [preview, setPreview] = React.useState<ResourcePreview | null>(null),
             [order, setOrder] = React.useState('time-desc'),
+            [openingRefresh,setOpeningRefresh] = React.useState(0),
             [loading, setLoading] = React.useState(false);
         // Tickets invalidate late list/preview responses after cleanup or a newer request.
         const listSequence = React.useRef(0), previewSequence = React.useRef(0);
@@ -608,6 +611,7 @@ export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast,
                     })
                 });
                 toast('已创建角色卡导入任务');
+                setOpeningRefresh(value => value + 1);
             }
             catch (e) {
                 toast('导入任务失败：' + String(errorMessage(e)));
@@ -616,7 +620,7 @@ export function createManagementPanels({ React, sessionDrafts, jsonFetch, toast,
         const pendingItems = Array.isArray(data?.pending) ? data.pending : [];
         return React.createElement('div', {
             className: 'dsh-rp-panel'
-        }, React.createElement('div', {
+        }, React.createElement(OpeningPanel,{sessionId,refreshToken:openingRefresh}), React.createElement('div', {
             className: 'dsh-rp-row'
         }, React.createElement('h4', null, '资源库'), React.createElement('button', {
             className: 'dsh-rp-btn', disabled: loading, onClick: load

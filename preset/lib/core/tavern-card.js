@@ -252,7 +252,9 @@ export function decodeTavernCard(bytes, extension) {
     return { schemaVersion: 1, format: `${png ? 'png' : 'json'}-v${version}`, document, data: data,
         sourceSha256: digest(bytes), ...(png ? { pngChunk: png.chunk, avatarBase64: png.avatar.toString('base64'), avatarSha256: digest(png.avatar) } : {}) };
 }
-export function projectTavernCard(decoded) {
+// Keep this projection's bytes and spans stable for persisted schema-v4 records.
+// New imports omit the duplicate raw document; sourceEnvelope owns those bytes.
+function projectTavernCardVersion(decoded, includeFullArchive) {
     const d = decoded.data, assignments = [], sections = [], worldbook = [];
     let line = 1;
     const add = (text, target, metadata = {}) => {
@@ -307,13 +309,228 @@ export function projectTavernCard(decoded) {
     }
     // Preserve every known/unknown extension, alternative greeting and asset URI
     // without treating an arbitrary extension as executable JS or a fetch URL.
-    add('## 完整结构化原件（只归档，不注入剧情）\n' + JSON.stringify(decoded.document, null, 2), 'archive-only', { name: 'Original structured fields' });
+    if (includeFullArchive) {
+        add('## 完整结构化原件（只归档，不注入剧情）\n' + JSON.stringify(decoded.document, null, 2), 'archive-only', { name: 'Original structured fields' });
+    }
     const text = sections.join('');
     if (text.length > 5_000_000 || line > 1_000_001)
         fail('角色卡投影字符数或行数超限；拒绝静默截断');
     return { text, assignments, worldbook, cardId,
         warnings: ['creator_notes、alternate_greetings、tags/creator/version、assets/source 和未知扩展完整归档，不作为当前开场或运行指令；不会自动下载资源或执行扩展脚本。',
             ...(worldbook.length ? ['世界书保留 enabled、constant、关键词与 use_regex/selective；递归、概率、深度和插入位置扩展仅归档。'] : [])] };
+}
+export function projectTavernCard(decoded) {
+    return projectTavernCardVersion(decoded, true);
+}
+export function projectTavernCardCompact(decoded) {
+    return projectTavernCardVersion(decoded, false);
+}
+// An import can show every author opening before selecting one. Expansion is
+// optional and pure: only explicitly supplied, bounded identity values may
+// replace known macros. Unknown and malformed tokens remain visible verbatim.
+export function compileTavernOpeningCandidates(decoded, context = {}) {
+    const alternate = decoded.data.alternate_greetings;
+    if (alternate !== undefined && (!Array.isArray(alternate) || alternate.length > CARD_LIMITS.entries
+        || alternate.some(value => typeof value !== 'string')))
+        fail('备选开场格式或数量无效');
+    const values = [decoded.data.first_mes, ...(alternate ?? [])];
+    const root = decoded.document.data === decoded.data ? '/data' : '';
+    const candidates = [];
+    const known = new Set(['user', 'char', 'user_gender']);
+    for (const [index, raw] of values.entries()) {
+        if (raw === undefined)
+            continue;
+        if (typeof raw !== 'string')
+            fail('开场正文格式无效');
+        const macros = [];
+        let cursor = 0, brokenDelimiter = false;
+        const renderedText = raw.replace(/\{\{([^{}]*)\}\}/g, (token, name, at) => {
+            if (/\{\{|\}\}/.test(raw.slice(cursor, at)))
+                brokenDelimiter = true;
+            const malformed = raw[at - 1] === '{' || raw[at + token.length] === '}' || !name;
+            const value = known.has(name) ? context[name] : undefined;
+            const status = malformed ? 'malformed' : !known.has(name) ? 'unknown'
+                : typeof value !== 'string' || !value || value.length > 512 ? 'missing-context' : 'resolved';
+            macros.push({ name, status });
+            cursor = at + token.length;
+            return status === 'resolved' ? value : token;
+        });
+        // A broken delimiter is not a supported token and must never disappear.
+        if (brokenDelimiter || /\{\{|\}\}/.test(raw.slice(cursor)))
+            macros.push({ name: '', status: 'malformed' });
+        candidates.push({ index, sourcePointer: index === 0 ? `${root}/first_mes`
+                : `${root}/alternate_greetings/${index - 1}`, sourceSha256: digest(raw),
+            label: index === 0 ? '默认开场' : `备选开场 ${index}`, rawText: raw, renderedText, macros });
+    }
+    return candidates;
+}
+const pointerSegment = (value) => value.replace(/~/g, '~0').replace(/\//g, '~1');
+const canonicalJson = (value) => {
+    if (Array.isArray(value))
+        return `[${value.map(canonicalJson).join(',')}]`;
+    if (object(value))
+        return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+    return JSON.stringify(value);
+};
+function compileDepthPrompt(value) {
+    if (!object(value) || typeof value.prompt !== 'string'
+        || typeof value.depth !== 'number' || !Number.isSafeInteger(value.depth)
+        || value.depth < 0 || value.depth > 1000
+        || (value.role !== undefined && typeof value.role !== 'string'))
+        return null;
+    return { schemaVersion: 1, kind: 'depth-prompt', promptSha256: digest(value.prompt),
+        promptChars: value.prompt.length, depth: value.depth, role: typeof value.role === 'string' ? value.role : null };
+}
+function compileVariableGroups(value, pointer) {
+    if (!Array.isArray(value) || value.length > 64)
+        return null;
+    const groups = [];
+    let fieldCount = 0;
+    for (const [groupIndex, group] of value.entries()) {
+        if (!object(group) || typeof group.name !== 'string' || !group.name
+            || !Array.isArray(group.fields) || group.fields.length > 128)
+            return null;
+        fieldCount += group.fields.length;
+        if (fieldCount > 2048)
+            return null;
+        const fields = [];
+        for (const [fieldIndex, field] of group.fields.entries()) {
+            if (!object(field) || typeof field.name !== 'string' || !field.name
+                || !['boolean', 'number', 'string'].includes(String(field.type)))
+                return null;
+            fields.push({ sourcePointer: `${pointer}/${groupIndex}/fields/${fieldIndex}`,
+                nameSha256: digest(field.name), type: field.type,
+                sourceSha256: digest(canonicalJson(field)) });
+        }
+        groups.push({ sourcePointer: `${pointer}/${groupIndex}`, nameSha256: digest(group.name), fields });
+    }
+    return { schemaVersion: 1, kind: 'variable-groups', groups };
+}
+// This is an inventory, not an extension executor. V2 records bounded metadata
+// for known shapes; full values remain in sourceEnvelope and never run here.
+function compileTavernExtensionInventoryVersion(decoded, schemaVersion) {
+    const extensions = decoded.data.extensions;
+    if (extensions === undefined)
+        return { schemaVersion, sourceSha256: decoded.sourceSha256, entries: [] };
+    if (!object(extensions))
+        fail('角色卡 extensions 必须是对象');
+    const keys = Object.keys(extensions).sort();
+    if (keys.length > 4096)
+        fail('角色卡 extensions 字段数量超限');
+    const known = {
+        depth_prompt: { capability: 'prompt-placement', phase: 'prompt', shape: 'object' },
+        cfMvuVarGroups: { capability: 'state-schema', phase: 'state', shape: 'array' },
+        chaoshen_jixieshi: { capability: 'ui-state-protocol', phase: 'interaction', shape: 'object' },
+        card_agent: { capability: 'greeting-worldbook-binding', phase: 'interaction', shape: 'object' },
+        risuai: { capability: 'manual-trigger', phase: 'interaction', shape: 'object' },
+        RubyAnalyzer: { capability: 'optional-analysis', phase: 'analysis', shape: 'object' },
+        odysseia_trace: { capability: 'opaque-provenance', phase: 'archive', shape: 'object' },
+    };
+    const root = decoded.document.data === decoded.data ? '/data' : '';
+    const entries = keys.map(key => {
+        const value = extensions[key];
+        const sourcePointer = `${root}/extensions/${pointerSegment(key)}`;
+        const valueType = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+        const match = known[key];
+        const manualTrigger = key === 'risuai' && object(value) && Array.isArray(value.triggerscript)
+            && value.triggerscript.some(item => object(item) && item.type === 'manual');
+        const capability = key === 'risuai' && !manualTrigger ? 'unknown' : match?.capability ?? 'unknown';
+        const phase = key === 'risuai' && !manualTrigger ? 'archive' : match?.phase ?? 'archive';
+        const rubyPreset = key === 'RubyAnalyzer' && object(value) && typeof value.activePresetId === 'string'
+            && Array.isArray(value.presets)
+            ? value.presets.find(preset => object(preset) && preset.id === value.activePresetId) : undefined;
+        const rubyTasks = object(rubyPreset) ? rubyPreset.tasks : undefined;
+        const rubyStatus = Array.isArray(rubyTasks)
+            ? rubyTasks.some(task => object(task) && task.enabled === true) ? 'requires-optional-analysis'
+                : rubyTasks.length === 0 && object(rubyPreset) && object(rubyPreset.startupTask)
+                    && rubyPreset.startupTask.enabled === false ? 'archive-only' : 'requires-review'
+            : 'requires-review';
+        const detail = key === 'depth_prompt' ? compileDepthPrompt(value)
+            : key === 'cfMvuVarGroups' ? compileVariableGroups(value, sourcePointer) : null;
+        const legacyStatus = match && key !== 'odysseia_trace' && valueType !== match.shape ? 'unexpected-shape'
+            : capability === 'optional-analysis' ? rubyStatus
+                : capability === 'unknown' || capability === 'opaque-provenance' ? 'archive-only' : 'unexecuted';
+        const status = schemaVersion === 1 ? legacyStatus
+            : (key === 'depth_prompt' || key === 'cfMvuVarGroups') && !detail ? 'requires-review'
+                : key === 'depth_prompt' && detail?.kind === 'depth-prompt' && detail.promptChars === 0 ? 'inactive-empty'
+                    : legacyStatus;
+        const reason = status === 'inactive-empty' ? 'empty-prompt'
+            : status === 'requires-review' && (key === 'depth_prompt' || key === 'cfMvuVarGroups')
+                ? 'unverified-structure' : key === 'depth_prompt' ? 'prompt-runtime-not-wired'
+                : key === 'cfMvuVarGroups' ? 'state-runtime-not-wired' : undefined;
+        return { key, sourcePointer,
+            valueSha256: digest(canonicalJson(value)), valueType: valueType,
+            capability, phase, status, ...(schemaVersion === 2 && reason ? { reason } : {}),
+            ...(schemaVersion === 2 && detail ? { detail } : {}) };
+    });
+    return { schemaVersion, sourceSha256: decoded.sourceSha256, entries };
+}
+export function compileTavernExtensionInventoryV1(decoded) {
+    return compileTavernExtensionInventoryVersion(decoded, 1);
+}
+export function compileTavernExtensionInventory(decoded) {
+    return compileTavernExtensionInventoryVersion(decoded, 2);
+}
+// The compact projection has no duplicate raw JSON. Hash every parsed node in
+// sorted pointer order, including array/object containers and empty ones. The
+// source envelope permits recomputation without storing a second full tree.
+// "Interpreted" means projected/retained as structured data, not that a
+// worldbook matcher, regex, or extension was executed during import.
+export function compileTavernFieldCoverage(decoded) {
+    const hash = createHash('sha256');
+    const dataRoot = decoded.document.data === decoded.data ? '/data' : '';
+    const dispositions = { interpreted: 0, 'preserved-unexecuted': 0,
+        'preserved-unselected': 0, 'archive-only': 0 };
+    const mapped = new Set(['name', 'description', 'personality', 'scenario', 'first_mes',
+        'mes_example', 'system_prompt', 'post_history_instructions']);
+    let nodeCount = 0;
+    const classify = (segments) => {
+        const path = dataRoot ? segments[0] === 'data' ? segments.slice(1) : [] : segments;
+        if (path.includes('extensions'))
+            return 'preserved-unexecuted';
+        if (path[0] === 'alternate_greetings')
+            return 'preserved-unselected';
+        if (path.length === 1 && path[0] !== undefined && mapped.has(path[0]))
+            return 'interpreted';
+        if (path[0] === 'character_book' && (path.length === 1
+            || (path[1] === 'entries' && path.length === 2)))
+            return 'interpreted';
+        if (path[0] === 'character_book' && path[1] === 'entries' && path.length >= 3) {
+            if (path.length === 3)
+                return 'interpreted';
+            const field = path[3];
+            if (field !== undefined && ['content', 'keys', 'key', 'secondary_keys', 'keysecondary', 'enabled',
+                'disable', 'constant', 'selective', 'case_sensitive', 'use_regex',
+                'insertion_order', 'order', 'name', 'comment'].includes(field)
+                && (path.length === 4 || (['keys', 'key', 'secondary_keys', 'keysecondary'].includes(field)
+                    && path.length === 5)))
+                return 'interpreted';
+        }
+        return 'archive-only';
+    };
+    const visit = (value, pointer, segments) => {
+        nodeCount++;
+        const kind = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+        const disposition = classify(segments);
+        dispositions[disposition]++;
+        if (Array.isArray(value)) {
+            hash.update(JSON.stringify([pointer, kind, value.length, disposition]) + '\n');
+            for (const [index, item] of value.entries())
+                visit(item, `${pointer}/${index}`, [...segments, String(index)]);
+            return;
+        }
+        if (object(value)) {
+            const keys = Object.keys(value).sort();
+            hash.update(JSON.stringify([pointer, kind, keys.length, disposition]) + '\n');
+            for (const key of keys)
+                visit(value[key], `${pointer}/${pointerSegment(key)}`, [...segments, key]);
+            return;
+        }
+        hash.update(JSON.stringify([pointer, kind, value, disposition]) + '\n');
+    };
+    visit(decoded.document, '', []);
+    return { schemaVersion: 1, sourceSha256: decoded.sourceSha256, nodeCount,
+        pointerSha256: hash.digest('hex'), dispositions };
 }
 export function cardContentText(value) {
     return String(value ?? '').replace(/<\|/g, '＜|').replace(/\|>/g, '|＞')

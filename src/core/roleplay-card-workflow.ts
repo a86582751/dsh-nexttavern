@@ -99,7 +99,9 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
       try {await tavernTasks.submit({session,id:task.id,generation:task.generation!,value:{finished:true}})}catch{}
     }
     await T.branch.put(cardWorkflowKey(job.id),{...job,status:'completed',result,resourceId:result.resourceId,progress:{done:1,total:1},completedAt:Date.now()})
-    if(job.kind==='card-import'&&!job.openingRequested) {
+    // Structured cards wait for an explicit, durable native opening choice.
+    // Markdown keeps its established model-led opening until that path migrates.
+    if(job.kind==='card-import'&&job.execution!=='deterministic'&&!job.openingRequested) {
       const opening=T.opening.get(keyOf(session.id,'scene'))?.text
       if(opening) {
         const main=taskAgents.get(session.id)??(await ctx.sessionController.resolveAgent?.(session.id))?.agent

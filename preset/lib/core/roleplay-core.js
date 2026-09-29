@@ -36,6 +36,8 @@ import { createRoleplayDecision, taskCancellation } from './roleplay-decision.js
 import { createRoleplayInheritance } from './roleplay-inheritance.js';
 import { createResourceBridge } from './roleplay-resource-bridge.js';
 import { createCardWorkflows } from './roleplay-card-workflow.js';
+import { createRoleplayOpeningSelection } from './roleplay-opening-selection.js';
+import { registerOpeningRoutes } from './roleplay-opening-routes.js';
 import { createRoleplayService } from './roleplay-service.js';
 import { createSessionHistory, ensureSessionHistory } from './session-history.js';
 import { createRoleplayTaskHost } from './roleplay-task-host.js';
@@ -350,12 +352,20 @@ export async function apply(ctx, config = {}) {
             await novelExports.drive(session, job.id, agent, signal);
         }
     }
+    // The workflow host is registered before import tools; only the ready hook
+    // invokes this driver, after the importer installs it below.
+    let structuredImportDriver;
     const { cardWorkflowKey, cardWorkflows, activeCardWorkflow, assertCardWorkflow, beginCardWorkflow, resumeCardWorkflows, completeCardWorkflow, } = createCardWorkflows({
         T,
         storyBranchIsActive: (...args) => storyBranchIsActive(...args),
         modelPolicy,
         statusFixedContext: (...args) => statusFixedContext(...args),
         nativeTask,
+        driveStructuredImport: (...args) => {
+            if (!structuredImportDriver)
+                throw new Error('结构化导入执行器尚未注册');
+            return structuredImportDriver(...args);
+        },
         CARD_CLASSIFICATION_GUIDE,
         archiveImported,
         libraryFor,
@@ -757,9 +767,9 @@ export async function apply(ctx, config = {}) {
             await adaptation.beforeWrite(exec);
     };
     // ── 可审计的来源跨度式读卡导入 ────────────────────────────────────────────
-    // 模型只负责判断“哪几行属于哪个栏目”；真正写入的正文由后端从已归档的
-    // normalizedSource 截取。这样模型无法在工具参数里把 20K 原卡改写成 3K 摘要。
-    const { importRecordKey, spanText, withImportLock, awaitImportBarrier, importSummary, assertImportRecordIntegrity, } = registerRoleplayImports({
+    // PNG/JSON 由程序按版本化投影生成字段证明；MD 仍由模型判断栏目。
+    // 真正写入的正文始终从归档 normalizedSource 的跨度物化。
+    const { importRecordKey, spanText, withImportLock, awaitImportBarrier, importSummary, assertImportRecordIntegrity, driveStructuredImport, } = registerRoleplayImports({
         beforeWrite: beforeAdaptationWrite,
         ctx,
         T,
@@ -780,6 +790,88 @@ export async function apply(ctx, config = {}) {
         RULE_IMPORT_FIELDS,
         archiveImported
     });
+    structuredImportDriver = driveStructuredImport;
+    const openingTable = { get: (key) => T.branch.get(key),
+        put: async (key, value) => { await T.branch.put(key, value); } };
+    const openingSelection = createRoleplayOpeningSelection({
+        table: openingTable,
+        importActiveKey,
+        importRecordKey,
+        withLock: (key, action) => {
+            const prefix = 'opening-choice:';
+            if (!key.startsWith(prefix))
+                throw new Error('开场选择锁身份无效');
+            return withImportLock(key.slice(prefix.length), 'opening-choice', action);
+        },
+        appendOpening: async (request) => {
+            const found = await ctx.sessionController.resolveAgent(request.sessionId);
+            const agent = found?.agent;
+            if (!agent?.commitProgrammaticAssistant)
+                throw new Error('原生开场提交能力未就绪');
+            return agent.commitProgrammaticAssistant({ operationId: request.operationId, messageId: request.messageId,
+                text: request.text, source: { kind: 'programmatic', schemaVersion: 1, producer: 'dsh-nexttavern',
+                    origin: `card-opening:${request.source.importId}`, operationId: request.operationId } });
+        },
+        findOpeningByOperationId: async (intent) => {
+            try {
+                const session = ctx.sessions.get(intent.sessionId);
+                if (!session)
+                    return { status: 'unknown' };
+                const matching = eventsOf(session).filter(event => event.type === 'assistant/message'
+                    && event.data?.message?.source?.kind === 'programmatic'
+                    && event.data?.message?.source?.operationId === intent.operationId);
+                if (!matching.length)
+                    return await ctx.sessions.flush(session)
+                        ? { status: 'absent' } : { status: 'unknown' };
+                if (matching.length !== 1)
+                    return { status: 'unknown' };
+                const event = matching[0];
+                const message = event.data?.message;
+                const source = message?.source;
+                const block = message?.content?.[0];
+                const turn = event.data?.turn;
+                if (message?.id !== intent.messageId || source?.schemaVersion !== 1
+                    || source.producer !== 'dsh-nexttavern' || source.origin !== `card-opening:${intent.source.importId}`
+                    || message?.content?.length !== 1 || block?.type !== 'text' || block.text !== intent.renderedText
+                    || !Number.isSafeInteger(turn) || !eventsOf(session).some(item => item.type === 'turn/end'
+                    && item.data?.turn === turn))
+                    return { status: 'unknown' };
+                if (!await ctx.sessions.flush(session))
+                    return { status: 'unknown' };
+                return { status: 'committed', turn: Number(turn) };
+            }
+            catch {
+                return { status: 'unknown' };
+            }
+        },
+    });
+    registerOpeningRoutes({ ctx, table: openingTable, resolveRoleplaySession, selection: openingSelection,
+        openingContext: sessionId => {
+            const user = userValues(sessionId);
+            const prefix = `${sessionId}__`;
+            const cards = [...T.cards.entries()].filter(([key, card]) => key.startsWith(prefix)
+                && card?.kind !== 'user').sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+            return { user: user.name, user_gender: user.gender, char: String(cards[0]?.[1]?.name ?? '角色') };
+        },
+        legacyOpeningAlreadyRequested: (sessionId, importId) => {
+            const pointer = T.branch.get(importActiveKey(sessionId));
+            const record = T.branch.get(importRecordKey(pointer?.sourceRecordSessionId ?? sessionId, importId));
+            const job = record?.workflowId
+                ? T.branch.get(cardWorkflowKey(record.workflowId))
+                : undefined;
+            return job?.openingRequested === true;
+        },
+        priorOpeningInHistory: session => eventsOf(session).some(event => {
+            if (event.type !== 'assistant/message')
+                return false;
+            const source = event.data?.message?.source;
+            return source?.kind === 'programmatic' && source.producer === 'dsh-nexttavern'
+                && typeof source.origin === 'string' && source.origin.startsWith('card-opening:');
+        }),
+        canCommit: async (sessionId) => {
+            const found = await ctx.sessionController.resolveAgent(sessionId);
+            return typeof found?.agent?.commitProgrammaticAssistant === 'function';
+        } });
     registerCardAuthoring({
         ctx,
         T,
@@ -1016,6 +1108,7 @@ export async function apply(ctx, config = {}) {
         novelExports,
         modelPolicy,
         beginCardWorkflow,
+        resumeCardWorkflows,
         cardWorkflows,
         cardWorkflowKey,
         tavernTasks,

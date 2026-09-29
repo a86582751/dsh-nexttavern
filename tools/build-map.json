@@ -681,6 +681,15 @@
       ]
     },
     {
+      "artifact": "opening-panel",
+      "source": "src/ui/opening-panel.ts",
+      "banner": "runtime/alpha3/src/ui/opening-panel.ts",
+      "primaryOutput": "lib/ui/opening-panel.js",
+      "outputs": [
+        "lib/ui/opening-panel.js"
+      ]
+    },
+    {
       "artifact": "user-info",
       "source": "src/ui/user-info.ts",
       "banner": "runtime/alpha3/src/ui/user-info.ts",
@@ -1115,6 +1124,26 @@
       "outputs": [
         "lib/core/roleplay-card-workflow.js",
         "preset/lib/core/roleplay-card-workflow.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-opening-selection",
+      "source": "src/core/roleplay-opening-selection.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-opening-selection.ts",
+      "primaryOutput": "lib/core/roleplay-opening-selection.js",
+      "outputs": [
+        "lib/core/roleplay-opening-selection.js",
+        "preset/lib/core/roleplay-opening-selection.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-opening-routes",
+      "source": "src/core/roleplay-opening-routes.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-opening-routes.ts",
+      "primaryOutput": "lib/core/roleplay-opening-routes.js",
+      "outputs": [
+        "lib/core/roleplay-opening-routes.js",
+        "preset/lib/core/roleplay-opening-routes.js"
       ]
     },
     {
@@ -4704,6 +4733,14 @@
         "source": "lib/ui/management-panels.js"
       },
       {
+        "id": "opening-panel-typescript",
+        "source": "src/ui/opening-panel.ts"
+      },
+      {
+        "id": "opening-panel",
+        "source": "lib/ui/opening-panel.js"
+      },
+      {
         "id": "user-info-typescript",
         "source": "src/ui/user-info.ts"
       },
@@ -5062,6 +5099,22 @@
       {
         "id": "roleplay-card-workflow",
         "source": "lib/core/roleplay-card-workflow.js"
+      },
+      {
+        "id": "roleplay-opening-selection-typescript",
+        "source": "src/core/roleplay-opening-selection.ts"
+      },
+      {
+        "id": "roleplay-opening-selection",
+        "source": "lib/core/roleplay-opening-selection.js"
+      },
+      {
+        "id": "roleplay-opening-routes-typescript",
+        "source": "src/core/roleplay-opening-routes.ts"
+      },
+      {
+        "id": "roleplay-opening-routes",
+        "source": "lib/core/roleplay-opening-routes.js"
       },
       {
         "id": "roleplay-resource-bridge-types-typescript",
@@ -9552,6 +9605,7 @@
           "src/ui/client.ts",
           "src/ui/telemetry-panels.ts",
           "src/ui/management-panels.ts",
+          "src/ui/opening-panel.ts",
           "src/ui/user-info.ts",
           "src/ui/author-panels.ts",
           "src/ui/activity-view.ts",
@@ -9643,6 +9697,7 @@
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
         "inputs": [
           "src/ui/management-panels.ts",
+          "src/ui/opening-panel.ts",
           "src/ui/panel-state.ts",
           "src/ui/settings-projection.ts",
           "build-tools/tsconfig.json",
@@ -9651,6 +9706,21 @@
           "build-tools/package-lock.json"
         ],
         "banner": "runtime/alpha3/src/ui/management-panels.ts"
+      },
+      {
+        "id": "opening-panel-js",
+        "kind": "typescript-module",
+        "artifact": "opening-panel",
+        "entry": "src/ui/opening-panel.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/ui/opening-panel.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/src/ui/opening-panel.ts"
       },
       {
         "id": "user-info-js",
@@ -11240,6 +11310,46 @@
         "banner": "runtime/alpha3/src/core/roleplay-card-workflow.ts"
       },
       {
+        "id": "roleplay-opening-selection-js-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-opening-selection",
+        "entry": "src/core/roleplay-opening-selection.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-context.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-opening-selection.ts"
+      },
+      {
+        "id": "roleplay-opening-routes-js-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-opening-routes",
+        "entry": "src/core/roleplay-opening-routes.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/roleplay-opening-routes.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-state.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/roleplay-import-types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-opening-routes.ts"
+      },
+      {
         "id": "roleplay-resource-bridge-types-js-build",
         "kind": "typescript-module",
         "artifact": "roleplay-resource-bridge-types",
@@ -12775,6 +12885,8 @@
         "inputs": [
           "src/core/roleplay-core.ts",
           "src/core/roleplay-core-types.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-opening-routes.ts",
           "build-tools/tsconfig.json",
           "lib/operations/build-typescript.mjs",
           "build-tools/package.json",
