@@ -156,7 +156,8 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
     }
     let preparation=T.branch.get(preparationRecordKey(session.id)) as LoopPreparation | null | undefined
     if(preparation?.sessionId!==session.id)preparation=null
-    const hasUser=payload.messages.some(m=>m.role==='user'&&m.source?.kind==='user')
+    const programmaticOpening = !!payload.agent.programmaticGeneration && payload.step === 1
+    const hasUser=programmaticOpening || payload.messages.some(m=>m.role==='user'&&m.source?.kind==='user')
     if(hasUser && payload.step===1) {
       if(!tavernTasks.pending(session).length){
         retireCompletedTaskContexts(session,payload.turn)
@@ -175,7 +176,7 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
       retireUsedStoryReads(session,payload.turn)
     }
     try {await resumeStatusMaintenance(session,payload.agent);await resumeMemoryWork(session,payload.agent,payload.signal);await resumeCardWorkflows(session,payload.agent,payload.signal);await resumeNovelExports(session,payload.agent,payload.signal)}
-    catch(error){if(isInlinePending(error))return {kind:'enter',messages:inlineTaskMessages(session,'management',tavernTasks.pending(session),{resident:residentContext(session)})};throw error}
+    catch(error){if(isInlinePending(error) && !programmaticOpening)return {kind:'enter',messages:inlineTaskMessages(session,'management',tavernTasks.pending(session),{resident:residentContext(session)})};throw error}
     if(!preparation || preparation.status!=='preparing')return next()
     // A deferred stage returns immediately; the main loop is never awaited by
     // its own pre-step handler. The original player message is appended once,
@@ -193,7 +194,8 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
         retireRoleplayContexts(session,payload.turn,hidden)
         await T.branch.put(preparationRecordKey(session.id),{...preparation,status:'completed',completedAt:Date.now()})
         const researching=adaptationTurns(eventsOf(session)).has(payload.turn)
-        const needsCast=!researching&&characterCluster.read(session).enabled&&characterRoster(session).length>0&&!activeCardWorkflow(session)
+        const needsCast=!programmaticOpening&&!researching&&characterCluster.read(session).enabled
+          &&characterRoster(session).length>0&&!activeCardWorkflow(session)
         const restore=taskPhaseMessage(needsCast?'character-cast':'story',needsCast
           ?'本轮角色集群准备：现在还没有进入正文。请根据随后玩家输入选择预计出场的主要人物，先调用 rp_character_cast（无人出场时传空数组）。程序已备好人物上下文，禁止手工搬运。等待角色建议返回及程序的正文阶段通知后再开始写故事，不把选角说明写成正文。如果玩家要求读卡、写卡、管理或诊断，直接执行对应工具，不推演角色。'
           :researching?'当前仍在长文本改编创作。按玩家要求继续阅读、问卷或写卡；用 rp_source_status/notes 恢复独立研究资料。尚未进入角色扮演，不把原著或草稿当作已发生剧情。用户要求停止改编回到原卡时调用 rp_source_close。'
@@ -203,10 +205,15 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
         const messages=phaseSnapshot?.contextWindow?.rollover
           ?retainRoleplayWindowContinuity(session,decision.messages,storyWindowSettings(session).tail):decision.messages
         const remaining=messages.filter(m=>!originalIds.has(m.id)&&m.source?.kind!=='roleplay-tasks'&&m.source?.kind!=='roleplay-context')
+        if (programmaticOpening) {
+          return {...decision, messages: remaining,
+            systemSections: [...(decision.systemSections ?? []), textOf(restore.content),
+              ...hidden.map(message => textOf(message.content))]}
+        }
         return {...decision,messages:[restore,...hidden,...originalMessages,...remaining]}
       } catch(error) {
         st.lastPreparedTurn=-1
-        if(isInlinePending(error))return {kind:'enter',messages:inlineTaskMessages(session,'prepare',tavernTasks.pending(session),{resident:residentContext(session)})}
+        if(isInlinePending(error) && !programmaticOpening)return {kind:'enter',messages:inlineTaskMessages(session,'prepare',tavernTasks.pending(session),{resident:residentContext(session)})}
         // Fail closed: a missing prerequisite cannot admit unprepared prose.
         throw error
       }

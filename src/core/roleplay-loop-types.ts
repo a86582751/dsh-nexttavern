@@ -17,6 +17,7 @@ export interface LoopSession extends HostSession {
 export interface LoopAgent extends HostAgent {
   session: LoopSession
   steer: NonNullable<HostAgent['steer']>
+  readonly programmaticGeneration?: {operationId: string} | null
   cancel?(cause:{kind:'hook';reason:string},options:{keepInbox:true}):void
 }
 export interface LoopPayload {
@@ -27,7 +28,8 @@ export interface LoopPayload {
   signal?: AbortSignal
 }
 // Pinned alpha.3 agent PreStepDecision; keep request-series metadata intact.
-export type StepDecision = {kind: 'enter'; messages: readonly ContextMessage[]; startsRequestSeries?: true; [key: string]: unknown}
+export type StepDecision = {kind: 'enter'; messages: readonly ContextMessage[]; startsRequestSeries?: true;
+  systemSections?: readonly string[]; [key: string]: unknown}
   | {kind: 'reject'; [key: string]: unknown}
 export interface LoopPreparation extends Record<string, unknown> {
   schemaVersion: 1

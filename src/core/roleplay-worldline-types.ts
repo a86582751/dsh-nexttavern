@@ -15,13 +15,14 @@ export interface ForkAnchor {
   sourceAssistantMessageId?: string
   sourceAssistantSeq?: number
   sourceAssistantTurn?: number
-  sourceUserMessageId: string
-  sourceUserSeq: number
+  sourceUserMessageId?: string
+  sourceUserSeq?: number
   sourceTurn: number
   previousTurnEndSeq: number | null
   expectedSeedLength?: number
   promptText: string
   recoveryOnly?: boolean
+  openingOnly?: boolean
 }
 export interface PlayerTarget {
   sessionId: string

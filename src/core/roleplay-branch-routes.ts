@@ -1,17 +1,19 @@
 import { randomUUID } from 'node:crypto'
 import { keyOf, durableSeq, sha256, recordSha256 } from './roleplay-data.js'
-import { surfaceEvents } from './roleplay-context.js'
+import { eventsOf, surfaceEvents } from './roleplay-context.js'
 import { jsonResponse } from './roleplay-state.js'
 import type { BranchRouteSession, StoredBranchOperation, BranchRouteBody, BranchRouteError, ForkReservation, BranchRoutesDependencies } from './roleplay-branch-routes-types.js'
 
-export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, replaceAssistantText, replaceUserText}: BranchRoutesDependencies) {
+export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText}: BranchRoutesDependencies) {
   const readOperation=(key: string)=>cloneBranchRecord(T.branch.get(key)) as StoredBranchOperation | undefined
   const updateOperation=(key: string,work: (current: StoredBranchOperation | undefined) => object)=>T.branch.update(key,current=>work(current as StoredBranchOperation | undefined)) as PromiseLike<StoredBranchOperation>
   async function publishWorldlineSelection(operation: StoredBranchOperation,child: BranchRouteSession) {
     const catalog=ctx.get('tavernConversations')
     if(!catalog)return null // Compatibility for non-web fixtures/older hosts.
     await catalog.ready
-    await catalog.reserve({sourceSessionId:operation.anchor.sourceSessionId,childSessionId:child.id,operationId:operation.operationId,kind:operation.kind,sourceHash:recordSha256(operation.anchor)})
+    await catalog.reserve({sourceSessionId:operation.anchor.sourceSessionId,childSessionId:child.id,
+      operationId:operation.operationId,kind:operation.kind === 'opening-regenerate' ? 'regenerate' : operation.kind,
+      sourceHash:recordSha256(operation.anchor)})
     return catalog.markReady(child.id)
   }
   async function failWorldlineCatalog(operation: StoredBranchOperation) {
@@ -19,6 +21,74 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
     if(!catalog||!childId)return null
     await catalog.ready
     return catalog.fail(childId,operation.operationId)
+  }
+  async function failOpeningBeforeGeneration(operation: StoredBranchOperation, code: string, message: string) {
+    const failure = {schemaVersion: 1 as const, code, message, at: Date.now()}
+    await updateOperation(forkOperationKey(operation.operationId), current => ({...cloneBranchRecord(current),
+      state: 'failed', failureReason: message, failure, failedAt: failure.at}))
+    const conversations = await failWorldlineCatalog(operation)
+    return jsonResponse(409, {ok: false, status: 'failed', operationId: operation.operationId,
+      childSessionId: operation.reservedChildSessionId ?? operation.childSessionId ?? null,
+      error: message, failure, conversations})
+  }
+  async function settleOpeningFailure(operation: StoredBranchOperation, child: BranchRouteSession) {
+    if (operation.kind !== 'opening-regenerate' || !operation.groupId) return
+    const failedTurn = eventsOf(child).find(event => event.type === 'turn/end'
+      && Number(event.data?.turn) === 1 && ['error', 'aborted', 'blocked', 'max-tokens'].includes(String(event.data?.reason?.kind)))
+    if (failedTurn && await ctx.sessions.flush(child)) {
+      await failPendingNativeFork(child, '首条开场模型生成失败')
+    }
+  }
+  async function openingOutcome(operation: StoredBranchOperation, child: BranchRouteSession | null) {
+    const childId = operation.childSessionId ?? operation.reservedChildSessionId ?? null
+    if (!operation.groupId || !child) {
+      if (operation.state === 'generating') {
+        const message = '开场生成中的世界线无法恢复；原世界线已保留，请重新创建分支'
+        const failure = {schemaVersion: 1 as const, code: 'OPENING_CHILD_LOST', message, at: Date.now()}
+        await updateOperation(forkOperationKey(operation.operationId), current => ({...cloneBranchRecord(current),
+          state: 'failed', failureReason: message, failure, failedAt: failure.at}))
+        const conversations = await failWorldlineCatalog(operation)
+        return {ok: true, status: 'failed', operationState: 'failed', operationId: operation.operationId,
+          childSessionId: childId, registered: !!operation.groupId, requestAccepted: true,
+          error: message, failure, conversations}
+      }
+      return {ok: true, status: 'prepared', operationId: operation.operationId,
+        childSessionId: childId, registered: false, requestAccepted: false}
+    }
+    await reconcileNativeFork(child)
+    await settleOpeningFailure(operation, child)
+    const group = hydrateForkGroup(T.branch.get(forkGroupKey(operation.groupId)))
+    const member = group?.members.find(item => item.operationId === operation.operationId
+      && item.sessionId === child.id && Number(item.ordinal) === Number(operation.ordinal))
+    if (member?.assistantMessageId) {
+      // A prior request may have committed its reply and lost the markReady
+      // acknowledgement. Reconcile the catalog only after exact durable proof.
+      const conversations = await publishWorldlineSelection(operation, child)
+      if (operation.state !== 'registered') await updateOperation(forkOperationKey(operation.operationId),
+        current => ({...cloneBranchRecord(current), state: 'registered', registeredAt: Date.now()}))
+      return {ok: true, status: 'completed', operationState: 'registered', operationId: operation.operationId,
+        childSessionId: child.id, registered: true, requestAccepted: true,
+        assistantMessageId: member.assistantMessageId, conversations}
+    }
+    if (member?.failed || operation.state === 'generating') {
+      const active = member?.failed ? null : await ctx.sessionController.resolveAgent(child.id)
+      if (!member?.failed && active?.agent?.status === 'running') return {ok: true, status: 'pending',
+        operationState: 'generating', operationId: operation.operationId,
+        childSessionId: child.id, registered: true, requestAccepted: true,
+        assistantMessageId: null}
+      const reason = member?.failureReason ?? '开场生成结果无法确认；原世界线已保留，请从原开场重新创建分支'
+      if (!member?.failed) await failPendingNativeFork(child, reason)
+      const failure = {schemaVersion: 1 as const, code: member?.failed
+        ? 'OPENING_GENERATION_FAILED' : 'OPENING_GENERATION_UNKNOWN', message: reason, at: Date.now()}
+      await updateOperation(forkOperationKey(operation.operationId), current => ({...cloneBranchRecord(current),
+        state: 'failed', failureReason: reason, failure, failedAt: failure.at}))
+      const conversations = await failWorldlineCatalog(operation)
+      return {ok: true, status: 'failed', operationState: 'failed', operationId: operation.operationId,
+        childSessionId: child.id, registered: true, requestAccepted: true,
+        assistantMessageId: null, error: reason, failure, conversations}
+    }
+    return {ok: true, status: 'prepared', operationId: operation.operationId,
+      childSessionId: childId, registered: false, requestAccepted: false}
   }
   ctx.effect(
     () =>
@@ -67,7 +137,9 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
               const reserve=async({sourceSessionId,childSessionId,seedLength}: ForkReservation)=>{
                 if(sourceSessionId!==source.id)throw new Error('原生分支来源不匹配')
                 reservedId=childSessionId
-                await catalog.reserve({sourceSessionId,childSessionId,operationId:operation.operationId,kind:operation.kind,sourceHash:recordSha256(operation.anchor)})
+                await catalog.reserve({sourceSessionId,childSessionId,operationId:operation.operationId,
+                  kind:operation.kind === 'opening-regenerate' ? 'regenerate' : operation.kind,
+                  sourceHash:recordSha256(operation.anchor)})
                 await T.branch.put(operationKey,{...operation,reservedChildSessionId:childSessionId,presentation:{schemaVersion:1,kind:'worldline',conversationId:catalog.rootOf(source.id),sourceSessionId,seedLength},reservedAt:Date.now()})
                 reservationCommitted=true
               }
@@ -93,6 +165,16 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
             if (action === 'prepare') {
               const source = await resolveRoleplaySession(body?.sessionId)
               if (!source) return jsonResponse(404, { ok: false, error: '角色扮演源会话不存在或无法恢复' })
+              if (body?.kind === 'opening-regenerate') {
+                assertStoryBranchActive(source)
+                const anchor = locateProgrammaticOpeningTarget(source, body?.messageId, body?.seq)
+                const operationId = randomUUID()
+                await T.branch.put(forkOperationKey(operationId), {schemaVersion: 1, operationId,
+                  kind: 'opening-regenerate', anchor, promptText: '', createdAt: Date.now(),
+                  expiresAt: Date.now() + 15 * 60 * 1000, consumed: false})
+                return jsonResponse(200, {ok: true, operationId, kind: 'opening-regenerate',
+                  previousTurnEndSeq: null, sourceTurn: 1, requiresPrompt: false})
+              }
               await reconcileCanonicalPlayerVariants(source, buildForkLookupIndex(source))
               const kind = body?.kind === 'player-edit' || body?.kind === 'edit'
                 ? 'player-edit'
@@ -185,6 +267,69 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
               })
             }
 
+            if (action === 'generate-opening') {
+              const operationId = String(body?.operationId ?? '')
+              if (!operationId) return jsonResponse(400, {ok: false, error: '缺少 operationId'})
+              return await withForkMutationLock(`operation:${operationId}`, async () => {
+                const key = forkOperationKey(operationId)
+                let operation = readOperation(key)
+                if (!operation || operation.kind !== 'opening-regenerate') {
+                  return jsonResponse(404, {ok: false, error: '程序开场分支操作不存在'})
+                }
+                if (operation.state === 'failed' || operation.state === 'aborted') {
+                  return jsonResponse(409, {ok: false, error: operation.failureReason ?? '分支操作已失效'})
+                }
+                const childId = String(body?.childSessionId ?? '')
+                if (!childId || childId !== operation.reservedChildSessionId) {
+                  return jsonResponse(409, {ok: false, error: '世界线与预留会话标识不匹配'})
+                }
+                const child = await resolveRoleplaySession(childId)
+                if (!child) return failOpeningBeforeGeneration(operation, 'OPENING_CHILD_UNAVAILABLE',
+                  '新世界线无法恢复；原世界线已保留，请重新创建分支')
+                if (operation.state === 'generating' || operation.state === 'registered') {
+                  return jsonResponse(200, await openingOutcome(operation, child))
+                }
+                if (Date.now() > operation.expiresAt) {
+                  return failOpeningBeforeGeneration(operation, 'OPENING_OPERATION_EXPIRED',
+                    '开场生成操作已过期；原世界线已保留，请重新创建分支')
+                }
+                const source = await resolveRoleplaySession(operation.anchor.sourceSessionId)
+                if (!source) return failOpeningBeforeGeneration(operation, 'OPENING_SOURCE_UNAVAILABLE',
+                  '原始开场会话无法恢复；请切换到可用的原世界线')
+                try {
+                  assertStoryBranchActive(source)
+                  const currentAnchor = locateProgrammaticOpeningTarget(source,
+                    operation.anchor.sourceAssistantMessageId, operation.anchor.sourceAssistantSeq)
+                  if (currentAnchor.sourceAssistantSeq !== operation.anchor.sourceAssistantSeq
+                    || currentAnchor.sourceSessionId !== operation.anchor.sourceSessionId) throw new Error('开场锚点已变化')
+                } catch {
+                  return failOpeningBeforeGeneration(operation, 'OPENING_SOURCE_CHANGED',
+                    '原始开场锚点已变化；原世界线已保留，请重新创建分支')
+                }
+                const found = await ctx.sessionController.resolveAgent(childId)
+                const agent = found?.agent
+                if (!agent || agent.status !== 'idle' || !agent.generateProgrammaticAssistant) {
+                  return failOpeningBeforeGeneration(operation, agent?.status === 'running'
+                    ? 'OPENING_CHILD_BUSY' : 'OPENING_NATIVE_UNAVAILABLE',
+                  '新世界线当前无法受理开场生成；原世界线已保留，请稍后重新创建分支')
+                }
+                let registration: Awaited<ReturnType<typeof registerNativeFork>>
+                try { registration = await registerNativeFork({...operation, requestId: operationId}, child) }
+                catch { return failOpeningBeforeGeneration(operation, 'OPENING_REGISTER_FAILED',
+                  '开场分支登记失败；原世界线已保留，请重新创建分支') }
+                if (!registration) return failOpeningBeforeGeneration(operation, 'OPENING_REGISTER_FAILED',
+                  '开场分支登记失败；原世界线已保留，请重新创建分支')
+                operation = await updateOperation(key, current => ({...cloneBranchRecord(current),
+                  requestId: operationId, childSessionId: childId, groupId: registration.groupId,
+                  ordinal: registration.ordinal, registration, state: 'generating', consumed: true,
+                  generatingAt: Date.now()}))
+                await agent.generateProgrammaticAssistant({operationId,
+                  messageId: `opening-regenerate-${operationId}`,
+                  instruction: '请根据当前角色、世界设定与规则，直接创作一段全新的开场剧情正文。此轮没有玩家输入；不要假装玩家说过话，也不要解释任务。'})
+                return jsonResponse(200, await openingOutcome(operation, child))
+              })
+            }
+
             if (action === 'register') {
               const operationId = String(body?.operationId ?? '')
               if (!operationId) return jsonResponse(400, { ok: false, error: '缺少分支操作 operationId' })
@@ -192,6 +337,8 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
               const operationKey = forkOperationKey(operationId)
               const initial = readOperation(operationKey)
               if (!initial) return jsonResponse(404, { ok: false, error: '分支操作不存在或已过期，请重试' })
+              if (initial.kind === 'opening-regenerate') return jsonResponse(400,
+                {ok: false, error: '程序开场必须通过 generate-opening 执行'})
               const child = await resolveRoleplaySession(body?.childSessionId)
               if (!child) return jsonResponse(404, { ok: false, error: '新分支会话尚未在服务器就绪' })
               if(initial.reservedChildSessionId&&initial.reservedChildSessionId!==child.id)return jsonResponse(409,{ok:false,error:'世界线与预留会话标识不匹配'})
@@ -367,8 +514,24 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
             }
 
             if (action === 'operation-status') {
-              const operation = readOperation(forkOperationKey(body?.operationId))
+              const operationId = String(body?.operationId ?? '')
+              const operation = readOperation(forkOperationKey(operationId))
               if (!operation) return jsonResponse(404, { ok: false, error: '分支操作不存在或已过期' })
+              if (operation.kind === 'opening-regenerate') {
+                return await withForkMutationLock(`operation:${operationId}`, async () => {
+                  const current = readOperation(forkOperationKey(operationId))
+                  if (!current) return jsonResponse(404, {ok: false, error: '程序开场分支操作不存在'})
+                  if (current.state === 'failed' || current.state === 'aborted') {
+                    await failWorldlineCatalog(current)
+                    return jsonResponse(200, {ok: true, status: 'failed', operationState: current.state,
+                      childSessionId: current.childSessionId ?? current.reservedChildSessionId ?? null,
+                      error: current.failureReason ?? '程序开场分支操作已失效', failure: current.failure})
+                  }
+                  const childId = current.childSessionId ?? current.reservedChildSessionId
+                  const child = childId ? await resolveRoleplaySession(childId) : null
+                  return jsonResponse(200, await openingOutcome(current, child ?? null))
+                })
+              }
               if (operation.state === 'failed' || operation.state === 'aborted') {
                 await failWorldlineCatalog(operation)
                 return jsonResponse(200, { ok: true, status: 'failed', error: operation.failureReason ?? '分支操作已失败' })

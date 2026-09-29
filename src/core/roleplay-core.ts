@@ -616,6 +616,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     forkGroupKey,
     groupMemberForSession,
     locateForkTarget,
+    locateProgrammaticOpeningTarget,
     bootstrapChildBranch,
     registerRecoveryFork,
     registerNativeFork,
@@ -1402,6 +1403,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     forkGroupKey,
     groupMemberForSession,
     locateForkTarget,
+    locateProgrammaticOpeningTarget,
     bootstrapChildBranch,
     registerRecoveryFork,
     registerNativeFork,
@@ -1409,6 +1411,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     requestUserEvent,
     forkPendingKey,
     reconcileNativeFork,
+    failPendingNativeFork,
     replaceAssistantText,
     replaceUserText,
   })

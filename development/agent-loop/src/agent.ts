@@ -49,7 +49,8 @@ type Phase =
     lastTurn: number
     wakeRequested: boolean
   }
-  | { kind: 'running'; abort: AbortController; turn: number; step: number; wakeRequested: boolean }
+  | { kind: 'running'; abort: AbortController; turn: number; step: number; wakeRequested: boolean;
+    programmatic?: {operationId: string; messageId: string; instruction: string} }
 
 type StepEndReason = Extract<TurnEndReason, { kind: 'completed' | 'max-tokens' }>
 
@@ -65,6 +66,14 @@ export type ProgrammaticAssistantCommitResult =
   | { kind: 'committed'; turn: number; messageId: string }
   | { kind: 'unknown'; reason: string }
   | { kind: 'busy' }
+
+export interface ProgrammaticAssistantGeneration {
+  operationId: string
+  messageId: string
+  instruction: string
+}
+
+export type ProgrammaticAssistantGenerationResult = ProgrammaticAssistantCommitResult
 
 type PreparedStep =
   | { kind: 'reject' }
@@ -158,6 +167,11 @@ export class ReactLoopAgent implements Agent {
 
   get status(): AgentStatus {
     return this.phase.kind === 'idle' || this.phase.kind === 'maintenance' ? 'idle' : 'running'
+  }
+
+  get programmaticGeneration(): {operationId: string} | null {
+    return this.phase.kind === 'running' && this.phase.programmatic
+      ? {operationId: this.phase.programmatic.operationId} : null
   }
 
   /** Commit a phase and publish its externally visible status transition. */
@@ -315,6 +329,52 @@ export class ReactLoopAgent implements Agent {
     })
   }
 
+  /** Run one model turn from the assembled system prompt without creating a user message. */
+  async generateProgrammaticAssistant(input: ProgrammaticAssistantGeneration): Promise<ProgrammaticAssistantGenerationResult> {
+    const valid = (value: unknown): value is string => typeof value === 'string' && value.length > 0
+      && value.length <= 256 && value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value)
+    if (!input || !valid(input.operationId) || !valid(input.messageId)
+      || typeof input.instruction !== 'string' || !input.instruction.trim()
+      || new TextEncoder().encode(input.instruction).length > 65_536) {
+      throw new Error('invalid programmatic generation identity or instruction')
+    }
+    if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inbox.hasPending) return {kind: 'busy'}
+    const events = this.session.snapshotEvents()
+    const matching = events.filter((event): event is SessionEvent<'assistant/message'> =>
+      event.type === 'assistant/message' && event.data.message.id === input.messageId)
+    if (matching.length > 0) {
+      if (matching.length !== 1 || matching[0]!.data.message.source.kind !== 'model') {
+        return {kind: 'unknown', reason: 'generation identity belongs to a different message'}
+      }
+      const turn = matching[0]!.data.turn
+      if (!events.some(event => event.type === 'turn/end' && event.data.turn === turn
+        && event.data.reason.kind === 'completed')) return {kind: 'unknown', reason: 'generation turn is incomplete'}
+      if (!await this.ctx.sessions.flush(this.session)) return {kind: 'unknown', reason: 'generation flush is not durable'}
+      return {kind: 'committed', turn, messageId: input.messageId}
+    }
+    if (events.some(event => event.type === 'turn/start' && !events.some(end =>
+      end.type === 'turn/end' && end.data.turn === event.data.turn))) {
+      return {kind: 'unknown', reason: 'session contains an open turn'}
+    }
+    const driver = Promise.withResolvers<void>()
+    this.activityDone = driver.promise
+    this.setPhase({kind: 'running', abort: new AbortController(), turn: this.phase.lastTurn,
+      step: 0, wakeRequested: false, programmatic: input})
+    this.loopCtx.agents.withInitiator(this, () => this.kick()).then(driver.resolve, driver.reject)
+    // This operation owns only its opening turn. A queued player follow-up may
+    // start a new driver immediately after it, without delaying this receipt.
+    await driver.promise
+    const settled = this.session.snapshotEvents()
+    const generated = settled.find((event): event is SessionEvent<'assistant/message'> =>
+      event.type === 'assistant/message' && event.data.message.id === input.messageId)
+    const turn = generated?.data.turn
+    if (generated && settled.some(event => event.type === 'turn/end' && event.data.turn === turn
+      && event.data.reason.kind === 'completed') && await this.ctx.sessions.flush(this.session)) {
+      return {kind: 'committed', turn: turn!, messageId: input.messageId}
+    }
+    return {kind: 'unknown', reason: 'generation did not complete durably'}
+  }
+
   /** Close only boundaries that this append opened; an unconfirmable closure poisons future writes. */
   private closePartialProgrammaticTurn(turn: number, step: number): void {
     try {
@@ -361,7 +421,8 @@ export class ReactLoopAgent implements Agent {
       // replay at convergence. Live drivers claim queued work themselves;
       // disposal never latches, so teardown waits on no model turn.
       const reason = abortedCancelCause(this.phase.abort.signal)
-      if (reason?.kind !== 'disposed' && (this.phase.kind === 'maintenance' || wakeAfterAbort)) {
+      if (reason?.kind !== 'disposed' && (this.phase.kind === 'maintenance' || wakeAfterAbort
+        || (this.phase.kind === 'running' && this.phase.programmatic !== undefined))) {
         this.phase.wakeRequested = true
       }
       return
@@ -413,7 +474,10 @@ export class ReactLoopAgent implements Agent {
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)
     const signal = this.phase.abort.signal
     const claimed = this.inbox.claim(target, position.turn)
-    const assembly = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal))
+    const assembled = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal))
+    const generation = position.step === 1 ? this.phase.programmatic : undefined
+    const assembly = generation ? {...assembled, tools: [], sections: [...assembled.sections,
+      {name: 'programmatic:opening-regenerate', text: generation.instruction, interpolate: false}]} : assembled
     signal.throwIfAborted()
     const sections = renderContextSections(assembly)
     const context = this.runtimeContext.project(joinContextSections(sections), sections)
@@ -426,7 +490,18 @@ export class ReactLoopAgent implements Agent {
     )
     signal.throwIfAborted()
     if (decision.kind === 'reject') return decision
-    return { ...decision, assembly }
+    if (!generation) return {...decision, assembly}
+    if (decision.messages.some(message => message.source.kind === 'user')) {
+      throw new Error('programmatic generation cannot admit a player message')
+    }
+    const systemSections = (decision as PreStepDecision & {systemSections?: readonly string[]}).systemSections ?? []
+    const contextSections = decision.messages.map(message => message.content
+      .filter(block => block.type === 'text').map(block => block.text).join('')).filter(Boolean)
+    const effectiveAssembly = {...assembly, sections: [...assembly.sections,
+      ...[...systemSections, ...contextSections].map((content, index) => ({
+        name: `programmatic:context:${index}`, text: content, interpolate: false,
+      }))]}
+    return {...decision, messages: [], assembly: effectiveAssembly}
   }
 
   /** Whether the assembled tool schemas differ from the logged request header's. */
@@ -465,7 +540,7 @@ export class ReactLoopAgent implements Agent {
         if (turnEnds && decision.messages.length === 0) break
         // A removed waking message or an enter decision rewritten to empty
         // still owns the initial turn boundary, but it spends no model call.
-        if (phase.step === 0 && decision.messages.length === 0) {
+        if (phase.step === 0 && decision.messages.length === 0 && !phase.programmatic) {
           turnEnds = { kind: 'completed' }
           return false
         }
@@ -514,7 +589,7 @@ export class ReactLoopAgent implements Agent {
         this.throwError(error)
       }
     }
-    if (!this.inbox.hasPending) return false
+    if (phase.programmatic || !this.inbox.hasPending) return false
     phase.abort = new AbortController()
     // A fresh controller makes a latch set on the old one stale: the live driver claims the queue itself.
     phase.wakeRequested = false
@@ -636,7 +711,7 @@ export class ReactLoopAgent implements Agent {
           continue
         }
 
-        const message = createAssistantMessage({
+        const createdMessage = createAssistantMessage({
           content: live.blocks(),
           source: {
             provider: request.provider,
@@ -644,6 +719,9 @@ export class ReactLoopAgent implements Agent {
             ...live.replayState !== undefined ? { replayState: live.replayState } : {},
           },
         })
+        const message = this.phase.programmatic && step === 1
+          ? freezeMessage({...createdMessage, id: brandString<AssistantMessage['id']>(this.phase.programmatic.messageId)})
+          : createdMessage
         live.settle(
           'assistant/message',
           () => this.session.append('assistant/message', {

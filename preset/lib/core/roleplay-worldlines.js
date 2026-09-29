@@ -5,7 +5,7 @@ import { createWorldlineSurface } from './roleplay-worldline-surface.js';
 export { assertBranchSession } from './roleplay-worldline-surface.js';
 export function createRoleplayWorldlines(deps) {
     const { ctx } = deps;
-    const { safeId, keyOf, sha256, T, eventsOf, isCompletedTurnEnd, surfaceEvents, textOf, cloneBranchRecord, internalTaskSeqs, importActiveKey, resolveRoleplaySession, isRoleplaySession, ensureState, ensureBranch, durableSeq, canonicalAssistantForTurn, } = deps;
+    const { safeId, keyOf, sha256, T, eventsOf, isCompletedTurnEnd, surfaceEvents, surfaceEntries, textOf, cloneBranchRecord, internalTaskSeqs, importActiveKey, resolveRoleplaySession, isRoleplaySession, ensureState, ensureBranch, flushEdits, durableSeq, canonicalAssistantForTurn, } = deps;
     const forkGroupKey = (groupId) => `fork-group-${safeId(groupId)}`;
     const forkOperationKey = (operationId) => `fork-op-${safeId(operationId)}`;
     const forkAnchorKey = (sessionId, messageId) => keyOf(sessionId, `fork-anchor-${sha256(messageId).slice(0, 24)}`);
@@ -292,6 +292,47 @@ export function createRoleplayWorldlines(deps) {
             promptText: user.text,
         };
     }
+    function locateProgrammaticOpeningTarget(session, requestedMessageId, requestedSeq) {
+        const seq = durableSeq(requestedSeq);
+        const events = eventsOf(session);
+        const event = seq === null ? null : events.find(item => Number(item.seq) === seq);
+        const messageId = String(requestedMessageId ?? '');
+        const source = event?.data?.message?.source;
+        const turn = Number(event?.data?.turn);
+        const originalOpening = source?.kind === 'programmatic' && source.schemaVersion === 1
+            && source.producer === 'dsh-nexttavern' && typeof source.origin === 'string'
+            && /^card-opening:[a-zA-Z0-9_-]{1,64}$/.test(source.origin)
+            && typeof source.operationId === 'string' && !!source.operationId;
+        const pointer = source?.kind === 'model' ? forkPointerFor(session, messageId) : null;
+        const group = pointer?.groupId ? hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))) : null;
+        const generatedOpening = source?.kind === 'model' && group?.anchor?.openingOnly === true
+            && group.members.some(member => !member.deleted && member.sessionId === session.id
+                && member.assistantMessageId === messageId && Number(member.assistantSeq) === seq);
+        if (!messageId || event?.type !== 'assistant/message' || assistantMessageId(event) !== messageId
+            || (!originalOpening && !generatedOpening)
+            || !Number.isSafeInteger(turn) || turn < 1
+            || !events.some(item => item.type === 'turn/start' && Number(item.data?.turn) === turn
+                && Number(item.seq) < seq)
+            || surfaceEntries(session).some(item => item.kind === 'assistant' && Number(item.seq) < seq)
+            || events.some(item => item.type === 'user/message' && item.data?.source?.kind === 'user'
+                && Number(item.seq) <= seq && turnForEvent(session, item) === turn)
+            || !events.some(item => item.type === 'turn/end' && Number(item.data?.turn) === turn
+                && item.data?.reason?.kind === 'completed')
+            || !surfaceEvents(session).some(item => Number(item.seq) === seq)) {
+            throw Object.assign(new Error('目标不是可重新生成的首条程序开场'), { code: 'ROLEPLAY_NOT_STORY' });
+        }
+        return {
+            sourceSessionId: session.id,
+            sourceAssistantMessageId: messageId,
+            sourceAssistantSeq: seq,
+            sourceAssistantTurn: turn,
+            sourceTurn: turn,
+            previousTurnEndSeq: null,
+            expectedSeedLength: 0,
+            promptText: '',
+            openingOnly: true,
+        };
+    }
     async function copyStaticBranchConfig(sourceId, childId) {
         const sourcePrefix = `${sourceId}__`;
         const childPrefix = `${childId}__`;
@@ -409,8 +450,8 @@ export function createRoleplayWorldlines(deps) {
                             ordinal: 1,
                             kind: 'original',
                             promptText: operation.anchor.promptText,
-                            userMessageId: operation.anchor.sourceUserMessageId,
-                            userSeq: operation.anchor.sourceUserSeq,
+                            userMessageId: operation.anchor.openingOnly ? null : operation.anchor.sourceUserMessageId,
+                            userSeq: operation.anchor.openingOnly ? null : operation.anchor.sourceUserSeq,
                             playerVariantId: `${groupId}:player:1`,
                             playerOrdinal: 1,
                             assistantMessageId: messageId,
@@ -567,6 +608,8 @@ export function createRoleplayWorldlines(deps) {
         return Boolean(requestId && String(member.requestId ?? '') === requestId);
     }
     async function backfillRecoverySourceMember(anchor) {
+        if (anchor.sourceUserSeq === undefined)
+            return false;
         const source = await resolveRoleplaySession(anchor?.sourceSessionId);
         if (!source)
             return false;
@@ -633,6 +676,9 @@ export function createRoleplayWorldlines(deps) {
     }
     async function registerRecoveryFork(operation, child) {
         const anchor = operation.anchor;
+        if (anchor.sourceUserSeq === undefined || !anchor.sourceUserMessageId) {
+            throw new Error('失败轮次缺少真实玩家锚点');
+        }
         const source = await resolveRoleplaySession(anchor.sourceSessionId);
         let recovery = null;
         if (source) {
@@ -786,6 +832,40 @@ export function createRoleplayWorldlines(deps) {
             return;
         for (const [pendingKey, pending] of pendingEntries) {
             const requestId = String(pending?.requestId ?? '');
+            const openingGroup = hydrateForkGroup(T.branch.get(forkGroupKey(pending.groupId)));
+            if (openingGroup?.anchor?.openingOnly) {
+                const member = openingGroup.members.find(item => item.sessionId === session.id
+                    && Number(item.ordinal) === Number(pending.ordinal) && item.operationId === pending.operationId);
+                const exactId = member?.operationId ? `opening-regenerate-${member.operationId}` : '';
+                const candidate = exactId ? eventsOf(session).find(event => event.type === 'assistant/message'
+                    && assistantMessageId(event) === exactId && event.data?.message?.source?.kind === 'model') : null;
+                const completed = candidate && eventsOf(session).some(event => event.type === 'turn/end'
+                    && Number(event.data?.turn) === Number(candidate.data?.turn) && event.data?.reason?.kind === 'completed');
+                if (candidate && completed && member) {
+                    try {
+                        await flushEdits(session);
+                    }
+                    catch {
+                        continue;
+                    }
+                    await withForkMutationLock(forkGroupLockKey(pending.groupId), async () => {
+                        const group = hydrateForkGroup(T.branch.get(forkGroupKey(pending.groupId)));
+                        const live = group?.members.find(item => item.sessionId === session.id
+                            && Number(item.ordinal) === Number(pending.ordinal) && item.operationId === pending.operationId);
+                        if (!group || !live)
+                            return;
+                        live.assistantMessageId = exactId;
+                        live.assistantSeq = Number(candidate.seq);
+                        live.pending = false;
+                        live.completedAt = Date.now();
+                        group.updatedAt = Date.now();
+                        await T.branch.put(forkGroupKey(group.groupId), group);
+                        await T.branch.put(forkAnchorKey(session.id, exactId), { groupId: group.groupId });
+                        await T.branch.delete(pendingKey);
+                    });
+                }
+                continue;
+            }
             const userEvent = requestUserEvent(session, requestId);
             const turn = userEvent ? turnForEvent(session, userEvent) : null;
             const candidate = completedAssistant && Number(completedAssistant.data?.turn) === Number(turn)
@@ -978,6 +1058,7 @@ export function createRoleplayWorldlines(deps) {
         forkGroupKey,
         groupMemberForSession,
         locateForkTarget,
+        locateProgrammaticOpeningTarget,
         bootstrapChildBranch,
         registerRecoveryFork,
         registerNativeFork,

@@ -18,6 +18,7 @@ export interface StoredBranchOperation extends ForkOperation {
   ordinal?: number
   abortedAt?: number
   failureReason?: string
+  failure?: {schemaVersion: 1; code: string; message: string; at: number}
   promptSha256?: string
   registration?: Partial<RegistrationResult> & {truncated?: boolean; childSessionId?: string}
 }
@@ -28,12 +29,12 @@ export interface BranchRouteBody {
   operationId?: string
   kind?: unknown
   messageId?: unknown
+  seq?: unknown
   userSeq?: unknown
   requestId?: unknown
   promptText?: unknown
   text?: unknown
   role?: unknown
-  seq?: unknown
 }
 export interface ForkReservation {
   sourceSessionId: string
@@ -48,16 +49,19 @@ export interface BranchRoutesDependencies extends Pick<Worldlines,
   'reconcileCanonicalPlayerVariants' | 'buildForkLookupIndex' | 'userForkContext' |
   'locatePlayerRecoveryTarget' | 'assistantMessageId' | 'forkPointerFor' |
   'hydrateForkGroup' | 'forkGroupKey' | 'groupMemberForSession' | 'locateForkTarget' |
-  'bootstrapChildBranch' | 'registerRecoveryFork' | 'registerNativeFork' |
-  'forkAnchorLockKey' | 'requestUserEvent' | 'forkPendingKey' | 'reconcileNativeFork' |
+  'bootstrapChildBranch' | 'registerRecoveryFork' | 'registerNativeFork' | 'locateProgrammaticOpeningTarget' |
+  'forkAnchorLockKey' | 'requestUserEvent' | 'forkPendingKey' | 'reconcileNativeFork' | 'failPendingNativeFork' |
   'replaceAssistantText' | 'replaceUserText'> {
   ctx: {
     effect(work: () => unknown, label: string): unknown
     connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
-    sessions: {get(id: string): BranchRouteSession | null | undefined}
+    sessions: {get(id: string): BranchRouteSession | null | undefined; flush(session: BranchRouteSession): PromiseLike<boolean>}
     get(name: 'tavernConversations'): Catalog | null | undefined
     sessionController: {
-      resolveAgent(id: string): PromiseLike<{agent?: {session?: BranchRouteSession; status?: string}; error?: BranchRouteError} | null | undefined>
+      resolveAgent(id: string): PromiseLike<{agent?: {session?: BranchRouteSession; status?: string;
+        generateProgrammaticAssistant?: (input: {operationId: string; messageId: string; instruction: string}) =>
+          Promise<{kind: 'committed' | 'busy' | 'unknown'; turn?: number; messageId?: string; reason?: string}>};
+        error?: BranchRouteError} | null | undefined>
       create(options: {sessionId: string; cwd?: string; agentPreset: string}): PromiseLike<{sessionId?: string} | null | undefined>
       // Alpha.3 host-only extension: OFFICIAL-SESSION-FORK-PREP-20260910.
       // GA adaptation must retain the reservation-before-publication contract.

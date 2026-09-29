@@ -340,7 +340,11 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     if (!storyStarted) {
       const opening = T.opening.get(keyOf(branchId, 'scene'))
       if (opening?.text) {
-        sections.push(`[初始剧情]（分类写入的开场剧情）\n${fenceCardContent(opening.text, 'opening')}\n\n【本轮要求】请完整输出作者原始第一幕，不提前续写；围栏符号和资料说明不属于正文。`)
+        const regenerateOpening = !!(payload.agent as typeof payload.agent &
+          {programmaticGeneration?: {operationId: string} | null}).programmaticGeneration
+        sections.push(`[初始剧情]（分类写入的作者开场剧情）\n${fenceCardContent(opening.text, 'opening')}\n\n【本轮要求】${regenerateOpening
+          ? '以作者原始开场为背景与风格参考，创作一段新的第一幕；不要照抄原文，不要假设玩家已经输入。'
+          : '请完整输出作者原始第一幕，不提前续写；'}围栏符号和资料说明不属于正文。`)
       }
     }
 

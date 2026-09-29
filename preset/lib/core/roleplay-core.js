@@ -466,7 +466,7 @@ export async function apply(ctx, config = {}) {
     // 每个候选回复都是一个独立 Session；分支分页只保存很小的导航元数据，
     // 不复制兄弟分支正文。Harness 因而仍按当前 Session 尾页懒加载，模型、
     // 世界书检索和记忆也天然只看到当前选择的正史。
-    const { storyBranchIsActive, assertStoryBranchActive, reconcileCanonicalPlayerVariants, buildForkLookupIndex, reconcileNativeFork, failPendingNativeFork, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, withForkMutationLock, forkOperationKey, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, replaceAssistantText, replaceUserText } = createRoleplayWorldlines({
+    const { storyBranchIsActive, assertStoryBranchActive, reconcileCanonicalPlayerVariants, buildForkLookupIndex, reconcileNativeFork, failPendingNativeFork, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, withForkMutationLock, forkOperationKey, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, replaceAssistantText, replaceUserText } = createRoleplayWorldlines({
         messageEdits: ctx.nexttavernMessageEdits,
         flushEdits: async (session) => {
             if (!await ctx.sessions.flush(session))
@@ -1172,6 +1172,7 @@ export async function apply(ctx, config = {}) {
         forkGroupKey,
         groupMemberForSession,
         locateForkTarget,
+        locateProgrammaticOpeningTarget,
         bootstrapChildBranch,
         registerRecoveryFork,
         registerNativeFork,
@@ -1179,6 +1180,7 @@ export async function apply(ctx, config = {}) {
         requestUserEvent,
         forkPendingKey,
         reconcileNativeFork,
+        failPendingNativeFork,
         replaceAssistantText,
         replaceUserText,
     });
