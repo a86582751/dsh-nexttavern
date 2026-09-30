@@ -132,6 +132,8 @@ export const inject = [
   'sessionPersistence',
   'sessionQuery',
   'sessionController',
+  'fileUploads',
+  'attachments',
   'llm',
   'systemPrompt',
   'tools',

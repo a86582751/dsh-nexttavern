@@ -12,10 +12,11 @@ export interface CardAttachmentSelector {receiptId: string}
 export interface NativeFileRef {attachmentId: string; name: string; bytes: number}
 export interface CardAttachmentAgent {
   session: ContextSession
-  ctx: {
-    fileUploads: {resolve(agent: CardAttachmentAgent, receiptId: string): NativeFileRef | undefined}
-    attachments: {readFileStream(ref: NativeFileRef, signal?: AbortSignal): AsyncIterable<Uint8Array>}
-  }
+  ctx: object
+}
+export interface CardAttachmentServices {
+  fileUploads: {resolve(agent: CardAttachmentAgent, receiptId: string): NativeFileRef | undefined}
+  attachments: {readFileStream(ref: NativeFileRef, signal?: AbortSignal): AsyncIterable<Uint8Array>}
 }
 interface Admission {
   schemaVersion: 1
@@ -29,7 +30,7 @@ interface Admission {
   state: 'admitted' | 'archived'
   resourceId?: string
 }
-interface Dependencies {
+interface Dependencies extends CardAttachmentServices {
   T: {branch: LibraryTable}
   libraryFor(session: CardWorkflowSession): Pick<ReturnType<typeof createTavernLibrary>, 'archive' | 'metadata'>
 }
@@ -76,10 +77,7 @@ function agentOf(value: unknown, session: CardWorkflowSession): CardAttachmentAg
   if (owned.id !== session.id || (owned.header && object(owned.header).origin === 'subagent')) {
     fail('附件 Agent 与会话不一致')
   }
-  const ctx = object(agent.ctx)
-  if (typeof object(ctx.fileUploads).resolve !== 'function' || typeof object(ctx.attachments).readFileStream !== 'function') {
-    fail('当前 Agent 缺少原生文件服务')
-  }
+  object(agent.ctx)
   // Preserve the actual Agent object: FileUploads checks scopeOf(agent.ctx).
   return value as CardAttachmentAgent
 }
@@ -128,7 +126,7 @@ async function serialized<Result>(table: object, key: string, work: () => Promis
 }
 
 /** Authorize native bytes once, archive them, and leave activation to the existing workflow. */
-export function createCardAttachmentSources({T, libraryFor}: Dependencies) {
+export function createCardAttachmentSources({T, libraryFor, fileUploads, attachments}: Dependencies) {
   async function materialize(session: CardWorkflowSession, actualAgent: unknown,
     selector: unknown, requestedId: unknown): Promise<{sourceFile: string; resourceId: string}> {
     const {receiptId} = selectorOf(selector)
@@ -137,6 +135,12 @@ export function createCardAttachmentSources({T, libraryFor}: Dependencies) {
       fail('会话身份无效')
     }
     const agent = agentOf(actualAgent, session)
+    // The owning plugin declares these services in inject, so Cordis owns their
+    // lifecycle. Only attachment requests need these capabilities; AgentLoop
+    // ctx is used solely by the provider to verify the actual Agent's scope.
+    if (typeof object(fileUploads).resolve !== 'function' || typeof object(attachments).readFileStream !== 'function') {
+      fail('当前插件缺少原生文件服务')
+    }
     const workspaceRoot = realpathSync(session.header.cwd)
     const workspaceHash = sha256(workspaceRoot)
     const expected = {sessionId: session.id, requestId, workspaceRoot, workspaceHash, receiptId}
@@ -155,7 +159,7 @@ export function createCardAttachmentSources({T, libraryFor}: Dependencies) {
       const previous = T.branch.get(key)
       if (previous !== undefined && previous !== null) row = admissionOf(previous, expected)
       else {
-        const resolved = agent.ctx.fileUploads.resolve(agent, receiptId)
+        const resolved = fileUploads.resolve(agent, receiptId)
         if (resolved === undefined) fail('文件未上传到当前会话或 receipt 已失效')
         const file = fileOf(resolved)
         const identity = {schemaVersion: 1 as const, ...expected, file}
@@ -189,7 +193,7 @@ export function createCardAttachmentSources({T, libraryFor}: Dependencies) {
       let count = 0
       // Native provider verifies only after its final yield. A thrown EOF check
       // must reject this entire source, even when every byte was already seen.
-      for await (const chunk of agent.ctx.attachments.readFileStream(row.file)) {
+      for await (const chunk of attachments.readFileStream(row.file)) {
         if (!(chunk instanceof Uint8Array)) fail('原件读取流不是字节')
         count += chunk.byteLength
         if (count > CARD_LIMITS.bytes || count > row.file.bytes) fail('原件读取大小超出限制或授权值')

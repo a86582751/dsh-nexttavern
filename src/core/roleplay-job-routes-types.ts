@@ -8,6 +8,7 @@ import type { taskPhaseMessage } from './tavern-tasks.js'
 import type { HostSession, HostAgent, MaintenanceJob } from './roleplay-task-host-types.js'
 import type { ContextEvent } from './roleplay-context.js'
 import type { StatusRecord } from './roleplay-status-types.js'
+import type { CardAttachmentServices } from './roleplay-card-attachment.js'
 
 export interface JobRouteAgent extends CardWorkflowAgent {
   session?: HostSession
@@ -48,7 +49,7 @@ type CardWorkflows = ReturnType<typeof createCardWorkflows>
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 type Resources = ReturnType<typeof createResourceBridge>
 export interface JobRoutesDependencies {
-  ctx: {
+  ctx: CardAttachmentServices & {
     effect(work: () => unknown, label: string): unknown
     connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
     sessionController: {resolveAgent(id: string): PromiseLike<{agent?: JobRouteAgent} | null | undefined>}

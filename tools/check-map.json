@@ -6617,7 +6617,10 @@
         "src/memory/memory-provenance.ts",
         "src/core/tavern-task-retirement.ts",
         "src/core/card-adaptation-context.ts",
-        "src/core/character-cluster-settings.ts"
+        "src/core/character-cluster-settings.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/session-history.ts",
+        "src/core/roleplay-message-view.ts"
       ]
     },
     {
@@ -6678,7 +6681,9 @@
         "src/core/card-adaptation-context.ts",
         "src/core/character-cluster-settings.ts",
         "src/core/roleplay-status-presentation.ts",
-        "src/core/roleplay-card-attachment.ts"
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/session-history.ts",
+        "src/core/roleplay-message-view.ts"
       ]
     },
     {
@@ -9477,7 +9482,8 @@
         "src/core/narrative-styles/classical.ts",
         "src/core/roleplay-setting-store.ts",
         "src/core/roleplay-setting-tools.ts",
-        "src/core/roleplay-card-attachment.ts"
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/session-history.ts"
       ]
     },
     {
@@ -9589,7 +9595,9 @@
         "src/core/tavern-exchange-rates.ts",
         "src/core/tavern-task-retirement.ts",
         "src/core/character-cluster-settings.ts",
-        "src/core/roleplay-status-presentation.ts"
+        "src/core/roleplay-status-presentation.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/session-history.ts"
       ]
     },
     {

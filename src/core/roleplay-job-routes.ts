@@ -12,7 +12,8 @@ import type { JobRouteAgent, JobRouteBody, JobRouteRecord, JobRoutesDependencies
 
 export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow,
   resumeCardWorkflows, cardWorkflows, cardWorkflowKey, tavernTasks, taskAgents, libraryFor, migrateResources}: JobRoutesDependencies) {
-  const attachmentSources = createCardAttachmentSources({T, libraryFor})
+  const attachmentSources = createCardAttachmentSources({T, libraryFor,
+    fileUploads: ctx.fileUploads, attachments: ctx.attachments})
   const latestChildJobs=()=>{
     const latest=new Map<string | undefined, JobRouteRecord>()
     for(const [key,raw] of T.branch.entries()){
