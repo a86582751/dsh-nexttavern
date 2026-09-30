@@ -3,6 +3,7 @@ import type { createCharacterCluster } from './character-cluster.js'
 import type { TaskAgent, TaskOptions, TaskSpec } from './tavern-task-types.js'
 import type { StatusRecord } from './roleplay-status-types.js'
 import type { AuthorTables, AuthorDependency } from './roleplay-author-context-types.js'
+import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 
 export interface HostSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & {parentSession?: string}
@@ -28,6 +29,7 @@ export interface HostTable {
 }
 export interface HostTables {branch: HostTable; cards: HostTable}
 export interface HostSource {
+  inputPreparation?: InputPreparationCurrency
   preparationId?: string
   hashKind?: string
   workflowId?: string
@@ -54,6 +56,9 @@ export interface NativeTaskInput<Result = unknown> extends Omit<TaskSpec<HostSes
   taskStage?: string
 }
 export interface TaskHostDependencies {
+  inputCurrency?(session:HostSession):InputPreparationCurrency | undefined
+  inputCurrencyCurrent?(session:HostSession,currency:InputPreparationCurrency):boolean
+  inputHistoricalCurrencyCurrent?(session:HostSession,currency:InputPreparationCurrency):boolean
   T: HostTables & AuthorTables
   ctx: {
     llm?: {resolveModelInfo?(provider: string, model: string): PromiseLike<{provider: string; id: string}>}

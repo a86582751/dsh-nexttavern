@@ -4,6 +4,19 @@ import { keyOf, sha256, recordSha256, textOf, provenanceSeq, estimateTokens, dur
 import { eventsOf, surfaceEvents, surfaceEntries, lastSeq, visibleCompactionCheckpoint, roleplayWindowCutStartIndex } from './roleplay-context.js';
 import { fenceCardContent } from './tavern-card.js';
 import { internalTaskSeqs, isInlinePending } from './tavern-tasks.js';
+/** Check the exact row written by Phase A, including its original input basis.
+ * A valid input credential alone cannot prove that a referenced snapshot still
+ * contains the bytes used by an already running task. */
+export function inputSnapshotReferenceCurrent(table, sessionId, currency) {
+    const reference = currency.snapshot;
+    if (!reference || reference.key !== keyOf(sessionId, `task-input-snapshot-${currency.preparationId}-${currency.attemptGeneration}`)
+        || !/^[a-f0-9]{64}$/.test(reference.sha256))
+        return false;
+    const stored = table.get(reference.key);
+    const { snapshot: _reference, ...basis } = currency;
+    return stored?.schemaVersion === 1 && stored.sessionId === sessionId
+        && recordSha256(stored.inputPreparation) === recordSha256(basis) && recordSha256(stored) === reference.sha256;
+}
 export function createRoleplayPreparation(deps) {
     const { T, ctx, assertStoryBranchActive, cfg, svc, ensureBranch, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userValues, selectedStatusRecord } = deps;
     const contextWindowKey = (branchId) => keyOf(branchId, 'context-window');
@@ -202,14 +215,18 @@ export function createRoleplayPreparation(deps) {
         };
     }
     async function buildPhaseA(session, payload, st) {
+        payload.assertInputCurrent?.();
         assertStoryBranchActive(session);
         const phaseAStartedAt = Date.now();
         const branchId = session.id;
         await ensureBranch(session);
+        payload.assertInputCurrent?.();
         await reconcileCanonicalPlayerVariants(session, buildForkLookupIndex(session));
+        payload.assertInputCurrent?.();
         // Read only committed branch state. Background notes need not finish on
         // ordinary turns; eviction below is the sole strict notes-save barrier.
         await svc.awaitCommitted(branchId);
+        payload.assertInputCurrent?.();
         let memoryPreparation = { status: 'ready' };
         try {
             memoryPreparation = await ctx.get('compaction')?.prepareForTurn?.(payload.agent, payload.signal) ?? memoryPreparation;
@@ -220,6 +237,7 @@ export function createRoleplayPreparation(deps) {
             memoryPreparation = { status: 'retry', branchId, reason: '当前分支持久记忆准备失败，可重试' };
         }
         assertStoryBranchActive(session);
+        payload.assertInputCurrent?.();
         const userMsg = payload.messages.findLast((m) => m.role === 'user' && m.source?.kind === 'user');
         const userText = userMsg ? textOf(userMsg.content) : '';
         const mem = memoryForContext(session);
@@ -287,6 +305,7 @@ export function createRoleplayPreparation(deps) {
             }
         }
         const snapshot = {
+            ...(payload.inputPreparation ? { inputPreparation: payload.inputPreparation } : {}),
             branchId,
             agent: payload.agent,
             turnId: payload.turn,
@@ -383,9 +402,22 @@ export function createRoleplayPreparation(deps) {
             ? `[角色扮演可变上下文锚点·当前版本优先·引用版本 ${stateHash}]\n请读取上方标有“完整版本 ${stateHash}”的同分支完整锚点；沿用该版本，不采用较早或其他分支版本。`
             : `[角色扮演可变上下文锚点·当前版本优先·完整版本 ${stateHash}]\n${hiddenText}`));
         // 记录本轮快照与阶段 A 产出（阶段 C 提交时使用）
-        st.snapshots.set(Number(payload.turn), snapshot);
         const { agent: snapshotAgent, ...durableSnapshot } = snapshot;
-        await T.branch.put(keyOf(session.id, `task-snapshot-${payload.turn}`), { schemaVersion: 1, sessionId: session.id, ...cloneRecord(durableSnapshot) });
+        const storedSnapshot = { schemaVersion: 1, sessionId: session.id, ...cloneRecord(durableSnapshot) };
+        payload.assertInputCurrent?.();
+        if (payload.inputPreparation) {
+            const input = payload.inputPreparation;
+            const attemptKey = keyOf(session.id, `task-input-snapshot-${input.preparationId}-${input.attemptGeneration}`);
+            const prior = T.branch.get(attemptKey);
+            if (prior && recordSha256(prior) !== recordSha256(storedSnapshot))
+                throw new Error('INPUT_SNAPSHOT_IDENTITY_CONFLICT');
+            if (!prior)
+                await T.branch.put(attemptKey, storedSnapshot);
+            payload.assertInputCurrent?.();
+        }
+        await T.branch.put(keyOf(session.id, `task-snapshot-${payload.turn}`), storedSnapshot);
+        payload.assertInputCurrent?.();
+        st.snapshots.set(Number(payload.turn), snapshot);
         st.pendingScenes.set(Number(payload.turn), null);
         st.snapshot = snapshot;
         st.pendingTurn = payload.turn;

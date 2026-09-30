@@ -34,7 +34,12 @@ const terminal = new Set(['completed','cancelled','stale','failed'])
  * a future main-loop step: it persists and yields InlinePending to the stage
  * controller. Only native, independently executing children may be awaited.
  */
-export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({table,policy,subagents,isCurrent=()=>true}: TaskOptions<S,A>) {
+export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({table,policy,subagents,isCurrent=()=>true,isHistoricalResultCurrent,canPublishResult}: TaskOptions<S,A>) {
+  const nativeResults=new WeakMap<object,{id:string;generation:string}>()
+  const nativeResult=(id:string,generation:string) => {const token={};nativeResults.set(token,{id,generation});return token}
+  const liveHistoricalResult=(session:S,job:TaskJob) => job.background===true && job.status==='running'
+    && controllers.get(job.id)?.generation===job.generation && running.get(job.id)?.generation===job.generation
+    && isHistoricalResultCurrent?.(session,job)
   const validators=new Map<string,(value:unknown)=>unknown>(), running=new Map<string,{generation:string;promise:Promise<unknown>}>(), controllers=new Map<string,TaskControl<S,A>>(), locks=new Map<string,Promise<unknown>>(), batches=new Map<string,Batch<S,A>>(), admissions=new Map<string,Admission<S,A>>(), holds=new Map<string,number>()
   const list = (session: S) => [...table.entries()].flatMap(([key,value])=>{const job=key.startsWith('tavern_job__')?storedTask(value):null;return job?.sessionId===session.id?[copy(job)]:[]})
   async function lock<T>(id: string,fn: () => T | PromiseLike<T>): Promise<T> {
@@ -242,12 +247,16 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     if(!control||sibling)admissions.get(id)?.reject(Object.assign(new Error('任务已取消或结果已失效'),{code:'TASK_CANCELLED'}))
     return result
   }
-  async function submit({session,id,generation,value}: {session:S;id:string;generation:string;value:unknown}): Promise<unknown> {
+  async function submit({session,id,generation,value}: {session:S;id:string;generation:string;value:unknown},nativeToken?:object): Promise<unknown> {
     return lock(id,async()=>{
       const job=owned(session,id)
       if (job.generation!==generation || ['cancelled','stale'].includes(job.status)) throw new Error('任务已取消或结果已失效')
       if(job.status==='failed')throw new Error('该任务已失败，请在酒馆管理中重试')
-      if (!await isCurrent(session,job)) {
+      const proof=nativeToken ? nativeResults.get(nativeToken) : undefined
+      const fromNativeResult=proof?.id===id && proof.generation===generation
+      if (!await isCurrent(session,job)
+        && !(job.status==='completed' && await isHistoricalResultCurrent?.(session,job))
+        && !(fromNativeResult && await liveHistoricalResult(session,job))) {
         await table.put(keyOf(id),{...job,status:'stale',updatedAt:Date.now()})
         throw new Error('任务来源已变化，请按当前分支重建')
       }
@@ -268,6 +277,9 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         throw new TaskValidationError(`${rejected.message}${failures>=3?'；已保留检查点，请在酒馆管理中重试':'；请按 rp_task_read 中的结果契约修正，不要检查实现代码'}`,
           rejected.failure.issues as readonly unknown[],rejected.code)
       }
+      // A validator can await I/O while stop/Source/attempt changes. The result
+      // token is private to the already completed native child, never a tool DTO.
+      if (canPublishResult && !await canPublishResult(session,job,fromNativeResult)) throw new Error('任务输入权限已变化')
       await table.put(keyOf(id),{...job,status:'completed',result:copy(result),resultHash:taskHash(result),progress:{done:1,total:1},completedAt:Date.now(),updatedAt:Date.now(),error:null,failure:null,failedAt:null})
       return copy(result)
     })
@@ -291,7 +303,11 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         })
       })
     }
-    const deliver=async (result: unknown)=>{await spec.onResult?.(copy(owned(session,id)));return result}
+    const deliver=async (result: unknown)=>{
+      const live=owned(session,id)
+      if (canPublishResult && !await canPublishResult(session,live,false)) throw new Error('任务输入权限已变化')
+      await spec.onResult?.(copy(live));return result
+    }
     validators.set(id,spec.validate??(value=>value))
     let job=await lock(id,async()=>{
       const raw=table.get(key)
@@ -320,7 +336,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       }
       return found
     })
-    if (!await isCurrent(session,job)) {
+    if (!await isCurrent(session,job) && !(job.status==='completed' && await isHistoricalResultCurrent?.(session,job))) {
       await lock(id,async()=>{await table.put(key,{...owned(session,id),status:'stale',updatedAt:Date.now()})})
       throw new Error('任务来源已变化')
     }
@@ -367,7 +383,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         }
         const text=taskResultText(result,spec.format)
         const value=spec.format==='workflow'?{finished:true}:spec.format==='text'?text:result.structured??JSON.parse(text.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g,''))
-        return await submit({session,id,generation:job.generation,value})
+        return await submit({session,id,generation:job.generation,value},nativeResult(id,job.generation))
       } catch(error) {
         let superseded=false
         await lock(id,async()=>{
@@ -397,7 +413,8 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
   return {list,request,submit,holdBatch,
     activity:(session: S)=>[...table.entries()].flatMap(([,value])=>{const j=storedTask(value);return j?.sessionId===session.id&&['queued','running'].includes(j.status)?[{sessionId:j.sessionId,kind:j.kind,status:j.status,execution:j.execution,background:j.background===true,createdAt:j.createdAt}]:[]}),
     async invalidate(session: S) {
-      for(const job of list(session).filter(j=>!terminal.has(j.status)))if(!await isCurrent(session,job)) {
+      for(const job of list(session).filter(j=>!terminal.has(j.status)))if(!await isCurrent(session,job)
+        && !await liveHistoricalResult(session,owned(session,job.id))) {
         const admission=admissions.get(job.id),control=controllers.get(job.id)
         await lock(job.id,async()=>{const live=ownedRecord(session,job.id);if(!terminal.has(live.status))await table.put(keyOf(job.id),{...live,status:'stale',generation:randomUUID(),updatedAt:Date.now()})})
         if(control?.generation===job.generation)abortControl(session,job.id,control)

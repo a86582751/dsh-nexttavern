@@ -7,6 +7,7 @@ import type { ContextEvent, ContextSession } from './roleplay-context.js'
 export function createRoleplayCompletion(deps: CompletionDependencies) {
   const { storyBranchIsActive, T, cloneBranchRecord, reconcileNativeFork, ctx, resolveRoute, memoryForContext, publishTurnDecision, llmJson, LEDGER_WORKER_SYSTEM, cfg, CONTINUITY_WORKER_SYSTEM, contextWindowFor, contextWindowKey, svc, sessions, failPendingNativeFork, isRoleplaySession, queueStatusObligation, statusRunStartSeq, recoverStatusObligations } = deps
   function isStale(session: ContextSession, snapshot: CompletionSnapshot, canonicalSeq: number) {
+    if (snapshot.inputPreparation && deps.inputSnapshotCurrent?.(session,snapshot)!==true) return true
     if (!storyBranchIsActive(session)) return true
     const log = eventsOf(session)
     if (!Array.isArray(log)) return true

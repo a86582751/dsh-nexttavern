@@ -44,6 +44,7 @@ export interface CompletionWorkerResult extends Record<string, unknown> {
   conflicts?: Record<string, unknown>[]
 }
 export interface CompletionDependencies {
+  inputSnapshotCurrent?(session:ContextSession,snapshot:CompletionSnapshot):boolean
   storyBranchIsActive(session: ContextSession): boolean
   T: CompletionTables
   cloneBranchRecord<T>(value: T): T

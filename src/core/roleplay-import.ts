@@ -100,22 +100,50 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
   const structuredDriverExecs = new WeakSet<ImportExec>();
   const importTool: typeof simpleTool = (name, description, parameters, execute) => {
     const handler: typeof execute = name !== 'rp_card_import_begin' ? execute : async (args, exec) => {
-      if (args.chat_attachment === undefined) return execute(args,exec);
-      if (args.source_file !== undefined || args.request_id !== undefined || args.mode === 'merge') {
+      if (structuredDriverExecs.has(exec)) return execute(args,exec);
+      const chatAttachment = args.chat_attachment !== undefined;
+      if (chatAttachment && (args.source_file !== undefined || args.request_id !== undefined || args.mode === 'merge')) {
         return {ok:false,error:'聊天附件不能同时指定路径、请求标识或 merge；请直接说明要导入的文件'};
       }
-      if (!deps.resolveChatCardSource) return {ok:false,error:'当前会话的聊天原件读取尚未就绪'};
+      if (chatAttachment && !deps.resolveChatCardSource) return {ok:false,error:'当前会话的聊天原件读取尚未就绪'};
       const session = await sessionOf(exec);
+      let enteredWorkflow = false;
       try {
+        // Core revokes the current story capability synchronously before source
+        // resolution's first await; the structured driver inherits that lease.
+        const lease = deps.inputTransition?.begin(session,exec,args);
+        if (!chatAttachment) {
+          let internalArgs = args;
+          if (lease?.reserveWorkspace) {
+            const source = resolveImportSource(session,String(args.source_file ?? '').trim());
+            const requestId = await lease.reserveWorkspace({sourceFile:source.sourcePath,sourceBytes:source.bytes.length,
+              sourceMtimeMs:source.sourceMtimeMs,extension:source.extension,rawSha256:sha256(source.bytes)});
+            if (args.mode !== 'merge') internalArgs = {...args,request_id:args.request_id ?? requestId};
+            if (['.png','.json'].includes(source.extension)) decodeTavernCard(source.bytes,source.extension);
+          }
+          enteredWorkflow = true;
+          return await execute(internalArgs,exec);
+        }
         const selected = chatCardSelector(args.chat_attachment);
-        const source = await deps.resolveChatCardSource(session,exec,selected);
+        const source = await deps.resolveChatCardSource!(session,exec,selected);
+        await lease?.reserve(source);
+        if (lease) {
+          const original = resolveImportSource(session,source.sourceFile);
+          if (['.png','.json'].includes(original.extension)) decodeTavernCard(original.bytes,original.extension);
+        }
         // The owned resolver durably freezes the authorized native message/ref
         // before a job can start. The existing driver then owns parse/activation.
         const {chat_attachment: omitted, ...rest} = args;
         void omitted;
+        enteredWorkflow = true;
         const result = await execute({...rest,source_file:source.sourceFile,request_id:source.requestId},exec);
         return {...(result as Record<string,unknown>),cardImport:source.cardImport};
       } catch (error) {
+        if (!enteredWorkflow) {
+          try {await deps.inputTransition?.sourceRejected?.(session,exec,'IMPORT_SOURCE_REJECTED')}
+          catch {return {ok:false,inputPermissionUnknown:true,error:String(errorMessage(error))}}
+        }
+        if (!chatAttachment && enteredWorkflow) throw error;
         return {ok:false,error:String(errorMessage(error))};
       }
     };
@@ -131,6 +159,20 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
     return pointer?.importId === record.importId
       && (!pointer.normalizedSha256 || pointer.normalizedSha256 === record.normalizedSha256)
       ? record : null;
+  };
+  const commitInputActivation = async (session: ImportSession, record: ImportRecord, pointer: ImportPointer,
+    transaction?: ImportRecord['transaction']) => {
+    if (!deps.inputTransition) return null;
+    try {
+      const result = await deps.inputTransition.commitActivation(session,record,pointer,transaction);
+      return result.kind === 'acknowledged' ? null : {ok:false,activationCommitted:true,inputPermissionUnknown:true,
+        code:result.code,error:'角色卡设定已保存，但本轮输入权限确认未完成；请重新发送后续操作。'};
+    } catch {
+      // Source is already active. A lost owner response must never enter the
+      // import transaction's rollback path or be reported as an ACK success.
+      return {ok:false,activationCommitted:true,inputPermissionUnknown:true,code:'INPUT_ACTIVATION_ACK_UNKNOWN',
+        error:'角色卡设定已保存，但本轮输入权限确认未完成；请重新发送后续操作。'};
+    }
   };
   registerCardExport(
     ctx,
@@ -560,6 +602,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             try {
               job = await beginCardWorkflow(session, 'card-import', requestedPath, exec.agent,
                 args.request_id as string | undefined, exec.callId);
+              if (!structuredDriverExecs.has(exec)) await deps.inputTransition?.bindJob(session,exec,job);
             }
             catch (error) {
               return {
@@ -576,6 +619,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               const imported = activeImportForWorkflow(session.id, job.id);
               if (!imported) return {ok:false,stale:true,
                 error:'该导入任务已完成，但其角色卡已被后续导入替换；如需重新导入，请发起新的工具调用'};
+              const permission = await commitInputActivation(session,imported,T.branch.get(importActiveKey(session.id)) as ImportPointer);
+              if (permission) return {...importSummary(imported),job:live ?? job,resumed:true,...permission};
               return {ok:true,...importSummary(imported),job:live ?? job,resumed:true};
             }
             if (job.execution === 'spawn') {
@@ -605,6 +650,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               const imported = activeImportForWorkflow(session.id, job.id);
               if (!imported) return {ok:false,stale:true,
                 error:'该导入任务已完成，但其角色卡已被后续导入替换；如需重新导入，请发起新的工具调用'};
+              const permission = await commitInputActivation(session,imported,T.branch.get(importActiveKey(session.id)) as ImportPointer);
+              if (permission) return {...importSummary(imported),job:live,resumed:true,...permission};
               return {ok:true, ...importSummary(imported), job:live, resumed:true};
             }
           }
@@ -614,10 +661,19 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               ok: false, error: '任务只能读取已冻结的角色卡文件'
             };
           const resumed = workflow ? [...T.branch.entries()].map(([, v]) => v as ImportRecord).find(v => v?.workflowId === workflow.id && v.importId) : null;
-          if (resumed)
+          if (resumed) {
+            if (!structuredDriverExecs.has(exec)) await deps.inputTransition?.bindLegacyRecord?.(session,exec,resumed);
+            if (resumed.status === 'active') {
+              const pointer = T.branch.get(importActiveKey(session.id)) as ImportPointer | undefined;
+              if (pointer?.importId === resumed.importId) {
+                const permission = await commitInputActivation(session,resumed,pointer);
+                if (permission) return {...importSummary(resumed),resumed:true,...permission};
+              }
+            }
             return {
               ok: true, ...importSummary(resumed), resumed: true
             };
+          }
           let source;
           try {
             source = resolveImportSource(session, requestedPath);
@@ -741,6 +797,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             createdAt: Date.now(),
           };
           await T.branch.put(importRecordKey(session.id, importId), record);
+          if (!structuredDriverExecs.has(exec)) await deps.inputTransition?.bindLegacyRecord?.(session,exec,record);
           return {
             ok: true, ...importSummary(record), headings, nextCursor: 1
           };
@@ -1237,6 +1294,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                     };
                   }
                 }
+                const permission = await commitInputActivation(session,record,pointer);
+                if (permission) return {...importSummary(record),idempotent:true,current:true,...permission};
                 return {
                   ok: true,
                   idempotent: true,
@@ -1733,6 +1792,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                   ...cloneRecord(record), status: 'committing', transaction
                 };
                 try {
+                  await deps.inputTransition?.prepareActivation(session,record,transaction);
+                  deps.inputTransition?.checkActivation?.(session,record);
                   await T.branch.put(key, committingRecord);
                 }
                 catch (error) {
@@ -1743,6 +1804,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 try {
                   for (const write of writes) {
                     assertCardWorkflow(session, record);
+                    deps.inputTransition?.checkActivation?.(session,record);
                     const expectedPrev = recordSha256(write.prev);
                     const actualPrev = recordSha256(write.table.get(write.key));
                     if (actualPrev !== expectedPrev) {
@@ -1752,6 +1814,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                       await write.table.delete(write.key);
                     else
                       await write.table.put(write.key, cloneRecord(write.next));
+                    deps.inputTransition?.checkActivation?.(session,record);
                   }
                   const failedWrite = writes.find((write) => !verifyWrite(write));
                   if (failedWrite)
@@ -1781,6 +1844,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                   if (recordSha256(T.branch.get(activeKey)) !== recordSha256(activePointerPrev)) {
                     throw new Error('active pointer 在事务期间被其他写入修改，拒绝覆盖');
                   }
+                  deps.inputTransition?.checkActivation?.(session,record);
                   await T.branch.put(activeKey, activePointer);
                   if (recordSha256(T.branch.get(activeKey)) !== recordSha256(activePointer)) {
                     throw new Error('active pointer 写后校验失败');
@@ -1823,6 +1887,9 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                     {
                       importId: activeRecord.importId, resourceId: resource?.resourceId ?? resource?.id ?? null
                     });
+                  const permission = await commitInputActivation(session,activeRecord,activePointer,transaction);
+                  if (permission) return {...importSummary(activeRecord),...activationSummary,
+                    resourceId:resource?.resourceId ?? resource?.id ?? null,...permission};
                   return {
                     ok: true,
                     ...importSummary(activeRecord),
@@ -1879,6 +1946,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
       const handler = importHandlers.get(name);
       if (!handler) throw new Error(`程序导入工具未注册：${name}`);
       const result = await handler(args, exec);
+      if (result && typeof result === 'object' && (result as Record<string, unknown>).activationCommitted === true
+        && (result as Record<string, unknown>).inputPermissionUnknown === true) return result as Record<string, unknown>;
       if (!result || typeof result !== 'object' || (result as Record<string, unknown>).ok !== true)
         throw new Error(String((result as { error?: unknown } | null)?.error ?? `${name} 执行失败`));
       return result as Record<string, unknown>;
@@ -1900,13 +1969,18 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
       import_id: importId, expected_sha256: expectedSha256,
     });
     const live = T.branch.get(cardWorkflowKey(job.id)) as CardWorkflowJob | undefined;
-    if (live?.status === 'completed') return { importId, resourceId: finalized.resourceId };
+    if (live?.status === 'completed') {
+      const active = T.branch.get(importRecordKey(session.id,importId)) as ImportRecord;
+      await commitInputActivation(session,active,T.branch.get(importActiveKey(session.id)) as ImportPointer);
+      return {importId,resourceId:finalized.resourceId};
+    }
     const active = T.branch.get(importRecordKey(session.id, importId)) as ImportRecord | undefined;
     if (!active || active.status !== 'active') throw new Error('程序导入未取得可恢复的 active 记录');
     assertCardWorkflow(session, active);
     const resource = await archiveImported(session, active);
     const resourceId = resource?.resourceId ?? resource?.id;
     await completeCardWorkflow(session, active, { importId, resourceId });
+    await commitInputActivation(session,active,T.branch.get(importActiveKey(session.id)) as ImportPointer);
     if (!resourceId) throw new Error('设定已保存，资源入库待重试');
     return { importId, resourceId };
   };

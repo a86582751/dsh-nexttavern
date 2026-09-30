@@ -61,6 +61,7 @@ export type CoreContext = {
   nexttavernMessageEdits: WorldlineMessageEdits
   userQuestions: {ask(input:{agent:NonNullable<import('./roleplay-task-tools-types.js').TaskToolExecution['agent']>;signal?:AbortSignal;questions:{id:string;question:string;header?:string;detail?:string;options?:{label:string;description:string}[]}[]}):Promise<{answers:{id:string;selected:string[];custom?:string}[]}>}
   sessions: {get(id: string): CoreSession | undefined; flush(session: BranchSession): Promise<boolean>}
+  agents?: {list(): readonly CoreAgent[]}
   sessionController: {resolveAgent(id: string): Promise<{agent?: CoreAgent; error?: Error} | undefined>}
   get(name:'agentLoop'):{getInputAdmissionAgent(agent:unknown):object | undefined} | undefined
   storageDomain: {open(options: unknown): Promise<{table<K extends keyof CoreTables>(name: K): CoreTables[K]; close(): unknown}>}

@@ -9,6 +9,7 @@ import type {MvuOpeningIdentity} from './roleplay-mvu-initialization.js'
 import type {OpeningCatalog, OpeningIntent, OpeningSelectionDeps} from './roleplay-opening-selection.js'
 import type {ReadBranchSession, WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {TavernOpeningContext} from './tavern-card.js'
+import type {InputObservation} from './roleplay-input-preparation.js'
 
 interface ReadTable {get(key:string):unknown;entries():Iterable<[string,unknown]>}
 interface WritableTable extends ReadTable {put(key:string,value:unknown):Promise<unknown>}
@@ -26,6 +27,8 @@ export interface MvuOpeningDependencies {
   /** Actual owning Agent lookup/idle/flush; never called inside native admission or while holding source lock. */
   nativeLookup(identity:MvuOpeningIdentity,text:string):Promise<{status:'committed';turn:number} | {status:'absent' | 'unknown'}>
   catalog(sessionId:string):OpeningCatalog
+  readOpeningIntent?(source:OpeningCatalog['source']):OpeningIntent | null
+  legacyImportPending?(sessionId:string):boolean
 }
 const same = (a:unknown,b:unknown) => recordSha256(a) === recordSha256(b)
 
@@ -94,6 +97,67 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       } catch {return false}
     },
   }
+  function readInputObservation(sessionId:string):InputObservation {
+    const pointer = deps.tables.branch.get(deps.importActiveKey(sessionId)) as Record<string,unknown> | undefined
+    const owner = typeof pointer?.['sourceRecordSessionId'] === 'string' ? pointer['sourceRecordSessionId'] : sessionId
+    const imported = typeof pointer?.['importId'] === 'string'
+      ? deps.tables.branch.get(deps.importRecordKey(owner,pointer['importId'])) as Record<string,unknown> | undefined : undefined
+    // Source currency excludes input ledgers, native history, volatile jobs and
+    // the numerical head. Publishing our own checkpoint/head cannot change it.
+    const versions = deps.recordVersionsFor(sessionId)
+    const cards = pointer ? versions.cards : Object.fromEntries(Object.entries(versions.cards).filter(([key]) => key !== 'user'))
+    const sourceSha256 = recordSha256({schemaVersion:1,encoding:'roleplay-input-source-observation-v1',sessionId,
+      pointer:pointer ?? null,importIdentity:imported ? {importId:imported['importId'],rawSha256:imported['rawSha256'],
+        normalizedSha256:imported['normalizedSha256'],coverage:imported['fieldProof'],activation:imported['activation']} : null,
+      versions:{cards,worldbook:versions.worldbook,rules:versions.rules,settings:versions.settings},
+      statusSpec:recordSha256(deps.tables.status.get(`${sessionId}__spec`)),
+      opening:recordSha256(deps.tables.opening.get(`${sessionId}__scene`)),
+      openingContext:pointer ? deps.openingContext(sessionId).bindingSha256 : null})
+    const management = (reason:string):InputObservation => ({kind:'management',sourceSha256,reason})
+    if (deps.legacyImportPending?.(sessionId)) return {kind:'legacy',sourceSha256,reason:'LEGACY_SEMANTIC_IMPORT'}
+    if (!pointer) {
+      const hasLegacyMaterial = [...deps.tables.cards.entries(),...deps.tables.worldbook.entries()]
+        .some(([key]) => key.startsWith(`${sessionId}__`) && key !== `${sessionId}__user`)
+      return hasLegacyMaterial ? {kind:'legacy',sourceSha256,reason:'LEGACY_MANUAL_MATERIAL'} : management('NO_ACTIVE_SOURCE')
+    }
+    if (!imported || imported['status'] !== 'active') return management('ACTIVE_SOURCE_INVALID')
+    const envelope = imported['sourceEnvelope'] as {extension?:unknown} | undefined
+    if (!envelope) {
+      return Number(imported['schemaVersion']) >= 4 ? management('ACTIVE_SOURCE_INVALID')
+        : {kind:'legacy',sourceSha256,reason:'LEGACY_TEXT_IMPORT'}
+    }
+    if (!['.png','.json','.md','.txt','.docx'].includes(String(envelope.extension).toLowerCase())) {
+      return management('ACTIVE_SOURCE_INVALID')
+    }
+    if (!['.png','.json'].includes(String(envelope.extension).toLowerCase())) {
+      return {kind:'legacy',sourceSha256,reason:'LEGACY_TEXT_IMPORT'}
+    }
+    try {
+      const catalog = deps.catalog(sessionId), selectedIntent = deps.readOpeningIntent?.(catalog.source)
+      if (!selectedIntent) return management('OPENING_REQUIRED')
+      if (selectedIntent.schemaVersion !== 4) return {kind:'legacy',sourceSha256,reason:'LEGACY_OPENING_SCHEMA'}
+      if (selectedIntent.status !== 'completed' || !selectedIntent.nativeReceipt) return management('OPENING_NOT_READY')
+      if (selectedIntent.mode === 'native-json' && selectedIntent.initialization) {
+        const readiness = initialization.read(selectedIntent.initialization)
+        return readiness.kind === 'ready' ? {kind:'story',sourceSha256,
+          headRef:{kind:'numerical-head',sha256:recordSha256(readiness.head)}} : management(readiness.code)
+      }
+      if (selectedIntent.mode === 'plain' && selectedIntent.absenceScopeProof) {
+        const candidate = catalog.candidates.find(item => item.index === selectedIntent.index)
+        if (!candidate) return management('OPENING_SOURCE_CHANGED')
+        // Re-run only the deterministic absence proof. Native-json's original
+        // fresh basis is not recreated after its own committed opening.
+        const actual = source.produce({catalog,candidate})
+        const receipt = callbacks.readNativeOpening!(selectedIntent)
+        if (actual.kind === 'legacy-v2' && same(actual.absenceScopeProof,selectedIntent.absenceScopeProof)
+          && receipt.kind === 'ready' && same(receipt.receipt,selectedIntent.nativeReceipt)) {
+          return {kind:'story',sourceSha256,absenceScopeRef:{kind:'plain-absence',
+            sha256:recordSha256({absence:actual.absenceScopeProof.proofSha256,native:receipt.receipt})}}
+        }
+      }
+      return management('OPENING_AUTHORITY_UNPROVEN')
+    } catch {return management('SOURCE_OBSERVATION_UNKNOWN')}
+  }
   return {callbacks,sourceCurrent,readInitialization:initialization.read,nativeCurrent:native.current,
-    readNative:(identity:MvuOpeningIdentity,turn?:number) => native.read(identity,turn)}
+    readNative:(identity:MvuOpeningIdentity,turn?:number) => native.read(identity,turn),readInputObservation}
 }

@@ -208,6 +208,10 @@ export class ReactLoopAgent {
             const refs = new Map();
             for (const ref of work?.refs ?? [])
                 refs.set(nativeInputSha256(ref), ref);
+            // A splice observer can cancel after removal but before claimExact
+            // returns. Retain nominated refs even during that synchronous boundary.
+            for (const entry of registration.nominations?.values() ?? [])
+                refs.set(nativeInputSha256(entry.ref), entry.ref);
             let refsCode;
             const history = inspectNativeInboxHistory(this.session.id, this.session.snapshotEvents(), this.session.inheritedEventCount);
             for (const entry of [...history.pending['next-step'], ...history.pending['next-turn']]) {
@@ -295,17 +299,76 @@ export class ReactLoopAgent {
             throw Error('unsupported native input admission hook');
         if (hook.schemaVersion === 2 && typeof hook.checkpoint !== 'function')
             throw Error('v2 native input admission needs checkpoint');
+        const ownsContinuations = hook.schemaVersion === 2
+            && (hook.onContinuationControl !== undefined || hook.recognizeSupplement !== undefined);
+        if (ownsContinuations && hook.schemaVersion === 2
+            && (typeof hook.onContinuationControl !== 'function' || typeof hook.recognizeSupplement !== 'function')) {
+            throw Error('native continuation hooks must be paired');
+        }
         const stopOwner = hook.schemaVersion === 2 ? hook.onStop : undefined;
         if (stopOwner !== undefined && typeof stopOwner !== 'function')
             throw Error('invalid native input stop hook');
-        const registration = { hook, active: true, ...(stopOwner ? { stopOwner: stopOwner.bind(hook) } : {}) };
+        const registration = { hook, active: true, ...(stopOwner ? { stopOwner: stopOwner.bind(hook) } : {}),
+            ...(ownsContinuations ? { nominations: new Map(), usedTokens: new WeakSet() } : {}) };
         this.inputAdmission = registration;
+        if (ownsContinuations && hook.schemaVersion === 2) {
+            try {
+                hook.onContinuationControl({ steerOwnedContinuation: (message, scope) => this.insertOwnedContinuation(registration, message, scope) });
+            }
+            catch {
+                registration.active = false;
+                this.inputAdmission = undefined;
+                throw Error('native continuation control registration failed');
+            }
+        }
         return () => {
             registration.active = false;
+            registration.nominations?.clear();
             if (this.inputAdmission === registration)
                 this.inputAdmission = undefined;
             this.existingInputWork = undefined;
         };
+    }
+    /** Registration-private authority is hot and bounded to the original actual
+     * checkpoint. Ordinary send/steer can wake or clear stops; this control cannot. */
+    insertOwnedContinuation(registration, message, scope) {
+        const ready = () => {
+            const work = this.inputStopWork;
+            return !this.inputDisposed && !this.inputStop && !this.inputWakeStopped && registration.active
+                && this.inputAdmission === registration && this.phase.kind === 'running' && !this.phase.programmatic
+                && !this.phase.abort.signal.aborted && this.phase.step >= 1 && work?.registration === registration
+                && work.ownedContinuations === true && !!work.receipt && work.receipt.actualTurn === this.phase.turn
+                && nativeInputSha256(work.receipt) === nativeInputSha256(scope.parent);
+        };
+        try {
+            if (!registration.nominations || !registration.usedTokens || !ready()
+                || message.source?.kind === 'user' || !scope.ownerToken || typeof scope.ownerToken !== 'object') {
+                return { kind: 'blocked', code: 'INPUT_CONTINUATION_SCOPE_INVALID' };
+            }
+            if (registration.usedTokens.has(scope.ownerToken))
+                return { kind: 'blocked', code: 'INPUT_CONTINUATION_TOKEN_USED' };
+            // A failed or uncertain insert is not permission to replay this token.
+            registration.usedTokens.add(scope.ownerToken);
+            const parentSha256 = nativeInputSha256(scope.parent), turn = scope.parent.actualTurn;
+            let insertedRef;
+            try {
+                this.inbox.insertTrackedNextStep(message, ref => {
+                    insertedRef = ref;
+                    registration.nominations.set(nativeInputSha256(ref), { ref, ownerToken: scope.ownerToken,
+                        parentSha256, turn, claimed: false });
+                });
+            }
+            catch {
+                return { kind: 'blocked', code: 'INPUT_CONTINUATION_INSERT_UNKNOWN', ...(insertedRef ? { insertedRef } : {}) };
+            }
+            if (!insertedRef || !ready()) {
+                return { kind: 'blocked', code: 'INPUT_CONTINUATION_REVOKED', ...(insertedRef ? { insertedRef } : {}) };
+            }
+            return { kind: 'inserted', ref: insertedRef };
+        }
+        catch {
+            return { kind: 'blocked', code: 'INPUT_CONTINUATION_SCOPE_INVALID' };
+        }
     }
     lookupInputOwnership(ref) { return this.inbox.lookupOwnership(ref); }
     lookupDurableInputWork(selector) {
@@ -435,6 +498,10 @@ export class ReactLoopAgent {
         }
         if (hook.schemaVersion === 2 && !preparation)
             return refused('INPUT_PREPARATION_RECEIPT_INVALID');
+        const ownedContinuations = hook.schemaVersion === 2 && 'ownedContinuations' in decision
+            && decision.ownedContinuations === true ? true : undefined;
+        if (ownedContinuations && !registration.nominations)
+            return refused('INPUT_CONTINUATION_CONTROL_MISSING');
         if (preparation)
             this.inputStopWork = { registration, refs: existing?.refs ?? proposal.refs, preparation,
                 ...(existing?.receipt ? { receipt: existing.receipt } : {}) };
@@ -459,17 +526,19 @@ export class ReactLoopAgent {
             const marker = markerFor(decision.refs, existing.receipt?.startSeq);
             if (hook.schemaVersion === 2 && !marker)
                 return refused('INPUT_LINK_INVALID_OR_OVERSIZED');
-            return { kind: 'admitted', admission: { registration, proposal, identity: decision.identity, resumeProof, preparation, marker } };
+            return { kind: 'admitted', admission: { registration, proposal, identity: decision.identity, resumeProof, preparation, marker,
+                    ...(ownedContinuations ? { ownedContinuations } : {}) } };
         }
         if (existing)
             return refused('INPUT_EXISTING_WORK_NOT_SELECTED');
         const marker = markerFor(proposal.refs);
         if (hook.schemaVersion === 2 && !marker)
             return refused('INPUT_LINK_INVALID_OR_OVERSIZED');
-        return { kind: 'admitted', admission: { registration, proposal, identity: decision.identity, preparation, marker } };
+        return { kind: 'admitted', admission: { registration, proposal, identity: decision.identity, preparation, marker,
+                ...(ownedContinuations ? { ownedContinuations } : {}) } };
     }
-    abortInput(admission, code, stage, claim) {
-        this.blockInput(admission.registration, code, stage, admission.proposal, claim);
+    abortInput(admission, code, stage, claim, proposal = admission.proposal) {
+        this.blockInput(admission.registration, code, stage, proposal, claim);
         this.cancel({ kind: 'hook', reason: INPUT_ADMISSION_ABORT_REASON }, { keepInbox: true });
         if (this.phase.kind !== 'running')
             throw Error('native input driver reservation lost');
@@ -479,11 +548,13 @@ export class ReactLoopAgent {
     /** Check native receipt and owner readiness before assembly and at both request edges. */
     checkInput(admission, messages) {
         const claim = admission.claim;
+        const matches = () => this.inbox.matchesClaim(claim)
+            && (admission.supplement?.claims.every(owned => this.inbox.matchesClaim(owned.claim)) ?? true);
         if (this.phase.kind !== 'running')
             this.abortInput(admission, 'INPUT_DRIVER_CHANGED', 'final', claim);
         const signal = this.phase.abort.signal;
         signal.throwIfAborted();
-        if (!admission.registration.active || this.inputAdmission !== admission.registration || !this.inbox.matchesClaim(claim)) {
+        if (!admission.registration.active || this.inputAdmission !== admission.registration || !matches()) {
             this.abortInput(admission, 'INPUT_FINAL_IDENTITY_CHANGED', 'final', claim);
         }
         let result;
@@ -495,7 +566,8 @@ export class ReactLoopAgent {
                 if (!admission.preparation)
                     this.abortInput(admission, 'INPUT_PREPARATION_RECEIPT_INVALID', 'final', claim);
                 result = hook.check({ ...input, preparation: admission.preparation,
-                    ...(admission.receipt ? { receipt: admission.receipt } : {}) });
+                    ...(admission.receipt ? { receipt: admission.receipt } : {}),
+                    ...(admission.supplement ? { supplement: admission.supplement } : {}) });
             }
             else
                 result = hook.check(input);
@@ -506,9 +578,54 @@ export class ReactLoopAgent {
         if (result.kind !== 'allow')
             this.abortInput(admission, result.code, 'final', claim);
         signal.throwIfAborted();
-        if (!admission.registration.active || this.inputAdmission !== admission.registration || !this.inbox.matchesClaim(claim)) {
+        if (!admission.registration.active || this.inputAdmission !== admission.registration || !matches()) {
             this.abortInput(admission, 'INPUT_FINAL_IDENTITY_CHANGED', 'final', claim);
         }
+    }
+    /** Consume the whole actual proposal under the original work. No partial
+     * filtering or re-admission can turn unrelated messages into maintenance. */
+    claimSupplement(previous, proposal, position) {
+        const registration = previous.registration, hook = registration.hook, parent = previous.receipt;
+        if (hook.schemaVersion !== 2 || !hook.recognizeSupplement || !parent || parent.actualTurn !== position.turn
+            || position.step < 2 || proposal.target !== 'next-step') {
+            this.abortInput(previous, 'INPUT_CONTINUATION_SCOPE_INVALID', 'claim');
+        }
+        const entries = proposal.refs.map(ref => registration.nominations?.get(nativeInputSha256(ref)));
+        if (!entries.length || entries.some(entry => !entry || entry.claimed || entry.turn !== position.turn
+            || entry.parentSha256 !== nativeInputSha256(parent))) {
+            this.abortInput(previous, 'INPUT_CONTINUATION_NOMINATION_UNKNOWN', 'claim', undefined, proposal);
+        }
+        const nominated = entries;
+        let recognized;
+        try {
+            recognized = hook.recognizeSupplement({ parent, ...position, proposal,
+                nominations: nominated.map(entry => ({ ref: entry.ref, ownerToken: entry.ownerToken })) });
+        }
+        catch {
+            this.abortInput(previous, 'INPUT_CONTINUATION_RECOGNITION_FAILED', 'claim');
+        }
+        if (recognized.kind !== 'allow')
+            this.abortInput(previous, recognized.code, 'claim');
+        if (this.phase.kind !== 'running')
+            this.abortInput(previous, 'INPUT_DRIVER_CHANGED', 'claim');
+        this.phase.abort.signal.throwIfAborted();
+        if (!registration.active || this.inputAdmission !== registration || !this.inbox.matches(proposal)) {
+            this.abortInput(previous, 'INPUT_CONTINUATION_PROPOSAL_CHANGED', 'claim');
+        }
+        const result = this.inbox.claimExact(proposal, position.turn);
+        const retained = new Map((this.inputStopWork?.refs ?? parent.refs).map(ref => [nativeInputSha256(ref), ref]));
+        for (const ref of result.claim.refs)
+            retained.set(nativeInputSha256(ref), ref);
+        this.inputStopWork = { registration, refs: [...retained.values()], preparation: parent.preparation,
+            receipt: parent, ownedContinuations: true };
+        for (const entry of nominated)
+            entry.claimed = true;
+        if (result.kind === 'blocked')
+            this.abortInput(previous, 'INPUT_CONTINUATION_CLAIM_CHANGED', 'claim', result.claim, proposal);
+        const supplement = Object.freeze({ parent, ...position, proposal,
+            claims: Object.freeze([...(previous.supplement?.claims ?? []), Object.freeze({ claim: result.claim,
+                    ownerTokens: Object.freeze(nominated.map(entry => entry.ownerToken)) })]) });
+        return { admission: { ...previous, continuation: true, supplement }, messages: [...result.claim.messages] };
     }
     /** Only this native writer mints the live receipt after its real checkpoint.
      * Core persists its association outside any native inbox/import lease. */
@@ -543,7 +660,8 @@ export class ReactLoopAgent {
             this.abortInput(admission, 'INPUT_LINK_CHANGED', 'final', admission.claim);
         }
         let outcome;
-        this.inputStopWork = { registration: admission.registration, refs: receipt.refs, preparation: receipt.preparation, receipt };
+        this.inputStopWork = { registration: admission.registration, refs: receipt.refs, preparation: receipt.preparation, receipt,
+            ...(admission.ownedContinuations ? { ownedContinuations: true } : {}) };
         try {
             outcome = await this.awaitInputOperation(hook.checkpoint(receipt, signal), signal, admission.registration);
         }
@@ -853,6 +971,7 @@ export class ReactLoopAgent {
                 this.inputAdmissionBlocked = undefined;
                 this.existingInputWork = undefined;
                 this.inputOnlyWakeLatched = false;
+                this.inputAdmission?.nominations?.clear();
                 this.setPhase({ kind: 'idle', lastTurn: turn });
                 if (blocked) {
                     // Notify only after reservation release; never await owner recovery.
@@ -881,13 +1000,32 @@ export class ReactLoopAgent {
             this.abortInput(previousAdmission, 'INPUT_HOOK_CHANGED', 'claim', previousAdmission.claim);
         }
         let admission = offered;
+        let supplementalMessages;
         if (!admission && registration && !this.phase.programmatic) {
-            const result = await this.admitInput(target);
-            if (result.kind === 'blocked')
-                return { kind: 'reject' };
-            if (result.kind === 'admitted')
-                admission = result.admission;
+            if (previousAdmission?.ownedContinuations && previousAdmission.receipt && target === 'next-step') {
+                let proposal;
+                try {
+                    proposal = this.inbox.propose(target);
+                }
+                catch {
+                    this.abortInput(previousAdmission, 'INPUT_OWNERSHIP_UNKNOWN', 'claim');
+                }
+                if (proposal.messages.length) {
+                    const owned = this.claimSupplement(previousAdmission, proposal, position);
+                    admission = owned.admission;
+                    supplementalMessages = owned.messages;
+                }
+                else
+                    admission = { ...previousAdmission, continuation: true };
+            }
             else {
+                const result = await this.admitInput(target);
+                if (result.kind === 'blocked')
+                    return { kind: 'reject' };
+                if (result.kind === 'admitted')
+                    admission = result.admission;
+            }
+            if (!admission) {
                 // A tool result can require another request with no new queued input.
                 // Preserve its work identity rather than claiming or admitting again.
                 if (!previousAdmission?.claim || previousAdmission.claim.turn !== position.turn) {
@@ -906,7 +1044,7 @@ export class ReactLoopAgent {
             if (!admission.registration.active || this.inputAdmission !== admission.registration)
                 this.abortInput(admission, 'INPUT_HOOK_CHANGED', 'claim');
             if (admission.continuation) {
-                claimed = [];
+                claimed = supplementalMessages ?? [];
             }
             else if (admission.resumeProof) {
                 const claim = this.inbox.resumeClaim(admission.resumeProof, position.turn);
@@ -1063,6 +1201,7 @@ export class ReactLoopAgent {
             this.throwError(error);
         }
         finally {
+            currentAdmission?.registration.nominations?.clear();
             try {
                 // oxlint-disable-next-line typescript/no-non-null-assertion -- every exit assigns a turn ending
                 this.session.append('turn/end', { turn, reason: turnEnds });

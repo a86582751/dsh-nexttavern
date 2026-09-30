@@ -3,9 +3,10 @@ import { eventsOf, surfaceEvents, surfaceEntries } from './roleplay-context.js'
 import { createCharacterCluster } from './character-cluster.js'
 import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePending, taskPhaseMessage } from './tavern-tasks.js'
 import type { ModelRoute } from './tavern-model-policy.js'
+import type {StoredTask} from './tavern-task-types.js'
 import type { HostSession, HostAgent, HostSource, NativeTaskInput, TaskHostDependencies } from './roleplay-task-host-types.js'
 
-export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchIsActive, statusFixedContext, taskDependenciesCurrent, taskInstruction, getMaintenanceJob, runStatusObligation, STATUS_SYSTEM, DECISION_SYSTEM, ORGANIZE_WORKER_SYSTEM}: TaskHostDependencies) {
+export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchIsActive, statusFixedContext, taskDependenciesCurrent, taskInstruction, getMaintenanceJob, runStatusObligation, STATUS_SYSTEM, DECISION_SYSTEM, ORGANIZE_WORKER_SYSTEM,inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent}: TaskHostDependencies) {
   const sameModelRoute=(a: Partial<Pick<ModelRoute, 'provider' | 'model'>> | null | undefined,b: Partial<Pick<ModelRoute, 'provider' | 'model'>> | null | undefined)=>Boolean(a?.provider&&a?.model&&a.provider===b?.provider&&a.model===b?.model)
   const canonicalModelRoute=async (selection: ModelRoute)=>{if(!ctx.llm?.resolveModelInfo)return selection
     const info=await ctx.llm.resolveModelInfo(selection.provider,selection.model)
@@ -52,11 +53,14 @@ export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchI
     const job=id?T.branch.get(`tavern_job__${id}`):null
     return job?.kind==='character'?job:null
   }
-  const tavernTasks = createTavernTasks<HostSession, HostAgent>({table:T.branch,policy:modelPolicy,subagents:ctx.subagents,
-    isCurrent:(session,job)=>{
+  function taskSourceCurrent(session:HostSession,job:StoredTask,historical=false) {
       const source=job.source as HostSource
       if(!storyBranchIsActive(session))return false
-      if(source.preparationId && T.branch.get(keyOf(session.id,'task-preparation'))?.id!==source.preparationId)return false
+      const currencyCurrent=historical ? inputHistoricalCurrencyCurrent : inputCurrencyCurrent
+      if(source.inputPreparation && currencyCurrent?.(session,source.inputPreparation)!==true)return false
+      if (historical && (!source.inputPreparation || source.preparationId
+        && source.preparationId!==source.inputPreparation.preparationId)) return false
+      if(!historical && source.preparationId && T.branch.get(keyOf(session.id,'task-preparation'))?.id!==source.preparationId)return false
       const hash=source.hashKind==='taskHash'?(value: string)=>recordSha256(value):sha256
       const live=new Map(taskStory(session).map(e=>[e.seq,hash(e.text)]))
       if(source.workflowId) {
@@ -66,6 +70,15 @@ export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchI
       return (source.events??[]).every(e=>live.get(e.seq)===e.hash)
         && (!source.fixedHash || source.fixedHash===recordSha256(statusFixedContext(session)))
         && taskDependenciesCurrent(T,session.id,source.dependencies)
+  }
+  const tavernTasks = createTavernTasks<HostSession, HostAgent>({table:T.branch,policy:modelPolicy,subagents:ctx.subagents,
+    isCurrent:(session,job) => taskSourceCurrent(session,job),
+    isHistoricalResultCurrent:(session,job) => taskSourceCurrent(session,job,true),
+    canPublishResult:(session,job,fromNativeResult) => {
+      const source=job.source as HostSource
+      if (!source.inputPreparation) return true
+      return taskSourceCurrent(session,job) || (job.status==='completed' || fromNativeResult && job.background===true
+        && job.kind==='memory' && job.input?.taskStage==='background-notes') && taskSourceCurrent(session,job,true)
     },
   })
   async function nativeTask<Result = unknown>({session,agent,system,user,promptContext,format='json',kind,signal,timeoutMs,maxTokens,validate,source:providedSource,selection,generationKey,tools:allowedTools,taskStage,background=false,onResult,onAdmission}: NativeTaskInput<Result>): Promise<Result> {
@@ -77,8 +90,10 @@ export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchI
     if(agent)taskAgents.set(session.id,agent)
     kind=kind??(system===STATUS_SYSTEM?'status':system===DECISION_SYSTEM?'decision':system===ORGANIZE_WORKER_SYSTEM?'novel-export':'memory')
     const preparation=T.branch.get(keyOf(session.id,'task-preparation'))
-    const source=providedSource??{events:taskStory(session).map(e=>({seq:e.seq,hash:sha256(e.text)})),...(kind==='status'?{fixedHash:recordSha256(statusFixedContext(session))}:{}),
+    const currency=inputCurrency?.(session)
+    const source={...(providedSource??{events:taskStory(session).map(e=>({seq:e.seq,hash:sha256(e.text)})),...(kind==='status'?{fixedHash:recordSha256(statusFixedContext(session))}:{}),
       ...(!background&&preparation?.sessionId===session.id&&preparation.status==='preparing'?{preparationId:preparation.id}:{})}
+      ),...(currency?{inputPreparation:currency}:{})}
     // Nonces protect prompt boundaries, but are not a changing task input.
     const requestKey={system,user:String(user).replace(/(<\/?rp-content:)[0-9a-f]{36}(>)/g,'$1NONCE$2'),generationKey}
     try {return await tavernTasks.request({session,agent:agent??taskAgents.get(session.id),kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,tools:allowedTools,onResult,onAdmission,

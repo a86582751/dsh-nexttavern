@@ -5,6 +5,7 @@ import type { StatusRecord } from './roleplay-status-types.js'
 import type { ForkLookup } from './roleplay-worldline-types.js'
 import type { DirectorNotes } from '../memory/memory-history.js'
 import type { MemoryRecordProjection } from '../memory/memory-provenance.js'
+import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 
 export interface PreparationSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & { parentSession?: string }
@@ -58,12 +59,15 @@ export interface PreparationContext {
   logger?: { warn?(message: string): void; info?(message: string): void }
 }
 export interface PreparationPayload {
+  inputPreparation?: InputPreparationCurrency
+  assertInputCurrent?():void
   agent: TaskAgent
   turn: number
   messages: readonly ContextMessage[]
   signal?: AbortSignal
 }
 export interface PreparationSnapshot {
+  inputPreparation?: InputPreparationCurrency
   branchId: string
   agent: TaskAgent
   turnId: number

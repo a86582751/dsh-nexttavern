@@ -88,6 +88,8 @@ export interface TaskOptions<S, A> {
     prompt: {type: 'text'; text: string}[]
   }): TaskChild | PromiseLike<TaskChild>}
   isCurrent?(session: S, job: StoredTask): boolean | PromiseLike<boolean>
+  isHistoricalResultCurrent?(session:S,job:StoredTask):boolean | PromiseLike<boolean>
+  canPublishResult?(session:S,job:StoredTask,fromNativeResult:boolean):boolean | PromiseLike<boolean>
 }
 export interface Admission<S, A> {
   job: TaskJob

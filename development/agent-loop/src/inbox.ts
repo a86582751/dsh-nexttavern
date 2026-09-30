@@ -245,6 +245,17 @@ export class ReactLoopInbox implements InboxContract {
     this.splice(target, this.current()[target].length, 0, [message])
   }
 
+  /** Internal owner control: observe the actual insertion before live inbox
+   * notifications. Does not wake a driver or change cancellation state. */
+  insertTrackedNextStep(message: UserMessage, observe: (ref: NativeInputRef) => void): void {
+    this.mutate('next-step', Infinity, 0, [message], false, undefined, (seq, inserted) => {
+      const actual = inserted[0]
+      if (!actual || inserted.length !== 1) throw Error('native continuation insertion is unknown')
+      observe(Object.freeze({sessionId: this.session.id, insertSeq: seq,
+        messageId: actual.id, messageSha256: nativeInputSha256(actual)}))
+    })
+  }
+
   /**
    * Prepend one message to a pending list.
    * @param target - pending list to extend.
@@ -325,6 +336,7 @@ export class ReactLoopInbox implements InboxContract {
     inserted: UserMessage[],
     discardRemoved: boolean,
     recordSeq?: (seq: number) => void,
+    recordInserted?: (seq: number, messages: readonly UserMessage[]) => void,
   ): UserMessage[] {
     const state = this.current()
     const inbox = state[target]
@@ -358,6 +370,7 @@ export class ReactLoopInbox implements InboxContract {
     const removed = inbox.slice(actualStart, actualStart + actualDeleteCount)
     const event = this.session.append('agent/inbox/spliced', splice)
     recordSeq?.(event.seq)
+    recordInserted?.(event.seq, event.data.inserted)
     if (discardRemoved) {
       for (const message of removed) this.dispatch.emit('agent/inbox/discarded', { message })
     }

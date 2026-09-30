@@ -7,6 +7,7 @@ import type { CompletionSnapshot, CompletionState } from './roleplay-completion-
 import type { DecisionJob, DecisionRecord } from './roleplay-decision-types.js'
 import type { PreparationTable } from './roleplay-preparation-types.js'
 import type { createRoleplayStatus } from './roleplay-status.js'
+import type {RoleplayInputBinding,InputPreparationCurrency} from './roleplay-input-preparation.js'
 
 export interface LoopSession extends HostSession {
   append(type: string, data: TaskMessage, options: {
@@ -32,6 +33,7 @@ export type StepDecision = {kind: 'enter'; messages: readonly ContextMessage[]; 
   systemSections?: readonly string[]; [key: string]: unknown}
   | {kind: 'reject'; [key: string]: unknown}
 export interface LoopPreparation extends Record<string, unknown> {
+  inputPreparation?: InputPreparationCurrency
   schemaVersion: 1
   id: string
   sessionId: string
@@ -63,6 +65,8 @@ export interface LoopContext {
 }
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface LoopDependencies {
+  inputBinding?(agent:LoopAgent):RoleplayInputBinding | undefined
+  inputSnapshotCurrent?(session:LoopSession,snapshot:CompletionSnapshot):boolean
   authorContext?(session:HostSession):{revision:string;parts:{section:string;name:string;text:string;renderedText:string}[]}
   adaptationScope?(session:LoopSession):string
   importPromptCheckpoint?(session:LoopSession):{importId:string;normalizedSha256:string;opening:string;openingChoicePending?:boolean}|null

@@ -11,6 +11,7 @@ import type { MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 import type { NativeTaskInput, HostAgent } from './roleplay-task-host-types.js'
 import type { TaskAgent } from './tavern-task-types.js'
 import type { ImportRecord } from './roleplay-import-types.js'
+import type {CompletionSnapshot} from './roleplay-completion-types.js'
 import {
   keyOf,
   textOf,
@@ -74,7 +75,7 @@ import { createMemoryRetrieval } from '../memory/memory-retrieval.js'
 import { createPriceCatalog, createExchangeRates } from './tavern-pricing.js'
 import { createRoleplayWorldlines } from './roleplay-worldlines.js'
 import { createRoleplayStatus } from './roleplay-status.js'
-import { createRoleplayPreparation } from './roleplay-preparation.js'
+import { createRoleplayPreparation, inputSnapshotReferenceCurrent } from './roleplay-preparation.js'
 import { createRoleplayCompletion } from './roleplay-completion.js'
 import { createRoleplayDecision, taskCancellation } from './roleplay-decision.js'
 import { createRoleplayInheritance } from './roleplay-inheritance.js'
@@ -86,6 +87,10 @@ import {createChatCardNativeContext} from './roleplay-chat-card-context.js'
 import {createRoleplayOpeningSelection} from './roleplay-opening-selection.js'
 import type {OpeningIntent, OpeningRejectionCode} from './roleplay-opening-selection.js'
 import {createRoleplayMvuOpening} from './roleplay-mvu-opening.js'
+import {createRoleplayInputPreparation} from './roleplay-input-preparation.js'
+import {createRoleplayImportInputTransition} from './roleplay-input-import.js'
+import type {RoleplayInputBinding} from './roleplay-input-preparation.js'
+import type {NativeInputAdmissionAgentV2} from '@deepseek-ai/dsh-agent-loop'
 import {registerOpeningRoutes} from './roleplay-opening-routes.js'
 import { createRoleplayService } from './roleplay-service.js'
 import {createSessionHistory, ensureSessionHistory} from './session-history.js'
@@ -136,6 +141,7 @@ const DSH_ROLEPLAY_CORE_PATCH = 'dsh-roleplay-status-obligation-v1'
 export const inject = [
   'sessions',
   'agentLoop',
+  'agents',
   'nexttavernMessageEdits',
   'sessionPersistence',
   'sessionQuery',
@@ -239,6 +245,30 @@ const DECISION_SYSTEM =
 
 export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CONFIG> = {}) {
   const cfg = { ...DEFAULT_CONFIG, ...(config ?? {}) }
+  let inputOwner: ReturnType<typeof createRoleplayInputPreparation<CoreSession>> | undefined
+  const inputBindings = new Map<object,RoleplayInputBinding>()
+  function attachInputOwner(agent:CoreAgent):RoleplayInputBinding | undefined {
+    if (Number(agent.options?.subagentDepth) > 0 || !isRoleplaySession(agent.session)) return undefined
+    const actual = ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
+    if (actual !== agent) return undefined
+    if (!inputOwner) throw new Error('ROLEPLAY_INPUT_OWNER_NOT_READY')
+    const binding = inputOwner.bind(agent as unknown as NativeInputAdmissionAgentV2 & {session:CoreSession})
+    inputBindings.set(agent,binding)
+    return binding
+  }
+  function inputSnapshotCurrent(session:ContextSession,snapshot:CompletionSnapshot):boolean {
+    if (!snapshot.inputPreparation) return true
+    const agent=taskAgents.get(session.id),binding=agent ? inputBindings.get(agent) : undefined
+    const hot=binding?.persistedCurrency()
+    const currency=hot?.preparationId===snapshot.inputPreparation.preparationId
+      && binding?.checkSnapshot(hot).kind==='allow' ? hot
+      : binding?.historicalCurrency(snapshot.inputPreparation)
+    if (!currency?.snapshot) return false
+    if (ctx.get('agentLoop')?.getInputAdmissionAgent(agent)!==agent) return false
+    const {snapshot:_reference,...basis}=currency
+    return recordSha256(basis)===recordSha256(snapshot.inputPreparation)
+      && inputSnapshotReferenceCurrent(T.branch,session.id,currency)
+  }
   const history = createSessionHistory({
     get: id => ctx.sessions.get(id),
     observe: (id, options) => ctx.sessionQuery.observeSession(id, options),
@@ -249,6 +279,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   ctx.on('session/disposed', history.disposeSession, {global: true})
   ctx.on('agent/created', async ({agent, signal}) => {
     await history.ready(agent.session, signal)
+    attachInputOwner(agent)
     return undefined
   }, {global: true, prepend: true})
   ctx.effect(() => history.dispose, 'roleplay: session history')
@@ -401,6 +432,29 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     resumeMemoryWork,
     resumeStatusMaintenance,
   } = createRoleplayTaskHost({
+    inputCurrency:session => {
+      const agent = taskAgents.get(session.id)
+      const current = agent ? inputBindings.get(agent)?.current() : undefined
+      if (!current || current.kind==='legacy') return undefined
+      if (!current.currency) throw new Error('INPUT_TASK_PERMISSION_UNKNOWN')
+      return current.currency
+    },
+    inputCurrencyCurrent:(session,currency) => {
+      const agent = taskAgents.get(session.id)
+      const binding=agent ? inputBindings.get(agent) : undefined
+      return !!binding && binding.checkAttempt(currency).kind === 'allow' && (!currency.snapshot
+        || recordSha256(currency.snapshot)===recordSha256(binding.persistedCurrency()?.snapshot)
+        && inputSnapshotReferenceCurrent(T.branch,session.id,currency))
+    },
+    inputHistoricalCurrencyCurrent:(session,currency) => {
+      const agent=taskAgents.get(session.id)
+      const binding=agent ? inputBindings.get(agent) : undefined
+      const original=binding?.historicalCurrency(currency)
+      return !!agent && ctx.get('agentLoop')?.getInputAdmissionAgent(agent)===agent && !!original
+        && binding?.checkHistoricalSnapshot(original).kind==='allow'
+        && (!currency.snapshot || recordSha256(currency.snapshot)===recordSha256(original.snapshot))
+        && inputSnapshotReferenceCurrent(T.branch,session.id,original)
+    },
     T,
     ctx,
     config,
@@ -484,10 +538,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   })
   const chatAttachmentSources = createCardAttachmentSources({T,libraryFor,
     fileUploads:ctx.fileUploads,attachments:ctx.attachments})
-  const chatCardSources = createChatCardSources({sources:chatAttachmentSources,
-    ...createChatCardNativeContext({session:id => ctx.sessions.get(id),
+  const chatNativeContext = createChatCardNativeContext({session:id => ctx.sessions.get(id),
       ownedAgent:agent => ctx.get('agentLoop')?.getInputAdmissionAgent(agent),
-      deletedMessageIds:session => deletedBranchMessageIdsFor(session)})})
+      deletedMessageIds:session => deletedBranchMessageIdsFor(session)})
+  const chatCardSources = createChatCardSources({sources:chatAttachmentSources,...chatNativeContext})
   function assertCardWorkflow(session:Parameters<typeof assertCardWorkflowRecord>[0],
     record:Parameters<typeof assertCardWorkflowRecord>[1]) {
     assertCardWorkflowRecord(session,record)
@@ -746,6 +800,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   // ── 阶段 A：程序组装当前分支笔记与窗口；主代理按需查资料 ──────────────────
 
   const { preparationRecordKey, taskInstruction } = registerRoleplayLoop({
+    inputBinding:agent => inputBindings.get(agent),
+    inputSnapshotCurrent,
     authorContext: session => residentAuthorContext(T, session.id),
     adaptationScope: session => ctx.get('tavernConversations')?.rootOf(session.id) ?? session.id,
     importPromptCheckpoint: session => {
@@ -828,6 +884,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   })
 
   const { runPhaseBC, isStale } = createRoleplayCompletion({
+    inputSnapshotCurrent,
     storyBranchIsActive,
     T,
     cloneBranchRecord,
@@ -996,6 +1053,33 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     assertImportRecordIntegrity,
     driveStructuredImport,
   } = registerRoleplayImports({
+    inputTransition:createRoleplayImportInputTransition({
+      owner:() => inputOwner,
+      binding:agent => inputBindings.get(agent),
+      nativeContext:(session,exec) => chatNativeContext.readNativeContext(session,exec),
+      chatProof:(session,requestId) => {
+        const proof=chatAttachmentSources.readChatProof(session,requestId)
+        if (!proof) throw new Error('INPUT_CHAT_PROOF_MISSING')
+        return proof
+      },
+      job:id => T.branch.get(cardWorkflowKey(id)) as import('./roleplay-card-workflow-types.js').CardWorkflowJob | undefined,
+      pointer:id => T.branch.get(importActiveKey(id)),
+      observe:session => mvuOpening.readInputObservation(session.id),
+      row:(name,key) => {
+        const tables:Record<string,{get(key:string):unknown}>={branch:T.branch,cards:T.cards,
+          worldbook:T.worldbook,rules:T.rules,status:T.status,opening:T.opening}
+        const table=tables[name]
+        if (!table) throw new Error('INPUT_ACTIVATION_TABLE_INVALID')
+        return table.get(key)
+      },
+      callOwnsInput:(session,callId) => {
+        const events=eventsOf(session),call=events.findLast(event => event.type==='tool/call' && event.data?.callId===callId)
+        const start=call ? events.findLast(event => event.type==='turn/start' && event.seq<call.seq
+          && event.data?.turn===call.data?.turn) : undefined
+        const link=start?.data?.['nativeInputLink'] as {preparation?:{namespace?:unknown}} | undefined
+        return link?.preparation?.namespace==='nexttavern.roleplay.input.v2'
+      },
+    }),
     beforeWrite: beforeAdaptationWrite,
     ctx,
     T,
@@ -1039,6 +1123,14 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     })}),
     messageEdits:ctx.nexttavernMessageEdits,deletedMessageIds:deletedBranchMessageIdsFor,
     catalog:id => openingSelection.readCatalog(id,openingContext(id)),
+    readOpeningIntent:source => openingSelection.readIntent(source),
+    legacyImportPending:id => {
+      const session=ctx.sessions.get(id)
+      return !!session && cardWorkflows(session).some(job => job.kind === 'card-import'
+        && job.execution !== 'deterministic' && ['queued','running','waiting-main'].includes(job.status))
+        || [...T.branch.entries()].some(([,record]) => record.sessionId===id && record.mode==='merge'
+          && typeof record.importId==='string' && ['staging','committing','recovery-required'].includes(String(record.status)))
+    },
     nativeLookup:async (identity,text) => {
       const found = await ctx.sessionController.resolveAgent(identity.sessionId)
       const agent = found?.agent
@@ -1116,6 +1208,19 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       } catch { return {status:'unknown' as const} }
     },
   })
+  inputOwner = createRoleplayInputPreparation({table:T.branch,
+    observe:(session:CoreSession) => mvuOpening.readInputObservation(session.id),
+    onError:error => ctx.logger?.warn?.(`roleplay: input permission write is unknown: ${String(error)}`)})
+  ctx.effect(() => () => {
+    for (const binding of inputBindings.values()) binding.dispose()
+    inputBindings.clear()
+  },'roleplay: native input owner')
+  // Remounting Core cannot invent a marker for an old turn. Register only the
+  // actual retained Agent so its next native input can acquire its own marker.
+  for (const agent of ctx.agents?.list() ?? []) {
+    await history.ready(agent.session)
+    attachInputOwner(agent)
+  }
   registerOpeningRoutes({ctx,resolveRoleplaySession:async id => {
     const session = await resolveRoleplaySession(id)
     // Opening basis needs a ready branch, but general branch resolution must

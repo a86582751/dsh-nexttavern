@@ -88,7 +88,9 @@
         "manifests/sillytavern-compatibility-p0-*",
         "manifests/sillytavern-compatibility-p1-*",
         "tavern-conversion*",
-        "tavern-mvu*"
+        "tavern-mvu*",
+        "roleplay-input-*",
+        "runtime/alpha3/src/core/roleplay-input-*"
       ]
     },
     {
@@ -4438,6 +4440,68 @@
         "compiler"
       ],
       "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-input-preparation.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-input-transition-import.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-historical-task-results.test.mts",
+      "action": "test",
+      "modules": [
+        "memory",
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-core-input-story.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import",
+        "memory"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]

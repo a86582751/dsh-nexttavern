@@ -3,7 +3,7 @@ import { keyOf, sha256, recordSha256 } from './roleplay-data.js';
 import { eventsOf, surfaceEvents, surfaceEntries } from './roleplay-context.js';
 import { createCharacterCluster } from './character-cluster.js';
 import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePending, taskPhaseMessage } from './tavern-tasks.js';
-export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranchIsActive, statusFixedContext, taskDependenciesCurrent, taskInstruction, getMaintenanceJob, runStatusObligation, STATUS_SYSTEM, DECISION_SYSTEM, ORGANIZE_WORKER_SYSTEM }) {
+export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranchIsActive, statusFixedContext, taskDependenciesCurrent, taskInstruction, getMaintenanceJob, runStatusObligation, STATUS_SYSTEM, DECISION_SYSTEM, ORGANIZE_WORKER_SYSTEM, inputCurrency, inputCurrencyCurrent, inputHistoricalCurrencyCurrent }) {
     const sameModelRoute = (a, b) => Boolean(a?.provider && a?.model && a.provider === b?.provider && a.model === b?.model);
     const canonicalModelRoute = async (selection) => {
         if (!ctx.llm?.resolveModelInfo)
@@ -57,23 +57,38 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
         const job = id ? T.branch.get(`tavern_job__${id}`) : null;
         return job?.kind === 'character' ? job : null;
     };
+    function taskSourceCurrent(session, job, historical = false) {
+        const source = job.source;
+        if (!storyBranchIsActive(session))
+            return false;
+        const currencyCurrent = historical ? inputHistoricalCurrencyCurrent : inputCurrencyCurrent;
+        if (source.inputPreparation && currencyCurrent?.(session, source.inputPreparation) !== true)
+            return false;
+        if (historical && (!source.inputPreparation || source.preparationId
+            && source.preparationId !== source.inputPreparation.preparationId))
+            return false;
+        if (!historical && source.preparationId && T.branch.get(keyOf(session.id, 'task-preparation'))?.id !== source.preparationId)
+            return false;
+        const hash = source.hashKind === 'taskHash' ? (value) => recordSha256(value) : sha256;
+        const live = new Map(taskStory(session).map(e => [e.seq, hash(e.text)]));
+        if (source.workflowId) {
+            const workflow = T.branch.get(`${source.workflowType === 'card' ? 'tavern_cardjob__' : 'tavern_novel__'}${source.workflowId}`);
+            if (!workflow || workflow.generation !== source.generation || ['cancelled', 'stale'].includes(workflow.status))
+                return false;
+        }
+        return (source.events ?? []).every(e => live.get(e.seq) === e.hash)
+            && (!source.fixedHash || source.fixedHash === recordSha256(statusFixedContext(session)))
+            && taskDependenciesCurrent(T, session.id, source.dependencies);
+    }
     const tavernTasks = createTavernTasks({ table: T.branch, policy: modelPolicy, subagents: ctx.subagents,
-        isCurrent: (session, job) => {
+        isCurrent: (session, job) => taskSourceCurrent(session, job),
+        isHistoricalResultCurrent: (session, job) => taskSourceCurrent(session, job, true),
+        canPublishResult: (session, job, fromNativeResult) => {
             const source = job.source;
-            if (!storyBranchIsActive(session))
-                return false;
-            if (source.preparationId && T.branch.get(keyOf(session.id, 'task-preparation'))?.id !== source.preparationId)
-                return false;
-            const hash = source.hashKind === 'taskHash' ? (value) => recordSha256(value) : sha256;
-            const live = new Map(taskStory(session).map(e => [e.seq, hash(e.text)]));
-            if (source.workflowId) {
-                const workflow = T.branch.get(`${source.workflowType === 'card' ? 'tavern_cardjob__' : 'tavern_novel__'}${source.workflowId}`);
-                if (!workflow || workflow.generation !== source.generation || ['cancelled', 'stale'].includes(workflow.status))
-                    return false;
-            }
-            return (source.events ?? []).every(e => live.get(e.seq) === e.hash)
-                && (!source.fixedHash || source.fixedHash === recordSha256(statusFixedContext(session)))
-                && taskDependenciesCurrent(T, session.id, source.dependencies);
+            if (!source.inputPreparation)
+                return true;
+            return taskSourceCurrent(session, job) || (job.status === 'completed' || fromNativeResult && job.background === true
+                && job.kind === 'memory' && job.input?.taskStage === 'background-notes') && taskSourceCurrent(session, job, true);
         },
     });
     async function nativeTask({ session, agent, system, user, promptContext, format = 'json', kind, signal, timeoutMs, maxTokens, validate, source: providedSource, selection, generationKey, tools: allowedTools, taskStage, background = false, onResult, onAdmission }) {
@@ -88,8 +103,9 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             taskAgents.set(session.id, agent);
         kind = kind ?? (system === STATUS_SYSTEM ? 'status' : system === DECISION_SYSTEM ? 'decision' : system === ORGANIZE_WORKER_SYSTEM ? 'novel-export' : 'memory');
         const preparation = T.branch.get(keyOf(session.id, 'task-preparation'));
-        const source = providedSource ?? { events: taskStory(session).map(e => ({ seq: e.seq, hash: sha256(e.text) })), ...(kind === 'status' ? { fixedHash: recordSha256(statusFixedContext(session)) } : {}),
-            ...(!background && preparation?.sessionId === session.id && preparation.status === 'preparing' ? { preparationId: preparation.id } : {}) };
+        const currency = inputCurrency?.(session);
+        const source = { ...(providedSource ?? { events: taskStory(session).map(e => ({ seq: e.seq, hash: sha256(e.text) })), ...(kind === 'status' ? { fixedHash: recordSha256(statusFixedContext(session)) } : {}),
+                ...(!background && preparation?.sessionId === session.id && preparation.status === 'preparing' ? { preparationId: preparation.id } : {}) }), ...(currency ? { inputPreparation: currency } : {}) };
         // Nonces protect prompt boundaries, but are not a changing task input.
         const requestKey = { system, user: String(user).replace(/(<\/?rp-content:)[0-9a-f]{36}(>)/g, '$1NONCE$2'), generationKey };
         try {

@@ -14,6 +14,7 @@ import type { DecisionJob } from './roleplay-decision-types.js'
 import type { StoredTask } from './tavern-task-types.js'
 import type { HostSession } from './roleplay-task-host-types.js'
 import type { CompletionSnapshot } from './roleplay-completion-types.js'
+import type {ContextMessage} from './roleplay-context.js'
 
 /** Bound silence at the native request boundary without changing adapter
  * options, retrying a paid call or discarding queued player input. */
@@ -40,7 +41,7 @@ export function createFirstResponseWatchdog(timeoutMs=90000) {
   }
 }
 
-export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRoleplaySession, characterCluster, activeCardWorkflow, taskAgents, ensureState, clusterPhase, withDecisionMutationLock, normalizeDecisionRecord, resumeStatusMaintenance, resumeMemoryWork, resumeCardWorkflows, resumeNovelExports, withImportLock, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation, publishTurnDecision, runPhaseBC,adaptationScope,importPromptCheckpoint,authorContext}: LoopDependencies) {
+export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRoleplaySession, characterCluster, activeCardWorkflow, taskAgents, ensureState, clusterPhase, withDecisionMutationLock, normalizeDecisionRecord, resumeStatusMaintenance, resumeMemoryWork, resumeCardWorkflows, resumeNovelExports, withImportLock, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation, publishTurnDecision, runPhaseBC,adaptationScope,importPromptCheckpoint,authorContext,inputBinding,inputSnapshotCurrent}: LoopDependencies) {
   const preparationRecordKey = (sid: string) => keyOf(sid,'task-preparation')
   const handledImportPrompts=new Map<string,string>()
   const firstResponse=createFirstResponseWatchdog()
@@ -115,6 +116,16 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
       if(source?.kind==='roleplay-tasks'&&source.form==='phase'){phase=source.stage;break}
     }
     if(!phase||phase==='story'||phase==='character-cast')return
+    if (phase==='management') {
+      const binding=execution.agent ? inputBinding?.(execution.agent) : undefined,step=binding?.currentStep()
+      // Player management shares the non-story phase with inline maintenance,
+      // but its actual Native claim must still allow starting an import. An
+      // internal instruction cannot acquire this exception from a phase label.
+      if (binding?.current()?.kind==='management' && step) {
+        try {if (binding.originalMessages(step).some(message=>message.source.kind==='user')) return}
+        catch { /* Unknown input currency keeps the existing maintenance guard. */ }
+      }
+    }
     // The main writer may hand off a discovered defect after publishing prose.
     // Inline maintenance must still not synchronously rewrite author settings.
     const settingArgs=execution.arguments as {action?:unknown}|null
@@ -133,6 +144,15 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
     await ensureSessionHistory(session, payload.signal)
     if(!session||!isRoleplaySession(session)||Number(payload.agent?.options?.subagentDepth)>0)return next()
     taskAgents.set(session.id,payload.agent)
+    const programmaticOpening = !!payload.agent.programmaticGeneration && payload.step === 1
+    const input = programmaticOpening ? undefined : inputBinding?.(payload.agent)
+    const inputStep = input ? await input.beginStep({turn:payload.turn,step:payload.step,
+      signal:payload.signal ?? AbortSignal.abort('Native step signal missing')}) : undefined
+    const assertInput = () => {
+      if (!input || !inputStep) return
+      const result = input.checkCurrency(inputStep)
+      if (result.kind === 'blocked') throw new Error(result.code)
+    }
     const imported=importPromptCheckpoint?.(session)
     if(payload.step>1&&imported&&handledImportPrompts.get(session.id)!==imported.importId){
       retireCompletedTaskContexts(session,payload.turn,imported)
@@ -142,6 +162,29 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
     retireCoarseResearchReads(session,researchOwner)
     retireAdaptationReads(session,createAdaptationStore(T.branch).checkpoints(researchOwner,session.id))
     const st=ensureState(session.id)
+    if (input && inputStep?.kind === 'management') {
+      // The durable phase is interpreted by canonical story/state/memory
+      // readers. A model may still emit readable raw chat text in this scope.
+      retireRoleplayContexts(session,payload.turn,[])
+      const decision = await next()
+      assertInput()
+      if (decision.kind !== 'enter') return decision
+      await input.prepare(inputStep)
+      assertInput()
+      return {...decision,messages:[taskPhaseMessage('management',
+        '当前只开放角色卡导入、开场选择及会话管理。按玩家请求调用实际工具并说明结果；本轮回复不作为剧情、状态或记忆事实。'),
+        ...decision.messages.filter(message => message.source?.kind !== 'roleplay-context' && message.source?.kind !== 'roleplay-tasks')]}
+    }
+    if (input && inputStep?.kind === 'maintenance') {
+      // Native has claimed only this owner's after-story envelope. Keep that
+      // actual envelope and the original immutable snapshot; do not rebuild
+      // Phase A or append the player's original claim for a second time.
+      await input.prepare(inputStep,input.persistedCurrency()?.snapshot)
+      assertInput()
+      const decision = await next()
+      assertInput()
+      return decision
+    }
     // Preserve old records for diagnostics, but never resume superseded
     // per-turn semantic preparation after upgrading to direct notes.
     for (const job of tavernTasks.list(session)) {
@@ -157,7 +200,6 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
     }
     let preparation=T.branch.get(preparationRecordKey(session.id)) as LoopPreparation | null | undefined
     if(preparation?.sessionId!==session.id)preparation=null
-    const programmaticOpening = !!payload.agent.programmaticGeneration && payload.step === 1
     const hasUser=programmaticOpening || payload.messages.some(m=>m.role==='user'&&m.source?.kind==='user')
     if(hasUser && payload.step===1) {
       if(!tavernTasks.pending(session).length){
@@ -167,8 +209,10 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
         const key=keyOf(session.id,'current'),decision=normalizeDecisionRecord(T.decision.get(key))
         if(decision&&decision.answered!==true&&decision.superseded!==true)await T.decision.put(key,{...decision,answered:true,superseded:true,supersededAt:Date.now(),supersededReason:'player-input'})
       })
-      preparation={schemaVersion:1,id:randomUUID(),sessionId:session.id,branchId:session.id,turn:payload.turn,
-        messages:cloneRecord(payload.messages),status:'preparing',createdAt:Date.now(),sourceHash:recordSha256(payload.messages)}
+      preparation={schemaVersion:1,id:inputStep?.currency.preparationId ?? randomUUID(),sessionId:session.id,branchId:session.id,turn:payload.turn,
+        messages:inputStep?.kind === 'story' ? [] : cloneRecord(payload.messages),
+        ...(inputStep?.kind === 'story' ? {inputPreparation:inputStep.currency} : {}),
+        status:'preparing',createdAt:Date.now(),sourceHash:recordSha256(payload.messages)}
       await T.branch.put(preparationRecordKey(session.id),preparation)
     }
     await tavernTasks.invalidate(session)
@@ -177,8 +221,23 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
       retireUsedStoryReads(session,payload.turn)
     }
     try {await resumeStatusMaintenance(session,payload.agent);await resumeMemoryWork(session,payload.agent,payload.signal);await resumeCardWorkflows(session,payload.agent,payload.signal);await resumeNovelExports(session,payload.agent,payload.signal)}
-    catch(error){if(isInlinePending(error) && !programmaticOpening)return {kind:'enter',messages:inlineTaskMessages(session,'management',tavernTasks.pending(session),{resident:residentContext(session)})};throw error}
-    if(!preparation || preparation.status!=='preparing')return next()
+    catch(error){
+      if(isInlinePending(error) && !programmaticOpening) {
+        if (input && inputStep) await input.prepare(inputStep)
+        return {kind:'enter',messages:inlineTaskMessages(session,'management',tavernTasks.pending(session),{resident:residentContext(session)})}
+      }
+      throw error
+    }
+    assertInput()
+    if(!preparation || preparation.status!=='preparing') {
+      const decision = await next()
+      assertInput()
+      if (input && inputStep) {
+        const snapshot = inputStep.kind === 'story' ? input.persistedCurrency()?.snapshot : undefined
+        await input.prepare(inputStep,snapshot)
+      }
+      return decision
+    }
     // A deferred stage returns immediately; the main loop is never awaited by
     // its own pre-step handler. The original player message is appended once,
     // only when preparation has committed successfully.
@@ -189,9 +248,24 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
         if(decision?.kind!=='enter')return decision
         // Resumed preparations may contain last turn's injected context. Keep
         // only the original conversation input, never replay transient lore.
-        const originalMessages=preparation!.messages.filter(m=>m.source?.kind!=='roleplay-context'&&m.source?.kind!=='roleplay-tasks')
-        const staged={...payload,messages:cloneRecord(originalMessages)}
+        assertInput()
+        // Native owns and checks the exact original claim. This cast adapts its
+        // stricter source union to the legacy Core dictionary view, without edits.
+        const originalMessages=(inputStep?.kind === 'story'
+          ? input!.originalMessages(inputStep) as unknown as readonly ContextMessage[] : preparation!.messages)
+          .filter(m=>m.source?.kind!=='roleplay-context'&&m.source?.kind!=='roleplay-tasks')
+        const staged={...payload,messages:cloneRecord(originalMessages),...(inputStep?.kind === 'story'
+          ? {inputPreparation:inputStep.currency,assertInputCurrent:assertInput} : {})}
         const hidden=await buildPhaseA(session,staged,st)
+        assertInput()
+        if (input && inputStep) {
+          const snapshotKey = inputStep.kind === 'story'
+            ? keyOf(session.id,`task-input-snapshot-${inputStep.currency.preparationId}-${inputStep.currency.attemptGeneration}`)
+            : keyOf(session.id,`task-snapshot-${payload.turn}`)
+          const snapshot = inputStep.kind === 'story' ? T.branch.get(snapshotKey) : undefined
+          await input.prepare(inputStep,snapshot ? {key:snapshotKey,sha256:recordSha256(snapshot)} : undefined)
+          assertInput()
+        }
         retireRoleplayContexts(session,payload.turn,hidden)
         await T.branch.put(preparationRecordKey(session.id),{...preparation,status:'completed',completedAt:Date.now()})
         const researching=adaptationTurns(eventsOf(session)).has(payload.turn)
@@ -201,7 +275,7 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
           ?'本轮角色集群准备：现在还没有进入正文。请根据随后玩家输入选择预计出场的主要人物，先调用 rp_character_cast（无人出场时传空数组）。程序已备好人物上下文，禁止手工搬运。等待角色建议返回及程序的正文阶段通知后再开始写故事，不把选角说明写成正文。如果玩家要求读卡、写卡、管理或诊断，直接执行对应工具，不推演角色。'
           :researching?'当前仍在长文本改编创作。按玩家要求继续阅读、问卷或写卡；用 rp_source_status/notes 恢复独立研究资料。尚未进入角色扮演，不把原著或草稿当作已发生剧情。用户要求停止改编回到原卡时调用 rp_source_close。'
           :'现在进入正常正文阶段。先前维护指令与工具结果仅是历史后台记录，不是待办或剧情；不要重复执行或复述。当前状态和笔记以随后最新锚点为准；以下是玩家原始输入。')
-        const originalIds=new Set(preparation!.messages.map(m=>m.id))
+        const originalIds=new Set(originalMessages.map(m=>m.id))
         const phaseSnapshot=st.snapshots.get(Number(payload.turn))??st.snapshot
         const messages=phaseSnapshot?.contextWindow?.rollover
           ?retainRoleplayWindowContinuity(session,decision.messages,storyWindowSettings(session).tail):decision.messages
@@ -214,7 +288,10 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
         return {...decision,messages:[restore,...hidden,...originalMessages,...remaining]}
       } catch(error) {
         st.lastPreparedTurn=-1
-        if(isInlinePending(error) && !programmaticOpening)return {kind:'enter',messages:inlineTaskMessages(session,'prepare',tavernTasks.pending(session),{resident:residentContext(session)})}
+        if(isInlinePending(error) && !programmaticOpening) {
+          if (input && inputStep) await input.prepare(inputStep)
+          return {kind:'enter',messages:inlineTaskMessages(session,'prepare',tavernTasks.pending(session),{resident:residentContext(session)})}
+        }
         // Fail closed: a missing prerequisite cannot admit unprepared prose.
         throw error
       }
@@ -226,6 +303,8 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
     await ensureSessionHistory(session, signal)
     if(!session||!isRoleplaySession(session)||Number(agent.options?.subagentDepth)>0)return
     taskAgents.set(session.id,agent)
+    const input = agent.programmaticGeneration ? undefined : inputBinding?.(agent)
+    if (input?.current()?.kind === 'management') return
     const st=ensureState(session.id)
     const timingStart=performance.now();let timingPrevious=timingStart
     const timings:{stage:string;wallAt:number;elapsedMs:number;deltaMs:number}[]=[]
@@ -259,6 +338,7 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
         const releaseBatch=tavernTasks.holdBatch(session)
         let statusWork: ReturnType<LoopDependencies['runStatusObligation']>,decisionWork: DecisionJob | undefined,admitted: Partial<StoredTask> | null | undefined
         let snapshot=st.snapshots.get(Number(turn))??T.branch.get(keyOf(session.id,`task-snapshot-${turn}`)) as CompletionSnapshot | null | undefined
+        if (snapshot?.inputPreparation && inputSnapshotCurrent?.(session,snapshot)!==true) throw new Error('INPUT_SNAPSHOT_STALE')
         if(snapshot&&importedStoryProjection(eventsOf(session),[...(session.surface?.nodes??[])]).prose.has(canonical.seq))snapshot={...snapshot,userText:''}
         try {
           statusWork=runStatusObligation(session,canonical,'agent/turn-stopping',{agent,signal})
@@ -301,7 +381,15 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
       for(const job of pending)await tavernTasks.fail(session,job.id,'主循环多次结束但维护任务尚未提交，请重试')
       throw new Error('酒馆维护尚未完成，检查点已保留；可在酒馆管理中重试')
     }
-    if(pending.length||preparation?.status==='preparing')agent.steer(taskPhaseMessage(preparation?.status==='preparing'?'prepare':'after-story',taskInstruction(session),{turn,dispatchFingerprint:fingerprint}))
+    if(pending.length||preparation?.status==='preparing') {
+      const message=taskPhaseMessage(preparation?.status==='preparing'?'prepare':'after-story',
+        taskInstruction(session),{turn,dispatchFingerprint:fingerprint})
+      const kind=input?.current()?.kind
+      if (input && (kind==='story'||kind==='maintenance')) {
+        const result=input.steerOwnedContinuation(message,turn)
+        if(result.kind==='blocked')throw new Error(result.code)
+      } else agent.steer(message)
+    }
     mark(pending.length||preparation?.status==='preparing'?'maintenance-steered':'finished')
     } finally {
       // Diagnostics must survive a disabled info logger without entering the

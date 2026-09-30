@@ -143,10 +143,33 @@ export interface CardWorkflow {
   generation: string
   execution: string
   status: string
-  source: { sourceFile: string | null }
+  source: { sourceFile: string | null; sha256?: string }
+  clientRequestId?: string
+  toolCallIds?: string[]
+}
+export interface WorkspaceImportSourceProof {
+  sourceFile: string
+  sourceBytes: number
+  sourceMtimeMs: number
+  extension: string
+  rawSha256: string
+}
+export interface ImportInputTransition {
+  begin(session: ImportSession, exec: ImportExec, args: ImportArguments): {
+    reserve(source: ChatCardSourceResult): Promise<void>
+    reserveWorkspace?(source: WorkspaceImportSourceProof): Promise<string>
+  } | undefined
+  bindJob(session: ImportSession, exec: ImportExec, job: CardWorkflow): Promise<void>
+  bindLegacyRecord?(session: ImportSession, exec: ImportExec, record: ImportRecord): Promise<void>
+  prepareActivation(session: ImportSession, record: ImportRecord, transaction: ImportTransaction): Promise<void>
+  checkActivation?(session: ImportSession, record: ImportRecord): void
+  sourceRejected?(session: ImportSession, exec: ImportExec, code?: string): Promise<void>
+  commitActivation(session: ImportSession, record: ImportRecord, pointer: ImportPointer,
+    transaction?: ImportTransaction): Promise<{kind: 'acknowledged'} | {kind: 'unknown'; code: string}>
 }
 export interface ImportResource { id?: string; resourceId?: string; name?: string }
 export interface CardImportDependencies {
+  inputTransition?: ImportInputTransition
   /** Core resolves only actual own visible native files; the model supplies no ref/path proof. */
   resolveChatCardSource?(session: ImportSession, exec: ImportExec, selector: ChatCardSelector): Promise<ChatCardSourceResult>
   beforeWrite?(exec:ImportExec):Promise<void>

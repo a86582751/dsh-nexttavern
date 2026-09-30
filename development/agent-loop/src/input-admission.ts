@@ -104,13 +104,40 @@ export interface NativeInputAdmissionCheckV2 {
   readonly receipt?: NativeDurableInputWorkReceiptV1
   readonly messages: readonly UserMessage[]
   readonly continuation?: true
+  /** Hot, owner-nominated internal claims under the unchanged original work.
+   * This is not another durable checkpoint or a cold recovery permission. */
+  readonly supplement?: NativeInputSupplementV1
+}
+export interface NativeOwnedContinuationControlV1 {
+  steerOwnedContinuation(message:UserMessage,scope:{parent:NativeDurableInputWorkReceiptV1;ownerToken:object}):
+    | {kind:'inserted';ref:NativeInputRef}
+    | {kind:'blocked';code:string;insertedRef?:NativeInputRef}
+}
+export interface NativeInputSupplementClaimV1 {
+  readonly claim:NativeInputClaim
+  readonly ownerTokens:readonly object[]
+}
+export interface NativeInputSupplementV1 {
+  readonly parent:NativeDurableInputWorkReceiptV1
+  readonly turn:number
+  readonly step:number
+  readonly proposal:NativeInputProposal
+  readonly claims:readonly NativeInputSupplementClaimV1[]
+}
+export interface NativeInputSupplementProposalV1 {
+  readonly parent:NativeDurableInputWorkReceiptV1
+  readonly turn:number
+  readonly step:number
+  readonly proposal:NativeInputProposal
+  readonly nominations:readonly {ref:NativeInputRef;ownerToken:object}[]
 }
 export interface NativeInputAdmissionHookV2 {
   readonly schemaVersion: 2
   admit(proposal: NativeInputProposal, signal: AbortSignal, existing?: NativeExistingInputWorkV2): Promise<
     | {kind: 'blocked'; code: string}
-    | {kind: 'allow'; identity: unknown; preparation: NativePreparationReceiptV1}
-    | {kind: 'resume'; identity: unknown; preparation: NativePreparationReceiptV1; refs: readonly NativeInputRef[]}
+    | {kind: 'allow'; identity: unknown; preparation: NativePreparationReceiptV1; ownedContinuations?: true}
+    | {kind: 'resume'; identity: unknown; preparation: NativePreparationReceiptV1;
+        refs: readonly NativeInputRef[]; ownedContinuations?: true}
   >
   /** Checks Source/head/Preparation/stop independently of native structural proof. */
   check(input: NativeInputAdmissionCheckV2): {kind: 'allow'} | {kind: 'blocked'; code: string}
@@ -118,6 +145,10 @@ export interface NativeInputAdmissionHookV2 {
    * request preparation. Save the association and exact cancellation state;
    * never await this Agent's idle or interpret this receipt as readiness. */
   checkpoint(receipt: NativeDurableInputWorkReceiptV1, signal: AbortSignal): Promise<{kind: 'allow'} | {kind: 'blocked'; code: string}>
+  /** Optional pair. The private control only inserts into the already-running
+   * owner's next step; it never clears a stop latch or wakes a driver. */
+  onContinuationControl?(control:NativeOwnedContinuationControlV1):void
+  recognizeSupplement?(input:NativeInputSupplementProposalV1):{kind:'allow'} | {kind:'blocked';code:string}
   /** Invoked synchronously by external cancel, including idle/disposal. Revoke
    * owner readiness before the first await, then persist the terminal stop.
    * Match the original work and cancellation generation even when admit or
