@@ -72,6 +72,10 @@ interface Services {
   'uiWorkspace': {openSession(id: string): void}
 }
 interface ClientContext {
+  fileUpload: {
+    upload(sessionId: string, file: Blob, name: string): Promise<
+      {ok: true; value: {receiptId: string}} | {ok: false; error: unknown}>
+  };
   get<K extends keyof Services>(name: K): Services[K];
   effect(setup: () => void | (() => void), label: string): unknown
 }
@@ -119,7 +123,7 @@ export {
 // 变更：操作按钮从会话头部移到消息操作行（与复制/反馈同列），含重新生成
 // 版本翻页（k/N）；角色扮演面板由原生 sidebar slots 统一管理。
 
-export const inject = ['slots', 'remote.commands', 'remote.session', 'sessions', 'workspaces', 'uiSession', 'uiWorkspace']
+export const inject = ['slots', 'remote.commands', 'remote.session', 'sessions', 'workspaces', 'uiSession', 'uiWorkspace', 'fileUpload']
 const DSH_ROLEPLAY_UI_PATCH = 'dsh-roleplay-ui-bundle-v2'
 
 const IMMERSIVE_KEY = 'dsh-roleplay-ui.immersive'
@@ -382,6 +386,11 @@ export function apply(ctx: ClientContext) {
           jsonFetch,
           toast,
           confirmWithDialog,
+          uploadFile: async (sessionId, file, name) => {
+            const result = await ctx.fileUpload.upload(sessionId, file, name)
+            if (!result.ok) throw new Error('文件上传未完成，请重试')
+            return result.value
+          },
           btn
         })
 

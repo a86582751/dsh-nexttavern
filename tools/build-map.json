@@ -4062,6 +4062,34 @@
       "outputs": [
         "development/ui-workspace/lib/client/shortcuts.js"
       ]
+    },
+    {
+      "artifact": "roleplay-card-attachment",
+      "source": "src/core/roleplay-card-attachment.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-card-attachment.ts",
+      "primaryOutput": "lib/core/roleplay-card-attachment.js",
+      "outputs": [
+        "lib/core/roleplay-card-attachment.js",
+        "preset/lib/core/roleplay-card-attachment.js"
+      ]
+    },
+    {
+      "artifact": "card-upload-panel",
+      "source": "src/ui/card-upload-panel.ts",
+      "banner": "runtime/alpha3/src/ui/card-upload-panel.ts",
+      "primaryOutput": "lib/ui/card-upload-panel.js",
+      "outputs": [
+        "lib/ui/card-upload-panel.js"
+      ]
+    },
+    {
+      "artifact": "card-upload-request",
+      "source": "src/ui/card-upload-request.ts",
+      "banner": "runtime/alpha3/src/ui/card-upload-request.ts",
+      "primaryOutput": "lib/ui/card-upload-request.js",
+      "outputs": [
+        "lib/ui/card-upload-request.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -8437,6 +8465,30 @@
       {
         "id": "ui-browser-vendor-deepseek-ai-dsh-api-workspace-controller-lib-types-default-workspace-js",
         "source": "build-tools/node_modules/@deepseek-ai/dsh-api-workspace-controller/lib/types/default-workspace.js"
+      },
+      {
+        "id": "roleplay-card-attachment-typescript",
+        "source": "src/core/roleplay-card-attachment.ts"
+      },
+      {
+        "id": "roleplay-card-attachment",
+        "source": "lib/core/roleplay-card-attachment.js"
+      },
+      {
+        "id": "card-upload-panel-typescript",
+        "source": "src/ui/card-upload-panel.ts"
+      },
+      {
+        "id": "card-upload-panel",
+        "source": "lib/ui/card-upload-panel.js"
+      },
+      {
+        "id": "card-upload-request-typescript",
+        "source": "src/ui/card-upload-request.ts"
+      },
+      {
+        "id": "card-upload-request",
+        "source": "lib/ui/card-upload-request.js"
       }
     ],
     "builds": [
@@ -9857,7 +9909,9 @@
           "src/ui/author-runtime.ts",
           "src/ui/decision-seat.ts",
           "src/ui/reader-beauty.ts",
-          "src/ui/card-adaptation-presentations.ts"
+          "src/ui/card-adaptation-presentations.ts",
+          "src/ui/card-upload-panel.ts",
+          "src/ui/card-upload-request.ts"
         ],
         "banner": "runtime/alpha3/src/ui/client.ts"
       },
@@ -9893,7 +9947,9 @@
           "build-tools/tsconfig.json",
           "lib/operations/build-typescript.mjs",
           "build-tools/package.json",
-          "build-tools/package-lock.json"
+          "build-tools/package-lock.json",
+          "src/ui/card-upload-panel.ts",
+          "src/ui/card-upload-request.ts"
         ],
         "banner": "runtime/alpha3/src/ui/management-panels.ts"
       },
@@ -10466,7 +10522,8 @@
           "src/core/tavern-task-retirement.ts",
           "src/core/card-adaptation-context.ts",
           "src/core/character-cluster-settings.ts",
-          "src/core/roleplay-status-presentation.ts"
+          "src/core/roleplay-status-presentation.ts",
+          "src/core/roleplay-card-attachment.ts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-job-routes.ts"
       },
@@ -13219,7 +13276,8 @@
           "src/core/narrative-styles/comedy.ts",
           "src/core/narrative-styles/classical.ts",
           "src/core/roleplay-setting-store.ts",
-          "src/core/roleplay-setting-tools.ts"
+          "src/core/roleplay-setting-tools.ts",
+          "src/core/roleplay-card-attachment.ts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-core.ts"
       },
@@ -17591,6 +17649,74 @@
         ],
         "typeContext": "ui-compat-client",
         "banner": "runtime/alpha3/compat/ui-workspace/src/client/shortcuts.ts"
+      },
+      {
+        "id": "roleplay-card-attachment-js-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-card-attachment",
+        "entry": "src/core/roleplay-card-attachment.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-tasks.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-task-context.ts",
+          "src/memory/memory-provenance.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/card-adaptation-context.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-card-attachment.ts"
+      },
+      {
+        "id": "card-upload-panel-js-build",
+        "kind": "typescript-module",
+        "artifact": "card-upload-panel",
+        "entry": "src/ui/card-upload-panel.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/ui/card-upload-panel.ts",
+          "src/ui/card-upload-request.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/src/ui/card-upload-panel.ts"
+      },
+      {
+        "id": "card-upload-request-js-build",
+        "kind": "typescript-module",
+        "artifact": "card-upload-request",
+        "entry": "src/ui/card-upload-request.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/ui/card-upload-request.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/src/ui/card-upload-request.ts"
       }
     ],
     "typeScript": {

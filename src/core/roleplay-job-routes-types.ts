@@ -20,6 +20,7 @@ export interface JobRouteBody {
   kind: string
   resourceId?: string
   sourceFile?: unknown
+  attachment?: unknown
   requestId?: string
 }
 // Shared storage contains task, workflow and import/export records.

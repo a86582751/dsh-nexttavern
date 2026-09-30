@@ -3,6 +3,7 @@ import { fetchRoleplayText, updatePanelDraft } from './panel-state.js';
 import {createOpeningPanel} from './opening-panel.js';
 import {createCardImportRequestJournal} from './card-import-request.js';
 import type {CardImportRequestStorage} from './card-import-request.js';
+import {createCardUploadPanel} from './card-upload-panel.js';
 import type { PanelDraft } from './panel-state.js';
 import {
     buildModelSettings,
@@ -123,6 +124,7 @@ interface ExportJob {
 }
 interface ManagementDependencies {
     importRequestStorage?: CardImportRequestStorage;
+    uploadFile?(sessionId: string, file: Blob, name: string): Promise<{receiptId: string}>;
     React: typeof ReactAPI;
     sessionDrafts: Map<string, ModelDraft>;
     jsonFetch<T>(url: string, init?: RequestInit): Promise<T>;
@@ -136,10 +138,13 @@ interface ManagementDependencies {
          extra?: ReactAPI.ButtonHTMLAttributes<HTMLButtonElement>): ReactAPI.ReactElement;
 }
 export function createManagementPanels({
-    React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn, importRequestStorage,
+    React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn, importRequestStorage, uploadFile,
 }: ManagementDependencies) {
     const OpeningPanel = createOpeningPanel({React,jsonFetch,toast});
     const importRequestJournal = createCardImportRequestJournal({storage: importRequestStorage});
+    const CardUploadPanel = createCardUploadPanel({React,jsonFetch,toast,confirmWithDialog,
+        storage: importRequestStorage,
+        uploadFile: uploadFile ?? (async () => {throw new Error('文件上传服务尚未就绪');})});
     function CharacterClusterPanel({ sessionId }: {
         sessionId: string;
     }) {
@@ -692,7 +697,10 @@ export function createManagementPanels({
         const pendingItems = Array.isArray(data?.pending) ? data.pending : [];
         return React.createElement('div', {
             className: 'dsh-rp-panel'
-        }, React.createElement(OpeningPanel,{sessionId,refreshToken:openingRefresh}), capabilityReport ? React.createElement('section', {
+        }, React.createElement(CardUploadPanel,{sessionId,onImported: () => {
+            setOpeningRefresh(value => value + 1);
+            void load();
+        }}), React.createElement(OpeningPanel,{sessionId,refreshToken:openingRefresh}), capabilityReport ? React.createElement('section', {
             className: 'dsh-rp-item'
         }, React.createElement('div', {className:'dsh-rp-item-head'}, '角色卡能力报告', React.createElement('button', {
             className:'dsh-rp-btn', onClick: () => void loadCapabilities()

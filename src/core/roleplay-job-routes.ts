@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { taskPhaseMessage, taskValidationFailure, isInlinePending } from './tavern-tasks.js'
 import { decodeTavernCard } from './tavern-card.js'
+import { createCardAttachmentSources } from './roleplay-card-attachment.js'
 import { jsonResponse } from './roleplay-state.js'
 import type { CardWorkflowSession } from './roleplay-card-workflow-types.js'
 import type { ContextSession } from './roleplay-context.js'
@@ -11,6 +12,7 @@ import type { JobRouteAgent, JobRouteBody, JobRouteRecord, JobRoutesDependencies
 
 export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow,
   resumeCardWorkflows, cardWorkflows, cardWorkflowKey, tavernTasks, taskAgents, libraryFor, migrateResources}: JobRoutesDependencies) {
+  const attachmentSources = createCardAttachmentSources({T, libraryFor})
   const latestChildJobs=()=>{
     const latest=new Map<string | undefined, JobRouteRecord>()
     for(const [key,raw] of T.branch.entries()){
@@ -78,7 +80,14 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
       }
       if(!['novel-export','card-export','card-import'].includes(body.kind))throw new Error('未知任务用途')
       assertWorkspaceSession(session)
-      const sourceFile=body.resourceId?libraryFor(session).metadata(body.resourceId).path:body.sourceFile
+      let sourceFile=body.resourceId?libraryFor(session).metadata(body.resourceId).path:body.sourceFile
+      if(body.attachment !== undefined) {
+        if(body.kind !== 'card-import' || body.resourceId !== undefined || body.sourceFile !== undefined) {
+          throw new Error('附件导入不能同时指定其他来源或任务用途')
+        }
+        const materialized = await attachmentSources.materialize(session, agent, body.attachment, body.requestId)
+        sourceFile = materialized.sourceFile
+      }
       const job=await startExportJob(session,body.kind,agent,sourceFile,body.requestId)
       return jsonResponse(202,{ok:true,job:publicJob(job)})
     }catch(error){return jsonResponse(400,{ok:false,error:String((error as Error).message)})}
