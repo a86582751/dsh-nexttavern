@@ -14,7 +14,7 @@ keeps the remote contract, and `init --target local [--host H] [--scheme S]
 identical worker inside the CLI process against a directly reachable host and
 port. A loopback host uses that machine's native credential; a non-loopback
 host needs an operator cookie (`--cookie-file`, or `DSH_DEBUG_COOKIE` for one
-run) and refuses `upload-card`/`upload`, which stage files on the DSH host.
+run) and continues to refuse `upload-card`/`upload` on non-loopback direct targets.
 `DSH_DEBUG_TARGET`, `DSH_DEBUG_HOST`, `DSH_DEBUG_SCHEME`, `DSH_DEBUG_PORT`,
 `DSH_DEBUG_COOKIE_FILE`, `DSH_DEBUG_SSH_PORT`, `DSH_DEBUG_DSH_HOME` and
 `DSH_DEBUG_HARNESS_ROOT` override the saved config per invocation, so one
@@ -66,11 +66,41 @@ reads and revision-checks the current policy, preserving other routes; use
 `--effort low|medium|off` as supported by the selected model. Scope defaults to
 the session and global scope must be explicit. Capability validation remains on
 the native models route.
-Role-card import has no direct CLI/RPC operation because the native source
-exposes only the model tool import sequence. `upload-card`
-stages a local .md/.txt/.json/.png into the fixed server import directory;
-only explicit `--import` queues one native prompt referring to that path.
-Never put card bytes in the prompt; verify completion through activity/jobs.
+Use `upload-card --session ID --file card.png --import --request-id stable-ID`
+for an explicitly authorized import. It sends the original bytes through the
+official `uploadFileBinary` route, verifies the returned file reference, saves
+a bounded v1 target/session/receipt/request identity locally, then POSTs one
+attachment `card-import` job. The import worker path supports Windows and
+Linux without service filesystem staging. No import sends a player prompt.
+PNG/JSON classification adds normal/retry/fallback model requests 0/0/0;
+Markdown/TXT keep the existing model task. Admission is not completion.
+
+On uncertainty use `upload-card --session ID --import --resume` without a file:
+it reuses the saved receipt/request and never uploads again. Optional
+`--request-id` must match. `--recovery-file` chooses an explicit local index;
+the default is `card-imports/<target-session-hash>.json` beside `--config`.
+Never overwrite a pending, damaged, unknown-version or wrong-target index.
+If a cold host invalidated the receipt before first admission, preserve the
+index and manually inspect the original task; do not re-upload under that ID.
+Only matching completed receipts clear automatically. Explicit
+`--import --resume --end` can clear the local identity after a jobs GET proves
+exactly one same-request valid-ID card job is failed/cancelled; it preserves
+the server job, source/history and current card. Unknown statuses cannot end.
+No-job or expired-before-admission cases also cannot use `--end`; preserve and
+retry only the saved identity, then inspect manually. HTTP 4xx diagnostic
+`serverRejected:true` does not prove absence of side effects or an existing
+job. Import errors expose only safe stage/status/identity details, never the
+underlying server message. `upload`/`prepare` failures mean this attempt has
+not sent jobs POST; an additional explicit upload before index persistence
+may create another receipt but cannot alone create another import job.
+An active `.lock` blocks concurrent CLI attempts; automatic cleanup checks its
+bounded exact owner token and created file identity, preserving replacement or
+unknown locks. After a CLI crash, confirm
+no original CLI process remains before manually removing its stale lock.
+
+`upload-card` without `--import` retains legacy Linux staging with no import.
+Do not update a machine's installed global CLI as part of source validation;
+invoke the canonical script explicitly when testing a changed caller.
 
 Use `upload --session ID --file local-file --dir .dsh-uploads` for an ordinary
 file that the selected Session must read from its own registered Workspace.

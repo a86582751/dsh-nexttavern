@@ -547,13 +547,13 @@ def run(value):
     plan = value['plan']
     scheme, host, port, authority, base = endpoint(value)
     loopback = is_loopback(host)
-    if plan.get('action') in ('upload-card', 'upload-workspace') and not loopback:
+    if plan.get('action') in ('upload-card', 'upload-workspace', 'upload-native-card') and not loopback:
         return {'ok': False, 'error': {'code': 'upload-requires-ssh',
             'message': 'File staging runs on the DSH host; use --target ssh for a non-loopback endpoint'}}
     if plan.get('action') == 'upload-card':
         return stage_card(plan)
     path = plan.get('path')
-    if plan.get('action') != 'upload-workspace':
+    if plan.get('action') not in ('upload-workspace', 'upload-native-card'):
         if not isinstance(path, str):
             raise ValueError('API path')
         decoded = urllib.parse.unquote(path)
@@ -621,8 +621,25 @@ process.stdout.write(name+'=v1.'+body+'.'+crypto.createHmac('sha256',secret).upd
             return {'ok': False, 'error': {'code': 'workspace-upload-permission', 'message': 'Configured service account cannot write the requested existing workspace directory; no ownership was changed'}}
         except (OSError, ValueError):
             return {'ok': False, 'error': {'code': 'workspace-upload-metadata', 'message': 'Native workspace metadata could not safely resolve the requested upload target'}}
-    body = plan.get('body')
-    request = urllib.request.Request(base + path, data=None if body is None else json.dumps(body, ensure_ascii=False).encode('utf-8'), method=plan['method'], headers={'Content-Type': 'application/json', **({'Cookie': cookie} if cookie else {})})
+    if plan.get('action') == 'upload-native-card':
+        # The same authenticated raw-byte route serves Windows, Linux, and SSH workers;
+        # the host owns file storage/Agent receipts, rather than this process staging paths.
+        name, session_id = plan.get('fileName'), plan.get('sessionId')
+        if (not isinstance(name, str) or not re.fullmatch(r'[a-f0-9]{64}\.(?:png|json|md|txt)', name)
+            or not isinstance(session_id, str) or not session_id or len(session_id) > 256
+            or re.search(r'[\x00-\x1f\x7f]', session_id)):
+            raise ValueError('invalid native card upload identity')
+        raw = base64.b64decode(plan.get('fileData', ''), validate=True)
+        if (type(plan.get('bytes')) is not int or not 1 <= len(raw) <= 20_000_000 or len(raw) != plan['bytes']
+            or hashlib.sha256(raw).hexdigest() != plan.get('sha256')):
+            raise ValueError('invalid native card bytes')
+        path = '/api/session/uploadFileBinary?' + urllib.parse.urlencode({'sessionId': session_id, 'name': name})
+        request = urllib.request.Request(base + path, data=raw, method='POST',
+            headers={'Content-Type': 'application/octet-stream', **({'Cookie': cookie} if cookie else {})})
+    else:
+        body = plan.get('body')
+        request = urllib.request.Request(base + path, data=None if body is None else json.dumps(body, ensure_ascii=False).encode('utf-8'),
+            method=plan['method'], headers={'Content-Type': 'application/json', **({'Cookie': cookie} if cookie else {})})
     try:
         response = opener.open(request, timeout=timeout)
     except urllib.error.HTTPError as error:
@@ -635,8 +652,22 @@ process.stdout.write(name+'=v1.'+body+'.'+crypto.createHmac('sha256',secret).upd
             data = json.loads(raw)
         except (ValueError, UnicodeDecodeError):
             data = None
+        if plan.get('action') == 'upload-native-card' and response.status != 200:
+            return {'ok': False, 'error': {'code': 'upload-http', 'status': response.status,
+                'details': {'httpStatus': response.status},
+                'message': 'Official raw upload did not return HTTP 200; no import job was submitted'}}
+        if plan.get('action') == 'upload-native-card' and (
+            not isinstance(data, dict) or data.get('ok') is not True or not isinstance(data.get('value'), dict)):
+            return {'ok': False, 'error': {'code': 'upload-business',
+                'message': 'Official raw upload business result was not confirmed; no import job was submitted'}}
         if response.status >= 400:
-            return {'ok': False, 'error': {'code': 'http-error', 'status': response.status, 'message': data.get('error', 'DSH HTTP error') if isinstance(data, dict) else 'DSH HTTP error'}}
+            return {'ok': False, 'error': {'code': 'http-error', 'status': response.status,
+                **({'details': {'httpStatus': response.status}} if path.split('?', 1)[0] == '/api/roleplay/jobs' else {}),
+                'message': data.get('error', 'DSH HTTP error') if isinstance(data, dict) else 'DSH HTTP error'}}
+        if path.split('?', 1)[0] == '/api/roleplay/jobs' and isinstance(data, dict) and data.get('ok') is False:
+            # Business-error details are untrusted response content. Only the
+            # actual HTTP-error branch above may attest a transport status.
+            return {'ok': False, 'error': {'code': 'job-business', 'message': 'Job business outcome was not confirmed'}}
         if plan.get('download'):
             return {'ok': True, 'binary': base64.b64encode(raw).decode('ascii'), 'bytes': len(raw)}
         if data is None:

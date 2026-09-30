@@ -1,4 +1,4 @@
-# dsh-debug 1.6
+# dsh-debug 1.7.0
 
 Python 3.14 stdlib CLI for the installed DSH alpha3 REST + Connection RPC.
 Install with PowerShell `-File install.ps1` beside this file.
@@ -47,9 +47,10 @@ no server-side Python; the same command surface, `/api/` allowlist, deadline,
 response cap, redaction and no-auto-retry rules apply. A local config needs
 `port`, and `dsh_home` plus `harness_root` for the loopback credential adapter.
 `{"local": true}` is still accepted as an alias for `{"target": "local"}`.
-`upload-card` and `upload` are refused on a non-loopback endpoint
-(`upload-requires-ssh`): they stage and read files on the DSH host via the
-unit's service account, which only the SSH worker can do.
+`upload-card` and `upload` remain refused on a non-loopback endpoint
+(`upload-requires-ssh`). Use SSH so the existing credential adapter runs at
+the target host. `upload-card --import` now uses official raw HTTP upload;
+the general `upload` command still stages through the Linux service worker.
 
 An ephemeral Python process runs through SSH, exchanges the current native
 launch token when logged, or signs a 60-second loopback-only native browser
@@ -96,6 +97,8 @@ dsh-debug delete-message --session session-ID --message-id assistant-ID --dry-ru
 dsh-debug delete-user --session session-ID --message-id assistant-ID --dry-run
 dsh-debug upload-card --session session-ID --file card.json --dry-run
 dsh-debug upload-card --session session-ID --file card.json --import --request-id card-import-1
+dsh-debug upload-card --session session-ID --import --resume
+dsh-debug upload-card --session session-ID --import --resume --end
 dsh-debug upload --session session-ID --file original.txt --dir .dsh-uploads --dry-run
 dsh-debug upload --session session-ID --file original.txt --dir .dsh-uploads
 dsh-debug clone --session session-ID --at-seq 456 --dry-run
@@ -203,18 +206,62 @@ The CLI was re-checked against Harness `0.1.7-rc.2`; every request shape it send
 - First-start and install diagnostics changed upstream: skipped profile bundles are reported once per launch with their reasons, the plugin manager records its package-manager run tree under `.plugin-manager/run.json`, and a lock whose recorded owner process no longer exists may be taken over. These are host-side behaviours the CLI observes; they add no request or retry of its own.
 - Regenerating once stays the caller's single action. The alpha.7 acceptance saw one regeneration leave two turns in the child session; the user's ruling (2026-09-25) is that this is a **CLI-side defect**, so the CLI does not re-send or de-duplicate to compensate and the tavern product is not asked to carry extra logic for it. Report the observation instead of hiding it.
 
-Role-card import has no direct native upload RPC. The official
-`session/attachment` RPC remains read-only. Without `--import`, `upload-card`
-stages a local `.md`, `.txt`, `.json`, or `.png` file under the configured
-DSH_HOME `roleplay/cli-imports` directory without starting an import. With
-`--import`, it uses the registered Workspace upload path for the exact Session,
-stores content-addressed bytes under that Session's `.dsh-card-imports`, and
-submits one `/api/roleplay/jobs` request with the supplied request ID. Retrying
-the same ID and source returns the durable job; a changed source is rejected.
-PNG/JSON jobs use the programmatic path with zero classification prompts;
-Markdown/TXT keep the existing native model task. Inspect the returned job and
-`jobs` before treating an import as complete. Neither path embeds card bytes in
-a player prompt or executes card content.
+`upload-card --import` sends the original `.md`, `.txt`, `.json`, or `.png`
+bytes to the official `/api/session/uploadFileBinary?sessionId=...&name=...`
+route, then submits `/api/roleplay/jobs` with
+`{sessionId,kind:'card-import',attachment:{receiptId},requestId}`. It verifies
+HTTP 200, the business result, receipt, file name, exact byte count and full
+SHA-256 before preparing the import. File size is capped at 20,000,000 bytes.
+This import path runs through the same worker on Windows and Linux, including
+SSH; it no longer needs local Workspace staging, `systemctl`, or service UID
+switching. Existing authentication and non-loopback refusal remain in place.
+No import queues `session/prompt` or puts card bytes in a player prompt.
+
+Before jobs POST, the CLI atomically saves and reads back one local v1 recovery
+index containing only `schemaVersion,targetId,sessionId,receiptId,requestId,createdAt`.
+`targetId` hashes non-secret routing identity, never credentials or card paths.
+The default location is `card-imports/<target-session-hash>.json` beside the
+selected `--config`; `--recovery-file` explicitly selects another local file.
+An exclusive `.lock` serializes CLI attempts; cleanup checks a bounded exact
+owner token and the created file identity before removing it. A replacement
+or unknown lock is preserved. A crashed process may leave that
+lock: inspect the original task and confirm no CLI attempt is active before
+manually removing only its stale lock; preserve the JSON recovery index.
+
+Use `upload-card --session ID --import --resume` without `--file` to confirm
+the saved task. It reuses the exact receipt/request ID and never uploads again.
+Optional `--request-id` must match the saved identity. A pending, unreadable,
+damaged, unknown-version or wrong-target/session index blocks a fresh upload;
+it is never overwritten. Unconfirmed, failed, cancelled and lost-response
+outcomes retain it. Only a matching completed job clears it automatically.
+If the host restarts before the first jobs admission, its volatile upload
+receipt can expire: preserve the index and inspect the original task manually;
+the CLI does not re-upload or change the uncertain identity.
+An HTTP 4xx response only sets the safe diagnostic `serverRejected:true`; it
+does not prove there were no side effects or that no job exists. Error details
+report the bounded stage (`upload`, `prepare`, `jobs-post`, or `jobs-get`), not
+the underlying private server message. Upload/preparation errors state that
+this CLI attempt has not sent jobs POST and preserve any existing identity.
+If upload has been sent but the index has not yet been persisted, another
+explicit attempt may mint an additional receipt; an upload alone does not
+start an additional import job.
+
+To choose another card after a confirmed failure/cancellation, explicitly run
+`--import --resume --end`. It reads jobs and clears only the local index when
+exactly one same-request card job has a valid ID and is still failed/cancelled.
+Unknown, running and completed statuses cannot use this path. The original
+server job, sources and history remain; clearing the index does not roll back
+the current card. PNG/JSON classification adds zero model requests on normal,
+retry and fallback paths; Markdown/TXT retain the existing native model task.
+No-job results and expired receipts before first admission cannot use `--end`.
+Retry only the saved identity and inspect manually; the CLI does not claim to
+automatically release these uncertain states. Use a new request ID for a new
+import attempt after a confirmed completion/end.
+
+Without `--import`, `upload-card --file` retains the legacy staging path under
+DSH_HOME `roleplay/cli-imports`, with no import. That path and general `upload`
+still depend on the documented Linux staging capabilities. The official
+`session/attachment` read-only RPC is not used as an upload endpoint.
 
 `upload` is the general file path for an exact Session that is already a member
 of one registered native Workspace. `--dir` is required and is a relative

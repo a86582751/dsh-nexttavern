@@ -10,11 +10,14 @@ import re
 import shlex
 import subprocess
 import sys
+import stat
+import time
 import uuid
 from urllib.parse import urlencode
 
-VERSION = '1.6.0'
+VERSION = '1.7.0'
 CONFIG = Path.home() / '.dsh-debug' / 'config.json'
+CARD_BYTES_LIMIT = 20_000_000
 HOST_PATTERN = re.compile(r'\[?[A-Za-z0-9_.:-]+\]?')
 
 
@@ -110,7 +113,7 @@ def parse(argv):
             'delete-message': 'Delete one assistant branch version while retaining the audit record',
             'delete-user': 'Create a truncated worldline without one player turn',
             'model-route': 'Set one validated purpose route while preserving other policy routes',
-            'upload-card': 'Upload a local role card to the server import staging directory',
+            'upload-card': 'Role card: legacy staging without --import; official raw upload and recoverable import with --import',
             'upload': 'Upload a local file into the exact session\'s registered workspace',
             'clone': 'Explicit native clone into a separate conversation',
             'worldline': 'Read a branch operation or select an existing worldline',
@@ -164,9 +167,13 @@ def parse(argv):
             p.add_argument('--effort', default='medium', help='Provider-supported reasoning effort, e.g. low, medium, off')
             p.add_argument('--scope', choices=['session', 'global'], default='session')
         if command == 'upload-card':
-            p.add_argument('--file', required=True, help='Local .md/.txt/.json/.png role card, maximum 20 MiB')
-            p.add_argument('--import', dest='import_card', action='store_true', help='Explicitly queue native role-card import after upload')
+            source = p.add_mutually_exclusive_group(required=True)
+            source.add_argument('--file', help='Local .md/.txt/.json/.png role card, maximum 20,000,000 bytes')
+            source.add_argument('--resume', action='store_true', help='Confirm the saved import identity without uploading again; requires --import')
+            p.add_argument('--import', dest='import_card', action='store_true', help='Explicitly import through official raw upload and durable jobs')
             p.add_argument('--request-id', help='Stable request ID for --import')
+            p.add_argument('--recovery-file', help='Local recovery index; defaults to config-directory/card-imports/target-session-hash.json')
+            p.add_argument('--end', action='store_true', help='With --import --resume, verify failed/cancelled task and clear only the local index')
         if command == 'upload':
             p.add_argument('--file', required=True, help='Local regular file, maximum 20 MiB')
             p.add_argument('--dir', required=True, help='Relative target directory inside the exact session\'s registered workspace')
@@ -286,9 +293,12 @@ def card_file(args):
     if not path.is_file():
         raise CliError('input', 'Role card file does not exist or is not a regular file')
     size = path.stat().st_size
-    if size > 20 * 1024 * 1024:
-        raise CliError('input', 'Role card file exceeds 20 MiB')
-    raw = path.read_bytes()
+    if size > CARD_BYTES_LIMIT:
+        raise CliError('input', 'Role card file exceeds 20,000,000 bytes')
+    with path.open('rb') as source:
+        raw = source.read(CARD_BYTES_LIMIT + 1)
+    if len(raw) > CARD_BYTES_LIMIT or (args.import_card and not raw):
+        raise CliError('input', 'Imported role card must be nonempty and at most 20,000,000 bytes')
     token = uuid.uuid4().hex
     return {'fileName': token + extension,
          'bytes': len(raw),
@@ -371,15 +381,22 @@ def build_plan(args):
                          'text': text_input(args)}],
                  'clientTimeZone': 'Asia/Hong_Kong'})
     if command == 'upload-card':
+        if (args.resume or args.recovery_file or args.end or args.request_id) and not args.import_card:
+            raise CliError('arguments', '--resume/--recovery-file/--end/--request-id require --import')
+        if args.end and not args.resume:
+            raise CliError('arguments', '--end requires --resume')
+        if args.request_id is not None and not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', args.request_id):
+            raise CliError('arguments', 'Invalid import request ID')
+        if args.resume:
+            return {'method': 'RESUME', 'action': 'resume-card-import', 'sessionId': sid,
+                'import': True, 'requestId': args.request_id, 'end': args.end}
         payload = card_file(args)
         if args.import_card:
-            # The importer reads only inside the exact session workspace.
-            # Keep the same bytes at a content-addressed path across retries.
+            # Keep a safe name hint, while the official service owns the raw bytes.
             payload['fileName'] = payload['sha256'] + Path(args.file).suffix.lower()
         return {'method': 'UPLOAD',
-             'action': 'upload-workspace' if args.import_card else 'upload-card',
+             'action': 'upload-native-card' if args.import_card else 'upload-card',
              'sessionId': sid,
-             'targetDirectory': '.dsh-card-imports' if args.import_card else None,
              'import': bool(args.import_card),
              'requestId': (args.request_id
                 or str(uuid.uuid4())) if args.import_card else None,
@@ -583,11 +600,14 @@ def transport(config, plan):
 def dry_run_result(args, plan):
     if args.command in ['upload-card', 'upload']:
         safe = {key: value for key, value in plan.items() if key != 'fileData'}
-        safe['fileData'] = '<base64 omitted>'
+        if 'fileData' in plan: safe['fileData'] = '<base64 omitted>'
         if args.command == 'upload-card':
-            workflow = (['validate local file and SHA-256',
-                'stage content-addressed bytes inside the exact session workspace',
-                'start or recover one durable card-import job without a player prompt'] if args.import_card
+            workflow = (['read the strict target/session-bound local recovery index; never upload again',
+                'verify terminal task and clear only local identity' if args.end else 'confirm jobs using the saved receipt/request ID']
+                if args.resume else ['validate local file and SHA-256',
+                'POST original bytes to official /api/session/uploadFileBinary',
+                'atomically persist and read back the bounded recovery identity before jobs POST',
+                'start or recover one attachment card-import job without a player prompt'] if args.import_card
                 else ['validate local file', 'stage on the configured DSH host'])
         else:
             workflow = [
@@ -796,13 +816,246 @@ def execute_model_route(args, plan, call):
         raise CliError(error.code, str(error), {'automaticRetry': False}) from None
 
 
+def card_import_target_id(config):
+    """Hash routing identity only: credentials and local source paths never enter the journal."""
+    target = target_name(config)
+    if target == 'local':
+        scheme, host, port = endpoint_parts(config)
+        route = [target, scheme, host.casefold(), port]
+    elif target == 'ssh':
+        destination = str(config.get('ssh_host') or '').strip()
+        if destination and (not re.fullmatch(r'[A-Za-z0-9_.@-]+', destination) or destination.startswith('-')):
+            raise CliError('config', 'Invalid SSH routing identity')
+        user, separator, host = destination.rpartition('@')
+        route = [target, user if separator else '', (host if separator else destination).casefold(),
+            int(config.get('ssh_port', 22)), 'http', '127.0.0.1', int(config.get('port', 3081))]
+    else:
+        raise CliError('config', 'target must be ssh or local')
+    return hashlib.sha256(json.dumps(route, ensure_ascii=True, separators=(',', ':')).encode('ascii')).hexdigest()
+
+
+class CardImportJournal:
+    """Own the single local pending identity and serialize explicit CLI attempts."""
+    fields = {'schemaVersion', 'targetId', 'sessionId', 'receiptId', 'requestId', 'createdAt'}
+
+    def __init__(self, args, config):
+        self.target_id, self.session_id = card_import_target_id(config), args.session
+        if not isinstance(self.session_id, str) or not 1 <= len(self.session_id) <= 256 or re.search(r'[\x00-\x1f\x7f]', self.session_id):
+            raise CliError('import-recovery', 'Invalid import session identity')
+        label = hashlib.sha256(json.dumps([self.target_id, self.session_id], ensure_ascii=True).encode('ascii')).hexdigest()
+        default = Path(args.config).expanduser().absolute().parent / 'card-imports' / (label + '.json')
+        self.path = Path(args.recovery_file).expanduser().absolute() if args.recovery_file else default
+        self.lock_path = self.path.with_name(self.path.name + '.lock')
+        self.lock_owned = False
+        self.lock_owner = {'schemaVersion': 1, 'pid': os.getpid(), 'token': uuid.uuid4().hex}
+        self.lock_identity = None
+
+    def release_lock(self):
+        """Never remove a replacement/unknown lock, including after interrupted entry."""
+        if not self.lock_owned: return
+        try:
+            descriptor = os.open(self.lock_path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
+            with os.fdopen(descriptor, 'rb') as lock:
+                identity = os.fstat(lock.fileno())
+                if not stat.S_ISREG(identity.st_mode) or (identity.st_dev, identity.st_ino) != self.lock_identity: return
+                raw = lock.read(513)
+            if len(raw) > 512: return
+            def owner_fields(pairs):
+                if len(pairs) != 3 or {key for key, _ in pairs} != {'schemaVersion', 'pid', 'token'}:
+                    raise ValueError('unknown or duplicate owner fields')
+                return dict(pairs)
+            owner = json.loads(raw.decode('utf-8'), object_pairs_hook=owner_fields)
+            if (not isinstance(owner, dict) or set(owner) != {'schemaVersion', 'pid', 'token'}
+                or type(owner['schemaVersion']) is not int or type(owner['pid']) is not int
+                or not isinstance(owner['token'], str) or not re.fullmatch(r'[a-f0-9]{32}', owner['token'])
+                or owner != self.lock_owner): return
+            current = self.lock_path.stat(follow_symlinks=False)
+            if stat.S_ISREG(current.st_mode) and (current.st_dev, current.st_ino) == self.lock_identity:
+                self.lock_path.unlink()
+        except (OSError, ValueError, UnicodeError):
+            pass
+        finally:
+            self.lock_owned = False
+
+    def __enter__(self):
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self.path.is_symlink() or self.lock_path.is_symlink():
+                raise OSError('symlink index')
+            descriptor = os.open(self.lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            self.lock_owned = True
+            created = os.fstat(descriptor)
+            self.lock_identity = (created.st_dev, created.st_ino)
+            with os.fdopen(descriptor, 'w', encoding='utf-8') as lock:
+                lock.write(json.dumps(self.lock_owner, separators=(',', ':')))
+                lock.flush()
+                os.fsync(lock.fileno())
+            return self
+        except OSError:
+            self.release_lock()
+            raise CliError('import-recovery-lock',
+                'Recovery identity is locked or inaccessible; check any active CLI attempt before manually removing a stale lock') from None
+
+    def __exit__(self, *_):
+        self.release_lock()
+
+    def read(self):
+        try:
+            descriptor = os.open(self.path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
+        except FileNotFoundError:
+            return None
+        except OSError:
+            raise CliError('import-recovery-read', 'Cannot read recovery identity; import submission stopped') from None
+        try:
+            with os.fdopen(descriptor, 'rb') as source:
+                if not stat.S_ISREG(os.fstat(source.fileno()).st_mode): raise ValueError('nonregular index')
+                raw = source.read(2049)
+            if len(raw) > 2048: raise ValueError('oversized index')
+            def exact_fields(pairs):
+                value = {}
+                for key, item in pairs:
+                    if key in value: raise ValueError('duplicate field')
+                    value[key] = item
+                return value
+            index = json.loads(raw.decode('utf-8'), object_pairs_hook=exact_fields)
+            if not isinstance(index, dict) or set(index) != self.fields: raise ValueError('index fields')
+            if type(index['schemaVersion']) is not int or index['schemaVersion'] != 1: raise ValueError('schema')
+            if index['targetId'] != self.target_id or index['sessionId'] != self.session_id: raise ValueError('scope')
+            if not all(isinstance(index[field], str) and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', index[field])
+                    for field in ['receiptId', 'requestId']): raise ValueError('identifiers')
+            if type(index['createdAt']) is not int or not 0 <= index['createdAt'] <= 8_640_000_000_000_000:
+                raise ValueError('timestamp')
+            return index
+        except (OSError, ValueError, UnicodeError):
+            raise CliError('import-recovery-invalid',
+                'Recovery identity is damaged, unsupported, or belongs to another target/session; preserve it and inspect the original task') from None
+
+    def prepare(self, receipt_id, request_id):
+        if self.read() is not None:
+            raise CliError('import-recovery-pending', 'An import identity already exists; use --import --resume without a file')
+        index = {'schemaVersion': 1, 'targetId': self.target_id, 'sessionId': self.session_id,
+            'receiptId': receipt_id, 'requestId': request_id, 'createdAt': int(time.time() * 1000)}
+        temporary = self.path.with_name(self.path.name + '.tmp-' + uuid.uuid4().hex)
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, 'w', encoding='utf-8', newline='\n') as output:
+                output.write(json.dumps(index, ensure_ascii=True, separators=(',', ':')) + '\n')
+                output.flush()
+                os.fsync(output.fileno())
+            # All CLI writers hold this exclusive lock; re-read before the atomic publication.
+            if self.read() is not None: raise OSError('identity appeared during upload')
+            os.replace(temporary, self.path)
+            if os.name == 'posix':
+                directory = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                try: os.fsync(directory)
+                finally: os.close(directory)
+            if self.read() != index: raise OSError('readback mismatch')
+            return index
+        except (OSError, CliError):
+            raise CliError('import-recovery-write',
+                'Recovery identity could not be saved and verified; no import POST was sent. Preserve any existing index and check local storage') from None
+        finally:
+            try: temporary.unlink(missing_ok=True)
+            except OSError: pass
+
+    def clear(self, index):
+        current = self.read()
+        if current is None: return True
+        if current != index: return False
+        try:
+            self.path.unlink()
+            if self.read() is not None: raise OSError('index remains')
+        except (OSError, CliError):
+            raise CliError('import-recovery-clear', 'Cannot clear the local recovery identity; confirm the same task again') from None
+        return True
+
+
+def verified_card_upload(uploaded, plan):
+    valid = isinstance(uploaded, dict) and isinstance(uploaded.get('receiptId'), str)
+    valid = valid and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', uploaded['receiptId'])
+    file = uploaded.get('file') if isinstance(uploaded, dict) else None
+    if not valid or not isinstance(file, dict) or set(file) != {'attachmentId', 'name', 'bytes'}:
+        raise CliError('upload-verification', 'Official upload returned an invalid receipt or file reference')
+    if (type(file['bytes']) is not int or file['bytes'] != plan['bytes']
+        or file['attachmentId'] != 'sha256:' + plan['sha256'] or file['name'] != plan['fileName']):
+        raise CliError('upload-verification', 'Official upload file reference does not match the original bytes, SHA-256, or name')
+    return uploaded['receiptId']
+
+
+def execute_card_import(args, plan, config, call):
+    journal, index, receipt_id, stage = None, None, None, 'prepare'
+    try:
+        with CardImportJournal(args, config) as journal:
+            index = journal.read()
+            if args.resume:
+                if index is None: raise CliError('import-recovery-absent', 'No saved import identity')
+                if args.request_id is not None and args.request_id != index['requestId']:
+                    raise CliError('import-recovery-conflict', 'Request ID differs from the saved import')
+            elif index is not None:
+                raise CliError('import-recovery-pending', 'An import is pending')
+            stage = 'jobs-get' if args.end else 'jobs-post' if args.resume else 'upload'
+            call(rest('wake', {'sessionId': args.session}))
+            if index is None:
+                receipt_id = verified_card_upload(call(plan), plan)
+                stage = 'prepare'
+                index = journal.prepare(receipt_id, plan['requestId'])
+            result = {'sessionId': args.session, 'receiptId': index['receiptId'], 'requestId': index['requestId'],
+                'recoveryFile': str(journal.path), 'resumed': bool(args.resume), 'automaticRetry': False}
+            if args.end:
+                stage = 'jobs-get'
+                response = call(rest('jobs?' + urlencode({'sessionId': args.session})))
+                jobs = response.get('jobs') if isinstance(response, dict) and response.get('ok') is True else None
+                matches = [job for job in jobs if isinstance(job, dict) and job.get('kind') == 'card-import'
+                    and job.get('requestId') == index['requestId']] if isinstance(jobs, list) else []
+                job = matches[0] if len(matches) == 1 else None
+                if (not job or job.get('status') not in ['failed', 'cancelled'] or not isinstance(job.get('id'), str)
+                    or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', job['id'])):
+                    raise CliError('import-end-unconfirmed', 'Original task is not uniquely confirmed failed/cancelled; recovery identity retained')
+                if not journal.clear(index): raise CliError('import-recovery-conflict', 'Recovery identity changed; it was not cleared')
+                return {**result, 'ended': True, 'job': job, 'completion':
+                    'Only the local recovery identity was cleared; original task/source/history retained, current card not rolled back'}
+            stage = 'jobs-post'
+            response = call(rest('jobs', {'sessionId': args.session, 'kind': 'card-import',
+                'attachment': {'receiptId': index['receiptId']}, 'requestId': index['requestId']}))
+            job = response.get('job') if isinstance(response, dict) and response.get('ok') is True else None
+            completed = isinstance(job, dict) and job.get('status') == 'completed'
+            if completed:
+                if (job.get('kind') != 'card-import' or job.get('requestId') != index['requestId']
+                    or not isinstance(job.get('id'), str)
+                    or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', job['id'])):
+                    raise CliError('import-completion-unconfirmed', 'Completed receipt identity does not match; recovery index retained')
+                if not journal.clear(index): raise CliError('import-recovery-conflict', 'Recovery identity changed; it was not cleared')
+            return {**result, 'job': job, 'completion': 'completed' if completed else
+                'Unconfirmed/noncompleted: recovery identity retained; inspect jobs, then explicitly --import --resume'}
+    except CliError as error:
+        original_details = error.details if isinstance(error.details, dict) else {}
+        http_status = original_details.get('httpStatus')
+        explicit_status = type(http_status) is int and 100 <= http_status <= 599
+        details = {'sessionId': args.session, 'stage': stage, 'automaticRetry': False,
+            'serverRejected': bool(explicit_status and 400 <= http_status < 500)}
+        if explicit_status: details['httpStatus'] = http_status
+        if journal is not None: details['recoveryFile'] = str(journal.path)
+        if index is not None: details.update({'receiptId': index['receiptId'], 'requestId': index['requestId']})
+        else:
+            details['requestId'] = plan.get('requestId')
+            if receipt_id is not None: details['receiptId'] = receipt_id
+        if stage in ['upload', 'prepare']:
+            message = 'Card import stopped before this attempt sent any jobs POST; preserve any saved identity and inspect storage/upload state.'
+        elif stage == 'jobs-get':
+            message = 'Original task could not be confirmed failed/cancelled; recovery identity retained. '
+            message += 'No-job or pre-admission expired-receipt cases cannot use --end; inspect manually.'
+        else:
+            message = 'Import outcome is unconfirmed; preserve the original identity and retry only with --resume. '
+            message += 'HTTP rejection does not prove no side effects. A cold pre-admission receipt may be invalid; inspect manually.'
+        raise CliError(error.code, message, details) from None
+
+
 def execute_card_upload(args, plan, call):
     request_id = plan.get('requestId')
     try:
         uploaded = call(plan)
         if (not isinstance(uploaded, dict) or uploaded.get('sha256') != plan['sha256']
-                or uploaded.get('bytes') != plan['bytes'] or not uploaded.get('path')
-                or (args.import_card and not uploaded.get('workspaceId'))):
+                or uploaded.get('bytes') != plan['bytes'] or not uploaded.get('path')):
             raise CliError('upload-verification',
                  'Upload worker returned mismatched path, size or SHA-256',
                  {'requestId': request_id,
@@ -813,14 +1066,6 @@ def execute_card_upload(args, plan, call):
              'bytes': uploaded['bytes'],
              'sha256': uploaded['sha256'],
              'requestId': plan['requestId'] if args.import_card else None}
-        if args.import_card:
-            started = call(rest('jobs', {'sessionId': args.session,
-                'kind': 'card-import', 'sourceFile': uploaded['path'],
-                'requestId': plan['requestId']}))
-            result['workspaceId'] = uploaded['workspaceId']
-            result['reused'] = uploaded.get('reused', False)
-            result['job'] = started.get('job') if isinstance(started, dict) else None
-            result['completion'] = 'Inspect durable job status; retry with the same request ID to recover its identity'
         return result
     except CliError as error:
         error.details = {**(error.details
@@ -893,6 +1138,8 @@ def execute(args, config, transport=transport):
     if getattr(args, 'dry_run', False):
         return dry_run_result(args, plan)
     def call(p): return unwrap(transport(config, p))
+    if args.command == 'upload-card' and args.import_card:
+        return execute_card_import(args, plan, config, call)
     if args.command == 'settings-set':
         return execute_settings_write(args, plan, call)
     if args.command == 'create' and args.workspace_path:
