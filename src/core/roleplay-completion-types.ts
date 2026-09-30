@@ -45,6 +45,7 @@ export interface CompletionWorkerResult extends Record<string, unknown> {
 }
 export interface CompletionDependencies {
   inputSnapshotCurrent?(session:ContextSession,snapshot:CompletionSnapshot):boolean
+  isManagementInput?(session:ContextSession,turn:number):boolean
   storyBranchIsActive(session: ContextSession): boolean
   T: CompletionTables
   cloneBranchRecord<T>(value: T): T

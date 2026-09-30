@@ -198,6 +198,18 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
                 return decision;
             await input.prepare(inputStep);
             assertInput();
+            const original = input.originalMessages(inputStep);
+            const internal = original.length > 0 && original.every(message => message.source?.kind === 'roleplay-tasks'
+                && message.source.form === 'phase' && message.source.stage === 'management');
+            if (internal) {
+                // The owning task host already supplied its complete actual envelope.
+                // Replacing it with player-management prose loses the queued task
+                // input and causes idle wake/retry loops. Never grant this exception
+                // to a player message or reconstruct an envelope from guessed ids.
+                const originalIds = new Set(original.map(message => message.id));
+                return { ...decision, messages: decision.messages.filter(message => message.source?.kind !== 'roleplay-context'
+                        && (message.source?.kind !== 'roleplay-tasks' || originalIds.has(message.id))) };
+            }
             return { ...decision, messages: [taskPhaseMessage('management', '当前只开放角色卡导入、开场选择及会话管理。按玩家请求调用实际工具并说明结果；本轮回复不作为剧情、状态或记忆事实。'),
                     ...decision.messages.filter(message => message.source?.kind !== 'roleplay-context' && message.source?.kind !== 'roleplay-tasks')] };
         }

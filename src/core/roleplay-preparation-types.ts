@@ -6,6 +6,7 @@ import type { ForkLookup } from './roleplay-worldline-types.js'
 import type { DirectorNotes } from '../memory/memory-history.js'
 import type { MemoryRecordProjection } from '../memory/memory-provenance.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
+import type {MvuNumericalSnapshot} from './roleplay-mvu-state.js'
 
 export interface PreparationSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & { parentSession?: string }
@@ -68,6 +69,7 @@ export interface PreparationPayload {
 }
 export interface PreparationSnapshot {
   inputPreparation?: InputPreparationCurrency
+  numericalState?: MvuNumericalSnapshot
   branchId: string
   agent: TaskAgent
   turnId: number
@@ -109,6 +111,8 @@ export interface PreparationWriteState {
   pendingScene: unknown
 }
 export interface PreparationDependencies {
+  /** Actual validated numerical authority, read only for an admitted numerical story. */
+  readNumericalState?(sessionId: string): MvuNumericalSnapshot | undefined
   T: PreparationTables
   ctx: PreparationContext
   cfg: { contextWindowTokens?: number; continuityTailTokens?: number; contextWindowEnabled?: boolean }

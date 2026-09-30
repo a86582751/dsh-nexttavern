@@ -27,7 +27,19 @@ export function createRoleplayCompletion(deps: CompletionDependencies) {
     return !userEvent || !live.has(userEvent.seq)
   }
 
-  async function runPhaseBC(session: ContextSession, event: ContextEvent, st: CompletionState, suppliedSnapshot: CompletionSnapshot | null = null, signal?: AbortSignal) {
+  const ownedCompletions=new Map<string,Promise<void>>()
+  function runPhaseBC(session: ContextSession,event:ContextEvent,st:CompletionState,
+    suppliedSnapshot:CompletionSnapshot|null=null,signal?:AbortSignal):Promise<void> {
+    const key=`${session.id}:${Number(event.data?.turn)}`
+    const existing=ownedCompletions.get(key)
+    if(existing)return existing
+    const work=runPhaseBCImpl(session,event,st,suppliedSnapshot,signal)
+    ownedCompletions.set(key,work)
+    const clear=()=>{if(ownedCompletions.get(key)===work)ownedCompletions.delete(key)}
+    void work.then(clear,clear)
+    return work
+  }
+  async function runPhaseBCImpl(session: ContextSession, event: ContextEvent, st: CompletionState, suppliedSnapshot: CompletionSnapshot | null = null, signal?: AbortSignal) {
     const turnId = Number(event?.data?.turn)
     let snapshot = suppliedSnapshot ?? st.snapshots.get(turnId) ?? st.snapshot ?? T.branch.get(keyOf(session.id,`task-snapshot-${turnId}`)) as CompletionSnapshot | null | undefined
     if (!snapshot) return
@@ -362,7 +374,12 @@ export function createRoleplayCompletion(deps: CompletionDependencies) {
     if (payload?.status !== 'idle') return
     // The idle event can be the only reachable completion feed on a standing
     // mount. Drain this run and pending durable work without Phase-A snapshots.
-    recoverStatusObligations(session, 'agent/idle', agent)
+    const closedTurn=Number(eventsOf(session).findLast(event=>event.type==='turn/end')?.data?.turn)
+    // A management/import turn can replace the fixed status configuration.
+    // It is not a new story obligation and must not backfill old narrative
+    // under that new Source, creating a late task with already-closed input
+    // currency. Existing explicit task/recovery entry points remain separate.
+    if(deps.isManagementInput?.(session,closedTurn)!==true)recoverStatusObligations(session, 'agent/idle', agent)
     statusRunStartSeq.delete(session.id)
     const st = sessions.get(session.id)
     if (!st || (st.pendingTurn === null && st.regenerateAnchor === null && st.snapshots.size === 0)) return
@@ -409,5 +426,17 @@ export function createRoleplayCompletion(deps: CompletionDependencies) {
         })
     }
   })
-  return { runPhaseBC, isStale }
+  return { runPhaseBC, isStale,
+    /** The actual original-turn promise, including pre-commit async work.
+     * Agent idle happens after terminal publication and would deadlock here. */
+    async awaitOwnedCompletion(sessionId:string,turn:number):Promise<void> {
+      await ownedCompletions.get(`${sessionId}:${turn}`)
+      const state=sessions.get(sessionId)
+      await state?.commitChain
+      const phase=T.branch.get(keyOf(sessionId,`phaseb-${turn}`))
+      if(phase?.state==='running'||phase?.state==='failed'||state?.phaseBRetryTimers.has(turn)) {
+        throw new Error('INPUT_TERMINAL_PHASE_BC_UNRESOLVED')
+      }
+    },
+  }
 }

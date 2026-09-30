@@ -2,6 +2,9 @@
  * No input body, queue, model classification or Source lock belongs here. */
 import {createHash, randomUUID} from 'node:crypto'
 import {createRoleplayInputContinuation} from './roleplay-input-continuation.js'
+import {createRoleplayInputCompletion,readInputCompletion} from './roleplay-input-completion.js'
+import type {InputCompletionProcessor,InputCompletionScope} from './roleplay-input-completion.js'
+import type {MvuStateTerminalIntent} from './roleplay-mvu-state.js'
 import type {OwnedContinuationResult} from './roleplay-input-continuation.js'
 import type {taskPhaseMessage} from './tavern-task-context.js'
 import type {NativeInputAdmissionAgentV2, NativeInputAdmissionHookV2, NativeInputAdmissionCheckV2,
@@ -38,6 +41,12 @@ export interface InputTransitionJob {
   jobGeneration: string
   requestId: string
   rawSourceSha256: string
+}
+export interface InputLegacyMergeReference {
+  schemaVersion:1
+  kind:'semantic-merge-source'
+  importId:string
+  normalizedSha256:string
 }
 export interface InputTransitionActivationProof {
   importId: string
@@ -86,7 +95,7 @@ export interface RoleplayInputTransitionLease {
   reserve(proof: InputTransitionProof): Promise<void>
   bindJob(job: InputTransitionJob): Promise<void>
   prepareActivation(proof: InputTransitionActivationProof): Promise<void>
-  delegateLegacy(proof: InputTransitionProof): Promise<void>
+  delegateLegacy(proof: InputTransitionProof,merge?:InputLegacyMergeReference): Promise<void>
   commit(activation: InputTransitionActivation): Promise<InputTransitionResult>
   checkActivation(): void
   getActivationProof(): InputTransitionActivationProof | undefined
@@ -113,14 +122,25 @@ export interface RoleplayInputBinding {
   current(): InputView | undefined
   dispose(): void
 }
-interface Transition {
+export interface InputTransitionState {
   reservation: RoleplayInputTransitionReservation
   from: InputSourceObservation
   status: 'revoked' | 'reserved' | 'job-bound' | 'activation-prepared' | 'committed' | 'legacy-delegated' | 'source-rejected' | 'unknown'
   job?: InputTransitionJob
+  legacyRecord?:InputLegacyMergeReference
   activationProof?: InputTransitionActivationProof
   activation?: InputTransitionActivation
   to?: InputSourceObservation
+}
+type Transition=InputTransitionState
+interface UnclaimedInputRefusal {
+  schemaVersion:1
+  kind:'unclaimed-native-refusal'
+  code:string
+  refsSha256:string
+  throughSeq:number
+  historyPrefixSha256:string
+  proofSha256:string
 }
 interface Work extends Record<string, unknown> {
   schemaVersion: 2
@@ -138,6 +158,12 @@ interface Work extends Record<string, unknown> {
   attempt?: {turn: number; step: number; prepared: boolean; legacyPreparationId?: string;
     snapshot?: InputPreparationSnapshotRef}
   checkpoint?: NativeDurableInputWorkReceiptV1
+  /** Frozen at creation, before Native claim/checkpoint. Cold admission must
+   * not reinterpret an unfinished numerical work as an ordinary input. */
+  terminalRequired?:true
+  /** A live admission refused before any Native claim. Missing checkpoint
+   * alone is never evidence of this disposition. */
+  unclaimedRefusal?:UnclaimedInputRefusal
   transition?: Transition
   stop?: {status: 'terminal' | 'unknown'; notice?: NativeInputStopNoticeV1; code?: string}
 }
@@ -162,28 +188,48 @@ const boundedId = (value: string) => typeof value === 'string' && /^[a-zA-Z0-9_-
 // Match the import transaction's existing CAS encoding for an absent record.
 const recordDigest = (value: string) => value === 'missing' || sha(value)
 const identityOf = (work: Work) => ({schemaVersion: 2, namespace: work.namespace, sessionId: work.sessionId,
-  branchId: work.branchId, preparationId: work.preparationId, receiptGeneration: work.receiptGeneration, refs: work.refs})
+  branchId: work.branchId, preparationId: work.preparationId, receiptGeneration: work.receiptGeneration, refs: work.refs,
+  ...(work.terminalRequired?{terminalRequired:true}:{})})
+const currencyOfStored=(work:Work):InputPreparationCurrency=>({schemaVersion:2,
+  preparationId:work.preparationId,credentialSha256:work.credentialSha256,receiptGeneration:work.receiptGeneration,
+  attemptGeneration:work.attemptGeneration,source:clone(work.source),
+  ...(work.attempt?.snapshot?{snapshot:clone(work.attempt.snapshot)}:{})})
+const refusalSeal=(work:Work,proof:Omit<UnclaimedInputRefusal,'proofSha256'>)=>digest({
+  preparationId:work.preparationId,credentialSha256:work.credentialSha256,...proof})
+const validRefusal=(work:Work):boolean=>{
+  const proof=work.unclaimedRefusal
+  if(!proof)return false
+  const {proofSha256,...payload}=proof
+  return proof.schemaVersion===1&&proof.kind==='unclaimed-native-refusal'
+    &&typeof proof.code==='string'&&/^[A-Z][A-Z0-9_]{0,63}$/.test(proof.code)
+    &&proof.refsSha256===digest(work.refs)&&Number.isSafeInteger(proof.throughSeq)&&proof.throughSeq>=0
+    &&sha(proof.historyPrefixSha256)&&proofSha256===refusalSeal(work,payload)
+}
 const isWork = (value: unknown, sessionId: string): value is Work => {
   const row = value as Work | undefined
   return !!row && row.schemaVersion === 2 && row.namespace === ROLEPLAY_INPUT_NAMESPACE
     && row.sessionId === sessionId && row.branchId === sessionId && typeof row.preparationId === 'string'
     && Number.isSafeInteger(row.receiptGeneration) && row.receiptGeneration > 0 && Array.isArray(row.refs)
     && row.refs.length > 0 && row.refs.every(ref => ref.sessionId === sessionId && sha(ref.messageSha256))
+    && (row.terminalRequired===undefined||row.terminalRequired===true)
+    && (row.unclaimedRefusal===undefined||validRefusal(row))
     && row.credentialSha256 === digest(identityOf(row))
     && equal(row.preparation, {schemaVersion: 1, namespace: ROLEPLAY_INPUT_NAMESPACE,
       preparationKeySha256: digest({sessionId, preparationId: row.preparationId}), credentialSha256: row.credentialSha256})
 }
 
-export function createRoleplayInputPreparation<Session extends {id: string}>({table, observe, onError}: {
+export function createRoleplayInputPreparation<Session extends {id: string}>({table, observe, onError,completion}: {
   table: InputPreparationTable
   /** Trusted synchronous actual Source/head observation; never model intent. */
   observe(session: Session): InputSourceObservation
   onError?(error: unknown): void
+  completion?:InputCompletionProcessor
 }) {
   const owners = new WeakMap<object, RoleplayInputBinding>()
   const leases = new Map<string, RoleplayInputTransitionLease>()
   const reservationLeases = new Map<string, RoleplayInputTransitionLease>()
   const sessionOwners = new Map<string, object>()
+  const terminalOwners=new Map<string,ReturnType<typeof createRoleplayInputCompletion>>()
   // A single writer orders this owner's records. It never invokes Source work
   // or waits Agent idle while holding this chain.
   let writes: Promise<unknown> = Promise.resolve()
@@ -204,6 +250,67 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         || !sha((result.headRef ?? result.absenceScopeRef)!.sha256))
       || result.kind !== 'story' && !result.reason) fail('INPUT_SOURCE_OBSERVATION_INVALID')
     return result
+  }
+  /** Check actual Native facts, including canceled refs that might otherwise
+   * hide a prior claim. A crash between work creation and this proof stays
+   * unresolved; cold recovery cannot infer permission from missing rows. */
+  const unclaimedFacts=(agent:NativeInputAdmissionAgentV2 & {session:Session},work:Work)=>{
+    if(work.checkpoint||work.attempt||work.transition||work.attemptGeneration!==0)return undefined
+    const events=agent.session.snapshotEvents()
+    let previous=-1
+    for(const event of events) {
+      const seq=Number(event.seq)
+      if(!Number.isSafeInteger(seq)||seq<=previous)return undefined
+      previous=seq
+      if(event.type==='turn/start'&&event.data.nativeInputLink) {
+        const link=event.data.nativeInputLink as NativeInputLinkV1
+        if(!Array.isArray(link.refs)||!link.preparation)return undefined
+        if(equal(link.preparation,work.preparation)
+          ||link.refs.some(ref=>work.refs.some(owned=>equal(ref,owned))))return undefined
+      }
+    }
+    if(previous<Math.max(...work.refs.map(ref=>ref.insertSeq)))return undefined
+    for(const ref of work.refs) {
+      const ownership=agent.lookupInputOwnership(ref)
+      if(ownership.status==='cancelled') {
+        // Native also reports a claimed, aborted old turn as canceled. Only an
+        // actual inbox deletion with no closed claim reason proves no claim.
+        const canceled=events.find(event=>Number(event.seq)===ownership.cancelSeq)
+        if(ownership.closedReason||canceled?.type!=='agent/inbox/spliced'
+          ||canceled.data.outcome!=='canceled')return undefined
+      } else if(ownership.status!=='pending')return undefined
+    }
+    return {events,throughSeq:previous}
+  }
+  const verifyUnclaimedRefusal=(sid:string,work:Work)=>{
+    if(!validRefusal(work))return false
+    const agent=sessionOwners.get(sid) as NativeInputAdmissionAgentV2 & {session:Session}|undefined
+    if(!agent)return false
+    const facts=unclaimedFacts(agent,work),proof=work.unclaimedRefusal!
+    if(!facts||proof.throughSeq>facts.throughSeq)return false
+    const history=facts.events.filter(event=>Number(event.seq)<=proof.throughSeq)
+    return Number(history.at(-1)?.seq)===proof.throughSeq&&digest(history)===proof.historyPrefixSha256
+  }
+  /** Separate from physical numerical/Source observation. In particular our
+   * own pending terminal must not make an in-flight snapshot self-stale. This
+   * read-only gate is also available to deterministic management diagnostics. */
+  const readTerminalAdmissionGate=(sid:string,known?:Work[])=>{
+    if(!completion)return allowed
+    try {
+      if([...table.entries()].some(([recordKey,value])=>recordKey.startsWith(`${prefix(sid)}work-`)&&!isWork(value,sid))) {
+        return blocked('INPUT_STORED_WORK_UNKNOWN')
+      }
+      for(const work of known??records(sid))if(work.terminalRequired) {
+        if(verifyUnclaimedRefusal(sid,work))continue
+        const closed=readInputCompletion(table,sid,work.preparationId)
+        if(!closed||closed.status!=='settled'||work.stop||work.status!=='active'
+          ||!equal(closed.scope.currency,currencyOfStored(work))||!equal(closed.scope.receipt.checkpoint,work.checkpoint)
+          ||!equal(closed.scope.transition,work.transition)
+          ||!completion.verifyStored(closed.scope,closed.plan.kind==='numerical'?closed.plan.intent:undefined)
+          ||!completion.verifyConsumed(closed.scope,closed.plan,closed.settlement))return blocked('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
+      }
+      return allowed
+    } catch {return blocked('INPUT_PREVIOUS_TERMINAL_UNKNOWN')}
   }
 
   /** Caller must obtain this exact Agent from its owning Native factory. No
@@ -245,6 +352,31 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           .every(event => event.type !== 'step/start' && event.type !== 'turn/end')
     }
     const save = async (work: Work) => {await table.put(key(work), clone(work)); if (!sameDurable(work)) fail('INPUT_WRITE_UNCONFIRMED')}
+    const refuseUnclaimed=async(work:Work,code:string)=>{
+      // This runs inside the live admit operation, before it can return allow.
+      // Read back the owned write first; failed/ambiguous storage stays closed.
+      try {
+        const stored=durable(work)
+        // stop revokes the hot object synchronously while its durable save is
+        // queued after this admission. Permit exactly that known delta, not an
+        // arbitrary replacement of the owned record or an absent first write.
+        const knownStopDelta=isWork(stored,sid)&&stored.status==='created'&&!stored.stop
+          &&!!work.stop&&pendingRevocations.has(work.preparationId)
+          &&['stopped','unknown'].includes(work.status)
+          &&equal({...stored,status:undefined,stop:undefined},{...work,status:undefined,stop:undefined})
+        if(work.terminalRequired&&(sameDurable(work)||knownStopDelta)) {
+          const facts=unclaimedFacts(agent,work)
+          if(facts) {
+            const proof:Omit<UnclaimedInputRefusal,'proofSha256'>={schemaVersion:1,
+              kind:'unclaimed-native-refusal',code,refsSha256:digest(work.refs),throughSeq:facts.throughSeq,
+              historyPrefixSha256:digest(facts.events)}
+            work.unclaimedRefusal={...proof,proofSha256:refusalSeal(work,proof)}
+            await save(work)
+          }
+        }
+      } catch(error) {report(error)}
+      return blocked(code)
+    }
     const currencyOf = (work: Work): InputPreparationCurrency => ({schemaVersion: 2,
       preparationId: work.preparationId, credentialSha256: work.credentialSha256, receiptGeneration: work.receiptGeneration,
       attemptGeneration: work.attemptGeneration, source: clone(work.source),
@@ -314,6 +446,28 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         || entry.signal.aborted) return 'INPUT_ATTEMPT_CHANGED'
       return baseCurrency(entry.work)
     }
+    const terminalStored=(scope:InputCompletionScope):string|undefined=>{
+      const work=hot,pointer=table.get(currentKey(sid)) as {preparationId?:string;credentialSha256?:string}|undefined
+      if(!live||revoked||!work||work.status!=='active'||work.stop||pendingRevocations.has(work.preparationId)
+        ||!work.terminalRequired||!sameDurable(work)||!equal(currencyOf(work),scope.currency)
+        ||!equal(work.checkpoint,scope.receipt.checkpoint)||!checkpointAssociation(scope.receipt.checkpoint)
+        ||pointer?.preparationId!==work.preparationId||pointer.credentialSha256!==work.credentialSha256) {
+        return 'INPUT_TERMINAL_STORED_WORK_CHANGED'
+      }
+      return undefined
+    }
+    const terminal=completion?createRoleplayInputCompletion({sessionId:sid,table,enqueue,
+      processor:completion,
+      current:()=>hot?.checkpoint&&hot.terminalRequired&&hot.attempt?.prepared&&!hot.stop&&!revoked&&live
+        ? {currency:currencyOf(hot),checkpoint:hot.checkpoint,
+          ...(hot.transition?{transition:clone(hot.transition) as unknown as Record<string,unknown>}:{})}:undefined,
+      checkOriginal:()=>!hot?'INPUT_NO_CURRENT_CLAIM':baseCurrency(hot),checkStored:terminalStored,
+      nativeCurrent:receipt=>{
+        const found=agent.lookupInputCompletion()
+        return found.status==='pending'&&equal(found.receipt,receipt)&&equal(found.checkpoint,receipt.checkpoint)
+      },
+    }):undefined
+    if(terminal)terminalOwners.set(sid,terminal)
     const continuation = createRoleplayInputContinuation({
       current:()=>hot?.checkpoint&&hot.attempt?.prepared&&hot.attempt.snapshot&&!hot.transition
         ? {currency:currencyOf(hot),checkpoint:hot.checkpoint}:undefined,
@@ -333,6 +487,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         || notice.preparation && equal(hot.preparation, notice.preparation)
         || notice.refs.some(ref => hot!.refs.some(owned => equal(ref, owned))))
       if (hot && matchesHot) {
+        terminal?.revoke()
         continuation.close()
         revoked = true
         hot.stop = {status: notice.refsCode ? 'unknown' : 'terminal', notice: clone(notice), ...(notice.refsCode ? {code: notice.refsCode} : {})}
@@ -377,6 +532,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     const onBlocked = (notice: NativeInputBlocked) => {
       if (!hot || !continuation.ownsRefs(notice.refs)&&!notice.refs.some(ref => hot!.refs.some(owned => equal(ref, owned)))) return
       continuation.close()
+      terminal?.revoke()
       revoked = true
       pendingRevocations.add(hot.preparationId)
       hot.status = 'unknown'
@@ -409,14 +565,22 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           if (table.get(workKey(sid, proposal.refs)) || previous.some(work => work.refs.some(ref => proposal.refs.some(item => equal(ref, item))))) {
             return blocked('INPUT_EXISTING_WORK_UNKNOWN')
           }
-          const identity = {schemaVersion: 2 as const, namespace: ROLEPLAY_INPUT_NAMESPACE, sessionId: sid,
-            branchId: sid, preparationId: randomUUID(), receiptGeneration: Math.max(0, ...previous.map(work => work.receiptGeneration)) + 1,
-            refs: clone(proposal.refs)} as const
-          const credentialSha256 = digest(identity)
+          const terminalGate=readTerminalAdmissionGate(sid,previous)
+          if(terminalGate.kind==='blocked')return terminalGate
           const actualSource = observeExact(agent.session)
+          // The fixed installed Harness may still advertise admission v2
+          // without completed-work support. Fail before acquiring numerical
+          // input authority rather than silently omitting its terminal gate.
+          if(completion&&actualSource.kind==='story'&&actualSource.headRef
+            &&typeof agent.lookupInputCompletion!=='function')return blocked('INPUT_COMPLETION_CAPABILITY_MISSING')
           const inputSource: InputObservation = actualSource.kind !== 'legacy'
             && !proposal.messages.some(message => message.source?.kind === 'user')
             ? {kind: 'management', sourceSha256: actualSource.sourceSha256, reason: 'INTERNAL_NATIVE_INPUT'} : actualSource
+          const terminalRequired=completion&&inputSource.kind==='story'&&inputSource.headRef?true:undefined
+          const identity = {schemaVersion: 2 as const, namespace: ROLEPLAY_INPUT_NAMESPACE, sessionId: sid,
+            branchId: sid, preparationId: randomUUID(), receiptGeneration: Math.max(0, ...previous.map(work => work.receiptGeneration)) + 1,
+            refs: clone(proposal.refs),...(terminalRequired?{terminalRequired:true as const}:{})} as const
+          const credentialSha256 = digest(identity)
           const work: Work = {...identity, credentialSha256, preparation: {schemaVersion: 1,
             namespace: ROLEPLAY_INPUT_NAMESPACE, preparationKeySha256: digest({sessionId: sid, preparationId: identity.preparationId}),
             credentialSha256}, status: 'created', source: inputSource, attemptGeneration: 0}
@@ -424,12 +588,13 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           hot = work; revoked = false; claim = undefined; currentStep = undefined; currentLease = undefined
           try {
             await save(work)
-            if (signal.aborted || revoked || !live) return blocked('INPUT_PERMISSION_REVOKED')
+            if (signal.aborted || revoked || !live) return refuseUnclaimed(work,'INPUT_PERMISSION_REVOKED')
             await table.put(currentKey(sid), {schemaVersion: 2, preparationId: work.preparationId, credentialSha256})
-            if (signal.aborted || revoked || baseCurrency(work)) return blocked('INPUT_PERMISSION_REVOKED')
+            if (signal.aborted || revoked || baseCurrency(work)) return refuseUnclaimed(work,'INPUT_PERMISSION_REVOKED')
             return {kind: 'allow' as const, identity: work, preparation: clone(work.preparation),
-              ...(work.source.kind==='story'?{ownedContinuations:true as const}:{})}
-          } catch (error) {revoked = true; report(error); return blocked('INPUT_CREATION_WRITE_UNKNOWN')}
+              ...(work.source.kind==='story'?{ownedContinuations:true as const}:{}),
+              ...(work.terminalRequired?{completedWorkRequired:true as const}:{})}
+          } catch (error) {revoked = true; report(error); return refuseUnclaimed(work,'INPUT_CREATION_WRITE_UNKNOWN')}
         })
       },
       check(input) {
@@ -471,6 +636,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       },
       onStop: stop,
       onBlocked,
+      ...(terminal?{completedWork:terminal.complete}:{}),
     }
     const unregister = agent.registerInputAdmission(hook)
     const binding: RoleplayInputBinding = {
@@ -673,12 +839,16 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
               await persist()
             })
           },
-          delegateLegacy(proof: InputTransitionProof) {
+          delegateLegacy(proof: InputTransitionProof,merge?:InputLegacyMergeReference) {
             return enqueue(async () => {
               assertLease()
               const transition = work.transition!, actual = observeExact(agent.session)
               if (!['reserved', 'job-bound'].includes(transition.status) || !equal(proof, transition.reservation.proof)
                 || actual.kind !== 'legacy' || actual.reason !== 'LEGACY_SEMANTIC_IMPORT') fail('INPUT_LEGACY_DELEGATION_INVALID')
+              if(merge&&(transition.job||merge.schemaVersion!==1||merge.kind!=='semantic-merge-source'
+                ||!boundedId(merge.importId)||!sha(merge.normalizedSha256)))fail('INPUT_LEGACY_DELEGATION_INVALID')
+              if(!transition.job&&!merge)fail('INPUT_LEGACY_HANDOFF_MISSING')
+              if(merge)transition.legacyRecord=clone(merge)
               transition.status = 'legacy-delegated'
               work.source = actual
               work.attempt = {...work.attempt!, prepared: true}
@@ -746,6 +916,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           prepared: hot.attempt?.prepared === true, refs: clone(hot.refs), currency: binding.persistedCurrency()}
       },
       dispose() {
+        terminal?.dispose();terminalOwners.delete(sid)
         live = false; revoked = true; continuation.close(); currentStep = undefined; unregister(); owners.delete(agent)
         if (hot?.transition) reservationLeases.delete(hot.transition.reservation.reservationId)
         if (sessionOwners.get(sid) === agent) sessionOwners.delete(sid)
@@ -757,6 +928,22 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   }
   const api = {
     bind,
+    readTerminalAdmissionGate:(sessionId:string)=>readTerminalAdmissionGate(sessionId),
+    checkTerminalPermission(token:object,intent:MvuStateTerminalIntent):boolean {
+      return terminalOwners.get(intent.sessionId)?.checkPermission(token,intent)===true
+    },
+    /** Stored intent is a factual association, not a cold permission token. */
+    verifyTerminalIntent(intent:MvuStateTerminalIntent):boolean {
+      try {
+        const row=readInputCompletion(table,intent.sessionId,intent.preparationId)
+        const matches=records(intent.sessionId).filter(work=>work.preparationId===intent.preparationId)
+        if(!row||row.plan.kind!=='numerical'||!equal(row.plan.intent,intent)||matches.length!==1)return false
+        const work=matches[0]!
+        return work.terminalRequired===true&&equal(work.checkpoint,row.scope.receipt.checkpoint)
+          &&equal(currencyOfStored(work),row.scope.currency)&&equal(work.refs,row.scope.receipt.checkpoint.refs)
+          &&completion?.verifyStored(row.scope,intent)===true
+      } catch {return false}
+    },
     /** Driver inherits the actual chat reservation through exact job identity.
      * Cold handles can only record an already proven activation; they cannot
      * prepare a new switch, authorize ACK/story, wake or repeat the input. */

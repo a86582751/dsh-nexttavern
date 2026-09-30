@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/src/core/roleplay-core.ts; edit the TypeScript source.
-import { readProjectedStory } from './roleplay-message-view.js';
+import { readProjectedStory, projectStoryEvent } from './roleplay-message-view.js';
 import { keyOf, textOf, durableSeq, provenanceSeq, sha256, safeId, cloneRecord, recordSha256, readUserInfo, passthroughSchema, rollsSchema, } from './roleplay-data.js';
 import { eventsOf, sessionEventsIfReady, surfaceEvents, surfaceEntries, isCompletedTurnEnd, canonicalAssistantForTurn, recentWindowSince, roleplayWindowCutStartIndex, assertWorkspaceSession, } from './roleplay-context.js';
 import { decodeTaskSelection } from './tavern-task-primitives.js';
@@ -42,6 +42,9 @@ import { createChatCardSources } from './roleplay-chat-card-source.js';
 import { createChatCardNativeContext } from './roleplay-chat-card-context.js';
 import { createRoleplayOpeningSelection } from './roleplay-opening-selection.js';
 import { createRoleplayMvuOpening } from './roleplay-mvu-opening.js';
+import { createRoleplayMvuState } from './roleplay-mvu-state.js';
+import { createRoleplayMvuStoryCompletion } from './roleplay-mvu-story.js';
+import { prepareInputManagementReceipt, verifyInputManagementReceipt } from './roleplay-input-management.js';
 import { createRoleplayInputPreparation } from './roleplay-input-preparation.js';
 import { createRoleplayImportInputTransition } from './roleplay-input-import.js';
 import { registerOpeningRoutes } from './roleplay-opening-routes.js';
@@ -474,7 +477,13 @@ export async function apply(ctx, config = {}) {
         reconcileCanonicalPlayerVariants: (...args) => reconcileCanonicalPlayerVariants(...args),
         buildForkLookupIndex: (...args) => buildForkLookupIndex(...args),
         userValues: (...args) => userValues(...args),
-        selectedStatusRecord: (...args) => selectedStatusRecord(...args)
+        selectedStatusRecord: (...args) => selectedStatusRecord(...args),
+        readNumericalState: sessionId => {
+            const result = mvuState.readNumericalAuthority(sessionId);
+            if (result.kind !== 'ready')
+                throw new Error(`MVU_NUMERICAL_STATE_${result.code}`);
+            return result.snapshot;
+        },
     });
     // storage-domain get() returns an immutable logical snapshot.  Always clone
     // before preparing a changed record so a failed put cannot leak mutations.
@@ -716,8 +725,12 @@ export async function apply(ctx, config = {}) {
         cfg,
         DEFAULT_CONFIG
     });
-    const { runPhaseBC, isStale } = createRoleplayCompletion({
+    const { runPhaseBC, isStale, awaitOwnedCompletion } = createRoleplayCompletion({
         inputSnapshotCurrent,
+        isManagementInput: (session, turn) => {
+            const agent = taskAgents.get(session.id), current = agent && inputBindings.get(agent)?.current();
+            return current?.kind === 'management' && current.checkpoint?.actualTurn === turn;
+        },
         storyBranchIsActive,
         T,
         cloneBranchRecord,
@@ -930,6 +943,7 @@ export async function apply(ctx, config = {}) {
         return { user: user.name, user_gender: user.gender, char: String(cards[0]?.[1]?.name ?? '角色') };
     };
     const mvuOpening = createRoleplayMvuOpening({ tables: T, session: id => ctx.sessions.get(id),
+        readNumericalAuthority: id => mvuState.readNumericalAuthority(id),
         branchReady: id => ensureState(id).branchReady, importActiveKey, importRecordKey,
         withSourceLock: (id, work) => withImportLock(id, 'mvu-initialization', work),
         recordVersionsFor: id => recordVersionsFor({ id }),
@@ -1026,7 +1040,106 @@ export async function apply(ctx, config = {}) {
             }
         },
     });
-    inputOwner = createRoleplayInputPreparation({ table: T.branch,
+    const mvuState = createRoleplayMvuState({ table: T.status,
+        readGenesis: mvuOpening.readGenesis, withSourceLock: (id, work) => withImportLock(id, 'mvu-state', work),
+        verifyStoredIntent: intent => inputOwner?.verifyTerminalIntent(intent) === true,
+        checkPermission: (token, intent) => inputOwner?.checkTerminalPermission(token, intent) === true });
+    const completion = createRoleplayMvuStoryCompletion({ table: T.branch, state: mvuState, awaitOwnedCompletion,
+        sourceCurrent: (sid, sourceSha256) => mvuOpening.readSourceSha256(sid) === sourceSha256,
+        readCanonical: (sid, turn) => {
+            const session = ctx.sessions.get(sid), body = session && canonicalAssistantForTurn(session, turn);
+            const message = body?.data?.message;
+            return body && message && typeof message.id === 'string' ? { seq: body.seq, messageId: message.id,
+                versionSha256: recordSha256(message), narrative: textOf(message.content) } : undefined;
+        },
+        readHistoricalCanonical: (sid, seq, turn) => {
+            const session = ctx.sessions.get(sid), original = session && eventsOf(session).find(event => event.seq === seq);
+            if (!session || original?.type !== 'assistant/message' || original.data?.turn !== turn)
+                return;
+            const selected = projectStoryEvent(session, original), message = selected.data?.message;
+            return message && typeof message.id === 'string' ? { seq: original.seq, messageId: message.id,
+                versionSha256: recordSha256(message), narrative: textOf(message.content) } : undefined;
+        },
+        verifyNative: (scope) => {
+            const receipt = scope.receipt, checkpoint = receipt.checkpoint, sid = checkpoint.sessionId;
+            const session = ctx.sessions.get(sid), agent = (ctx.agents?.list() ?? []).find(agent => agent.session.id === sid);
+            const owned = agent && ctx.get('agentLoop')?.getInputAdmissionAgent(agent);
+            if (!session || owned !== agent || !owned || receipt.flushed !== true || receipt.schemaVersion !== 1)
+                return false;
+            const capability = owned;
+            if (typeof capability.lookupInputOwnership !== 'function')
+                return false;
+            const history = eventsOf(session), end = history.find(event => event.seq === receipt.turnEndSeq);
+            const start = history.find(event => event.seq === checkpoint.startSeq);
+            const marker = start?.data?.['nativeInputLink'];
+            if (!end || end.type !== 'turn/end' || end.data?.turn !== checkpoint.actualTurn || end.data.reason?.kind !== 'completed'
+                || recordSha256(end) !== receipt.turnEndSha256 || history.filter(event => event.type === 'turn/end'
+                && event.data?.turn === checkpoint.actualTurn).length !== 1 || start?.type !== 'turn/start'
+                || start.data?.turn !== checkpoint.actualTurn || marker?.mode !== 'claim'
+                || recordSha256(marker.preparation) !== recordSha256(checkpoint.preparation)
+                || recordSha256(marker.refs) !== recordSha256(checkpoint.refs) || marker.workSha256 !== checkpoint.workSha256
+                || receipt.admittedUsers.length !== checkpoint.refs.length)
+                return false;
+            return checkpoint.refs.every((ref, index) => {
+                const actual = capability.lookupInputOwnership(ref), admitted = receipt.admittedUsers[index];
+                return !!admitted && recordSha256(admitted.ref) === recordSha256(ref) && actual.status === 'admitted'
+                    && actual.turn === checkpoint.actualTurn && actual.userSeq === admitted.userSeq
+                    && actual.userSeq > checkpoint.firstStepStartSeq && actual.userSeq < receipt.turnEndSeq;
+            });
+        },
+        prepareManagement: prepareInputManagementReceipt,
+        verifyManagement: (scope, descriptor) => verifyInputManagementReceipt({
+            job: id => T.branch.get(cardWorkflowKey(id)),
+            imported: (sid, id) => T.branch.get(importRecordKey(sid, id)),
+            pointer: sid => T.branch.get(importActiveKey(sid)),
+            row: (name, key) => {
+                const tables = { cards: T.cards, worldbook: T.worldbook,
+                    rules: T.rules, status: T.status, opening: T.opening };
+                if (!tables[name])
+                    throw new Error('INPUT_ACTIVATION_TABLE_INVALID');
+                return tables[name].get(key);
+            },
+            sourceSha256: mvuOpening.readSourceSha256,
+            chatProof: (sid, requestId) => {
+                const session = ctx.sessions.get(sid);
+                if (!session)
+                    return;
+                assertWorkspaceSession(session);
+                return chatAttachmentSources.readChatProof(session, requestId) ?? undefined;
+            },
+            chatSourceCurrent: (sid, requestId) => {
+                const session = ctx.sessions.get(sid);
+                if (!session)
+                    return false;
+                try {
+                    assertWorkspaceSession(session);
+                    chatCardSources.assertCurrent(session, requestId);
+                    return !!chatAttachmentSources.readChatProvenance(session, requestId);
+                }
+                catch {
+                    return false;
+                }
+            },
+            callMatches: (sid, callId, turn) => {
+                const session = ctx.sessions.get(sid), calls = session ? eventsOf(session).filter(event => event.type === 'tool/call'
+                    && event.data?.callId === callId) : [];
+                return calls.length === 1 && calls[0]?.data?.name === 'rp_card_import_begin' && calls[0]?.data?.turn === turn;
+            },
+            callRejected: (sid, callId, turn) => {
+                const session = ctx.sessions.get(sid), results = session ? eventsOf(session).filter(event => event.type === 'tool/result'
+                    && event.data?.turn === turn && event.data?.message?.toolCallId === callId) : [];
+                if (results.length !== 1)
+                    return false;
+                try {
+                    const result = JSON.parse(textOf(results[0].data?.message?.content));
+                    return result.ok === false && result.inputPermissionUnknown !== true && typeof result.error === 'string' && !!result.error;
+                }
+                catch {
+                    return false;
+                }
+            },
+        }, scope, descriptor), withSourceLock: (id, work) => withImportLock(id, 'input-management-terminal', work), });
+    inputOwner = createRoleplayInputPreparation({ table: T.branch, completion,
         observe: (session) => mvuOpening.readInputObservation(session.id),
         onError: error => ctx.logger?.warn?.(`roleplay: input permission write is unknown: ${String(error)}`) });
     ctx.effect(() => () => {

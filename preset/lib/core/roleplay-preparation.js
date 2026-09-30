@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { keyOf, sha256, recordSha256, textOf, provenanceSeq, estimateTokens, durableSeq, stableJson, cloneRecord } from './roleplay-data.js';
 import { eventsOf, surfaceEvents, surfaceEntries, lastSeq, visibleCompactionCheckpoint, roleplayWindowCutStartIndex } from './roleplay-context.js';
 import { fenceCardContent } from './tavern-card.js';
+import { activeOpeningSource } from './roleplay-import.js';
 import { internalTaskSeqs, isInlinePending } from './tavern-tasks.js';
+import { nativeMvuAuthorRules } from './roleplay-author-context.js';
 /** Check the exact row written by Phase A, including its original input basis.
  * A valid input credential alone cannot prove that a referenced snapshot still
  * contains the bytes used by an already running task. */
@@ -19,6 +21,25 @@ export function inputSnapshotReferenceCurrent(table, sessionId, currency) {
 }
 export function createRoleplayPreparation(deps) {
     const { T, ctx, assertStoryBranchActive, cfg, svc, ensureBranch, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userValues, selectedStatusRecord } = deps;
+    function numericalStateFor(sessionId, payload) {
+        const input = payload.inputPreparation;
+        if (input?.source.kind !== 'story' || input.source.headRef?.kind !== 'numerical-head')
+            return undefined;
+        const state = deps.readNumericalState?.(sessionId);
+        if (!state)
+            throw new Error('MVU_NUMERICAL_STATE_UNAVAILABLE');
+        const frozen = structuredClone(state);
+        const { stateSnapshotSha256, ...descriptor } = frozen;
+        if (frozen.schemaVersion !== 1 || frozen.encoding !== 'native-mvu-state-snapshot-v1'
+            || frozen.sessionId !== sessionId || frozen.sourceSha256 !== input.source.sourceSha256
+            || frozen.headSha256 !== input.source.headRef.sha256
+            || frozen.headSha256 !== recordSha256(frozen.currentHead)
+            || frozen.valuesSha256 !== recordSha256(frozen.values)
+            || frozen.valuesSha256 !== frozen.currentHead.valuesSha256 || frozen.revision !== frozen.currentHead.revision
+            || stateSnapshotSha256 !== recordSha256(descriptor))
+            throw new Error('MVU_NUMERICAL_STATE_MISMATCH');
+        return frozen;
+    }
     const contextWindowKey = (branchId) => keyOf(branchId, 'context-window');
     const contextWindowFor = (session) => T.branch.get(contextWindowKey(session.id)) ?? {
         windowNumber: 1,
@@ -304,8 +325,11 @@ export function createRoleplayPreparation(deps) {
                 throw error;
             }
         }
+        payload.assertInputCurrent?.();
+        const numericalState = numericalStateFor(branchId, payload);
         const snapshot = {
             ...(payload.inputPreparation ? { inputPreparation: payload.inputPreparation } : {}),
+            ...(numericalState ? { numericalState } : {}),
             branchId,
             agent: payload.agent,
             turnId: payload.turn,
@@ -342,6 +366,13 @@ export function createRoleplayPreparation(deps) {
             .replace(/\{\{\s*(?:user|user_name)\s*\}\}/gi, values.name)
             .replace(/\{\{\s*(?:user[_-]gender|userGender)\s*\}\}/gi, values.gender);
         const anchors = [];
+        if (numericalState) {
+            // Every numerical round owns a full base. Never refer back to a visible
+            // anchor or interpolate user macros inside deterministic JSON values.
+            anchors.push(contextMessage('native-mvu-state', { mode: 'full',
+                sourceSha256: numericalState.sourceSha256, headSha256: numericalState.headSha256,
+                stateSnapshotSha256: numericalState.stateSnapshotSha256, revision: numericalState.revision }, `[原生数值状态·本轮完整版本 ${numericalState.stateSnapshotSha256}]\n${nativeMvuAuthorRules}\n完整 JSON：\n${JSON.stringify(numericalState)}`));
+        }
         const renderedNotes = renderContextText(directorNotes?.text);
         const notesHash = sha256(stableJson({ text: renderedNotes, sourceKeys: directorNotes?.sourceKeys ?? [], sourceSeqs: directorNotes?.sourceSeqs ?? [] }));
         const priorNotes = visibleAnchor('director-notes', 'notesHash', notesHash);
@@ -361,16 +392,25 @@ export function createRoleplayPreparation(deps) {
         // 要求模型输出第一幕（原文或适度润色），而不是跳过开场直接开下一幕
         const storyStarted = surfaceEntries(session).some((entry) => entry.kind === 'assistant');
         if (!storyStarted) {
-            const opening = T.opening.get(keyOf(branchId, 'scene'));
-            if (opening?.text) {
+            const active = activeOpeningSource(T.branch, branchId);
+            const selected = T.branch.get(keyOf(branchId, 'opening-reference'));
+            const selectedText = selected?.schemaVersion === 1 && active
+                && selected.importId === active.importId
+                && selected.normalizedSha256 === active.normalizedSha256
+                && selected.transactionId === active.transactionId
+                && typeof selected.renderedText === 'string'
+                && sha256(selected.renderedText) === selected.renderedSha256
+                ? selected.renderedText : null;
+            const openingText = selectedText ?? T.opening.get(keyOf(branchId, 'scene'))?.text;
+            if (openingText) {
                 const regenerateOpening = !!payload.agent.programmaticGeneration;
-                sections.push(`[初始剧情]（分类写入的作者开场剧情）\n${fenceCardContent(opening.text, 'opening')}\n\n【本轮要求】${regenerateOpening
+                sections.push(`[初始剧情]（分类写入的作者开场剧情）\n${fenceCardContent(openingText, 'opening')}\n\n【本轮要求】${regenerateOpening
                     ? '以作者原始开场为背景与风格参考，创作一段新的第一幕；不要照抄原文，不要假设玩家已经输入。'
                     : '请完整输出作者原始第一幕，不提前续写；'}围栏符号和资料说明不属于正文。`);
             }
         }
-        // 状态栏·当前：把上一轮独立生成的状态栏拼接回上下文（模型据此延续数值与选项；
-        // 每轮正文后状态栏会单独更新，正文中不要复述状态栏内容）
+        // Narrative display and options never substitute for the independent
+        // numerical base frozen above; maintenance updates this display separately.
         const statusPanelRec = selectedStatusRecord(session);
         const statusPanel = statusPanelRec?.stale ? null : statusPanelRec?.panel;
         if (statusPanel && (statusPanel.rawText || (statusPanel.fields ?? []).length || (statusPanel.options ?? []).length)) {
@@ -385,7 +425,7 @@ export function createRoleplayPreparation(deps) {
             if ((statusPanel.options ?? []).length) {
                 lines.push('当前选项（用户可点击填入输入框）：' + statusPanel.options.map((o) => (o.heart ? '❤️' : '') + o.label).join(' / '));
             }
-            sections.push(`[状态栏·当前]（上一轮状态；按状态栏设定在正文后单独更新）\n${lines.join('\n')}`);
+            sections.push(`[状态栏·当前]（上一轮叙事展示，不构成原生数值状态权威；按状态栏设定在正文后单独更新）\n${lines.join('\n')}`);
         }
         const styles = (mem?.styleNotes ?? []).map((s) => `${s.heading}：${s.text}`).join('\n');
         if (styles.trim())

@@ -4,11 +4,13 @@ import { eventsOf, surfaceEvents, surfaceEntries, lastSeq, visibleCompactionChec
 import { fenceCardContent } from './tavern-card.js'
 import { activeOpeningSource } from './roleplay-import.js'
 import { internalTaskSeqs, isInlinePending } from './tavern-tasks.js'
+import {nativeMvuAuthorRules} from './roleplay-author-context.js'
 import type { PreparationDependencies, PreparationSession, ContextWindow, WindowMetadata, MemoryPreparation, PreparationPayload, PreparationWriteState, PreparationSnapshot } from './roleplay-preparation-types.js'
 import type { ContextMessage } from './roleplay-context.js'
 import type { TaskAgent } from './tavern-task-types.js'
 import type { HostSession } from './roleplay-task-host-types.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
+import type {MvuNumericalSnapshot} from './roleplay-mvu-state.js'
 
 /** Check the exact row written by Phase A, including its original input basis.
  * A valid input credential alone cannot prove that a referenced snapshot still
@@ -25,6 +27,22 @@ export function inputSnapshotReferenceCurrent(table:{get(key:string):unknown},se
 
 export function createRoleplayPreparation(deps: PreparationDependencies) {
   const { T, ctx, assertStoryBranchActive, cfg, svc, ensureBranch, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userValues, selectedStatusRecord } = deps
+  function numericalStateFor(sessionId: string, payload: PreparationPayload): MvuNumericalSnapshot | undefined {
+    const input = payload.inputPreparation
+    if (input?.source.kind !== 'story' || input.source.headRef?.kind !== 'numerical-head') return undefined
+    const state = deps.readNumericalState?.(sessionId)
+    if (!state) throw new Error('MVU_NUMERICAL_STATE_UNAVAILABLE')
+    const frozen = structuredClone(state)
+    const {stateSnapshotSha256, ...descriptor} = frozen
+    if (frozen.schemaVersion !== 1 || frozen.encoding !== 'native-mvu-state-snapshot-v1'
+      || frozen.sessionId !== sessionId || frozen.sourceSha256 !== input.source.sourceSha256
+      || frozen.headSha256 !== input.source.headRef.sha256
+      || frozen.headSha256 !== recordSha256(frozen.currentHead)
+      || frozen.valuesSha256 !== recordSha256(frozen.values)
+      || frozen.valuesSha256 !== frozen.currentHead.valuesSha256 || frozen.revision !== frozen.currentHead.revision
+      || stateSnapshotSha256 !== recordSha256(descriptor)) throw new Error('MVU_NUMERICAL_STATE_MISMATCH')
+    return frozen
+  }
   const contextWindowKey = (branchId: string) => keyOf(branchId, 'context-window')
   const contextWindowFor = (session: {id: string}): ContextWindow => T.branch.get(contextWindowKey(session.id)) as ContextWindow | null | undefined ?? {
     windowNumber: 1,
@@ -302,8 +320,11 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
         throw error
       }
     }
+    payload.assertInputCurrent?.()
+    const numericalState = numericalStateFor(branchId, payload)
     const snapshot: PreparationSnapshot = {
       ...(payload.inputPreparation ? {inputPreparation:payload.inputPreparation} : {}),
+      ...(numericalState ? {numericalState} : {}),
       branchId,
       agent: payload.agent,
       turnId: payload.turn,
@@ -341,6 +362,14 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
       .replace(/\{\{\s*(?:user|user_name)\s*\}\}/gi, values.name)
       .replace(/\{\{\s*(?:user[_-]gender|userGender)\s*\}\}/gi, values.gender)
     const anchors = []
+    if (numericalState) {
+      // Every numerical round owns a full base. Never refer back to a visible
+      // anchor or interpolate user macros inside deterministic JSON values.
+      anchors.push(contextMessage('native-mvu-state', {mode: 'full',
+        sourceSha256: numericalState.sourceSha256, headSha256: numericalState.headSha256,
+        stateSnapshotSha256: numericalState.stateSnapshotSha256, revision: numericalState.revision},
+      `[原生数值状态·本轮完整版本 ${numericalState.stateSnapshotSha256}]\n${nativeMvuAuthorRules}\n完整 JSON：\n${JSON.stringify(numericalState)}`))
+    }
     const renderedNotes = renderContextText(directorNotes?.text)
     const notesHash = sha256(stableJson({ text: renderedNotes, sourceKeys: directorNotes?.sourceKeys ?? [], sourceSeqs: directorNotes?.sourceSeqs ?? [] }))
     const priorNotes = visibleAnchor('director-notes', 'notesHash', notesHash)
@@ -380,8 +409,8 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
       }
     }
 
-    // 状态栏·当前：把上一轮独立生成的状态栏拼接回上下文（模型据此延续数值与选项；
-    // 每轮正文后状态栏会单独更新，正文中不要复述状态栏内容）
+    // Narrative display and options never substitute for the independent
+    // numerical base frozen above; maintenance updates this display separately.
     const statusPanelRec = selectedStatusRecord(session)
     const statusPanel = statusPanelRec?.stale ? null : statusPanelRec?.panel
     if (statusPanel && (statusPanel.rawText || (statusPanel.fields ?? []).length || (statusPanel.options ?? []).length)) {
@@ -394,7 +423,7 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
       if ((statusPanel.options ?? []).length) {
         lines.push('当前选项（用户可点击填入输入框）：' + statusPanel.options.map((o) => (o.heart ? '❤️' : '') + o.label).join(' / '))
       }
-      sections.push(`[状态栏·当前]（上一轮状态；按状态栏设定在正文后单独更新）\n${lines.join('\n')}`)
+      sections.push(`[状态栏·当前]（上一轮叙事展示，不构成原生数值状态权威；按状态栏设定在正文后单独更新）\n${lines.join('\n')}`)
     }
 
     const styles = (mem?.styleNotes ?? []).map((s) => `${s.heading}：${s.text}`).join('\n')

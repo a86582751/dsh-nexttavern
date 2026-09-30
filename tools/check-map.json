@@ -4871,6 +4871,46 @@
       "source": "lib/core/roleplay-mvu-update.js"
     },
     {
+      "id": "roleplay-input-terminal-typescript",
+      "source": "src/core/roleplay-input-terminal.ts"
+    },
+    {
+      "id": "roleplay-input-terminal-js",
+      "source": "lib/core/roleplay-input-terminal.js"
+    },
+    {
+      "id": "roleplay-mvu-state-typescript",
+      "source": "src/core/roleplay-mvu-state.ts"
+    },
+    {
+      "id": "roleplay-mvu-state-js",
+      "source": "lib/core/roleplay-mvu-state.js"
+    },
+    {
+      "id": "roleplay-input-completion-typescript",
+      "source": "src/core/roleplay-input-completion.ts"
+    },
+    {
+      "id": "roleplay-input-completion-js",
+      "source": "lib/core/roleplay-input-completion.js"
+    },
+    {
+      "id": "roleplay-input-management-typescript",
+      "source": "src/core/roleplay-input-management.ts"
+    },
+    {
+      "id": "roleplay-input-management-js",
+      "source": "lib/core/roleplay-input-management.js"
+    },
+    {
+      "id": "roleplay-mvu-story-typescript",
+      "source": "src/core/roleplay-mvu-story.ts"
+    },
+    {
+      "id": "roleplay-mvu-story-js",
+      "source": "lib/core/roleplay-mvu-story.js"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -5747,7 +5787,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7025,7 +7068,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7119,7 +7165,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7259,7 +7308,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7342,7 +7394,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7440,7 +7495,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7521,7 +7579,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7616,7 +7677,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7691,7 +7755,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7778,7 +7845,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7850,7 +7920,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -7926,7 +7999,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -8003,7 +8079,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -8081,7 +8160,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -8196,7 +8278,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -8312,7 +8397,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -8383,7 +8471,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -8455,7 +8546,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -8911,7 +9005,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -9028,7 +9125,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -9097,7 +9197,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -9167,7 +9270,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -9238,7 +9344,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -9311,7 +9420,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -9606,7 +9718,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -9855,7 +9970,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -9926,7 +10044,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -11520,7 +11641,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -11593,7 +11717,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -11662,7 +11789,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -11732,7 +11862,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -12325,7 +12458,12 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-management.ts",
+        "src/core/roleplay-mvu-story.ts"
       ]
     },
     {
@@ -12503,7 +12641,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -12975,7 +13116,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -13068,7 +13212,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -18840,7 +18987,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -19191,7 +19341,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -19272,7 +19425,10 @@
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
         "src/core/roleplay-input-continuation.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -19352,7 +19508,10 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "development/agent-loop/src/input-completion.ts"
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-input-completion.ts"
       ]
     },
     {
@@ -19460,6 +19619,464 @@
       "kind": "typescript-module",
       "id": "roleplay-mvu-update-js-build",
       "builder": "tools/build-modules.mjs",
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-input-terminal-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-input-terminal-js",
+      "entry": "src/core/roleplay-input-terminal.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-input-terminal.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-basis.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-native.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/session/src/index.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/assembler.ts",
+        "development/session/src/types.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/tool-history.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/constants.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update.ts"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-mvu-state-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-mvu-state-js",
+      "entry": "src/core/roleplay-mvu-state.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-mvu-state.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-basis.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-native.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/session/src/index.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/assembler.ts",
+        "development/session/src/types.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/tool-history.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/constants.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-mvu-update.ts"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-input-completion-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-input-completion-js",
+      "entry": "src/core/roleplay-input-completion.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-input-completion.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-basis.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-native.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/session/src/index.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/assembler.ts",
+        "development/session/src/types.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/tool-history.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/constants.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update.ts"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-input-management-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-input-management-js",
+      "entry": "src/core/roleplay-input-management.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-input-management.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-basis.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-native.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/session/src/index.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/assembler.ts",
+        "development/session/src/types.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/tool-history.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/constants.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update.ts"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-mvu-story-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-mvu-story-js",
+      "entry": "src/core/roleplay-mvu-story.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-mvu-story.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-basis.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-native.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/session/src/index.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/assembler.ts",
+        "development/session/src/types.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/tool-history.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/constants.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-preparation.ts",
+        "src/core/roleplay-import.ts",
+        "src/core/card-export.ts",
+        "src/core/card-export-projection.ts",
+        "src/status-template.ts",
+        "src/core/roleplay-author-context.ts",
+        "src/core/bounded-regex.ts",
+        "src/core/roleplay-author-context-types.ts",
+        "src/core/narrative-presets.ts",
+        "src/core/narrative-preset-default.ts",
+        "src/core/narrative-preset-catalog.ts",
+        "src/core/narrative-styles/light-novel.ts",
+        "src/core/narrative-styles/otome.ts",
+        "src/core/narrative-styles/cosmic-romance.ts",
+        "src/core/narrative-styles/jrpg.ts",
+        "src/core/narrative-styles/cinematic.ts",
+        "src/core/narrative-styles/annalistic.ts",
+        "src/core/narrative-styles/minimal.ts",
+        "src/core/narrative-styles/delicate.ts",
+        "src/core/narrative-styles/fantasy.ts",
+        "src/core/narrative-styles/horror.ts",
+        "src/core/narrative-styles/luxun.ts",
+        "src/core/narrative-styles/lyrical.ts",
+        "src/core/narrative-styles/comedy.ts",
+        "src/core/narrative-styles/classical.ts",
+        "src/core/roleplay-author-tools-types.ts",
+        "src/core/roleplay-preparation-types.ts",
+        "src/core/roleplay-status-types.ts",
+        "src/memory/memory-history.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-task-host-types.ts",
+        "src/core/character-cluster.ts",
+        "src/core/character-cluster-settings.ts",
+        "src/core/character-cluster-projection.ts",
+        "src/core/tavern-conversations.ts"
+      ],
       "typeContext": "default"
     }
   ],

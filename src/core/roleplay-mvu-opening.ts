@@ -10,6 +10,7 @@ import type {OpeningCatalog, OpeningIntent, OpeningSelectionDeps} from './rolepl
 import type {ReadBranchSession, WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {TavernOpeningContext} from './tavern-card.js'
 import type {InputObservation} from './roleplay-input-preparation.js'
+import type {MvuNumericalAuthority,VerifiedMvuGenesis} from './roleplay-mvu-state.js'
 
 interface ReadTable {get(key:string):unknown;entries():Iterable<[string,unknown]>}
 interface WritableTable extends ReadTable {put(key:string,value:unknown):Promise<unknown>}
@@ -29,6 +30,7 @@ export interface MvuOpeningDependencies {
   catalog(sessionId:string):OpeningCatalog
   readOpeningIntent?(source:OpeningCatalog['source']):OpeningIntent | null
   legacyImportPending?(sessionId:string):boolean
+  readNumericalAuthority?(sessionId:string):MvuNumericalAuthority
 }
 const same = (a:unknown,b:unknown) => recordSha256(a) === recordSha256(b)
 
@@ -97,7 +99,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       } catch {return false}
     },
   }
-  function readInputObservation(sessionId:string):InputObservation {
+  function inputSource(sessionId:string) {
     const pointer = deps.tables.branch.get(deps.importActiveKey(sessionId)) as Record<string,unknown> | undefined
     const owner = typeof pointer?.['sourceRecordSessionId'] === 'string' ? pointer['sourceRecordSessionId'] : sessionId
     const imported = typeof pointer?.['importId'] === 'string'
@@ -113,6 +115,19 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       statusSpec:recordSha256(deps.tables.status.get(`${sessionId}__spec`)),
       opening:recordSha256(deps.tables.opening.get(`${sessionId}__scene`)),
       openingContext:pointer ? deps.openingContext(sessionId).bindingSha256 : null})
+    return {pointer,imported,sourceSha256}
+  }
+  function readGenesis(sessionId:string):VerifiedMvuGenesis|undefined {
+    try {
+      const catalog=deps.catalog(sessionId),intent=deps.readOpeningIntent?.(catalog.source)
+      if(intent?.schemaVersion!==4||intent.status!=='completed'||intent.mode!=='native-json'||!intent.initialization)return
+      const ready=initialization.read(intent.initialization)
+      if(ready.kind!=='ready')return
+      return {sessionId,sourceSha256:inputSource(sessionId).sourceSha256,initEvent:ready.event,initHead:ready.head}
+    } catch {return undefined}
+  }
+  function readInputObservation(sessionId:string):InputObservation {
+    const {pointer,imported,sourceSha256}=inputSource(sessionId)
     const management = (reason:string):InputObservation => ({kind:'management',sourceSha256,reason})
     if (deps.legacyImportPending?.(sessionId)) return {kind:'legacy',sourceSha256,reason:'LEGACY_SEMANTIC_IMPORT'}
     if (!pointer) {
@@ -138,6 +153,11 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       if (selectedIntent.schemaVersion !== 4) return {kind:'legacy',sourceSha256,reason:'LEGACY_OPENING_SCHEMA'}
       if (selectedIntent.status !== 'completed' || !selectedIntent.nativeReceipt) return management('OPENING_NOT_READY')
       if (selectedIntent.mode === 'native-json' && selectedIntent.initialization) {
+        if(deps.readNumericalAuthority) {
+          const authority=deps.readNumericalAuthority(sessionId)
+          return authority.kind==='ready'?{kind:'story',sourceSha256,
+            headRef:{kind:'numerical-head',sha256:authority.snapshot.headSha256}}:management(authority.code)
+        }
         const readiness = initialization.read(selectedIntent.initialization)
         return readiness.kind === 'ready' ? {kind:'story',sourceSha256,
           headRef:{kind:'numerical-head',sha256:recordSha256(readiness.head)}} : management(readiness.code)
@@ -159,5 +179,6 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     } catch {return management('SOURCE_OBSERVATION_UNKNOWN')}
   }
   return {callbacks,sourceCurrent,readInitialization:initialization.read,nativeCurrent:native.current,
-    readNative:(identity:MvuOpeningIdentity,turn?:number) => native.read(identity,turn),readInputObservation}
+    readNative:(identity:MvuOpeningIdentity,turn?:number) => native.read(identity,turn),readInputObservation,
+    readGenesis,readSourceSha256:(sessionId:string)=>inputSource(sessionId).sourceSha256}
 }

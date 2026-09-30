@@ -4534,6 +4534,66 @@
         "compiler"
       ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-input-terminal.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-state.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-input-completion.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-preparation-numerical.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }
