@@ -84,17 +84,38 @@ function keys(value, expected) {
         fail('RECORD_INVALID');
 }
 function rootValid(root) {
-    keys(root, ['initEventId', 'initEventSha256', 'initHeadSha256', 'planSha256']);
-    if (!Object.values(root).every(hash))
-        fail('ROOT_INVALID');
+    if ('encoding' in root) {
+        keys(root, ['schemaVersion', 'encoding', 'derivedEventId', 'derivedEventSha256', 'derivedHeadSha256', 'basisSha256']);
+        if (root.schemaVersion !== 1 || root.encoding !== 'native-mvu-derived-state-root-v1'
+            || ![root.derivedEventId, root.derivedEventSha256, root.derivedHeadSha256, root.basisSha256].every(hash))
+            fail('ROOT_INVALID');
+    }
+    else {
+        keys(root, ['initEventId', 'initEventSha256', 'initHeadSha256', 'planSha256']);
+        if (!Object.values(root).every(hash))
+            fail('ROOT_INVALID');
+    }
 }
 function headValid(head, sid, source, root) {
     if (head.encoding === 'mvu-programmatic-opening-head-v1') {
+        if ('encoding' in root)
+            fail('HEAD_INVALID');
         keys(head, ['schemaVersion', 'encoding', 'sessionId', 'eventId', 'revision', 'eventSha256', 'planSha256', 'valuesSha256']);
         if (head.schemaVersion !== 1 || head.revision !== 1 || head.sessionId !== sid
             || head.eventId !== root.initEventId || head.eventSha256 !== root.initEventSha256
             || head.planSha256 !== root.planSha256 || !hash(head.valuesSha256)
             || recordSha256(head) !== root.initHeadSha256)
+            fail('HEAD_INVALID');
+    }
+    else if (head.encoding === 'native-mvu-derived-genesis-head-v1') {
+        if (!('encoding' in root))
+            fail('HEAD_INVALID');
+        keys(head, ['schemaVersion', 'encoding', 'sessionId', 'sourceSha256', 'revision',
+            'eventId', 'eventSha256', 'basisSha256', 'valuesSha256']);
+        if (head.schemaVersion !== 1 || head.revision !== 1 || head.sessionId !== sid || head.sourceSha256 !== source
+            || head.eventId !== root.derivedEventId || head.eventSha256 !== root.derivedEventSha256
+            || head.basisSha256 !== root.basisSha256 || !hash(head.valuesSha256)
+            || recordSha256(head) !== root.derivedHeadSha256)
             fail('HEAD_INVALID');
     }
     else {
@@ -196,7 +217,30 @@ export function createRoleplayMvuState(deps) {
         const supplied = deps.readGenesis(sid);
         if (!supplied)
             fail('GENESIS_UNPROVEN');
-        const g = cloneJson(supplied), event = g.initEvent, head = g.initHead;
+        const g = cloneJson(supplied);
+        if ('derivedEvent' in g) {
+            keys(g, ['sessionId', 'sourceSha256', 'derivedEvent', 'derivedHead']);
+            const event = g.derivedEvent, head = g.derivedHead;
+            keys(event, ['schemaVersion', 'encoding', 'sessionId', 'sourceSha256', 'revision',
+                'eventId', 'eventSha256', 'basisSha256', 'values', 'valuesSha256']);
+            const { eventSha256, ...descriptor } = event;
+            if (g.sessionId !== sid || !hash(g.sourceSha256) || event.schemaVersion !== 1
+                || event.encoding !== 'native-mvu-derived-genesis-event-v1' || event.revision !== 1
+                || event.sessionId !== sid || event.sourceSha256 !== g.sourceSha256
+                || ![event.eventId, eventSha256, event.basisSha256, event.valuesSha256].every(hash)
+                || !event.values || typeof event.values !== 'object' || Array.isArray(event.values)
+                || event.valuesSha256 !== recordSha256(event.values) || eventSha256 !== recordSha256(descriptor))
+                fail('GENESIS_INVALID');
+            const root = { schemaVersion: 1, encoding: 'native-mvu-derived-state-root-v1',
+                derivedEventId: event.eventId, derivedEventSha256: eventSha256,
+                derivedHeadSha256: recordSha256(head), basisSha256: event.basisSha256 };
+            rootValid(root);
+            headValid(head, sid, g.sourceSha256, root);
+            if (head.valuesSha256 !== event.valuesSha256)
+                fail('GENESIS_INVALID');
+            return { genesis: g, state: snapshot(head, event.values, sid, g.sourceSha256, root) };
+        }
+        const event = g.initEvent, head = g.initHead;
         const { eventSha256, ...eventDescriptor } = event;
         const { planSha256, ...planDescriptor } = event.plan;
         if (g.sessionId !== sid || !hash(g.sourceSha256) || event.schemaVersion !== 1
@@ -342,11 +386,12 @@ export function createRoleplayMvuState(deps) {
      * consumption fact. A later import must not force it through the current
      * genesis/Source reader, nor can this method mint permission or continue a
      * partial publication. The current authority reader remains strict. */
-    function verifyConsumedSettlement(input) {
+    /** Immutable numerical facts only. The prefix consumer separately verifies
+     * Native/owner lineage; this method creates no token or continuation rights. */
+    function verifyConsumedSettlementFacts(input) {
         try {
             const intent = cloneJson(input.intent), base = cloneJson(input.base), proposal = cloneJson(input.proposal);
             intentValid(intent);
-            verified(intent);
             if (proposal.kind === 'rejected' || !same(base, snapshot(base.currentHead, base.values, base.sessionId, base.sourceSha256, base.root))
                 || !same(intent.base, baseOf(base)) || base.sessionId !== intent.sessionId || base.sourceSha256 !== intent.sourceSha256)
                 return false;
@@ -359,6 +404,26 @@ export function createRoleplayMvuState(deps) {
         }
         catch {
             return false;
+        }
+    }
+    function verifyConsumedSettlement(input) {
+        try {
+            const intent = cloneJson(input.intent);
+            intentValid(intent);
+            verified(intent);
+            return verifyConsumedSettlementFacts(input);
+        }
+        catch {
+            return false;
+        }
+    }
+    /** Exact verified revision-one basis, independent of later state rows. */
+    function readGenesisAuthority(sid) {
+        try {
+            return { kind: 'ready', snapshot: cloneJson(genesis(sid).state) };
+        }
+        catch (error) {
+            return { kind: 'blocked', code: codeOf(error) };
         }
     }
     /** A lost put response is classified by exact immediate readback. Never retry
@@ -453,5 +518,6 @@ export function createRoleplayMvuState(deps) {
             return { kind: wrote ? 'unknown' : 'blocked', code: codeOf(error) };
         }
     }
-    return { readNumericalAuthority, publish, reconcileFacts, verifyConsumedSettlement };
+    return { readNumericalAuthority, readGenesisAuthority, publish, reconcileFacts,
+        verifyConsumedSettlement, verifyConsumedSettlementFacts };
 }

@@ -244,6 +244,17 @@ function headFor(event: MvuInitializationEvent): MvuInitializationHead {
     planSha256: event.plan.planSha256, valuesSha256: event.valuesSha256}
 }
 
+/** Pure immutable opening facts, independent of today's Source/head or Agent.
+ * A caller must separately prove the original owner, actual Native prefix,
+ * static Source lineage and stored event/head/intent rows. No ACK is minted. */
+export function verifyFrozenMvuInitializationFacts(event:MvuInitializationEvent,head:MvuInitializationHead):boolean {
+  try {
+    validatePlan(event.plan)
+    return validNative(event.native,event.plan.identity)&&same(event,eventFor(event.plan,event.native))
+      &&same(head,headFor(event))
+  } catch {return false}
+}
+
 /** Numerical initialization authority; unrelated narrative panel/spec/task records are never read or overwritten. */
 export function createRoleplayMvuInitialization(deps: MvuInitializationDeps) {
   if (typeof deps.isOpeningCurrent !== 'function') throw new Error('MVU_INIT_OPENING_GUARD_REQUIRED')

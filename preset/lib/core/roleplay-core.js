@@ -43,6 +43,7 @@ import { createChatCardNativeContext } from './roleplay-chat-card-context.js';
 import { createRoleplayOpeningSelection } from './roleplay-opening-selection.js';
 import { createRoleplayMvuOpening } from './roleplay-mvu-opening.js';
 import { createRoleplayMvuState } from './roleplay-mvu-state.js';
+import { createRoleplayMvuDerived } from './roleplay-mvu-derived.js';
 import { createRoleplayMvuStoryCompletion } from './roleplay-mvu-story.js';
 import { prepareInputManagementReceipt, verifyInputManagementReceipt } from './roleplay-input-management.js';
 import { createRoleplayInputPreparation } from './roleplay-input-preparation.js';
@@ -584,6 +585,7 @@ export async function apply(ctx, config = {}) {
         isRoleplaySession,
         ensureState,
         ensureBranch,
+        commitDerivedBasis: (operation, child) => mvuDerived.commit(operation, child),
         durableSeq,
         canonicalAssistantForTurn,
         surfaceEntries,
@@ -942,16 +944,23 @@ export async function apply(ctx, config = {}) {
             && card?.kind !== 'user').sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
         return { user: user.name, user_gender: user.gender, char: String(cards[0]?.[1]?.name ?? '角色') };
     };
+    const openingContextBinding = (id) => ({ context: openingContext(id), bindingSha256: recordSha256({
+            schemaVersion: 1, encoding: 'native-opening-context-binding-v1', sessionId: id,
+            userInfo: recordSha256(readUserInfo()), userCard: recordSha256(T.cards.get(keyOf(id, 'user'))),
+            context: openingContext(id),
+        }) });
+    const mvuDerived = createRoleplayMvuDerived({ tables: T, branch: T.branch, status: T.status,
+        session: id => ctx.sessions.get(id), readSession: id => ctx.sessions.get(id),
+        readSourceSha256: id => mvuOpening.readSourceSha256(id), readOpeningContext: openingContextBinding,
+        importActiveKey, importRecordKey, withSourceLock: (id, work) => withImportLock(id, 'mvu-derived', work),
+        readGenesis: id => mvuDerived.required(id) ? mvuDerived.readGenesis(id) : mvuOpening.readGenesis(id), state: () => mvuState });
     const mvuOpening = createRoleplayMvuOpening({ tables: T, session: id => ctx.sessions.get(id),
         readNumericalAuthority: id => mvuState.readNumericalAuthority(id),
+        derivedBasisRequired: mvuDerived.required,
         branchReady: id => ensureState(id).branchReady, importActiveKey, importRecordKey,
         withSourceLock: (id, work) => withImportLock(id, 'mvu-initialization', work),
         recordVersionsFor: id => recordVersionsFor({ id }),
-        openingContext: id => ({ context: openingContext(id), bindingSha256: recordSha256({
-                schemaVersion: 1, encoding: 'native-opening-context-binding-v1', sessionId: id,
-                userInfo: recordSha256(readUserInfo()), userCard: recordSha256(T.cards.get(keyOf(id, 'user'))),
-                context: openingContext(id),
-            }) }),
+        openingContext: openingContextBinding,
         messageEdits: ctx.nexttavernMessageEdits, deletedMessageIds: deletedBranchMessageIdsFor,
         catalog: id => openingSelection.readCatalog(id, openingContext(id)),
         readOpeningIntent: source => openingSelection.readIntent(source),
@@ -1041,7 +1050,8 @@ export async function apply(ctx, config = {}) {
         },
     });
     const mvuState = createRoleplayMvuState({ table: T.status,
-        readGenesis: mvuOpening.readGenesis, withSourceLock: (id, work) => withImportLock(id, 'mvu-state', work),
+        readGenesis: id => mvuDerived.required(id) ? mvuDerived.readGenesis(id) : mvuOpening.readGenesis(id),
+        withSourceLock: (id, work) => withImportLock(id, 'mvu-state', work),
         verifyStoredIntent: intent => inputOwner?.verifyTerminalIntent(intent) === true,
         checkPermission: (token, intent) => inputOwner?.checkTerminalPermission(token, intent) === true });
     const completion = createRoleplayMvuStoryCompletion({ table: T.branch, state: mvuState, awaitOwnedCompletion,
@@ -1505,6 +1515,7 @@ export async function apply(ctx, config = {}) {
         T,
         resolveRoleplaySession,
         cloneBranchRecord,
+        prepareDerivedBasis: mvuDerived.prepare,
         assertStoryBranchActive,
         withForkMutationLock,
         forkOperationKey,

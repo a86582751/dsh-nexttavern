@@ -76,4 +76,7 @@ export interface BranchRoutesDependencies extends Pick<Worldlines,
   }}
   resolveRoleplaySession(id: string | null | undefined): Promise<BranchRouteSession | null | undefined>
   cloneBranchRecord<T>(value: T): T
+  /** Freeze numerical prefix facts inside the Native reservation callback,
+   * before child publication; never hold a Source lock across forkPrepared. */
+  prepareDerivedBasis?(operation: StoredBranchOperation, reservation: ForkReservation): Promise<void>
 }

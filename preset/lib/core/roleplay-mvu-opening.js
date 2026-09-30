@@ -134,6 +134,13 @@ export function createRoleplayMvuOpening(deps) {
         if (!['.png', '.json'].includes(String(envelope.extension).toLowerCase())) {
             return { kind: 'legacy', sourceSha256, reason: 'LEGACY_TEXT_IMPORT' };
         }
+        // A Native child uses its own derived root. Missing/partial/corrupt basis
+        // cannot fall back to selecting another author opening or empty values.
+        if (deps.derivedBasisRequired?.(sessionId)) {
+            const authority = deps.readNumericalAuthority?.(sessionId);
+            return authority?.kind === 'ready' ? { kind: 'story', sourceSha256,
+                headRef: { kind: 'numerical-head', sha256: authority.snapshot.headSha256 } } : management('DERIVED_BASIS_NOT_READY');
+        }
         try {
             const catalog = deps.catalog(sessionId), selectedIntent = deps.readOpeningIntent?.(catalog.source);
             if (!selectedIntent)

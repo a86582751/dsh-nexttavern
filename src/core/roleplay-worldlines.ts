@@ -474,6 +474,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     } else {
       await ensureBranch(child, { cadenceAnchorSeq: operation.anchor.sourceUserSeq!, cadenceTurn: operation.anchor.sourceTurn })
     }
+    await deps.commitDerivedBasis?.(operation, child)
     return source
   }
 

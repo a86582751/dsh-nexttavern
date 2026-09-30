@@ -156,6 +156,8 @@ export interface WorldlineDependencies {
   isRoleplaySession(session: BranchSession): boolean
   ensureState(id: string): { branchReady: boolean }
   ensureBranch(session: BranchSession, options: { cadenceAnchorSeq: number; cadenceTurn: number }): Promise<unknown>
+  /** Numeric readiness is independent of static inheritance readiness. */
+  commitDerivedBasis?(operation: ForkOperation, child: BranchSession): Promise<void>
   durableSeq(value: unknown): number | null
   canonicalAssistantForTurn(session: ReadBranchSession, turn: number): StoryEvent | null | undefined
   surfaceEntries(session: ReadBranchSession): SurfaceEntry[]

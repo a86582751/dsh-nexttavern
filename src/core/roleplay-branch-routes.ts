@@ -5,7 +5,13 @@ import { jsonResponse } from './roleplay-state.js'
 import { activeOpeningSource } from './roleplay-import.js'
 import type { BranchRouteSession, StoredBranchOperation, BranchRouteBody, BranchRouteError, ForkReservation, BranchRoutesDependencies } from './roleplay-branch-routes-types.js'
 
-export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText}: BranchRoutesDependencies) {
+export function registerBranchRoutes(deps: BranchRoutesDependencies) {
+  const {ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock,
+    forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget,
+    assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget,
+    locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey,
+    requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText,
+    prepareDerivedBasis} = deps
   const readOperation=(key: string)=>cloneBranchRecord(T.branch.get(key)) as StoredBranchOperation | undefined
   const updateOperation=(key: string,work: (current: StoredBranchOperation | undefined) => object)=>T.branch.update(key,current=>work(current as StoredBranchOperation | undefined)) as PromiseLike<StoredBranchOperation>
   async function publishWorldlineSelection(operation: StoredBranchOperation,child: BranchRouteSession) {
@@ -142,6 +148,7 @@ export function registerBranchRoutes({ctx, T, resolveRoleplaySession, cloneBranc
               const reserve=async({sourceSessionId,childSessionId,seedLength}: ForkReservation)=>{
                 if(sourceSessionId!==source.id)throw new Error('原生分支来源不匹配')
                 reservedId=childSessionId
+                await prepareDerivedBasis?.(operation,{sourceSessionId,childSessionId,seedLength})
                 await catalog.reserve({sourceSessionId,childSessionId,operationId:operation.operationId,
                   kind:operation.kind === 'opening-regenerate' ? 'regenerate' : operation.kind,
                   sourceHash:recordSha256(operation.anchor)})
