@@ -16,6 +16,17 @@ import type {
   InboxWireState,
 } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
+import {deepFreeze} from '@deepseek-ai/dsh-util-values'
+import {inspectNativeInboxHistory, nativeInputSha256} from './input-admission.js'
+import type {NativeInputClaim, NativeInputOwnership, NativeInputProposal, NativeInputRef} from './input-admission.js'
+
+/** Process-local exact proof minted before the next native turn boundary. */
+export interface NativeInputResumeProof {
+  readonly proposal: NativeInputProposal
+  readonly refs: readonly NativeInputRef[]
+  readonly messages: readonly UserMessage[]
+  readonly observedSeq: number
+}
 
 /** Wire validation for pending agent input reconstructed from durable inbox splices. */
 export const inboxProjectionSchema = z.object({
@@ -72,6 +83,9 @@ export const inboxProjectionDefinition = {
  * @param dispatch - agent-scoped notifications for Inbox lifecycle events.
  */
 export class ReactLoopInbox implements InboxContract {
+  private readonly proposals = new WeakSet<NativeInputProposal>()
+  private readonly resumeProofs = new WeakSet<NativeInputResumeProof>()
+  private readonly claims = new WeakSet<NativeInputClaim>()
   constructor(
     private readonly projections: SessionProjectionRegistry,
     private readonly session: Session,
@@ -111,6 +125,94 @@ export class ReactLoopInbox implements InboxContract {
     if (target === 'next-turn') claimed.push(...this.mutate('next-turn', 0, 1, [], false))
     for (const message of claimed) this.dispatch.emit('agent/inbox/claimed', { message, turn })
     return claimed
+  }
+
+  /** Mint an exact proposal without consuming or assembling any input. */
+  propose(target: InboxTarget): NativeInputProposal {
+    const state = this.current(), history = this.history()
+    const entries = [...history.pending['next-step'], ...(target === 'next-turn' ? history.pending['next-turn'].slice(0, 1) : [])]
+    const messages = [...state['next-step'], ...(target === 'next-turn' ? state['next-turn'].slice(0, 1) : [])]
+    if (nativeInputSha256(entries.map(entry => entry.message)) !== nativeInputSha256(messages)
+      || entries.some(entry => history.ownership(entry.ref).status !== 'pending')) throw Error('native input ownership is unknown')
+    const proposal = deepFreeze({target, revision: history.revision, stateSha256: nativeInputSha256(state),
+      messages: structuredClone(messages), refs: entries.map(entry => structuredClone(entry.ref))})
+    this.proposals.add(proposal)
+    return proposal
+  }
+
+  matches(proposal: NativeInputProposal): boolean {
+    return this.proposals.has(proposal) && proposal.revision === this.history().revision
+      && proposal.stateSha256 === nativeInputSha256(this.current())
+  }
+
+  /** Exact consumption is checked between the two durable splices as well. */
+  claimExact(proposal: NativeInputProposal, turn: number):
+    | {kind: 'claimed'; claim: NativeInputClaim}
+    | {kind: 'blocked'; claim: NativeInputClaim} {
+    const removed: UserMessage[] = [], spliceSeqs: number[] = []
+    const receipt = (): NativeInputClaim => {
+      const claim = deepFreeze({proposal, turn, revision: spliceSeqs.at(-1) ?? proposal.revision,
+        refs: proposal.refs.slice(0, removed.length), messages: structuredClone(removed), spliceSeqs: [...spliceSeqs], resumed: false})
+      this.claims.add(claim)
+      return claim
+    }
+    if (!this.matches(proposal)) return {kind: 'blocked', claim: receipt()}
+    let expected = structuredClone(this.current()) as {'next-turn': UserMessage[]; 'next-step': UserMessage[]}
+    const take = (target: InboxTarget, count: number) => {
+      expected = {...expected, [target]: expected[target].slice(count)}
+      removed.push(...this.mutate(target, 0, count, [], false, seq => spliceSeqs.push(seq)))
+      return nativeInputSha256(this.current()) === nativeInputSha256(expected)
+        && this.history().revision === (spliceSeqs.at(-1) ?? proposal.revision)
+    }
+    if (!take('next-step', proposal.messages.length - (proposal.target === 'next-turn' && expected['next-turn'].length ? 1 : 0))) {
+      return {kind: 'blocked', claim: receipt()}
+    }
+    if (proposal.target === 'next-turn' && expected['next-turn'].length && !take('next-turn', 1)) {
+      return {kind: 'blocked', claim: receipt()}
+    }
+    const claim = receipt()
+    for (const message of claim.messages) this.dispatch.emit('agent/inbox/claimed', {message, turn})
+    return {kind: 'claimed', claim}
+  }
+
+  matchesClaim(claim: NativeInputClaim): boolean {
+    return this.claims.has(claim) && this.history().ownsClaim(claim)
+  }
+
+  lookupOwnership(ref: NativeInputRef): NativeInputOwnership {return this.history().ownership(ref)}
+
+  /** Native history supplies the original body; a caller supplies only identities. */
+  prepareResume(proposal: NativeInputProposal, refs: readonly NativeInputRef[]): NativeInputResumeProof | undefined {
+    if (!this.matches(proposal)) return undefined
+    const work = this.history().resume(refs)
+    if (!work) return undefined
+    const proof = deepFreeze({proposal, refs: structuredClone(refs), messages: work.messages,
+      observedSeq: this.session.snapshotEvents().at(-1)?.seq ?? -1})
+    this.resumeProofs.add(proof)
+    return proof
+  }
+
+  resumeClaim(proof: NativeInputResumeProof, turn: number): NativeInputClaim | undefined {
+    if (!this.resumeProofs.has(proof) || !this.matches(proof.proposal)) return undefined
+    const later = this.session.snapshotEvents().filter(event => event.seq > proof.observedSeq)
+    const boundary = later[0]
+    if (later.length !== 1 || !boundary || boundary.type !== 'turn/start' || boundary.data.turn !== turn) return undefined
+    this.resumeProofs.delete(proof)
+    const claim = deepFreeze({proposal: proof.proposal, turn, revision: proof.proposal.revision, refs: proof.refs, messages: proof.messages,
+      spliceSeqs: [], resumed: true})
+    this.claims.add(claim)
+    return claim
+  }
+
+  canResume(refs: readonly NativeInputRef[]): boolean {return this.history().resume(refs) !== undefined}
+
+  private history() {
+    // Session exposes the actual inherited seed length. Parent input never
+    // acquires child ownership merely by folding it under the current id.
+    const boundary = this.session.inheritedEventCount
+    const inheritedBoundary = Number.isSafeInteger(boundary) && boundary >= 0 ? boundary
+      : this.session.header.parentSession !== undefined ? Number.NaN : 0
+    return inspectNativeInboxHistory(this.session.id, this.session.snapshotEvents(), inheritedBoundary)
   }
 
   /**
@@ -201,6 +303,7 @@ export class ReactLoopInbox implements InboxContract {
     deleteCount: number,
     inserted: UserMessage[],
     discardRemoved: boolean,
+    recordSeq?: (seq: number) => void,
   ): UserMessage[] {
     const state = this.current()
     const inbox = state[target]
@@ -233,6 +336,7 @@ export class ReactLoopInbox implements InboxContract {
     }
     const removed = inbox.slice(actualStart, actualStart + actualDeleteCount)
     const event = this.session.append('agent/inbox/spliced', splice)
+    recordSeq?.(event.seq)
     if (discardRemoved) {
       for (const message of removed) this.dispatch.emit('agent/inbox/discarded', { message })
     }

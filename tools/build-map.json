@@ -4090,6 +4090,35 @@
       "outputs": [
         "lib/ui/card-upload-request.js"
       ]
+    },
+    {
+      "artifact": "tavern-mvu-initvar-js",
+      "source": "src/core/tavern-mvu-initvar.ts",
+      "banner": "runtime/alpha3/src/core/tavern-mvu-initvar.ts",
+      "primaryOutput": "lib/core/tavern-mvu-initvar.js",
+      "outputs": [
+        "lib/core/tavern-mvu-initvar.js",
+        "preset/lib/core/tavern-mvu-initvar.js"
+      ]
+    },
+    {
+      "artifact": "roleplay-mvu-initialization-js",
+      "source": "src/core/roleplay-mvu-initialization.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-mvu-initialization.ts",
+      "primaryOutput": "lib/core/roleplay-mvu-initialization.js",
+      "outputs": [
+        "lib/core/roleplay-mvu-initialization.js",
+        "preset/lib/core/roleplay-mvu-initialization.js"
+      ]
+    },
+    {
+      "artifact": "compat-agent-loop-input-admission-js",
+      "source": "development/agent-loop/src/input-admission.ts",
+      "banner": "runtime/alpha3/compat/agent-loop/src/input-admission.ts",
+      "primaryOutput": "development/agent-loop/lib/input-admission.js",
+      "outputs": [
+        "development/agent-loop/lib/input-admission.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -8489,6 +8518,30 @@
       {
         "id": "card-upload-request",
         "source": "lib/ui/card-upload-request.js"
+      },
+      {
+        "id": "tavern-mvu-initvar-typescript",
+        "source": "src/core/tavern-mvu-initvar.ts"
+      },
+      {
+        "id": "tavern-mvu-initvar-js",
+        "source": "lib/core/tavern-mvu-initvar.js"
+      },
+      {
+        "id": "roleplay-mvu-initialization-typescript",
+        "source": "src/core/roleplay-mvu-initialization.ts"
+      },
+      {
+        "id": "roleplay-mvu-initialization-js",
+        "source": "lib/core/roleplay-mvu-initialization.js"
+      },
+      {
+        "id": "compat-agent-loop-input-admission-ts",
+        "source": "development/agent-loop/src/input-admission.ts"
+      },
+      {
+        "id": "compat-agent-loop-input-admission-js",
+        "source": "development/agent-loop/lib/input-admission.js"
       }
     ],
     "builds": [
@@ -8974,7 +9027,8 @@
           "build-tools/tsconfig.json",
           "lib/operations/build-typescript.mjs",
           "build-tools/package.json",
-          "build-tools/package-lock.json"
+          "build-tools/package-lock.json",
+          "development/agent-loop/src/input-admission.ts"
         ],
         "banner": "runtime/alpha3/compat/agent-loop/src/agent.ts"
       },
@@ -9022,7 +9076,8 @@
           "build-tools/tsconfig.json",
           "lib/operations/build-typescript.mjs",
           "build-tools/package.json",
-          "build-tools/package-lock.json"
+          "build-tools/package-lock.json",
+          "development/agent-loop/src/input-admission.ts"
         ],
         "banner": "runtime/alpha3/compat/agent-loop/src/inbox.ts"
       },
@@ -11591,7 +11646,9 @@
           "build-tools/tsconfig.json",
           "lib/operations/build-typescript.mjs",
           "build-tools/package.json",
-          "build-tools/package-lock.json"
+          "build-tools/package-lock.json",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/tavern-mvu-initvar.ts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-opening-selection.ts"
       },
@@ -17725,6 +17782,60 @@
           "build-tools/package-lock.json"
         ],
         "banner": "runtime/alpha3/src/ui/card-upload-request.ts"
+      },
+      {
+        "inputs": [
+          "src/core/tavern-mvu-initvar.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "entry": "src/core/tavern-mvu-initvar.ts",
+        "artifact": "tavern-mvu-initvar-js",
+        "kind": "typescript-module",
+        "id": "tavern-mvu-initvar-js-build",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "banner": "runtime/alpha3/src/core/tavern-mvu-initvar.ts"
+      },
+      {
+        "inputs": [
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-card-crc.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "entry": "src/core/roleplay-mvu-initialization.ts",
+        "artifact": "roleplay-mvu-initialization-js",
+        "kind": "typescript-module",
+        "id": "roleplay-mvu-initialization-js-build",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "banner": "runtime/alpha3/src/core/roleplay-mvu-initialization.ts"
+      },
+      {
+        "inputs": [
+          "development/agent-loop/src/input-admission.ts",
+          "development/agent-loop/src/inbox.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "entry": "development/agent-loop/src/input-admission.ts",
+        "artifact": "compat-agent-loop-input-admission-js",
+        "kind": "typescript-module",
+        "id": "compat-agent-loop-input-admission-build",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "fork-compat",
+        "banner": "runtime/alpha3/compat/agent-loop/src/input-admission.ts"
       }
     ],
     "typeScript": {

@@ -42,7 +42,8 @@
         "runtime/alpha3/compat/session-persistence-jsonl/*",
         "plugin-public-compiler*",
         "plugin-surface-replacement*",
-        "plugin-session-history*"
+        "plugin-session-history*",
+        "native-input-admission*"
       ]
     },
     {
@@ -77,13 +78,15 @@
       "patterns": [
         "roleplay-import*",
         "roleplay-card-import*",
+        "roleplay-card-attachment*",
         "roleplay-opening-selection*",
         "roleplay-opening-routes*",
         "tavern-card*",
         "tavern-compat*",
         "manifests/sillytavern-compatibility-p0-*",
         "manifests/sillytavern-compatibility-p1-*",
-        "tavern-conversion*"
+        "tavern-conversion*",
+        "tavern-mvu*"
       ]
     },
     {
@@ -102,7 +105,9 @@
       ],
       "patterns": [
         "roleplay-status*",
-        "status-*"
+        "status-*",
+        "roleplay-mvu*",
+        "manifests/sillytavern-compatibility-p2-*"
       ]
     },
     {
@@ -206,6 +211,7 @@
         "bounded-regex*",
         "toast-confirm*",
         "management-panels*",
+        "card-upload*",
         "opening-panel*",
         "panel-state*",
         "reader-status*"
@@ -4160,6 +4166,96 @@
         "maintenance"
       ],
       "timeoutMs": 90000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-card-attachment.test.mjs",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-card-attachment-routes.test.mjs",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:card-upload-panel-ui.test.mjs",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-mvu-initvar.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-initialization.test.mts",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:native-input-admission.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]

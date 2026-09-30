@@ -38,6 +38,10 @@ import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Context } from '@deepseek-ai/cordis'
 import { ReactLoopInbox } from './inbox.js'
+import type {NativeInputResumeProof} from './inbox.js'
+import {INPUT_ADMISSION_ABORT_REASON, nativeInputSha256} from './input-admission.js'
+import type {NativeExistingInputWork, NativeInputAdmissionHook, NativeInputBlocked, NativeInputClaim,
+  NativeInputOwnership, NativeInputProposal, NativeInputRef, NativeInputWakeResult} from './input-admission.js'
 import { RuntimeContextProjection } from './runtime-context.js'
 import { AssistantStreamAttempt } from './assistant-stream.js'
 import { SystemPromptProjection } from './runtime-context.js'
@@ -86,7 +90,12 @@ type PreparedStep =
     messages: UserMessage[]
     startsRequestSeries?: true
     assembly: PromptAssembly
+    admission?: InputAdmission
   }
+type AdmissionRegistration = {hook: NativeInputAdmissionHook; active: boolean}
+type InputAdmission = {registration: AdmissionRegistration; proposal: NativeInputProposal; identity: unknown;
+  resumeProof?: NativeInputResumeProof; claim?: NativeInputClaim; continuation?: true}
+type InputAdmissionOutcome = {kind: 'admitted'; admission: InputAdmission} | {kind: 'none'} | {kind: 'blocked'}
 
 /** Remove adapter-derived values before plugins propose the next request config. */
 function requestProposal(header: EpochHeader): LlmCallConfig {
@@ -150,6 +159,12 @@ export class ReactLoopAgent implements Agent {
   private readonly uncertainProgrammaticOperations = new Set<string>()
   /** An unclosed append-only turn forbids another driver from writing behind it. */
   private programmaticTurnPoisoned = false
+  private inputAdmission?: AdmissionRegistration
+  private existingInputWork?: NativeExistingInputWork
+  private inputAdmissionBlocked?: {registration: AdmissionRegistration; notice: NativeInputBlocked}
+  private inputWakeStopped = false
+  private inputDisposed = false
+  private inputOnlyWakeLatched = false
 
   constructor(
     private loopCtx: Context,
@@ -189,6 +204,7 @@ export class ReactLoopAgent implements Agent {
   }
 
   send(message: UserMessage, target: InboxTarget, wakeup: boolean): void {
+    if (wakeup && !this.inputDisposed) {this.inputWakeStopped = false; this.inputOnlyWakeLatched = false}
     // Waking input cannot join an aborted activity, so it starts the next turn.
     // Captured before the insertion so a reentrant cancel from a splice observer cannot reclassify it.
     const wakingAfterAbort = wakeup && this.phase.kind !== 'idle' && this.phase.abort.signal.aborted
@@ -210,11 +226,129 @@ export class ReactLoopAgent implements Agent {
   }
 
   cancel(cause: AgentCancelCause, options: CancelOptions = {}): void {
+    if (cause.kind === 'disposed') this.inputDisposed = true
+    if (cause.kind !== 'hook' || cause.reason !== INPUT_ADMISSION_ABORT_REASON) this.inputWakeStopped = true
+    if (this.inputWakeStopped && this.inputOnlyWakeLatched) {
+      if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
+      this.inputOnlyWakeLatched = false
+      this.existingInputWork = undefined
+    }
     if (!options.keepInbox) {
       this.inbox.clear()
       if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
     }
     if (this.phase.kind !== 'idle') this.phase.abort.abort(cause)
+  }
+
+  /** One lifecycle owner; ordinary upstream callers keep the unregistered path. */
+  registerInputAdmission(hook: NativeInputAdmissionHook): () => void {
+    if (this.inputDisposed || this.inputAdmission) throw Error('native input admission already owned or disposed')
+    if (typeof hook.admit !== 'function' || typeof hook.check !== 'function') throw Error('invalid native input admission hook')
+    const registration = {hook, active: true}
+    this.inputAdmission = registration
+    return () => {
+      registration.active = false
+      if (this.inputAdmission === registration) this.inputAdmission = undefined
+      this.existingInputWork = undefined
+    }
+  }
+
+  lookupInputOwnership(ref: NativeInputRef): NativeInputOwnership {return this.inbox.lookupOwnership(ref)}
+
+  /** Wake only work already owned by this inbox, never send or insert a message. */
+  wakePending(): NativeInputWakeResult {
+    if (this.inputDisposed) return {kind: 'disposed'}
+    if (this.inputWakeStopped || this.programmaticTurnPoisoned) return {kind: 'blocked'}
+    if (!this.inbox.hasPending) return {kind: 'empty'}
+    if (this.phase.kind === 'running') return {kind: 'running'}
+    const latched = this.phase.kind === 'maintenance'
+    this.inputOnlyWakeLatched = latched
+    this.wakeDriver()
+    return {kind: latched ? 'latched' : 'started'}
+  }
+
+  /** Owner credentials supplement native history; no caller body is accepted. */
+  wakeExistingWork(work: NativeExistingInputWork): NativeInputWakeResult {
+    if (this.inputDisposed) return {kind: 'disposed'}
+    if (this.inputWakeStopped || !this.inputAdmission || work?.preparation == null
+      || !Array.isArray(work.refs) || !this.inbox.canResume(work.refs)) return {kind: 'blocked'}
+    if (this.phase.kind === 'running' || this.existingInputWork) return {kind: 'running'}
+    this.existingInputWork = {preparation: work.preparation, refs: deepFreeze(structuredClone(work.refs))}
+    const latched = this.phase.kind === 'maintenance'
+    this.inputOnlyWakeLatched = latched
+    this.wakeDriver()
+    return {kind: latched ? 'latched' : 'started'}
+  }
+
+  private blockInput(registration: AdmissionRegistration, code: string, stage: NativeInputBlocked['stage'],
+    proposal: NativeInputProposal, partialClaim?: NativeInputClaim, refs = partialClaim?.refs ?? proposal.refs): void {
+    const thinCode = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : 'INPUT_ADMISSION_BLOCKED'
+    this.inputAdmissionBlocked = {registration, notice: {code: thinCode, stage, refs,
+      ...(partialClaim ? {partialClaim: {turn: partialClaim.turn, refs: partialClaim.refs,
+        spliceSeqs: partialClaim.spliceSeqs, resumed: partialClaim.resumed}} : {})}}
+  }
+
+  private async admitInput(target: InboxTarget): Promise<InputAdmissionOutcome> {
+    const registration = this.inputAdmission
+    if (!registration || this.phase.kind !== 'running' || this.phase.programmatic) return {kind: 'none'}
+    const signal = this.phase.abort.signal
+    const existing = this.existingInputWork
+    let proposal: NativeInputProposal
+    try {proposal = this.inbox.propose(target)} catch {
+      this.inputAdmissionBlocked = {registration, notice: {code: 'INPUT_OWNERSHIP_UNKNOWN', stage: 'proposal', refs: existing?.refs ?? []}}
+      return {kind: 'blocked'}
+    }
+    const refused = (code: string): InputAdmissionOutcome => {
+      this.blockInput(registration, code, 'proposal', proposal, undefined, existing?.refs)
+      return {kind: 'blocked'}
+    }
+    if (!proposal.messages.length && !existing) {
+      return target === 'next-step' ? {kind: 'none'} : refused('INPUT_EMPTY')
+    }
+    let decision: Awaited<ReturnType<NativeInputAdmissionHook['admit']>>
+    try {decision = await registration.hook.admit(proposal, signal, existing)}
+    catch {signal.throwIfAborted(); return refused('INPUT_ADMISSION_HOOK_FAILED')}
+    signal.throwIfAborted()
+    if (!registration.active || this.inputAdmission !== registration || !this.inbox.matches(proposal)) return refused('INPUT_PROPOSAL_CHANGED')
+    if (decision.kind === 'blocked') return refused(decision.code)
+    if (decision.identity === undefined) return refused('INPUT_ADMISSION_IDENTITY_MISSING')
+    if (decision.kind === 'resume') {
+      if (!existing || nativeInputSha256(existing.refs) !== nativeInputSha256(decision.refs)
+        || !this.inbox.canResume(decision.refs)) return refused('INPUT_RESUME_NOT_PROVEN')
+      const resumeProof = this.inbox.prepareResume(proposal, decision.refs)
+      if (!resumeProof) return refused('INPUT_RESUME_NOT_PROVEN')
+      return {kind: 'admitted', admission: {registration, proposal, identity: decision.identity, resumeProof}}
+    }
+    if (existing) return refused('INPUT_EXISTING_WORK_NOT_SELECTED')
+    return {kind: 'admitted', admission: {registration, proposal, identity: decision.identity}}
+  }
+
+  private abortInput(admission: InputAdmission, code: string, stage: 'claim' | 'final', claim?: NativeInputClaim): never {
+    this.blockInput(admission.registration, code, stage, admission.proposal, claim)
+    this.cancel({kind: 'hook', reason: INPUT_ADMISSION_ABORT_REASON}, {keepInbox: true})
+    if (this.phase.kind !== 'running') throw Error('native input driver reservation lost')
+    this.phase.abort.signal.throwIfAborted()
+    throw Error('native input abort was not recorded')
+  }
+
+  /** Check native receipt and owner readiness before assembly and at both request edges. */
+  private checkInput(admission: InputAdmission, messages: readonly UserMessage[]): void {
+    const claim = admission.claim!
+    if (this.phase.kind !== 'running') this.abortInput(admission, 'INPUT_DRIVER_CHANGED', 'final', claim)
+    const signal = this.phase.abort.signal
+    signal.throwIfAborted()
+    if (!admission.registration.active || this.inputAdmission !== admission.registration || !this.inbox.matchesClaim(claim)) {
+      this.abortInput(admission, 'INPUT_FINAL_IDENTITY_CHANGED', 'final', claim)
+    }
+    let result: ReturnType<NativeInputAdmissionHook['check']>
+    try {result = admission.registration.hook.check({proposal: admission.proposal, claim, identity: admission.identity, messages,
+      ...(admission.continuation ? {continuation: true as const} : {})})}
+    catch {this.abortInput(admission, 'INPUT_FINAL_CHECK_FAILED', 'final', claim)}
+    if (result.kind !== 'allow') this.abortInput(admission, result.code, 'final', claim)
+    signal.throwIfAborted()
+    if (!admission.registration.active || this.inputAdmission !== admission.registration || !this.inbox.matchesClaim(claim)) {
+      this.abortInput(admission, 'INPUT_FINAL_IDENTITY_CHANGED', 'final', claim)
+    }
   }
 
   runMaintenance<T>(job: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -235,7 +369,7 @@ export class ReactLoopAgent implements Agent {
         this.setPhase({ kind: 'idle', lastTurn: maintenance.lastTurn })
         const cause = abortedCancelCause(maintenance.abort.signal)
         if (!this.programmaticTurnPoisoned && cause?.kind !== 'disposed'
-          && maintenance.wakeRequested && this.inbox.hasPending) this.wakeDriver()
+          && maintenance.wakeRequested && (this.inbox.hasPending || this.existingInputWork)) this.wakeDriver()
         done.resolve()
       }
     })()
@@ -483,20 +617,75 @@ export class ReactLoopAgent implements Agent {
       /* v8 ignore next -- kick owns a running phase until this driver boundary */
       if (this.phase.kind === 'running') {
         const { turn, wakeRequested } = this.phase
+        const blocked = this.inputAdmissionBlocked
+        this.inputAdmissionBlocked = undefined
+        this.existingInputWork = undefined
+        this.inputOnlyWakeLatched = false
         this.setPhase({ kind: 'idle', lastTurn: turn })
-        if (wakeRequested && this.inbox.hasPending) this.wakeDriver()
+        if (blocked) {
+          // Notify only after reservation release; never await owner recovery.
+          if (blocked.registration.active && !this.inputDisposed) {
+            try {blocked.registration.hook.onBlocked?.(blocked.notice)} catch { /* notification cannot restart input */ }
+          }
+        } else if (wakeRequested && this.inbox.hasPending) this.wakeDriver()
       }
     }
   }
 
-  private async preStep(target: InboxTarget, position: { turn: number; step: number }): Promise<PreparedStep> {
+  private async preStep(target: InboxTarget, position: { turn: number; step: number }, offered?: InputAdmission,
+    previousAdmission?: InputAdmission): Promise<PreparedStep> {
     /* v8 ignore next -- private callers establish the running phase before proposing a step */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)
     // A readable old assistant-only transcript cannot acquire a later system
     // head. Refuse before claim, leaving the original input durably pending.
     this.systemPrompt.assertCanProject()
     const signal = this.phase.abort.signal
-    const claimed = this.inbox.claim(target, position.turn)
+    const registration = this.inputAdmission
+    if (previousAdmission && (!previousAdmission.registration.active || registration !== previousAdmission.registration)) {
+      this.abortInput(previousAdmission, 'INPUT_HOOK_CHANGED', 'claim', previousAdmission.claim)
+    }
+    let admission = offered
+    if (!admission && registration && !this.phase.programmatic) {
+      const result = await this.admitInput(target)
+      if (result.kind === 'blocked') return {kind: 'reject'}
+      if (result.kind === 'admitted') admission = result.admission
+      else {
+        // A tool result can require another request with no new queued input.
+        // Preserve its work identity rather than claiming or admitting again.
+        if (!previousAdmission?.claim || previousAdmission.claim.turn !== position.turn) {
+          const proposal = this.inbox.propose(target)
+          this.blockInput(registration, 'INPUT_CONTINUATION_WITHOUT_IDENTITY', 'claim', proposal)
+          this.cancel({kind: 'hook', reason: INPUT_ADMISSION_ABORT_REASON}, {keepInbox: true})
+          signal.throwIfAborted()
+          return {kind: 'reject'}
+        }
+        admission = {...previousAdmission, continuation: true}
+      }
+    }
+    let claimed: UserMessage[]
+    if (admission) {
+      signal.throwIfAborted()
+      if (!admission.registration.active || this.inputAdmission !== admission.registration) this.abortInput(admission, 'INPUT_HOOK_CHANGED', 'claim')
+      if (admission.continuation) {
+        claimed = []
+      } else if (admission.resumeProof) {
+        const claim = this.inbox.resumeClaim(admission.resumeProof, position.turn)
+        if (!claim) this.abortInput(admission, 'INPUT_RESUME_CHANGED', 'claim')
+        admission.claim = claim
+        this.existingInputWork = undefined
+        claimed = [...claim.messages]
+      } else {
+        const result = this.inbox.claimExact(admission.proposal, position.turn)
+        if (result.kind === 'blocked') this.abortInput(admission, 'INPUT_PROPOSAL_CHANGED', 'claim', result.claim)
+        admission.claim = result.claim
+        claimed = [...result.claim.messages]
+      }
+      const claim = admission.claim
+      if (!claim || !this.inbox.matchesClaim(claim)) this.abortInput(admission, 'INPUT_CLAIM_CHANGED', 'claim', claim)
+      // Claimed notifications run synchronously and can invalidate Source/head.
+      // Do not start assembly or owner preparation under that stale identity.
+      this.checkInput(admission, claimed)
+    } else claimed = this.inbox.claim(target, position.turn)
     const assembled = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal))
     const generation = position.step === 1 ? this.phase.programmatic : undefined
     const assembly = generation ? {...assembled, tools: [], sections: [...assembled.sections,
@@ -513,7 +702,7 @@ export class ReactLoopAgent implements Agent {
     )
     signal.throwIfAborted()
     if (decision.kind === 'reject') return decision
-    if (!generation) return {...decision, assembly}
+    if (!generation) return {...decision, assembly, ...(admission ? {admission} : {})}
     if (decision.messages.some(message => message.source.kind === 'user')) {
       throw new Error('programmatic generation cannot admit a player message')
     }
@@ -542,6 +731,16 @@ export class ReactLoopAgent implements Agent {
     const phase = this.phase
     const { signal } = phase.abort
     signal.throwIfAborted()
+    const requiresAdmission = this.inputAdmission !== undefined && !phase.programmatic
+    const initial = requiresAdmission ? await this.admitInput('next-turn') : undefined
+    if (requiresAdmission && initial?.kind !== 'admitted') return false
+    const initialAdmission = initial?.kind === 'admitted' ? initial.admission : undefined
+    signal.throwIfAborted()
+    if (initialAdmission && (!initialAdmission.registration.active || this.inputAdmission !== initialAdmission.registration
+      || !this.inbox.matches(initialAdmission.proposal))) {
+      this.blockInput(initialAdmission.registration, 'INPUT_PROPOSAL_CHANGED', 'proposal', initialAdmission.proposal)
+      return false
+    }
     const turn = phase.turn + 1
     try {
       this.session.append('turn/start', { turn })
@@ -551,15 +750,17 @@ export class ReactLoopAgent implements Agent {
     phase.turn = turn
     let turnEnds: TurnEndReason | null = null
     let target: InboxTarget = 'next-turn'
+    let currentAdmission = initialAdmission
     try {
       while (true) {
         signal.throwIfAborted()
         const step = phase.step + 1
-        const decision = await this.preStep(target, { turn, step })
+        const decision = await this.preStep(target, { turn, step }, step === 1 ? initialAdmission : undefined, currentAdmission)
         if (decision.kind === 'reject') {
           turnEnds = { kind: 'blocked' }
           return false
         }
+        currentAdmission = decision.admission
         if (turnEnds && decision.messages.length === 0) break
         // A removed waking message or an enter decision rewritten to empty
         // still owns the initial turn boundary, but it spends no model call.
@@ -631,6 +832,10 @@ export class ReactLoopAgent implements Agent {
     let firstAttempt = true
     while (true) {
       const { config, preparedCall } = await this.prepareRequest(turn, step, signal)
+      // Adapter preparation can await arbitrary work. Recheck before every
+      // system/user/header commit and provider stream, including retries.
+      const admission = decision.admission
+      if (admission) this.checkInput(admission, decision.messages)
       const startsRequestSeries = firstAttempt && decision.startsRequestSeries === true
       const commits = this.systemPrompt.project(renderedPrompt, {
         inHistory: preparedCall?.systemPromptUpdate === 'in-history',
@@ -648,6 +853,9 @@ export class ReactLoopAgent implements Agent {
       }
       firstAttempt = false
       const request = this.buildRequest(config, preparedCall, assembly.tools, { turn, step }, startsRequestSeries, signal)
+      // Session append notifications can synchronously invalidate Source or
+      // readiness. The already-written input is admitted, never replayable.
+      if (admission) this.checkInput(admission, decision.messages)
       const live = new AssistantStreamAttempt(
         this.session.id,
         ++this.assistantAttemptCounter,
@@ -658,6 +866,7 @@ export class ReactLoopAgent implements Agent {
       )
       let started = false
       try {
+        if (admission) signal.throwIfAborted()
         const stream = preparedCall?.stream(request) ?? this.loopCtx.llm.stream(request)
         signal.throwIfAborted()
         live.start()
