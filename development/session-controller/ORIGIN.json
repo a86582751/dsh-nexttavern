@@ -183,7 +183,8 @@
     "Host-only forkPrepared awaits caller reservation before the native Agent create/setup publication path",
     "Prepared roleplay cuts retain late edit/ownership records before the next turn; ordinary Remote forks keep the official completed-turn boundary",
     "Native inheritedEventCount/isSeeded metadata and the single Controller model-selection owner are preserved",
-    "Owned package/client factory identity; no installed official files modified"
+    "Owned package/client factory identity; no installed official files modified",
+    "Roleplay PNG intake preserves recognized standard card originals as native verbatim FileRefs before image normalization; ordinary images retain native image admission and upload alone never starts import."
   ],
   "formalForkSynchronized": false
 }

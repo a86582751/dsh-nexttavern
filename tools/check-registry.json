@@ -43,7 +43,8 @@
         "plugin-public-compiler*",
         "plugin-surface-replacement*",
         "plugin-session-history*",
-        "native-input-admission*"
+        "native-input-admission*",
+        "native-input-link*"
       ]
     },
     {
@@ -4248,6 +4249,171 @@
       "action": "test",
       "modules": [
         "plugin-lifecycle"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-source.test.mts",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-native.test.mts",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-opening.test.mts",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-mvu-native-policy.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:native-input-link-compatibility.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-chat-card-source.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-chat-card-import.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:chat-card-composer.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:card-png-intake.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:chat-opening-card-ui.test.mts",
+      "action": "test",
+      "modules": [
+        "ui"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-chat-card-core.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
       ],
       "depends": [
         "generated"

@@ -1,7 +1,7 @@
 // Generated from runtime/alpha3/src/core/roleplay-mvu-initialization.ts; edit the TypeScript source.
 import { createHash } from 'node:crypto';
 import { recordSha256 } from './roleplay-data.js';
-import { compileMvuInitSources } from './tavern-mvu-initvar.js';
+import { compileMvuInitSources, compileNativeMvuInitSources } from './tavern-mvu-initvar.js';
 const hash = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const isHash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const isId = (value, max = 128) => typeof value === 'string'
@@ -41,6 +41,31 @@ export function prepareMvuOpeningInitialization(identity, input) {
         identity: structuredClone(identity), compilation, selectedSwipeIdentity, values, valuesSha256: recordSha256(values) };
     return { kind: 'prepared', plan: { ...content, planSha256: recordSha256(content) } };
 }
+/** Freeze actual source and numerical-owner proofs with the native policy compilation. */
+export function prepareNativeMvuOpeningInitialization(identity, input) {
+    validateIdentity(identity);
+    const compilation = compileNativeMvuInitSources(input);
+    if (compilation.kind === 'unsupported')
+        return compilation;
+    const snapshot = input.sourceSnapshot;
+    if (!same(snapshot.source, identity.source) || snapshot.selected.index !== identity.index
+        || snapshot.selected.pointer !== identity.sourcePointer || snapshot.selected.sourceSha256 !== identity.sourceSha256
+        || snapshot.selected.renderedSha256 !== identity.renderedSha256)
+        throw new Error('MVU_INIT_OPENING_MISMATCH');
+    const selected = compilation.plan.swipes.find(swipe => swipe.identity === compilation.plan.selectedSwipeIdentity);
+    if (!selected || selected.sourceSha256 !== identity.sourceSha256)
+        throw new Error('MVU_INIT_OPENING_MISMATCH');
+    const values = structuredClone(selected.statData);
+    const content = { schemaVersion: 2, encoding: 'mvu-programmatic-opening-plan-v2',
+        identity: structuredClone(identity), compilation, selectedSwipeIdentity: compilation.plan.selectedSwipeIdentity,
+        values, valuesSha256: recordSha256(values), sourceSnapshot: structuredClone(snapshot),
+        freshNativeBasisProof: structuredClone(input.freshNativeBasisProof) };
+    // Compiler and source descriptors each have a 1 MiB cap; the selected value is already within the compiler cap.
+    if (Buffer.byteLength(JSON.stringify(content), 'utf8') > 3_145_728) {
+        return { schemaVersion: 2, kind: 'unsupported', diagnostics: [{ code: 'OUTPUT_BYTE_LIMIT', pointer: '/plan' }] };
+    }
+    return { kind: 'prepared', plan: { ...content, planSha256: recordSha256(content) } };
+}
 export function mvuInitializationEventKey(sessionId, eventId) {
     if (!isId(sessionId, 64) || !isHash(eventId))
         throw new Error('MVU_INIT_KEY_INVALID');
@@ -54,10 +79,12 @@ export function mvuInitializationHeadKey(sessionId) {
 function validatePlan(plan) {
     validateIdentity(plan.identity);
     const { planSha256, ...content } = plan;
-    if (plan.schemaVersion !== 1 || plan.encoding !== 'mvu-programmatic-opening-plan-v1'
+    const versioned = plan.schemaVersion === 1 && plan.encoding === 'mvu-programmatic-opening-plan-v1'
+        || plan.schemaVersion === 2 && plan.encoding === 'mvu-programmatic-opening-plan-v2';
+    if (!versioned
         || !isHash(planSha256) || recordSha256(content) !== planSha256
         || recordSha256(plan.values) !== plan.valuesSha256
-        || plan.compilation.schemaVersion !== 1
+        || plan.compilation.schemaVersion !== plan.schemaVersion
         || !['none', 'supported'].includes(plan.compilation.kind))
         throw new Error('MVU_INIT_PLAN_INVALID');
     const compiled = plan.compilation;
@@ -74,6 +101,23 @@ function validatePlan(plan) {
             || compiled.plan.capability !== 'native-json-data-only' || recordSha256(compiledContent) !== planHash) {
             throw new Error('MVU_INIT_PLAN_INVALID');
         }
+    }
+    if (plan.schemaVersion === 2) {
+        const snapshot = plan.sourceSnapshot;
+        const proof = plan.freshNativeBasisProof;
+        const { snapshotSha256, ...snapshotContent } = snapshot;
+        const { proofSha256, ...proofContent } = proof;
+        if (snapshot.schemaVersion !== 1 || snapshot.encoding !== 'native-mvu-source-snapshot-v1'
+            || proof.schemaVersion !== 1 || proof.encoding !== 'native-mvu-fresh-basis-proof-v1'
+            || recordSha256(snapshotContent) !== snapshotSha256 || recordSha256(proofContent) !== proofSha256
+            || !same(snapshot.source, plan.identity.source) || proof.sessionId !== plan.identity.sessionId
+            || proof.ownerSessionId !== plan.identity.sessionId
+            || snapshot.selected.index !== plan.identity.index || snapshot.selected.pointer !== plan.identity.sourcePointer
+            || snapshot.selected.sourceSha256 !== plan.identity.sourceSha256
+            || snapshot.selected.renderedSha256 !== plan.identity.renderedSha256
+            || plan.compilation.plan.schemaVersion !== 2 || plan.compilation.plan.source.authority !== 'core-native-policy'
+            || !same(snapshot.policy, plan.compilation.plan.source.policy))
+            throw new Error('MVU_INIT_PLAN_INVALID');
     }
 }
 function validNative(receipt, identity) {
@@ -101,7 +145,9 @@ function headFor(event) {
 export function createRoleplayMvuInitialization(deps) {
     if (typeof deps.isOpeningCurrent !== 'function')
         throw new Error('MVU_INIT_OPENING_GUARD_REQUIRED');
-    const current = (plan, nativeTurn) => deps.isCurrent(plan.identity) && deps.isOpeningCurrent(plan, nativeTurn);
+    const current = (plan, nativeTurn) => deps.isCurrent(plan.identity) && deps.isOpeningCurrent(plan, nativeTurn)
+        && (plan.schemaVersion === 1 || typeof deps.isSourceSnapshotCurrent === 'function'
+            && deps.isSourceSnapshotCurrent(plan.sourceSnapshot));
     const read = (plan) => {
         try {
             validatePlan(plan);
@@ -135,9 +181,19 @@ export function createRoleplayMvuInitialization(deps) {
             return { kind: 'blocked', code: 'IDENTITY_CONFLICT' };
         return { kind: 'ready', event: structuredClone(stored), head: structuredClone(head) };
     };
-    const publish = (suppliedPlan, acknowledgedNativeTurn) => {
+    const publish = async (suppliedPlan, acknowledgedNativeTurn) => {
         // Own the frozen value across native lookup awaits; a caller cannot mutate the admitted snapshot mid-publication.
         const plan = structuredClone(suppliedPlan);
+        validatePlan(plan);
+        if (!Number.isSafeInteger(acknowledgedNativeTurn) || acknowledgedNativeTurn <= 0) {
+            return { kind: 'blocked', code: 'NATIVE_NOT_COMMITTED' };
+        }
+        if (!current(plan, acknowledgedNativeTurn))
+            return { kind: 'blocked', code: 'SOURCE_CHANGED' };
+        // Owned lookup waits for native idle/flush. Holding the import lock here
+        // could deadlock a live Phase-A that needs that lock before becoming idle.
+        // All actual owner/source/native facts are checked again after acquisition.
+        const found = await deps.verifyNative(plan.identity);
         return deps.withSourceLock(plan.identity.sessionId, async () => {
             validatePlan(plan);
             if (!Number.isSafeInteger(acknowledgedNativeTurn) || acknowledgedNativeTurn <= 0) {
@@ -145,7 +201,6 @@ export function createRoleplayMvuInitialization(deps) {
             }
             if (!current(plan, acknowledgedNativeTurn))
                 return { kind: 'blocked', code: 'SOURCE_CHANGED' };
-            const found = await deps.verifyNative(plan.identity);
             if (!current(plan, acknowledgedNativeTurn))
                 return { kind: 'blocked', code: 'SOURCE_CHANGED' };
             if (found.status !== 'committed' || !validNative(found.receipt, plan.identity)
@@ -155,6 +210,13 @@ export function createRoleplayMvuInitialization(deps) {
             if (!deps.isNativeCurrent(found.receipt))
                 return { kind: 'blocked', code: 'SOURCE_CHANGED' };
             const proposed = eventFor(plan, found.receipt);
+            const basisCurrent = () => plan.schemaVersion === 1 || typeof deps.isBasisCurrent === 'function'
+                && deps.isBasisCurrent(plan, found.receipt, proposed);
+            if (plan.schemaVersion === 2 && typeof deps.isBasisCurrent !== 'function') {
+                return { kind: 'blocked', code: 'BASIS_UNPROVEN' };
+            }
+            if (!basisCurrent())
+                return { kind: 'blocked', code: 'BASIS_CHANGED' };
             const key = mvuInitializationEventKey(plan.identity.sessionId, proposed.eventId);
             const previous = deps.table.get(key);
             // Event is append-only. Lost put acknowledgements are recovered from the exact retained result, never recompiled.
@@ -170,6 +232,8 @@ export function createRoleplayMvuInitialization(deps) {
             if (!current(plan, acknowledgedNativeTurn) || !deps.isNativeCurrent(found.receipt)) {
                 return { kind: 'blocked', code: 'SOURCE_CHANGED' };
             }
+            if (!basisCurrent())
+                return { kind: 'blocked', code: 'BASIS_CHANGED' };
             // Re-read after the event put: no late authority may be overwritten even if a foreign writer bypassed the owner lock.
             const observedHead = deps.table.get(headKey);
             if (observedHead !== undefined && !same(observedHead, expected))
@@ -179,6 +243,8 @@ export function createRoleplayMvuInitialization(deps) {
             if (!current(plan, acknowledgedNativeTurn) || !deps.isNativeCurrent(found.receipt)) {
                 return { kind: 'blocked', code: 'SOURCE_CHANGED' };
             }
+            if (!basisCurrent())
+                return { kind: 'blocked', code: 'BASIS_CHANGED' };
             return read(plan);
         });
     };

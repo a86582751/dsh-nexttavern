@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/src/core/roleplay-core.ts; edit the TypeScript source.
 import { readProjectedStory } from './roleplay-message-view.js';
-import { keyOf, textOf, durableSeq, provenanceSeq, sha256, safeId, cloneRecord, passthroughSchema, rollsSchema, } from './roleplay-data.js';
+import { keyOf, textOf, durableSeq, provenanceSeq, sha256, safeId, cloneRecord, recordSha256, readUserInfo, passthroughSchema, rollsSchema, } from './roleplay-data.js';
 import { eventsOf, sessionEventsIfReady, surfaceEvents, surfaceEntries, isCompletedTurnEnd, canonicalAssistantForTurn, recentWindowSince, roleplayWindowCutStartIndex, assertWorkspaceSession, } from './roleplay-context.js';
 import { decodeTaskSelection } from './tavern-task-primitives.js';
 import { adaptationIsActive } from '../memory/memory-provenance.js';
@@ -22,7 +22,8 @@ export { createStableRoleplayFence, readRoleplayActivity, retireRoleplayContexts
 //     sceneCurrent(branchId)         -> 当前场景快照
 //     branchLineage(session)         -> 分支血缘（父链 + seedLength）
 import { resolve } from 'node:path';
-import { registerRoleplayImports, importActiveKey } from './roleplay-import.js';
+import { registerRoleplayImports, importActiveKey, activeOpeningSource } from './roleplay-import.js';
+import { provenImportPreludeAssistants } from './tavern-task-retirement.js';
 import { internalTaskSeqs } from './tavern-tasks.js';
 import { createNovelExports } from './novel-export.js';
 import { createTelemetry } from './tavern-telemetry.js';
@@ -36,7 +37,11 @@ import { createRoleplayDecision, taskCancellation } from './roleplay-decision.js
 import { createRoleplayInheritance } from './roleplay-inheritance.js';
 import { createResourceBridge } from './roleplay-resource-bridge.js';
 import { createCardWorkflows } from './roleplay-card-workflow.js';
+import { createCardAttachmentSources } from './roleplay-card-attachment.js';
+import { createChatCardSources } from './roleplay-chat-card-source.js';
+import { createChatCardNativeContext } from './roleplay-chat-card-context.js';
 import { createRoleplayOpeningSelection } from './roleplay-opening-selection.js';
+import { createRoleplayMvuOpening } from './roleplay-mvu-opening.js';
 import { registerOpeningRoutes } from './roleplay-opening-routes.js';
 import { createRoleplayService } from './roleplay-service.js';
 import { createSessionHistory, ensureSessionHistory } from './session-history.js';
@@ -76,10 +81,13 @@ const CARD_CLASSIFICATION_GUIDE = `【按创作语义分拆，不按标题或文
 const DSH_ROLEPLAY_CORE_PATCH = 'dsh-roleplay-status-obligation-v1';
 export const inject = [
     'sessions',
+    'agentLoop',
     'nexttavernMessageEdits',
     'sessionPersistence',
     'sessionQuery',
     'sessionController',
+    'fileUploads',
+    'attachments',
     'llm',
     'systemPrompt',
     'tools',
@@ -355,7 +363,7 @@ export async function apply(ctx, config = {}) {
     // The workflow host is registered before import tools; only the ready hook
     // invokes this driver, after the importer installs it below.
     let structuredImportDriver;
-    const { cardWorkflowKey, cardWorkflows, activeCardWorkflow, assertCardWorkflow, beginCardWorkflow, resumeCardWorkflows, completeCardWorkflow, } = createCardWorkflows({
+    const { cardWorkflowKey, cardWorkflows, activeCardWorkflow, assertCardWorkflow: assertCardWorkflowRecord, beginCardWorkflow, resumeCardWorkflows, completeCardWorkflow, } = createCardWorkflows({
         T,
         storyBranchIsActive: (...args) => storyBranchIsActive(...args),
         modelPolicy,
@@ -374,6 +382,26 @@ export async function apply(ctx, config = {}) {
         taskAgents,
         ctx
     });
+    const chatAttachmentSources = createCardAttachmentSources({ T, libraryFor,
+        fileUploads: ctx.fileUploads, attachments: ctx.attachments });
+    const chatCardSources = createChatCardSources({ sources: chatAttachmentSources,
+        ...createChatCardNativeContext({ session: id => ctx.sessions.get(id),
+            ownedAgent: agent => ctx.get('agentLoop')?.getInputAdmissionAgent(agent),
+            deletedMessageIds: session => deletedBranchMessageIdsFor(session) }) });
+    function assertCardWorkflow(session, record) {
+        assertCardWorkflowRecord(session, record);
+        if (!record?.workflowId)
+            return;
+        const job = cardWorkflows(session).find(value => value.id === record.workflowId);
+        if (job?.clientRequestId) {
+            const proof = chatAttachmentSources.readChatProof(session, job.clientRequestId);
+            if (proof) {
+                if (job.source.sha256 !== proof.file.attachmentId.slice(7))
+                    throw new Error('聊天角色卡原件与导入任务哈希不一致');
+                chatCardSources.assertCurrent(session, job.clientRequestId);
+            }
+        }
+    }
     const { memorySettingsPolicy, contextWindowKey, cloneContextWindow, buildPhaseA, storyWindowSettings, memoryForContext, contextWindowFor, memorySettingFields, } = createRoleplayPreparation({
         T,
         ctx,
@@ -494,6 +522,7 @@ export async function apply(ctx, config = {}) {
         withDecisionMutationLock,
         normalizeDecisionRecord,
         cloneRecord,
+        readOpeningIntent: source => openingSelection.readIntent(source),
         provenanceSeq
     });
     // ── 对外服务（供记忆引擎 / 未来 UI 半）─────────────────────────────────────
@@ -551,13 +580,21 @@ export async function apply(ctx, config = {}) {
         authorContext: session => residentAuthorContext(T, session.id),
         adaptationScope: session => ctx.get('tavernConversations')?.rootOf(session.id) ?? session.id,
         importPromptCheckpoint: session => {
-            const checkpoint = T.branch.get(importActiveKey(session.id));
-            if (typeof checkpoint?.importId !== 'string'
-                || typeof checkpoint.normalizedSha256 !== 'string')
+            const checkpoint = activeOpeningSource(T.branch, session.id);
+            if (!checkpoint)
                 return null;
+            const record = T.branch.get(importRecordKey(checkpoint.sourceRecordSessionId, checkpoint.importId));
+            const job = record.workflowId ? cardWorkflows(session).find(value => value.id === record.workflowId) : undefined;
+            let openingChoicePending = false;
+            if (job?.status === 'completed' && job.generation === record.workflowGeneration
+                && job.source.sha256 === record.rawSha256 && job.clientRequestId) {
+                assertWorkspaceSession(session);
+                openingChoicePending = !!chatAttachmentSources.readChatProof(session, job.clientRequestId);
+            }
             return {
                 importId: checkpoint.importId,
                 normalizedSha256: checkpoint.normalizedSha256,
+                openingChoicePending,
                 opening: String(T.opening.get(keyOf(session.id, 'scene'))?.text ?? '没有作者开场，等待玩家行动。'),
             };
         },
@@ -787,13 +824,45 @@ export async function apply(ctx, config = {}) {
         ensureState,
         simpleTool,
         sessionOf: workspaceSessionOf,
+        resolveChatCardSource: (session, exec, selector) => chatCardSources.resolve(session, exec, selector),
         RULE_IMPORT_FIELDS,
         archiveImported
     });
     structuredImportDriver = driveStructuredImport;
     const openingTable = { get: (key) => T.branch.get(key),
         put: async (key, value) => { await T.branch.put(key, value); } };
+    const openingContext = (sessionId) => {
+        const user = userValues(sessionId);
+        const prefix = `${sessionId}__`;
+        const cards = [...T.cards.entries()].filter(([key, card]) => key.startsWith(prefix)
+            && card?.kind !== 'user').sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+        return { user: user.name, user_gender: user.gender, char: String(cards[0]?.[1]?.name ?? '角色') };
+    };
+    const mvuOpening = createRoleplayMvuOpening({ tables: T, session: id => ctx.sessions.get(id),
+        branchReady: id => ensureState(id).branchReady, importActiveKey, importRecordKey,
+        withSourceLock: (id, work) => withImportLock(id, 'mvu-initialization', work),
+        recordVersionsFor: id => recordVersionsFor({ id }),
+        openingContext: id => ({ context: openingContext(id), bindingSha256: recordSha256({
+                schemaVersion: 1, encoding: 'native-opening-context-binding-v1', sessionId: id,
+                userInfo: recordSha256(readUserInfo()), userCard: recordSha256(T.cards.get(keyOf(id, 'user'))),
+                context: openingContext(id),
+            }) }),
+        messageEdits: ctx.nexttavernMessageEdits, deletedMessageIds: deletedBranchMessageIdsFor,
+        catalog: id => openingSelection.readCatalog(id, openingContext(id)),
+        nativeLookup: async (identity, text) => {
+            const found = await ctx.sessionController.resolveAgent(identity.sessionId);
+            const agent = found?.agent;
+            const owned = ctx.get('agentLoop')?.getInputAdmissionAgent(agent);
+            const sdk = owned;
+            if (!agent || owned !== agent || typeof sdk?.lookupProgrammaticAssistantCommit !== 'function')
+                return { status: 'unknown' };
+            return sdk.lookupProgrammaticAssistantCommit({ operationId: identity.operationId, messageId: identity.messageId,
+                text, source: { kind: 'programmatic', schemaVersion: 1, producer: 'dsh-nexttavern',
+                    origin: `card-opening:${identity.source.importId}`, operationId: identity.operationId } });
+        },
+    });
     const openingSelection = createRoleplayOpeningSelection({
+        ...mvuOpening.callbacks,
         table: openingTable,
         importActiveKey,
         importRecordKey,
@@ -814,15 +883,27 @@ export async function apply(ctx, config = {}) {
         },
         findOpeningByOperationId: async (intent) => {
             try {
+                const found = await ctx.sessionController.resolveAgent(intent.sessionId);
+                const agent = found?.agent;
+                if (agent?.lookupProgrammaticAssistantCommit) {
+                    return await agent.lookupProgrammaticAssistantCommit({ operationId: intent.operationId, messageId: intent.messageId,
+                        text: intent.renderedText, source: { kind: 'programmatic', schemaVersion: 1, producer: 'dsh-nexttavern',
+                            origin: `card-opening:${intent.source.importId}`, operationId: intent.operationId } });
+                }
                 const session = ctx.sessions.get(intent.sessionId);
                 if (!session)
                     return { status: 'unknown' };
-                const matching = eventsOf(session).filter(event => event.type === 'assistant/message'
+                const history = eventsOf(session);
+                if (history.some(event => event.type === 'turn/start' && event.data
+                    && Object.hasOwn(event.data, 'programmatic')))
+                    return { status: 'unknown' };
+                const matching = history.filter(event => event.type === 'assistant/message'
                     && event.data?.message?.source?.kind === 'programmatic'
                     && event.data?.message?.source?.operationId === intent.operationId);
+                // Older writers cannot prove that an absent assistant was never attempted.
+                // Exact old successes remain confirmable; retry requires the owned lookup contract.
                 if (!matching.length)
-                    return await ctx.sessions.flush(session)
-                        ? { status: 'absent' } : { status: 'unknown' };
+                    return { status: 'unknown' };
                 if (matching.length !== 1)
                     return { status: 'unknown' };
                 const event = matching[0];
@@ -846,14 +927,15 @@ export async function apply(ctx, config = {}) {
             }
         },
     });
-    registerOpeningRoutes({ ctx, resolveRoleplaySession, selection: openingSelection,
-        openingContext: sessionId => {
-            const user = userValues(sessionId);
-            const prefix = `${sessionId}__`;
-            const cards = [...T.cards.entries()].filter(([key, card]) => key.startsWith(prefix)
-                && card?.kind !== 'user').sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-            return { user: user.name, user_gender: user.gender, char: String(cards[0]?.[1]?.name ?? '角色') };
-        },
+    registerOpeningRoutes({ ctx, resolveRoleplaySession: async (id) => {
+            const session = await resolveRoleplaySession(id);
+            // Opening basis needs a ready branch, but general branch resolution must
+            // leave inheritance to its caller's exact cadence/fork boundary options.
+            if (session)
+                await ensureBranch(session);
+            return session;
+        }, selection: openingSelection,
+        openingContext,
         legacyOpeningAlreadyRequested: (sessionId, importId) => {
             const pointer = T.branch.get(importActiveKey(sessionId));
             const record = T.branch.get(importRecordKey(pointer?.sourceRecordSessionId ?? sessionId, importId));
@@ -862,16 +944,28 @@ export async function apply(ctx, config = {}) {
                 : undefined;
             return job?.openingRequested === true;
         },
-        priorOpeningInHistory: session => eventsOf(session).some(event => {
-            if (event.type !== 'assistant/message')
-                return false;
-            const source = event.data?.message?.source;
-            return source?.kind === 'programmatic' && source.producer === 'dsh-nexttavern'
-                && typeof source.origin === 'string' && source.origin.startsWith('card-opening:');
-        }),
+        priorOpeningInHistory: session => {
+            const prelude = provenImportPreludeAssistants(session, activeOpeningSource(T.branch, session.id));
+            const inherited = T.branch.get(keyOf(session.id, 'meta'));
+            if (typeof inherited?.freshBranchFrom === 'string' && inherited.freshBranchFrom)
+                return true;
+            const internal = internalTaskSeqs(session);
+            return surfaceEvents(session).some(event => event.type === 'assistant/message'
+                && !internal.has(event.seq) && !prelude.has(event.seq)
+                && textOf(event.data?.message?.content).trim())
+                || eventsOf(session).some(event => {
+                    if (event.type !== 'assistant/message')
+                        return false;
+                    const source = event.data?.message?.source;
+                    return source?.kind === 'programmatic' && source.producer === 'dsh-nexttavern'
+                        && typeof source.origin === 'string' && source.origin.startsWith('card-opening:');
+                });
+        },
         canCommit: async (sessionId) => {
             const found = await ctx.sessionController.resolveAgent(sessionId);
-            return typeof found?.agent?.commitProgrammaticAssistant === 'function';
+            const owned = ctx.get('agentLoop')?.getInputAdmissionAgent(found?.agent);
+            return !!owned && owned === found?.agent
+                && typeof owned.commitProgrammaticAssistant === 'function';
         } });
     registerCardAuthoring({
         ctx,
@@ -997,6 +1091,32 @@ export async function apply(ctx, config = {}) {
         selectedStatusRecord,
         selectedStatusGeneration,
         importSummary,
+        chatImportProjection: (session, record) => {
+            // A historical attachment receipt alone must never open a choice for a
+            // cancelled, replaced, inherited or incompletely activated import.
+            if (record.status !== 'active' || record.sessionId !== session.id || !record.workflowId)
+                return null;
+            const job = cardWorkflows(session).find(value => value.id === record.workflowId);
+            const result = job?.result;
+            if (!job || job.status !== 'completed' || job.kind !== 'card-import'
+                || job.generation !== record.workflowGeneration || job.source.sha256 !== record.rawSha256
+                || !result || typeof result !== 'object' || !('importId' in result)
+                || result.importId !== record.importId || !job.clientRequestId)
+                return null;
+            try {
+                assertWorkspaceSession(session);
+                // Completed imports retain their validated archival identity even when
+                // management-message retirement removes the old request from surface.
+                // Current active import/transaction and the opening catalog own readiness.
+                const proof = chatAttachmentSources.readChatProvenance(session, job.clientRequestId);
+                if (!proof || proof.sourceSha256 !== record.rawSha256 || !record.activation?.transactionId)
+                    return null;
+                return { ...proof, importId: record.importId, rawSha256: record.rawSha256, transactionId: record.activation.transactionId };
+            }
+            catch {
+                return null;
+            }
+        },
         deletedBranchMessageIdsFor,
         inheritedAssistantMessageIdsFor,
         normalizeDecisionRecord,

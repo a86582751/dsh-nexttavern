@@ -6,7 +6,9 @@ import {recordSha256} from './roleplay-data.js'
 import type {
   FrozenMvuOpeningInitialization, MvuOpeningIdentity, MvuOpeningPreparation,
   MvuInitializationReadiness, MvuNativeOpeningReceipt,
+  FrozenMvuOpeningInitializationV1, FrozenMvuOpeningInitializationV2,
 } from './roleplay-mvu-initialization.js'
+import type {MvuAbsenceScopeProof, MvuSourceSnapshot, MvuSourceCode} from './roleplay-mvu-source.js'
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
 const validHash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
@@ -55,6 +57,7 @@ export interface OpeningIntentV2 extends OpeningIntentIdentity {
 export type OpeningInitializationCode = 'PREPARE_UNSUPPORTED' | 'PREPARE_FAILED' | 'INITIALIZATION_UNKNOWN'
   | 'INITIALIZATION_RECEIPT_INVALID' | 'SOURCE_CHANGED' | 'EVENT_MISSING' | 'HEAD_MISSING'
   | 'RECORD_INVALID' | 'IDENTITY_CONFLICT' | 'NATIVE_NOT_COMMITTED'
+  | 'BASIS_UNPROVEN' | 'BASIS_CHANGED'
 export interface OpeningInitializationReceipt {
   readonly eventId: string
   readonly eventSha256: string
@@ -68,14 +71,25 @@ export interface OpeningIntentV3 extends OpeningIntentIdentity {
   readonly status: 'pending' | 'busy' | 'unknown' | 'blocked' | 'native-committed' | 'completed'
   /** Only a prepare failure may omit text/plan. Empty text is not a replacement for the original SHA. */
   readonly textRetained: boolean
-  readonly initialization?: FrozenMvuOpeningInitialization
+  readonly initialization?: FrozenMvuOpeningInitializationV1
   readonly initializationCode?: OpeningInitializationCode
   readonly initializationInputHash?: string
   readonly initializationDiagnostics?: readonly {code: string; pointer: string}[]
   readonly nativeReceipt?: MvuNativeOpeningReceipt
   readonly initializationReceipt?: OpeningInitializationReceipt
 }
-export type OpeningIntent = OpeningIntentV2 | OpeningIntentV3
+export interface OpeningIntentV4 extends Omit<OpeningIntentV3, 'schemaVersion' | 'initialization'> {
+  readonly schemaVersion: 4
+  readonly mode: 'plain' | 'native-json' | 'unsupported'
+  readonly initialization?: FrozenMvuOpeningInitializationV2
+  readonly absenceScopeProof?: MvuAbsenceScopeProof
+}
+export type OpeningInitializedIntent = OpeningIntentV3 | OpeningIntentV4
+export type OpeningIntent = OpeningIntentV2 | OpeningInitializedIntent
+export type OpeningInitializationPreparation = MvuOpeningPreparation
+  | {kind:'legacy-v2'; absenceScopeProof:MvuAbsenceScopeProof}
+export type OpeningNativeReadiness = {kind:'ready';receipt:MvuNativeOpeningReceipt}
+  | {kind:'blocked';code:OpeningInitializationCode}
 export interface OpeningTable {
   get(key: string): unknown
   put(key: string, value: OpeningIntent): Promise<unknown>
@@ -104,18 +118,31 @@ export interface OpeningSelectionDeps {
   /** The adapter must verify the exact messageId, source, text, turn end and durable flush. */
   readonly findOpeningByOperationId: (intent: OpeningIntent) => Promise<OpeningLookupResult>
   readonly prepareInitialization?: (request: {catalog: OpeningCatalog; candidate: TavernOpeningCandidate;
-    identity: MvuOpeningIdentity}) => MvuOpeningPreparation | Promise<MvuOpeningPreparation>
+    identity: MvuOpeningIdentity}) => OpeningInitializationPreparation | Promise<OpeningInitializationPreparation>
   /** May acquire the source lock; this callback is always invoked outside the opening lock. */
-  readonly finishInitialization?: (intent: OpeningIntentV3) => Promise<MvuInitializationReadiness>
+  readonly finishInitialization?: (intent: OpeningInitializedIntent) => Promise<MvuInitializationReadiness>
   /** Synchronous actual Domain/native-version check; does not acquire the source lock. */
   readonly readInitialization?: (plan: FrozenMvuOpeningInitialization) => MvuInitializationReadiness
+  readonly isSourceSnapshotCurrent?: (snapshot: MvuSourceSnapshot) => boolean
+  /** Actual original/native version and durable flush, not merely matching id/text. */
+  readonly readNativeOpening?: (intent: OpeningIntentV4) => OpeningNativeReadiness
+  /** New Core may deny another append for historical v2 pending intents whose source is not proven plain. */
+  readonly legacyPendingAllowed?: (intent: OpeningIntentV2) => boolean
 }
 
 const initializationCodes = new Set<OpeningInitializationCode>([
   'PREPARE_UNSUPPORTED', 'PREPARE_FAILED', 'INITIALIZATION_UNKNOWN', 'INITIALIZATION_RECEIPT_INVALID',
   'SOURCE_CHANGED', 'EVENT_MISSING', 'HEAD_MISSING', 'RECORD_INVALID', 'IDENTITY_CONFLICT', 'NATIVE_NOT_COMMITTED',
+  'BASIS_UNPROVEN', 'BASIS_CHANGED',
 ])
+const sourceDiagnosticCodes: Record<MvuSourceCode,true> = {
+  REQUEST_INVALID:true,SOURCE_INVALID:true,SOURCE_CHANGED:true,MATERIAL_INVALID:true,MEMBERSHIP_INVALID:true,
+  SOURCE_BUDGET:true,FIELD_UNSUPPORTED:true,EXTENSION_UNSUPPORTED:true,STATE_SYNTAX_UNSUPPORTED:true,
+  INITVAR_OUTSIDE_BINDING:true,INITVAR_INVALID:true,PRIMARY_REQUIRED:true,MACRO_UNSUPPORTED:true,
+  BASIS_UNPROVEN:true,BASIS_INVALID:true,SNAPSHOT_INVALID:true,
+}
 const compilerCodes = new Set([
+  ...Object.keys(sourceDiagnosticCodes),
   'NODE_LIMIT', 'DEPTH_LIMIT', 'BYTE_LIMIT', 'NUMBER_LIMIT', 'NON_JSON_VALUE', 'OBJECT_PROTOTYPE', 'CYCLIC_VALUE',
   'ARRAY_LIMIT', 'ARRAY_PROPERTY', 'PROTOTYPE_KEY', 'DESCRIPTOR_SHAPE', 'IDENTITY', 'SOURCE_HASH', 'JSON_OBJECT_REQUIRED',
   'AUTHOR_SCHEMA_UNSUPPORTED', 'INPUT_VERSION', 'UNVERIFIED_SOURCE', 'UNKNOWN_DIALECT', 'DIALECT_PROVENANCE',
@@ -125,6 +152,7 @@ const compilerCodes = new Set([
   'SCHEMA_CAPABILITY', 'CALLBACK_CAPABILITY', 'OPENING_UPDATE_CAPABILITY', 'OPENING_UPDATE_UNSUPPORTED',
   'PRIMARY_BINDING_UNKNOWN', 'OUTPUT_BYTE_LIMIT', 'INVALID_INPUT',
   'INITVAR_WRAPPER_UNSUPPORTED', 'INITVAR_FENCE_UNSUPPORTED',
+  'NATIVE_POLICY', 'SOURCE_SNAPSHOT_HASH', 'FRESH_BASIS',
 ])
 const operationIdentity = (intent: OpeningIntentIdentity): MvuOpeningIdentity => ({
   sessionId: intent.sessionId, source: intent.source, operationId: intent.operationId, messageId: intent.messageId,
@@ -140,20 +168,54 @@ function diagnosticPointer(value: unknown): string {
   const fixed = new Set(['', '/schemaVersion', '/source', '/source/sourceId', '/source/sourceSha256',
     '/source/dialect', '/source/dialectSha256', '/source/commit', '/source/loader', '/messageIndex', '/initializedBooks',
     '/selectedSwipeIdentity', '/bookStatData', '/bookStatDataSha256', '/merge', '/plan',
+    '/policy','/sourceSnapshot','/freshNativeBasisProof',
+    '/settings','/settings/cards','/settings/worldbook','/settings/extensions','/source/coverage','/material',
+    '/basis','/basis/swipes','/bindings/primary','/selected','/macros','/document','/data','/data/extensions',
+    '/data/character_book','/data/character_book/extensions',
     '/capabilities/macros', '/capabilities/schema', '/capabilities/callbacks', '/capabilities/openingUpdates'])
   return fixed.has(value) ? value : ''
 }
 
-function validFrozen(plan: FrozenMvuOpeningInitialization | undefined, intent: OpeningIntentIdentity): boolean {
-  if (!plan || plan.schemaVersion !== 1 || plan.encoding !== 'mvu-programmatic-opening-plan-v1'
+function validFrozen(plan: FrozenMvuOpeningInitialization | undefined, intent: OpeningIntentIdentity, version = 1): boolean {
+  if (!plan || plan.schemaVersion !== version || plan.encoding !== `mvu-programmatic-opening-plan-v${version}`
     || !validHash(plan.planSha256) || !sameRecord(plan.identity, operationIdentity(intent))) return false
   const {planSha256, ...content} = plan
   return recordSha256(content) === planSha256 && validHash(plan.valuesSha256)
     && recordSha256(plan.values) === plan.valuesSha256
-    && plan.compilation?.schemaVersion === 1 && ['none', 'supported'].includes(plan.compilation.kind)
+    && plan.compilation?.schemaVersion === version && ['none', 'supported'].includes(plan.compilation.kind)
+    && (version === 1 || plan.schemaVersion === 2 && plan.compilation.kind === 'supported'
+      && validSnapshot(plan.sourceSnapshot,intent) && contentHash(plan.freshNativeBasisProof,'proofSha256'))
 }
 
-function validReady(intent: OpeningIntentV3, ready: MvuInitializationReadiness): boolean {
+function contentHash(value: unknown, field: string): boolean {
+  if (!value || typeof value !== 'object') return false
+  const {[field]:expected,...content} = value as Record<string,unknown>
+  return validHash(expected) && recordSha256(content) === expected
+}
+function validSnapshot(snapshot: MvuSourceSnapshot | undefined, intent: OpeningIntentIdentity): boolean {
+  return !!snapshot && snapshot.schemaVersion === 1 && snapshot.encoding === 'native-mvu-source-snapshot-v1'
+    && contentHash(snapshot,'snapshotSha256') && sameRecord(snapshot.source,intent.source)
+    && snapshot.selected.index === intent.index && snapshot.selected.pointer === intent.sourcePointer
+    && snapshot.selected.sourceSha256 === intent.sourceSha256 && snapshot.selected.renderedSha256 === intent.renderedSha256
+}
+function validAbsence(proof: MvuAbsenceScopeProof | undefined, intent: OpeningIntentIdentity): boolean {
+  return !!proof && proof.schemaVersion === 1 && proof.encoding === 'native-mvu-absence-scope-proof-v1'
+    && proof.reason === 'closed-native-scope-no-initialization' && contentHash(proof,'proofSha256')
+    && Object.keys(proof).every(key => ['schemaVersion','encoding','reason','sourceSnapshot','proofSha256'].includes(key))
+    && validSnapshot(proof.sourceSnapshot,intent)
+}
+function validNative(intent: OpeningIntentIdentity, native: MvuNativeOpeningReceipt): boolean {
+  return !!native && Object.keys(native).every(key => ['sessionId','operationId','messageId','renderedSha256','turn',
+    'assistantSeq','turnStartSeq','turnEndSeq','messageVersion','flushed'].includes(key))
+    && Object.keys(native.messageVersion ?? {}).every(key => ['kind','eventSha256'].includes(key))
+    && native.sessionId === intent.sessionId && native.operationId === intent.operationId
+    && native.messageId === intent.messageId && native.renderedSha256 === intent.renderedSha256
+    && native.turn === intent.committedTurn && validTurn(native.turn) && native.turn > 0 && native.flushed === true
+    && native.messageVersion?.kind === 'original' && validHash(native.messageVersion.eventSha256)
+    && [native.turnStartSeq,native.assistantSeq,native.turnEndSeq].every(validTurn)
+    && native.turnStartSeq < native.assistantSeq && native.assistantSeq < native.turnEndSeq
+}
+function validReady(intent: OpeningInitializedIntent, ready: MvuInitializationReadiness): boolean {
   if (ready.kind !== 'ready' || !intent.initialization || !validTurn(intent.committedTurn)) return false
   const {event, head} = ready
   const native = event?.native
@@ -179,11 +241,11 @@ function receiptFor(ready: Extract<MvuInitializationReadiness, {kind: 'ready'}>)
     valuesSha256: ready.head.valuesSha256, headSha256: recordSha256(ready.head), headRevision: 1}
 }
 
-function validateV3(intent: OpeningIntentV3): void {
+function validateVersioned(intent: OpeningInitializedIntent): void {
   const keys = ['schemaVersion', 'sessionId', 'source', 'index', 'sourcePointer', 'sourceSha256', 'renderedSha256',
     'renderedText', 'messageId', 'operationId', 'revision', 'status', 'committedTurn', 'rejectionCode', 'textRetained',
     'initialization', 'initializationCode', 'initializationInputHash', 'initializationDiagnostics',
-    'nativeReceipt', 'initializationReceipt']
+    'nativeReceipt', 'initializationReceipt', ...(intent.schemaVersion === 4 ? ['mode','absenceScopeProof'] : [])]
   const source = intent.source
   if (Object.keys(intent).some(key => !keys.includes(key))
     || !source || source.sessionId !== intent.sessionId || source.pointer?.importId !== source.importId
@@ -207,11 +269,25 @@ function validateV3(intent: OpeningIntentV3): void {
   if (!intent.textRetained) {
     if (intent.status !== 'blocked' || intent.renderedText !== '' || intent.initialization !== undefined
       || intent.committedTurn !== undefined || intent.nativeReceipt !== undefined || intent.initializationReceipt !== undefined
-      || !['PREPARE_UNSUPPORTED', 'PREPARE_FAILED'].includes(intent.initializationCode ?? '')) {
+      || !['PREPARE_UNSUPPORTED','PREPARE_FAILED',...(intent.schemaVersion === 4 ? ['SOURCE_CHANGED'] : [])]
+        .includes(intent.initializationCode ?? '')) {
       throw new Error('损坏的开场初始化阻断锚点')
     }
-  } else if (intent.status === 'blocked' || hash(intent.renderedText) !== intent.renderedSha256
-    || !validFrozen(intent.initialization, intent)) throw new Error('损坏的冻结开场初始化计划')
+    if (intent.schemaVersion === 4 && (intent.mode !== 'unsupported' || intent.absenceScopeProof !== undefined)) {
+      throw new Error('损坏的开场初始化阻断锚点')
+    }
+  } else {
+    if (intent.status === 'blocked' || hash(intent.renderedText) !== intent.renderedSha256) {
+      throw new Error('损坏的冻结开场初始化计划')
+    }
+    if (intent.schemaVersion === 4 && intent.mode === 'plain') {
+      if (intent.initialization !== undefined || intent.initializationReceipt !== undefined
+        || !validAbsence(intent.absenceScopeProof,intent)) throw new Error('损坏的开场来源范围证明')
+    } else if (intent.schemaVersion === 4 && (intent.mode !== 'native-json' || intent.absenceScopeProof !== undefined)
+      || !validFrozen(intent.initialization,intent,intent.schemaVersion === 4 ? 2 : 1)) {
+      throw new Error('损坏的冻结开场初始化计划')
+    }
+  }
   if (intent.initializationInputHash !== undefined && !validHash(intent.initializationInputHash)) {
     throw new Error('损坏的开场初始化诊断')
   }
@@ -224,7 +300,9 @@ function validateV3(intent: OpeningIntentV3): void {
   if (['native-committed', 'completed'].includes(intent.status) && !validTurn(intent.committedTurn)) {
     throw new Error('原生开场缺少 durable turn')
   }
-  if (intent.status === 'completed' && (!intent.nativeReceipt || !intent.initializationReceipt)) {
+  if (intent.status === 'completed' && (!intent.nativeReceipt
+    || intent.schemaVersion === 4 && !validNative(intent,intent.nativeReceipt)
+    || !(intent.schemaVersion === 4 && intent.mode === 'plain') && !intent.initializationReceipt)) {
     throw new Error('开场缺少初始化完成引用')
   }
   if (intent.status !== 'completed' && (intent.nativeReceipt !== undefined || intent.initializationReceipt !== undefined)) {
@@ -241,21 +319,34 @@ export function openingIntentKey(sessionId: string, importId: string): string {
 export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   const initializationDeps = [deps.prepareInitialization, deps.finishInitialization, deps.readInitialization]
   const initializationEnabled = initializationDeps.every(item => typeof item === 'function')
-  if (!initializationEnabled && initializationDeps.some(item => item !== undefined)) {
+  if (!initializationEnabled && [...initializationDeps,deps.isSourceSnapshotCurrent,deps.readNativeOpening]
+    .some(item => item !== undefined)) {
     throw new Error('开场初始化依赖必须完整提供')
   }
   type BusyResult = {status: 'busy'; intent: OpeningIntent}
-  type FinishWork = {finish: OpeningIntentV3}
+  type FinishWork = {finish: OpeningInitializedIntent}
   type LockedResult = OpeningIntent | BusyResult | FinishWork
   const checkIntent = (intent: OpeningIntent, sessionId: string, importId: string) => {
-    if (intent.schemaVersion === 3 && initializationEnabled) {
+    if ((intent.schemaVersion === 3 || intent.schemaVersion === 4) && initializationEnabled) {
       if (intent.sessionId !== sessionId || intent.source?.importId !== importId) throw new Error('未知或损坏的开场选择 schema')
-      validateV3(intent)
+      if (intent.schemaVersion === 4) requireV4Deps()
+      validateVersioned(intent)
       return
     }
     if (intent.schemaVersion !== 2 || intent.sessionId !== sessionId || intent.source?.importId !== importId
       || !validHash(intent.renderedSha256) || hash(intent.renderedText) !== intent.renderedSha256
       || !intent.messageId) throw new Error('未知或损坏的开场选择 schema')
+  }
+  const requireV4Deps = () => {
+    if (typeof deps.isSourceSnapshotCurrent !== 'function' || typeof deps.readNativeOpening !== 'function') {
+      throw new Error('开场来源证明与原生回执依赖必须完整提供')
+    }
+  }
+  const sourceCurrent = (intent: OpeningIntent): boolean => {
+    if (!current(intent.source)) return false
+    if (intent.schemaVersion !== 4 || intent.mode === 'unsupported') return true
+    const snapshot = intent.mode === 'plain' ? intent.absenceScopeProof!.sourceSnapshot : intent.initialization!.sourceSnapshot
+    try { return deps.isSourceSnapshotCurrent!(snapshot) === true } catch { return false }
   }
   const readCatalog = (sessionId: string, context: TavernOpeningContext = {}): OpeningCatalog => {
     const pointer = deps.table.get(deps.importActiveKey(sessionId)) as ImportPointer | undefined
@@ -288,33 +379,42 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   }
   const readIntent = (source: OpeningSource): OpeningIntent | null => {
     const intent = deps.table.get(openingIntentKey(source.sessionId, source.importId)) as OpeningIntent | undefined
-    if (!intent || !current(source) || ![2, ...(initializationEnabled ? [3] : [])].includes(intent.schemaVersion)
+    if (intent && current(source) && ![2,3,4].includes(intent.schemaVersion)) throw new Error('未知或损坏的开场选择 schema')
+    if (intent?.schemaVersion === 4 && !initializationEnabled) throw new Error('当前入口不能读取带来源证明的开场')
+    if (!intent || !current(source) || ![2, ...(initializationEnabled ? [3,4] : [])].includes(intent.schemaVersion)
       || intent.sessionId !== source.sessionId
       || intent.source.importId !== source.importId || !samePointer(intent.source.pointer, source.pointer)
       || intent.source.rawSha256 !== source.rawSha256) return null
-    if (intent.schemaVersion === 3) {
-      validateV3(intent)
+    if (intent.schemaVersion === 3 || intent.schemaVersion === 4) {
+      checkIntent(intent,source.sessionId,source.importId)
       if (intent.status === 'completed') return completedProjection(intent)
+      if (!sourceCurrent(intent)) return blockedProjection(intent,'SOURCE_CHANGED')
     }
     return intent
   }
   const complete = async (key: string, intent: OpeningIntent, turn: number): Promise<OpeningIntent> => {
     if (!Number.isSafeInteger(turn) || turn < 0) throw new Error('原生开场缺少 durable turn')
     const {rejectionCode: _previousRejection, ...retained} = intent
-    const next: OpeningIntent = intent.schemaVersion === 3
-      ? {...retained as OpeningIntentV3, status:'native-committed', revision:intent.revision + 1, committedTurn:turn}
+    const next: OpeningIntent = intent.schemaVersion !== 2
+      ? {...retained as OpeningInitializedIntent, status:'native-committed', revision:intent.revision + 1, committedTurn:turn}
       : {...retained as OpeningIntentV2, status:'completed', revision:intent.revision + 1, committedTurn:turn}
     await deps.table.put(key, next)
     return next
   }
-  const committedResult = (intent: OpeningIntent): OpeningIntent | FinishWork => intent.schemaVersion === 3
+  const committedResult = (intent: OpeningIntent): OpeningIntent | FinishWork => intent.schemaVersion !== 2
     ? {finish: structuredClone(intent)} : intent
+  const legacyAllowed = (intent: OpeningIntentV2): boolean => {
+    if (!deps.legacyPendingAllowed) return true
+    try { return deps.legacyPendingAllowed(intent) === true } catch { return false }
+  }
   const append = async (key: string, intent: OpeningIntent): Promise<LockedResult> => {
+    if (intent.schemaVersion === 2 && !legacyAllowed(intent)) return {status:'busy',intent:{...intent,status:'unknown'}}
+    if (intent.schemaVersion !== 2 && !sourceCurrent(intent)) return {status:'busy',intent:blockedProjection(intent,'SOURCE_CHANGED')}
     let result: OpeningAppendResult
     try { result = await deps.appendOpening({sessionId:intent.sessionId, operationId:intent.operationId,
       messageId:intent.messageId, source:intent.source, text:intent.renderedText}) }
     catch { result = {kind:'unknown'} }
-    if (intent.schemaVersion === 3 && !sameRecord(deps.table.get(key), intent)) {
+    if (intent.schemaVersion !== 2 && !sameRecord(deps.table.get(key), intent)) {
       throw new Error('开场原生回执与当前意图不匹配')
     }
     if (result.kind === 'committed') {
@@ -329,7 +429,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     await deps.table.put(key, next)
     return {status:'busy', intent:next}
   }
-  const ready = (intent: OpeningIntentV3): MvuInitializationReadiness => {
+  const ready = (intent: OpeningInitializedIntent): MvuInitializationReadiness => {
     try {
       const result = deps.readInitialization!(intent.initialization!)
       if (!result || !['ready', 'blocked'].includes(result.kind)
@@ -338,17 +438,31 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     }
     catch { return {kind:'blocked', code:'RECORD_INVALID'} }
   }
-  const receiptMatches = (intent: OpeningIntentV3, observed: MvuInitializationReadiness): boolean => {
+  const receiptMatches = (intent: OpeningInitializedIntent, observed: MvuInitializationReadiness): boolean => {
     try { return validReady(intent, observed) } catch { return false }
   }
   // Read-only response view, not a durable prepare-blocked anchor: never put or
   // validate this projection as a replacement for the retained owner/receipt.
-  const blockedProjection = (intent: OpeningIntentV3, code: OpeningInitializationCode): OpeningIntentV3 =>
+  const blockedProjection = <T extends OpeningInitializedIntent>(intent: T, code: OpeningInitializationCode): T =>
     ({...intent, status:'blocked', initializationCode:code})
-  const completedProjection = (intent: OpeningIntentV3): OpeningIntentV3 => {
+  const nativeReady = (intent: OpeningIntentV4): OpeningNativeReadiness => {
+    try {
+      const observed = deps.readNativeOpening!(intent)
+      if (observed.kind === 'blocked' && initializationCodes.has(observed.code)) return observed
+      if (observed.kind === 'ready' && validNative(intent,observed.receipt)) return observed
+    } catch { /* Read-only uncertain native evidence cannot authorize completion. */ }
+    return {kind:'blocked',code:'NATIVE_NOT_COMMITTED'}
+  }
+  const completedProjection = (intent: OpeningInitializedIntent): OpeningInitializedIntent => {
     // A retained receipt is historical when its import source has changed, even
     // if the numerical head/native receipt still matches this frozen plan.
-    if (!current(intent.source)) return blockedProjection(intent, 'SOURCE_CHANGED')
+    if (!sourceCurrent(intent)) return blockedProjection(intent, 'SOURCE_CHANGED')
+    if (intent.schemaVersion === 4) {
+      const native = nativeReady(intent)
+      if (native.kind !== 'ready') return blockedProjection(intent,native.code)
+      if (!sameRecord(native.receipt,intent.nativeReceipt)) return blockedProjection(intent,'INITIALIZATION_RECEIPT_INVALID')
+      if (intent.mode === 'plain') return intent
+    }
     const observed = ready(intent)
     if (observed.kind !== 'ready') return blockedProjection(intent, observed.code)
     if (!receiptMatches(intent, observed) || !sameRecord(intent.nativeReceipt, observed.event.native)
@@ -357,10 +471,11 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     }
     return intent
   }
-  const finish = async (work: OpeningIntentV3): Promise<OpeningIntentV3> => {
+  const finish = async (work: OpeningInitializedIntent): Promise<OpeningInitializedIntent> => {
     let failure: OpeningInitializationCode = 'INITIALIZATION_UNKNOWN'
+    const native = work.schemaVersion === 4 ? nativeReady(work) : null
     // publish owns the same non-reentrant source lock. Finish must stay outside opening withLock.
-    if (current(work.source)) {
+    if (sourceCurrent(work) && native?.kind !== 'blocked' && !(work.schemaVersion === 4 && work.mode === 'plain')) {
       try {
         const result = await deps.finishInitialization!(structuredClone(work))
         if (result.kind === 'blocked' && initializationCodes.has(result.code)) failure = result.code
@@ -369,15 +484,37 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     return deps.withLock(`opening-choice:${work.sessionId}`, async () => {
       const key = openingIntentKey(work.sessionId, work.source.importId)
       const actual = deps.table.get(key) as OpeningIntent | undefined
-      if (!current(work.source)) return blockedProjection(work, 'SOURCE_CHANGED')
+      if (!sourceCurrent(work)) return blockedProjection(work, 'SOURCE_CHANGED')
       if (!actual) return blockedProjection(work, 'IDENTITY_CONFLICT')
-      if (actual.schemaVersion !== 3 || !sameRecord(operationIdentity(actual), operationIdentity(work))
-        || !sameRecord(actual.initialization, work.initialization) || actual.committedTurn !== work.committedTurn) {
+      if (actual.schemaVersion === 2 || actual.schemaVersion !== work.schemaVersion
+        || !sameRecord(operationIdentity(actual), operationIdentity(work))
+        || !sameRecord(actual.initialization, work.initialization) || actual.committedTurn !== work.committedTurn
+        || actual.schemaVersion === 4 && (work.schemaVersion !== 4 || actual.mode !== work.mode
+          || !sameRecord(actual.absenceScopeProof,work.absenceScopeProof))) {
         return blockedProjection(work, 'IDENTITY_CONFLICT')
       }
       checkIntent(actual, work.sessionId, work.source.importId)
+      if (actual.schemaVersion === 4 && actual.mode === 'native-json'
+        && (failure === 'BASIS_UNPROVEN' || failure === 'BASIS_CHANGED')) {
+        // A readable owned head cannot override an explicit fresh-basis refusal
+        // after publication. Only a missing/thrown acknowledgement is repairable.
+        return blockedProjection(actual,failure)
+      }
       if (actual.status === 'completed') return completedProjection(actual)
       if (actual.status !== 'native-committed') return blockedProjection(work, 'IDENTITY_CONFLICT')
+      if (actual.schemaVersion === 4) {
+        const native = nativeReady(actual)
+        if (native.kind !== 'ready') return blockedProjection(actual,native.code)
+        if (actual.mode === 'plain') {
+          const {initializationCode:_code,rejectionCode:_rejection,...retained} = actual
+          const next: OpeningIntentV4 = {...retained,status:'completed',revision:actual.revision + 1,
+            nativeReceipt:structuredClone(native.receipt)}
+          await deps.table.put(key,next)
+          if (!sourceCurrent(next)) return blockedProjection(next,'SOURCE_CHANGED')
+          if (!sameRecord(deps.table.get(key),next)) return blockedProjection(next,'IDENTITY_CONFLICT')
+          return completedProjection(next)
+        }
+      }
       const observed = ready(actual)
       if (observed.kind !== 'ready' || !receiptMatches(actual, observed)) {
         let code: OpeningInitializationCode = 'INITIALIZATION_RECEIPT_INVALID'
@@ -385,7 +522,13 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
           code = observed.code
           if (failure !== 'INITIALIZATION_UNKNOWN' && ['EVENT_MISSING', 'HEAD_MISSING'].includes(code)) code = failure
         }
-        const next: OpeningIntentV3 = {...actual, initializationCode:code,
+        if (actual.schemaVersion === 4) {
+          // Phase projection only. Source/basis/native conflicts must not mutate
+          // a retained transaction or disguise its frozen mode as a new success.
+          return ['EVENT_MISSING','HEAD_MISSING','INITIALIZATION_UNKNOWN'].includes(code)
+            ? {...actual,initializationCode:code} : blockedProjection(actual,code)
+        }
+        const next: OpeningInitializedIntent = {...actual, initializationCode:code,
           revision:actual.revision + (actual.initializationCode !== code ? 1 : 0)}
         if (!sameRecord(next, actual)) {
           // Optional diagnosis is not evidence of initialization; failure to save cannot erase the durable native anchor.
@@ -393,12 +536,12 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
         }
         return actual
       }
-      if (!current(actual.source)) return blockedProjection(actual, 'SOURCE_CHANGED')
+      if (!sourceCurrent(actual)) return blockedProjection(actual, 'SOURCE_CHANGED')
       const {initializationCode: _failure, rejectionCode: _rejection, ...retained} = actual
-      const next: OpeningIntentV3 = {...retained, status:'completed', revision:actual.revision + 1,
+      const next: OpeningInitializedIntent = {...retained, status:'completed', revision:actual.revision + 1,
         nativeReceipt:structuredClone(observed.event.native), initializationReceipt:receiptFor(observed)}
       await deps.table.put(key, next)
-      if (!current(next.source)) return blockedProjection(next, 'SOURCE_CHANGED')
+      if (!sourceCurrent(next)) return blockedProjection(next, 'SOURCE_CHANGED')
       if (!sameRecord(deps.table.get(key), next)) return blockedProjection(next, 'IDENTITY_CONFLICT')
       return completedProjection(next)
     })
@@ -429,8 +572,9 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
           || !samePointer(previous.source.pointer, catalog.source.pointer)
           || previous.source.rawSha256 !== catalog.source.rawSha256)
           throw new Error('已存在不同的开场选择；需先完成或显式迁移')
-        if (previous.schemaVersion === 3) {
+        if (previous.schemaVersion !== 2) {
           if (previous.status === 'blocked') return {status:'busy' as const, intent:previous}
+          if (!sourceCurrent(previous)) return {status:'busy' as const,intent:blockedProjection(previous,'SOURCE_CHANGED')}
           if (previous.status === 'completed') {
             const projected = completedProjection(previous)
             return projected.status === 'completed' ? projected : {status:'busy' as const, intent:projected}
@@ -440,7 +584,12 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
         // Reuse the exact operation after a durable negative log check. The native
         // writer also checks this id, so a partial turn remains a failure anchor.
         const found = await deps.findOpeningByOperationId(previous)
-        if (previous.schemaVersion === 3 && !current(previous.source)) return {status:'busy' as const, intent:previous}
+        if (previous.schemaVersion === 4 && !sameRecord(deps.table.get(key),previous)) {
+          return {status:'busy' as const,intent:blockedProjection(previous,'IDENTITY_CONFLICT')}
+        }
+        if (previous.schemaVersion !== 2 && !sourceCurrent(previous)) {
+          return {status:'busy' as const,intent:blockedProjection(previous,'SOURCE_CHANGED')}
+        }
         if (found.status === 'committed') return committedResult(await complete(key, previous, found.turn!))
         if (found.status === 'absent' && current(previous.source))
           return append(key, previous)
@@ -457,28 +606,51 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       let intent: OpeningIntent
       if (!initializationEnabled) intent = {schemaVersion:2, ...identity, status:'pending'}
       else {
-        let preparation: MvuOpeningPreparation | undefined
+        let preparation: OpeningInitializationPreparation | undefined
         let code: OpeningInitializationCode = 'PREPARE_FAILED'
+        let sourceProtocol = typeof deps.isSourceSnapshotCurrent === 'function' && typeof deps.readNativeOpening === 'function'
         try {
           preparation = await deps.prepareInitialization!({catalog, candidate, identity:operationIdentity(identity)})
-          if (preparation.kind === 'prepared' && !validFrozen(preparation.plan, identity)) preparation = undefined
+          if (preparation.kind === 'prepared') sourceProtocol = preparation.plan.schemaVersion !== 1
+          if (preparation.kind === 'prepared' && !validFrozen(preparation.plan,identity,preparation.plan.schemaVersion)) {
+            preparation = undefined
+          }
           if (preparation?.kind === 'unsupported') code = 'PREPARE_UNSUPPORTED'
         } catch { /* Persist only bounded diagnosis; no adapter/parser error body belongs in the intent. */ }
-        if (!preparation || preparation.kind !== 'prepared') {
+        if (preparation?.kind === 'legacy-v2') {
+          requireV4Deps()
+          if (!validAbsence(preparation.absenceScopeProof,identity)) throw new Error('损坏的开场来源范围证明')
+          intent = {...identity,schemaVersion:4,mode:'plain',status:'pending',textRetained:true,
+            absenceScopeProof:structuredClone(preparation.absenceScopeProof)}
+        } else if (!preparation || preparation.kind !== 'prepared') {
           const diagnostics = preparation?.kind === 'unsupported' && Array.isArray(preparation.diagnostics)
             ? preparation.diagnostics.slice(0,3)
             .filter(item => item && compilerCodes.has(item.code))
             .map(item => ({code:item.code, pointer:diagnosticPointer(item.pointer)})) : []
           const inputHash = preparation?.kind === 'unsupported' ? preparation.inputHash : undefined
-          const blocked: OpeningIntentV3 = {...identity, schemaVersion:3, status:'blocked', textRetained:false,
+          const version4 = sourceProtocol || preparation?.kind === 'unsupported' && preparation.schemaVersion === 2
+          if (version4) requireV4Deps()
+          const blocked: OpeningInitializedIntent = {...identity,
+            ...(version4 ? {schemaVersion:4 as const,mode:'unsupported' as const} : {schemaVersion:3 as const}),
+            status:'blocked', textRetained:false,
             renderedText:'', initializationCode:code,
             ...(diagnostics.length ? {initializationDiagnostics:diagnostics} : {}),
             ...(validHash(inputHash) ? {initializationInputHash:inputHash} : {})}
           await deps.table.put(key, blocked)
           return {status:'busy' as const, intent:blocked}
-        }
-        intent = {...identity, schemaVersion:3, status:'pending', textRetained:true,
+        } else if (preparation.plan.schemaVersion === 2) {
+          requireV4Deps()
+          intent = {...identity,schemaVersion:4,mode:'native-json',status:'pending',textRetained:true,
+            initialization:structuredClone(preparation.plan)}
+        } else intent = {...identity,schemaVersion:3,status:'pending',textRetained:true,
           initialization:structuredClone(preparation.plan)}
+      }
+      if (intent.schemaVersion === 4 && !sourceCurrent(intent)) {
+        const blocked: OpeningIntentV4 = {...identity,schemaVersion:4,mode:'unsupported',status:'blocked',
+          textRetained:false,renderedText:'',initializationCode:'SOURCE_CHANGED',
+          initializationDiagnostics:[{code:'SOURCE_CHANGED',pointer:'/sourceSnapshot'}]}
+        await deps.table.put(key,blocked)
+        return {status:'busy' as const,intent:blocked}
       }
       await deps.table.put(key, intent)
       if (!current(catalog.source)) throw new Error('active import pointer 已失效；意图已保留')
@@ -494,14 +666,22 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       const intent = deps.table.get(key) as OpeningIntent | undefined
       if (!intent) return null
       checkIntent(intent, sessionId, importId)
-      if (!current(intent.source)) return null
-      if (intent.schemaVersion === 3) {
+      if (!current(intent.source)) return intent.schemaVersion === 4 ? blockedProjection(intent,'SOURCE_CHANGED') : null
+      if (intent.schemaVersion !== 2) {
         if (intent.status === 'blocked') return intent
+        if (!sourceCurrent(intent)) return blockedProjection(intent,'SOURCE_CHANGED')
         if (intent.status === 'completed') return completedProjection(intent)
         if (intent.status === 'native-committed') return {finish:structuredClone(intent)}
       } else if (intent.status === 'completed') return intent
       const found = await deps.findOpeningByOperationId(intent)
+      if (intent.schemaVersion === 4 && !sameRecord(deps.table.get(key),intent)) {
+        return blockedProjection(intent,'IDENTITY_CONFLICT')
+      }
       if (!current(intent.source)) return null
+      if (intent.schemaVersion === 4 && !sourceCurrent(intent)) return blockedProjection(intent,'SOURCE_CHANGED')
+      if (intent.schemaVersion === 2 && found.status !== 'committed' && !legacyAllowed(intent)) {
+        return {...intent,status:'unknown'}
+      }
       // Uncertain lookup can explain a refusal without authorizing another append.
       return found.status === 'committed' ? committedResult(await complete(key, intent, found.turn!)) : diagnose(key,intent,found)
     })

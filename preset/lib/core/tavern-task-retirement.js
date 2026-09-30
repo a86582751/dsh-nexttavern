@@ -6,6 +6,85 @@ import { retireFinishedAdaptation, retireDeliveredDraft } from './card-adaptatio
 import { taskValidationFailure, taskFailureDetails, FAILURE_LABELS } from './tavern-task-support.js';
 export const taskContextRecord = (value) => value !== null
     && typeof value === 'object' ? value : undefined;
+/** Only a completed, exact begin/result pair from the active structured import may
+ * classify earlier prose in that turn as management rather than an opening. */
+export function provenImportPreludeAssistants(session, activeImport, { includeOpenTurn = false } = {}) {
+    const ignored = new Set();
+    if (!activeImport)
+        return ignored;
+    const events = sessionEvents(session);
+    let turn = null;
+    let candidates = [];
+    let beginCall = '';
+    let proved = false;
+    let story = false;
+    let priorBody = false;
+    for (const event of events) {
+        if (event.type === 'turn/start') {
+            turn = Number(event.data?.turn);
+            candidates = [];
+            beginCall = '';
+            proved = false;
+            story = false;
+            priorBody = false;
+        }
+        if (turn === null)
+            continue;
+        if (event.type === 'user/message' && event.data?.source?.kind === 'roleplay-tasks'
+            && event.data.source.form === 'phase') {
+            // Core injects the initial story phase before the player can ask to
+            // import. It is a prompt instruction, not evidence of a story body.
+            if (event.data.source.stage === 'story' && proved)
+                story = true;
+            if (event.data.source.stage === 'after-story') {
+                if (!proved)
+                    priorBody = true;
+                story = true;
+            }
+        }
+        if (event.type === 'assistant/message' && !story) {
+            candidates.push(event.seq);
+            const calls = (event.data?.message?.content ?? []).filter(block => block.type === 'tool-call'
+                && block.name === 'rp_card_import_begin' && typeof block.id === 'string');
+            if (calls.length === 1)
+                beginCall = calls[0].id;
+        }
+        if (event.type === 'tool/result' && beginCall && event.data?.message?.source?.callId === beginCall) {
+            const message = event.data.message;
+            if (!message)
+                continue;
+            const wrapped = (message.content ?? []).filter(block => block.type === 'tool-result');
+            const result = wrapped.length === 1 && wrapped[0]?.toolCallId === beginCall
+                ? wrapped[0] : message;
+            try {
+                const proof = taskContextRecord(JSON.parse((result.content ?? [])
+                    .filter(block => block.type === 'text').map(block => block.text).join('\n')));
+                proved = !priorBody && !message.isError && !result.isError && proof?.ok === true
+                    && proof.status === 'active' && proof.resumed === true
+                    && taskContextRecord(proof.job)?.status === 'completed'
+                    && proof.importId === activeImport.importId
+                    && proof.normalizedSha256 === activeImport.normalizedSha256
+                    && typeof proof.activatedAt === 'number' && proof.activatedAt > 0
+                    && proof.coverage === 1;
+            }
+            catch {
+                proved = false;
+            }
+        }
+        if (event.type === 'turn/end') {
+            if (proved && event.data?.reason?.kind === 'completed')
+                for (const seq of candidates)
+                    ignored.add(seq);
+            turn = null;
+        }
+    }
+    // The stopping hook must classify a proven management acknowledgement
+    // before it can create an after-story anchor for that same acknowledgement.
+    if (includeOpenTurn && turn !== null && proved)
+        for (const seq of candidates)
+            ignored.add(seq);
+    return ignored;
+}
 /** Share the owning projection cache while keeping all receipt writes in one implementation. */
 export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
     function completedImportSpan(nodes, lookup) {
@@ -34,7 +113,8 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
                 if (m.role === 'tool' && (m.source?.kind !== 'tool' || m.toolCallId !== id))
                     return null;
                 results.add(id);
-                if (calls.get(id) === 'rp_card_import_finalize') {
+                const completingCall = calls.get(id);
+                if (completingCall === 'rp_card_import_finalize' || completingCall === 'rp_card_import_begin') {
                     const wrapped = (m.content ?? []).filter(b => b.type === 'tool-result');
                     if (wrapped.length && (wrapped.length !== 1 || wrapped[0].toolCallId !== id))
                         return null;
@@ -44,22 +124,32 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
                         proof = taskContextRecord(JSON.parse((result.content ?? []).filter(b => b.type === 'text').map(b => b.text).join('\n')));
                     }
                     catch {
+                        if (completingCall === 'rp_card_import_begin')
+                            continue;
                         return null;
                     }
                     // Native finalize's `status` is the presence of a status template,
                     // not the import lifecycle. Activation time/hash prove the commit.
-                    if (m.isError || result.isError || proof?.ok !== true
-                        || !(typeof proof.activatedAt === 'number' && proof.activatedAt > 0)
-                        || !Number.isFinite(proof.activatedAt)
-                        || !/^[a-f0-9]{64}$/.test(String(proof.normalizedSha256 ?? ''))
-                        || proof.coverage !== 1
-                        || !proof.importId
-                        || calls.size !== results.size)
+                    if (completingCall === 'rp_card_import_begin'
+                        && (proof?.ok !== true || proof.status !== 'active' || proof.resumed !== true
+                            || taskContextRecord(proof.job)?.status !== 'completed'))
+                        continue;
+                    const committed = !m.isError && !result.isError && proof?.ok === true
+                        && typeof proof.activatedAt === 'number' && proof.activatedAt > 0
+                        && Number.isFinite(proof.activatedAt)
+                        && /^[a-f0-9]{64}$/.test(String(proof.normalizedSha256 ?? ''))
+                        && proof.coverage === 1 && !!proof.importId
+                        && calls.size === results.size;
+                    if (!committed || !proof) {
+                        if (completingCall === 'rp_card_import_begin')
+                            continue;
                         return null;
+                    }
                     return {
                         nodes: nodes.slice(begin, i + 1),
                         importId: proof.importId,
-                        normalizedSha256: proof.normalizedSha256
+                        normalizedSha256: proof.normalizedSha256,
+                        directBegin: completingCall === 'rp_card_import_begin'
                     };
                 }
             }
@@ -124,6 +214,10 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
                 continue;
             const groupNodes = nodesByGroup.get(candidate) ?? [];
             const imported = completedImportSpan(groupNodes, lookup);
+            if (imported?.directBegin && (!activeImport
+                || imported.importId !== activeImport.importId
+                || imported.normalizedSha256 !== activeImport.normalizedSha256))
+                continue;
             if (currentImport
                 && (!imported || imported.importId !== activeImport.importId
                     || imported.normalizedSha256 !== activeImport.normalizedSha256))
@@ -161,6 +255,14 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
                     jobKind: 'card-import', importId: imported.importId
                 } : {})
             };
+            let importContinuation = '以下继续剧情。';
+            if (currentImport)
+                importContinuation = activeImport.openingChoicePending
+                    ? '玩家将在聊天中的开场选择窗口确认作者开场。本轮只确认导入完成，不展示、改写或续写开场。'
+                    : '作者原始开场（原样展示，不提前续写）：\n' + activeImport.opening;
+            const text = imported
+                ? `读卡已完整激活。设定由当前角色扮演栏目提供，原始读卡消息与工具结果保存在历史 seq ${start}–${end}。${importContinuation}`
+                : `导出操作已结束。原始消息与工具结果保存在历史 seq ${start}–${end}，导出文件可在资源库查看。以下继续剧情。`;
             session.append('user/message', {
                 id: randomUUID(),
                 role: 'user',
@@ -168,7 +270,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
                 content: [
                     {
                         type: 'text',
-                        text: imported ? `读卡已完整激活。设定由当前角色扮演栏目提供，原始读卡消息与工具结果保存在历史 seq ${start}–${end}。${currentImport ? '作者原始开场（原样展示，不提前续写）：\n' + activeImport.opening : '以下继续剧情。'}` : `导出操作已结束。原始消息与工具结果保存在历史 seq ${start}–${end}，导出文件可在资源库查看。以下继续剧情。`
+                        text
                     }
                 ]
             }, {

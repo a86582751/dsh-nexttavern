@@ -32,7 +32,8 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionHandle, SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
-import { ReactLoopAgent } from './agent.js'
+import { ReactLoopAgent, nativeInputAdmissionCapability } from './agent.js'
+import type {NativeInputAdmissionAgentV2} from './input-admission.js'
 import { inboxProjectionDefinition } from './inbox.js'
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js'
 import type {} from './runtime-context.js'
@@ -239,6 +240,12 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export { DEFAULT_MAX_PARALLEL_TOOL_CALLS }
+export {nativeInputAdmissionCapability} from './agent.js'
+export type {NativeInputRef, NativePreparationReceiptV1, NativeInputLinkV1} from '@deepseek-ai/dsh-session'
+export type {NativeInputAdmissionAgentV2, NativeInputAdmissionCapabilityV2, NativeInputAdmissionHookV2, NativeInputAdmissionHook,
+  NativeInputAdmissionCheckV2, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,
+  NativeDurableInputWorkLookup, NativeExistingInputWorkV2, NativeExistingInputWork, NativeInputProposal,
+  NativeInputClaim, NativeInputOwnership, NativeInputBlocked, NativeInputWakeResult} from './input-admission.js'
 
 /**
  * One launcher-selected session identity for a configured agent. `resume`
@@ -348,7 +355,7 @@ export class AgentLoop extends Service implements AgentFactory {
   readonly config: Config
   private readonly ownership: FactoryOwnership
   /** Plain holder prevents Cordis from re-tracing the factory's dependency context through a caller shadow. */
-  private readonly runtime: { ctx: Context }
+  private readonly runtime: { ctx: Context; admissionAgents: WeakSet<ReactLoopAgent> }
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'agentLoop')
@@ -363,7 +370,7 @@ export class AgentLoop extends Service implements AgentFactory {
     ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
     ctx.sessionProjections.register(inboxProjectionDefinition)
     this.ownership = new FactoryOwnership(ctx.fiber)
-    this.runtime = { ctx }
+    this.runtime = { ctx, admissionAgents: new WeakSet() }
     ctx.effect(() => () => this.ownership.dispose(), 'agentLoop.transactions()')
     ctx.effect(() => ctx.agents.setFactory(this), 'agentLoop.setFactory()')
     ctx.systemPrompt.variable('provider', context => context.agent?.options.provider)
@@ -400,6 +407,16 @@ export class AgentLoop extends Service implements AgentFactory {
         return fiber.dispose
       }, `agentLoop.resume(${id})`)
     }
+  }
+
+  /** Runtime consumer entry: this factory must still own the exact published
+   * Agent in its original registry. Return that Agent, never a service wrapper. */
+  getInputAdmissionAgent(agent: unknown): NativeInputAdmissionAgentV2 | undefined {
+    const actual = nativeInputAdmissionCapability(agent)
+    if (!actual || !this.ownership.isActive() || !(actual instanceof ReactLoopAgent)
+      || !this.runtime.admissionAgents.has(actual)
+      || this.runtime.ctx.agents.get(actual.id) !== actual) return undefined
+    return actual
   }
 
   /** Report a contained declarative-start failure to identity-bound consumers. */
@@ -540,6 +557,7 @@ export class AgentLoop extends Service implements AgentFactory {
         if (machine === undefined) await machineReady.promise
         /* v8 ignore next -- setup failure untracks this disposer before resolving without a machine. */
         if (machine !== undefined) {
+          this.runtime.admissionAgents.delete(machine)
           machine.cancel({ kind: 'disposed' })
           await machine.whenIdle()
           await machine.scope.dispose()
@@ -618,6 +636,9 @@ export class AgentLoop extends Service implements AgentFactory {
             // The mounted backend routes announced live events into the active
             // write handle by session id; the loop only owns the handle itself.
             detachAgent = loopCtx.agents.enter(agent, parentAgent)
+            // Creation listeners may register admission. The actual registry
+            // owns this instance before announce; rollback removes the brand.
+            this.runtime.admissionAgents.add(agent)
             agent.ctx.sessions.announce(session)
             assertLive()
             await loopCtx.agents.announce(agent, source, abort.signal)

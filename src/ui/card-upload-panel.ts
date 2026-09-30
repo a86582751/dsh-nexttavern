@@ -230,15 +230,15 @@ export function createCardUploadPanel({React, jsonFetch, toast, confirmWithDialo
         return h('fieldset', {className: 'dsh-rp-card-upload', disabled: current.busy},
             h('legend', null, '上传角色卡'),
             h('p', null, '支持 PNG、JSON、MD、TXT，最大 20 MB。确认导入后会替换当前人设。'),
-            h('label', null, '选择角色卡文件', h('input', {type: 'file', accept: '.png,.json,.md,.txt',
+            h('label', {className:'dsh-rp-card-file'}, '选择角色卡文件', h('input', {type: 'file', accept: '.png,.json,.md,.txt',
                 disabled: recovering || Boolean(current.error), onChange: selectFile})),
             current.file ? h('p', null, '角色卡文件已选择，等待确认导入') : null,
             recovering ? h('p', null, '已保留原导入任务的恢复标识；确认会使用同一任务，不需要重新选择文件。') : null,
             current.error ? h('p', {className: 'dsh-rp-error', role: 'alert'}, current.error) : null,
-            h('button', {type: 'button', disabled: !recovering && !current.file, onClick: submit},
+            h('button', {className:'dsh-rp-btn dsh-rp-card-import-primary',type: 'button', disabled: !recovering && !current.file, onClick: submit},
                 current.busy ? '正在处理…' : recovering ? '确认原导入任务' : '上传并导入'),
-            current.terminal ? h('button', {type: 'button', onClick: discard}, '结束这次导入') : null,
-            current.error ? h('button', {type: 'button', onClick: () => {
+            current.terminal ? h('button', {className:'dsh-rp-btn',type: 'button', onClick: discard}, '结束这次导入') : null,
+            current.error ? h('button', {className:'dsh-rp-btn',type: 'button', onClick: () => {
                 if (!operation.current.busy) {
                     const loaded = load(sessionId);
                     if (!loaded.error) operation.current.receiptId = loaded.index?.receiptId ?? null;

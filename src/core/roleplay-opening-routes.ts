@@ -3,8 +3,16 @@ import {createHash} from 'node:crypto'
 import type {ContextSession} from './roleplay-context.js'
 import type {TavernOpeningContext} from './tavern-card.js'
 import type {createRoleplayOpeningSelection} from './roleplay-opening-selection.js'
+import type {OpeningIntent} from './roleplay-opening-selection.js'
 
 type OpeningSelection = ReturnType<typeof createRoleplayOpeningSelection>
+const openingView = (intent: OpeningIntent) => ({
+  status:intent.status,index:intent.index,operationId:intent.operationId,
+  committedTurn:intent.committedTurn,rejectionCode:intent.rejectionCode,
+  ...(intent.schemaVersion === 3 || intent.schemaVersion === 4 ? {schemaVersion:intent.schemaVersion,
+    initializationCode:intent.initializationCode,textRetained:intent.textRetained} : {}),
+  ...(intent.schemaVersion === 4 ? {mode:intent.mode} : {}),
+})
 
 interface OpeningRoutesDependencies {
   ctx: {effect(work: () => unknown, label?: string): unknown; connection: {fetch: {register(route: unknown): unknown}}}
@@ -42,13 +50,17 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
             sourcePointer:candidate.sourcePointer,sourceSha256:candidate.sourceSha256,
             renderedSha256:createHash('sha256').update(candidate.renderedText).digest('hex'),
             text:candidate.renderedText,macros:candidate.macros})),
-          selection:intent ? {status:intent.status,index:intent.index,operationId:intent.operationId,
-            committedTurn:intent.committedTurn,rejectionCode:intent.rejectionCode} : null})
+          selection:intent ? openingView(intent) : null})
+        if (body.expectedSource !== undefined) {
+          const expected = body.expectedSource as Record<string,unknown> | null
+          if (!expected || typeof expected !== 'object' || Array.isArray(expected)
+            || Object.keys(expected).length !== 3 || expected.importId !== catalog.source.importId
+            || expected.rawSha256 !== catalog.source.rawSha256 || expected.transactionId !== catalog.source.transactionId)
+            return jsonResponse(409,{ok:false,error:'角色卡已变化，请重新查看当前开场'})
+        }
         if (body.action === 'recover') {
           const recovered = await selection.recover(session.id,catalog.source.importId)
-          return jsonResponse(200,{ok:true,selection:recovered ? {status:recovered.status,
-            index:recovered.index,operationId:recovered.operationId,
-            committedTurn:recovered.committedTurn,rejectionCode:recovered.rejectionCode} : null})
+          return jsonResponse(200,{ok:true,selection:recovered ? openingView(recovered) : null})
         }
         if (legacyDisplayed) return jsonResponse(409,{ok:false,
           error:'该导入已请求旧版模型开场；需先按消息历史明确迁移，避免重复开场'})
@@ -66,9 +78,8 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
         const result = await selection.select(session.id,body.index as number,body.operationId,context)
         const pending = 'intent' in result
         const selected = pending ? result.intent : result
-        return jsonResponse(pending ? 202 : 200,{ok:true,
-          selection:{status:selected.status,index:selected.index,operationId:selected.operationId,
-            committedTurn:selected.committedTurn,rejectionCode:selected.rejectionCode}})
+        return jsonResponse(pending || selected.status !== 'completed' ? 202 : 200,
+          {ok:true,selection:openingView(selected)})
       } catch(error) {
         return jsonResponse(409,{ok:false,error:String((error as Error).message)})
       }

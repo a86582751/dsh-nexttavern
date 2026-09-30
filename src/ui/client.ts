@@ -378,6 +378,7 @@ export function apply(ctx: ClientContext) {
     const {
       CharacterClusterPanel,
       ModelPanel,
+      CardImportPanel,
       ResourcesPanel,
       ExportPanel } = createManagementPanels(
         {
@@ -478,6 +479,7 @@ export function apply(ctx: ClientContext) {
       const secondaryTabs: [string, string][] = [
         ['presets', '预设'],
         ['resources', '资源库'],
+        ['card-import', '角色卡导入'],
         ['models', '模型'],
         ['embedding', 'Embedding 模型设置'],
         ['usage', '使用统计'],
@@ -527,6 +529,8 @@ export function apply(ctx: ClientContext) {
             return React.createElement(EmbeddingPanel, { key: `${sessionId}:embedding`, sessionId })
           case 'resources':
             return React.createElement(ResourcesPanel, { key: `${sessionId}:resources`, sessionId })
+          case 'card-import':
+            return React.createElement(CardImportPanel, {key:`${sessionId}:card-import`,sessionId})
           case 'export':
             return React.createElement(ExportPanel, { key: `${sessionId}:export`, sessionId })
           case 'memory':
@@ -733,7 +737,8 @@ export function apply(ctx: ClientContext) {
         applyImmersive,
         readImmersive,
         runMaintenance,
-        toast
+        toast,
+        jsonFetch
       })
     ctx.effect(() => () => decisionSeat.dispose(), 'roleplay-ui: composer decision seat')
 

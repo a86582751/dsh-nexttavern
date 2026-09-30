@@ -65,7 +65,7 @@ type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface LoopDependencies {
   authorContext?(session:HostSession):{revision:string;parts:{section:string;name:string;text:string;renderedText:string}[]}
   adaptationScope?(session:LoopSession):string
-  importPromptCheckpoint?(session:LoopSession):{importId:string;normalizedSha256:string;opening:string}|null
+  importPromptCheckpoint?(session:LoopSession):{importId:string;normalizedSha256:string;opening:string;openingChoicePending?:boolean}|null
   ctx: LoopContext
   T: {branch: PreparationTable; decision: PreparationTable<DecisionRecord>}
   tavernTasks: TaskHost['tavernTasks']

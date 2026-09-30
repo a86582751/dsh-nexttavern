@@ -1,6 +1,13 @@
 // Generated from runtime/alpha3/src/core/roleplay-opening-routes.ts; edit the TypeScript source.
 import { jsonResponse } from './roleplay-state.js';
 import { createHash } from 'node:crypto';
+const openingView = (intent) => ({
+    status: intent.status, index: intent.index, operationId: intent.operationId,
+    committedTurn: intent.committedTurn, rejectionCode: intent.rejectionCode,
+    ...(intent.schemaVersion === 3 || intent.schemaVersion === 4 ? { schemaVersion: intent.schemaVersion,
+        initializationCode: intent.initializationCode, textRetained: intent.textRetained } : {}),
+    ...(intent.schemaVersion === 4 ? { mode: intent.mode } : {}),
+});
 /** Selection belongs to the active session; the route never accepts source bytes or text from a client. */
 export function registerOpeningRoutes(deps) {
     const { ctx, resolveRoleplaySession, selection, canCommit, openingContext, legacyOpeningAlreadyRequested, priorOpeningInHistory } = deps;
@@ -28,20 +35,24 @@ export function registerOpeningRoutes(deps) {
                             sourcePointer: candidate.sourcePointer, sourceSha256: candidate.sourceSha256,
                             renderedSha256: createHash('sha256').update(candidate.renderedText).digest('hex'),
                             text: candidate.renderedText, macros: candidate.macros })),
-                        selection: intent ? { status: intent.status, index: intent.index, operationId: intent.operationId,
-                            committedTurn: intent.committedTurn } : null });
+                        selection: intent ? openingView(intent) : null });
+                if (body.expectedSource !== undefined) {
+                    const expected = body.expectedSource;
+                    if (!expected || typeof expected !== 'object' || Array.isArray(expected)
+                        || Object.keys(expected).length !== 3 || expected.importId !== catalog.source.importId
+                        || expected.rawSha256 !== catalog.source.rawSha256 || expected.transactionId !== catalog.source.transactionId)
+                        return jsonResponse(409, { ok: false, error: '角色卡已变化，请重新查看当前开场' });
+                }
                 if (body.action === 'recover') {
                     const recovered = await selection.recover(session.id, catalog.source.importId);
-                    return jsonResponse(200, { ok: true, selection: recovered ? { status: recovered.status,
-                            index: recovered.index, operationId: recovered.operationId,
-                            committedTurn: recovered.committedTurn } : null });
+                    return jsonResponse(200, { ok: true, selection: recovered ? openingView(recovered) : null });
                 }
                 if (legacyDisplayed)
                     return jsonResponse(409, { ok: false,
                         error: '该导入已请求旧版模型开场；需先按消息历史明确迁移，避免重复开场' });
                 if (priorOpening)
                     return jsonResponse(409, { ok: false,
-                        error: '当前会话历史已有原生开场；再次导入或分支继承不会自动写第二条' });
+                        error: '当前会话历史已有可见开场或剧情；再次导入或分支继承不会自动写第二条' });
                 if (body.action !== 'select' || !Number.isSafeInteger(body.index)
                     || typeof body.operationId !== 'string' || typeof body.expectedRenderedSha256 !== 'string')
                     return jsonResponse(400, { ok: false, error: '无效的开场选择请求' });
@@ -54,9 +65,7 @@ export function registerOpeningRoutes(deps) {
                 const result = await selection.select(session.id, body.index, body.operationId, context);
                 const pending = 'intent' in result;
                 const selected = pending ? result.intent : result;
-                return jsonResponse(pending ? 202 : 200, { ok: true,
-                    selection: { status: selected.status, index: selected.index, operationId: selected.operationId,
-                        committedTurn: selected.committedTurn } });
+                return jsonResponse(pending || selected.status !== 'completed' ? 202 : 200, { ok: true, selection: openingView(selected) });
             }
             catch (error) {
                 return jsonResponse(409, { ok: false, error: String(error.message) });

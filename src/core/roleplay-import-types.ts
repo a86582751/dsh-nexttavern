@@ -1,4 +1,5 @@
 import type { ContextSession } from './roleplay-context.js'
+import type {ChatCardSelector, ChatCardSourceResult} from './roleplay-chat-card-source.js'
 import type { TavernCapabilityReport, TavernExtensionInventory, TavernExtensionInventoryV3,
   TavernFieldCoverage } from './tavern-card.js'
 import type { CardAssignment } from './tavern-card.js'
@@ -146,6 +147,8 @@ export interface CardWorkflow {
 }
 export interface ImportResource { id?: string; resourceId?: string; name?: string }
 export interface CardImportDependencies {
+  /** Core resolves only actual own visible native files; the model supplies no ref/path proof. */
+  resolveChatCardSource?(session: ImportSession, exec: ImportExec, selector: ChatCardSelector): Promise<ChatCardSourceResult>
   beforeWrite?(exec:ImportExec):Promise<void>
   ctx: { effect(work: () => unknown, label?: string): unknown; tools: { register(tool: unknown): unknown } }
   T: { branch: ImportTable; cards: ImportTable<MaterialRecord>; worldbook: ImportTable<MaterialRecord>; rules: ImportTable<RulesRecord>; status: ImportTable<TextRecord>; opening: ImportTable<TextRecord> }

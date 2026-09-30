@@ -10,6 +10,7 @@ import type { InheritanceOptions } from './roleplay-inheritance-types.js'
 import type { MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 import type { NativeTaskInput, HostAgent } from './roleplay-task-host-types.js'
 import type { TaskAgent } from './tavern-task-types.js'
+import type { ImportRecord } from './roleplay-import-types.js'
 import {
   keyOf,
   textOf,
@@ -18,6 +19,8 @@ import {
   sha256,
   safeId,
   cloneRecord,
+  recordSha256,
+  readUserInfo,
   passthroughSchema,
   rollsSchema,
 } from './roleplay-data.js'
@@ -77,8 +80,12 @@ import { createRoleplayDecision, taskCancellation } from './roleplay-decision.js
 import { createRoleplayInheritance } from './roleplay-inheritance.js'
 import { createResourceBridge } from './roleplay-resource-bridge.js'
 import { createCardWorkflows } from './roleplay-card-workflow.js'
+import {createCardAttachmentSources} from './roleplay-card-attachment.js'
+import {createChatCardSources} from './roleplay-chat-card-source.js'
+import {createChatCardNativeContext} from './roleplay-chat-card-context.js'
 import {createRoleplayOpeningSelection} from './roleplay-opening-selection.js'
 import type {OpeningIntent, OpeningRejectionCode} from './roleplay-opening-selection.js'
+import {createRoleplayMvuOpening} from './roleplay-mvu-opening.js'
 import {registerOpeningRoutes} from './roleplay-opening-routes.js'
 import { createRoleplayService } from './roleplay-service.js'
 import {createSessionHistory, ensureSessionHistory} from './session-history.js'
@@ -128,6 +135,7 @@ const DSH_ROLEPLAY_CORE_PATCH = 'dsh-roleplay-status-obligation-v1'
 
 export const inject = [
   'sessions',
+  'agentLoop',
   'nexttavernMessageEdits',
   'sessionPersistence',
   'sessionQuery',
@@ -452,7 +460,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     cardWorkflowKey,
     cardWorkflows,
     activeCardWorkflow,
-    assertCardWorkflow,
+    assertCardWorkflow:assertCardWorkflowRecord,
     beginCardWorkflow,
     resumeCardWorkflows,
     completeCardWorkflow,
@@ -474,6 +482,25 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     taskAgents,
     ctx
   })
+  const chatAttachmentSources = createCardAttachmentSources({T,libraryFor,
+    fileUploads:ctx.fileUploads,attachments:ctx.attachments})
+  const chatCardSources = createChatCardSources({sources:chatAttachmentSources,
+    ...createChatCardNativeContext({session:id => ctx.sessions.get(id),
+      ownedAgent:agent => ctx.get('agentLoop')?.getInputAdmissionAgent(agent),
+      deletedMessageIds:session => deletedBranchMessageIdsFor(session)})})
+  function assertCardWorkflow(session:Parameters<typeof assertCardWorkflowRecord>[0],
+    record:Parameters<typeof assertCardWorkflowRecord>[1]) {
+    assertCardWorkflowRecord(session,record)
+    if (!record?.workflowId) return
+    const job = cardWorkflows(session).find(value => value.id === record.workflowId)
+    if (job?.clientRequestId) {
+      const proof = chatAttachmentSources.readChatProof(session,job.clientRequestId)
+      if (proof) {
+        if (job.source.sha256 !== proof.file.attachmentId.slice(7)) throw new Error('聊天角色卡原件与导入任务哈希不一致')
+        chatCardSources.assertCurrent(session,job.clientRequestId)
+      }
+    }
+  }
 
   const {
     memorySettingsPolicy,
@@ -655,6 +682,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     withDecisionMutationLock,
     normalizeDecisionRecord,
     cloneRecord,
+    readOpeningIntent:source => openingSelection.readIntent(source),
     provenanceSeq
   })
 
@@ -723,9 +751,18 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     importPromptCheckpoint: session => {
       const checkpoint = activeOpeningSource(T.branch, session.id)
       if (!checkpoint) return null
+      const record = T.branch.get(importRecordKey(checkpoint.sourceRecordSessionId,checkpoint.importId)) as ImportRecord
+      const job = record.workflowId ? cardWorkflows(session).find(value => value.id === record.workflowId) : undefined
+      let openingChoicePending = false
+      if (job?.status === 'completed' && job.generation === record.workflowGeneration
+        && job.source.sha256 === record.rawSha256 && job.clientRequestId) {
+        assertWorkspaceSession(session)
+        openingChoicePending = !!chatAttachmentSources.readChatProof(session,job.clientRequestId)
+      }
       return {
         importId: checkpoint.importId,
         normalizedSha256: checkpoint.normalizedSha256,
+        openingChoicePending,
         opening: String(
           T.opening.get(keyOf(session.id, 'scene'))?.text ?? '没有作者开场，等待玩家行动。',
         ),
@@ -976,6 +1013,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     ensureState,
     simpleTool,
     sessionOf: workspaceSessionOf,
+    resolveChatCardSource:(session,exec,selector) => chatCardSources.resolve(session,exec,selector),
     RULE_IMPORT_FIELDS,
     archiveImported
   })
@@ -983,7 +1021,39 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
 
   const openingTable = {get:(key:string) => T.branch.get(key),
     put:async (key:string,value:OpeningIntent) => {await T.branch.put(key,value)}}
-  const openingSelection = createRoleplayOpeningSelection({
+  const openingContext = (sessionId:string) => {
+    const user = userValues(sessionId)
+    const prefix = `${sessionId}__`
+    const cards = [...T.cards.entries()].filter(([key,card]) => key.startsWith(prefix)
+      && card?.kind !== 'user').sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0)
+    return {user:user.name,user_gender:user.gender,char:String(cards[0]?.[1]?.name ?? '角色')}
+  }
+  const mvuOpening = createRoleplayMvuOpening({tables:T,session:id => ctx.sessions.get(id),
+    branchReady:id => ensureState(id).branchReady,importActiveKey,importRecordKey,
+    withSourceLock:(id,work) => withImportLock(id,'mvu-initialization',work),
+    recordVersionsFor:id => recordVersionsFor({id}),
+    openingContext:id => ({context:openingContext(id),bindingSha256:recordSha256({
+      schemaVersion:1,encoding:'native-opening-context-binding-v1',sessionId:id,
+      userInfo:recordSha256(readUserInfo()),userCard:recordSha256(T.cards.get(keyOf(id,'user'))),
+      context:openingContext(id),
+    })}),
+    messageEdits:ctx.nexttavernMessageEdits,deletedMessageIds:deletedBranchMessageIdsFor,
+    catalog:id => openingSelection.readCatalog(id,openingContext(id)),
+    nativeLookup:async (identity,text) => {
+      const found = await ctx.sessionController.resolveAgent(identity.sessionId)
+      const agent = found?.agent
+      const owned = ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
+      const sdk = owned as typeof owned & {lookupProgrammaticAssistantCommit?: (input:{operationId:string;messageId:string;text:string;
+        source:{kind:'programmatic';schemaVersion:1;producer:string;origin:string;operationId:string}}) =>
+        Promise<{status:'committed';turn:number} | {status:'absent' | 'unknown'}>}
+      if (!agent || owned !== agent || typeof sdk?.lookupProgrammaticAssistantCommit !== 'function') return {status:'unknown'}
+      return sdk.lookupProgrammaticAssistantCommit({operationId:identity.operationId,messageId:identity.messageId,
+        text,source:{kind:'programmatic',schemaVersion:1,producer:'dsh-nexttavern',
+          origin:`card-opening:${identity.source.importId}`,operationId:identity.operationId}})
+    },
+  })
+  const openingSelection:ReturnType<typeof createRoleplayOpeningSelection> = createRoleplayOpeningSelection({
+    ...mvuOpening.callbacks,
     table:openingTable,
     importActiveKey,
     importRecordKey,
@@ -1046,14 +1116,14 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       } catch { return {status:'unknown' as const} }
     },
   })
-  registerOpeningRoutes({ctx,resolveRoleplaySession,selection:openingSelection,
-    openingContext:sessionId => {
-      const user = userValues(sessionId)
-      const prefix = `${sessionId}__`
-      const cards = [...T.cards.entries()].filter(([key,card]) => key.startsWith(prefix)
-        && card?.kind !== 'user').sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0)
-      return {user:user.name,user_gender:user.gender,char:String(cards[0]?.[1]?.name ?? '角色')}
-    },
+  registerOpeningRoutes({ctx,resolveRoleplaySession:async id => {
+    const session = await resolveRoleplaySession(id)
+    // Opening basis needs a ready branch, but general branch resolution must
+    // leave inheritance to its caller's exact cadence/fork boundary options.
+    if (session) await ensureBranch(session)
+    return session
+  },selection:openingSelection,
+    openingContext,
     legacyOpeningAlreadyRequested:(sessionId,importId) => {
       const pointer = T.branch.get(importActiveKey(sessionId)) as {sourceRecordSessionId?:string} | undefined
       const record = T.branch.get(importRecordKey(pointer?.sourceRecordSessionId ?? sessionId,importId)) as
@@ -1083,7 +1153,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
     canCommit:async sessionId => {
       const found = await ctx.sessionController.resolveAgent(sessionId)
-      return typeof (found?.agent as {commitProgrammaticAssistant?:unknown} | undefined)?.commitProgrammaticAssistant === 'function'
+      const owned = ctx.get('agentLoop')?.getInputAdmissionAgent(found?.agent)
+      return !!owned && owned === found?.agent
+        && typeof (owned as typeof owned & {commitProgrammaticAssistant?:unknown}).commitProgrammaticAssistant === 'function'
     }})
 
   registerCardAuthoring({
@@ -1215,6 +1287,26 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     selectedStatusRecord,
     selectedStatusGeneration,
     importSummary,
+    chatImportProjection:(session,record) => {
+      // A historical attachment receipt alone must never open a choice for a
+      // cancelled, replaced, inherited or incompletely activated import.
+      if (record.status !== 'active' || record.sessionId !== session.id || !record.workflowId) return null
+      const job = cardWorkflows(session).find(value => value.id === record.workflowId)
+      const result = job?.result
+      if (!job || job.status !== 'completed' || job.kind !== 'card-import'
+        || job.generation !== record.workflowGeneration || job.source.sha256 !== record.rawSha256
+        || !result || typeof result !== 'object' || !('importId' in result)
+        || result.importId !== record.importId || !job.clientRequestId) return null
+      try {
+        assertWorkspaceSession(session)
+        // Completed imports retain their validated archival identity even when
+        // management-message retirement removes the old request from surface.
+        // Current active import/transaction and the opening catalog own readiness.
+        const proof = chatAttachmentSources.readChatProvenance(session,job.clientRequestId)
+        if (!proof || proof.sourceSha256 !== record.rawSha256 || !record.activation?.transactionId) return null
+        return {...proof,importId:record.importId,rawSha256:record.rawSha256,transactionId:record.activation.transactionId}
+      } catch {return null}
+    },
     deletedBranchMessageIdsFor,
     inheritedAssistantMessageIdsFor,
     normalizeDecisionRecord,

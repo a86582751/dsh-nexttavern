@@ -8,8 +8,25 @@ import { readCardSource, decodeTavernCard, projectTavernCardCompact, compileTave
 import { registerCardExport } from './card-export.js';
 import { cardCodeBlocks, statusTemplateDiagnostics } from '../status-template.js';
 import { isInlinePending } from './tavern-tasks.js';
+import { chatCardSelector } from './roleplay-chat-card-source.js';
 export function importActiveKey(sessionId) {
     return keyOf(sessionId, 'import-active');
+}
+/** A source is active only when its pointer and durable activation record agree. */
+export function activeOpeningSource(branch, sessionId) {
+    const pointer = branch.get(importActiveKey(sessionId));
+    if (!pointer || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(pointer.importId ?? ''))
+        || !/^[a-f0-9]{64}$/.test(String(pointer.normalizedSha256 ?? ''))
+        || typeof pointer.transactionId !== 'string' || !pointer.transactionId)
+        return null;
+    const owner = pointer.sourceRecordSessionId ?? sessionId;
+    const record = branch.get(keyOf(owner, `import-${pointer.importId}`));
+    if (record?.status !== 'active' || record.importId !== pointer.importId
+        || record.normalizedSha256 !== pointer.normalizedSha256
+        || record.activation?.transactionId !== pointer.transactionId)
+        return null;
+    return { importId: pointer.importId, normalizedSha256: pointer.normalizedSha256,
+        transactionId: pointer.transactionId, sourceRecordSessionId: owner };
 }
 const errorMessage = (error) => error?.message ?? error;
 export function registerRoleplayImports(deps) {
@@ -19,8 +36,31 @@ export function registerRoleplayImports(deps) {
     // An external tool call must never wait on the driver that called it.
     const structuredDriverExecs = new WeakSet();
     const importTool = (name, description, parameters, execute) => {
-        importHandlers.set(name, execute);
-        return simpleTool(name, description, parameters, execute);
+        const handler = name !== 'rp_card_import_begin' ? execute : async (args, exec) => {
+            if (args.chat_attachment === undefined)
+                return execute(args, exec);
+            if (args.source_file !== undefined || args.request_id !== undefined || args.mode === 'merge') {
+                return { ok: false, error: '聊天附件不能同时指定路径、请求标识或 merge；请直接说明要导入的文件' };
+            }
+            if (!deps.resolveChatCardSource)
+                return { ok: false, error: '当前会话的聊天原件读取尚未就绪' };
+            const session = await sessionOf(exec);
+            try {
+                const selected = chatCardSelector(args.chat_attachment);
+                const source = await deps.resolveChatCardSource(session, exec, selected);
+                // The owned resolver durably freezes the authorized native message/ref
+                // before a job can start. The existing driver then owns parse/activation.
+                const { chat_attachment: omitted, ...rest } = args;
+                void omitted;
+                const result = await execute({ ...rest, source_file: source.sourceFile, request_id: source.requestId }, exec);
+                return { ...result, cardImport: source.cardImport };
+            }
+            catch (error) {
+                return { ok: false, error: String(errorMessage(error)) };
+            }
+        };
+        importHandlers.set(name, handler);
+        return simpleTool(name, description, parameters, handler);
     };
     const importRecordKey = (sessionId, importId) => keyOf(sessionId, `import-${safeId(importId)}`);
     const activeImportForWorkflow = (sessionId, workflowId) => {
@@ -383,11 +423,15 @@ export function registerRoleplayImports(deps) {
         }
         return staging;
     };
-    ctx.effect(() => ctx.tools.register(importTool('rp_card_import_begin', '开始无损读卡导入。PNG/JSON 默认由程序完成映射与激活；外部重试应复用 request_id；省略时同一宿主工具调用仍以 callId 幂等，新的工具调用可显式重新导入同源。显式 merge 和 Markdown/TXT 保留分页审阅与手动 stage/finalize。返回任务及来源证明。', {
+    ctx.effect(() => ctx.tools.register(importTool('rp_card_import_begin', '玩家明确要求导入聊天附件时使用 chat_attachment:{}，多个附件可按自然文件名 name 选择。上传本身不授权导入；不能使用图片预览或猜路径。明确工作区文件保留 source_file；两种来源互斥。PNG/JSON 默认由程序完成映射、校验、归档与激活，不全文语义审阅。聊天请求身份由服务器生成并持久复用，不需要玩家提供。工作区外部重试可复用 request_id；显式 merge 和 Markdown/TXT 保留分页审阅与手动 stage/finalize。返回任务及来源证明。', {
         type: 'object',
         properties: {
             source_file: {
                 type: 'string'
+            },
+            chat_attachment: {
+                type: 'object', properties: { name: { type: 'string', description: '玩家自然说明的附件文件名；仅一个原件时省略' } },
+                additionalProperties: false,
             },
             mode: {
                 type: 'string', enum: ['replace', 'merge'], description: '完整新卡默认 replace；仅明确导入补充包时使用 merge'
@@ -396,7 +440,7 @@ export function registerRoleplayImports(deps) {
                 type: 'string', description: '同一 PNG/JSON 导入操作的稳定请求标识；重试原样复用'
             },
         },
-        required: ['source_file'],
+        oneOf: [{ required: ['source_file'] }, { required: ['chat_attachment'] }],
         additionalProperties: false,
     }, async (args, exec) => {
         const session = await sessionOf(exec);

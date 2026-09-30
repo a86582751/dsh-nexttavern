@@ -1,9 +1,8 @@
 import type * as ReactAPI from 'react';
 import { fetchRoleplayText, updatePanelDraft } from './panel-state.js';
-import {createOpeningPanel} from './opening-panel.js';
+import {createCardImportPanel} from './card-import-panel.js';
 import {createCardImportRequestJournal} from './card-import-request.js';
 import type {CardImportRequestStorage} from './card-import-request.js';
-import {createCardUploadPanel} from './card-upload-panel.js';
 import type { PanelDraft } from './panel-state.js';
 import {
     buildModelSettings,
@@ -91,17 +90,6 @@ interface ResourcesReply {
     }[];
     error?: string;
 }
-type CapabilityStatus = 'interpreted' | 'preserved-unexecuted'
-    | 'missing-external-resource' | 'requires-optional-analysis';
-interface CapabilityReport {
-    total: number;
-    counts: Record<CapabilityStatus, number>;
-    entries: { sourcePointer: string; status: CapabilityStatus; reason: string }[];
-    omitted: number;
-}
-interface CardImportStateReply {
-    cardImport?: { capabilityReport?: CapabilityReport } | null;
-}
 interface ResourcePreview {
     text?: string;
     resource?: {
@@ -140,9 +128,9 @@ interface ManagementDependencies {
 export function createManagementPanels({
     React, sessionDrafts, jsonFetch, toast, confirmWithDialog, btn, importRequestStorage, uploadFile,
 }: ManagementDependencies) {
-    const OpeningPanel = createOpeningPanel({React,jsonFetch,toast});
+
     const importRequestJournal = createCardImportRequestJournal({storage: importRequestStorage});
-    const CardUploadPanel = createCardUploadPanel({React,jsonFetch,toast,confirmWithDialog,
+    const CardImportPanel = createCardImportPanel({React,jsonFetch,toast,confirmWithDialog,
         storage: importRequestStorage,
         uploadFile: uploadFile ?? (async () => {throw new Error('文件上传服务尚未就绪');})});
     function CharacterClusterPanel({ sessionId }: {
@@ -550,22 +538,6 @@ export function createManagementPanels({
         text: '文本'
     };
     const resourceTypeLabel = (type: unknown) => resourceTypeLabels[String(type ?? '').toLowerCase()] ?? String(type ?? '其他');
-    const capabilityLabels: Record<CapabilityStatus, string> = {
-        interpreted: '已解释为结构化资料',
-        'preserved-unexecuted': '已保留，未执行',
-        'missing-external-resource': '外部资源未随卡附带',
-        'requires-optional-analysis': '需要可选分析'
-    };
-    const capabilityReasons: Record<string, string> = {
-        'structured-projection': '已整理为角色资料；不表示相关运行逻辑已执行',
-        'opening-candidate': '已整理为开场候选，需由玩家选择',
-        'worldbook-projection': '已整理为世界书；不表示条目已触发',
-        'extension-runtime-not-wired': '扩展运行逻辑未接入',
-        'extension-requires-review': '扩展形态需要人工核对',
-        'opaque-archive': '仅归档原始声明',
-        'external-asset-not-bundled': '卡内没有资源字节；未请求或验证外部 URL',
-        'optional-analysis-not-run': '可选分析尚未运行'
-    };
     function ResourcesPanel({ sessionId }: {
         sessionId: string;
     }) {
@@ -574,25 +546,9 @@ export function createManagementPanels({
             [type, setType] = React.useState('all'),
             [preview, setPreview] = React.useState<ResourcePreview | null>(null),
             [order, setOrder] = React.useState('time-desc'),
-            [openingRefresh,setOpeningRefresh] = React.useState(0),
-            [capabilityReport,setCapabilityReport] = React.useState<CapabilityReport | null>(null),
-            [capabilityError,setCapabilityError] = React.useState(''),
             [loading, setLoading] = React.useState(false);
         // Tickets invalidate late list/preview responses after cleanup or a newer request.
-        const listSequence = React.useRef(0), previewSequence = React.useRef(0), capabilitySequence = React.useRef(0);
-        const loadCapabilities = React.useCallback(async () => {
-            const ticket = ++capabilitySequence.current;
-            try {
-                const reply = await jsonFetch<CardImportStateReply>(`/api/roleplay/state?sessionId=${encodeURIComponent(sessionId)}`);
-                if (ticket !== capabilitySequence.current) return;
-                setCapabilityReport(reply.cardImport?.capabilityReport ?? null);
-                setCapabilityError('');
-            } catch (error) {
-                if (ticket !== capabilitySequence.current) return;
-                setCapabilityReport(null);
-                setCapabilityError(String(errorMessage(error)));
-            }
-        }, [sessionId]);
+        const listSequence = React.useRef(0), previewSequence = React.useRef(0);
         const load = React.useCallback(async () => {
             const ticket = ++listSequence.current;
             setLoading(true);
@@ -627,12 +583,6 @@ export function createManagementPanels({
                 previewSequence.current++;
             };
         }, [load]);
-        React.useEffect(() => {
-            setCapabilityReport(null);
-            setCapabilityError('');
-            void loadCapabilities();
-            return () => { capabilitySequence.current++; };
-        }, [loadCapabilities, openingRefresh]);
         const allResources = data?.resources ?? [];
         const types = [...new Set(allResources.map(r => String(r.type ?? '').toLowerCase()).filter(Boolean))];
         const resources = sortLibraryResources(allResources.filter(r => (type === 'all' || String(r.type ?? '').toLowerCase() === type)
@@ -688,7 +638,7 @@ export function createManagementPanels({
                 } else {
                     toast('导入任务状态无法确认；已保留恢复标识，请稍后再次点击确认同一任务');
                 }
-                setOpeningRefresh(value => value + 1);
+                void load();
             }
             catch (e) {
                 toast('角色卡导入：' + String(errorMessage(e)));
@@ -697,25 +647,7 @@ export function createManagementPanels({
         const pendingItems = Array.isArray(data?.pending) ? data.pending : [];
         return React.createElement('div', {
             className: 'dsh-rp-panel'
-        }, React.createElement(CardUploadPanel,{sessionId,onImported: () => {
-            setOpeningRefresh(value => value + 1);
-            void load();
-        }}), React.createElement(OpeningPanel,{sessionId,refreshToken:openingRefresh}), capabilityReport ? React.createElement('section', {
-            className: 'dsh-rp-item'
-        }, React.createElement('div', {className:'dsh-rp-item-head'}, '角色卡能力报告', React.createElement('button', {
-            className:'dsh-rp-btn', onClick: () => void loadCapabilities()
-        }, '刷新')), React.createElement('p', {className:'dsh-rp-muted'},
-            '此报告只核对角色卡内的声明；外部资源 URL 未请求或验证。'),
-        React.createElement('div', {className:'dsh-rp-row'},
-            (Object.keys(capabilityLabels) as CapabilityStatus[]).map(status => React.createElement('span',
-                {key:status}, `${capabilityLabels[status]}：${capabilityReport.counts[status] ?? 0}`))),
-        capabilityReport.entries.map(entry => React.createElement('div', {
-            className:'dsh-rp-muted', key:entry.sourcePointer
-        }, `${entry.sourcePointer} · ${capabilityLabels[entry.status] ?? entry.status} · ${capabilityReasons[entry.reason] ?? entry.reason}`)),
-        capabilityReport.omitted > 0 ? React.createElement('p', {className:'dsh-rp-muted'},
-            `另有 ${capabilityReport.omitted} 项未在此显示（共 ${capabilityReport.total} 项）`) : null) :
-            capabilityError ? React.createElement('p', {className:'dsh-rp-error',role:'alert'},
-                `能力报告读取失败：${capabilityError}`) : null, React.createElement('div', {
+        }, React.createElement('div', {
             className: 'dsh-rp-row'
         }, React.createElement('h4', null, '资源库'), React.createElement('button', {
             className: 'dsh-rp-btn', disabled: loading, onClick: load
@@ -942,6 +874,6 @@ export function createManagementPanels({
         }, showSteps ? '隐藏处理步骤' : '显示处理步骤') : null), visibleJobs.map(renderJob));
     }
     return {
-        CharacterClusterPanel, ModelPanel, ResourcesPanel, ExportPanel
+        CharacterClusterPanel, ModelPanel, CardImportPanel, ResourcesPanel, ExportPanel
     };
 }

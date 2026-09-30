@@ -283,6 +283,43 @@ export interface ProgrammaticTurnIdentity {
   textSha256: string
 }
 
+/** Original inbox identity. Message bodies remain in the actual inbox/user events. */
+export interface NativeInputRef {
+  readonly sessionId: string
+  readonly insertSeq: number
+  readonly messageId: string
+  readonly messageSha256: string
+}
+
+/** Immutable owner selection, not a declaration of current readiness or a stop receipt. */
+export interface NativePreparationReceiptV1 {
+  readonly schemaVersion: 1
+  readonly namespace: string
+  readonly preparationKeySha256: string
+  readonly credentialSha256: string
+}
+
+interface NativeInputLinkIdentityV1 {
+  readonly schemaVersion: 1
+  readonly encoding: 'native-input-link-v1'
+  readonly preparation: NativePreparationReceiptV1
+  readonly refs: readonly NativeInputRef[]
+  /** Native canonical hash of schema/encoding/session/owner/ordered refs, not the whole mutable turn. */
+  readonly workSha256: string
+}
+
+/** Optional turn metadata preserves old-reader data access without claiming old-executor protocol support.
+ * The new Native owner validates a known version against actual claim/step/closed facts.
+ * Unknown or malformed versions preserve ordinary history but cannot prove input ownership. */
+export type NativeInputLinkV1 = NativeInputLinkIdentityV1 & (
+  | {readonly mode: 'claim'; readonly proposal: {
+      readonly target: 'next-turn' | 'next-step'
+      readonly revision: number
+      readonly stateSha256: string
+    }}
+  | {readonly mode: 'resume'; readonly previousStartSeq: number}
+)
+
 /**
  * The merge-extensible, append-only source of truth for an agent interaction.
  * Message history is derived from this log. Every event is lossless JSON and
@@ -296,7 +333,7 @@ export interface SessionEventMap {
    * step; otherwise the following identified `user/message` event or batch
    * records the messages entering the step.
    */
-  'turn/start': { turn: number; programmatic?: ProgrammaticTurnIdentity }
+  'turn/start': { turn: number; programmatic?: ProgrammaticTurnIdentity; nativeInputLink?: NativeInputLinkV1 }
   /**
    * Closes turn `turn` with the {@link TurnEndReason} that ended it. A turn
    * with no entered step has no `step/start` or `step/end`. The loop does not await a

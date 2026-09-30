@@ -59,7 +59,7 @@ import { brandString } from '@deepseek-ai/dsh-brand';
 import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { interruptedTurnClosers, SessionLogOffset, SessionPreparation, SessionSeq } from '@deepseek-ai/dsh-session';
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence';
-import { ReactLoopAgent } from './agent.js';
+import { ReactLoopAgent, nativeInputAdmissionCapability } from './agent.js';
 import { inboxProjectionDefinition } from './inbox.js';
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js';
 /** Fiber states that cannot own or serve a new lifecycle. */
@@ -206,6 +206,7 @@ function assertAgentOptions(options) {
     }
 }
 export { DEFAULT_MAX_PARALLEL_TOOL_CALLS };
+export { nativeInputAdmissionCapability } from './agent.js';
 /**
  * Context key a launcher sets before any Loader entry mounts
  * (`ctx.provide(CONFIGURED_AGENT_IDENTITIES_KEY, identities)`) to fix
@@ -286,7 +287,7 @@ export class AgentLoop extends Service {
         ctx.sessionProjections.register(turnBoundaryProjectionDefinition);
         ctx.sessionProjections.register(inboxProjectionDefinition);
         this.ownership = new FactoryOwnership(ctx.fiber);
-        this.runtime = { ctx };
+        this.runtime = { ctx, admissionAgents: new WeakSet() };
         ctx.effect(() => () => this.ownership.dispose(), 'agentLoop.transactions()');
         ctx.effect(() => ctx.agents.setFactory(this), 'agentLoop.setFactory()');
         ctx.systemPrompt.variable('provider', context => context.agent?.options.provider);
@@ -323,6 +324,16 @@ export class AgentLoop extends Service {
                 return fiber.dispose;
             }, `agentLoop.resume(${id})`);
         }
+    }
+    /** Runtime consumer entry: this factory must still own the exact published
+     * Agent in its original registry. Return that Agent, never a service wrapper. */
+    getInputAdmissionAgent(agent) {
+        const actual = nativeInputAdmissionCapability(agent);
+        if (!actual || !this.ownership.isActive() || !(actual instanceof ReactLoopAgent)
+            || !this.runtime.admissionAgents.has(actual)
+            || this.runtime.ctx.agents.get(actual.id) !== actual)
+            return undefined;
+        return actual;
     }
     /** Report a contained declarative-start failure to identity-bound consumers. */
     reportConfiguredStartupFailure(configId, action, sessionId, error) {
@@ -448,6 +459,7 @@ export class AgentLoop extends Service {
                     await machineReady.promise;
                 /* v8 ignore next -- setup failure untracks this disposer before resolving without a machine. */
                 if (machine !== undefined) {
+                    this.runtime.admissionAgents.delete(machine);
                     machine.cancel({ kind: 'disposed' });
                     await machine.whenIdle();
                     await machine.scope.dispose();
@@ -533,6 +545,9 @@ export class AgentLoop extends Service {
                         // The mounted backend routes announced live events into the active
                         // write handle by session id; the loop only owns the handle itself.
                         detachAgent = loopCtx.agents.enter(agent, parentAgent);
+                        // Creation listeners may register admission. The actual registry
+                        // owns this instance before announce; rollback removes the brand.
+                        this.runtime.admissionAgents.add(agent);
                         agent.ctx.sessions.announce(session);
                         assertLive();
                         await loopCtx.agents.announce(agent, source, abort.signal);

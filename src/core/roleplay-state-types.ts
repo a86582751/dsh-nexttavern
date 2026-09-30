@@ -40,6 +40,7 @@ export interface StateDependencies extends StateWorldlines {
   normalizeDecisionRecord: Status['normalizeDecisionRecord']
   importRecordKey(id: string, importId: unknown): string
   importSummary(record: ImportRecord): Record<string, unknown>
+  chatImportProjection?(session:StateSession,record:ImportRecord):Record<string,unknown> | null
   preparationRecordKey(id: string): string
   tavernTasks: ReturnType<typeof createRoleplayTaskHost>['tavernTasks']
   memoryForContext(session: StateSession): unknown

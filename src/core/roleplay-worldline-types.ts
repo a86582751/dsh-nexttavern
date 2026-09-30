@@ -2,6 +2,7 @@
 // retains unknown extension fields so replacements preserve the original record.
 import type { ContextSession, ContextEvent } from './roleplay-context.js'
 import type { StorySurfaceReplacement } from './roleplay-message-view.js'
+import type {OpeningIntent,OpeningSource} from './roleplay-opening-selection.js'
 export type MessageData = NonNullable<ContextEvent['data']>
 export type StoryEvent = ContextEvent
 export interface ReadBranchSession extends ContextSession {
@@ -149,6 +150,8 @@ export interface WorldlineDependencies {
   ctx: { sessions: { get(id: string): BranchSession | undefined } }
   internalTaskSeqs(session: ReadBranchSession): Set<number>
   importActiveKey(id: string): string
+  /** New versioned openings require the selection owner's actual source/native/state projection. */
+  readOpeningIntent?(source:OpeningSource):OpeningIntent | null
   resolveRoleplaySession(id: string): Promise<BranchSession | null | undefined>
   isRoleplaySession(session: BranchSession): boolean
   ensureState(id: string): { branchReady: boolean }

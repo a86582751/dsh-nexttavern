@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { deepFreeze } from '@deepseek-ai/dsh-util-values';
-import { inspectNativeInboxHistory, nativeInputSha256 } from './input-admission.js';
+import { inspectNativeInboxHistory, nativeInputLink, nativeInputSha256 } from './input-admission.js';
 /** Wire validation for pending agent input reconstructed from durable inbox splices. */
 export const inboxProjectionSchema = z.object({
     'next-turn': z.array(z.custom()).readonly(),
@@ -156,15 +156,27 @@ export class ReactLoopInbox {
         return this.claims.has(claim) && this.history().ownsClaim(claim);
     }
     lookupOwnership(ref) { return this.history().ownership(ref); }
+    lookupDurableWork(selector) {
+        return deepFreeze(structuredClone(this.history().durableWork(selector)));
+    }
+    linkReceipt(startSeq) {
+        const receipt = this.history().linkReceipt(startSeq);
+        return receipt && deepFreeze(structuredClone(receipt));
+    }
+    canResumeLinked(receipt) {
+        return this.history().resumeLinked(receipt) !== undefined;
+    }
     /** Native history supplies the original body; a caller supplies only identities. */
-    prepareResume(proposal, refs) {
+    prepareResume(proposal, refs, durable) {
         if (!this.matches(proposal))
             return undefined;
-        const work = this.history().resume(refs);
+        if (durable && nativeInputSha256(durable.refs) !== nativeInputSha256(refs))
+            return undefined;
+        const work = durable ? this.history().resumeLinked(durable) : this.history().resume(refs);
         if (!work)
             return undefined;
         const proof = deepFreeze({ proposal, refs: structuredClone(refs), messages: work.messages,
-            observedSeq: this.session.snapshotEvents().at(-1)?.seq ?? -1 });
+            observedSeq: this.session.snapshotEvents().at(-1)?.seq ?? -1, ...(durable ? { durable: structuredClone(durable) } : {}) });
         this.resumeProofs.add(proof);
         return proof;
     }
@@ -175,9 +187,17 @@ export class ReactLoopInbox {
         const boundary = later[0];
         if (later.length !== 1 || !boundary || boundary.type !== 'turn/start' || boundary.data.turn !== turn)
             return undefined;
+        if (proof.durable) {
+            const marker = nativeInputLink(boundary.data.nativeInputLink, this.session.id);
+            if (marker?.mode !== 'resume' || marker.previousStartSeq !== proof.durable.startSeq
+                || marker.workSha256 !== proof.durable.workSha256
+                || nativeInputSha256(marker.preparation) !== nativeInputSha256(proof.durable.preparation)
+                || nativeInputSha256(marker.refs) !== nativeInputSha256(proof.refs))
+                return undefined;
+        }
         this.resumeProofs.delete(proof);
         const claim = deepFreeze({ proposal: proof.proposal, turn, revision: proof.proposal.revision, refs: proof.refs, messages: proof.messages,
-            spliceSeqs: [], resumed: true });
+            spliceSeqs: [], resumed: true, ...(proof.durable ? { linkStartSeq: boundary.seq } : {}) });
         this.claims.add(claim);
         return claim;
     }

@@ -442,6 +442,12 @@ export function internalTaskSeqs(session: TaskContextSession) {
         if (e?.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks'
             && e.data?.source?.form === 'phase')
             internal = e.data.source.stage !== 'story';
+        // The deterministic importer retires only its proven tool prelude.
+        // Its following acknowledgement is maintenance until a new story phase;
+        // a whole-turn ban would incorrectly hide a later genuine opening.
+        if (e?.type === 'user/message' && e.data?.source?.kind === 'roleplay-tasks'
+            && e.data.source.form === 'management-receipt' && e.data.source.jobKind === 'card-import')
+            internal = true;
         if (internal && e?.type === 'assistant/message')
             hidden.add(e.seq);
         if (e?.type === 'turn/end')

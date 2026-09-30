@@ -1,4 +1,6 @@
 import {createHash} from 'node:crypto'
+import {NATIVE_MVU_SOURCE_POLICY} from './roleplay-mvu-source.js'
+import type {NativeMvuJsonCandidate, NativeMvuSourcePolicy} from './roleplay-mvu-source.js'
 
 export type MvuJsonValue = null | boolean | number | string | MvuJsonValue[] | MvuJsonObject
 export interface MvuJsonObject { [key: string]: MvuJsonValue }
@@ -72,6 +74,24 @@ export interface MvuInitSourceInput {
     openingUpdates: 'none' | 'unsupported'
   }
 }
+
+type MvuCalculationInput = Omit<MvuInitSourceInput, 'schemaVersion' | 'source'>
+
+/** Program selection is distinct from an observed or declared original author loader. */
+export interface NativeMvuInitSourceIdentity {
+  authority: 'core-native-policy'
+  sourceId: string
+  sourceSha256: string
+  policy: NativeMvuSourcePolicy
+  originalLoaderSettlement: 'not-proven'
+}
+export interface NativeMvuInitPlan extends Omit<MvuInitPlan, 'schemaVersion' | 'source'> {
+  schemaVersion: 2
+  source: NativeMvuInitSourceIdentity
+}
+export type NativeMvuInitCompileResult =
+  | {schemaVersion: 2; kind: 'supported'; plan: NativeMvuInitPlan}
+  | {schemaVersion: 2; kind: 'unsupported'; inputHash?: string; diagnostics: MvuInitDiagnostic[]}
 
 export interface MvuInitBounds {
   inputBytes: 1048576
@@ -294,6 +314,10 @@ function validate(input: MvuJsonObject): asserts input is MvuJsonObject & MvuIni
     || typeof source.loader.enabled !== 'boolean'
     || typeof source.loader.preferred !== 'boolean') reject('UNVERIFIED_LOADER', '/source/loader')
   if (!['not-proven', 'proven'].includes(source.originalLoaderSettlement as string)) reject('LOADER_SETTLEMENT', '/source')
+  validateCalculation(input)
+}
+
+function validateCalculation(input: MvuJsonObject): asserts input is MvuJsonObject & MvuCalculationInput {
   if (input.messageIndex !== 0) reject('MESSAGE_SCOPE', '/messageIndex')
   if (!Array.isArray(input.books) || !Array.isArray(input.swipes) || !Array.isArray(input.initializedBooks)) {
     reject('DESCRIPTOR_SHAPE', '')
@@ -343,7 +367,7 @@ function validate(input: MvuJsonObject): asserts input is MvuJsonObject & MvuIni
   exact(input.capabilities, ['macros', 'schema', 'callbacks', 'openingUpdates'], [], '/capabilities')
 }
 
-function basis(input: MvuInitSourceInput): MvuInitBasis {
+function basis(input: MvuCalculationInput): MvuInitBasis {
   const bookStatData = jsonObject(input.bookStatData, '/bookStatData')
   if (dataHash(bookStatData) !== input.bookStatDataSha256) reject('BASIS_HASH', '/bookStatDataSha256')
   const swipes = input.swipes.map((swipe, index) => {
@@ -490,7 +514,7 @@ function payload(text: string, rendered: MvuInitRenderedPayload | undefined,
   return result
 }
 
-function loadBooks(input: MvuInitSourceInput, starting: MvuJsonObject, seen: string[], context: PayloadContext): MvuInitStateResult {
+function loadBooks(input: MvuCalculationInput, starting: MvuJsonObject, seen: string[], context: PayloadContext): MvuInitStateResult {
   let statData = structuredClone(starting)
   const initialized = new Set(seen)
   const books: MvuInitBookStep[] = []
@@ -520,6 +544,48 @@ function loadBooks(input: MvuInitSourceInput, starting: MvuJsonObject, seen: str
   return {statData, dataSha256: dataHash(statData), initializedBooks: [...initialized], books}
 }
 
+function calculate(safe: MvuCalculationInput, existing: MvuInitBasis) {
+  const base = existing.bookStatData
+  const context: PayloadContext = {macros: safe.capabilities.macros, nodes: 0, cache: new Map()}
+  const baseline = loadBooks(safe, base, [...safe.initializedBooks], context)
+  const swipes: MvuInitSwipePlan[] = []
+  let resultBytes = Buffer.byteLength(canonical(baseline as unknown as MvuJsonObject), 'utf8')
+    + Buffer.byteLength(canonical(existing as unknown as MvuJsonObject), 'utf8')
+  for (const [index, swipe] of safe.swipes.entries()) {
+    if (/<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
+      reject('OPENING_UPDATE_UNSUPPORTED', `/swipes/${index}`)
+    }
+    let statData = merge(jsonObject(swipe.statData, `/swipes/${index}/statData`), structuredClone(baseline.statData))
+    const blocks: MvuInitSwipePlan['blocks'] = []
+    let replacement: MvuJsonObject = {}
+    const matches = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`)
+    if (swipe.renderedBlocks && swipe.renderedBlocks.length !== matches.length) reject('MACRO_BINDING', `/swipes/${index}`)
+    for (const [blockIndex, match] of matches.entries()) {
+      const parsed = payload(match, swipe.renderedBlocks?.[blockIndex], context,
+        `/swipes/${index}/blocks/${blockIndex}`)
+      replacement = merge(replacement, parsed.data)
+      blocks.push({payloadSha256: parsed.payloadSha256, renderedSha256: parsed.renderedSha256, dataSha256: parsed.dataSha256})
+    }
+    let initializedBooks = [...baseline.initializedBooks]
+    let books: MvuInitBookStep[] = []
+    if (blocks.length) {
+      const primary = safe.books.find(book => book.binding === 'primary')?.identity
+      if (!primary) reject('PRIMARY_BINDING_UNKNOWN', `/swipes/${index}`)
+      const reloaded = loadBooks(safe, replacement, [primary], context)
+      statData = reloaded.statData
+      initializedBooks = reloaded.initializedBooks
+      books = reloaded.books
+    }
+    statData = jsonObject(statData, `/swipes/${index}/result`)
+    const step = {identity: swipe.identity, sourceSha256: swipe.sourceSha256, replaced: blocks.length > 0,
+      blocks, books, statData, initializedBooks, dataSha256: dataHash(statData)}
+    resultBytes += Buffer.byteLength(canonical(step as unknown as MvuJsonObject), 'utf8')
+    if (resultBytes > BOUNDS.outputBytes) reject('OUTPUT_BYTE_LIMIT', '/plan')
+    swipes.push(step)
+  }
+  return {baseline, swipes}
+}
+
 /**
  * Deterministic data subset only: no persistence, callbacks, schema execution, host access or model fallback.
  * Book wrappers retain pinned first-header/last-close captures through bounded LF scans. Greetings accept
@@ -546,7 +612,6 @@ export function compileMvuInitSources(input: MvuInitSourceInput): MvuInitCompile
         basis: existing, basisHash: dataHash(existing as unknown as MvuJsonObject)})
     if (!safe.source.loader.enabled) return none('loader-disabled')
     if (!safe.source.loader.preferred) return none('loader-not-preferred')
-    const base = existing.bookStatData
     // No newly read book means the actual initCheck returns before opening parsing and capability use.
     if (safe.books.every(book => safe.initializedBooks.includes(book.identity))) return none('no-new-book')
     if (!['none', 'verified-rendered'].includes(safe.capabilities.macros)) reject('MACRO_CAPABILITY', '/capabilities/macros')
@@ -554,43 +619,7 @@ export function compileMvuInitSources(input: MvuInitSourceInput): MvuInitCompile
     if (safe.capabilities.callbacks !== 'none') reject('CALLBACK_CAPABILITY', '/capabilities/callbacks')
     if (safe.capabilities.openingUpdates !== 'none') reject('OPENING_UPDATE_CAPABILITY', '/capabilities/openingUpdates')
     // Unique parsed payload nodes are bounded in aggregate; reloading the same book reuses verified data.
-    const context: PayloadContext = {macros: safe.capabilities.macros, nodes: 0, cache: new Map()}
-    const baseline = loadBooks(safe, base, [...safe.initializedBooks], context)
-    const swipes: MvuInitSwipePlan[] = []
-    let resultBytes = Buffer.byteLength(canonical(baseline as unknown as MvuJsonObject), 'utf8')
-      + Buffer.byteLength(canonical(existing as unknown as MvuJsonObject), 'utf8')
-    for (const [index, swipe] of safe.swipes.entries()) {
-      if (/<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
-        reject('OPENING_UPDATE_UNSUPPORTED', `/swipes/${index}`)
-      }
-      let statData = merge(jsonObject(swipe.statData, `/swipes/${index}/statData`), structuredClone(baseline.statData))
-      const blocks: MvuInitSwipePlan['blocks'] = []
-      let replacement: MvuJsonObject = {}
-      const matches = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`)
-      if (swipe.renderedBlocks && swipe.renderedBlocks.length !== matches.length) reject('MACRO_BINDING', `/swipes/${index}`)
-      for (const [blockIndex, match] of matches.entries()) {
-        const parsed = payload(match, swipe.renderedBlocks?.[blockIndex], context,
-          `/swipes/${index}/blocks/${blockIndex}`)
-        replacement = merge(replacement, parsed.data)
-        blocks.push({payloadSha256: parsed.payloadSha256, renderedSha256: parsed.renderedSha256, dataSha256: parsed.dataSha256})
-      }
-      let initializedBooks = [...baseline.initializedBooks]
-      let books: MvuInitBookStep[] = []
-      if (blocks.length) {
-        const primary = safe.books.find(book => book.binding === 'primary')?.identity
-        if (!primary) reject('PRIMARY_BINDING_UNKNOWN', `/swipes/${index}`)
-        const reloaded = loadBooks(safe, replacement, [primary], context)
-        statData = reloaded.statData
-        initializedBooks = reloaded.initializedBooks
-        books = reloaded.books
-      }
-      statData = jsonObject(statData, `/swipes/${index}/result`)
-      const step = {identity: swipe.identity, sourceSha256: swipe.sourceSha256, replaced: blocks.length > 0,
-        blocks, books, statData, initializedBooks, dataSha256: dataHash(statData)}
-      resultBytes += Buffer.byteLength(canonical(step as unknown as MvuJsonObject), 'utf8')
-      if (resultBytes > BOUNDS.outputBytes) reject('OUTPUT_BYTE_LIMIT', '/plan')
-      swipes.push(step)
-    }
+    const {baseline, swipes} = calculate(safe, existing)
     const dialect = DIALECTS[safe.source.dialect]
     const staticSourceVersion = 'commit' in dialect
       ? {dialect: safe.source.dialect, sha256: dialect.sha256, commit: dialect.commit}
@@ -610,5 +639,141 @@ export function compileMvuInitSources(input: MvuInitSourceInput): MvuInitCompile
   } catch (error) {
     const diagnostic = error instanceof Refusal ? {code: error.code, pointer: error.pointer} : {code: 'INVALID_INPUT', pointer: ''}
     return {schemaVersion: 1, kind: 'unsupported', source, diagnostics: [diagnostic], ...(inputHash ? {inputHash} : {})}
+  }
+}
+
+function requireContentHash(value: unknown, field: string, code: string, pointer: string): MvuJsonObject {
+  if (!isObject(value)) reject(code, pointer)
+  const digest = value[field]
+  hash(digest, pointer)
+  const content = {...value}
+  delete content[field]
+  if (dataHash(content) !== digest) reject(code, pointer)
+  return value
+}
+
+/** Compile a descriptor produced by the actual Core source owner. Hashes validate its encoding,
+ * not its authority: the caller must still verify the durable source and fresh-basis facts.
+ * This path never fabricates an observed/declared original loader for the shared calculation. */
+export function compileNativeMvuInitSources(input: NativeMvuJsonCandidate): NativeMvuInitCompileResult {
+  let inputHash: string | undefined
+  try {
+    const checked = finiteJson(input, '', undefined, BOUNDS.descriptorDepth)
+    if (!isObject(checked)) reject('DESCRIPTOR_SHAPE', '')
+    inputHash = dataHash(checked)
+    exact(checked, ['schemaVersion', 'encoding', 'policy', 'sourceSnapshot', 'freshNativeBasisProof',
+      'books', 'bookStatData', 'initializedBooks', 'messageIndex', 'selectedSwipeIdentity', 'swipes', 'capabilities'], [], '')
+    if (checked.schemaVersion !== 1 || checked.encoding !== 'native-mvu-json-source-candidate-v1') {
+      reject('INPUT_VERSION', '/schemaVersion')
+    }
+    if (dataHash(checked.policy!) !== dataHash(NATIVE_MVU_SOURCE_POLICY as unknown as MvuJsonObject)) {
+      reject('NATIVE_POLICY', '/policy')
+    }
+    const snapshot = requireContentHash(checked.sourceSnapshot, 'snapshotSha256', 'SOURCE_SNAPSHOT_HASH', '/sourceSnapshot')
+    const fresh = requireContentHash(checked.freshNativeBasisProof, 'proofSha256', 'FRESH_BASIS', '/freshNativeBasisProof')
+    if (snapshot.schemaVersion !== 1 || snapshot.encoding !== 'native-mvu-source-snapshot-v1'
+      || fresh.schemaVersion !== 1 || fresh.encoding !== 'native-mvu-fresh-basis-proof-v1'
+      || dataHash(snapshot.policy!) !== dataHash(checked.policy!)) reject('NATIVE_POLICY', '/sourceSnapshot')
+    const candidate = checked as unknown as NativeMvuJsonCandidate
+    const {sourceSnapshot, freshNativeBasisProof} = candidate
+    const sourceSession = sourceSnapshot.source.sessionId
+    if (freshNativeBasisProof.sessionId !== sourceSession || freshNativeBasisProof.ownerSessionId !== sourceSession
+      || freshNativeBasisProof.branch.inheritance !== 'root' || freshNativeBasisProof.branch.parentSessionId !== null
+      || freshNativeBasisProof.branch.inheritedPrefixLength !== 0 || freshNativeBasisProof.branch.ready !== true
+      || freshNativeBasisProof.numerical.headExists !== false || freshNativeBasisProof.numerical.eventCount !== 0
+      || freshNativeBasisProof.numerical.opaqueStateExists !== false
+      || freshNativeBasisProof.native.committedOpeningCount !== 0 || freshNativeBasisProof.native.inheritedMessageCount !== 0
+      || !Number.isSafeInteger(freshNativeBasisProof.native.observedThroughSeq)
+      || freshNativeBasisProof.native.observedThroughSeq < -1) reject('FRESH_BASIS', '/freshNativeBasisProof')
+    for (const value of [freshNativeBasisProof.branch.metaSha256, freshNativeBasisProof.numerical.eventMembershipSha256,
+      freshNativeBasisProof.native.historyVersionSha256, freshNativeBasisProof.factsSha256]) hash(value, '/freshNativeBasisProof')
+    if (candidate.books.length !== 1 || candidate.books[0]!.binding !== 'primary'
+      || sourceSnapshot.bindings.global.length || sourceSnapshot.bindings.additional.length
+      || !sourceSnapshot.bindings.primary
+      || candidate.books[0]!.sourcePointer !== sourceSnapshot.bindings.primary.pointer
+      || candidate.books[0]!.sourceSha256 !== sourceSnapshot.bindings.primary.sha256) {
+      reject('PRIMARY_BINDING_UNKNOWN', '/books')
+    }
+    if (dataHash(candidate.bookStatData as MvuJsonObject) !== dataHash({})
+      || freshNativeBasisProof.bookStatDataSha256 !== dataHash({})
+      || candidate.initializedBooks.length || candidate.messageIndex !== 0) reject('FRESH_BASIS', '/bookStatData')
+    if (candidate.capabilities.callbacks !== 'none' || candidate.capabilities.schema !== 'json-object-subset-v1'
+      || !['none', 'verified-identity-rendering'].includes(candidate.capabilities.macros)) {
+      reject('NATIVE_POLICY', '/capabilities')
+    }
+    const rendered = candidate.capabilities.macros === 'verified-identity-rendering'
+    const books: MvuInitBook[] = candidate.books.map((book, bookIndex) => ({
+      identity: book.identity, binding: book.binding, sourceSha256: book.sourceSha256,
+      entries: book.entries.map((entry, entryIndex) => {
+        const pointer = `/books/${bookIndex}/entries/${entryIndex}`
+        if (sha(entry.content) !== entry.contentSha256 || sha(entry.renderedContent) !== entry.renderedContentSha256
+          || !rendered && entry.content !== entry.renderedContent) reject('MACRO_BINDING', pointer)
+        const raw = extractEntry(entry.content)
+        const expanded = extractEntry(entry.renderedContent)
+        return {identity: entry.identity, comment: entry.comment, enabled: entry.enabled, content: entry.content,
+          ...(rendered && raw !== expanded ? {rendered: {
+            capability: 'server-verified' as const, sourceSha256: sha(raw), text: expanded,
+          }} : {})}
+      }),
+    }))
+    if (candidate.swipes.length !== sourceSnapshot.swipes.length
+      || candidate.swipes.length !== freshNativeBasisProof.swipes.length) reject('SELECTED_SWIPE', '/swipes')
+    const swipes: MvuInitSwipe[] = candidate.swipes.map((swipe, index) => {
+      const pointer = `/swipes/${index}`
+      const observed = sourceSnapshot.swipes[index]!
+      const basisRef = freshNativeBasisProof.swipes[index]!
+      if (swipe.identity !== observed.identity || swipe.sourcePointer !== observed.pointer
+        || swipe.sourceSha256 !== observed.sourceSha256 || sha(swipe.rawOpening) !== swipe.sourceSha256
+        || swipe.renderedSha256 !== observed.renderedSha256 || sha(swipe.renderedOpening) !== swipe.renderedSha256
+        || basisRef.identity !== swipe.identity || basisRef.sourceSha256 !== swipe.sourceSha256
+        || basisRef.statDataSha256 !== dataHash({}) || dataHash(swipe.statData as MvuJsonObject) !== dataHash({})
+        || !rendered && swipe.rawOpening !== swipe.renderedOpening) reject('FRESH_BASIS', pointer)
+      const raw = extractGreetingPayloads(swipe.rawOpening, pointer)
+      const expanded = extractGreetingPayloads(swipe.renderedOpening, pointer)
+      if (raw.length !== expanded.length) reject('MACRO_BINDING', pointer)
+      return {identity: swipe.identity, sourceSha256: swipe.sourceSha256, rawOpening: swipe.rawOpening,
+        statData: {}, statDataSha256: dataHash({}),
+        ...(rendered ? {renderedBlocks: raw.map((text, block) => ({
+          capability: 'server-verified' as const, sourceSha256: sha(text), text: expanded[block]!,
+        }))} : {})}
+    })
+    const selected = candidate.swipes.find(swipe => swipe.identity === candidate.selectedSwipeIdentity)
+    if (!selected || selected.sourcePointer !== sourceSnapshot.selected.pointer
+      || selected.sourceSha256 !== sourceSnapshot.selected.sourceSha256
+      || selected.renderedSha256 !== sourceSnapshot.selected.renderedSha256) reject('SELECTED_SWIPE', '/selectedSwipeIdentity')
+    const facts = {schemaVersion: 1, encoding: 'native-mvu-fresh-basis-facts-v1', sessionId: sourceSession,
+      ownerSessionId: sourceSession, branch: freshNativeBasisProof.branch, numerical: freshNativeBasisProof.numerical,
+      native: freshNativeBasisProof.native, basis: {bookStatData: {},
+        swipes: swipes.map(swipe => ({identity: swipe.identity, sourceSha256: swipe.sourceSha256, statData: {}}))}}
+    if (dataHash(facts as unknown as MvuJsonObject) !== freshNativeBasisProof.factsSha256) reject('FRESH_BASIS', '/freshNativeBasisProof')
+    const calculation = {books, bookStatData: {}, bookStatDataSha256: dataHash({}), initializedBooks: [], messageIndex: 0,
+      swipes, selectedSwipeIdentity: candidate.selectedSwipeIdentity,
+      capabilities: {macros: rendered ? 'verified-rendered' : 'none', schema: 'json-object-subset-v1',
+        callbacks: 'none', openingUpdates: 'none'}}
+    const calculationJson = finiteJson(calculation, '', undefined, BOUNDS.descriptorDepth)
+    if (!isObject(calculationJson)) reject('DESCRIPTOR_SHAPE', '')
+    validateCalculation(calculationJson)
+    const safe = calculationJson as unknown as MvuCalculationInput
+    const existing = basis(safe)
+    const {baseline, swipes: compiledSwipes} = calculate(safe, existing)
+    const source: NativeMvuInitSourceIdentity = {authority: 'core-native-policy',
+      sourceId: `import-${sourceSnapshot.source.sourceRecordSessionId}-${sourceSnapshot.source.importId}`,
+      sourceSha256: sourceSnapshot.source.rawSha256, policy: candidate.policy, originalLoaderSettlement: 'not-proven'}
+    identifier(source.sourceId, '/source/sourceId')
+    hash(source.sourceSha256, '/source/sourceSha256')
+    const content = {schemaVersion: 2 as const, policy: 'strict-json-object-v1' as const, source,
+      staticSourceVersion: {dialect: 'A' as const, sha256: DIALECTS.A.sha256, commit: DIALECTS.A.commit},
+      capability: 'native-json-data-only' as const, bounds: {...BOUNDS}, inputHash: inputHash!, assurance: 'supported-static' as const,
+      basis: existing, basisHash: dataHash(existing as unknown as MvuJsonObject),
+      selectedSwipeIdentity: safe.selectedSwipeIdentity, baseline, swipes: compiledSwipes}
+    let bounded: MvuJsonValue
+    try { bounded = finiteJson(content, '/plan', undefined, BOUNDS.descriptorDepth) } catch (error) {
+      if (error instanceof Refusal && error.code === 'BYTE_LIMIT') reject('OUTPUT_BYTE_LIMIT', '/plan')
+      throw error
+    }
+    return {schemaVersion: 2, kind: 'supported', plan: {...content, planHash: dataHash(bounded)}}
+  } catch (error) {
+    const diagnostic = error instanceof Refusal ? {code: error.code, pointer: error.pointer} : {code: 'INVALID_INPUT', pointer: ''}
+    return {schemaVersion: 2, kind: 'unsupported', diagnostics: [diagnostic], ...(inputHash ? {inputHash} : {})}
   }
 }

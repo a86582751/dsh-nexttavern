@@ -39,9 +39,12 @@ import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Context } from '@deepseek-ai/cordis'
 import { ReactLoopInbox } from './inbox.js'
 import type {NativeInputResumeProof} from './inbox.js'
-import {INPUT_ADMISSION_ABORT_REASON, nativeInputSha256} from './input-admission.js'
-import type {NativeExistingInputWork, NativeInputAdmissionHook, NativeInputBlocked, NativeInputClaim,
-  NativeInputOwnership, NativeInputProposal, NativeInputRef, NativeInputWakeResult} from './input-admission.js'
+import {INPUT_ADMISSION_ABORT_REASON, nativeInputLink, nativeInputSha256, nativeInputWorkSha256,
+  nativePreparationReceipt} from './input-admission.js'
+import type {NativeDurableInputWorkLookup, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,
+  NativeExistingInputWork, NativeExistingInputWorkV2, NativeInputAdmissionAgentV2, NativeInputAdmissionHook,
+  NativeInputAdmissionHookV2, NativeInputBlocked, NativeInputClaim, NativeInputLinkV1,
+  NativeInputOwnership, NativeInputProposal, NativeInputRef, NativeInputWakeResult, NativePreparationReceiptV1} from './input-admission.js'
 import { RuntimeContextProjection } from './runtime-context.js'
 import { AssistantStreamAttempt } from './assistant-stream.js'
 import { SystemPromptProjection } from './runtime-context.js'
@@ -92,10 +95,17 @@ type PreparedStep =
     assembly: PromptAssembly
     admission?: InputAdmission
   }
-type AdmissionRegistration = {hook: NativeInputAdmissionHook; active: boolean}
+type AdmissionRegistration = {hook: NativeInputAdmissionHook | NativeInputAdmissionHookV2; active: boolean}
 type InputAdmission = {registration: AdmissionRegistration; proposal: NativeInputProposal; identity: unknown;
-  resumeProof?: NativeInputResumeProof; claim?: NativeInputClaim; continuation?: true}
+  resumeProof?: NativeInputResumeProof; claim?: NativeInputClaim; continuation?: true;
+  preparation?: NativePreparationReceiptV1; marker?: NativeInputLinkV1; startSeq?: number; receipt?: NativeDurableInputWorkReceiptV1}
 type InputAdmissionOutcome = {kind: 'admitted'; admission: InputAdmission} | {kind: 'none'} | {kind: 'blocked'}
+const nativeAdmissionAgents = new WeakSet<object>()
+
+/** Actual constructor identity, not a caller-supplied capability/verified flag. */
+export function nativeInputAdmissionCapability(agent: unknown): NativeInputAdmissionAgentV2 | undefined {
+  return agent instanceof ReactLoopAgent && nativeAdmissionAgents.has(agent) ? agent : undefined
+}
 
 /** Remove adapter-derived values before plugins propose the next request config. */
 function requestProposal(header: EpochHeader): LlmCallConfig {
@@ -160,7 +170,7 @@ export class ReactLoopAgent implements Agent {
   /** An unclosed append-only turn forbids another driver from writing behind it. */
   private programmaticTurnPoisoned = false
   private inputAdmission?: AdmissionRegistration
-  private existingInputWork?: NativeExistingInputWork
+  private existingInputWork?: NativeExistingInputWork & {receipt?: NativeDurableInputWorkReceiptV1}
   private inputAdmissionBlocked?: {registration: AdmissionRegistration; notice: NativeInputBlocked}
   private inputWakeStopped = false
   private inputDisposed = false
@@ -182,7 +192,10 @@ export class ReactLoopAgent implements Agent {
     this.phase = { kind: 'idle', lastTurn }
     this.runtimeContext = new RuntimeContextProjection(this.ctx, session)
     this.systemPrompt = new SystemPromptProjection(session)
+    nativeAdmissionAgents.add(this)
   }
+
+  get nativeInputAdmissionVersion(): 2 {return 2}
 
   get status(): AgentStatus {
     return this.phase.kind === 'idle' || this.phase.kind === 'maintenance' ? 'idle' : 'running'
@@ -226,7 +239,10 @@ export class ReactLoopAgent implements Agent {
   }
 
   cancel(cause: AgentCancelCause, options: CancelOptions = {}): void {
-    if (cause.kind === 'disposed') this.inputDisposed = true
+    if (cause.kind === 'disposed') {
+      this.inputDisposed = true
+      nativeAdmissionAgents.delete(this)
+    }
     if (cause.kind !== 'hook' || cause.reason !== INPUT_ADMISSION_ABORT_REASON) this.inputWakeStopped = true
     if (this.inputWakeStopped && this.inputOnlyWakeLatched) {
       if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
@@ -241,9 +257,11 @@ export class ReactLoopAgent implements Agent {
   }
 
   /** One lifecycle owner; ordinary upstream callers keep the unregistered path. */
-  registerInputAdmission(hook: NativeInputAdmissionHook): () => void {
+  registerInputAdmission(hook: NativeInputAdmissionHook | NativeInputAdmissionHookV2): () => void {
     if (this.inputDisposed || this.inputAdmission) throw Error('native input admission already owned or disposed')
     if (typeof hook.admit !== 'function' || typeof hook.check !== 'function') throw Error('invalid native input admission hook')
+    if (hook.schemaVersion !== undefined && hook.schemaVersion !== 1 && hook.schemaVersion !== 2) throw Error('unsupported native input admission hook')
+    if (hook.schemaVersion === 2 && typeof hook.checkpoint !== 'function') throw Error('v2 native input admission needs checkpoint')
     const registration = {hook, active: true}
     this.inputAdmission = registration
     return () => {
@@ -254,6 +272,9 @@ export class ReactLoopAgent implements Agent {
   }
 
   lookupInputOwnership(ref: NativeInputRef): NativeInputOwnership {return this.inbox.lookupOwnership(ref)}
+  lookupDurableInputWork(selector: NativeDurableInputWorkSelector): NativeDurableInputWorkLookup {
+    return this.inbox.lookupDurableWork(selector)
+  }
 
   /** Wake only work already owned by this inbox, never send or insert a message. */
   wakePending(): NativeInputWakeResult {
@@ -268,12 +289,25 @@ export class ReactLoopAgent implements Agent {
   }
 
   /** Owner credentials supplement native history; no caller body is accepted. */
-  wakeExistingWork(work: NativeExistingInputWork): NativeInputWakeResult {
+  wakeExistingWork(work: NativeExistingInputWork | NativeExistingInputWorkV2): NativeInputWakeResult {
     if (this.inputDisposed) return {kind: 'disposed'}
     if (this.inputWakeStopped || !this.inputAdmission || work?.preparation == null
-      || !Array.isArray(work.refs) || !this.inbox.canResume(work.refs)) return {kind: 'blocked'}
+      || !Array.isArray(work.refs)) return {kind: 'blocked'}
+    let selected: NativeExistingInputWork & {receipt?: NativeDurableInputWorkReceiptV1}
+    try {
+      if (this.inputAdmission.hook.schemaVersion === 2) {
+        const preparation = nativePreparationReceipt(work.preparation)
+        const receipt = 'receipt' in work ? work.receipt : undefined
+        if (!preparation || !receipt || nativeInputSha256(preparation) !== nativeInputSha256(receipt.preparation)
+          || nativeInputSha256(work.refs) !== nativeInputSha256(receipt.refs) || !this.inbox.canResumeLinked(receipt)) return {kind: 'blocked'}
+        selected = {preparation, refs: deepFreeze(structuredClone(work.refs)), receipt: deepFreeze(structuredClone(receipt))}
+      } else {
+        if (!this.inbox.canResume(work.refs)) return {kind: 'blocked'}
+        selected = {preparation: work.preparation, refs: deepFreeze(structuredClone(work.refs))}
+      }
+    } catch {return {kind: 'blocked'}}
     if (this.phase.kind === 'running' || this.existingInputWork) return {kind: 'running'}
-    this.existingInputWork = {preparation: work.preparation, refs: deepFreeze(structuredClone(work.refs))}
+    this.existingInputWork = selected
     const latched = this.phase.kind === 'maintenance'
     this.inputOnlyWakeLatched = latched
     this.wakeDriver()
@@ -305,22 +339,54 @@ export class ReactLoopAgent implements Agent {
     if (!proposal.messages.length && !existing) {
       return target === 'next-step' ? {kind: 'none'} : refused('INPUT_EMPTY')
     }
-    let decision: Awaited<ReturnType<NativeInputAdmissionHook['admit']>>
-    try {decision = await registration.hook.admit(proposal, signal, existing)}
+    const hook = registration.hook
+    let decision: Awaited<ReturnType<NativeInputAdmissionHook['admit']>> | Awaited<ReturnType<NativeInputAdmissionHookV2['admit']>>
+    try {
+      if (hook.schemaVersion === 2) {
+        let linked: NativeExistingInputWorkV2 | undefined
+        if (existing) {
+          const preparation = nativePreparationReceipt(existing.preparation)
+          if (!preparation || !existing.receipt) return refused('INPUT_RESUME_RECEIPT_MISSING')
+          linked = {preparation, refs: existing.refs, receipt: existing.receipt}
+        }
+        decision = await hook.admit(proposal, signal, linked)
+      } else decision = await hook.admit(proposal, signal, existing)
+    }
     catch {signal.throwIfAborted(); return refused('INPUT_ADMISSION_HOOK_FAILED')}
     signal.throwIfAborted()
     if (!registration.active || this.inputAdmission !== registration || !this.inbox.matches(proposal)) return refused('INPUT_PROPOSAL_CHANGED')
+    if (!decision || typeof decision !== 'object') return refused('INPUT_ADMISSION_DECISION_INVALID')
     if (decision.kind === 'blocked') return refused(decision.code)
-    if (decision.identity === undefined) return refused('INPUT_ADMISSION_IDENTITY_MISSING')
+    if (decision.kind !== 'allow' && decision.kind !== 'resume') return refused('INPUT_ADMISSION_DECISION_INVALID')
+    if (hook.schemaVersion === 2 && decision.identity === undefined) return refused('INPUT_ADMISSION_IDENTITY_MISSING')
+    let preparation: NativePreparationReceiptV1 | undefined
+    if (hook.schemaVersion === 2) {
+      try {preparation = nativePreparationReceipt(Object.getOwnPropertyDescriptor(decision, 'preparation')?.value)}
+      catch {return refused('INPUT_PREPARATION_RECEIPT_INVALID')}
+    }
+    if (hook.schemaVersion === 2 && !preparation) return refused('INPUT_PREPARATION_RECEIPT_INVALID')
+    const markerFor = (refs: readonly NativeInputRef[], previousStartSeq?: number): NativeInputLinkV1 | undefined => {
+      if (!preparation) return undefined
+      return nativeInputLink({schemaVersion: 1, encoding: 'native-input-link-v1', preparation, refs,
+        workSha256: nativeInputWorkSha256(this.session.id, preparation, refs),
+        ...(previousStartSeq === undefined ? {mode: 'claim', proposal: {target: proposal.target,
+          revision: proposal.revision, stateSha256: proposal.stateSha256}} : {mode: 'resume', previousStartSeq})}, this.session.id)
+    }
     if (decision.kind === 'resume') {
       if (!existing || nativeInputSha256(existing.refs) !== nativeInputSha256(decision.refs)
-        || !this.inbox.canResume(decision.refs)) return refused('INPUT_RESUME_NOT_PROVEN')
-      const resumeProof = this.inbox.prepareResume(proposal, decision.refs)
+        || preparation && nativeInputSha256(preparation) !== nativeInputSha256(existing.preparation)) return refused('INPUT_RESUME_NOT_PROVEN')
+      if (hook.schemaVersion === 2 ? !existing.receipt || !this.inbox.canResumeLinked(existing.receipt)
+        : !this.inbox.canResume(decision.refs)) return refused('INPUT_RESUME_NOT_PROVEN')
+      const resumeProof = this.inbox.prepareResume(proposal, decision.refs, hook.schemaVersion === 2 ? existing.receipt : undefined)
       if (!resumeProof) return refused('INPUT_RESUME_NOT_PROVEN')
-      return {kind: 'admitted', admission: {registration, proposal, identity: decision.identity, resumeProof}}
+      const marker = markerFor(decision.refs, existing.receipt?.startSeq)
+      if (hook.schemaVersion === 2 && !marker) return refused('INPUT_LINK_INVALID_OR_OVERSIZED')
+      return {kind: 'admitted', admission: {registration, proposal, identity: decision.identity, resumeProof, preparation, marker}}
     }
     if (existing) return refused('INPUT_EXISTING_WORK_NOT_SELECTED')
-    return {kind: 'admitted', admission: {registration, proposal, identity: decision.identity}}
+    const marker = markerFor(proposal.refs)
+    if (hook.schemaVersion === 2 && !marker) return refused('INPUT_LINK_INVALID_OR_OVERSIZED')
+    return {kind: 'admitted', admission: {registration, proposal, identity: decision.identity, preparation, marker}}
   }
 
   private abortInput(admission: InputAdmission, code: string, stage: 'claim' | 'final', claim?: NativeInputClaim): never {
@@ -341,14 +407,51 @@ export class ReactLoopAgent implements Agent {
       this.abortInput(admission, 'INPUT_FINAL_IDENTITY_CHANGED', 'final', claim)
     }
     let result: ReturnType<NativeInputAdmissionHook['check']>
-    try {result = admission.registration.hook.check({proposal: admission.proposal, claim, identity: admission.identity, messages,
-      ...(admission.continuation ? {continuation: true as const} : {})})}
+    try {
+      const hook = admission.registration.hook
+      const input = {proposal: admission.proposal, claim, identity: admission.identity, messages,
+        ...(admission.continuation ? {continuation: true as const} : {})}
+      if (hook.schemaVersion === 2) {
+        if (!admission.preparation) this.abortInput(admission, 'INPUT_PREPARATION_RECEIPT_INVALID', 'final', claim)
+        result = hook.check({...input, preparation: admission.preparation,
+          ...(admission.receipt ? {receipt: admission.receipt} : {})})
+      } else result = hook.check(input)
+    }
     catch {this.abortInput(admission, 'INPUT_FINAL_CHECK_FAILED', 'final', claim)}
     if (result.kind !== 'allow') this.abortInput(admission, result.code, 'final', claim)
     signal.throwIfAborted()
     if (!admission.registration.active || this.inputAdmission !== admission.registration || !this.inbox.matchesClaim(claim)) {
       this.abortInput(admission, 'INPUT_FINAL_IDENTITY_CHANGED', 'final', claim)
     }
+  }
+
+  /** Only this native writer mints the live receipt after its real checkpoint.
+   * Core persists its association outside any native inbox/import lease. */
+  private async checkpointInput(admission: InputAdmission, stepStartSeq: number, messages: readonly UserMessage[]): Promise<void> {
+    const hook = admission.registration.hook
+    if (hook.schemaVersion !== 2 || admission.startSeq === undefined) return
+    if (this.phase.kind !== 'running') this.abortInput(admission, 'INPUT_DRIVER_CHANGED', 'final', admission.claim)
+    const signal = this.phase.abort.signal
+    this.checkInput(admission, messages)
+    let flushed: boolean
+    try {flushed = await this.ctx.sessions.flush(this.session)}
+    catch {signal.throwIfAborted(); this.abortInput(admission, 'INPUT_LINK_FLUSH_FAILED', 'final', admission.claim)}
+    signal.throwIfAborted()
+    if (!flushed) this.abortInput(admission, 'INPUT_LINK_FLUSH_FAILED', 'final', admission.claim)
+    this.checkInput(admission, messages)
+    const receipt = this.inbox.linkReceipt(admission.startSeq)
+    if (!receipt || receipt.firstStepStartSeq !== stepStartSeq || receipt.actualTurn !== this.phase.turn
+      || receipt.workSha256 !== admission.marker?.workSha256
+      || nativeInputSha256(receipt.preparation) !== nativeInputSha256(admission.preparation)) {
+      this.abortInput(admission, 'INPUT_LINK_CHANGED', 'final', admission.claim)
+    }
+    let outcome: Awaited<ReturnType<NativeInputAdmissionHookV2['checkpoint']>>
+    try {outcome = await hook.checkpoint(receipt, signal)}
+    catch {signal.throwIfAborted(); this.abortInput(admission, 'INPUT_CHECKPOINT_FAILED', 'final', admission.claim)}
+    signal.throwIfAborted()
+    if (outcome?.kind !== 'allow') this.abortInput(admission, outcome?.code ?? 'INPUT_CHECKPOINT_BLOCKED', 'final', admission.claim)
+    admission.receipt = receipt
+    this.checkInput(admission, messages)
   }
 
   runMaintenance<T>(job: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -743,7 +846,9 @@ export class ReactLoopAgent implements Agent {
     }
     const turn = phase.turn + 1
     try {
-      this.session.append('turn/start', { turn })
+      const start = this.session.append('turn/start', {turn,
+        ...(initialAdmission?.marker ? {nativeInputLink: initialAdmission.marker} : {})})
+      if (initialAdmission?.marker) initialAdmission.startSeq = start.seq
     } catch (error: unknown) {
       this.throwError(error)
     }
@@ -769,9 +874,10 @@ export class ReactLoopAgent implements Agent {
           return false
         }
         signal.throwIfAborted()
-        this.session.append('step/start', { turn, step })
+        const stepStart = this.session.append('step/start', { turn, step })
         phase.step = step
         try {
+          if (step === 1 && decision.admission) await this.checkpointInput(decision.admission, stepStart.seq, decision.messages)
           // max-tokens is sticky: once any step hits the ceiling, later steps
           // that complete normally must not downgrade the turn outcome.
           const stepEnd = await this.step(decision)

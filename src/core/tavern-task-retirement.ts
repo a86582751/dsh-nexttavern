@@ -18,7 +18,7 @@ export const taskContextRecord = (value: unknown): Record<string,
  * classify earlier prose in that turn as management rather than an opening. */
 export function provenImportPreludeAssistants(session: TaskContextSession, activeImport: {
     importId: string; normalizedSha256: string;
-} | null | undefined): Set<number> {
+} | null | undefined, {includeOpenTurn = false}: {includeOpenTurn?: boolean} = {}): Set<number> {
     const ignored = new Set<number>();
     if (!activeImport) return ignored;
     const events = sessionEvents(session);
@@ -27,6 +27,7 @@ export function provenImportPreludeAssistants(session: TaskContextSession, activ
     let beginCall = '';
     let proved = false;
     let story = false;
+    let priorBody = false;
     for (const event of events) {
         if (event.type === 'turn/start') {
             turn = Number(event.data?.turn);
@@ -34,10 +35,19 @@ export function provenImportPreludeAssistants(session: TaskContextSession, activ
             beginCall = '';
             proved = false;
             story = false;
+            priorBody = false;
         }
         if (turn === null) continue;
         if (event.type === 'user/message' && event.data?.source?.kind === 'roleplay-tasks'
-            && event.data.source.form === 'phase' && event.data.source.stage === 'story') story = true;
+            && event.data.source.form === 'phase') {
+            // Core injects the initial story phase before the player can ask to
+            // import. It is a prompt instruction, not evidence of a story body.
+            if (event.data.source.stage === 'story' && proved) story = true;
+            if (event.data.source.stage === 'after-story') {
+                if (!proved) priorBody = true;
+                story = true;
+            }
+        }
         if (event.type === 'assistant/message' && !story) {
             candidates.push(event.seq);
             const calls = (event.data?.message?.content ?? []).filter(block => block.type === 'tool-call'
@@ -53,7 +63,7 @@ export function provenImportPreludeAssistants(session: TaskContextSession, activ
             try {
                 const proof = taskContextRecord(JSON.parse((result.content ?? [])
                     .filter(block => block.type === 'text').map(block => block.text).join('\n')));
-                proved = !message.isError && !result.isError && proof?.ok === true
+                proved = !priorBody && !message.isError && !result.isError && proof?.ok === true
                     && proof.status === 'active' && proof.resumed === true
                     && taskContextRecord(proof.job)?.status === 'completed'
                     && proof.importId === activeImport.importId
@@ -68,6 +78,10 @@ export function provenImportPreludeAssistants(session: TaskContextSession, activ
             turn = null;
         }
     }
+    // The stopping hook must classify a proven management acknowledgement
+    // before it can create an after-story anchor for that same acknowledgement.
+    if (includeOpenTurn && turn !== null && proved)
+        for (const seq of candidates) ignored.add(seq);
     return ignored;
 }
 /** Share the owning projection cache while keeping all receipt writes in one implementation. */
@@ -154,6 +168,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
         importId: string;
         normalizedSha256: string;
         opening: string;
+        openingChoicePending?: boolean;
     }) {
         if (typeof session?.append !== 'function')
             return 0;
@@ -252,6 +267,13 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                     jobKind: 'card-import', importId: imported.importId
                 } : {})
             };
+            let importContinuation = '以下继续剧情。';
+            if (currentImport) importContinuation = activeImport!.openingChoicePending
+                ? '玩家将在聊天中的开场选择窗口确认作者开场。本轮只确认导入完成，不展示、改写或续写开场。'
+                : '作者原始开场（原样展示，不提前续写）：\n' + activeImport!.opening;
+            const text = imported
+                ? `读卡已完整激活。设定由当前角色扮演栏目提供，原始读卡消息与工具结果保存在历史 seq ${start}–${end}。${importContinuation}`
+                : `导出操作已结束。原始消息与工具结果保存在历史 seq ${start}–${end}，导出文件可在资源库查看。以下继续剧情。`;
             session.append('user/message', {
                 id: randomUUID(),
                 role: 'user',
@@ -259,7 +281,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                 content: [
                     {
                         type: 'text',
-                        text: imported ? `读卡已完整激活。设定由当前角色扮演栏目提供，原始读卡消息与工具结果保存在历史 seq ${start}–${end}。${currentImport ? '作者原始开场（原样展示，不提前续写）：\n' + activeImport!.opening : '以下继续剧情。'}` : `导出操作已结束。原始消息与工具结果保存在历史 seq ${start}–${end}，导出文件可在资源库查看。以下继续剧情。`
+                        text
                     }
                 ]
             }, {

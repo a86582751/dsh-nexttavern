@@ -53,6 +53,7 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
 });
 /** Session commands whose activation policy is explicit at each Remote method. */
 import { modelAvailable } from './catalog.js';
+import { CardPngIntakeError, prepareCardPngIntake } from './card-png-intake.js';
 import { randomUUID } from 'node:crypto';
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { AttachmentError } from '@deepseek-ai/dsh-attachment';
@@ -323,15 +324,18 @@ export class SessionCommandController {
             try {
                 const env_2 = { stack: [], error: void 0, hasError: false };
                 try {
-                    if (hasImage) {
+                    const admission = resolvePromptFileReceipts(request.content, receiptId => this.ctx.fileUploads.resolve(agent, receiptId));
+                    const cards = this.agents.presetForSession(agent.session) === 'roleplay'
+                        ? prepareCardPngIntake(admission.content) : null;
+                    if (cards?.hasImage ?? hasImage) {
                         const current = this.agents.selectionFor(agent).current;
                         const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model);
                         if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) {
                             throw new RemoteError('session/attachment-invalid', `Model "${current.model}" does not support image input.`, { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' });
                         }
                     }
-                    const admission = resolvePromptFileReceipts(request.content, receiptId => this.ctx.fileUploads.resolve(agent, receiptId));
-                    const content = await this.ctx.attachments.admitPromptContent(admission.content);
+                    const originalContent = cards ? await cards.admit(this.ctx.attachments) : admission.content;
+                    const content = await this.ctx.attachments.admitPromptContent(originalContent);
                     const message = createUserMessage({ content, source });
                     if (this.ctx.agents.get(agent.id) !== agent) {
                         throw new RemoteError('session/not-found', `session "${agent.id}" was disposed during prompt admission`, { sessionId: agent.id });
@@ -354,6 +358,9 @@ export class SessionCommandController {
             catch (error) {
                 if (remoteErrorOf(error) !== undefined)
                     throw error;
+                if (error instanceof CardPngIntakeError) {
+                    throw new RemoteError('session/attachment-invalid', error.message, { reason: error.code });
+                }
                 if (error instanceof AttachmentError) {
                     throw new RemoteError('session/attachment-invalid', error.message, { reason: error.code });
                 }

@@ -180,7 +180,7 @@ for(const variant of ['active','failed-import','failed-turn','current','foreign-
 }
 // The direct PNG/JSON driver completes stage/finalize inside begin. Its exact
 // result is sufficient only while the same durable import remains active.
-for (const variant of ['active','stale','failed-proof','missing-result']) {
+for (const variant of ['active','initial-story','prior-body','stale','failed-proof','missing-result']) {
  const t={id:`direct-${variant}`,events:[],surface:{nodes:[]},append(type,data,options={}){
   const event={seq:this.events.length,type,data:structuredClone(data),...options};this.events.push(event)
   if(options.surfaceOp==='append')this.surface.nodes.push(event.seq)
@@ -193,6 +193,11 @@ for (const variant of ['active','stale','failed-proof','missing-result']) {
  }}
  const put=(type,data,visible=true)=>t.append(type,data,visible?{surfaceOp:'append'}:{})
  put('turn/start',{turn:1},false)
+ if(variant==='initial-story')put('user/message',{source:{kind:'roleplay-tasks',form:'phase',stage:'story'},content:[]})
+ if(variant==='prior-body') {
+  const body=put('assistant/message',{turn:1,message:{content:[{type:'text',text:'GENUINE PRIOR STORY'}]}})
+  put('user/message',{source:{kind:'roleplay-tasks',form:'phase',stage:'after-story',storySeq:body.seq},content:[]})
+ }
  put('user/message',{source:{kind:'user'},content:[{type:'text',text:'import card'}]})
  const begin=put('assistant/message',{turn:1,message:{content:[{type:'tool-call',id:'call-1',name:'rp_card_import_begin'}]}})
  if(variant!=='missing-result')put('tool/result',{message:{source:{kind:'tool',callId:'call-1'},
@@ -200,13 +205,18 @@ for (const variant of ['active','stale','failed-proof','missing-result']) {
    text:JSON.stringify({ok:true,status:variant==='failed-proof'?'staging':'active',resumed:true,
     job:{status:'completed'},activatedAt:1000,normalizedSha256:'a'.repeat(64),importId:'card',coverage:1})}]}]}})
  const prose=put('assistant/message',{turn:1,message:{content:[{type:'text',text:'导入完成'}]}})
- put('turn/end',{turn:1,reason:{kind:'completed'}},false)
  const source={importId:'card',normalizedSha256:variant==='stale'?'b'.repeat(64):'a'.repeat(64),opening:'作者开场'}
+ const expectedPrelude=variant==='active'||variant==='initial-story'
+ assert.equal(provenImportPreludeAssistants(t,source,
+  {includeOpenTurn:true}).has(prose.seq),expectedPrelude,'stopping hook classifies ACK before creating a body anchor')
+ assert.equal(provenImportPreludeAssistants(t,source).size,0,
+  'ordinary history readers require a completed turn')
+ put('turn/end',{turn:1,reason:{kind:'completed'}},false)
  const prelude=provenImportPreludeAssistants(t,source)
- assert.equal(prelude.has(prose.seq),variant==='active',variant)
+ assert.equal(prelude.has(prose.seq),expectedPrelude,variant)
  const before=[...t.surface.nodes]
  const retired=retireCompletedTaskContexts(t,2,source)
- assert.equal(retired>0,variant==='active',variant)
- if(variant==='active')assert.ok(!t.surface.nodes.includes(begin.seq))
+ assert.equal(retired>0,variant==='active'||variant==='initial-story'||variant==='prior-body',variant)
+ if(variant==='active'||variant==='initial-story'||variant==='prior-body')assert.ok(!t.surface.nodes.includes(begin.seq))
  else assert.deepEqual(t.surface.nodes,before)
 }

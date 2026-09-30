@@ -13,7 +13,13 @@ export const jsonResponse = (status: number, value: unknown) =>
       headers: { 'content-type': 'application/json; charset=utf-8' },
     })
 
-export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, carryTruncationBoundary, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, importSummary, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession}: StateDependencies) {
+export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carryTruncationBoundary,
+  buildForkLookupIndex,reconcileCanonicalPlayerVariants,statusRecoveredSessions,recoverStatusObligations,
+  nativeBranchGroupsFor,nativePlayerGroupsFor,assistantMessageId,userForkContext,locatePlayerRecoveryTarget,
+  failedForkMembership,isRecoverySourceMember,backfillRecoverySourceMember,importRecordKey,preparationRecordKey,
+  tavernTasks,memoryForContext,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,
+  importSummary,chatImportProjection,deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
+  normalizeDecisionRecord,userValues,svc,resolveRoleplaySession}:StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
     const prefix = `${session.id}__`
     const cards = []
@@ -193,7 +199,8 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, c
       rules: T.rules.get(keyOf(session.id, 'spec')) ?? null,
       opening: T.opening.get(keyOf(session.id, 'scene')) ?? null,
       cardImport: activeImportRecord
-        ? { ...importSummary(activeImportRecord as unknown as ImportRecord), sourceRecordSessionId: importSourceSessionId }
+        ? { ...importSummary(activeImportRecord as unknown as ImportRecord), sourceRecordSessionId: importSourceSessionId,
+          ...chatImportProjection?.(session,activeImportRecord as unknown as ImportRecord) }
         : activeImport,
       drafts: [...T.drafts.entries()].filter(([k]) => k.startsWith(`${session.id}__draft__`)).map(([, v]) => ({ draft_id: v?.id, idea: String(v?.idea ?? '').slice(0, 80), modules: Object.keys(v?.modules ?? {}), updatedAt: v?.updatedAt })),
       versions: flatVersions,

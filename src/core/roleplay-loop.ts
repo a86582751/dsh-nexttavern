@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import {ensureSessionHistory} from './session-history.js'
+import {provenImportPreludeAssistants} from './tavern-task-retirement.js'
 import { retireSettledInlineContexts, retireUsedStoryReads, isSettingManagementCall } from './tavern-task-context.js'
 import { createAdaptationStore } from './card-adaptation.js'
 import { retireAdaptationReads, retireCoarseResearchReads, retireDeliveredDraft } from './card-adaptation-context.js'
@@ -245,10 +246,12 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
     }
     const preparation=T.branch.get(preparationRecordKey(session.id))
     if(preparation?.status!=='preparing') {
+      const importPrelude=provenImportPreludeAssistants(session,importPromptCheckpoint?.(session),{includeOpenTurn:true})
       let canonical=canonicalAssistantForTurn(session,turn)
+      if(canonical&&importPrelude.has(canonical.seq))canonical=null
       if(!canonical) {
         const hidden=internalTaskSeqs(session)
-        canonical=surfaceEvents(session).findLast(e=>e.type==='assistant/message'&&Number(e.data?.turn)===Number(turn)&&!e.data?.interrupted&&!hidden.has(e.seq)&&textOf(e.data?.message?.content).trim())??null
+        canonical=surfaceEvents(session).findLast(e=>e.type==='assistant/message'&&Number(e.data?.turn)===Number(turn)&&!e.data?.interrupted&&!hidden.has(e.seq)&&!importPrelude.has(e.seq)&&textOf(e.data?.message?.content).trim())??null
         if(canonical)session.append('user/message',taskPhaseMessage('after-story','正文已经落盘，下面只完成本轮维护义务，不继续剧情。',{storySeq:canonical.seq,turn}),{surfaceOp:'append'})
       }
       if(canonical) {

@@ -3,6 +3,7 @@ import { completedAssistantReceiptForTurn } from './roleplay-context.js'
 import { createWorldlineSurface } from './roleplay-worldline-surface.js'
 import { activeOpeningSource } from './roleplay-import.js'
 import { provenImportPreludeAssistants } from './tavern-task-retirement.js'
+import type {OpeningIntent} from './roleplay-opening-selection.js'
 export { assertBranchSession } from './roleplay-worldline-surface.js'
 import type {
   WorldlineDependencies,
@@ -379,11 +380,15 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       promptText: '',
       openingOnly: true,
       openingSource: generatedOpening ? inheritedSource! : (() => {
-        const intent = T.branch.get(keyOf(session.id, `opening-choice-${active!.importId}`)) as
-          {schemaVersion?: number; status?: string; sessionId?: string; operationId?: string;
-            messageId?: string; renderedText?: string; renderedSha256?: string;
-            source?: {importId?: string; normalizedSha256?: string; transactionId?: string}} | undefined
-        const selected = intent?.schemaVersion === 2 && intent.status === 'completed'
+        const stored = T.branch.get(keyOf(session.id, `opening-choice-${active!.importId}`)) as OpeningIntent | undefined
+        const versioned = stored?.schemaVersion === 3 || stored?.schemaVersion === 4
+        const intent = versioned ? deps.readOpeningIntent?.(stored.source) : stored
+        if (versioned && (!intent || intent.status !== 'completed')) {
+          throw Object.assign(new Error('开场来源或原始消息已变化；暂不能重新生成'),{code:'ROLEPLAY_SOURCE_CHANGED'})
+        }
+        // New schemas use the selection owner's verified projection. A raw
+        // completed row is not source, native durability or numerical authority.
+        const selected = !!intent && [2,3,4].includes(intent.schemaVersion) && intent.status === 'completed'
           && intent.sessionId === session.id && intent.operationId === source.operationId
           && intent.messageId === messageId && intent.source?.importId === active!.importId
           && intent.source?.normalizedSha256 === active!.normalizedSha256

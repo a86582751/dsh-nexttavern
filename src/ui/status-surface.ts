@@ -1,4 +1,5 @@
 import { createDecisionSeat, type SurfaceRoot } from './decision-seat.js';
+import {createChatOpeningCard} from './chat-opening-card.js'
 import type * as ReactAPI from 'react';
 import type { StateReply } from './state-store.js';
 import type { ActivityComponents } from './activity-view.js';
@@ -30,6 +31,7 @@ interface SurfaceDependencies {
     readImmersive(): boolean;
     runMaintenance(id: string, action: string): Promise<unknown>;
     toast(text: string): void;
+    jsonFetch?<T>(url:string,init?:RequestInit):Promise<T>
 }
 
 export function createStatusSurface({
@@ -46,9 +48,12 @@ React,
      applyImmersive,
      readImmersive,
      runMaintenance,
-     toast
+     toast,
+     jsonFetch
 }: SurfaceDependencies) {
     const { DecisionCard, decisionSeat } = createDecisionSeat({ React, createRoot, resolveActiveSessionId, toast });
+    const ChatOpeningCard = createChatOpeningCard({React,toast,invalidateState,
+      jsonFetch:jsonFetch ?? (async () => {throw new Error('开场选择服务暂不可用')})})
 
 
 
@@ -672,6 +677,9 @@ React,
         React.Fragment,
             null,
             main,
+            React.createElement(ChatOpeningCard,{sessionId:activeSessionId,
+              cardImport:state?.sessionId === activeSessionId ? state.cardImport : null,
+              refreshToken:activeSessionId ? stateVersion(activeSessionId) : 0}),
             React.createElement(BackgroundNotesBanner, { activity: backgroundActivity, sessionId: activeSessionId })
         );
     }

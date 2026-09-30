@@ -2,6 +2,7 @@ import type {BeforeForkPublish} from './fork-reservation.js'
 /** Session commands whose activation policy is explicit at each Remote method. */
 
 import { modelAvailable } from './catalog.js'
+import {CardPngIntakeError,prepareCardPngIntake} from './card-png-intake.js'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -348,7 +349,13 @@ export class SessionCommandController {
     const hasImage = request.content.some(part => part.type === 'image')
     const admit = async (): Promise<SessionPromptValue> => {
       try {
-        if (hasImage) {
+        const admission = resolvePromptFileReceipts(
+          request.content,
+          receiptId => this.ctx.fileUploads.resolve(agent, receiptId),
+        )
+        const cards = this.agents.presetForSession(agent.session) === 'roleplay'
+          ? prepareCardPngIntake(admission.content) : null
+        if (cards?.hasImage ?? hasImage) {
           const current = this.agents.selectionFor(agent).current
           const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model)
           if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) {
@@ -359,11 +366,8 @@ export class SessionCommandController {
             )
           }
         }
-        const admission = resolvePromptFileReceipts(
-          request.content,
-          receiptId => this.ctx.fileUploads.resolve(agent, receiptId),
-        )
-        const content = await this.ctx.attachments.admitPromptContent(admission.content)
+        const originalContent = cards ? await cards.admit(this.ctx.attachments) : admission.content
+        const content = await this.ctx.attachments.admitPromptContent(originalContent)
         const message: UserMessage = createUserMessage({ content, source })
         if (this.ctx.agents.get(agent.id) !== agent) {
           throw new RemoteError(
@@ -378,6 +382,9 @@ export class SessionCommandController {
         binding.commit()
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error
+        if (error instanceof CardPngIntakeError) {
+          throw new RemoteError('session/attachment-invalid',error.message,{reason:error.code})
+        }
         if (error instanceof AttachmentError) {
           throw new RemoteError('session/attachment-invalid', error.message, { reason: error.code })
         }

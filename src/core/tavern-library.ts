@@ -270,6 +270,15 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
        path,
        modifiedAt,
        sha256: record.fullSha256 } }
+  /** Historical archive identity only. Polling this record must not reread a
+   * large original; metadata/read/download still verify the complete file, and
+   * import/opening transactions own current integrity and readiness checks. */
+  function archivalIdentity(id: unknown) {
+    const record = recordFor(id)
+    return {id:record.id,workspaceHash:record.workspaceHash,type:record.type,
+      bytes:record.bytes,fullSha256:record.fullSha256,
+      sources:copy(record.sources ?? [record.source])}
+  }
   function list() { return records().flatMap(record=>{try{return [metadata(record.id)]}catch{return []}}) }
   function read(id: unknown) {
     const record = recordFor(id)
@@ -335,5 +344,5 @@ export function createTavernLibrary({ workspace, table }: { workspace: string; t
       return { ok: false, pending: pendingRecord }
     }
   }
-  return Object.freeze({ archive, list, metadata, read, openDownload, migrate, pending })
+  return Object.freeze({ archive, list, metadata, archivalIdentity, read, openDownload, migrate, pending })
 }
