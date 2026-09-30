@@ -24,5 +24,33 @@ export function buildForkSeed(events, boundary) {
         time: events[boundary].time,
         data: { inherited: true },
     });
-    return prefix.concat(openTurnClosers(prefix, { kind: 'forked' }));
+    const seed = prefix.concat(openTurnClosers(prefix, { kind: 'forked' }));
+    // A prepared cut can include queued parent input after its completed turn.
+    // Preserve those source events as provenance, then cancel the pending queues
+    // in the child's own suffix. Inherited refs must never become child claims.
+    const pending = { 'next-turn': [], 'next-step': [] };
+    for (const event of prefix) {
+        if (event.type !== 'agent/inbox/spliced')
+            continue;
+        const splice = event.data, count = splice.removedCount ?? 0;
+        if (!Object.hasOwn(pending, splice.target) || !Array.isArray(splice.inserted)
+            || splice.outcome !== undefined && splice.outcome !== 'canceled'
+            || !Number.isSafeInteger(splice.start) || splice.start < 0
+            || !Number.isSafeInteger(count) || count < 0
+            || splice.start + count > pending[splice.target].length)
+            throw new Error('invalid inherited inbox splice');
+        pending[splice.target] = pending[splice.target].toSpliced(splice.start, count, ...splice.inserted);
+        const messages = [...pending['next-turn'], ...pending['next-step']];
+        if (messages.some(message => !message || typeof message.id !== 'string' || !message.id)
+            || new Set(messages.map(message => message.id)).size !== messages.length)
+            throw new Error('invalid inherited inbox messages');
+    }
+    for (const target of ['next-step', 'next-turn']) {
+        if (!pending[target].length)
+            continue;
+        seed.push({ type: 'agent/inbox/spliced', seq: SessionSeq(seed.length),
+            time: events[boundary].time,
+            data: { target, start: 0, removedCount: pending[target].length, inserted: [], outcome: 'canceled' } });
+    }
+    return seed;
 }
