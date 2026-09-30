@@ -38,13 +38,15 @@ import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { Context } from '@deepseek-ai/cordis'
 import { ReactLoopInbox } from './inbox.js'
+import {randomUUID} from 'node:crypto'
 import type {NativeInputResumeProof} from './inbox.js'
 import {INPUT_ADMISSION_ABORT_REASON, nativeInputLink, nativeInputSha256, nativeInputWorkSha256,
-  nativePreparationReceipt} from './input-admission.js'
+  nativePreparationReceipt, inspectNativeInboxHistory, nativeInputStopAcknowledgement} from './input-admission.js'
 import type {NativeDurableInputWorkLookup, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,
   NativeExistingInputWork, NativeExistingInputWorkV2, NativeInputAdmissionAgentV2, NativeInputAdmissionHook,
   NativeInputAdmissionHookV2, NativeInputBlocked, NativeInputClaim, NativeInputLinkV1,
-  NativeInputOwnership, NativeInputProposal, NativeInputRef, NativeInputWakeResult, NativePreparationReceiptV1} from './input-admission.js'
+  NativeInputOwnership, NativeInputProposal, NativeInputRef, NativeInputWakeResult, NativePreparationReceiptV1,
+  NativeInputStopNoticeV1, NativeInputStopLookupV1} from './input-admission.js'
 import { RuntimeContextProjection } from './runtime-context.js'
 import { AssistantStreamAttempt } from './assistant-stream.js'
 import { SystemPromptProjection } from './runtime-context.js'
@@ -95,11 +97,15 @@ type PreparedStep =
     assembly: PromptAssembly
     admission?: InputAdmission
   }
-type AdmissionRegistration = {hook: NativeInputAdmissionHook | NativeInputAdmissionHookV2; active: boolean}
+type AdmissionRegistration = {hook: NativeInputAdmissionHook | NativeInputAdmissionHookV2; active: boolean;
+  stopOwner?: NativeInputAdmissionHookV2['onStop']}
 type InputAdmission = {registration: AdmissionRegistration; proposal: NativeInputProposal; identity: unknown;
   resumeProof?: NativeInputResumeProof; claim?: NativeInputClaim; continuation?: true;
   preparation?: NativePreparationReceiptV1; marker?: NativeInputLinkV1; startSeq?: number; receipt?: NativeDurableInputWorkReceiptV1}
 type InputAdmissionOutcome = {kind: 'admitted'; admission: InputAdmission} | {kind: 'none'} | {kind: 'blocked'}
+type InputStopState = {notice: NativeInputStopNoticeV1; result: NativeInputStopLookupV1; done: Promise<void>}
+type InputStopWork = {registration: AdmissionRegistration; refs: readonly NativeInputRef[];
+  preparation?: NativePreparationReceiptV1; receipt?: NativeDurableInputWorkReceiptV1}
 const nativeAdmissionAgents = new WeakSet<object>()
 
 /** Actual constructor identity, not a caller-supplied capability/verified flag. */
@@ -175,6 +181,10 @@ export class ReactLoopAgent implements Agent {
   private inputWakeStopped = false
   private inputDisposed = false
   private inputOnlyWakeLatched = false
+  private inputStopSequence = 0
+  private inputStop?: InputStopState
+  /** Retain the last owner work across a blocked driver becoming idle. */
+  private inputStopWork?: InputStopWork
 
   constructor(
     private loopCtx: Context,
@@ -196,6 +206,7 @@ export class ReactLoopAgent implements Agent {
   }
 
   get nativeInputAdmissionVersion(): 2 {return 2}
+  get nativeInputStopVersion(): 1 {return 1}
 
   get status(): AgentStatus {
     return this.phase.kind === 'idle' || this.phase.kind === 'maintenance' ? 'idle' : 'running'
@@ -217,7 +228,12 @@ export class ReactLoopAgent implements Agent {
   }
 
   send(message: UserMessage, target: InboxTarget, wakeup: boolean): void {
-    if (wakeup && !this.inputDisposed) {this.inputWakeStopped = false; this.inputOnlyWakeLatched = false}
+    if (wakeup && !this.inputDisposed && (!this.inputStop || this.inputStop.result.status === 'acknowledged')) {
+      if (this.inputStop) this.inputStopWork = undefined
+      this.inputStop = undefined
+      this.inputWakeStopped = false
+      this.inputOnlyWakeLatched = false
+    }
     // Waking input cannot join an aborted activity, so it starts the next turn.
     // Captured before the insertion so a reentrant cancel from a splice observer cannot reclassify it.
     const wakingAfterAbort = wakeup && this.phase.kind !== 'idle' && this.phase.abort.signal.aborted
@@ -244,16 +260,102 @@ export class ReactLoopAgent implements Agent {
       nativeAdmissionAgents.delete(this)
     }
     if (cause.kind !== 'hook' || cause.reason !== INPUT_ADMISSION_ABORT_REASON) this.inputWakeStopped = true
-    if (this.inputWakeStopped && this.inputOnlyWakeLatched) {
-      if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
-      this.inputOnlyWakeLatched = false
-      this.existingInputWork = undefined
+    try {
+      // Install the barrier before invoking user code: reentrant cancellation
+      // sees the same generation, while disposal can supersede it safely.
+      if (cause.kind !== 'hook' || cause.reason !== INPUT_ADMISSION_ABORT_REASON) this.notifyInputStop(cause, options)
+    } finally {
+      try {
+        if (this.inputWakeStopped && this.inputOnlyWakeLatched) {
+          if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
+          this.inputOnlyWakeLatched = false
+          this.existingInputWork = undefined
+        }
+        if (!options.keepInbox) {
+          this.inbox.clear()
+          if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
+        }
+      } finally {
+        if (this.phase.kind !== 'idle') this.phase.abort.abort(cause)
+      }
     }
-    if (!options.keepInbox) {
-      this.inbox.clear()
-      if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
+  }
+
+  private notifyInputStop(cause: AgentCancelCause, options: CancelOptions): void {
+    const registration = this.inputAdmission
+    const stopOwner = registration?.stopOwner
+    if (!registration || !stopOwner) return
+    if (this.inputStop && (cause.kind !== 'disposed' || this.inputStop.notice.cause.kind === 'disposed')) return
+    const stopSequence = ++this.inputStopSequence
+    let notice: NativeInputStopNoticeV1
+    try {
+      const selected = this.inputStopWork?.registration === registration ? this.inputStopWork : this.existingInputWork
+      const work = selected ? {refs: selected.refs,
+        preparation: nativePreparationReceipt(selected.preparation), receipt: selected.receipt} : undefined
+      const refs = new Map<string, NativeInputRef>()
+      for (const ref of work?.refs ?? []) refs.set(nativeInputSha256(ref), ref)
+      let refsCode: NativeInputStopNoticeV1['refsCode']
+      const history = inspectNativeInboxHistory(this.session.id, this.session.snapshotEvents(), this.session.inheritedEventCount)
+      for (const entry of [...history.pending['next-step'], ...history.pending['next-turn']]) {
+        if (history.ownership(entry.ref).status !== 'pending') refsCode = 'INPUT_OWNERSHIP_UNKNOWN'
+        refs.set(nativeInputSha256(entry.ref), entry.ref)
+      }
+      notice = deepFreeze({schemaVersion: 1, sessionId: this.session.id, stopSequence, stopNonce: randomUUID(),
+        cause: {kind: cause.kind, ...(cause.kind === 'hook' ? {hookReasonSha256: nativeInputSha256(cause.reason)} : {})},
+        keepInbox: options.keepInbox === true, phase: this.phase.kind, refs: [...refs.values()],
+        ...(refsCode ? {refsCode} : {}), ...(work?.preparation ? {preparation: work.preparation} : {}),
+        ...(work?.receipt ? {receipt: work.receipt} : {})})
+    } catch {
+      // Even unreadable history/metadata must notify the owner synchronously.
+      // A minimal unknown notice cannot be acknowledged into readiness.
+      notice = Object.freeze({schemaVersion: 1, sessionId: this.session.id, stopSequence,
+        stopNonce: `unavailable-${stopSequence}`, cause: Object.freeze({kind: cause.kind}),
+        keepInbox: options.keepInbox === true, phase: this.phase.kind, refs: Object.freeze([]), refsCode: 'INPUT_OWNERSHIP_UNKNOWN'})
     }
-    if (this.phase.kind !== 'idle') this.phase.abort.abort(cause)
+    const done = Promise.withResolvers<void>()
+    const state: InputStopState = {notice, result: Object.freeze({status: 'pending', notice}), done: done.promise}
+    this.inputStop = state
+    const unknown = (code: string): void => {state.result = Object.freeze({status: 'unknown', notice, code}); done.resolve()}
+    try {
+      // Do not defer invocation into a Promise callback: owner revocation must
+      // execute in cancel's synchronous stack, before native clear and abort.
+      const acknowledgement = stopOwner(notice)
+      void Promise.resolve(acknowledgement).then(value => {
+        state.result = nativeInputStopAcknowledgement(value, notice)
+        done.resolve()
+      }, () => {unknown('INPUT_STOP_ACK_FAILED')})
+    } catch {unknown('INPUT_STOP_ACK_FAILED')}
+  }
+
+  lookupInputStop(): NativeInputStopLookupV1 {return this.inputStop?.result ?? Object.freeze({status: 'none'})}
+
+  async whenInputStopSettled(): Promise<NativeInputStopLookupV1> {
+    let state: InputStopState | undefined
+    do {
+      state = this.inputStop
+      await state?.done
+    } while (state !== this.inputStop)
+    return this.lookupInputStop()
+  }
+
+  /** Consume late owner results without applying them after cancellation. The
+   * stop ACK owns quiescence; awaiting this driver's idle here would deadlock. */
+  private awaitInputOperation<T>(operation: Promise<T>, signal: AbortSignal, registration: AdmissionRegistration): Promise<T> {
+    if (!registration.stopOwner) return operation
+    return (async () => {
+      const cancelled = Promise.withResolvers<never>()
+      const onAbort = (): void => {cancelled.reject(signal.reason)}
+      signal.addEventListener('abort', onAbort, {once: true})
+      if (signal.aborted) onAbort()
+      try {
+        const result = await Promise.race([operation, cancelled.promise])
+        if (signal.aborted) {await this.whenInputStopSettled(); signal.throwIfAborted()}
+        return result
+      } catch (error) {
+        if (signal.aborted) {await this.whenInputStopSettled(); signal.throwIfAborted()}
+        throw error
+      } finally {signal.removeEventListener('abort', onAbort)}
+    })()
   }
 
   /** One lifecycle owner; ordinary upstream callers keep the unregistered path. */
@@ -262,7 +364,9 @@ export class ReactLoopAgent implements Agent {
     if (typeof hook.admit !== 'function' || typeof hook.check !== 'function') throw Error('invalid native input admission hook')
     if (hook.schemaVersion !== undefined && hook.schemaVersion !== 1 && hook.schemaVersion !== 2) throw Error('unsupported native input admission hook')
     if (hook.schemaVersion === 2 && typeof hook.checkpoint !== 'function') throw Error('v2 native input admission needs checkpoint')
-    const registration = {hook, active: true}
+    const stopOwner = hook.schemaVersion === 2 ? hook.onStop : undefined
+    if (stopOwner !== undefined && typeof stopOwner !== 'function') throw Error('invalid native input stop hook')
+    const registration: AdmissionRegistration = {hook, active: true, ...(stopOwner ? {stopOwner: stopOwner.bind(hook)} : {})}
     this.inputAdmission = registration
     return () => {
       registration.active = false
@@ -279,7 +383,7 @@ export class ReactLoopAgent implements Agent {
   /** Wake only work already owned by this inbox, never send or insert a message. */
   wakePending(): NativeInputWakeResult {
     if (this.inputDisposed) return {kind: 'disposed'}
-    if (this.inputWakeStopped || this.programmaticTurnPoisoned) return {kind: 'blocked'}
+    if (this.inputStop || this.inputWakeStopped || this.programmaticTurnPoisoned) return {kind: 'blocked'}
     if (!this.inbox.hasPending) return {kind: 'empty'}
     if (this.phase.kind === 'running') return {kind: 'running'}
     const latched = this.phase.kind === 'maintenance'
@@ -291,7 +395,7 @@ export class ReactLoopAgent implements Agent {
   /** Owner credentials supplement native history; no caller body is accepted. */
   wakeExistingWork(work: NativeExistingInputWork | NativeExistingInputWorkV2): NativeInputWakeResult {
     if (this.inputDisposed) return {kind: 'disposed'}
-    if (this.inputWakeStopped || !this.inputAdmission || work?.preparation == null
+    if (this.inputStop || this.inputWakeStopped || !this.inputAdmission || work?.preparation == null
       || !Array.isArray(work.refs)) return {kind: 'blocked'}
     let selected: NativeExistingInputWork & {receipt?: NativeDurableInputWorkReceiptV1}
     try {
@@ -340,6 +444,8 @@ export class ReactLoopAgent implements Agent {
       return target === 'next-step' ? {kind: 'none'} : refused('INPUT_EMPTY')
     }
     const hook = registration.hook
+    this.inputStopWork = {registration, refs: existing?.refs ?? proposal.refs,
+      ...(existing?.receipt ? {preparation: existing.receipt.preparation, receipt: existing.receipt} : {})}
     let decision: Awaited<ReturnType<NativeInputAdmissionHook['admit']>> | Awaited<ReturnType<NativeInputAdmissionHookV2['admit']>>
     try {
       if (hook.schemaVersion === 2) {
@@ -349,10 +455,15 @@ export class ReactLoopAgent implements Agent {
           if (!preparation || !existing.receipt) return refused('INPUT_RESUME_RECEIPT_MISSING')
           linked = {preparation, refs: existing.refs, receipt: existing.receipt}
         }
-        decision = await hook.admit(proposal, signal, linked)
+        decision = await this.awaitInputOperation(hook.admit(proposal, signal, linked), signal, registration)
       } else decision = await hook.admit(proposal, signal, existing)
     }
-    catch {signal.throwIfAborted(); return refused('INPUT_ADMISSION_HOOK_FAILED')}
+    catch {
+      if (this.inputStop) await this.whenInputStopSettled()
+      signal.throwIfAborted()
+      return refused('INPUT_ADMISSION_HOOK_FAILED')
+    }
+    if (signal.aborted) await this.whenInputStopSettled()
     signal.throwIfAborted()
     if (!registration.active || this.inputAdmission !== registration || !this.inbox.matches(proposal)) return refused('INPUT_PROPOSAL_CHANGED')
     if (!decision || typeof decision !== 'object') return refused('INPUT_ADMISSION_DECISION_INVALID')
@@ -365,6 +476,8 @@ export class ReactLoopAgent implements Agent {
       catch {return refused('INPUT_PREPARATION_RECEIPT_INVALID')}
     }
     if (hook.schemaVersion === 2 && !preparation) return refused('INPUT_PREPARATION_RECEIPT_INVALID')
+    if (preparation) this.inputStopWork = {registration, refs: existing?.refs ?? proposal.refs, preparation,
+      ...(existing?.receipt ? {receipt: existing.receipt} : {})}
     const markerFor = (refs: readonly NativeInputRef[], previousStartSeq?: number): NativeInputLinkV1 | undefined => {
       if (!preparation) return undefined
       return nativeInputLink({schemaVersion: 1, encoding: 'native-input-link-v1', preparation, refs,
@@ -434,8 +547,13 @@ export class ReactLoopAgent implements Agent {
     const signal = this.phase.abort.signal
     this.checkInput(admission, messages)
     let flushed: boolean
-    try {flushed = await this.ctx.sessions.flush(this.session)}
-    catch {signal.throwIfAborted(); this.abortInput(admission, 'INPUT_LINK_FLUSH_FAILED', 'final', admission.claim)}
+    try {flushed = await this.awaitInputOperation(this.ctx.sessions.flush(this.session), signal, admission.registration)}
+    catch {
+      if (this.inputStop) await this.whenInputStopSettled()
+      signal.throwIfAborted()
+      this.abortInput(admission, 'INPUT_LINK_FLUSH_FAILED', 'final', admission.claim)
+    }
+    if (signal.aborted) await this.whenInputStopSettled()
     signal.throwIfAborted()
     if (!flushed) this.abortInput(admission, 'INPUT_LINK_FLUSH_FAILED', 'final', admission.claim)
     this.checkInput(admission, messages)
@@ -446,8 +564,14 @@ export class ReactLoopAgent implements Agent {
       this.abortInput(admission, 'INPUT_LINK_CHANGED', 'final', admission.claim)
     }
     let outcome: Awaited<ReturnType<NativeInputAdmissionHookV2['checkpoint']>>
-    try {outcome = await hook.checkpoint(receipt, signal)}
-    catch {signal.throwIfAborted(); this.abortInput(admission, 'INPUT_CHECKPOINT_FAILED', 'final', admission.claim)}
+    this.inputStopWork = {registration: admission.registration, refs: receipt.refs, preparation: receipt.preparation, receipt}
+    try {outcome = await this.awaitInputOperation(hook.checkpoint(receipt, signal), signal, admission.registration)}
+    catch {
+      if (this.inputStop) await this.whenInputStopSettled()
+      signal.throwIfAborted()
+      this.abortInput(admission, 'INPUT_CHECKPOINT_FAILED', 'final', admission.claim)
+    }
+    if (signal.aborted) await this.whenInputStopSettled()
     signal.throwIfAborted()
     if (outcome?.kind !== 'allow') this.abortInput(admission, outcome?.code ?? 'INPUT_CHECKPOINT_BLOCKED', 'final', admission.claim)
     admission.receipt = receipt
@@ -469,6 +593,7 @@ export class ReactLoopAgent implements Agent {
       try {
         return await job(maintenance.abort.signal)
       } finally {
+        if (this.inputStop) await this.whenInputStopSettled()
         this.setPhase({ kind: 'idle', lastTurn: maintenance.lastTurn })
         const cause = abortedCancelCause(maintenance.abort.signal)
         if (!this.programmaticTurnPoisoned && cause?.kind !== 'disposed'
@@ -672,7 +797,8 @@ export class ReactLoopAgent implements Agent {
    *   the inbox insertion so a reentrant cancel cannot reclassify it.
    */
   private wakeDriver(wakeAfterAbort = false): void {
-    if (this.programmaticTurnPoisoned) return
+    if (this.programmaticTurnPoisoned || this.inputDisposed || this.inputStop
+      || this.inputAdmission?.stopOwner && this.inputWakeStopped) return
     if (this.phase.kind !== 'idle') {
       // Maintenance and aborted drivers cannot deliver the wake: latch it for
       // replay at convergence. Live drivers claim queued work themselves;
@@ -700,6 +826,7 @@ export class ReactLoopAgent implements Agent {
     let activity: Promise<void>
     do {
       await (activity = this.activityDone)
+      if (this.inputStop) await this.whenInputStopSettled()
     } while (activity !== this.activityDone)
   }
 
@@ -717,10 +844,14 @@ export class ReactLoopAgent implements Agent {
     } catch (_error) {
       // Reported failures and cancellation are contained at the driver boundary.
     } finally {
+      if (this.inputStop) await this.whenInputStopSettled()
       /* v8 ignore next -- kick owns a running phase until this driver boundary */
       if (this.phase.kind === 'running') {
         const { turn, wakeRequested } = this.phase
         const blocked = this.inputAdmissionBlocked
+        // Only a blocked owner work needs its association after driver release.
+        // A completed work must not be included in an unrelated idle stop.
+        if (!blocked) this.inputStopWork = undefined
         this.inputAdmissionBlocked = undefined
         this.existingInputWork = undefined
         this.inputOnlyWakeLatched = false

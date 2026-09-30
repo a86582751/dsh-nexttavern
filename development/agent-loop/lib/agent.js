@@ -13,7 +13,8 @@ import { createScope } from '@deepseek-ai/dsh-scope';
 import { canonicalHeader, headerEquals } from '@deepseek-ai/dsh-session';
 import { joinContextSections, renderContextSections, renderPrompt } from '@deepseek-ai/dsh-system-prompt';
 import { ReactLoopInbox } from './inbox.js';
-import { INPUT_ADMISSION_ABORT_REASON, nativeInputLink, nativeInputSha256, nativeInputWorkSha256, nativePreparationReceipt } from './input-admission.js';
+import { randomUUID } from 'node:crypto';
+import { INPUT_ADMISSION_ABORT_REASON, nativeInputLink, nativeInputSha256, nativeInputWorkSha256, nativePreparationReceipt, inspectNativeInboxHistory, nativeInputStopAcknowledgement } from './input-admission.js';
 import { RuntimeContextProjection } from './runtime-context.js';
 import { AssistantStreamAttempt } from './assistant-stream.js';
 import { SystemPromptProjection } from './runtime-context.js';
@@ -94,6 +95,10 @@ export class ReactLoopAgent {
     inputWakeStopped = false;
     inputDisposed = false;
     inputOnlyWakeLatched = false;
+    inputStopSequence = 0;
+    inputStop;
+    /** Retain the last owner work across a blocked driver becoming idle. */
+    inputStopWork;
     constructor(loopCtx, id, options, session) {
         this.loopCtx = loopCtx;
         this.id = id;
@@ -112,6 +117,7 @@ export class ReactLoopAgent {
         nativeAdmissionAgents.add(this);
     }
     get nativeInputAdmissionVersion() { return 2; }
+    get nativeInputStopVersion() { return 1; }
     get status() {
         return this.phase.kind === 'idle' || this.phase.kind === 'maintenance' ? 'idle' : 'running';
     }
@@ -129,7 +135,10 @@ export class ReactLoopAgent {
         }
     }
     send(message, target, wakeup) {
-        if (wakeup && !this.inputDisposed) {
+        if (wakeup && !this.inputDisposed && (!this.inputStop || this.inputStop.result.status === 'acknowledged')) {
+            if (this.inputStop)
+                this.inputStopWork = undefined;
+            this.inputStop = undefined;
             this.inputWakeStopped = false;
             this.inputOnlyWakeLatched = false;
         }
@@ -157,19 +166,124 @@ export class ReactLoopAgent {
         }
         if (cause.kind !== 'hook' || cause.reason !== INPUT_ADMISSION_ABORT_REASON)
             this.inputWakeStopped = true;
-        if (this.inputWakeStopped && this.inputOnlyWakeLatched) {
-            if (this.phase.kind !== 'idle')
-                this.phase.wakeRequested = false;
-            this.inputOnlyWakeLatched = false;
-            this.existingInputWork = undefined;
+        try {
+            // Install the barrier before invoking user code: reentrant cancellation
+            // sees the same generation, while disposal can supersede it safely.
+            if (cause.kind !== 'hook' || cause.reason !== INPUT_ADMISSION_ABORT_REASON)
+                this.notifyInputStop(cause, options);
         }
-        if (!options.keepInbox) {
-            this.inbox.clear();
-            if (this.phase.kind !== 'idle')
-                this.phase.wakeRequested = false;
+        finally {
+            try {
+                if (this.inputWakeStopped && this.inputOnlyWakeLatched) {
+                    if (this.phase.kind !== 'idle')
+                        this.phase.wakeRequested = false;
+                    this.inputOnlyWakeLatched = false;
+                    this.existingInputWork = undefined;
+                }
+                if (!options.keepInbox) {
+                    this.inbox.clear();
+                    if (this.phase.kind !== 'idle')
+                        this.phase.wakeRequested = false;
+                }
+            }
+            finally {
+                if (this.phase.kind !== 'idle')
+                    this.phase.abort.abort(cause);
+            }
         }
-        if (this.phase.kind !== 'idle')
-            this.phase.abort.abort(cause);
+    }
+    notifyInputStop(cause, options) {
+        const registration = this.inputAdmission;
+        const stopOwner = registration?.stopOwner;
+        if (!registration || !stopOwner)
+            return;
+        if (this.inputStop && (cause.kind !== 'disposed' || this.inputStop.notice.cause.kind === 'disposed'))
+            return;
+        const stopSequence = ++this.inputStopSequence;
+        let notice;
+        try {
+            const selected = this.inputStopWork?.registration === registration ? this.inputStopWork : this.existingInputWork;
+            const work = selected ? { refs: selected.refs,
+                preparation: nativePreparationReceipt(selected.preparation), receipt: selected.receipt } : undefined;
+            const refs = new Map();
+            for (const ref of work?.refs ?? [])
+                refs.set(nativeInputSha256(ref), ref);
+            let refsCode;
+            const history = inspectNativeInboxHistory(this.session.id, this.session.snapshotEvents(), this.session.inheritedEventCount);
+            for (const entry of [...history.pending['next-step'], ...history.pending['next-turn']]) {
+                if (history.ownership(entry.ref).status !== 'pending')
+                    refsCode = 'INPUT_OWNERSHIP_UNKNOWN';
+                refs.set(nativeInputSha256(entry.ref), entry.ref);
+            }
+            notice = deepFreeze({ schemaVersion: 1, sessionId: this.session.id, stopSequence, stopNonce: randomUUID(),
+                cause: { kind: cause.kind, ...(cause.kind === 'hook' ? { hookReasonSha256: nativeInputSha256(cause.reason) } : {}) },
+                keepInbox: options.keepInbox === true, phase: this.phase.kind, refs: [...refs.values()],
+                ...(refsCode ? { refsCode } : {}), ...(work?.preparation ? { preparation: work.preparation } : {}),
+                ...(work?.receipt ? { receipt: work.receipt } : {}) });
+        }
+        catch {
+            // Even unreadable history/metadata must notify the owner synchronously.
+            // A minimal unknown notice cannot be acknowledged into readiness.
+            notice = Object.freeze({ schemaVersion: 1, sessionId: this.session.id, stopSequence,
+                stopNonce: `unavailable-${stopSequence}`, cause: Object.freeze({ kind: cause.kind }),
+                keepInbox: options.keepInbox === true, phase: this.phase.kind, refs: Object.freeze([]), refsCode: 'INPUT_OWNERSHIP_UNKNOWN' });
+        }
+        const done = Promise.withResolvers();
+        const state = { notice, result: Object.freeze({ status: 'pending', notice }), done: done.promise };
+        this.inputStop = state;
+        const unknown = (code) => { state.result = Object.freeze({ status: 'unknown', notice, code }); done.resolve(); };
+        try {
+            // Do not defer invocation into a Promise callback: owner revocation must
+            // execute in cancel's synchronous stack, before native clear and abort.
+            const acknowledgement = stopOwner(notice);
+            void Promise.resolve(acknowledgement).then(value => {
+                state.result = nativeInputStopAcknowledgement(value, notice);
+                done.resolve();
+            }, () => { unknown('INPUT_STOP_ACK_FAILED'); });
+        }
+        catch {
+            unknown('INPUT_STOP_ACK_FAILED');
+        }
+    }
+    lookupInputStop() { return this.inputStop?.result ?? Object.freeze({ status: 'none' }); }
+    async whenInputStopSettled() {
+        let state;
+        do {
+            state = this.inputStop;
+            await state?.done;
+        } while (state !== this.inputStop);
+        return this.lookupInputStop();
+    }
+    /** Consume late owner results without applying them after cancellation. The
+     * stop ACK owns quiescence; awaiting this driver's idle here would deadlock. */
+    awaitInputOperation(operation, signal, registration) {
+        if (!registration.stopOwner)
+            return operation;
+        return (async () => {
+            const cancelled = Promise.withResolvers();
+            const onAbort = () => { cancelled.reject(signal.reason); };
+            signal.addEventListener('abort', onAbort, { once: true });
+            if (signal.aborted)
+                onAbort();
+            try {
+                const result = await Promise.race([operation, cancelled.promise]);
+                if (signal.aborted) {
+                    await this.whenInputStopSettled();
+                    signal.throwIfAborted();
+                }
+                return result;
+            }
+            catch (error) {
+                if (signal.aborted) {
+                    await this.whenInputStopSettled();
+                    signal.throwIfAborted();
+                }
+                throw error;
+            }
+            finally {
+                signal.removeEventListener('abort', onAbort);
+            }
+        })();
     }
     /** One lifecycle owner; ordinary upstream callers keep the unregistered path. */
     registerInputAdmission(hook) {
@@ -181,7 +295,10 @@ export class ReactLoopAgent {
             throw Error('unsupported native input admission hook');
         if (hook.schemaVersion === 2 && typeof hook.checkpoint !== 'function')
             throw Error('v2 native input admission needs checkpoint');
-        const registration = { hook, active: true };
+        const stopOwner = hook.schemaVersion === 2 ? hook.onStop : undefined;
+        if (stopOwner !== undefined && typeof stopOwner !== 'function')
+            throw Error('invalid native input stop hook');
+        const registration = { hook, active: true, ...(stopOwner ? { stopOwner: stopOwner.bind(hook) } : {}) };
         this.inputAdmission = registration;
         return () => {
             registration.active = false;
@@ -198,7 +315,7 @@ export class ReactLoopAgent {
     wakePending() {
         if (this.inputDisposed)
             return { kind: 'disposed' };
-        if (this.inputWakeStopped || this.programmaticTurnPoisoned)
+        if (this.inputStop || this.inputWakeStopped || this.programmaticTurnPoisoned)
             return { kind: 'blocked' };
         if (!this.inbox.hasPending)
             return { kind: 'empty' };
@@ -213,7 +330,7 @@ export class ReactLoopAgent {
     wakeExistingWork(work) {
         if (this.inputDisposed)
             return { kind: 'disposed' };
-        if (this.inputWakeStopped || !this.inputAdmission || work?.preparation == null
+        if (this.inputStop || this.inputWakeStopped || !this.inputAdmission || work?.preparation == null
             || !Array.isArray(work.refs))
             return { kind: 'blocked' };
         let selected;
@@ -271,6 +388,8 @@ export class ReactLoopAgent {
             return target === 'next-step' ? { kind: 'none' } : refused('INPUT_EMPTY');
         }
         const hook = registration.hook;
+        this.inputStopWork = { registration, refs: existing?.refs ?? proposal.refs,
+            ...(existing?.receipt ? { preparation: existing.receipt.preparation, receipt: existing.receipt } : {}) };
         let decision;
         try {
             if (hook.schemaVersion === 2) {
@@ -281,15 +400,19 @@ export class ReactLoopAgent {
                         return refused('INPUT_RESUME_RECEIPT_MISSING');
                     linked = { preparation, refs: existing.refs, receipt: existing.receipt };
                 }
-                decision = await hook.admit(proposal, signal, linked);
+                decision = await this.awaitInputOperation(hook.admit(proposal, signal, linked), signal, registration);
             }
             else
                 decision = await hook.admit(proposal, signal, existing);
         }
         catch {
+            if (this.inputStop)
+                await this.whenInputStopSettled();
             signal.throwIfAborted();
             return refused('INPUT_ADMISSION_HOOK_FAILED');
         }
+        if (signal.aborted)
+            await this.whenInputStopSettled();
         signal.throwIfAborted();
         if (!registration.active || this.inputAdmission !== registration || !this.inbox.matches(proposal))
             return refused('INPUT_PROPOSAL_CHANGED');
@@ -312,6 +435,9 @@ export class ReactLoopAgent {
         }
         if (hook.schemaVersion === 2 && !preparation)
             return refused('INPUT_PREPARATION_RECEIPT_INVALID');
+        if (preparation)
+            this.inputStopWork = { registration, refs: existing?.refs ?? proposal.refs, preparation,
+                ...(existing?.receipt ? { receipt: existing.receipt } : {}) };
         const markerFor = (refs, previousStartSeq) => {
             if (!preparation)
                 return undefined;
@@ -396,12 +522,16 @@ export class ReactLoopAgent {
         this.checkInput(admission, messages);
         let flushed;
         try {
-            flushed = await this.ctx.sessions.flush(this.session);
+            flushed = await this.awaitInputOperation(this.ctx.sessions.flush(this.session), signal, admission.registration);
         }
         catch {
+            if (this.inputStop)
+                await this.whenInputStopSettled();
             signal.throwIfAborted();
             this.abortInput(admission, 'INPUT_LINK_FLUSH_FAILED', 'final', admission.claim);
         }
+        if (signal.aborted)
+            await this.whenInputStopSettled();
         signal.throwIfAborted();
         if (!flushed)
             this.abortInput(admission, 'INPUT_LINK_FLUSH_FAILED', 'final', admission.claim);
@@ -413,13 +543,18 @@ export class ReactLoopAgent {
             this.abortInput(admission, 'INPUT_LINK_CHANGED', 'final', admission.claim);
         }
         let outcome;
+        this.inputStopWork = { registration: admission.registration, refs: receipt.refs, preparation: receipt.preparation, receipt };
         try {
-            outcome = await hook.checkpoint(receipt, signal);
+            outcome = await this.awaitInputOperation(hook.checkpoint(receipt, signal), signal, admission.registration);
         }
         catch {
+            if (this.inputStop)
+                await this.whenInputStopSettled();
             signal.throwIfAborted();
             this.abortInput(admission, 'INPUT_CHECKPOINT_FAILED', 'final', admission.claim);
         }
+        if (signal.aborted)
+            await this.whenInputStopSettled();
         signal.throwIfAborted();
         if (outcome?.kind !== 'allow')
             this.abortInput(admission, outcome?.code ?? 'INPUT_CHECKPOINT_BLOCKED', 'final', admission.claim);
@@ -443,6 +578,8 @@ export class ReactLoopAgent {
                 return await job(maintenance.abort.signal);
             }
             finally {
+                if (this.inputStop)
+                    await this.whenInputStopSettled();
                 this.setPhase({ kind: 'idle', lastTurn: maintenance.lastTurn });
                 const cause = abortedCancelCause(maintenance.abort.signal);
                 if (!this.programmaticTurnPoisoned && cause?.kind !== 'disposed'
@@ -655,7 +792,8 @@ export class ReactLoopAgent {
      *   the inbox insertion so a reentrant cancel cannot reclassify it.
      */
     wakeDriver(wakeAfterAbort = false) {
-        if (this.programmaticTurnPoisoned)
+        if (this.programmaticTurnPoisoned || this.inputDisposed || this.inputStop
+            || this.inputAdmission?.stopOwner && this.inputWakeStopped)
             return;
         if (this.phase.kind !== 'idle') {
             // Maintenance and aborted drivers cannot deliver the wake: latch it for
@@ -683,6 +821,8 @@ export class ReactLoopAgent {
         let activity;
         do {
             await (activity = this.activityDone);
+            if (this.inputStop)
+                await this.whenInputStopSettled();
         } while (activity !== this.activityDone);
     }
     /** Report one failure at its live boundary, then preserve it for driver containment. */
@@ -700,10 +840,16 @@ export class ReactLoopAgent {
             // Reported failures and cancellation are contained at the driver boundary.
         }
         finally {
+            if (this.inputStop)
+                await this.whenInputStopSettled();
             /* v8 ignore next -- kick owns a running phase until this driver boundary */
             if (this.phase.kind === 'running') {
                 const { turn, wakeRequested } = this.phase;
                 const blocked = this.inputAdmissionBlocked;
+                // Only a blocked owner work needs its association after driver release.
+                // A completed work must not be included in an unrelated idle stop.
+                if (!blocked)
+                    this.inputStopWork = undefined;
                 this.inputAdmissionBlocked = undefined;
                 this.existingInputWork = undefined;
                 this.inputOnlyWakeLatched = false;

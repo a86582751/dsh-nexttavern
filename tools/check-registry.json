@@ -44,7 +44,8 @@
         "plugin-surface-replacement*",
         "plugin-session-history*",
         "native-input-admission*",
-        "native-input-link*"
+        "native-input-link*",
+        "native-input-stop*"
       ]
     },
     {
@@ -4321,6 +4322,21 @@
     },
     {
       "id": "test:native-input-link-compatibility.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:native-input-stop.test.mts",
       "action": "test",
       "modules": [
         "plugin-lifecycle"

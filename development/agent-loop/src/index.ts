@@ -246,6 +246,8 @@ export type {NativeInputAdmissionAgentV2, NativeInputAdmissionCapabilityV2, Nati
   NativeInputAdmissionCheckV2, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,
   NativeDurableInputWorkLookup, NativeExistingInputWorkV2, NativeExistingInputWork, NativeInputProposal,
   NativeInputClaim, NativeInputOwnership, NativeInputBlocked, NativeInputWakeResult} from './input-admission.js'
+export type {NativeInputStopCapabilityV1, NativeInputStopNoticeV1, NativeInputStopAcknowledgementV1,
+  NativeInputStopLookupV1} from './input-admission.js'
 
 /**
  * One launcher-selected session identity for a configured agent. `resume`

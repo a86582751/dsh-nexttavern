@@ -118,7 +118,48 @@ export interface NativeInputAdmissionHookV2 {
    * request preparation. Save the association and exact cancellation state;
    * never await this Agent's idle or interpret this receipt as readiness. */
   checkpoint(receipt: NativeDurableInputWorkReceiptV1, signal: AbortSignal): Promise<{kind: 'allow'} | {kind: 'blocked'; code: string}>
+  /** Invoked synchronously by external cancel, including idle/disposal. Revoke
+   * owner readiness before the first await, then persist the terminal stop.
+   * Match the original work and cancellation generation even when admit or
+   * checkpoint is still pending. Never await this Agent's idle or its stop
+   * barrier here: this callback owns the acknowledgement they await.
+   * An acknowledgement is the owner's assertion, not native durable proof. */
+  onStop?(notice: NativeInputStopNoticeV1): Promise<NativeInputStopAcknowledgementV1>
   onBlocked?(notice: NativeInputBlocked): void
+}
+export interface NativeInputStopNoticeV1 {
+  readonly schemaVersion: 1
+  readonly sessionId: string
+  readonly stopSequence: number
+  readonly stopNonce: string
+  readonly cause: {readonly kind: 'user' | 'parent' | 'disposed' | 'hook'; readonly hookReasonSha256?: string}
+  readonly keepInbox: boolean
+  readonly phase: 'idle' | 'maintenance' | 'running'
+  /** Original owned and pending inbox refs, captured before cancellation. */
+  readonly refs: readonly NativeInputRef[]
+  readonly refsCode?: 'INPUT_OWNERSHIP_UNKNOWN'
+  readonly preparation?: NativePreparationReceiptV1
+  /** Actual native checkpoint association; never Core readiness/stop proof.
+   * During resume this can identify the prior checkpoint until the new one
+   * occurs; it must not be interpreted as the resumed turn's checkpoint. */
+  readonly receipt?: NativeDurableInputWorkReceiptV1
+}
+export type NativeInputStopAcknowledgementV1 = {
+  readonly schemaVersion: 1
+  readonly stopSequence: number
+  readonly stopNonce: string
+} & ({readonly kind: 'acknowledged'} | {readonly kind: 'unknown'; readonly code: string})
+/** Hot cancellation status only. Cold recovery must read the owner's persisted
+ * stop, not a previous process's notice, native association or callback. */
+export type NativeInputStopLookupV1 = {readonly status: 'none'}
+  | {readonly status: 'pending' | 'acknowledged'; readonly notice: NativeInputStopNoticeV1}
+  | {readonly status: 'unknown'; readonly notice: NativeInputStopNoticeV1; readonly code: string}
+export interface NativeInputStopCapabilityV1 {
+  readonly nativeInputStopVersion: 1
+  lookupInputStop(): NativeInputStopLookupV1
+  /** Waits all cancellation generations observed while waiting; never waits
+   * this Agent's driver. A never-settling owner ACK remains pending. */
+  whenInputStopSettled(): Promise<NativeInputStopLookupV1>
 }
 export interface NativeInputAdmissionCapabilityV2 {
   readonly nativeInputAdmissionVersion: 2
@@ -132,7 +173,7 @@ export interface NativeInputAdmissionCapabilityV2 {
   wakeExistingWork(work: NativeExistingInputWorkV2): NativeInputWakeResult
 }
 /** Actual native Agent, returned unchanged by its owning AgentLoop service. */
-export interface NativeInputAdmissionAgentV2 extends Agent, NativeInputAdmissionCapabilityV2 {}
+export interface NativeInputAdmissionAgentV2 extends Agent, NativeInputAdmissionCapabilityV2, NativeInputStopCapabilityV1 {}
 export type NativeInputWakeResult = {kind: 'started' | 'latched' | 'running' | 'empty' | 'disposed' | 'blocked'}
 
 const canonical = (value: unknown): string => {
@@ -162,6 +203,20 @@ const exactData = (value: unknown, fields: readonly string[]): Record<string, un
     result[field] = descriptor.value
   }
   return result
+}
+/** Accept only exact plain-data acknowledgements for the captured generation. */
+export function nativeInputStopAcknowledgement(value: unknown, notice: NativeInputStopNoticeV1): NativeInputStopLookupV1 {
+  try {
+    const kind = value !== null && typeof value === 'object' ? Object.getOwnPropertyDescriptor(value, 'kind')?.value : undefined
+    const row = exactData(value, ['schemaVersion', 'stopSequence', 'stopNonce', 'kind', ...(kind === 'unknown' ? ['code'] : [])])
+    if (row?.['schemaVersion'] === 1 && row['stopSequence'] === notice.stopSequence && row['stopNonce'] === notice.stopNonce) {
+      if (kind === 'acknowledged' && !notice.refsCode) return Object.freeze({status: 'acknowledged', notice})
+      if (kind === 'unknown' && typeof row['code'] === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(row['code'])) {
+        return Object.freeze({status: 'unknown', notice, code: row['code']})
+      }
+    }
+  } catch { /* Invalid owner data cannot unlock native input. */ }
+  return Object.freeze({status: 'unknown', notice, code: notice.refsCode ?? 'INPUT_STOP_ACK_INVALID'})
 }
 export function nativePreparationReceipt(value: unknown): NativePreparationReceiptV1 | undefined {
   try {

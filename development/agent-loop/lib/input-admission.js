@@ -34,6 +34,22 @@ const exactData = (value, fields) => {
     }
     return result;
 };
+/** Accept only exact plain-data acknowledgements for the captured generation. */
+export function nativeInputStopAcknowledgement(value, notice) {
+    try {
+        const kind = value !== null && typeof value === 'object' ? Object.getOwnPropertyDescriptor(value, 'kind')?.value : undefined;
+        const row = exactData(value, ['schemaVersion', 'stopSequence', 'stopNonce', 'kind', ...(kind === 'unknown' ? ['code'] : [])]);
+        if (row?.['schemaVersion'] === 1 && row['stopSequence'] === notice.stopSequence && row['stopNonce'] === notice.stopNonce) {
+            if (kind === 'acknowledged' && !notice.refsCode)
+                return Object.freeze({ status: 'acknowledged', notice });
+            if (kind === 'unknown' && typeof row['code'] === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(row['code'])) {
+                return Object.freeze({ status: 'unknown', notice, code: row['code'] });
+            }
+        }
+    }
+    catch { /* Invalid owner data cannot unlock native input. */ }
+    return Object.freeze({ status: 'unknown', notice, code: notice.refsCode ?? 'INPUT_STOP_ACK_INVALID' });
+}
 export function nativePreparationReceipt(value) {
     try {
         const row = exactData(value, ['schemaVersion', 'namespace', 'preparationKeySha256', 'credentialSha256']);
