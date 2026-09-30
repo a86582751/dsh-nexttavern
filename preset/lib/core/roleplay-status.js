@@ -473,9 +473,11 @@ export function createRoleplayStatus(deps) {
                         statusRetryTimers.delete(taskKey);
                         if (retrySignal?.aborted)
                             return;
-                        runStatusObligation(session, event, 'retry', {
-                            agent, signal: retrySignal
-                        }).catch(() => {
+                        void (async () => {
+                            await runStatusObligation(session, event, 'retry', {
+                                agent, signal: retrySignal
+                            });
+                        })().catch(() => {
                         });
                     }, Math.max(1, Number(cfg.statusRetryMs) || 2000) * retries);
                     timer.unref?.();
@@ -496,9 +498,11 @@ export function createRoleplayStatus(deps) {
         return job;
     }
     function queueStatusObligation(session, event, via, agent, signal) {
-        runStatusObligation(session, event, via, {
-            agent, signal
-        }).catch(() => {
+        void (async () => {
+            await runStatusObligation(session, event, via, {
+                agent, signal
+            });
+        })().catch(() => {
             ctx.logger?.warn?.(`roleplay: status admission failed turn=${event?.data?.turn}`);
         });
     }

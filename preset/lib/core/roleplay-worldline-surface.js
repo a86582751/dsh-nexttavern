@@ -7,7 +7,7 @@ export function assertBranchSession(session) {
 // Append-only message revisions, projection repair and derived-state
 // invalidation form one operation; callers keep using roleplay-worldlines.
 export function createWorldlineSurface(deps, forks) {
-    const { ctx, messageEdits, flushEdits, safeId, keyOf, sha256, T, eventsOf, surfaceEvents, textOf, cloneBranchRecord, internalTaskSeqs, isRoleplaySession, durableSeq, canonicalAssistantForTurn, surfaceEntries, withDecisionMutationLock, normalizeDecisionRecord, cloneRecord, provenanceSeq, } = deps;
+    const { ctx, messageEdits, flushEdits, beginNumericalEdit, persistNumericalEdit, confirmUnchangedNumericalEdit, safeId, keyOf, sha256, T, eventsOf, surfaceEvents, textOf, cloneBranchRecord, internalTaskSeqs, isRoleplaySession, durableSeq, canonicalAssistantForTurn, surfaceEntries, withDecisionMutationLock, normalizeDecisionRecord, cloneRecord, provenanceSeq, } = deps;
     const { forkGroupKey, forkAnchorKey, forkAnchorLockKey, withForkMutationLock, hydrateForkGroup, forkPointerFor, groupMemberForSession, assistantMessageId, currentSurfaceUserBefore, turnForEvent, } = forks;
     const editInvalidationKey = (sessionId, role, targetSeq) => keyOf(sessionId, `edit-applied-${role}-${safeId(targetSeq)}`);
     const playerProjectionKey = (sessionId, groupId, playerVariantId) => keyOf(sessionId, `player-projection-${sha256(`${groupId}\0${playerVariantId}`).slice(0, 32)}`);
@@ -92,15 +92,18 @@ export function createWorldlineSurface(deps, forks) {
             receipt.editSeq === edit.seq && receipt.textSha256 === sha256(edit.data?.text);
     }
     /** Caller holds the fork lock. Receipts distinguish a durable edit from completed derived effects. */
-    async function applyTextEdit(session, event, text, reason) {
+    async function applyTextEdit(session, event, text, reason, options = {}) {
         const targetSeq = Number(event.seq);
         const role = event.type === 'assistant/message' ? 'assistant' : 'user';
         const messageId = String(role === 'assistant' ? event.data?.message?.id ?? '' : event.data?.id ?? '');
         const currentText = textOf(role === 'assistant' ? event.data?.message?.content : event.data?.content);
         const changed = currentText !== text;
+        const priorEdit = messageEdits.latest(eventsOf(session), targetSeq);
+        if (changed || priorEdit)
+            beginNumericalEdit?.(session.id);
         const edit = changed
             ? messageEdits.append(session, targetSeq, { role, messageId }, text)
-            : messageEdits.latest(eventsOf(session), targetSeq);
+            : priorEdit;
         if (!edit)
             return { changed: false, editSeq: null };
         if (edit.data?.targetSeq !== targetSeq || edit.data.role !== role ||
@@ -110,16 +113,29 @@ export function createWorldlineSurface(deps, forks) {
         const editSeq = Number(edit.seq);
         const receiptKey = editInvalidationKey(session.id, role, targetSeq);
         const textSha256 = sha256(text);
-        if (editEffectsCommitted(session, edit)) {
-            return { changed, editSeq };
-        }
+        const committed = editEffectsCommitted(session, edit);
         // The native provider drains routed live events at this durability barrier.
         // A flush/invalidation failure leaves the edit available for an idempotent retry.
-        await flushEdits(session);
-        await invalidateDerivedStoryState(session, { fromSeq: targetSeq, reason });
-        await T.branch.put(receiptKey, {
-            schemaVersion: 1, state: 'committed', role, targetSeq, editSeq, textSha256, committedAt: Date.now(),
-        });
+        if (!committed)
+            await flushEdits(session);
+        let numericalFailure;
+        try {
+            await persistNumericalEdit?.(session.id, editSeq);
+        }
+        catch (error) {
+            numericalFailure = { error };
+        }
+        // The accepted edit must retire stale cards even if its numerical denial
+        // write is unknown. That unknown remains a separate fail-closed gate; a
+        // state-entry repair can read panels without pretending the denial exists.
+        if (!committed) {
+            await invalidateDerivedStoryState(session, { fromSeq: targetSeq, reason });
+            await T.branch.put(receiptKey, {
+                schemaVersion: 1, state: 'committed', role, targetSeq, editSeq, textSha256, committedAt: Date.now(),
+            });
+        }
+        if (numericalFailure && !options.repair)
+            throw numericalFailure.error;
         return { changed, editSeq };
     }
     async function replaceAssistantText(session, messageId, text, lockAttempt = 0) {
@@ -265,7 +281,7 @@ export function createWorldlineSurface(deps, forks) {
                 if (!user)
                     return;
                 assertBranchSession(session);
-                const applied = await applyTextEdit(session, user, variant.text, 'player-message-canonical-sync');
+                const applied = await applyTextEdit(session, user, variant.text, 'player-message-canonical-sync', { repair: true });
                 const revision = Math.max(1, Number(variant.revision) || 1);
                 if (exact) {
                     if (exact.playerAppliedRevision === revision && exact.userSeq === user.seq &&
@@ -290,6 +306,8 @@ export function createWorldlineSurface(deps, forks) {
                         textSha256: sha256(variant.text), updatedAt: Date.now(),
                     });
                 }
+                if (applied.editSeq === null)
+                    confirmUnchangedNumericalEdit?.(session.id);
                 if (applied.changed)
                     synced++;
             });
@@ -299,8 +317,7 @@ export function createWorldlineSurface(deps, forks) {
         // receipt completion must not depend on the player retrying the HTTP call.
         let recoveredEdits = 0;
         for (const edit of messageEdits.current(session, eventsOf(session))) {
-            if (editEffectsCommitted(session, edit))
-                continue;
+            const committed = editEffectsCommitted(session, edit);
             const target = eventsOf(session)[Number(edit.data?.targetSeq)];
             if (!target)
                 throw new Error('编辑来源节点缺失，无法恢复派生状态');
@@ -329,8 +346,9 @@ export function createWorldlineSurface(deps, forks) {
                 assertBranchSession(session);
                 const current = projectStoryEvent(session, target);
                 const text = textOf(target.type === 'assistant/message' ? current.data?.message?.content : current.data?.content);
-                await applyTextEdit(session, current, text, 'message-edit-effects-recovered');
-                recoveredEdits++;
+                await applyTextEdit(session, current, text, 'message-edit-effects-recovered', { repair: true });
+                if (!committed)
+                    recoveredEdits++;
             });
         }
         return { synced, recoveredEdits };
@@ -456,6 +474,9 @@ export function createWorldlineSurface(deps, forks) {
                 }
                 // Persist intent before any hot sibling is edited. Cold/restarted siblings
                 // converge to this revision; a partial fanout must never restore the old text.
+                if (changed)
+                    for (const member of targets)
+                        beginNumericalEdit?.(member.sessionId);
                 group.updatedAt = Date.now();
                 await T.branch.put(forkGroupKey(group.groupId), group);
             }
@@ -493,6 +514,8 @@ export function createWorldlineSurface(deps, forks) {
                     await T.branch.put(forkGroupKey(group.groupId), group);
                 }
                 matched++;
+                if (applied.editSeq === null)
+                    confirmUnchangedNumericalEdit?.(targetSession.id);
                 if (applied.changed)
                     changed++;
             }

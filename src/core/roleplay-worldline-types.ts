@@ -1,8 +1,9 @@
 // Structural contracts for the native Session branch ledger. Host-owned data
 // retains unknown extension fields so replacements preserve the original record.
-import type { ContextSession, ContextEvent } from './roleplay-context.js'
+import type { ContextSession, ContextEvent, ContextMessage } from './roleplay-context.js'
 import type { StorySurfaceReplacement } from './roleplay-message-view.js'
 import type {OpeningIntent,OpeningSource} from './roleplay-opening-selection.js'
+import type {MvuInheritedMessageEditProtocol} from './roleplay-mvu-prefix-facts.js'
 export type MessageData = NonNullable<ContextEvent['data']>
 export type StoryEvent = ContextEvent
 export interface ReadBranchSession extends ContextSession {
@@ -130,14 +131,24 @@ export interface SurfaceEntry { seq: number; kind: string; messageId?: string }
 export interface RegistrationResult { groupId: string; ordinal: number; total: number; playerOrdinal?: number; playerTotal: number }
 export interface ReplacementResult { changed: number; matched: number; replayed: boolean }
 /** The format plugin owns event construction and interpretation; branch code owns effects and locks. */
-export interface WorldlineMessageEdits {
+export interface WorldlinePrefixProjection {
+  nodes: readonly number[]
+  projectedMessageAt(seq:number):ContextMessage | undefined
+}
+export interface WorldlineMessageEdits extends MvuInheritedMessageEditProtocol {
   append(session: BranchSession, targetSeq: number, identity: {role: 'user' | 'assistant'; messageId: string}, text: string): StoryEvent
   latest(events: readonly StoryEvent[], targetSeq: number): StoryEvent | null
   current(session: ReadBranchSession, events: readonly StoryEvent[]): readonly StoryEvent[]
+  /** Replay the complete raw [0, cut) prefix, without creating a Session. */
+  projectPrefix(events:readonly StoryEvent[]):WorldlinePrefixProjection
 }
 export interface WorldlineDependencies {
   messageEdits: WorldlineMessageEdits
   flushEdits(session: BranchSession): Promise<void>
+  /** Synchronous denial precedes append/fanout; durable denial follows flush. */
+  beginNumericalEdit?(sessionId:string):void
+  persistNumericalEdit?(sessionId:string,editSeq:number):Promise<void>
+  confirmUnchangedNumericalEdit?(sessionId:string):boolean
   safeId(value: unknown): string
   keyOf(sessionId: string, suffix: string): string
   sha256(value: unknown): string

@@ -19,6 +19,9 @@ export interface MvuStoryCompletionDependencies {
   /** Current version of that original event, even after legitimate window
    * compaction hides it. Edits still change the exact message/version hash. */
   readHistoricalCanonical(sessionId:string,seq:number,turn:number):CompletedStoryBody|undefined
+  /** Sealed consumption uses the original completed Native prefix. An edit
+   * appended afterwards revokes current publication, not the historical ACK. */
+  readConsumedCanonical?(sessionId:string,seq:number,turn:number,throughSeq:number):CompletedStoryBody|undefined
   verifyNative(scope:InputCompletionScope):boolean
   sourceCurrent(sessionId:string,sha256:string):boolean
   awaitOwnedCompletion(sessionId:string,turn:number):Promise<void>
@@ -45,14 +48,17 @@ export function createRoleplayMvuStoryCompletion(deps:MvuStoryCompletionDependen
     return !!body&&same(intent.canonical,{seq:body.seq,messageId:body.messageId,
       versionSha256:body.versionSha256,narrativeSha256:sha256(body.narrative)})
   }
-  function verifyStored(scope:InputCompletionScope,intent?:MvuStateTerminalIntent):boolean {
+  function verifyStored(scope:InputCompletionScope,intent?:MvuStateTerminalIntent,consumed=false):boolean {
     try {
       if(!deps.verifyNative(scope))return false
       if(scope.transition)return !intent
       const state=snapshot(scope)
       if(!intent||!state)return false
       const {schemaVersion:_schema,encoding:_encoding,sessionId:_sid,sourceSha256:_source,values:_values,...base}=state
-      const bodyNow=deps.readHistoricalCanonical(intent.sessionId,intent.canonical.seq,scope.receipt.checkpoint.actualTurn)
+      const bodyNow=consumed&&deps.readConsumedCanonical
+        ?deps.readConsumedCanonical(intent.sessionId,intent.canonical.seq,
+          scope.receipt.checkpoint.actualTurn,scope.receipt.turnEndSeq)
+        :deps.readHistoricalCanonical(intent.sessionId,intent.canonical.seq,scope.receipt.checkpoint.actualTurn)
       if(!bodyNow||!same(base,intent.base)||!same(intent.canonical,{seq:bodyNow.seq,messageId:bodyNow.messageId,
         versionSha256:bodyNow.versionSha256,narrativeSha256:sha256(bodyNow.narrative)}))return false
       const candidate=prepareMvuUpdate(bodyNow.narrative,state.values)
@@ -106,10 +112,10 @@ export function createRoleplayMvuStoryCompletion(deps:MvuStoryCompletionDependen
       return facts.kind==='committed'&&same(facts.settlement,settlement)
     },
     verifyConsumed(scope,plan,settlement) {
-      if(!verifyStored(scope,plan.kind==='numerical'?plan.intent:undefined))return false
+      if(!verifyStored(scope,plan.kind==='numerical'?plan.intent:undefined,true))return false
       if(plan.kind==='management-transition')return same(settlement,plan.descriptor)
         &&same(plan.descriptor,deps.prepareManagement(scope))
-      return deps.state.verifyConsumedSettlement({intent:plan.intent,base:plan.base,proposal:plan.proposal,settlement})
+      return deps.state.verifyConsumedSettlementFacts({intent:plan.intent,base:plan.base,proposal:plan.proposal,settlement})
     },
   }
 }

@@ -27,6 +27,7 @@ export interface MvuPrefixLedgerDeps {
   /** Pure numerical algorithm/readback verification, independent of owner/hot permissions. */
   verifySettlementFacts(input: MvuPrefixSettlementFactsInput): boolean
   readProjectedCanonical: MvuInheritedCompletedFactDeps['readProjectedCanonical']
+  editProtocol?:MvuInheritedCompletedFactDeps['editProtocol']
 }
 export interface MvuPrefixLedgerRequest {
   ownerSessionId: string
@@ -369,7 +370,7 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         const frozenCanonical = structuredClone(canonical)
         if (!verifyInheritedCompletedFact({ownerSessionId: sid, ownerInheritedEventCount: request.ownerInheritedEventCount,
           events: request.events, receipt: scope.receipt, canonical: intent.canonical},
-        {readProjectedCanonical: () => frozenCanonical})) fail('PREFIX_NATIVE_COMPLETION_UNPROVEN')
+        {readProjectedCanonical: () => frozenCanonical,editProtocol:deps.editProtocol})) fail('PREFIX_NATIVE_COMPLETION_UNPROVEN')
         const expectedProposal = prepareMvuUpdate(frozenCanonical.narrative, base.values)
         const {intentSha256, ...intentBody} = intent
         const {schemaVersion: _schema, encoding: _encoding, sessionId: _sid, sourceSha256: _source, values: _values, ...baseIdentity} = base

@@ -1,8 +1,6 @@
 /** A child's numerical genesis is a new authority over frozen inherited facts.
  * Native input/terminal capabilities never cross this boundary. Reads cannot
  * publish, ACK, resend input or promote a partial basis after a cold restart. */
-import {foldSurface, deriveEventMessage} from '@deepseek-ai/dsh-session/surface'
-import {messageEditProjection} from 'dsh-nexttavern-session-format/projection'
 import {recordSha256, sha256, textOf} from './roleplay-data.js'
 import {eventsOf, canonicalAssistantForTurn} from './roleplay-context.js'
 import {openingIntentKey} from './roleplay-opening-selection.js'
@@ -10,13 +8,12 @@ import {mvuInitializationEventKey, mvuInitializationHeadKey,
   verifyFrozenMvuInitializationFacts} from './roleplay-mvu-initialization.js'
 import {createRoleplayMvuLineage} from './roleplay-mvu-lineage.js'
 import {createRoleplayMvuPrefixLedger} from './roleplay-mvu-prefix-ledger.js'
-import type {SessionEvent} from '@deepseek-ai/dsh-session'
 import type {MvuLineageDeps, MvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
 import type {MvuPrefixLedgerProof} from './roleplay-mvu-prefix-ledger.js'
-import type {MvuInheritedPrefixEvent} from './roleplay-mvu-prefix-facts.js'
+import type {MvuInheritedPrefixEvent,MvuInheritedMessageEditProtocol} from './roleplay-mvu-prefix-facts.js'
 import type {VerifiedMvuGenesis, VerifiedMvuDerivedGenesis, MvuDerivedGenesisEvent,
-  MvuDerivedGenesisHead, MvuNumericalSnapshot, createRoleplayMvuState} from './roleplay-mvu-state.js'
-import type {ForkOperation, ReadBranchSession, StoryEvent} from './roleplay-worldline-types.js'
+  MvuDerivedGenesisHead, MvuNumericalSnapshot, MvuStateRoot, createRoleplayMvuState} from './roleplay-mvu-state.js'
+import type {ForkOperation, ReadBranchSession, StoryEvent, WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
 
 interface Table {get(key:string):unknown; entries():Iterable<[string,unknown]>; put(key:string,value:object):Promise<unknown>}
@@ -54,6 +51,8 @@ export interface MvuDerivedDeps extends MvuLineageDeps {
   withSourceLock<T>(sid:string,work:()=>Promise<T>):Promise<T>
   readGenesis(sid:string):Genesis | undefined
   state():ReturnType<typeof createRoleplayMvuState>
+  projectPrefix:WorldlineMessageEdits['projectPrefix']
+  editProtocol:MvuInheritedMessageEditProtocol
 }
 export const mvuDerivedPreparedKey = (sid:string) => `${sid}__mvu-derived-prepared`
 export const mvuDerivedBasisKey = (sid:string) => `${sid}__mvu-derived-basis`
@@ -95,12 +94,11 @@ function exact(v:object,keys:readonly string[]):void {
 /** A projection over the actual supplied prefix, with Native surface folding
  * and the maintained edit projection. This is a read view, never an Agent or
  * a source of Native ownership/flush/completion authority. */
-function canonical(events:readonly MvuInheritedPrefixEvent[],turn:number) {
-  const raw=events as unknown as readonly SessionEvent[]
-  const surface=foldSurface(raw,[messageEditProjection])
+export function readMvuPrefixCanonical(events:readonly MvuInheritedPrefixEvent[],turn:number,
+  projectPrefix:WorldlineMessageEdits['projectPrefix']) {
+  const surface=projectPrefix(events as readonly StoryEvent[])
   const body=canonicalAssistantForTurn({id:'inherited-prefix-projection',events:events as never,
-    surface:{nodes:surface.nodes},deriveEventMessage:event => surface.projectedMessages.get(event.seq as never)
-      ?? deriveEventMessage(event as unknown as SessionEvent)},turn)
+    surface:{nodes:surface.nodes},deriveEventMessage:event => surface.projectedMessageAt(event.seq)},turn)
   const message=body?.data?.message
   return body&&message&&typeof message.id==='string'?{seq:body.seq,messageId:message.id,
     versionSha256:recordSha256(message),narrative:textOf(message.content)}:undefined
@@ -108,7 +106,8 @@ function canonical(events:readonly MvuInheritedPrefixEvent[],turn:number) {
 export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
   const lineage=createRoleplayMvuLineage(deps)
   const ledger=createRoleplayMvuPrefixLedger({branch:deps.branch,status:deps.status,
-    verifySettlementFacts:input => deps.state().verifyConsumedSettlementFacts(input),readProjectedCanonical:canonical})
+    verifySettlementFacts:input => deps.state().verifyConsumedSettlementFacts(input),
+    readProjectedCanonical:(events,turn)=>readMvuPrefixCanonical(events,turn,deps.projectPrefix),editProtocol:deps.editProtocol})
   function prefix(session:ReadBranchSession,cut:number) {
     const events=eventsOf(session)
     if(!Number.isSafeInteger(cut)||cut<1||cut>events.length||events.some((e,i)=>e.seq!==i))fail('DERIVED_PREFIX_UNPROVEN')
@@ -136,7 +135,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
     const event=g.initEvent,identity=event.plan.identity,r=event.native
     if(!verifyFrozenMvuInitializationFacts(event,g.initHead))return false
     const intent=deps.branch.get(fact.intentKey) as Record<string,unknown> | undefined
-    if(!intent||!same(deps.status.get(fact.eventKey),event)||!same(deps.status.get(fact.headKey),g.initHead)
+    if(!intent||!same(deps.status.get(fact.eventKey),event)
       ||recordSha256(intent)!==fact.intentSha256||intent.schemaVersion!==4||intent.status!=='completed'
       ||intent.mode!=='native-json'||!same(intent.initialization,event.plan)||!same(intent.nativeReceipt,r)
       ||r.flushed!==true||identity.sessionId!==prepared.parentSessionId||r.sessionId!==identity.sessionId
@@ -160,17 +159,19 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
       ||span.filter(e=>e.type==='turn/start').length!==1||span.filter(e=>e.type==='turn/end').length!==1
       ||span.filter(e=>e.type==='assistant/message').length!==1||span.some(e=>!['turn/start','step/start','system/message',
         'assistant/message','step/end','turn/end'].includes(e.type)))return false
-    const folded=foldSurface(events as unknown as readonly SessionEvent[],[messageEditProjection])
-    return folded.nodes.includes(body.seq as never)&&!folded.projectedMessages.has(body.seq as never)
+    const folded=deps.projectPrefix(events)
+    return folded.nodes.includes(body.seq)&&!folded.projectedMessageAt(body.seq)
       &&!events.some(e=>e.type==='roleplay/message-edit'&&e.data?.['targetSeq']===body.seq)
   }
-  function genesisCurrent(prepared:MvuDerivedPrepared,events:readonly MvuInheritedPrefixEvent[],seen:Set<string>):boolean {
+  function genesisCurrent(prepared:MvuDerivedPrepared,events:readonly MvuInheritedPrefixEvent[],seen:Set<string>,
+    successor?:MvuDerivedSourceProof):boolean {
     if(prepared.genesisFact.kind==='opening')return openingCurrent(prepared,events)
     const fact=prepared.genesisFact,raw=deps.branch.get(fact.basisKey) as MvuDerivedBasis | undefined
-    const previous=raw&&readReady(raw.prepared.childSessionId,seen)
+    const previous=raw&&successor&&readHistorical(raw.prepared.childSessionId,events,successor,seen)
     return !!raw&&raw.basisSha256===fact.basisSha256&&!!previous&&same(previous,prepared.genesis)
   }
-  function validPrepared(input:unknown,events:readonly MvuInheritedPrefixEvent[],seen:Set<string>):MvuDerivedPrepared {
+  function validPrepared(input:unknown,events:readonly MvuInheritedPrefixEvent[],seen:Set<string>,
+    successor?:MvuDerivedSourceProof):MvuDerivedPrepared {
     const prepared=data(input) as MvuDerivedPrepared
     exact(prepared,['schemaVersion','encoding','operationId','anchorSha256','parentSessionId','childSessionId','seedLength',
       'parentInheritedEventCount','parentSourceSha256','prefixSha256','genesis','genesisFact','initial','ledger','preparedSha256'])
@@ -179,9 +180,11 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
       ||![prepared.parentSessionId,prepared.childSessionId,prepared.operationId].every(id)
       ||prepared.parentSessionId===prepared.childSessionId||prepared.seedLength!==events.length
       ||!Number.isSafeInteger(prepared.parentInheritedEventCount)||prepared.parentInheritedEventCount<0
-      ||prepared.parentInheritedEventCount>=prepared.seedLength||recordSha256(descriptor)!==preparedSha256
+      ||prepared.parentInheritedEventCount>=prepared.seedLength
+      ||deps.readSession(prepared.parentSessionId)?.inheritedEventCount!==prepared.parentInheritedEventCount
+      ||recordSha256(descriptor)!==preparedSha256
       ||prepared.prefixSha256!==recordSha256(events)||!operationCurrent(prepared)
-      ||!genesisCurrent(prepared,events,seen))fail('DERIVED_BASIS_UNPROVEN')
+      ||!genesisCurrent(prepared,events,seen,successor))fail('DERIVED_BASIS_UNPROVEN')
     const g=prepared.genesis,head='initHead' in g?g.initHead:g.derivedHead
     const values='initEvent' in g?g.initEvent.plan.values:g.derivedEvent.values
     const root='initEvent' in g?{initEventId:g.initEvent.eventId,initEventSha256:g.initEvent.eventSha256,
@@ -259,7 +262,34 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
     const parent=fact.kind==='derived'?deps.branch.get(fact.basisKey) as MvuDerivedBasis | undefined:undefined
     return !!parent&&same(parent.source.originalImport,original)
   }
-  function readReady(sid:string,seen=new Set<string>()):VerifiedMvuDerivedGenesis | undefined {
+  /** The descendant's actual Source anchors the chain. Older sources are
+   * checked against the next generation and Native headers, not today's
+   * ancestor pointer, context, state head or retained Agent. */
+  function readHistorical(sid:string,inherited:readonly MvuInheritedPrefixEvent[],successor:MvuDerivedSourceProof,
+    seen:Set<string>):VerifiedMvuDerivedGenesis | undefined {
+    try {
+      if(seen.size>=32||seen.has(sid))return
+      seen.add(sid)
+      const raw=deps.branch.get(mvuDerivedBasisKey(sid))
+      if(!raw)return
+      const basis=data(raw) as MvuDerivedBasis
+      exact(basis,['schemaVersion','encoding','prepared','source','basisSha256'])
+      const {basisSha256,...body}=basis
+      if(basis.schemaVersion!==1||basis.encoding!=='native-mvu-derived-basis-v1'||recordSha256(body)!==basisSha256
+        ||basis.prepared.childSessionId!==sid||!same(deps.branch.get(mvuDerivedPreparedKey(sid)),basis.prepared)
+        ||!lineage.historical(basis.source,successor)||basis.source.parentSourceSha256!==basis.prepared.parentSourceSha256
+        ||basis.source.parentSessionId!==basis.prepared.parentSessionId||basis.source.childSessionId!==sid
+        ||basis.source.expectedSeedLength!==basis.prepared.seedLength||!sourceMatchesGenesis(basis)
+        ||basis.prepared.seedLength>inherited.length)return
+      const events=inherited.slice(0,basis.prepared.seedLength)
+      validPrepared(basis.prepared,events,seen,basis.source)
+      const g=generated(basis)
+      if(!same(deps.status.get(mvuDerivedEventKey(sid)),g.derivedEvent)
+        ||!same(deps.status.get(mvuDerivedHeadKey(sid)),g.derivedHead))return
+      return data(g)
+    } catch {return undefined}
+  }
+  function readClosedGenesis(sid:string,currentSource:boolean,seen=new Set<string>()):VerifiedMvuDerivedGenesis | undefined {
     try {
       if(seen.size>=32||seen.has(sid))return
       seen.add(sid)
@@ -270,35 +300,48 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
       const {basisSha256,...body}=basis
       if(basis.schemaVersion!==1||basis.encoding!=='native-mvu-derived-basis-v1'||recordSha256(body)!==basisSha256
         ||basis.prepared.childSessionId!==sid||!same(deps.branch.get(mvuDerivedPreparedKey(sid)),basis.prepared)
-        ||!lineage.current(basis.source)||basis.source.parentSourceSha256!==basis.prepared.parentSourceSha256
+        ||!(currentSource?lineage.current(basis.source):lineage.verifyDenialBindingFacts(basis.source))
+        ||basis.source.parentSourceSha256!==basis.prepared.parentSourceSha256
         ||basis.source.parentSessionId!==basis.prepared.parentSessionId||basis.source.childSessionId!==sid
         ||basis.source.expectedSeedLength!==basis.prepared.seedLength||!sourceMatchesGenesis(basis))return
-      validPrepared(basis.prepared,prefix(session,basis.prepared.seedLength) as readonly MvuInheritedPrefixEvent[],seen)
+      validPrepared(basis.prepared,prefix(session,basis.prepared.seedLength) as readonly MvuInheritedPrefixEvent[],seen,basis.source)
       const g=generated(basis)
       if(!same(deps.status.get(mvuDerivedEventKey(sid)),g.derivedEvent)
         ||!same(deps.status.get(mvuDerivedHeadKey(sid)),g.derivedHead))return
       return data(g)
     } catch {return undefined}
   }
+  /** A changed current Source cannot erase the immutable numerical root's denial
+   * identity. Expose neither values nor a VerifiedGenesis to an authority reader. */
+  function readDenialBasis(sid:string):{root:MvuStateRoot;editFloorSeq:number}|undefined {
+    const genesis=readClosedGenesis(sid,false),session=deps.session(sid)
+    if(!genesis||!session||!Number.isSafeInteger(session.inheritedEventCount))return
+    const event=genesis.derivedEvent,head=genesis.derivedHead
+    return {root:{schemaVersion:1,encoding:'native-mvu-derived-state-root-v1',
+      derivedEventId:event.eventId,derivedEventSha256:event.eventSha256,
+      derivedHeadSha256:recordSha256(head),basisSha256:event.basisSha256},editFloorSeq:session.inheritedEventCount!}
+  }
   async function commit(operation:ForkOperation,child:ReadBranchSession) {
     const raw=deps.branch.get(mvuDerivedPreparedKey(child.id))
     if(raw===undefined)return
     await deps.withSourceLock(child.id,async()=>{
-      const prepared=validPrepared(raw,prefix(child,child.inheritedEventCount!) as readonly MvuInheritedPrefixEvent[],new Set([child.id]))
-      if(prepared.operationId!==operation.operationId)fail('DERIVED_OPERATION_MISMATCH')
       const existing=deps.branch.get(mvuDerivedBasisKey(child.id))
-      if(existing!==undefined) {if(!readReady(child.id))fail('DERIVED_READY_INVALID');return}
-      const source=lineage.capture(prepared.parentSessionId,child.id,prepared.seedLength)
+      if(existing!==undefined) {if(!readClosedGenesis(child.id,true))fail('DERIVED_READY_INVALID');return}
+      const candidate=data(raw) as MvuDerivedPrepared
+      const source=lineage.capture(candidate.parentSessionId,child.id,child.inheritedEventCount!)
+      const prepared=validPrepared(candidate,prefix(child,child.inheritedEventCount!) as readonly MvuInheritedPrefixEvent[],
+        new Set([child.id]),source)
+      if(prepared.operationId!==operation.operationId)fail('DERIVED_OPERATION_MISMATCH')
       if(source.parentSourceSha256!==prepared.parentSourceSha256)fail('DERIVED_PARENT_SOURCE_CHANGED')
       const descriptor={schemaVersion:1 as const,encoding:'native-mvu-derived-basis-v1' as const,prepared,source}
       const basis:MvuDerivedBasis={...descriptor,basisSha256:recordSha256(descriptor)},g=generated(basis)
       await putExact(deps.status,mvuDerivedEventKey(child.id),g.derivedEvent)
       await putExact(deps.status,mvuDerivedHeadKey(child.id),g.derivedHead)
       await putExact(deps.branch,mvuDerivedBasisKey(child.id),basis)
-      if(!readReady(child.id))fail('DERIVED_READY_UNCONFIRMED')
+      if(!readClosedGenesis(child.id,true))fail('DERIVED_READY_UNCONFIRMED')
     })
   }
-  return {prepare,commit,readGenesis:readReady,
+  return {prepare,commit,readGenesis:(sid:string)=>readClosedGenesis(sid,true),readDenialBasis,
     required:(sid:string)=>deps.branch.get(mvuDerivedPreparedKey(sid))!==undefined
       ||deps.branch.get(mvuDerivedBasisKey(sid))!==undefined}
 }

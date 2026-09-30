@@ -73,4 +73,5 @@ export type CoreContext = {
   on(name: 'session/created', hook: (session: CoreSession) => void, options: {global: boolean}): unknown
   on(name: 'session/disposed', hook: (session: CoreSession) => void, options: {global: boolean}): unknown
   on(name: 'agent/created', hook: (payload: {agent: CoreAgent; signal?: AbortSignal}) => Promise<undefined>, options: {global: boolean; prepend: boolean}): unknown
+  on(name:'agent/disposed',hook:(payload:{agent:CoreAgent})=>void,options:{global:boolean}):unknown
 } & StoryObservationServices<ContextEvent> & Intersection<ContextOf<ModuleDependencies>>

@@ -84,11 +84,17 @@ import { createCardWorkflows } from './roleplay-card-workflow.js'
 import {createCardAttachmentSources} from './roleplay-card-attachment.js'
 import {createChatCardSources} from './roleplay-chat-card-source.js'
 import {createChatCardNativeContext} from './roleplay-chat-card-context.js'
-import {createRoleplayOpeningSelection} from './roleplay-opening-selection.js'
+import {createRoleplayOpeningSelection,openingIntentKey} from './roleplay-opening-selection.js'
 import type {OpeningIntent, OpeningRejectionCode} from './roleplay-opening-selection.js'
 import {createRoleplayMvuOpening} from './roleplay-mvu-opening.js'
 import {createRoleplayMvuState} from './roleplay-mvu-state.js'
-import {createRoleplayMvuDerived} from './roleplay-mvu-derived.js'
+import {createRoleplayMvuDerived,readMvuPrefixCanonical} from './roleplay-mvu-derived.js'
+import {createRoleplayMvuAncestry} from './roleplay-mvu-ancestry.js'
+import {createRoleplayMvuEditFacts} from './roleplay-mvu-edit-facts.js'
+import type {MvuEditBasisFacts} from './roleplay-mvu-edit-facts.js'
+import {mvuInitializationEventKey,mvuInitializationHeadKey,verifyFrozenMvuInitializationFacts}
+  from './roleplay-mvu-initialization.js'
+import type {MvuInitializationEvent,MvuInitializationHead} from './roleplay-mvu-initialization.js'
 import {createRoleplayMvuStoryCompletion} from './roleplay-mvu-story.js'
 import {prepareInputManagementReceipt,verifyInputManagementReceipt} from './roleplay-input-management.js'
 import {createRoleplayInputPreparation} from './roleplay-input-preparation.js'
@@ -274,6 +280,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return recordSha256(basis)===recordSha256(snapshot.inputPreparation)
       && inputSnapshotReferenceCurrent(T.branch,session.id,currency)
   }
+  const mvuAncestry=createRoleplayMvuAncestry({live:id=>ctx.sessions.get(id),
+    observe:(id,options)=>ctx.sessionQuery.observeSession(id,options)})
+  ctx.effect(()=>mvuAncestry.dispose,'roleplay: read-only numerical ancestry')
   const history = createSessionHistory({
     get: id => ctx.sessions.get(id),
     observe: (id, options) => ctx.sessionQuery.observeSession(id, options),
@@ -284,6 +293,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   ctx.on('session/disposed', history.disposeSession, {global: true})
   ctx.on('agent/created', async ({agent, signal}) => {
     await history.ready(agent.session, signal)
+    if(agent.session.header?.isSeeded)await mvuAncestry.ready(agent.session,signal)
     attachInputOwner(agent)
     return undefined
   }, {global: true, prepend: true})
@@ -311,7 +321,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         return null
       }
     }
-    if (session) await ensureSessionHistory(session)
+    if (session) {
+      await ensureSessionHistory(session)
+      if(session.header?.isSeeded)await mvuAncestry.ready(session)
+    }
     return session && isRoleplaySession(session) ? session : null
   }
 
@@ -609,7 +622,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     normalizeStatusRecord,
     queueStatusObligation,
     statusRunStartSeq,
-    recoverStatusObligations,
+    recoverStatusObligations:recoverStoredStatusObligations,
     statusRecoveredSessions,
     selectedStatusGeneration,
     latestStatusEvent,
@@ -632,6 +645,13 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     spanText: (...args) => spanText(...args)
   })
   const userValues = (branchId: string) => authorUserValues(T, branchId, textAlias)
+  function recoverStatusObligations(...args:Parameters<typeof recoverStoredStatusObligations>) {
+    // An edited/unready numerical branch has no current story authority.
+    // State reads must not start model work over its superseded prose.
+    if(editBasisFacts(args[0].id).kind!=='none'
+      &&mvuOpening.readInputObservation(args[0].id).kind==='management')return
+    return recoverStoredStatusObligations(...args)
+  }
 
   // domain 生命周期归本 fiber：卸载/失败挂载时必须 close，否则域名泄漏、
   // 重挂载会撞上 "already open"。
@@ -721,6 +741,12 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     replaceUserText
   } = createRoleplayWorldlines({
     messageEdits: ctx.nexttavernMessageEdits,
+    beginNumericalEdit:id=>mvuEdits.begin(id),
+    persistNumericalEdit:async(id,editSeq)=>{
+      const result=await mvuEdits.persistEdit({sessionId:id,editSeq})
+      if(result.kind==='unknown')throw Error(result.code)
+    },
+    confirmUnchangedNumericalEdit:id=>mvuEdits.confirmNoEdit(id),
     flushEdits: async session => {
       if (!await ctx.sessions.flush(session)) throw new Error('会话编辑尚无持久化提供者，未提交派生状态')
     },
@@ -1133,7 +1159,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     context:openingContext(id),
   })})
   const mvuDerived:ReturnType<typeof createRoleplayMvuDerived>=createRoleplayMvuDerived({tables:T,branch:T.branch,status:T.status,
-    session:id=>ctx.sessions.get(id),readSession:id=>ctx.sessions.get(id),
+    session:id=>ctx.sessions.get(id),readSession:mvuAncestry.readSession,
+    projectPrefix:events=>ctx.nexttavernMessageEdits.projectPrefix(events),
+    editProtocol:ctx.nexttavernMessageEdits,
     readSourceSha256:id=>mvuOpening.readSourceSha256(id),readOpeningContext:openingContextBinding,
     importActiveKey,importRecordKey,withSourceLock:(id,work)=>withImportLock(id,'mvu-derived',work),
     readGenesis:id=>mvuDerived.required(id)?mvuDerived.readGenesis(id):mvuOpening.readGenesis(id),state:()=>mvuState})
@@ -1231,9 +1259,78 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       } catch { return {status:'unknown' as const} }
     },
   })
+  function editBasisFacts(id:string):MvuEditBasisFacts {
+    try {
+      const basis=mvuState.readGenesisAuthority(id)
+      if(basis.kind==='ready') {
+        const genesis=mvuDerived.required(id)?mvuDerived.readGenesis(id):mvuOpening.readGenesis(id)
+        const editFloorSeq=genesis&&'initEvent' in genesis?genesis.initEvent.native.turnEndSeq+1
+          :ctx.sessions.get(id)?.inheritedEventCount
+        if(!Number.isSafeInteger(editFloorSeq)||Number(editFloorSeq)<0)return {kind:'unknown'}
+        return {kind:'verified',sourceSha256:basis.snapshot.sourceSha256,root:basis.snapshot.root,editFloorSeq:editFloorSeq!}
+      }
+      const hasNumericalFacts=[...T.status.entries()].some(([key])=>key.startsWith(`${id}__mvu-`))
+        ||mvuDerived.required(id)
+      if(!hasNumericalFacts)return {kind:'none'}
+      if(mvuDerived.required(id)) {
+        const frozen=mvuDerived.readDenialBasis(id)
+        return frozen?{kind:'verified',sourceSha256:mvuOpening.readSourceSha256(id),...frozen}:{kind:'unknown'}
+      }
+      // An edited opening cannot grant current authority. Its immutable plan,
+      // exact original event and committed intent can still identify a denial.
+      const head=T.status.get(mvuInitializationHeadKey(id)) as unknown as MvuInitializationHead|undefined
+      const event=head&&T.status.get(mvuInitializationEventKey(id,head.eventId)) as unknown as MvuInitializationEvent|undefined
+      const intent=event&&T.branch.get(openingIntentKey(id,event.plan.identity.source.importId)) as OpeningIntent|undefined
+      if(!head||!event||intent?.schemaVersion!==4||intent.status!=='completed'||intent.mode!=='native-json'
+        ||!intent.initialization||recordSha256(intent.initialization)!==recordSha256(event.plan)
+        ||recordSha256(intent.nativeReceipt)!==recordSha256(event.native)||head.sessionId!==id
+        ||event.plan.identity.sessionId!==id||!verifyFrozenMvuInitializationFacts(event,head))return {kind:'unknown'}
+      const session=ctx.sessions.get(id),history=session&&eventsOf(session),native=event.native
+      if(!session||!history||history.some((entry,index)=>entry.seq!==index)
+        ||native.turnStartSeq<Number(session.inheritedEventCount??0)
+        ||history[native.turnStartSeq]?.type!=='turn/start'||history[native.turnEndSeq]?.type!=='turn/end'
+        ||recordSha256(history[native.assistantSeq])!==native.messageVersion.eventSha256)return {kind:'unknown'}
+      return {kind:'verified',sourceSha256:mvuOpening.readSourceSha256(id),editFloorSeq:event.native.turnEndSeq+1,
+        root:{initEventId:event.eventId,
+        initEventSha256:event.eventSha256,initHeadSha256:recordSha256(head),planSha256:event.plan.planSha256}}
+    } catch {return {kind:'unknown'}}
+  }
+  const mvuEdits=createRoleplayMvuEditFacts({table:T.branch,readSession:id=>ctx.sessions.get(id),eventsOf,
+    currentEdits:(session,events)=>ctx.nexttavernMessageEdits.current(session,events),readNumericalBasisFacts:editBasisFacts,
+    readPendingVariantFacts:id=>{
+      try {
+        const session=ctx.sessions.get(id)
+        if(!session)return 'unknown'
+        const history=eventsOf(session)
+        // A compacted player node still fed the branch's numerical history.
+        // Its durable variant must not become invisible to this denial gate.
+        for(const assistant of history.filter(event=>event.type==='assistant/message')) {
+          const messageId=assistantMessageId(assistant),pointer=forkPointerFor(session,messageId)
+          const group=pointer?.groupId?hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))):null
+          const member=groupMemberForSession(group,session,messageId)
+          if(!group||group.anchor.openingOnly||!member||member.pending||member.deleted)continue
+          const variant=group.playerVariants[member.playerVariantId]
+          if(!variant||typeof variant.text!=='string')return 'unknown'
+          const user=history.find(event=>event.type==='user/message'&&event.data?.source?.kind==='user'
+            &&event.seq===member.userSeq&&event.data.id===member.userMessageId)
+          if(!user)return 'unknown'
+          if(textOf(projectStoryEvent(session,user).data?.content)!==variant.text)return true
+        }
+        for(const user of surfaceEvents(session).filter(event=>event.type==='user/message'&&event.data?.source?.kind==='user')) {
+          const {group,followingAssistant}=userForkContext(session,user.seq)
+          const member=groupMemberForSession(group,session,assistantMessageId(followingAssistant))
+          if(!group||group.anchor.openingOnly||!member||member.deleted)continue
+          const variant=group.playerVariants[member.playerVariantId]
+          if(!variant||typeof variant.text!=='string')return 'unknown'
+          if(textOf(user.data?.content)!==variant.text)return true
+        }
+        return false
+      } catch {return 'unknown'}
+    },withSourceLock:(id,work)=>withImportLock(id,'mvu-edit-invalidation',work)})
   const mvuState:ReturnType<typeof createRoleplayMvuState>=createRoleplayMvuState({table:T.status,
     readGenesis:id=>mvuDerived.required(id)?mvuDerived.readGenesis(id):mvuOpening.readGenesis(id),
     withSourceLock:(id,work)=>withImportLock(id,'mvu-state',work),
+    readEditInvalidation:mvuEdits.readInvalidation,
     verifyStoredIntent:intent=>inputOwner?.verifyTerminalIntent(intent)===true,
     checkPermission:(token,intent)=>inputOwner?.checkTerminalPermission(token,intent)===true})
   const completion=createRoleplayMvuStoryCompletion({table:T.branch,state:mvuState,awaitOwnedCompletion,
@@ -1250,6 +1347,15 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const selected=projectStoryEvent(session,original),message=selected.data?.message
       return message&&typeof message.id==='string'?{seq:original.seq,messageId:message.id,
         versionSha256:recordSha256(message),narrative:textOf(message.content)}:undefined
+    },
+    readConsumedCanonical:(sid,seq,turn,throughSeq)=>{
+      const session=ctx.sessions.get(sid)
+      if(!session||!Number.isSafeInteger(throughSeq)||throughSeq<seq)return
+      const events=eventsOf(session)
+      if(throughSeq>=events.length)return
+      const body=readMvuPrefixCanonical(events.slice(0,throughSeq+1),turn,
+        prefix=>ctx.nexttavernMessageEdits.projectPrefix(prefix))
+      return body?.seq===seq?body:undefined
     },
     verifyNative:(scope:InputCompletionScope)=>{
       const receipt=scope.receipt,checkpoint=receipt.checkpoint,sid=checkpoint.sessionId
@@ -1319,6 +1425,13 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   inputOwner = createRoleplayInputPreparation({table:T.branch,completion,
     observe:(session:CoreSession) => mvuOpening.readInputObservation(session.id),
     onError:error => ctx.logger?.warn?.(`roleplay: input permission write is unknown: ${String(error)}`)})
+  // Core outlives an individual Native factory/Agent. Releasing that exact
+  // owner's hot binding permits a cold incarnation to bind the same durable
+  // Session without transferring its old tokens or resending pending input.
+  ctx.on('agent/disposed',({agent})=>{
+    inputBindings.get(agent)?.dispose()
+    inputBindings.delete(agent)
+  },{global:true})
   ctx.effect(() => () => {
     for (const binding of inputBindings.values()) binding.dispose()
     inputBindings.clear()
@@ -1327,6 +1440,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   // actual retained Agent so its next native input can acquire its own marker.
   for (const agent of ctx.agents?.list() ?? []) {
     await history.ready(agent.session)
+    if(agent.session.header?.isSeeded)await mvuAncestry.ready(agent.session)
     attachInputOwner(agent)
   }
   registerOpeningRoutes({ctx,resolveRoleplaySession:async id => {

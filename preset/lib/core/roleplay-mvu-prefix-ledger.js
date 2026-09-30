@@ -354,7 +354,7 @@ export function createRoleplayMvuPrefixLedger(deps) {
                 // between the historical receipt check and candidate reconstruction.
                 const frozenCanonical = structuredClone(canonical);
                 if (!verifyInheritedCompletedFact({ ownerSessionId: sid, ownerInheritedEventCount: request.ownerInheritedEventCount,
-                    events: request.events, receipt: scope.receipt, canonical: intent.canonical }, { readProjectedCanonical: () => frozenCanonical }))
+                    events: request.events, receipt: scope.receipt, canonical: intent.canonical }, { readProjectedCanonical: () => frozenCanonical, editProtocol: deps.editProtocol }))
                     fail('PREFIX_NATIVE_COMPLETION_UNPROVEN');
                 const expectedProposal = prepareMvuUpdate(frozenCanonical.narrative, base.values);
                 const { intentSha256, ...intentBody } = intent;

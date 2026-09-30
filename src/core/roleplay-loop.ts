@@ -165,7 +165,7 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
     if (input && inputStep?.kind === 'management') {
       // The durable phase is interpreted by canonical story/state/memory
       // readers. A model may still emit readable raw chat text in this scope.
-      retireRoleplayContexts(session,payload.turn,[])
+      retireRoleplayContexts(session,payload.turn,[],{retireNumerical:true})
       const decision = await next()
       assertInput()
       if (decision.kind !== 'enter') return decision

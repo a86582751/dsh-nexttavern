@@ -5,6 +5,7 @@ import {prepareMvuUpdate} from './roleplay-mvu-update.js'
 import type {MvuUpdatePreparation, PreparedMvuUpdate} from './roleplay-mvu-update.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuInitializationEvent, MvuInitializationHead} from './roleplay-mvu-initialization.js'
+import type {MvuEditInvalidation} from './roleplay-mvu-edit-facts.js'
 
 export interface VerifiedMvuGenesis {
   sessionId: string
@@ -152,6 +153,9 @@ export interface MvuStateDeps {
   verifyStoredIntent(intent: MvuStateTerminalIntent): boolean
   /** Synchronous opaque hot token and stop-generation check; never enter owner queue here. */
   checkPermission(token: object, intent: MvuStateTerminalIntent, phase: MvuStatePermissionPhase): boolean
+  /** Current numerical use only. Immutable genesis/prefix facts remain read-only
+   * facts, independent of subsequent edits and never grant story permission. */
+  readEditInvalidation?(sessionId: string): MvuEditInvalidation
 }
 export type MvuNumericalAuthority = {kind: 'ready'; snapshot: MvuNumericalSnapshot}
   | {kind: 'blocked'; code: string}
@@ -340,6 +344,12 @@ function settlementFor(intent: MvuStateTerminalIntent, candidate: MvuStateCandid
 }
 
 export function createRoleplayMvuState(deps: MvuStateDeps) {
+  function unedited(sid:string):void {
+    if(!deps.readEditInvalidation)return
+    const gate=deps.readEditInvalidation(sid)
+    if(!gate||!['clear','invalidated','unknown'].includes(gate.kind))fail('NUMERICAL_EDIT_UNKNOWN')
+    if(gate.kind!=='clear')fail(typeof gate.code==='string'?gate.code:'NUMERICAL_EDIT_UNKNOWN')
+  }
   function verified(intent: MvuStateTerminalIntent): void {
     if (!deps.verifyStoredIntent(cloneJson(intent))) fail('STORED_INTENT_UNPROVEN')
   }
@@ -398,6 +408,7 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     return rows
   }
   function inspect(sid: string): {state: MvuNumericalSnapshot; settlements: Map<string, MvuStatePublisherSettlement>} {
+    unedited(sid)
     const initial = genesis(sid).state, rows = scan(sid), consumed = new Set<string>()
     const settlements = new Map<string, MvuStatePublisherSettlement>()
     const chain: MvuStateUpdateEvent[] = [], seen = new Set<string>()
@@ -462,6 +473,7 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     try {
       const intent = cloneJson(input)
       intentValid(intent)
+      unedited(intent.sessionId)
       verified(intent)
       const {state, settlements} = inspect(intent.sessionId)
       if (state.sourceSha256 !== intent.sourceSha256 || !same(state.root, intent.base.root)) fail('SOURCE_CHANGED')
@@ -472,6 +484,7 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     } catch (error) {return {kind: 'unknown', code: codeOf(error)}}
   }
   function permitted(token: object, intent: MvuStateTerminalIntent, phase: MvuStatePermissionPhase): void {
+    unedited(intent.sessionId)
     verified(intent)
     const current = genesis(intent.sessionId).state
     if (current.sourceSha256 !== intent.sourceSha256 || !same(current.root, intent.base.root)) fail('SOURCE_CHANGED')

@@ -109,4 +109,14 @@ if(process.env.DSH_NATIVE_SESSION_MODULE){
   assert.ok(derived.includes('PLAYER_1'),'ordinary player history is not a dynamic snapshot')
  }
 }
-console.log('context-supersession=ok (bounded dynamic anchors; unchanged full backing and append-only audit retained)')
+const numerical=append({kind:'roleplay-context',schemaVersion:1,form:'native-mvu-state',branchId:session.id,
+ mode:'full',stateSnapshotSha256:'b'.repeat(64)},'STALE_NUMERICAL_AUTHORITY')
+const numericAudit=JSON.stringify(session.events),numericCount=session.events.length
+assert.equal(core.retireRoleplayContexts(session,30,[]),0,'no replacement or management authority means no retirement')
+assert.equal(core.retireRoleplayContexts(session,30,[],{retireNumerical:true}),1,
+ 'the exact management caller explicitly withdraws a prior numerical anchor')
+assert.equal(JSON.stringify(session.events.slice(0,numericCount)),numericAudit,'original numerical fact remains append-only')
+assert.equal(session.surface.nodes.includes(numerical.seq),false)
+assert.ok(session.surface.nodes.includes(user.seq)&&session.surface.nodes.includes(tool.seq))
+assert.equal(core.retireRoleplayContexts(session,30,[],{retireNumerical:true}),0,'management retirement is idempotent')
+console.log('context-supersession=ok (bounded anchors; management revocation and append-only audit retained)')

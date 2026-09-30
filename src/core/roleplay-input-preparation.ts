@@ -306,7 +306,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         if(!closed||closed.status!=='settled'||work.stop||work.status!=='active'
           ||!equal(closed.scope.currency,currencyOfStored(work))||!equal(closed.scope.receipt.checkpoint,work.checkpoint)
           ||!equal(closed.scope.transition,work.transition)
-          ||!completion.verifyStored(closed.scope,closed.plan.kind==='numerical'?closed.plan.intent:undefined)
+          // Consumed facts verify their actual closed prefix themselves. A
+          // later editorial revision must not recreate old publisher rights.
           ||!completion.verifyConsumed(closed.scope,closed.plan,closed.settlement))return blocked('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
       }
       return allowed
@@ -916,8 +917,11 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           prepared: hot.attempt?.prepared === true, refs: clone(hot.refs), currency: binding.persistedCurrency()}
       },
       dispose() {
-        terminal?.dispose();terminalOwners.delete(sid)
-        live = false; revoked = true; continuation.close(); currentStep = undefined; unregister(); owners.delete(agent)
+        if(!live)return
+        live=false
+        terminal?.dispose()
+        if(terminalOwners.get(sid)===terminal)terminalOwners.delete(sid)
+        revoked = true; continuation.close(); currentStep = undefined; unregister(); owners.delete(agent)
         if (hot?.transition) reservationLeases.delete(hot.transition.reservation.reservationId)
         if (sessionOwners.get(sid) === agent) sessionOwners.delete(sid)
         for (const leaseKey of leases.keys()) if (leaseKey.startsWith(`${sid}:`)) leases.delete(leaseKey)

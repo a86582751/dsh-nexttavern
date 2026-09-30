@@ -13,7 +13,7 @@ export interface MvuLineageTable {
 }
 export interface MvuLineageSession {
   id: string
-  header?: {parentSession?: unknown}
+  header?: {id?: unknown; parentSession?: unknown; isSeeded?: unknown}
   inheritedEventCount?: unknown
 }
 export interface MvuLineageDeps {
@@ -165,7 +165,8 @@ export function validateMvuDerivedSourceProof(input: unknown): MvuDerivedSourceP
 export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
   function sessionReady(parentId: string, childId: string, seed: number): void {
     const child = deps.readSession(childId)
-    if (!child || child.id !== childId || child.header?.parentSession !== parentId || child.inheritedEventCount !== seed) {
+    if (!child || child.id !== childId || child.header?.id !== childId || child.header.parentSession !== parentId
+      || child.header.isSeeded !== true || child.inheritedEventCount !== seed) {
       fail('NATIVE_FORK_MISMATCH')
     }
     const meta = deps.tables.branch.get(`${childId}__meta`)
@@ -288,18 +289,52 @@ export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
         childBindingSha256: childContext.bindingSha256, valuesSha256: childContext.valuesSha256}}
     return validateMvuDerivedSourceProof({...content, proofSha256: recordSha256(content)})
   }
+  /** Historical facts come from an actual retained Native read, never a header
+   * reconstructed from a domain proof. Today's static rows belong to current;
+   * original activation facts remain independently readable for both modes. */
+  function validateHistorical(input: unknown) {
+    const proof = validateMvuDerivedSourceProof(input), sid = proof.childSessionId
+    sessionReady(proof.parentSessionId, sid, proof.expectedSeedLength)
+    const {record, identity} = original(proof.originalImport.ownerSessionId, proof.originalImport.importId)
+    if (!equal(proof.originalImport, identity)) fail('SOURCE_MISMATCH')
+    const activation = activationBindings(record, proof.parentSessionId, sid)
+    for (const row of proof.materialRows) {
+      if ((activation.get(rowIdentity(row)) ?? null) !== row.activationSha256) fail('ACTIVATION_MISMATCH')
+    }
+    if (proof.materialRows.filter(row => row.activationSha256 !== null).length !== activation.size) fail('ACTIVATION_MISMATCH')
+    return {proof, activation}
+  }
+  /** The caller first verifies the actual current descendant, then walks its
+   * immutable basis chain backwards. A lone proof checksum cannot establish
+   * historical material: every row must also be carried by that verified next
+   * generation. This helper grants no Session or Native input authority. */
+  function historical(input: unknown, successorInput: unknown): boolean {
+    try {
+      const {proof} = validateHistorical(input), successor = validateMvuDerivedSourceProof(successorInput)
+      if (successor.parentSessionId !== proof.childSessionId
+        || successor.parentSourceSha256 !== proof.childSourceSha256
+        || successor.parentPointerSha256 !== proof.childPointerSha256
+        || successor.macroContext.parentBindingSha256 !== proof.macroContext.childBindingSha256
+        || successor.macroContext.valuesSha256 !== proof.macroContext.valuesSha256
+        || !equal(successor.originalImport, proof.originalImport)
+        || successor.materialRows.length !== proof.materialRows.length) return false
+      const inherited = new Map(successor.materialRows.map(row => [`${row.table}:${row.parentKey}`, row]))
+      return proof.materialRows.every(row => {
+        const next = inherited.get(rowIdentity(row))
+        return !!next && next.exists === row.exists && next.sha256 === row.sha256
+          && next.activationSha256 === row.activationSha256
+      })
+    } catch {return false}
+  }
   function current(input: unknown): boolean {
     try {
-      const proof = validateMvuDerivedSourceProof(input), sid = proof.childSessionId
-      sessionReady(proof.parentSessionId, sid, proof.expectedSeedLength)
+      const {proof, activation} = validateHistorical(input), sid = proof.childSessionId
       const active = pointer(sid), identity = proof.originalImport
       if (recordSha256(active) !== proof.childPointerSha256 || active.inheritedFrom !== proof.parentSessionId
         || active.sourceRecordSessionId !== identity.ownerSessionId || active.importId !== identity.importId
         || active.normalizedSha256 !== identity.normalizedSha256 || active.transactionId !== identity.transactionId
         || active.coverageSha256 !== identity.coverageSha256 || deps.readSourceSha256(sid) !== proof.childSourceSha256) return false
-      const {record, identity: observed} = original(identity.ownerSessionId, identity.importId)
-      if (!equal(identity, observed)) return false
-      const activation = activationBindings(record, proof.parentSessionId, sid), rows = inventory(sid)
+      const rows = inventory(sid)
       if (rows.length !== proof.materialRows.length) return false
       for (const [index, row] of rows.entries()) {
         const frozen = proof.materialRows[index]!
@@ -312,5 +347,10 @@ export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
         && observedContext.valuesSha256 === proof.macroContext.valuesSha256
     } catch {return false}
   }
-  return {capture, current, validate: validateMvuDerivedSourceProof}
+  /** Denial readers still need actual Native boundaries and original activation
+   * facts. This does not certify today's static Source or grant story authority. */
+  function verifyDenialBindingFacts(input:unknown):boolean {
+    try {validateHistorical(input);return true} catch {return false}
+  }
+  return {capture, current, historical, verifyDenialBindingFacts, validate: validateMvuDerivedSourceProof}
 }

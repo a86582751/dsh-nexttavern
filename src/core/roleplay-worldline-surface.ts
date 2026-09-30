@@ -41,7 +41,7 @@ type SurfaceDependencies = Pick<WorldlineDependencies,
   'textOf' | 'cloneBranchRecord' | 'internalTaskSeqs' | 'isRoleplaySession' |
   'durableSeq' | 'canonicalAssistantForTurn' | 'surfaceEntries' |
   'withDecisionMutationLock' | 'normalizeDecisionRecord' | 'cloneRecord' | 'provenanceSeq' |
-  'messageEdits' | 'flushEdits'>
+  'messageEdits' | 'flushEdits' | 'beginNumericalEdit' | 'persistNumericalEdit' | 'confirmUnchangedNumericalEdit'>
 
 export function assertBranchSession(session: ReadBranchSession): asserts session is BranchSession {
   if (!('append' in session) || typeof session.append !== 'function') throw new Error('会话暂不可写入分支历史')
@@ -54,6 +54,9 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     ctx,
     messageEdits,
     flushEdits,
+    beginNumericalEdit,
+    persistNumericalEdit,
+    confirmUnchangedNumericalEdit,
     safeId,
     keyOf,
     sha256,
@@ -171,15 +174,18 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
   }
 
   /** Caller holds the fork lock. Receipts distinguish a durable edit from completed derived effects. */
-  async function applyTextEdit(session: BranchSession, event: StoryEvent, text: string, reason: string) {
+  async function applyTextEdit(session: BranchSession, event: StoryEvent, text: string, reason: string,
+    options:{repair?:boolean}={}) {
     const targetSeq = Number(event.seq)
     const role = event.type === 'assistant/message' ? 'assistant' : 'user'
     const messageId = String(role === 'assistant' ? event.data?.message?.id ?? '' : event.data?.id ?? '')
     const currentText = textOf(role === 'assistant' ? event.data?.message?.content : event.data?.content)
     const changed = currentText !== text
+    const priorEdit=messageEdits.latest(eventsOf(session),targetSeq)
+    if(changed||priorEdit)beginNumericalEdit?.(session.id)
     const edit = changed
       ? messageEdits.append(session, targetSeq, {role, messageId}, text)
-      : messageEdits.latest(eventsOf(session), targetSeq)
+      : priorEdit
     if (!edit) return {changed: false, editSeq: null}
     if (edit.data?.targetSeq !== targetSeq || edit.data.role !== role ||
       edit.data.messageId !== messageId || edit.data.text !== text) {
@@ -188,16 +194,22 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     const editSeq = Number(edit.seq)
     const receiptKey = editInvalidationKey(session.id, role, targetSeq)
     const textSha256 = sha256(text)
-    if (editEffectsCommitted(session, edit)) {
-      return {changed, editSeq}
-    }
+    const committed=editEffectsCommitted(session,edit)
     // The native provider drains routed live events at this durability barrier.
     // A flush/invalidation failure leaves the edit available for an idempotent retry.
-    await flushEdits(session)
-    await invalidateDerivedStoryState(session, {fromSeq: targetSeq, reason})
-    await T.branch.put(receiptKey, {
-      schemaVersion: 1, state: 'committed', role, targetSeq, editSeq, textSha256, committedAt: Date.now(),
-    })
+    if(!committed)await flushEdits(session)
+    let numericalFailure:{error:unknown}|undefined
+    try {await persistNumericalEdit?.(session.id,editSeq)} catch(error) {numericalFailure={error}}
+    // The accepted edit must retire stale cards even if its numerical denial
+    // write is unknown. That unknown remains a separate fail-closed gate; a
+    // state-entry repair can read panels without pretending the denial exists.
+    if(!committed) {
+      await invalidateDerivedStoryState(session, {fromSeq: targetSeq, reason})
+      await T.branch.put(receiptKey, {
+        schemaVersion: 1, state: 'committed', role, targetSeq, editSeq, textSha256, committedAt: Date.now(),
+      })
+    }
+    if(numericalFailure&&!options.repair)throw numericalFailure.error
     return {changed, editSeq}
   }
 
@@ -338,7 +350,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
           ?? currentSurfaceUserBefore(session, assistant)?.event
         if (!user) return
         assertBranchSession(session)
-        const applied = await applyTextEdit(session, user, variant.text, 'player-message-canonical-sync')
+        const applied = await applyTextEdit(session, user, variant.text, 'player-message-canonical-sync',{repair:true})
         const revision = Math.max(1, Number(variant.revision) || 1)
         if (exact) {
           if (exact.playerAppliedRevision === revision && exact.userSeq === user.seq &&
@@ -361,6 +373,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
             textSha256: sha256(variant.text), updatedAt: Date.now(),
           })
         }
+        if(applied.editSeq===null)confirmUnchangedNumericalEdit?.(session.id)
         if (applied.changed) synced++
       })
     }
@@ -369,7 +382,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     // receipt completion must not depend on the player retrying the HTTP call.
     let recoveredEdits = 0
     for (const edit of messageEdits.current(session, eventsOf(session))) {
-      if (editEffectsCommitted(session, edit)) continue
+      const committed=editEffectsCommitted(session,edit)
       const target = eventsOf(session)[Number(edit.data?.targetSeq)]
       if (!target) throw new Error('编辑来源节点缺失，无法恢复派生状态')
       const visible = session.surface?.nodes?.includes(target.seq) === true
@@ -396,8 +409,8 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         assertBranchSession(session)
         const current = projectStoryEvent(session, target)
         const text = textOf(target.type === 'assistant/message' ? current.data?.message?.content : current.data?.content)
-        await applyTextEdit(session, current, text, 'message-edit-effects-recovered')
-        recoveredEdits++
+        await applyTextEdit(session, current, text, 'message-edit-effects-recovered',{repair:true})
+        if(!committed)recoveredEdits++
       })
     }
     return {synced, recoveredEdits}
@@ -520,6 +533,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         }
         // Persist intent before any hot sibling is edited. Cold/restarted siblings
         // converge to this revision; a partial fanout must never restore the old text.
+        if(changed)for(const member of targets)beginNumericalEdit?.(member.sessionId)
         group.updatedAt = Date.now()
         await T.branch.put(forkGroupKey(group.groupId), group)
       }
@@ -555,6 +569,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
           await T.branch.put(forkGroupKey(group.groupId), group)
         }
         matched++
+        if(applied.editSeq===null)confirmUnchangedNumericalEdit?.(targetSession.id)
         if (applied.changed) changed++
       }
       if (matched === 0) throw new Error('玩家消息编辑未能写入当前分支')

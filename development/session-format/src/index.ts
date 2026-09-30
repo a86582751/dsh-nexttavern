@@ -1,11 +1,21 @@
 import type {Context} from '@deepseek-ai/cordis'
+import type {Message} from '@deepseek-ai/dsh-llm/types'
 import type {Session, SessionEvent, SessionSeq} from '@deepseek-ai/dsh-session'
-import {MESSAGE_EDIT_EVENT, messageEditProjection, type MessageEdit} from './projection.js'
+import {foldSurface} from '@deepseek-ai/dsh-session/surface'
+import {MESSAGE_EDIT_EVENT, assertMessageEdit, editMessageText, messageEditProjection, type MessageEdit} from './projection.js'
 
 export interface MessageEdits {
   append: typeof appendMessageEdit
   latest: typeof latestMessageEdit
   current: typeof currentMessageEdits
+  projectPrefix: typeof projectMessageEditPrefix
+  assertMessageEdit: typeof assertMessageEdit
+  editMessageText: typeof editMessageText
+}
+
+export interface MessageEditPrefixProjection {
+  nodes: readonly SessionSeq[]
+  projectedMessageAt(seq: SessionSeq): Message | undefined
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -20,7 +30,25 @@ export function apply(ctx: Context): void {
   ctx.sessions.registerMessageProjection(messageEditProjection)
   ctx.provide('nexttavernMessageEdits', {
     append: appendMessageEdit, latest: latestMessageEdit, current: currentMessageEdits,
+    projectPrefix: projectMessageEditPrefix,
+    assertMessageEdit, editMessageText,
   })
+}
+
+/** Fold one complete original-seq prefix without borrowing a live Session surface. */
+export function projectMessageEditPrefix(events: readonly SessionEvent[]): MessageEditPrefixProjection {
+  for (const [index, event] of events.entries()) {
+    if (event?.seq !== index) {
+      throw Error(`Message edit prefix must start at seq 0 and remain contiguous; expected ${index}`)
+    }
+  }
+  const folded = foldSurface(events, [messageEditProjection])
+  // Native Session records are immutable. Keep only the detached fold result;
+  // callers can release or change their observation array after this returns.
+  return {
+    nodes: Object.freeze([...folded.nodes]),
+    projectedMessageAt: seq => folded.projectedMessages.get(seq),
+  }
 }
 
 /** Append a required edit synchronously; callers own branch locks and derived-state invalidation. */

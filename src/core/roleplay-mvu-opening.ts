@@ -153,7 +153,8 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     if (deps.derivedBasisRequired?.(sessionId)) {
       const authority=deps.readNumericalAuthority?.(sessionId)
       return authority?.kind==='ready'?{kind:'story',sourceSha256,
-        headRef:{kind:'numerical-head',sha256:authority.snapshot.headSha256}}:management('DERIVED_BASIS_NOT_READY')
+        headRef:{kind:'numerical-head',sha256:authority.snapshot.headSha256}}
+        :management(authority?.kind==='blocked'?authority.code:'DERIVED_BASIS_NOT_READY')
     }
     try {
       const catalog = deps.catalog(sessionId), selectedIntent = deps.readOpeningIntent?.(catalog.source)

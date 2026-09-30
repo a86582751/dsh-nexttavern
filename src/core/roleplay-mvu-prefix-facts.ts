@@ -3,7 +3,7 @@
  * receipt is created here. Core verifies child lineage and original owner rows. */
 import {createHash} from 'node:crypto'
 import {recordSha256, sha256, textOf} from './roleplay-data.js'
-import {assertMessageEdit, editMessageText} from 'dsh-nexttavern-session-format/projection'
+import type {MessageEdit, editMessageText} from 'dsh-nexttavern-session-format/projection'
 import type {NativeCompletedInputWorkReceiptV1, NativeInputRef, NativePreparationReceiptV1}
   from '@deepseek-ai/dsh-agent-loop'
 
@@ -16,12 +16,18 @@ export interface MvuInheritedCompletedFactRequest {
   receipt: NativeCompletedInputWorkReceiptV1
   canonical: {seq: number; messageId: string; versionSha256: string; narrativeSha256: string}
 }
+export interface MvuInheritedMessageEditProtocol {
+  assertMessageEdit:(value:unknown)=>asserts value is MessageEdit
+  editMessageText:typeof editMessageText
+}
 export interface MvuInheritedCompletedFactDeps {
   /** Select the actual story canonical for this original turn, excluding owned
    * maintenance/retired/internal messages, then project its frozen prefix edits.
    * This is a selection operation, never projection of a caller-nominated seq. */
   readProjectedCanonical(events: readonly MvuInheritedPrefixEvent[], turn: number):
     {seq: number; messageId: string; versionSha256: string; narrative: string} | undefined
+  /** The actual format owner's protocol; never the selector's asserted body. */
+  editProtocol?:MvuInheritedMessageEditProtocol
 }
 const integer = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value)
   && value >= 0 && !Object.is(value, -0)
@@ -309,12 +315,15 @@ export function verifyInheritedCompletedFact(input: MvuInheritedCompletedFactReq
     // and the maintained edit protocol over this frozen prefix. A selector hash
     // alone cannot authorize an invented body, non-text block change or edit.
     let actualMessage = message as unknown as Parameters<typeof editMessageText>[0]
+    const protocol:MvuInheritedMessageEditProtocol | undefined=deps?.editProtocol
     for (const event of edits) {
+      if(!protocol)return false
       const edit = data(event)
-      assertMessageEdit(edit)
+      const assertEdit:(value:unknown)=>asserts value is MessageEdit=protocol.assertMessageEdit
+      assertEdit(edit)
       if (edit.targetSeq !== canonical.seq || edit.messageId !== canonical.messageId || edit.role !== 'assistant'
         || event.seq <= canonical.seq || Object.getOwnPropertyDescriptor(event, 'ignorable')?.value === true) return false
-      actualMessage = editMessageText(actualMessage, edit)
+      actualMessage = protocol.editMessageText(actualMessage, edit)
     }
     const actualVersionSha256 = recordSha256(actualMessage), actualNarrative = textOf(actualMessage.content)
     let projected: {seq: number; messageId: string; versionSha256: string; narrative: string} | undefined

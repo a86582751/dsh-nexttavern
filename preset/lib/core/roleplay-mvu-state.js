@@ -207,6 +207,15 @@ function settlementFor(intent, candidate, head, event) {
     return { ...descriptor, settlementSha256: recordSha256(descriptor) };
 }
 export function createRoleplayMvuState(deps) {
+    function unedited(sid) {
+        if (!deps.readEditInvalidation)
+            return;
+        const gate = deps.readEditInvalidation(sid);
+        if (!gate || !['clear', 'invalidated', 'unknown'].includes(gate.kind))
+            fail('NUMERICAL_EDIT_UNKNOWN');
+        if (gate.kind !== 'clear')
+            fail(typeof gate.code === 'string' ? gate.code : 'NUMERICAL_EDIT_UNKNOWN');
+    }
     function verified(intent) {
         if (!deps.verifyStoredIntent(cloneJson(intent)))
             fail('STORED_INTENT_UNPROVEN');
@@ -277,6 +286,7 @@ export function createRoleplayMvuState(deps) {
         return rows;
     }
     function inspect(sid) {
+        unedited(sid);
         const initial = genesis(sid).state, rows = scan(sid), consumed = new Set();
         const settlements = new Map();
         const chain = [], seen = new Set();
@@ -359,6 +369,7 @@ export function createRoleplayMvuState(deps) {
         try {
             const intent = cloneJson(input);
             intentValid(intent);
+            unedited(intent.sessionId);
             verified(intent);
             const { state, settlements } = inspect(intent.sessionId);
             if (state.sourceSha256 !== intent.sourceSha256 || !same(state.root, intent.base.root))
@@ -375,6 +386,7 @@ export function createRoleplayMvuState(deps) {
         }
     }
     function permitted(token, intent, phase) {
+        unedited(intent.sessionId);
         verified(intent);
         const current = genesis(intent.sessionId).state;
         if (current.sourceSha256 !== intent.sourceSha256 || !same(current.root, intent.base.root))

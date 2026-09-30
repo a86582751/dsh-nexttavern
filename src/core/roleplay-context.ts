@@ -46,7 +46,7 @@ export interface ContextSession extends MessageViewSession<ContextEvent> {
   events?: readonly ContextEvent[]
   log?: readonly ContextEvent[]
   surface?: { nodes?: readonly number[]; contentGeneration?: number }
-  header?: { origin?: string; seedLength?: unknown; cwd?: string; agentPreset?: string }
+  header?: {id?:string;isSeeded?:boolean;origin?:string;seedLength?:unknown;cwd?:string;agentPreset?:string}
 }
 export function assertWorkspaceSession(session: ContextSession): asserts session is ContextSession & { header: { cwd: string } } {
   if (typeof session.header?.cwd !== 'string' || !session.header.cwd) throw new Error('会话工作目录不可用')
@@ -200,8 +200,10 @@ export function readRoleplayActivity(session: ContextSession,preparation: Contex
     jobs:work.map(j=>({kind:j.kind,status:j.status,execution:j.execution})),
     backgroundJobs:backgroundJobs.map(j=>({kind:j.kind,status:j.status,execution:j.execution,createdAt:j.createdAt}))}
 }
-export function retireRoleplayContexts(session: ContextSession & Pick<TaskContextSession,'append'>,turn: number,prepared:readonly ContextMessage[]=[]) {
-  // Call only after Phase A has prepared authoritative replacements. Preserve
+export function retireRoleplayContexts(session: ContextSession & Pick<TaskContextSession,'append'>,turn: number,
+  prepared:readonly ContextMessage[]=[],options:{retireNumerical?:boolean}={}) {
+  // Phase A supplies replacements; an exact management scope can instead
+  // explicitly revoke numerical anchors without inventing a replacement. Preserve
   // the full anchor backing an unchanged reference; never guess a replacement
   // from an unfinished preparation or remove legacy/fixed-setting injections.
   if(!session.append||!Number.isSafeInteger(turn))return 0
@@ -213,8 +215,9 @@ export function retireRoleplayContexts(session: ContextSession & Pick<TaskContex
       &&source.schemaVersion===1&&source.form===form&&['full','reference'].includes(String(source.mode))
       &&typeof source.branchId==='string'&&/^[a-f0-9]{64}$/.test(String(source[field]??''))
     const next=prepared.filter(m=>valid(m.source)&&m.source?.branchId===session.id&&textOf(m.content).trim())
-    const numericalRetirement=form==='native-mvu-state'&&next.length===0&&prepared.some(message=>
-      message.source?.kind==='roleplay-context'&&message.source.branchId===session.id&&message.source.mode==='full')
+    const numericalRetirement=form==='native-mvu-state'&&next.length===0&&(options.retireNumerical===true
+      ||prepared.some(message=>message.source?.kind==='roleplay-context'
+        &&message.source.branchId===session.id&&message.source.mode==='full'))
     if(next.length!==1&&!numericalRetirement)continue
     const source=next[0]?.source
     if(form==='native-mvu-state'&&source&&source.mode!=='full')continue

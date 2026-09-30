@@ -1,5 +1,6 @@
 // Generated from runtime/alpha3/compat/session-format/src/index.ts; edit the TypeScript source.
-import { MESSAGE_EDIT_EVENT, messageEditProjection } from './projection.js';
+import { foldSurface } from '@deepseek-ai/dsh-session/surface';
+import { MESSAGE_EDIT_EVENT, assertMessageEdit, editMessageText, messageEditProjection } from './projection.js';
 export const name = 'nexttavern-message-edits';
 export const inject = ['sessions'];
 /** Register once at profile scope, before sessions are created or restored. */
@@ -7,7 +8,24 @@ export function apply(ctx) {
     ctx.sessions.registerMessageProjection(messageEditProjection);
     ctx.provide('nexttavernMessageEdits', {
         append: appendMessageEdit, latest: latestMessageEdit, current: currentMessageEdits,
+        projectPrefix: projectMessageEditPrefix,
+        assertMessageEdit, editMessageText,
     });
+}
+/** Fold one complete original-seq prefix without borrowing a live Session surface. */
+export function projectMessageEditPrefix(events) {
+    for (const [index, event] of events.entries()) {
+        if (event?.seq !== index) {
+            throw Error(`Message edit prefix must start at seq 0 and remain contiguous; expected ${index}`);
+        }
+    }
+    const folded = foldSurface(events, [messageEditProjection]);
+    // Native Session records are immutable. Keep only the detached fold result;
+    // callers can release or change their observation array after this returns.
+    return {
+        nodes: Object.freeze([...folded.nodes]),
+        projectedMessageAt: seq => folded.projectedMessages.get(seq),
+    };
 }
 /** Append a required edit synchronously; callers own branch locks and derived-state invalidation. */
 export function appendMessageEdit(session, targetSeq, identity, text) {
