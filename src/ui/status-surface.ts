@@ -6,7 +6,7 @@ import type { ActivityComponents } from './activity-view.js';
 import { createRefreshScheduler } from './panel-state.js';
 import { normalizeDecision, normalizePanel, normalizeOption, normalizeField, renderUserVars } from './reader-model.js';
 
-import { scopeHtmlStyles } from './reader-rendering.js';
+import { sanitizeStatusHtml, scopeHtmlStyles } from './reader-rendering.js';
 import { statusFactsHtml, decodeStatusTemplate } from './status-rendering.js';
 interface Position {left: number;top: number;}
 interface Size {w: number;h: number;}
@@ -466,7 +466,7 @@ React,
         ];
         const options = Array.isArray(panel?.options) ? panel.options.map(normalizeOption).map(option => ({ ...option, label: applyRules(option.label) })) : [];
         const html = panel?.html
-            ? statusFactsHtml(applyRules(scopeHtmlStyles(decodeStatusTemplate(panel.html), statusAuthorRoots)), options)
+            ? sanitizeStatusHtml(statusFactsHtml(applyRules(scopeHtmlStyles(decodeStatusTemplate(panel.html), statusAuthorRoots)), options))
             : '';
 
         const fields = Array.isArray(panel?.fields) ? panel.fields.map(normalizeField) : [];

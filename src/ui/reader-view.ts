@@ -1,5 +1,5 @@
 import { createReaderBeautyCache } from './reader-beauty.js';
-import { createAuthorRuntime } from './author-runtime.js';
+import { AUTHOR_FRAME_MAX_ROWS, createAuthorFrame, type AuthorFrameLayout, type AuthorFramePart } from './author-runtime.js';
 export { createAuthorRuntime } from './author-runtime.js';
 import type * as ReactAPI from 'react';
 import type { createMessageActionComponents } from './message-actions.js';
@@ -19,7 +19,10 @@ interface ReaderNode extends Record<string, unknown> {
 }
 interface TurnMeta {usage: unknown;runMs: number | null;tokensPerSecond: number;}
 interface ReaderPart {kind: 'user' | 'narrator';text: string;time: number;seq?: number;messageId?: string;failedTurn?: number;usage?: unknown;turnMeta?: TurnMeta | null;transient?: boolean;streamKey?: string;}
-interface HistoryAnchor {sessionId: string | null;key: string | null;top: number;headKey: string | null | undefined;count: number;}
+interface HistoryAnchor {
+    sessionId: string | null;key: string | null;top: number;headKey: string | null | undefined;count: number;
+    resetIfMissing?: boolean;
+}
 interface ReaderState extends StateReply {
     activity?: ActivityState;
     rules?: {beauty?: {regexRules?: ReaderRule[];css?: string;js?: string;};};
@@ -43,6 +46,7 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     isRoleplaySession(id: string): boolean;
     useTavernActivity: ActivityComponents['useTavernActivity'];
     fetchState(id: string, force?: boolean): Promise<ReaderState>;
+    subscribeState(id: string, listener: () => void): () => void;
     sessionsService: {using<T>(id: string, options: {source: 'nexttavernReader'}, operation: (reference: {binding: {session: {loadOlder(): Promise<void>}}}) => T | Promise<T>): Promise<T>};
     toast(text: string): void;
     pendingPlayerBubble: ActivityComponents['pendingPlayerBubble'];
@@ -56,6 +60,7 @@ React,
      isRoleplaySession,
      useTavernActivity,
      fetchState,
+     subscribeState,
      sessionsService,
      toast,
      UserActions,
@@ -90,6 +95,13 @@ React,
         const historyRequestRef = React.useRef<object | null>(null);
         const historyAnchorRef = React.useRef<HistoryAnchor | null>(null);
         const readerSessionRef = React.useRef(sessionId);
+        const stateRequestRef = React.useRef(0);
+        const frameRef = React.useRef<HTMLIFrameElement>(null);
+        const frameControllerRef = React.useRef<ReturnType<typeof createAuthorFrame> | null>(null);
+        const frameIdentityRef = React.useRef('');
+        const [frameEpoch, setFrameEpoch] = React.useState(0);
+        const [frameLayout, setFrameLayout] = React.useState<{identity: string;value: AuthorFrameLayout;} | null>(null);
+        const [frameFailure, setFrameFailure] = React.useState<{identity: string;reason: string;} | null>(null);
         const streamLeaseRef = React.useRef<{sessionId: string;turn: number;step: number;} | null>(null);
         readerSessionRef.current = sessionId;
         if (streamLeaseRef.current?.sessionId !== sessionId) streamLeaseRef.current = null;
@@ -106,18 +118,32 @@ React,
             if (!isRoleplaySession(sessionId)) return;
             let alive = true;
             const requestedSessionId = sessionId;
-            const load = () => {
-                if (typeof document !== 'undefined' && document.hidden) return;
+            const load = (evenWhenHidden = false) => {
+                if (!evenWhenHidden && typeof document !== 'undefined' && document.hidden) return;
+                const request = ++stateRequestRef.current;
                 fetchState(requestedSessionId, true).then((d) => {
-                    if (!alive) return;
+                    if (!alive || request !== stateRequestRef.current) return;
                     if (d?.sessionId && d.sessionId !== requestedSessionId) return;
                     setLoadError(d?.ok === false ? String(d.error ?? '角色扮演状态不可用') : null);
                     setState(d);
-                }).catch((error) => { if (alive) setLoadError(String(error && typeof error === 'object' && 'message' in error ? error.message : error)); });
+                }).catch(error => {
+                    if (!alive || request !== stateRequestRef.current) return;
+                    const message = error && typeof error === 'object' && 'message' in error ? error.message : error;
+                    setLoadError(String(message));
+                });
             };
             load();
             const timer = setInterval(load, 30000);
-            return () => { alive = false; clearInterval(timer); };
+            const unsubscribe = subscribeState(requestedSessionId, () => {
+                // Invalidation may select a new worldline without changing the view's
+                // sessionId. Revoke old author capabilities before fetching new state.
+                frameControllerRef.current?.dispose();
+                frameControllerRef.current = null;
+                setFrameEpoch(value => value + 1);
+                setState(null);
+                load(true);
+            });
+            return () => { alive = false; stateRequestRef.current++; clearInterval(timer); unsubscribe(); };
         },
             [sessionId]
         );
@@ -125,7 +151,12 @@ React,
         () => {
             if (!sessionId || !activity) return;
             let alive = true;
-            fetchState(sessionId, true).then(data => { if (alive && data?.sessionId === sessionId) {setState(data);setLoadError(null);} }).catch(() => { });
+            const request = ++stateRequestRef.current;
+            fetchState(sessionId, true).then(data => {
+                if (!alive || request !== stateRequestRef.current || data?.sessionId !== sessionId) return;
+                setState(data);
+                setLoadError(null);
+            }).catch(() => { });
             return () => { alive = false; };
         },
             [sessionId, activity?.storySeq, activity?.stage]
@@ -145,7 +176,11 @@ React,
         const loadOlder = sessionId ? () => sessionsService.using(sessionId,
             {source: 'nexttavernReader'}, reference => reference.binding.session.loadOlder()) : null;
 
-        const fillComposer = (text: string) => {
+        const fillComposer = (text: string, allowClipboard = true) => {
+            if (!sessionId || resolveActiveSessionId() !== sessionId) {
+                toast('请先切换到此对话，再填入输入框');
+                return;
+            }
             const editor = document.querySelector<HTMLElement>('[data-composer-input]');
             if (editor) {
                 try {
@@ -164,7 +199,7 @@ React,
                     }
                 } catch { }
             }
-            if (navigator.clipboard) {
+            if (allowClipboard && navigator.clipboard) {
                 navigator.clipboard.writeText(text).then(() => toast('输入框不可达，已复制到剪贴板')).catch(() => { });
             }
         };
@@ -173,6 +208,7 @@ React,
         const rules = Array.isArray(beauty?.regexRules) ? beauty.regexRules : [];
         const authorCss = String(beauty?.css ?? '');
         const authorJs = String(beauty?.js ?? '');
+        const authorWindow = !!authorJs.trim();
 
         // Collect only the authoritative surface of this Session.  The Chat
         // target may retain audit/shadow nodes after a replacement, and sibling
@@ -218,6 +254,7 @@ React,
         const windowStart = readerStart === null
             ? Math.max(0, selectedNodes.length - 500)
             : Math.min(Math.max(0, readerStart), Math.max(0, selectedNodes.length - 1));
+        const authorHistoryPage = authorWindow && windowStart < Math.max(0, selectedNodes.length - 500);
         const readerNodes = selectedNodes.slice(windowStart);
         const settledStoryKeys = new Set(readerNodes
             .filter((node) => node?.kind === 'assistant-step' && node?.data?.status === 'settled')
@@ -271,7 +308,7 @@ React,
             streamLeaseRef.current = { sessionId, turn: activity.turn!, step: activity.storyStep! };
         }
         const streamLease = streamLeaseRef.current;
-        if (streamLease?.sessionId === sessionId) {
+        if (streamLease?.sessionId === sessionId && !authorHistoryPage) {
             const streamTurn = streamLease.turn;
             const streamStep = streamLease.step;
             const streamKey = `${streamTurn}:${streamStep}`;
@@ -300,11 +337,20 @@ React,
             }
         }
 
+        // Author frames, native action rows and beauty work share one window.
+        // A current stream owns one slot; older pages never mix in live prose.
+        // Keep the complete collected suffix available for explicit navigation.
+        const transientParts = parts.filter(part => part.transient);
+        const committedParts = parts.filter(part => !part.transient);
+        const visibleParts = authorWindow
+            ? [...committedParts.slice(0, AUTHOR_FRAME_MAX_ROWS - transientParts.length), ...transientParts]
+            : parts;
+
         const beautyScope = sessionId + '\0' + JSON.stringify(rules);
         const beautyCache = beautyCacheRef.current;
         beautyCache.selectScope(beautyScope);
         // Keep transient stream text out of regex work; it still gets immediate fallback rendering.
-        const beautyTasks = parts.filter(part => part.kind === 'narrator' && !part.transient).map(part => part.text);
+        const beautyTasks = visibleParts.filter(part => part.kind === 'narrator' && !part.transient).map(part => part.text);
         const beautyInput = JSON.stringify(beautyTasks);
         React.useEffect(
         () => beautyCache.run(beautyScope, beautyTasks, rules, () => refreshBeauty(n => n + 1)),
@@ -313,7 +359,7 @@ React,
         );
         const applyBeauty = beautyCache.htmlFor;
         const beautyFailed = beautyCache.failed(beautyTasks);
-        const renderedParts = parts.map((part) => ({
+        const renderedParts = visibleParts.map((part) => ({
             ...part,
             html: part.kind === 'narrator' ? applyBeauty(part.text) : '',
         }));
@@ -337,8 +383,42 @@ React,
         const committedDocHtml = renderedParts.filter(part => !part.transient).map(part => part.kind === 'narrator' ? part.html : part.text).join('\n');
         const historyBusy = loadingOlder || historySnapshot?.loadingOlder === true;
         const canLoadOlder = windowStart > 0 || (!!loadOlder && historySnapshot?.hasMore === true);
-        const readerPartKey = (part: ReaderPart) => part.transient ? part.streamKey : `${part.kind}:${part.seq ?? ''}:${part.messageId ?? ''}`;
+        const canLoadNewer = authorWindow && visibleParts.length < parts.length;
+        const canLoadLatest = authorWindow && readerStart !== null;
+        const readerPartKey = (part: ReaderPart) => part.transient
+            ? part.streamKey ?? 'stream:unknown'
+            : `${part.kind}:${part.seq ?? ''}:${part.messageId ?? ''}`;
         const renderedHeadKey = renderedParts.length ? readerPartKey(renderedParts[0]!) : null;
+        const frameIdentity = JSON.stringify([
+            frameEpoch, sessionId, state?.sessionId, state?.preset, authorJs, authorCss, committedDocHtml,
+        ]);
+        frameIdentityRef.current = frameIdentity;
+        const framed = !!authorJs.trim() && frameFailure?.identity !== frameIdentity;
+        const activeFrameLayout = frameLayout?.identity === frameIdentity ? frameLayout.value : null;
+        const framePayload = JSON.stringify(renderedParts.map(part => ({
+            key: readerPartKey(part), kind: part.kind, text: part.text, html: part.html,
+        } satisfies AuthorFramePart)));
+        React.useEffect(() => {
+            if (!framed || !sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !frameRef.current) return;
+            const identity = frameIdentity;
+            const controller = createAuthorFrame(frameRef.current, {
+                source: authorJs,
+                css: authorCss,
+                baseCss: READER_BASE_CSS,
+                current: () => readerSessionRef.current === sessionId && frameIdentityRef.current === identity,
+                fill: text => fillComposer(text, false),
+                layout: value => setFrameLayout({identity, value}),
+                failed: reason => setFrameFailure({identity, reason}),
+            });
+            frameControllerRef.current = controller;
+            return () => {
+                controller.dispose();
+                if (frameControllerRef.current === controller) frameControllerRef.current = null;
+            };
+        }, [frameIdentity, framed, sessionId, state?.sessionId, state?.preset]);
+        React.useEffect(() => {
+            if (framed) frameControllerRef.current?.update(JSON.parse(framePayload) as AuthorFramePart[]);
+        }, [frameIdentity, framePayload, framed]);
         // Native history prepends must not push the paragraph under the pointer
         // off-screen. Keep a DOM row anchor, not a scrollHeight approximation:
         // author HTML can change height after the response arrives.
@@ -348,20 +428,17 @@ React,
             const scroller = scrollRef.current;
             if (!held || !scroller || held.sessionId !== sessionId) return;
             if (held.headKey === renderedHeadKey && held.count === renderedParts.length) return;
+            if (framed && !activeFrameLayout) return;
             const row = Array.from(scroller.querySelectorAll('[data-reader-key]'))
                 .find((element) => element.getAttribute('data-reader-key') === held.key);
             if (row) scroller.scrollTop += row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - held.top;
+            else if (held.resetIfMissing) scroller.scrollTop = 0;
             historyAnchorRef.current = null;
         },
-            [docHtml, renderedHeadKey, renderedParts.length, sessionId]
+            [docHtml, renderedHeadKey, renderedParts.length, sessionId, activeFrameLayout]
         );
 
-        const requestOlder = async () => {
-            if (!canLoadOlder || historyBusy || historyRequestRef.current) return;
-            const requestedSessionId = sessionId;
-            const request = {};
-            historyRequestRef.current = request;
-            setHistoryError(null);
+        const holdHistoryAnchor = (resetIfMissing = false) => {
             const scroller = scrollRef.current;
             const viewportTop = scroller?.getBoundingClientRect().top ?? 0;
             const anchor = scroller
@@ -375,7 +452,16 @@ React,
 
                 headKey: renderedHeadKey,
                 count: renderedParts.length,
+                resetIfMissing,
             } : null;
+        };
+        const requestOlder = async () => {
+            if (!canLoadOlder || historyBusy || historyRequestRef.current) return;
+            const requestedSessionId = sessionId;
+            const request = {};
+            historyRequestRef.current = request;
+            setHistoryError(null);
+            holdHistoryAnchor(authorWindow);
             setLoadingOlder(true);
             try {
                 if (windowStart > 0) {
@@ -397,6 +483,23 @@ React,
                 }
             }
         };
+        const requestNewer = () => {
+            if (!canLoadNewer || historyBusy || historyRequestRef.current) return;
+            // Overlap the pages so an on-screen original-seq row can stay put.
+            const next = visibleParts[Math.max(0, visibleParts.length - 100)];
+            const nextStart = selectedNodes.findIndex(node => readerNodeSeq(node) === next?.seq);
+            if (nextStart <= windowStart) return;
+            holdHistoryAnchor(true);
+            setHistoryError(null);
+            setReaderStart(nextStart);
+        };
+        const requestLatest = () => {
+            if (historyBusy || historyRequestRef.current) return;
+            historyAnchorRef.current = null;
+            if (scrollRef.current) scrollRef.current.scrollTop = 0;
+            setHistoryError(null);
+            setReaderStart(null);
+        };
         // Scope the two sheets independently, then append author CSS last so the
         // card can reliably override defaults even when its own CSS is malformed.
         // Cascade layer makes the built-in paper theme a true fallback: even a
@@ -404,30 +507,14 @@ React,
         // appearing as unlayered author CSS. Inline styles from the card remain
         // authoritative as usual.
         const scopedCss = '@layer dsh-roleplay-reader-default {\n' +
-            scopeReaderCss(READER_BASE_CSS) + '\n}\n' + scopeReaderCss(authorCss);
-
-        // 渲染后：作者 JS（受限 document/window，注册必被卸载）；.f 点击填入输入框委托
-        React.useEffect(
-        () => {
-            const el = readerRef.current;
-            if (!el || !sessionId || !isRoleplaySession(sessionId) || state?.sessionId !== sessionId
-                || state?.preset !== 'roleplay') return;
-            const runtime = createAuthorRuntime(el, fillComposer);
-            let cleanup: (() => void) | null = null;
-            if (authorJs.trim()) {
-                try {
-                    cleanup = runtime.run(authorJs);
-                } catch (err) {
-                    console.warn('[roleplay-reader] author js failed:', err);
-                }
-            }
-            return () => {
-                try {cleanup?.();} catch (err) {console.warn('[roleplay-reader] author js cleanup failed:', err);}
-                runtime.teardown();
-            };
-        },
-            [committedDocHtml, authorJs, sessionId, state?.sessionId, state?.preset]
-        );
+            scopeReaderCss(READER_BASE_CSS) + '\n}\n' + (framed ? '' : scopeReaderCss(authorCss)) + `
+.rp-author-frame-host { position: relative; width: min(1500px, 100%); align-self: center; overflow: hidden; }
+.rp-author-guard-frame { display: block; width: 100%; height: 150px; border: 0; }
+.rp-author-action-layer { position: absolute; inset: 0; pointer-events: none; }
+.rp-author-action-row { position: absolute; left: 0; right: 0; min-height: 32px;
+  padding: 0 clamp(22px, 4.8vw, 72px); box-sizing: border-box; pointer-events: none; }
+.rp-author-action-row .rp-reader-actions { pointer-events: auto; }
+`;
 
         // Keep every hook above all exits; otherwise switching between loading,
         // non-roleplay and roleplay states changes the hook count and crashes React.
@@ -510,22 +597,32 @@ React,
             },
 
             React.createElement('style', null, scopedCss + ACTIVITY_CSS),
+            frameFailure?.identity === frameIdentity ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' },
+                '隔离阅读视图不可用，已保留正文和原生操作；作者脚本未运行。' + frameFailure.reason) : null,
 
             beautyFailed ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' }, '部分美化规则未能安全完成，已保留完整正文。修改规则后会重新匹配。') : null,
 
-            canLoadOlder || historyBusy || historyError
+            canLoadOlder || historyBusy || historyError || canLoadNewer || canLoadLatest
                 ? React.createElement(
                 'div',
                     { className: 'rp-reader-history', role: 'status', 'aria-live': 'polite' },
 
-                    React.createElement(
+                    canLoadOlder || historyBusy || historyError ? React.createElement(
                     'button',
                         { type: 'button', className: 'rp-reader-load-older', onClick: requestOlder, disabled: historyBusy },
 
                         historyBusy ? React.createElement('span', { className: 'rp-reader-spinner', 'aria-hidden': 'true' }) : null,
 
                         historyBusy ? '正在加载更早剧情…' : historyError ? '加载失败，点击重试' : '加载更早剧情'
-                    )
+                    ) : null,
+                    canLoadNewer ? React.createElement('button', {
+                        type: 'button', className: 'rp-reader-load-newer', onClick: requestNewer, disabled: historyBusy,
+                    }, '查看较新剧情') : null,
+                    canLoadLatest ? React.createElement('button', {
+                        type: 'button', className: 'rp-reader-load-latest', onClick: requestLatest, disabled: historyBusy,
+                    }, '回到最新剧情') : null,
+                    authorWindow ? React.createElement('span', {className: 'rp-reader-page-info'},
+                        `${authorHistoryPage ? '较早剧情' : '最新剧情'} · 本页 ${visibleParts.length} 段`) : null
                 )
                 : null,
 
@@ -535,13 +632,21 @@ React,
                 ? React.createElement('div', { className: 'rp-reader-empty' }, '暂无可阅读的正文')
                 : null,
 
-            React.createElement(
-            'div',
-                {
-                    className: 'rp-reader',
-
-                    ref: readerRef,
-
+            framed
+                ? React.createElement('div', { className: 'rp-author-frame-host' },
+                    React.createElement('iframe', {
+                        className: 'rp-author-guard-frame', title: '隔离阅读内容', ref: frameRef,
+                    }),
+                    activeFrameLayout ? React.createElement('div', { className: 'rp-author-action-layer' },
+                        renderedParts.map((part, index) => React.createElement('section', {
+                            className: 'rp-reader-message rp-author-action-row',
+                            'data-kind': part.kind === 'user' ? 'user' : 'assistant',
+                            'data-reader-key': readerPartKey(part),
+                            key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
+                            style: {top: activeFrameLayout.rows[index] ?? 0},
+                        }, renderReaderActions(part)))) : null)
+                : React.createElement('div', {
+                    className: 'rp-reader', ref: readerRef,
                     onClick: (event: ReactAPI.MouseEvent<HTMLDivElement>) => {
                         const f = event.target
                             && typeof (event.target as Element).closest === 'function' ? (event.target as Element).closest<HTMLElement>('.f') : null;
@@ -551,30 +656,15 @@ React,
                             fillComposer(f.innerText || f.textContent || '');
                         }
                     },
-                },
-                renderedParts.map((part, index) => React.createElement(
-                'section',
-                    {
-                        className: 'rp-reader-message',
-
-                        'data-kind': part.kind === 'user' ? 'user' : 'assistant',
-
-                        'data-reader-key': readerPartKey(part),
-
-                        key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
-                    },
-
-                    part.kind === 'user'
-                        ? React.createElement('p', { className: 'rp-user-line' }, '◈ 你：' + part.text)
-                        : React.createElement(
-                        'div',
-                            { className: 'rp-reader-narrative', dangerouslySetInnerHTML: { __html: part.html } }
-                        ),
-
-                    renderReaderActions(part)
-
-                ))
-            ),
+                }, renderedParts.map((part, index) => React.createElement('section', {
+                    className: 'rp-reader-message',
+                    'data-kind': part.kind === 'user' ? 'user' : 'assistant',
+                    'data-reader-key': readerPartKey(part),
+                    key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
+                }, part.kind === 'user'
+                    ? React.createElement('p', { className: 'rp-user-line' }, '◈ 你：' + part.text)
+                    : React.createElement('div', { className: 'rp-reader-narrative', dangerouslySetInnerHTML: { __html: part.html } }),
+                renderReaderActions(part)))),
 
             pendingPlayerBubble(activity, nodes),
 

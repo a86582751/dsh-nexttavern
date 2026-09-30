@@ -68,7 +68,7 @@
       ],
       "patterns": [
         "roleplay-author*",
-        "author-*",
+        "author-panels*",
         "roleplay-card-workflow*"
       ]
     },
@@ -218,7 +218,8 @@
         "card-upload*",
         "opening-panel*",
         "panel-state*",
-        "reader-status*"
+        "reader-status*",
+        "author-runtime*"
       ]
     },
     {
@@ -1901,7 +1902,8 @@
         "generated"
       ],
       "requires": [
-        "compiler"
+        "compiler",
+        "jsdom"
       ]
     },
     {

@@ -184,6 +184,7 @@ export function scopeReaderCss(css: unknown) {
 const READER_ALLOWED_TAGS = new Set([
     'A',
     'ARTICLE',
+    'ASIDE',
     'B',
     'BLOCKQUOTE',
     'BR',
@@ -200,6 +201,7 @@ const READER_ALLOWED_TAGS = new Set([
     'EM',
     'FIGCAPTION',
     'FIGURE',
+    'FOOTER',
     'H1',
     'H2',
 
@@ -207,12 +209,15 @@ const READER_ALLOWED_TAGS = new Set([
     'H4',
     'H5',
     'H6',
+    'HEADER',
     'HR',
     'I',
     'KBD',
     'LI',
+    'MAIN',
     'MARK',
     'OL',
+    'NAV',
     'P',
     'PRE',
 
@@ -352,10 +357,21 @@ function sanitizeReaderStyle(styleText: unknown) {
     return safe.style.cssText;
 }
 
-function sanitizeReaderTree(root: DocumentFragment | Element) {
+function sanitizeReaderTree(root: DocumentFragment | Element, scopedStyles = false) {
     for (const element of Array.from(root.querySelectorAll('*'))) {
         if (!element.parentNode) continue;
         const tag = element.tagName;
+        if (tag === 'STYLE' && scopedStyles) {
+            // Status styles have already been scoped. Reject network-capable CSS
+            // and escape syntax rather than treating a selector prefix as a CSS sandbox.
+            const css = element.textContent ?? '';
+            if (/[\\]/.test(css) || /@(?:import|namespace|font-face|document)\b|(?:url|image-set|expression)\s*\(|(?:behavior|-moz-binding)\s*:/i.test(css)) {
+                element.remove();
+                continue;
+            }
+            for (const attribute of Array.from(element.attributes)) element.removeAttribute(attribute.name);
+            continue;
+        }
         if (READER_DROP_TAGS.has(tag)) {
             element.remove();
             continue;
@@ -382,6 +398,13 @@ function sanitizeReaderTree(root: DocumentFragment | Element) {
         }
         if (tag === 'BUTTON') element.setAttribute('type', 'button');
     }
+}
+
+export function sanitizeStatusHtml(value: unknown): string {
+    const template = document.createElement('template');
+    template.innerHTML = String(value ?? '');
+    sanitizeReaderTree(template.content, true);
+    return template.innerHTML;
 }
 
 function paragraphizeReaderContainer(container: DocumentFragment | Element) {

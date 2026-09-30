@@ -1,110 +1,164 @@
-// Author JS is card data that the reader re-runs for every committed paragraph.
-// A card that registered a page-wide listener used to keep it forever, so the
-// leak grew by one duplicate handler per run and every later event fanned out
-// into all of them. These assertions pin the two properties that stop that:
-// registration lands on the reader root, and teardown always unhooks it.
+// Card JavaScript must never run with the page's DOM, globals or fill callback.
 import assert from 'node:assert/strict'
+import {createRequire} from 'node:module'
 
-function fakeTarget() {
-  const registered = []
-  return {
-    registered,
-    addEventListener(type, handler, options) { registered.push({type, handler, options}) },
-    removeEventListener(type, handler) {
-      const index = registered.findIndex(entry => entry.type === type && entry.handler === handler)
-      if (index >= 0) registered.splice(index, 1)
-    },
-  }
-}
-
-const pageDocument = fakeTarget()
-const pageWindow = fakeTarget()
-globalThis.document = pageDocument
-globalThis.window = pageWindow
-
+let touched = 0
+const root = {ownerDocument: {defaultView: globalThis}}
 const {createAuthorRuntime} = await import('../lib/ui/reader-view.js')
-
-const settle = (ms) => new Promise(resolve => setTimeout(resolve, ms))
-
-// A document-level listener from a card that returns no cleanup of its own.
-{
-  const root = fakeTarget()
-  const runtime = createAuthorRuntime(root, () => {})
-  runtime.run("document.addEventListener('selectionchange', function(){})")
-  assert.equal(root.registered.length, 1, 'card registration must land on the reader root')
-  assert.equal(root.registered[0].type, 'selectionchange')
-  assert.equal(pageDocument.registered.length, 0, 'card must not touch the real document')
-  runtime.teardown()
-  assert.equal(root.registered.length, 0, 'teardown must unhook what the card registered')
+const {createAuthorFrame} = await import('../lib/ui/author-runtime.js')
+const runtime = createAuthorRuntime(root, () => { touched++ })
+for (const source of [
+  'root.ownerDocument.defaultView.touched = true',
+  'globalThis.touched = true',
+  'fill("draft")',
+  'setInterval(() => {}, 1)',
+  'eval("globalThis.touched = true")',
+  'root.constructor.constructor("return globalThis")()',
+]) {
+  assert.throws(() => runtime.run(source), /只能在隔离阅读视图执行/)
 }
+assert.equal(touched, 0)
+assert.equal(globalThis.touched, undefined)
+assert.equal(runtime.run('   '), null)
+runtime.teardown()
+runtime.teardown()
+console.log('reader-author-js=host-entry-closed')
 
-{
-  const root = fakeTarget()
-  const runtime = createAuthorRuntime(root, () => {})
-  runtime.run("window.addEventListener('mouseup', function(){}); this.addEventListener('click', function(){})")
-  assert.equal(root.registered.length, 2, 'window and `this` registrations must land on the root')
-  assert.equal(pageWindow.registered.length, 0, 'card must not touch the real window')
-  runtime.teardown()
-  assert.equal(root.registered.length, 0)
+// Exercise the host side of the same MessageChannel controller ReaderView uses.
+// Browser CSP and opaque-origin behavior are checked separately in Chromium.
+const require = createRequire(import.meta.url)
+const {resolveJsdom} = require('../lib/operations/tool-resolution.mjs')
+const {JSDOM} = require(resolveJsdom())
+const frameDom = new JSDOM('<!doctype html><iframe id="guard"></iframe>', {url:'http://127.0.0.1/'})
+const priorWindow = globalThis.window
+globalThis.window = frameDom.window
+try {
+  const guard = frameDom.window.document.querySelector('#guard')
+  const fills = [], layouts = [], failures = []
+  let fillResolve
+  const filled = new Promise(resolve => {fillResolve = resolve})
+  let childPort
+  guard.contentWindow.postMessage = (_data, _target, ports) => {if (ports?.[0]) childPort = ports[0]}
+  const controller = createAuthorFrame(guard, {
+    source:'fill("draft")', css:'', baseCss:'', current:()=>true,
+    fill:text=>{fills.push(text);fillResolve()}, layout:value=>layouts.push(value), failed:reason=>failures.push(reason),
+  })
+  const nonce = guard.srcdoc.match(/[0-9a-f]{32}/)?.[0]
+  assert.ok(nonce)
+  assert.match(guard.srcdoc, /frame-src 'none'/)
+  const message = (source, data) => frameDom.window.dispatchEvent(new frameDom.window.MessageEvent('message', {
+    source, data:{v:1,nonce,...data}, origin:'http://127.0.0.1',
+  }))
+  message(frameDom.window, {type:'ready'})
+  assert.equal(childPort, undefined, 'a forged ready message cannot acquire the bridge')
+  message(guard.contentWindow, {type:'ready'})
+  assert.ok(childPort)
+  const renders = []
+  const rendered = new Promise(resolve => {childPort.onmessage = event => {renders.push(event.data);resolve()}})
+  controller.update([{key:'n:1',kind:'narrator',text:'story',html:'<p>story</p>'}])
+  childPort.postMessage({v:1,nonce,revision:0,requestId:1,type:'bound'})
+  await Promise.race([rendered,new Promise((_,reject)=>setTimeout(()=>reject(new Error('frame render timed out')),1000))])
+  assert.equal(renders.length,1)
+  assert.equal(renders[0].revision,1)
+  childPort.postMessage({v:1,nonce,revision:0,requestId:2,type:'fill',text:'stale'})
+  childPort.postMessage({v:1,nonce,revision:1,requestId:3,type:'fill',text:'draft'})
+  childPort.postMessage({v:1,nonce,revision:1,requestId:3,type:'fill',text:'replay'})
+  childPort.postMessage({v:1,nonce,revision:1,requestId:4,type:'layout',height:80,rows:[28]})
+  await Promise.race([filled,new Promise((_,reject)=>setTimeout(()=>reject(new Error('frame fill timed out')),1000))])
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.deepEqual(fills,['draft'], 'stale and replayed fill requests are ignored')
+  assert.equal(layouts[0].height,80)
+  const queuedFilled = new Promise(resolve => {fillResolve = resolve})
+  // MessagePort delivery is asynchronous: this valid render-1 action is
+  // already queued when the host synchronously advances to render 2.
+  childPort.postMessage({v:1,nonce,revision:1,requestId:5,type:'fill',text:'queued draft'})
+  controller.update([{key:'n:1',kind:'narrator',text:'new story',html:'<p>new story</p>'}])
+  await Promise.race([queuedFilled,new Promise((_,reject)=>setTimeout(()=>reject(new Error('queued frame fill lost')),1000))])
+  childPort.postMessage({v:1,nonce,revision:1,requestId:5,type:'fill',text:'queued replay'})
+  childPort.postMessage({v:1,nonce,revision:1,requestId:6,type:'layout',height:900,rows:[800]})
+  childPort.postMessage({v:1,nonce,revision:0,requestId:7,type:'fill',text:'unrendered'})
+  childPort.postMessage({v:1,nonce,revision:3,requestId:8,type:'fill',text:'future'})
+  childPort.postMessage({v:1,nonce,revision:1.5,requestId:9,type:'fill',text:'fractional'})
+  childPort.postMessage({v:1,nonce,revision:1,requestId:10,type:'bound'})
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.deepEqual(fills,['draft','queued draft'])
+  assert.deepEqual(layouts,[{height:80,rows:[28]}], 'old-render layouts cannot position the new action rows')
+  assert.equal(renders.length,2,'an already bound controller cannot bind or rerender twice')
+  message(guard.contentWindow, {type:'child-load',count:2})
+  assert.deepEqual(failures,['作者脚本离开隔离文档'])
+  assert.equal(guard.hasAttribute('srcdoc'),false)
+  controller.dispose()
+  childPort.postMessage({v:1,nonce,revision:2,requestId:11,type:'fill',text:'disposed'})
+  await new Promise(resolve=>setImmediate(resolve))
+  assert.deepEqual(fills,['draft','queued draft'])
+  childPort.close()
+} finally {
+  globalThis.window = priorWindow
+  frameDom.window.close()
 }
-
-// Re-running the effect must not multiply handlers. This is the regression:
-// without teardown the count grew once per committed paragraph.
-{
-  const root = fakeTarget()
-  const source = "document.addEventListener('selectionchange', function(){})"
-  for (let run = 0; run < 5; run += 1) {
-    const runtime = createAuthorRuntime(root, () => {})
-    runtime.run(source)
-    runtime.teardown()
-  }
-  assert.equal(root.registered.length, 0, 'repeated runs must not accumulate handlers')
-
-  const leaked = fakeTarget()
-  for (let run = 0; run < 5; run += 1) createAuthorRuntime(leaked, () => {}).run(source)
-  assert.equal(leaked.registered.length, 5, 'the pre-fix shape is what accumulated the handlers')
+const errorDom = new JSDOM('<!doctype html><iframe id="guard"></iframe>', {url:'http://127.0.0.1/'})
+globalThis.window = errorDom.window
+let errorController, errorPort
+try {
+  const guard = errorDom.window.document.querySelector('#guard')
+  guard.contentWindow.postMessage = (_data,_target,ports) => {if(ports?.[0]) errorPort = ports[0]}
+  let failedResolve, renderedResolve, current = true
+  const failed = new Promise(resolve=>{failedResolve=resolve})
+  const rendered = new Promise(resolve=>{renderedResolve=resolve})
+  const failures = []
+  errorController = createAuthorFrame(guard, {source:'throw Error("queued author error")',css:'',baseCss:'',
+    current:()=>current,fill:()=>assert.fail('error fixture cannot fill'),layout:()=>{},
+    failed:reason=>{failures.push(reason);failedResolve()}})
+  const nonce = guard.srcdoc.match(/[0-9a-f]{32}/)?.[0]
+  const NativeMessageChannel = globalThis.MessageChannel
+  let errorHostPort
+  try {
+    // Capture the controller's actual native port, without replacing its
+    // onmessage handler or synchronously pretending a message was delivered.
+    globalThis.MessageChannel = class {
+      constructor() {
+        const pair = new NativeMessageChannel()
+        errorHostPort = pair.port1
+        return pair
+      }
+    }
+    errorDom.window.dispatchEvent(new errorDom.window.MessageEvent('message', {
+      source:guard.contentWindow,data:{v:1,nonce,type:'ready'},origin:'http://127.0.0.1',
+    }))
+  } finally {globalThis.MessageChannel = NativeMessageChannel}
+  assert.ok(errorPort)
+  assert.ok(errorHostPort)
+  errorPort.onmessage = ()=>renderedResolve()
+  errorController.update([{key:'n:1',kind:'narrator',text:'story',html:'<p>story</p>'}])
+  errorPort.postMessage({v:1,nonce,revision:0,requestId:1,type:'bound'})
+  await Promise.race([rendered,new Promise((_,reject)=>setTimeout(()=>reject(new Error('error fixture render timed out')),1000))])
+  current=false
+  // Registered after the real controller handler: this barrier resolves only
+  // after the obsolete message was processed while current() was still false.
+  const obsoleteDelivered = new Promise(resolve=>{
+    const afterController = event=>{
+      if(event.data?.nonce!==nonce || event.data?.requestId!==2) return
+      errorHostPort.removeEventListener('message',afterController)
+      resolve()
+    }
+    errorHostPort.addEventListener('message',afterController)
+  })
+  errorPort.postMessage({v:1,nonce,revision:1,requestId:2,type:'error',message:'obsolete session'})
+  await Promise.race([obsoleteDelivered,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error('obsolete frame message delivery timed out')),1000))])
+  assert.deepEqual(failures,[],'an obsolete session cannot report through its old bridge')
+  current=true
+  errorPort.postMessage({v:1,nonce,revision:1,requestId:3,type:'error',message:'queued author error'})
+  errorController.update([{key:'n:1',kind:'narrator',text:'new story',html:'<p>new story</p>'}])
+  await Promise.race([failed,new Promise((_,reject)=>setTimeout(()=>reject(new Error('queued frame error lost')),1000))])
+  assert.deepEqual(failures,['作者脚本异常：queued author error'])
+  assert.equal(guard.hasAttribute('srcdoc'),false)
+} finally {
+  errorController?.dispose();errorPort?.close()
+  globalThis.window=priorWindow
+  errorDom.window.close()
 }
-
-// The documented contract still holds: the card gets `root` and `fill`, and a
-// cleanup function it returns is still honoured.
-{
-  const root = fakeTarget()
-  const filled = []
-  const runtime = createAuthorRuntime(root, (text) => filled.push(text))
-  runtime.run('root.datasetCard = 1; fill("draft")')
-  assert.equal(root.datasetCard, 1, 'the card must still receive the reader root')
-  assert.deepEqual(filled, ['draft'], 'the card must still receive the fill callback')
-
-  const cleanup = runtime.run('root.cleaned = 0; return function(){ root.cleaned += 10 }')
-  assert.equal(typeof cleanup, 'function', 'a returned cleanup must still be handed back to the caller')
-  cleanup()
-  assert.equal(root.cleaned, 10, 'the returned cleanup must still be callable')
-}
-
-// Timers a card starts must not outlive the reader.
-{
-  const root = fakeTarget()
-  const runtime = createAuthorRuntime(root, () => {})
-  runtime.run('root.ticks = 0; setInterval(function(){ root.ticks += 1 }, 5)')
-  await settle(40)
-  const during = root.ticks
-  assert.ok(during > 0, 'the card timer must actually run')
-  runtime.teardown()
-  await settle(40)
-  assert.equal(root.ticks, during, 'teardown must clear the card timers')
-}
-
-// A card that throws must not leave the runtime unusable or leak the error.
-{
-  const root = fakeTarget()
-  const runtime = createAuthorRuntime(root, () => {})
-  assert.throws(() => runtime.run('throw new Error("card bug")'), /card bug/)
-  runtime.teardown()
-  assert.equal(root.registered.length, 0)
-}
-
-console.log('reader-author-js=ok')
-
+console.log('reader-author-frame=ok (source fence, revision, replay, navigation fallback)')
 // The same controller used by ReaderView rejects results from an obsolete session/rule scope.
 const {createReaderBeautyCache} = await import('../lib/ui/reader-beauty.js')
 const deferredBeauty = () => {

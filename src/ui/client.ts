@@ -744,7 +744,8 @@ export function apply(ctx: ClientContext) {
 
     // ── 沉浸阅读视图（conversation.view 新视图；仅 roleplay 会话可用）────────
     // 渲染管线：正文正则 → HTML/Markdown → 未命中正则回退 → 作用域 CSS（默认
-    // 奶油纸感 + 作者 CSS 追加）→ JS（渲染后沙箱脚本 + .f 点击填入委托）。
+    // 奶油纸感 + 作者 CSS 追加）→ 有作者 JS 时在隔离 frame 渲染正文，
+    // 只通过受控桥填入文本；原生操作行由宿主保留。
     const ReaderView = createReaderView(
       {
         React,
@@ -752,6 +753,7 @@ export function apply(ctx: ClientContext) {
         isRoleplaySession,
         useTavernActivity,
         fetchState,
+        subscribeState,
         sessionsService,
         toast,
         UserActions,
