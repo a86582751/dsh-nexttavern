@@ -4503,6 +4503,37 @@
         "compiler"
       ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:native-input-completion.test.mts",
+      "action": "test",
+      "modules": [
+        "plugin-lifecycle",
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-update.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }

@@ -131,13 +131,34 @@ export interface NativeInputSupplementProposalV1 {
   readonly proposal:NativeInputProposal
   readonly nominations:readonly {ref:NativeInputRef;ownerToken:object}[]
 }
+/** Actual closed original work, minted only after this successful Native
+ * flush. Stored history alone cannot recreate this hot acknowledgement. */
+export interface NativeCompletedInputWorkReceiptV1 {
+  readonly schemaVersion: 1
+  readonly checkpoint: NativeDurableInputWorkReceiptV1
+  readonly turnEndSeq: number
+  readonly turnEndSha256: string
+  readonly admittedUsers: readonly {ref: NativeInputRef; userSeq: number}[]
+  readonly flushed: true
+}
+export type NativeCompletedInputWorkAcknowledgementV1 = {
+  readonly kind: 'settled'
+  readonly receiptSha256: string
+  readonly ownerReceiptSha256: string
+} | {readonly kind: 'blocked' | 'unknown'; readonly receiptSha256: string; readonly code: string}
+export type NativeInputCompletionLookupV1 = {readonly status: 'none'}
+  | {readonly status: 'pending' | 'settled' | 'blocked' | 'unknown';
+      readonly checkpoint: NativeDurableInputWorkReceiptV1;
+      readonly receipt?: NativeCompletedInputWorkReceiptV1;
+      readonly code?: string; readonly ownerReceiptSha256?: string}
 export interface NativeInputAdmissionHookV2 {
   readonly schemaVersion: 2
   admit(proposal: NativeInputProposal, signal: AbortSignal, existing?: NativeExistingInputWorkV2): Promise<
     | {kind: 'blocked'; code: string}
-    | {kind: 'allow'; identity: unknown; preparation: NativePreparationReceiptV1; ownedContinuations?: true}
+    | {kind: 'allow'; identity: unknown; preparation: NativePreparationReceiptV1;
+        ownedContinuations?: true; completedWorkRequired?: true}
     | {kind: 'resume'; identity: unknown; preparation: NativePreparationReceiptV1;
-        refs: readonly NativeInputRef[]; ownedContinuations?: true}
+        refs: readonly NativeInputRef[]; ownedContinuations?: true; completedWorkRequired?: true}
   >
   /** Checks Source/head/Preparation/stop independently of native structural proof. */
   check(input: NativeInputAdmissionCheckV2): {kind: 'allow'} | {kind: 'blocked'; code: string}
@@ -149,6 +170,11 @@ export interface NativeInputAdmissionHookV2 {
    * owner's next step; it never clears a stop latch or wakes a driver. */
   onContinuationControl?(control:NativeOwnedContinuationControlV1):void
   recognizeSupplement?(input:NativeInputSupplementProposalV1):{kind:'allow'} | {kind:'blocked';code:string}
+  /** Awaited after the unique completed turn/end and actual flush, before
+   * the next turn or idle. Never wait Agent idle. Keep awaiting this actual
+   * operation after cancellation: irreversible writes may still settle. */
+  completedWork?(receipt: NativeCompletedInputWorkReceiptV1, signal: AbortSignal):
+    Promise<NativeCompletedInputWorkAcknowledgementV1>
   /** Invoked synchronously by external cancel, including idle/disposal. Revoke
    * owner readiness before the first await, then persist the terminal stop.
    * Match the original work and cancellation generation even when admit or
@@ -200,6 +226,8 @@ export interface NativeInputAdmissionCapabilityV2 {
    * Even recoverable requires the owner's exact persisted checkpoint/credential,
    * current Source/head/token and stop checks before a recovery can be allowed. */
   lookupDurableInputWork(selector: NativeDurableInputWorkSelector): NativeDurableInputWorkLookup
+  /** Diagnostic only; neither a Source receipt nor replay permission. */
+  lookupInputCompletion(): NativeInputCompletionLookupV1
   wakePending(): NativeInputWakeResult
   wakeExistingWork(work: NativeExistingInputWorkV2): NativeInputWakeResult
 }

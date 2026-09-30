@@ -4855,6 +4855,22 @@
       "source": "lib/core/roleplay-input-continuation.js"
     },
     {
+      "id": "compat-agent-loop-input-completion-typescript",
+      "source": "development/agent-loop/src/input-completion.ts"
+    },
+    {
+      "id": "compat-agent-loop-input-completion-js",
+      "source": "development/agent-loop/lib/input-completion.js"
+    },
+    {
+      "id": "roleplay-mvu-update-typescript",
+      "source": "src/core/roleplay-mvu-update.ts"
+    },
+    {
+      "id": "roleplay-mvu-update-js",
+      "source": "lib/core/roleplay-mvu-update.js"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -5333,7 +5349,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -5432,7 +5449,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -5728,7 +5746,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7005,7 +7024,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7098,7 +7118,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7237,7 +7258,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7319,7 +7341,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7416,7 +7439,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7496,7 +7520,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7590,7 +7615,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7664,7 +7690,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7750,7 +7777,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7821,7 +7849,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7896,7 +7925,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -7972,7 +8002,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -8049,7 +8080,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -8163,7 +8195,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -8278,7 +8311,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -8348,7 +8382,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -8419,7 +8454,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -8874,7 +8910,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -8990,7 +9027,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -9058,7 +9096,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -9127,7 +9166,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -9197,7 +9237,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -9269,7 +9310,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -9563,7 +9605,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -9811,7 +9854,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -9881,7 +9925,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -11474,7 +11519,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -11546,7 +11592,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -11614,7 +11661,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -11683,7 +11731,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -12275,7 +12324,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -12452,7 +12502,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -12923,7 +12974,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -13015,7 +13067,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -18786,7 +18839,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -19136,7 +19190,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -19216,7 +19271,8 @@
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-input-continuation.ts"
+        "src/core/roleplay-input-continuation.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
     },
     {
@@ -19295,8 +19351,116 @@
         "development/agent-loop/src/runtime-context.ts",
         "development/agent-loop/src/assistant-stream.ts",
         "development/agent-loop/src/tool-calls.ts",
-        "development/agent-loop/src/constants.ts"
+        "development/agent-loop/src/constants.ts",
+        "development/agent-loop/src/input-completion.ts"
       ]
+    },
+    {
+      "inputs": [
+        "development/agent-loop/src/input-completion.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/agent-loop/src/inbox.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/session/src/index.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/assembler.ts",
+        "development/session/src/types.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/tool-history.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/seq-ranges.ts"
+      ],
+      "entry": "development/agent-loop/src/input-completion.ts",
+      "artifact": "compat-agent-loop-input-completion-js",
+      "kind": "typescript-module",
+      "id": "compat-agent-loop-input-completion-js-build",
+      "builder": "tools/build-modules.mjs",
+      "typeContext": "fork-compat"
+    },
+    {
+      "inputs": [
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "development/session/src/index.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/assembler.ts",
+        "development/session/src/types.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/tool-history.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/seq-ranges.ts"
+      ],
+      "entry": "src/core/roleplay-mvu-update.ts",
+      "artifact": "roleplay-mvu-update-js",
+      "kind": "typescript-module",
+      "id": "roleplay-mvu-update-js-build",
+      "builder": "tools/build-modules.mjs",
+      "typeContext": "default"
     }
   ],
   "typeScript": {

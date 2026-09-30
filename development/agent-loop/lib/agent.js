@@ -15,6 +15,7 @@ import { joinContextSections, renderContextSections, renderPrompt } from '@deeps
 import { ReactLoopInbox } from './inbox.js';
 import { randomUUID } from 'node:crypto';
 import { INPUT_ADMISSION_ABORT_REASON, nativeInputLink, nativeInputSha256, nativeInputWorkSha256, nativePreparationReceipt, inspectNativeInboxHistory, nativeInputStopAcknowledgement } from './input-admission.js';
+import { nativeCompletedInputReceipt, nativeCompletedInputAcknowledgement } from './input-completion.js';
 import { RuntimeContextProjection } from './runtime-context.js';
 import { AssistantStreamAttempt } from './assistant-stream.js';
 import { SystemPromptProjection } from './runtime-context.js';
@@ -99,6 +100,12 @@ export class ReactLoopAgent {
     inputStop;
     /** Retain the last owner work across a blocked driver becoming idle. */
     inputStopWork;
+    /** Independent terminal gate. An ordinary wake or acknowledged cancellation
+     * cannot turn an uncertain post-close Source write into replay permission. */
+    inputCompletion;
+    get inputCompletionBlocked() {
+        return this.inputCompletion !== undefined && this.inputCompletion.result.status !== 'settled';
+    }
     constructor(loopCtx, id, options, session) {
         this.loopCtx = loopCtx;
         this.id = id;
@@ -136,7 +143,7 @@ export class ReactLoopAgent {
     }
     send(message, target, wakeup) {
         if (wakeup && !this.inputDisposed && (!this.inputStop || this.inputStop.result.status === 'acknowledged')) {
-            if (this.inputStop)
+            if (this.inputStop && !this.inputCompletionBlocked)
                 this.inputStopWork = undefined;
             this.inputStop = undefined;
             this.inputWakeStopped = false;
@@ -250,6 +257,9 @@ export class ReactLoopAgent {
         }
     }
     lookupInputStop() { return this.inputStop?.result ?? Object.freeze({ status: 'none' }); }
+    lookupInputCompletion() {
+        return this.inputCompletion?.result ?? Object.freeze({ status: 'none' });
+    }
     async whenInputStopSettled() {
         let state;
         do {
@@ -308,6 +318,9 @@ export class ReactLoopAgent {
         const stopOwner = hook.schemaVersion === 2 ? hook.onStop : undefined;
         if (stopOwner !== undefined && typeof stopOwner !== 'function')
             throw Error('invalid native input stop hook');
+        if (hook.schemaVersion === 2 && hook.completedWork !== undefined && typeof hook.completedWork !== 'function') {
+            throw Error('invalid native completed input hook');
+        }
         const registration = { hook, active: true, ...(stopOwner ? { stopOwner: stopOwner.bind(hook) } : {}),
             ...(ownsContinuations ? { nominations: new Map(), usedTokens: new WeakSet() } : {}) };
         this.inputAdmission = registration;
@@ -334,7 +347,7 @@ export class ReactLoopAgent {
     insertOwnedContinuation(registration, message, scope) {
         const ready = () => {
             const work = this.inputStopWork;
-            return !this.inputDisposed && !this.inputStop && !this.inputWakeStopped && registration.active
+            return !this.inputDisposed && !this.inputStop && !this.inputWakeStopped && !this.inputCompletionBlocked && registration.active
                 && this.inputAdmission === registration && this.phase.kind === 'running' && !this.phase.programmatic
                 && !this.phase.abort.signal.aborted && this.phase.step >= 1 && work?.registration === registration
                 && work.ownedContinuations === true && !!work.receipt && work.receipt.actualTurn === this.phase.turn
@@ -378,7 +391,7 @@ export class ReactLoopAgent {
     wakePending() {
         if (this.inputDisposed)
             return { kind: 'disposed' };
-        if (this.inputStop || this.inputWakeStopped || this.programmaticTurnPoisoned)
+        if (this.inputStop || this.inputWakeStopped || this.programmaticTurnPoisoned || this.inputCompletionBlocked)
             return { kind: 'blocked' };
         if (!this.inbox.hasPending)
             return { kind: 'empty' };
@@ -393,7 +406,7 @@ export class ReactLoopAgent {
     wakeExistingWork(work) {
         if (this.inputDisposed)
             return { kind: 'disposed' };
-        if (this.inputStop || this.inputWakeStopped || !this.inputAdmission || work?.preparation == null
+        if (this.inputStop || this.inputWakeStopped || this.inputCompletionBlocked || !this.inputAdmission || work?.preparation == null
             || !Array.isArray(work.refs))
             return { kind: 'blocked' };
         let selected;
@@ -502,6 +515,11 @@ export class ReactLoopAgent {
             && decision.ownedContinuations === true ? true : undefined;
         if (ownedContinuations && !registration.nominations)
             return refused('INPUT_CONTINUATION_CONTROL_MISSING');
+        const completedWorkRequired = hook.schemaVersion === 2 && 'completedWorkRequired' in decision
+            && decision.completedWorkRequired === true ? true : undefined;
+        if (completedWorkRequired && (hook.schemaVersion !== 2 || !hook.completedWork || !registration.stopOwner)) {
+            return refused('INPUT_COMPLETION_CONTROL_MISSING');
+        }
         if (preparation)
             this.inputStopWork = { registration, refs: existing?.refs ?? proposal.refs, preparation,
                 ...(existing?.receipt ? { receipt: existing.receipt } : {}) };
@@ -527,7 +545,7 @@ export class ReactLoopAgent {
             if (hook.schemaVersion === 2 && !marker)
                 return refused('INPUT_LINK_INVALID_OR_OVERSIZED');
             return { kind: 'admitted', admission: { registration, proposal, identity: decision.identity, resumeProof, preparation, marker,
-                    ...(ownedContinuations ? { ownedContinuations } : {}) } };
+                    ...(ownedContinuations ? { ownedContinuations } : {}), ...(completedWorkRequired ? { completedWorkRequired } : {}) } };
         }
         if (existing)
             return refused('INPUT_EXISTING_WORK_NOT_SELECTED');
@@ -535,7 +553,7 @@ export class ReactLoopAgent {
         if (hook.schemaVersion === 2 && !marker)
             return refused('INPUT_LINK_INVALID_OR_OVERSIZED');
         return { kind: 'admitted', admission: { registration, proposal, identity: decision.identity, preparation, marker,
-                ...(ownedContinuations ? { ownedContinuations } : {}) } };
+                ...(ownedContinuations ? { ownedContinuations } : {}), ...(completedWorkRequired ? { completedWorkRequired } : {}) } };
     }
     abortInput(admission, code, stage, claim, proposal = admission.proposal) {
         this.blockInput(admission.registration, code, stage, proposal, claim);
@@ -714,7 +732,7 @@ export class ReactLoopAgent {
      * still owns durability; a partial turn is never continued by a second writer.
      */
     async commitProgrammaticAssistant(input) {
-        if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned)
+        if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inputCompletionBlocked)
             return { kind: 'busy' };
         const identity = programmaticTurnIdentity(input);
         return this.runMaintenance(async () => {
@@ -832,7 +850,7 @@ export class ReactLoopAgent {
             || new TextEncoder().encode(input.instruction).length > 65_536) {
             throw new Error('invalid programmatic generation identity or instruction');
         }
-        if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inbox.hasPending)
+        if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inputCompletionBlocked || this.inbox.hasPending)
             return { kind: 'busy' };
         const events = this.session.snapshotEvents();
         const matching = events.filter((event) => event.type === 'assistant/message' && event.data.message.id === input.messageId);
@@ -911,7 +929,7 @@ export class ReactLoopAgent {
      */
     wakeDriver(wakeAfterAbort = false) {
         if (this.programmaticTurnPoisoned || this.inputDisposed || this.inputStop
-            || this.inputAdmission?.stopOwner && this.inputWakeStopped)
+            || this.inputCompletionBlocked || this.inputAdmission?.stopOwner && this.inputWakeStopped)
             return;
         if (this.phase.kind !== 'idle') {
             // Maintenance and aborted drivers cannot deliver the wake: latch it for
@@ -966,12 +984,13 @@ export class ReactLoopAgent {
                 const blocked = this.inputAdmissionBlocked;
                 // Only a blocked owner work needs its association after driver release.
                 // A completed work must not be included in an unrelated idle stop.
-                if (!blocked)
+                if (!blocked && !this.inputCompletionBlocked)
                     this.inputStopWork = undefined;
                 this.inputAdmissionBlocked = undefined;
                 this.existingInputWork = undefined;
                 this.inputOnlyWakeLatched = false;
-                this.inputAdmission?.nominations?.clear();
+                if (!this.inputCompletionBlocked)
+                    this.inputAdmission?.nominations?.clear();
                 this.setPhase({ kind: 'idle', lastTurn: turn });
                 if (blocked) {
                     // Notify only after reservation release; never await owner recovery.
@@ -1017,6 +1036,21 @@ export class ReactLoopAgent {
                 }
                 else
                     admission = { ...previousAdmission, continuation: true };
+            }
+            else if (previousAdmission?.completedWorkRequired && target === 'next-step') {
+                let proposal;
+                try {
+                    proposal = this.inbox.propose(target);
+                }
+                catch {
+                    this.abortInput(previousAdmission, 'INPUT_OWNERSHIP_UNKNOWN', 'claim');
+                }
+                if (proposal.messages.length) {
+                    // A terminal owner cannot be replaced by re-admitting a different
+                    // work. Only its paired nominated continuation can join this turn.
+                    this.abortInput(previousAdmission, 'INPUT_COMPLETION_OWNER_CHANGED', 'claim', previousAdmission.claim, proposal);
+                }
+                admission = { ...previousAdmission, continuation: true };
             }
             else {
                 const result = await this.admitInput(target);
@@ -1105,6 +1139,74 @@ export class ReactLoopAgent {
             return false;
         return !headerEquals(baseline, canonicalHeader({ ...baseline, tools: [...tools] }));
     }
+    /** Await the actual flush and publisher, including a cancelled in-flight
+     * write. Racing abort here would release the driver before Source settles. */
+    async completeInputWork(admission, end, signal) {
+        const state = this.inputCompletion, checkpoint = admission.receipt;
+        if (!state || !checkpoint || state.registration !== admission.registration)
+            return false;
+        const fail = (code) => {
+            state.result = Object.freeze({ ...state.result, status: 'unknown', code });
+            // Notify the original owner after driver release, with its own refs.
+            // This notice reports failure; it never unlocks the terminal gate.
+            this.blockInput(admission.registration, code, 'final', admission.proposal, admission.claim);
+            return false;
+        };
+        const live = () => !signal.aborted && !this.inputStop && !this.inputDisposed
+            && admission.registration.active && this.inputAdmission === admission.registration
+            && this.inputCompletion === state;
+        if (state.result.status !== 'pending')
+            return false;
+        if (!live()) {
+            if (this.inputStop)
+                await this.whenInputStopSettled();
+            return fail('INPUT_COMPLETION_REVOKED');
+        }
+        try {
+            const flushed = await this.ctx.sessions.flush(this.session);
+            if (!live()) {
+                if (this.inputStop)
+                    await this.whenInputStopSettled();
+                return fail('INPUT_COMPLETION_REVOKED');
+            }
+            if (!flushed)
+                return fail('INPUT_COMPLETION_FLUSH_FAILED');
+            const receipt = admission.claim
+                ? nativeCompletedInputReceipt(this.session, checkpoint, admission.claim, admission.supplement, end) : undefined;
+            const hook = admission.registration.hook;
+            if (!receipt || hook.schemaVersion !== 2 || !hook.completedWork)
+                return fail('INPUT_COMPLETION_PROOF_INVALID');
+            state.result = Object.freeze({ status: 'pending', checkpoint, receipt });
+            // Never use awaitInputOperation: the owner token is synchronously revoked
+            // by onStop, but a commit already issued may still become durable.
+            const acknowledgement = await hook.completedWork(receipt, signal);
+            const checked = nativeCompletedInputAcknowledgement(acknowledgement, receipt);
+            if (!live()) {
+                if (this.inputStop)
+                    await this.whenInputStopSettled();
+                return fail('INPUT_COMPLETION_REVOKED');
+            }
+            const current = nativeCompletedInputReceipt(this.session, checkpoint, admission.claim, admission.supplement, end);
+            if (!current || nativeInputSha256(current) !== nativeInputSha256(receipt))
+                return fail('INPUT_COMPLETION_PROOF_CHANGED');
+            // The callback may have moved Source/head. Rechecking the old input
+            // currency here would incorrectly reject its own successful commit.
+            if (checked.status === 'none')
+                return fail('INPUT_COMPLETION_ACK_INVALID');
+            state.result = checked;
+            if (checked.status !== 'settled') {
+                this.blockInput(admission.registration, checked.code ?? 'INPUT_COMPLETION_BLOCKED', 'final', admission.proposal, admission.claim);
+                return false;
+            }
+            admission.registration.nominations?.clear();
+            return true;
+        }
+        catch {
+            if (this.inputStop)
+                await this.whenInputStopSettled();
+            return fail(signal.aborted ? 'INPUT_COMPLETION_REVOKED' : 'INPUT_COMPLETION_OPERATION_FAILED');
+        }
+    }
     /** Open one turn before claiming its first proposed step. */
     async turn() {
         if (this.phase.kind !== 'running') {
@@ -1112,12 +1214,15 @@ export class ReactLoopAgent {
         }
         const phase = this.phase;
         const { signal } = phase.abort;
+        if (this.inputCompletionBlocked)
+            return false;
         signal.throwIfAborted();
         const requiresAdmission = this.inputAdmission !== undefined && !phase.programmatic;
         const initial = requiresAdmission ? await this.admitInput('next-turn') : undefined;
         if (requiresAdmission && initial?.kind !== 'admitted')
             return false;
         const initialAdmission = initial?.kind === 'admitted' ? initial.admission : undefined;
+        const requiresCompletion = initialAdmission?.completedWorkRequired === true;
         signal.throwIfAborted();
         if (initialAdmission && (!initialAdmission.registration.active || this.inputAdmission !== initialAdmission.registration
             || !this.inbox.matches(initialAdmission.proposal))) {
@@ -1138,6 +1243,7 @@ export class ReactLoopAgent {
         let turnEnds = null;
         let target = 'next-turn';
         let currentAdmission = initialAdmission;
+        let capturedEnd;
         try {
             while (true) {
                 signal.throwIfAborted();
@@ -1182,6 +1288,10 @@ export class ReactLoopAgent {
                     break;
                 target = 'next-step';
             }
+            // Source/base currency remains immutable through all maintenance. After
+            // the closing publisher moves it, only its terminal receipt is checked.
+            if (requiresCompletion && currentAdmission)
+                this.checkInput(currentAdmission, []);
         }
         catch (error) {
             // A cause is present exactly while the signal is aborted.
@@ -1201,15 +1311,40 @@ export class ReactLoopAgent {
             this.throwError(error);
         }
         finally {
-            currentAdmission?.registration.nominations?.clear();
+            if (requiresCompletion && currentAdmission?.receipt) {
+                this.inputCompletion = { registration: currentAdmission.registration,
+                    result: Object.freeze({ status: turnEnds?.kind === 'completed' ? 'pending' : 'blocked',
+                        checkpoint: currentAdmission.receipt,
+                        ...(turnEnds?.kind === 'completed' ? {} : { code: 'INPUT_COMPLETION_TURN_NOT_COMPLETED' }) }) };
+                if (turnEnds?.kind !== 'completed')
+                    this.blockInput(currentAdmission.registration, 'INPUT_COMPLETION_TURN_NOT_COMPLETED', 'final', currentAdmission.proposal, currentAdmission.claim);
+            }
+            else {
+                if (requiresCompletion) {
+                    // No first checkpoint cannot be repaired by replaying a new turn.
+                    this.programmaticTurnPoisoned = true;
+                }
+                currentAdmission?.registration.nominations?.clear();
+            }
             try {
                 // oxlint-disable-next-line typescript/no-non-null-assertion -- every exit assigns a turn ending
-                this.session.append('turn/end', { turn, reason: turnEnds });
+                capturedEnd = this.session.append('turn/end', { turn, reason: turnEnds });
             }
             catch (error) {
+                if (this.inputCompletionBlocked && this.inputCompletion)
+                    this.inputCompletion.result = Object.freeze({
+                        status: 'unknown', checkpoint: this.inputCompletion.result.checkpoint, code: 'INPUT_COMPLETION_END_UNKNOWN'
+                    });
+                if (requiresCompletion && currentAdmission)
+                    this.blockInput(currentAdmission.registration, 'INPUT_COMPLETION_END_UNKNOWN', 'final', currentAdmission.proposal, currentAdmission.claim);
                 this.throwError(error);
             }
         }
+        // Outside the turn's try/finally: a failed terminal operation must never
+        // append a second end or relabel the already-completed turn as aborted.
+        if (requiresCompletion && currentAdmission
+            && !await this.completeInputWork(currentAdmission, capturedEnd, signal))
+            return false;
         if (phase.programmatic || !this.inbox.hasPending)
             return false;
         phase.abort = new AbortController();
