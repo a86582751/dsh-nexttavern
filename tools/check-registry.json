@@ -4643,6 +4643,31 @@
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
+      "id": "test:roleplay-core-process-recovery.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance",
+        "windows"
+      ],
+      "heavy": true,
+      "cache": false,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
       "id": "test:session-fork-pending-inbox.test.mts",
       "action": "test",
       "modules": [

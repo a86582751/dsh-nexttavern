@@ -5,9 +5,11 @@ import {createRequire} from 'node:module'
 import {fileURLToPath, pathToFileURL} from 'node:url'
 import path from 'node:path'
 import {createTestDirectory, cleanupTestDirectory} from '../src/operations/test-temp.mts'
+import {copyStorageJsonPackage, type StorageJsonPin} from './roleplay-core-process-storage-fixture.mts'
 
 export async function ownedPackages(units: readonly string[], extraPeers: readonly string[] = [],
-  options: {localSession?: boolean} = {}) {
+  options: {localSession?: boolean; storageJson?: boolean} = {}) {
+  if (options.storageJson && !options.localSession) throw Error('Official JSON fixture needs the isolated locked peer scope')
   const directory = createTestDirectory('owned-compat-packages-')
   const modules = path.join(directory, 'node_modules')
   const peers = fileURLToPath(new URL('../build-tools/node_modules/', import.meta.url))
@@ -16,6 +18,7 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
   // maintenance sources retain compat/. Neither layout is a Harness installation.
   const packageRoot = existsSync(new URL('../compat/', import.meta.url)) ? '../compat/' : '../development/'
   try {
+    let storageJsonPin: StorageJsonPin | undefined
     await mkdir(modules)
     for (const unit of units) {
       if (!/^[a-z]+(?:-[a-z]+)*$/.test(unit)) throw Error('Invalid owned package unit')
@@ -32,9 +35,11 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
       const lockedScope = path.join(peers, '@deepseek-ai')
       await mkdir(scope)
       for (const name of await readdir(lockedScope)) {
+        if (options.storageJson && name === 'dsh-storage-json') continue
         if (name === 'dsh-session' || name === 'dsh-session-persistence') continue
         await symlink(path.join(lockedScope, name), path.join(scope, name), 'junction')
       }
+      if (options.storageJson) storageJsonPin = await copyStorageJsonPackage(path.join(scope, 'dsh-storage-json'))
       const localSession = fileURLToPath(new URL(`${packageRoot}session/`, import.meta.url))
       for (const [name, source] of [
         ['dsh-session', localSession],
@@ -55,7 +60,7 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
     }
     const require = createRequire(path.join(directory, 'package.json'))
     return {
-      directory, require,
+      directory, require, storageJsonPin,
       load: (name: string) => import(pathToFileURL(require.resolve(name)).href),
       close: () => cleanupTestDirectory(directory),
     }

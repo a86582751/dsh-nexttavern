@@ -3033,6 +3033,10 @@
       "source": "tests/plugin-owned-packages-fixture.mts"
     },
     {
+      "id": "roleplay-core-process-storage-fixture",
+      "source": "tests/roleplay-core-process-storage-fixture.mts"
+    },
+    {
       "id": "compat-pi-ai-google-generative-ai-ts",
       "source": "development/pi-ai/src/api/google-generative-ai.ts"
     },
