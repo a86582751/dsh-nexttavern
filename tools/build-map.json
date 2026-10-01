@@ -4454,6 +4454,66 @@
         "development/session-format/lib/mvu-player-marker.js"
       ],
       "exactOptionalPropertyTypes": true
+    },
+    {
+      "artifact": "tavern-mvu-schema-types-js",
+      "source": "src/core/tavern-mvu-schema-types.ts",
+      "banner": "runtime/alpha3/src/core/tavern-mvu-schema-types.ts",
+      "primaryOutput": "lib/core/tavern-mvu-schema-types.js",
+      "outputs": [
+        "lib/core/tavern-mvu-schema-types.js",
+        "preset/lib/core/tavern-mvu-schema-types.js"
+      ]
+    },
+    {
+      "artifact": "tavern-mvu-schema-data-js",
+      "source": "src/core/tavern-mvu-schema-data.ts",
+      "banner": "runtime/alpha3/src/core/tavern-mvu-schema-data.ts",
+      "primaryOutput": "lib/core/tavern-mvu-schema-data.js",
+      "outputs": [
+        "lib/core/tavern-mvu-schema-data.js",
+        "preset/lib/core/tavern-mvu-schema-data.js"
+      ]
+    },
+    {
+      "artifact": "tavern-mvu-schema-compiler-js",
+      "source": "src/core/tavern-mvu-schema-compiler.ts",
+      "banner": "runtime/alpha3/src/core/tavern-mvu-schema-compiler.ts",
+      "primaryOutput": "lib/core/tavern-mvu-schema-compiler.js",
+      "outputs": [
+        "lib/core/tavern-mvu-schema-compiler.js",
+        "preset/lib/core/tavern-mvu-schema-compiler.js"
+      ]
+    },
+    {
+      "artifact": "tavern-mvu-schema-compiler-worker-mjs",
+      "source": "src/core/tavern-mvu-schema-compiler-worker.mts",
+      "banner": "runtime/alpha3/src/core/tavern-mvu-schema-compiler-worker.mts",
+      "primaryOutput": "lib/core/tavern-mvu-schema-compiler-worker.mjs",
+      "outputs": [
+        "lib/core/tavern-mvu-schema-compiler-worker.mjs",
+        "preset/lib/core/tavern-mvu-schema-compiler-worker.mjs"
+      ]
+    },
+    {
+      "artifact": "tavern-mvu-schema-runner-js",
+      "source": "src/core/tavern-mvu-schema-runner.ts",
+      "banner": "runtime/alpha3/src/core/tavern-mvu-schema-runner.ts",
+      "primaryOutput": "lib/core/tavern-mvu-schema-runner.js",
+      "outputs": [
+        "lib/core/tavern-mvu-schema-runner.js",
+        "preset/lib/core/tavern-mvu-schema-runner.js"
+      ]
+    },
+    {
+      "artifact": "tavern-mvu-schema-worker-mjs",
+      "source": "src/core/tavern-mvu-schema-worker.mts",
+      "banner": "runtime/alpha3/src/core/tavern-mvu-schema-worker.mts",
+      "primaryOutput": "lib/core/tavern-mvu-schema-worker.mjs",
+      "outputs": [
+        "lib/core/tavern-mvu-schema-worker.mjs",
+        "preset/lib/core/tavern-mvu-schema-worker.mjs"
+      ]
     }
   ],
   "compilerPlan": {
@@ -9153,6 +9213,54 @@
       {
         "id": "compat-session-format-lib-mvu-player-marker-js",
         "source": "development/session-format/lib/mvu-player-marker.js"
+      },
+      {
+        "id": "tavern-mvu-schema-types-typescript",
+        "source": "src/core/tavern-mvu-schema-types.ts"
+      },
+      {
+        "id": "tavern-mvu-schema-types-js",
+        "source": "lib/core/tavern-mvu-schema-types.js"
+      },
+      {
+        "id": "tavern-mvu-schema-data-typescript",
+        "source": "src/core/tavern-mvu-schema-data.ts"
+      },
+      {
+        "id": "tavern-mvu-schema-data-js",
+        "source": "lib/core/tavern-mvu-schema-data.js"
+      },
+      {
+        "id": "tavern-mvu-schema-compiler-typescript",
+        "source": "src/core/tavern-mvu-schema-compiler.ts"
+      },
+      {
+        "id": "tavern-mvu-schema-compiler-js",
+        "source": "lib/core/tavern-mvu-schema-compiler.js"
+      },
+      {
+        "id": "tavern-mvu-schema-compiler-worker-typescript",
+        "source": "src/core/tavern-mvu-schema-compiler-worker.mts"
+      },
+      {
+        "id": "tavern-mvu-schema-compiler-worker-mjs",
+        "source": "lib/core/tavern-mvu-schema-compiler-worker.mjs"
+      },
+      {
+        "id": "tavern-mvu-schema-runner-typescript",
+        "source": "src/core/tavern-mvu-schema-runner.ts"
+      },
+      {
+        "id": "tavern-mvu-schema-runner-js",
+        "source": "lib/core/tavern-mvu-schema-runner.js"
+      },
+      {
+        "id": "tavern-mvu-schema-worker-typescript",
+        "source": "src/core/tavern-mvu-schema-worker.mts"
+      },
+      {
+        "id": "tavern-mvu-schema-worker-mjs",
+        "source": "lib/core/tavern-mvu-schema-worker.mjs"
       }
     ],
     "builds": [
@@ -25530,6 +25638,299 @@
         "typeContext": "session-storage",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
         "banner": "runtime/alpha3/compat/session-format/src/mvu-player-marker.ts"
+      },
+      {
+        "id": "tavern-mvu-schema-types-js-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-mvu-schema-types-js",
+        "entry": "src/core/tavern-mvu-schema-types.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/card-adaptation-context.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/memory/memory-provenance.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "typeContext": "default",
+        "banner": "runtime/alpha3/src/core/tavern-mvu-schema-types.ts"
+      },
+      {
+        "id": "tavern-mvu-schema-data-js-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-mvu-schema-data-js",
+        "entry": "src/core/tavern-mvu-schema-data.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/card-adaptation-context.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-data.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/memory/memory-provenance.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "typeContext": "default",
+        "banner": "runtime/alpha3/src/core/tavern-mvu-schema-data.ts"
+      },
+      {
+        "id": "tavern-mvu-schema-compiler-js-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-mvu-schema-compiler-js",
+        "entry": "src/core/tavern-mvu-schema-compiler.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/card-adaptation-context.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-compiler.ts",
+          "src/core/tavern-mvu-schema-data.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/memory/memory-provenance.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "typeContext": "default",
+        "banner": "runtime/alpha3/src/core/tavern-mvu-schema-compiler.ts"
+      },
+      {
+        "id": "tavern-mvu-schema-compiler-worker-mjs-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-mvu-schema-compiler-worker-mjs",
+        "entry": "src/core/tavern-mvu-schema-compiler-worker.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/card-adaptation-context.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-compiler-worker.mts",
+          "src/core/tavern-mvu-schema-data.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/memory/memory-provenance.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "typeContext": "default",
+        "banner": "runtime/alpha3/src/core/tavern-mvu-schema-compiler-worker.mts"
+      },
+      {
+        "id": "tavern-mvu-schema-runner-js-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-mvu-schema-runner-js",
+        "entry": "src/core/tavern-mvu-schema-runner.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/card-adaptation-context.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-data.ts",
+          "src/core/tavern-mvu-schema-runner.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/memory/memory-provenance.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "typeContext": "default",
+        "banner": "runtime/alpha3/src/core/tavern-mvu-schema-runner.ts"
+      },
+      {
+        "id": "tavern-mvu-schema-worker-mjs-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-mvu-schema-worker-mjs",
+        "entry": "src/core/tavern-mvu-schema-worker.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/card-adaptation-context.ts",
+          "src/core/roleplay-card-attachment.ts",
+          "src/core/roleplay-card-workflow-types.ts",
+          "src/core/roleplay-chat-card-source.ts",
+          "src/core/roleplay-context.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-import-record.ts",
+          "src/core/roleplay-import-types.ts",
+          "src/core/roleplay-message-view.ts",
+          "src/core/roleplay-mvu-initialization.ts",
+          "src/core/roleplay-mvu-source-policy.ts",
+          "src/core/roleplay-mvu-source.ts",
+          "src/core/roleplay-mvu-update.ts",
+          "src/core/roleplay-opening-selection.ts",
+          "src/core/roleplay-resource-bridge-types.ts",
+          "src/core/roleplay-userinfo.ts",
+          "src/core/session-history.ts",
+          "src/core/tavern-card-crc.ts",
+          "src/core/tavern-card.ts",
+          "src/core/tavern-library-input.ts",
+          "src/core/tavern-library-record.ts",
+          "src/core/tavern-library.ts",
+          "src/core/tavern-model-policy.ts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-mvu-schema-data.ts",
+          "src/core/tavern-mvu-schema-runner.ts",
+          "src/core/tavern-mvu-schema-types.ts",
+          "src/core/tavern-mvu-schema-worker.mts",
+          "src/core/tavern-mvu-yaml.ts",
+          "src/core/tavern-task-context.ts",
+          "src/core/tavern-task-primitives.ts",
+          "src/core/tavern-task-retirement.ts",
+          "src/core/tavern-task-support.ts",
+          "src/core/tavern-task-types.ts",
+          "src/core/tavern-tasks.ts",
+          "src/memory/memory-provenance.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "typeContext": "default",
+        "banner": "runtime/alpha3/src/core/tavern-mvu-schema-worker.mts"
       }
     ],
     "typeScript": {
@@ -25565,6 +25966,15 @@
             ],
             "@deepseek-ai/dsh-agent-loop/*": [
               "../development/agent-loop/src/*.ts"
+            ],
+            "typescript": [
+              "./node_modules/typescript/lib/typescript.d.ts"
+            ],
+            "quickjs-emscripten-core": [
+              "./node_modules/quickjs-emscripten-core/dist/index.d.ts"
+            ],
+            "@jitl/quickjs-wasmfile-release-sync": [
+              "./node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.d.ts"
             ]
           }
         },

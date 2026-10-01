@@ -4955,6 +4955,70 @@
         "--player-yaml-proof"
       ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-schema-data",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "cache": true,
+      "timeoutMs": 180000,
+      "depends": [
+        "generated"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-schema-compiler",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "cache": true,
+      "timeoutMs": 180000,
+      "depends": [
+        "generated"
+      ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-schema-runner",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "cache": true,
+      "timeoutMs": 180000,
+      "depends": [
+        "generated"
+      ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }
