@@ -20,7 +20,7 @@ export function createRoleplayMvuNative(deps) {
             || !integer(identity.index) || !hash(identity.sourceSha256) || !hash(identity.renderedSha256))
             return undefined;
         const row = deps.readIntent(identity.sessionId, identity.source.importId);
-        if (!row || row.schemaVersion !== 3 && row.schemaVersion !== 4
+        if (!row || row.schemaVersion !== 3 && row.schemaVersion !== 4 && row.schemaVersion !== 5
             || row.status !== 'native-committed' && row.status !== 'completed' || !row.textRetained
             || !integer(row.committedTurn) || turn !== undefined && row.committedTurn !== turn
             || !same(identityOf(row), identity) || typeof row.renderedText !== 'string'
@@ -111,7 +111,7 @@ export function createRoleplayMvuNative(deps) {
                 return false;
             const importId = origin.slice('card-opening:'.length);
             const row = deps.readIntent(receipt.sessionId, importId);
-            if (!row || row.schemaVersion !== 3 && row.schemaVersion !== 4)
+            if (!row || row.schemaVersion !== 3 && row.schemaVersion !== 4 && row.schemaVersion !== 5)
                 return false;
             const observed = read(identityOf(row), receipt.turn);
             return observed.status === 'committed' && same(observed.receipt, receipt);

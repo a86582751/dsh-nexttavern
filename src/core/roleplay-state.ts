@@ -196,7 +196,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       statusSpec: T.status.get(keyOf(session.id, 'spec')) ?? null,
       statusPanel: selectedStatusRecord(session),
       statusGeneration: selectedStatusGeneration(session),
-      numericalState: numericalState?.(session.id) ?? null,
+      numericalState: await numericalState?.(session.id) ?? null,
       rules: T.rules.get(keyOf(session.id, 'spec')) ?? null,
       opening: T.opening.get(keyOf(session.id, 'scene')) ?? null,
       cardImport: activeImportRecord

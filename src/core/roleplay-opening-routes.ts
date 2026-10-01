@@ -9,9 +9,9 @@ type OpeningSelection = ReturnType<typeof createRoleplayOpeningSelection>
 const openingView = (intent: OpeningIntent) => ({
   status:intent.status,index:intent.index,operationId:intent.operationId,
   committedTurn:intent.committedTurn,rejectionCode:intent.rejectionCode,
-  ...(intent.schemaVersion === 3 || intent.schemaVersion === 4 ? {schemaVersion:intent.schemaVersion,
+  ...(intent.schemaVersion === 3 || intent.schemaVersion === 4 || intent.schemaVersion === 5 ? {schemaVersion:intent.schemaVersion,
     initializationCode:intent.initializationCode,textRetained:intent.textRetained} : {}),
-  ...(intent.schemaVersion === 4 ? {mode:intent.mode} : {}),
+  ...(intent.schemaVersion === 4 || intent.schemaVersion === 5 ? {mode:intent.mode} : {}),
 })
 
 interface OpeningRoutesDependencies {
@@ -38,7 +38,7 @@ export function registerOpeningRoutes(deps: OpeningRoutesDependencies): void {
         if (!session) return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
         const context = openingContext(session.id)
         const catalog = selection.readCatalog(session.id,context)
-        const intent = selection.readIntent(catalog.source)
+        const intent = await selection.readIntentVerified(catalog.source)
         const legacyDisplayed = legacyOpeningAlreadyRequested(session.id,catalog.source.importId)
         const priorOpening = priorOpeningInHistory(session)
         if (!body) return jsonResponse(200,{ok:true,

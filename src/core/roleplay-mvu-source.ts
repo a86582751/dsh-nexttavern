@@ -6,10 +6,10 @@ import type {ImportPointer, ImportRecord} from './roleplay-import-types.js'
 import type {OpeningCatalog, OpeningSource} from './roleplay-opening-selection.js'
 import type {TavernOpeningCandidate, TavernOpeningContext} from './tavern-card.js'
 import {selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
-import {NATIVE_MVU_SOURCE_POLICY,isNativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
+import {NATIVE_MVU_SOURCE_POLICY,isNativeMvuSourcePolicy,isNativeMvuYamlSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import {cloneSchemaData,schemaTextSha256} from './tavern-mvu-schema-data.js'
-import type {MvuJsonObject} from './tavern-mvu-initvar.js'
+import type {MvuJsonObject,SchemaMvuInitDataSource} from './tavern-mvu-initvar.js'
 import type {MvuSchemaAuthorScript} from './tavern-mvu-schema-types.js'
 export {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSourcePolicy,isNativeMvuYamlSourcePolicy}
   from './roleplay-mvu-source-policy.js'
@@ -43,6 +43,16 @@ export interface MvuSchemaAuthorSource {
   authorSourceSha256:string
 }
 export type MvuSchemaAuthorSourceDecision={kind:'author-source';source:MvuSchemaAuthorSource}
+  |{kind:'absent'}|{kind:'unsupported';diagnostics:readonly MvuSourceDiagnostic[]}
+/** Raw initialization data only. The surrounding author card is a separate
+ * schema program, so this descriptor never grants native-json permissions. */
+export type MvuSchemaOpeningInitSource=SchemaMvuInitDataSource
+export interface MvuSchemaOpeningSource {
+  authorSource:MvuSchemaAuthorSource
+  initSource:MvuSchemaOpeningInitSource
+  freshNativeBasisProof:FreshNativeBasisProof
+}
+export type MvuSchemaOpeningSourceDecision={kind:'schema-opening-source';source:MvuSchemaOpeningSource}
   |{kind:'absent'}|{kind:'unsupported';diagnostics:readonly MvuSourceDiagnostic[]}
 
 export interface MvuSourceSnapshot {
@@ -252,10 +262,16 @@ function openingBlocks(text: string, pointer: string): boolean {
   return found
 }
 
-function extensions(value: unknown, pointer: string) {
+function extensions(value: unknown, pointer: string, authorSchema=false) {
   if (value === undefined) return
   if (!isObject(value)) fail('EXTENSION_UNSUPPORTED',pointer,value)
-  requireKeys(value,['fav','talkativeness','depth_prompt'],pointer,'EXTENSION_UNSUPPORTED')
+  requireKeys(value,['fav','talkativeness','depth_prompt',...(authorSchema?['tavern_helper']:[])],pointer,'EXTENSION_UNSUPPORTED')
+  if(authorSchema&&value.tavern_helper!==undefined) {
+    if(!isObject(value.tavern_helper))fail('EXTENSION_UNSUPPORTED',pointer)
+    // Script effects are preserved in authorSource and admitted by the actual
+    // compiler/guest. Unimplemented helper buttons/variables cannot be dropped.
+    requireKeys(value.tavern_helper,['scripts'],pointer,'EXTENSION_UNSUPPORTED')
+  }
   if (value.fav !== undefined && typeof value.fav !== 'boolean') fail('EXTENSION_UNSUPPORTED',pointer,value)
   if (value.talkativeness !== undefined && (typeof value.talkativeness !== 'number'
     || !Number.isFinite(value.talkativeness))) fail('EXTENSION_UNSUPPORTED',pointer,value)
@@ -374,13 +390,13 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       data:decoded.data,context:context.context,candidates,rows,activationRows}
   }
 
-  const classify = (captured: Captured) => {
+  const classify = (captured: Captured, authorSchema=false) => {
     const {data,context,snapshot} = captured
     if (captured.document !== data) requireKeys(captured.document,['spec','spec_version','data'],'/document','FIELD_UNSUPPORTED')
     requireKeys(data,['name','description','personality','scenario','first_mes','mes_example','system_prompt',
       'post_history_instructions','creator_notes','tags','creator','character_version','alternate_greetings',
       'extensions','character_book'],'/data','FIELD_UNSUPPORTED')
-    extensions(data.extensions,'/data/extensions')
+    extensions(data.extensions,'/data/extensions',authorSchema)
     const depthPrompt = (data.extensions as JsonObject | undefined)?.depth_prompt as JsonObject | undefined
     if (depthPrompt) render(depthPrompt.prompt as string,context,false)
     for (const [key,value] of Object.entries(data)) {
@@ -464,7 +480,9 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
           if (/^(?:stat_data|statData|mvu_data|mvu|state|opaqueState|variables|schema|scripts?|callbacks?)$/i.test(key)
             || /^(?:card_agent|chaoshen_jixieshi|risuai)$/.test(key)
             || key.startsWith('$')) fail('STATE_SYNTAX_UNSUPPORTED','/settings')
-          if (key === 'extensions') extensions(child,'/settings/extensions')
+          if(authorSchema&&key==='tavern_helper'&&isObject(data.extensions)
+            &&same(child,data.extensions.tavern_helper))continue
+          if (key === 'extensions') extensions(child,'/settings/extensions',authorSchema)
           walk(child)
         }
       }
@@ -574,9 +592,8 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       return same(snapshot,withPolicy(actual.snapshot,classify(actual).policy))
     } catch { return false }
   }
-  function readAuthorSource(sessionId:string,selectedIndex:number):MvuSchemaAuthorSourceDecision {
+  function authorSourceOf(captured:Captured):MvuSchemaAuthorSourceDecision {
     try {
-      const captured=capture(sessionId,selectedIndex)
       const extension=captured.data.extensions
       if(extension===undefined)return {kind:'absent'}
       if(!isObject(extension))fail('EXTENSION_UNSUPPORTED','/extensions')
@@ -615,6 +632,55 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         ?error.diagnostic:{code:'SOURCE_INVALID',pointer:'/source'}]}
     }
   }
+  function readAuthorSource(sessionId:string,selectedIndex:number):MvuSchemaAuthorSourceDecision {
+    try {return authorSourceOf(capture(sessionId,selectedIndex))}
+    catch(error) {return {kind:'unsupported',diagnostics:[error instanceof SourceFailure
+      ?error.diagnostic:{code:'SOURCE_INVALID',pointer:'/source'}]}}
+  }
+  function schemaOpeningData(captured:Captured) {
+    const author=authorSourceOf(captured)
+    if(author.kind!=='author-source')return author
+    if(!author.source.scripts.some(script=>script.enabled))return {kind:'absent' as const}
+    const {entries,policy}=classify(captured,true)
+    const primary=captured.snapshot.bindings.primary
+    const body={schemaVersion:1 as const,encoding:'native-mvu-schema-opening-init-source-v1' as const,
+      grammar:isNativeMvuYamlSourcePolicy(policy)?'yaml-1.2-json-data-v1' as const:'strict-json-object-v1' as const,
+      books:primary?[{identity:'embedded-primary',binding:'primary' as const,sourcePointer:primary.pointer,
+        sourceSha256:primary.sha256,entries}]:[],
+      bookStatData:{},initializedBooks:[] as [],messageIndex:0 as const,
+      selectedSwipeIdentity:`swipe-${captured.snapshot.selected.index}`,
+      swipes:captured.candidates.map(item=>({identity:`swipe-${item.index}`,sourcePointer:item.sourcePointer,
+        sourceSha256:item.sourceSha256,rawOpening:item.rawText,renderedOpening:item.renderedText,
+        renderedSha256:sha(item.renderedText),statData:{}})),
+      macros:captured.snapshot.macroContext.used?'verified-identity-rendering' as const:'none' as const}
+    const initSource:MvuSchemaOpeningInitSource={...body,initSourceSha256:recordSha256(body)}
+    return {kind:'schema-opening-data' as const,authorSource:author.source,initSource}
+  }
+  function readSchemaOpeningSource(request:MvuSourceRequest):MvuSchemaOpeningSourceDecision {
+    try {
+      const captured=capture(request.catalog.source.sessionId,request.candidate.index)
+      if(!same(captured.snapshot.source,request.catalog.source)||!same(captured.candidates,request.catalog.candidates)
+        ||!same(captured.candidates.find(item=>item.index===request.candidate.index),request.candidate)) {
+        fail('SOURCE_CHANGED','/selected')
+      }
+      const data=schemaOpeningData(captured)
+      if(data.kind!=='schema-opening-data')return data
+      const {proof}=fresh(captured.snapshot)
+      return {kind:'schema-opening-source',source:{authorSource:data.authorSource,initSource:data.initSource,
+        freshNativeBasisProof:proof}}
+    } catch(error) {return {kind:'unsupported',diagnostics:[error instanceof SourceFailure
+      ?error.diagnostic:{code:'SOURCE_INVALID',pointer:'/source'}]}}
+  }
+  function schemaOpeningSourceCurrent(expected:{authorSourceSha256:string;
+    sourceSnapshot:MvuSchemaAuthorSource['snapshot'];initSource:MvuSchemaOpeningInitSource}):boolean {
+    try {
+      // Do not recapture an empty basis after our own dispatch/opening writes.
+      // Original fresh-basis and current Native publication have distinct owners.
+      const data=schemaOpeningData(capture(expected.sourceSnapshot.source.sessionId,expected.sourceSnapshot.selected.index))
+      return data.kind==='schema-opening-data'&&data.authorSource.authorSourceSha256===expected.authorSourceSha256
+        &&same(data.authorSource.snapshot,expected.sourceSnapshot)&&same(data.initSource,expected.initSource)
+    } catch {return false}
+  }
   function authorSourceCurrent(expected:MvuSchemaAuthorSource):boolean {
     try {
       const saved=cloneSchemaData(expected,8*MAX_BYTES)
@@ -622,5 +688,5 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       return actual.kind==='author-source'&&same(saved,actual.source)
     } catch {return false}
   }
-  return {produce,current,readAuthorSource,authorSourceCurrent}
+  return {produce,current,readAuthorSource,authorSourceCurrent,readSchemaOpeningSource,schemaOpeningSourceCurrent}
 }

@@ -79,4 +79,6 @@ export interface BranchRoutesDependencies extends Pick<Worldlines,
   /** Freeze numerical prefix facts inside the Native reservation callback,
    * before child publication; never hold a Source lock across forkPrepared. */
   prepareDerivedBasis?(operation: StoredBranchOperation, reservation: ForkReservation): Promise<void>
+  /** Refuse before any Native child/reservation or plain-branch fallback. */
+  numericalForkBlockCode?(sessionId:string):string|undefined
 }

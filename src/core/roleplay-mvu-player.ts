@@ -27,6 +27,8 @@ export interface MvuPlayerDeps {
   withSourceLock<T>(sid:string,work:()=>Promise<T>):Promise<T>
   flush(session:Session):Promise<boolean>
   markers:typeof mvuPlayerMarkers
+  /** Schema readonly genesis cannot borrow the old pure-JSONPatch writer. */
+  writeBlockCode?(sid:string):string|undefined
 }
 interface Lease {
   session:Session
@@ -175,6 +177,8 @@ export function createRoleplayMvuPlayer(deps:MvuPlayerDeps) {
   async function submit(input:unknown):Promise<MvuPlayerEditResponse> {
     let request:MvuPlayerEditRequest
     try {request=readMvuPlayerRequest(input)} catch(error) {const code=codeOf(error);return {ok:false,code,error:code}}
+    const writeBlock=deps.writeBlockCode?.(request.sessionId)
+    if(writeBlock)return response(request,'unknown',false,writeBlock)
     const session=deps.session(request.sessionId)
     if(!session)return response(request,'unknown',false,'MVU_PLAYER_SESSION_INACTIVE')
     const opKey=mvuPlayerOperationKey(session.id,request.operationId),old=deps.branch.get(opKey)

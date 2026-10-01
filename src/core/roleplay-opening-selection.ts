@@ -9,6 +9,8 @@ import type {
   FrozenMvuOpeningInitializationV1, FrozenMvuOpeningInitializationV2,
 } from './roleplay-mvu-initialization.js'
 import type {MvuAbsenceScopeProof, MvuSourceSnapshot, MvuSourceCode} from './roleplay-mvu-source.js'
+import {validateMvuSchemaOpeningIntent,freezeMvuSchemaOpeningData} from './roleplay-mvu-schema-opening-types.js'
+import type {OpeningIntentV5,SchemaOpeningSelectionAdapter,SchemaOpeningRequest} from './roleplay-mvu-schema-opening-types.js'
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
 const validHash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
@@ -35,7 +37,7 @@ const isRejectionCode = (value: unknown): value is OpeningRejectionCode =>
   || value === 'PROGRAMMATIC_MISSING_SYSTEM_HEAD'
   || value === 'PROGRAMMATIC_UNATTRIBUTED_FAILURE'
   || value === 'PROGRAMMATIC_INCOMPLETE_TURN'
-interface OpeningIntentIdentity {
+export interface OpeningIntentIdentity {
   readonly sessionId: string
   readonly source: OpeningSource
   readonly index: number
@@ -85,7 +87,8 @@ export interface OpeningIntentV4 extends Omit<OpeningIntentV3, 'schemaVersion' |
   readonly absenceScopeProof?: MvuAbsenceScopeProof
 }
 export type OpeningInitializedIntent = OpeningIntentV3 | OpeningIntentV4
-export type OpeningIntent = OpeningIntentV2 | OpeningInitializedIntent
+type LegacyOpeningIntent = OpeningIntentV2 | OpeningInitializedIntent
+export type OpeningIntent = LegacyOpeningIntent | OpeningIntentV5
 export type OpeningInitializationPreparation = MvuOpeningPreparation
   | {kind:'legacy-v2'; absenceScopeProof:MvuAbsenceScopeProof}
 export type OpeningNativeReadiness = {kind:'ready';receipt:MvuNativeOpeningReceipt}
@@ -128,6 +131,7 @@ export interface OpeningSelectionDeps {
   readonly readNativeOpening?: (intent: OpeningIntentV4) => OpeningNativeReadiness
   /** New Core may deny another append for historical v2 pending intents whose source is not proven plain. */
   readonly legacyPendingAllowed?: (intent: OpeningIntentV2) => boolean
+  readonly schemaOpening?: SchemaOpeningSelectionAdapter
 }
 
 const initializationCodes = new Set<OpeningInitializationCode>([
@@ -325,8 +329,13 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   }
   type BusyResult = {status: 'busy'; intent: OpeningIntent}
   type FinishWork = {finish: OpeningInitializedIntent}
-  type LockedResult = OpeningIntent | BusyResult | FinishWork
+  type LockedResult = LegacyOpeningIntent | BusyResult | FinishWork
   const checkIntent = (intent: OpeningIntent, sessionId: string, importId: string) => {
+    if (intent.schemaVersion === 5) {
+      if (intent.sessionId !== sessionId || intent.source?.importId !== importId) throw new Error('未知或损坏的开场选择 schema')
+      validateMvuSchemaOpeningIntent(intent)
+      return
+    }
     if ((intent.schemaVersion === 3 || intent.schemaVersion === 4) && initializationEnabled) {
       if (intent.sessionId !== sessionId || intent.source?.importId !== importId) throw new Error('未知或损坏的开场选择 schema')
       if (intent.schemaVersion === 4) requireV4Deps()
@@ -342,7 +351,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       throw new Error('开场来源证明与原生回执依赖必须完整提供')
     }
   }
-  const sourceCurrent = (intent: OpeningIntent): boolean => {
+  const sourceCurrent = (intent: LegacyOpeningIntent): boolean => {
     if (!current(intent.source)) return false
     if (intent.schemaVersion !== 4 || intent.mode === 'unsupported') return true
     const snapshot = intent.mode === 'plain' ? intent.absenceScopeProof!.sourceSnapshot : intent.initialization!.sourceSnapshot
@@ -379,6 +388,12 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   }
   const readIntent = (source: OpeningSource): OpeningIntent | null => {
     const intent = deps.table.get(openingIntentKey(source.sessionId, source.importId)) as OpeningIntent | undefined
+    if (intent?.schemaVersion === 5) {
+      if (!current(source) || !sameRecord(intent.source,source)) return null
+      const checked = validateMvuSchemaOpeningIntent(intent)
+      return deps.schemaOpening?.readIntent(source) ?? freezeMvuSchemaOpeningData({...checked,status:'blocked' as const,
+        initializationCode:'SCHEMA_HISTORY_UNVERIFIED'})
+    }
     if (intent && current(source) && ![2,3,4].includes(intent.schemaVersion)) throw new Error('未知或损坏的开场选择 schema')
     if (intent?.schemaVersion === 4 && !initializationEnabled) throw new Error('当前入口不能读取带来源证明的开场')
     if (!intent || !current(source) || ![2, ...(initializationEnabled ? [3,4] : [])].includes(intent.schemaVersion)
@@ -392,22 +407,22 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     }
     return intent
   }
-  const complete = async (key: string, intent: OpeningIntent, turn: number): Promise<OpeningIntent> => {
+  const complete = async (key: string, intent: LegacyOpeningIntent, turn: number): Promise<LegacyOpeningIntent> => {
     if (!Number.isSafeInteger(turn) || turn < 0) throw new Error('原生开场缺少 durable turn')
     const {rejectionCode: _previousRejection, ...retained} = intent
-    const next: OpeningIntent = intent.schemaVersion !== 2
+    const next: LegacyOpeningIntent = intent.schemaVersion !== 2
       ? {...retained as OpeningInitializedIntent, status:'native-committed', revision:intent.revision + 1, committedTurn:turn}
       : {...retained as OpeningIntentV2, status:'completed', revision:intent.revision + 1, committedTurn:turn}
     await deps.table.put(key, next)
     return next
   }
-  const committedResult = (intent: OpeningIntent): OpeningIntent | FinishWork => intent.schemaVersion !== 2
+  const committedResult = (intent: LegacyOpeningIntent): LegacyOpeningIntent | FinishWork => intent.schemaVersion !== 2
     ? {finish: structuredClone(intent)} : intent
   const legacyAllowed = (intent: OpeningIntentV2): boolean => {
     if (!deps.legacyPendingAllowed) return true
     try { return deps.legacyPendingAllowed(intent) === true } catch { return false }
   }
-  const append = async (key: string, intent: OpeningIntent): Promise<LockedResult> => {
+  const append = async (key: string, intent: LegacyOpeningIntent): Promise<LockedResult> => {
     if (intent.schemaVersion === 2 && !legacyAllowed(intent)) return {status:'busy',intent:{...intent,status:'unknown'}}
     if (intent.schemaVersion !== 2 && !sourceCurrent(intent)) return {status:'busy',intent:blockedProjection(intent,'SOURCE_CHANGED')}
     let result: OpeningAppendResult
@@ -424,7 +439,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     // A newer busy/uncertain receipt supersedes the previous refusal. Only the
     // native diagnosis codes may persist; arbitrary adapter text may not.
     const {rejectionCode: _previousRejection, ...retained} = intent
-    const next: OpeningIntent = {...retained, status:result.kind, revision:intent.revision + 1,
+    const next: LegacyOpeningIntent = {...retained, status:result.kind, revision:intent.revision + 1,
       ...(result.kind === 'unknown' && isRejectionCode(result.code) ? {rejectionCode:result.code} : {})}
     await deps.table.put(key, next)
     return {status:'busy', intent:next}
@@ -546,10 +561,10 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       return completedProjection(next)
     })
   }
-  const diagnose = async (key: string, intent: OpeningIntent, found: OpeningLookupResult): Promise<OpeningIntent> => {
+  const diagnose = async (key: string, intent: LegacyOpeningIntent, found: OpeningLookupResult): Promise<LegacyOpeningIntent> => {
     if (found.status !== 'unknown' || !isRejectionCode(found.code)
       || intent.status === 'unknown' && intent.rejectionCode === found.code) return intent
-    const next: OpeningIntent = {...intent,status:'unknown',rejectionCode:found.code,revision:intent.revision + 1}
+    const next: LegacyOpeningIntent = {...intent,status:'unknown',rejectionCode:found.code,revision:intent.revision + 1}
     // A diagnostic refresh must not turn a successful native lookup into a
     // storage failure. Retain the last durable intent if annotation cannot save.
     try { await deps.table.put(key,next); return next }
@@ -557,6 +572,19 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   }
   const select = async (sessionId: string, index: number, operationId: string,
     context: TavernOpeningContext = {}): Promise<OpeningIntent | BusyResult> => {
+    // The Source probe is synchronous. Schema maintenance/guest/Native lookup
+    // awaits belong to the separate transaction outside this legacy lock.
+    if (deps.schemaOpening) {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(operationId)) throw new Error('无效的 operationId')
+      const catalog=readCatalog(sessionId,context),candidate=catalog.candidates.find(item=>item.index===index)
+      if (!candidate) throw new Error('开场候选不存在')
+      const request:SchemaOpeningRequest={catalog,candidate,renderedText:candidate.renderedText,
+        identity:{sessionId,source:catalog.source,index,sourcePointer:candidate.sourcePointer,
+          sourceSha256:candidate.sourceSha256,renderedSha256:hash(candidate.renderedText),operationId,
+          messageId:`opening-${hash(`${sessionId}\0${catalog.source.importId}\0${operationId}`).slice(0,32)}`}}
+      const previous=deps.table.get(openingIntentKey(sessionId,catalog.source.importId)) as OpeningIntent | undefined
+      if (previous?.schemaVersion===5 || deps.schemaOpening.handles(request)) return deps.schemaOpening.select(request)
+    }
     const result: LockedResult = await deps.withLock(`opening-choice:${sessionId}`, async () => {
       if (!/^[a-zA-Z0-9_-]{1,128}$/.test(operationId)) throw new Error('无效的 operationId')
       const catalog = readCatalog(sessionId, context)
@@ -567,6 +595,9 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       const previous = deps.table.get(key) as OpeningIntent | undefined
       if (previous) {
         checkIntent(previous, sessionId, catalog.source.importId)
+        if (previous.schemaVersion === 5) return {status:'busy' as const,
+          intent:readIntent(catalog.source) ?? freezeMvuSchemaOpeningData({...previous,status:'blocked' as const,
+            initializationCode:'SCHEMA_HISTORY_UNVERIFIED'})}
         if (previous.operationId !== operationId || previous.index !== index
           || previous.sourceSha256 !== candidate.sourceSha256
           || !samePointer(previous.source.pointer, catalog.source.pointer)
@@ -603,7 +634,7 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
         renderedSha256:hash(candidate.renderedText), renderedText:candidate.renderedText,
         messageId:`opening-${hash(`${sessionId}\0${catalog.source.importId}\0${operationId}`).slice(0,32)}`,
         operationId, revision:1}
-      let intent: OpeningIntent
+      let intent: LegacyOpeningIntent
       if (!initializationEnabled) intent = {schemaVersion:2, ...identity, status:'pending'}
       else {
         let preparation: OpeningInitializationPreparation | undefined
@@ -661,11 +692,14 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     return completed.status === 'completed' ? completed : {status:'busy', intent:completed}
   }
   const recover = async (sessionId: string, importId: string): Promise<OpeningIntent | null> => {
+    const saved=deps.table.get(openingIntentKey(sessionId,importId)) as OpeningIntent | undefined
+    if (saved?.schemaVersion===5) return readIntentVerified(saved.source)
     const result: OpeningIntent | FinishWork | null = await deps.withLock(`opening-choice:${sessionId}`, async () => {
       const key = openingIntentKey(sessionId, importId)
       const intent = deps.table.get(key) as OpeningIntent | undefined
       if (!intent) return null
       checkIntent(intent, sessionId, importId)
+      if (intent.schemaVersion===5) return readIntent(intent.source)
       if (!current(intent.source)) return intent.schemaVersion === 4 ? blockedProjection(intent,'SOURCE_CHANGED') : null
       if (intent.schemaVersion !== 2) {
         if (intent.status === 'blocked') return intent
@@ -687,5 +721,11 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     })
     return result && 'finish' in result ? finish(result.finish) : result
   }
-  return {readCatalog, readIntent, select, recover}
+  const readIntentVerified = async (source:OpeningSource):Promise<OpeningIntent|null> => {
+    const intent=deps.table.get(openingIntentKey(source.sessionId,source.importId)) as OpeningIntent | undefined
+    if (intent?.schemaVersion!==5 || !deps.schemaOpening) return readIntent(source)
+    const ready=await deps.schemaOpening.readVerified(source)
+    return ready.kind==='ready'?ready.intent:ready.intent??readIntent(source)
+  }
+  return {readCatalog, readIntent, readIntentVerified, select, recover}
 }

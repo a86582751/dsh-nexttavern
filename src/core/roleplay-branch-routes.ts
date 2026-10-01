@@ -11,7 +11,7 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
     assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget,
     locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey,
     requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText,
-    prepareDerivedBasis} = deps
+    prepareDerivedBasis,numericalForkBlockCode} = deps
   const readOperation=(key: string)=>cloneBranchRecord(T.branch.get(key)) as StoredBranchOperation | undefined
   const updateOperation=(key: string,work: (current: StoredBranchOperation | undefined) => object)=>T.branch.update(key,current=>work(current as StoredBranchOperation | undefined)) as PromiseLike<StoredBranchOperation>
   async function publishWorldlineSelection(operation: StoredBranchOperation,child: BranchRouteSession) {
@@ -110,6 +110,11 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
           try {
             const body = await request.json() as BranchRouteBody
             const action = String(body?.action ?? '')
+            if(['prepare','generate-opening','register'].includes(action)) {
+              const source=await resolveRoleplaySession(body.sessionId)
+              const code=source&&numericalForkBlockCode?.(source.id)
+              if(code)return jsonResponse(409,{ok:false,code,error:'该角色卡的数值世界线尚不能复制'})
+            }
             if(action==='select-worldline') {
               const session=await resolveRoleplaySession(body.sessionId),catalog=ctx.get('tavernConversations')
               if(!session||!catalog)return jsonResponse(404,{ok:false,error:'酒馆会话尚未就绪'})
@@ -124,6 +129,8 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
               if(operation.state==='failed'||operation.state==='aborted'||operation.abortedAt||Date.now()>operation.expiresAt)throw new Error('世界线操作已经失效，请重新发起')
               const source=await resolveRoleplaySession(operation.anchor.sourceSessionId)
               if(!source)throw new Error('源角色扮演会话不可用')
+              const numericalBlock=numericalForkBlockCode?.(source.id)
+              if(numericalBlock)return jsonResponse(409,{ok:false,code:numericalBlock,error:'该角色卡的数值世界线尚不能复制'})
               assertStoryBranchActive(source)
               await catalog.ready
               const failReservation=async(childId: string | null)=>{

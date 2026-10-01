@@ -42,6 +42,7 @@ export interface StateDependencies extends StateWorldlines {
   importSummary(record: ImportRecord): Record<string, unknown>
   chatImportProjection?(session:StateSession,record:ImportRecord):Record<string,unknown> | null
   numericalState?(sessionId:string):import('./roleplay-mvu-player-types.js').MvuStateObservation
+    |Promise<import('./roleplay-mvu-player-types.js').MvuStateObservation>
   preparationRecordKey(id: string): string
   tavernTasks: ReturnType<typeof createRoleplayTaskHost>['tavernTasks']
   memoryForContext(session: StateSession): unknown

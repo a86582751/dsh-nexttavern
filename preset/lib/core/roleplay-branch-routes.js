@@ -5,7 +5,7 @@ import { eventsOf, surfaceEvents } from './roleplay-context.js';
 import { jsonResponse } from './roleplay-state.js';
 import { activeOpeningSource } from './roleplay-import.js';
 export function registerBranchRoutes(deps) {
-    const { ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText, prepareDerivedBasis } = deps;
+    const { ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText, prepareDerivedBasis, numericalForkBlockCode } = deps;
     const readOperation = (key) => cloneBranchRecord(T.branch.get(key));
     const updateOperation = (key, work) => T.branch.update(key, current => work(current));
     async function publishWorldlineSelection(operation, child) {
@@ -108,6 +108,12 @@ export function registerBranchRoutes(deps) {
             try {
                 const body = await request.json();
                 const action = String(body?.action ?? '');
+                if (['prepare', 'generate-opening', 'register'].includes(action)) {
+                    const source = await resolveRoleplaySession(body.sessionId);
+                    const code = source && numericalForkBlockCode?.(source.id);
+                    if (code)
+                        return jsonResponse(409, { ok: false, code, error: '该角色卡的数值世界线尚不能复制' });
+                }
                 if (action === 'select-worldline') {
                     const session = await resolveRoleplaySession(body.sessionId), catalog = ctx.get('tavernConversations');
                     if (!session || !catalog)
@@ -127,6 +133,9 @@ export function registerBranchRoutes(deps) {
                         const source = await resolveRoleplaySession(operation.anchor.sourceSessionId);
                         if (!source)
                             throw new Error('源角色扮演会话不可用');
+                        const numericalBlock = numericalForkBlockCode?.(source.id);
+                        if (numericalBlock)
+                            return jsonResponse(409, { ok: false, code: numericalBlock, error: '该角色卡的数值世界线尚不能复制' });
                         assertStoryBranchActive(source);
                         await catalog.ready;
                         const failReservation = async (childId) => {

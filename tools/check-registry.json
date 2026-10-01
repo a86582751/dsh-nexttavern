@@ -5129,6 +5129,75 @@
         "service": false
       },
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-schema-initdata",
+      "timeoutMs": 60000,
+      "inputs": [],
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "cache": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-schema-opening",
+      "timeoutMs": 240000,
+      "inputs": [],
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "cache": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-schema-core",
+      "timeoutMs": 300000,
+      "inputs": [],
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "cache": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }

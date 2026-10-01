@@ -61,6 +61,8 @@ export interface RulesRecord extends Record<string, unknown> {
 }
 export interface ImportPointer {
   importId: string
+  /** Actual activation transaction stamp, retained in source hashes. */
+  activatedAt?: number
   sourceRecordSessionId?: string
   normalizedSha256?: string
   transactionId?: string

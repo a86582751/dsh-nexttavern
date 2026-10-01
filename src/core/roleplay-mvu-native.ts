@@ -2,6 +2,7 @@ import {recordSha256, sha256} from './roleplay-data.js'
 import {sessionEvents} from './session-history.js'
 import type {MvuNativeOpeningReceipt, MvuOpeningIdentity} from './roleplay-mvu-initialization.js'
 import type {OpeningIntent, OpeningInitializedIntent} from './roleplay-opening-selection.js'
+import type {OpeningIntentV5} from './roleplay-mvu-schema-opening-types.js'
 import type {ReadBranchSession, StoryEvent, WorldlineMessageEdits} from './roleplay-worldline-types.js'
 
 export interface RoleplayMvuNativeDeps {
@@ -20,7 +21,8 @@ const integer = (value:unknown):value is number => typeof value === 'number' && 
 const hash = (value:unknown):value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 const sourceOf = (event:StoryEvent) => event.data?.message?.source as Record<string,unknown> | undefined
 const programmaticOf = (event:StoryEvent) => event.data?.['programmatic'] as Record<string,unknown> | undefined
-const identityOf = (row:OpeningInitializedIntent):MvuOpeningIdentity => ({sessionId:row.sessionId,source:row.source,
+type NativeOpeningIntent=OpeningInitializedIntent|OpeningIntentV5
+const identityOf = (row:NativeOpeningIntent):MvuOpeningIdentity => ({sessionId:row.sessionId,source:row.source,
   operationId:row.operationId,messageId:row.messageId,index:row.index,sourcePointer:row.sourcePointer,
   sourceSha256:row.sourceSha256,renderedSha256:row.renderedSha256})
 
@@ -28,11 +30,11 @@ const identityOf = (row:OpeningInitializedIntent):MvuOpeningIdentity => ({sessio
  * check; this receipt does not encode the entire old Source identity. No cached
  * message projection, id/text match or flush flag replaces the original events. */
 export function createRoleplayMvuNative(deps:RoleplayMvuNativeDeps) {
-  function intent(identity:MvuOpeningIdentity,turn?:number):OpeningInitializedIntent | undefined {
+  function intent(identity:MvuOpeningIdentity,turn?:number):NativeOpeningIntent | undefined {
     if (!identity || !identity.source || identity.source.sessionId !== identity.sessionId
       || !integer(identity.index) || !hash(identity.sourceSha256) || !hash(identity.renderedSha256)) return undefined
     const row = deps.readIntent(identity.sessionId,identity.source.importId)
-    if (!row || row.schemaVersion !== 3 && row.schemaVersion !== 4
+    if (!row || row.schemaVersion !== 3 && row.schemaVersion !== 4 && row.schemaVersion !== 5
       || row.status !== 'native-committed' && row.status !== 'completed' || !row.textRetained
       || !integer(row.committedTurn) || turn !== undefined && row.committedTurn !== turn
       || !same(identityOf(row),identity) || typeof row.renderedText !== 'string'
@@ -108,7 +110,7 @@ export function createRoleplayMvuNative(deps:RoleplayMvuNativeDeps) {
       if (typeof origin !== 'string' || !origin.startsWith('card-opening:')) return false
       const importId = origin.slice('card-opening:'.length)
       const row = deps.readIntent(receipt.sessionId,importId)
-      if (!row || row.schemaVersion !== 3 && row.schemaVersion !== 4) return false
+      if (!row || row.schemaVersion !== 3 && row.schemaVersion !== 4 && row.schemaVersion !== 5) return false
       const observed = read(identityOf(row),receipt.turn)
       return observed.status === 'committed' && same(observed.receipt,receipt)
     } catch {return false}

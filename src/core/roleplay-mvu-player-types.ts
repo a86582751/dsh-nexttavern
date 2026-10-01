@@ -9,6 +9,8 @@ export type MvuStateObservation = {
   observedNativeSeq: number
 } & (
   | {kind: 'ready'; snapshot: MvuNumericalSnapshot; canEdit: boolean; editBlockCode?: string}
+  | {kind:'schema-ready';values:MvuJsonObject;valuesSha256:string;sourceSha256:string;eventId:string;
+    canEdit:false;editBlockCode:'SCHEMA_MANUAL_NOT_ENABLED'}
   | {kind: 'blocked' | 'unknown'; code: string; canEdit: false}
 )
 

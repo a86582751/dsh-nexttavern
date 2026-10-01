@@ -4,6 +4,7 @@ interface Dependencies {
   ctx:{effect(work:()=>unknown,label?:string):unknown;connection:{fetch:{register(route:unknown):unknown}}}
   resolveRoleplaySession(id:unknown):Promise<{id:string}|null|undefined>
   player:ReturnType<typeof createRoleplayMvuPlayer>
+  observe?(sid:string):Promise<import('./roleplay-mvu-player-types.js').MvuStateObservation>
 }
 const statusFor=(code:string|undefined)=>!code?200:code==='MVU_PLAYER_DATA_LIMIT'?413
   :code==='MVU_PLAYER_DATA_INVALID'?400:code==='MVU_PLAYER_SESSION_INACTIVE'?404
@@ -12,7 +13,7 @@ const statusFor=(code:string|undefined)=>!code?200:code==='MVU_PLAYER_DATA_LIMIT
 
 /** The session resolver supplies the actual current owner. Expected hashes are
  * comparison data; the client cannot supply a receipt, intent or write token. */
-export function registerMvuPlayerRoutes({ctx,resolveRoleplaySession,player}:Dependencies):void {
+export function registerMvuPlayerRoutes({ctx,resolveRoleplaySession,player,observe}:Dependencies):void {
   ctx.effect(()=>ctx.connection.fetch.register({requestBody:'buffered',path:'/api/roleplay/mvu-state',methods:['GET','POST'],
     fetch:async(request:Request)=>{
       try {
@@ -26,7 +27,7 @@ export function registerMvuPlayerRoutes({ctx,resolveRoleplaySession,player}:Depe
         catch {return jsonResponse(400,{ok:false,code:'MVU_PLAYER_DATA_INVALID',error:'数值请求格式无效'})}
         const session=await resolveRoleplaySession(body?.sessionId??url.searchParams.get('sessionId'))
         if(!session)return jsonResponse(404,{ok:false,code:'MVU_PLAYER_SESSION_INACTIVE',error:'角色扮演会话不存在'})
-        if(text===undefined)return jsonResponse(200,{ok:true,numericalState:player.observe(session.id)})
+        if(text===undefined)return jsonResponse(200,{ok:true,numericalState:observe?await observe(session.id):player.observe(session.id)})
         const result=await player.submit(body)
         return jsonResponse(statusFor(result.code),result)
       } catch {return jsonResponse(503,{ok:false,code:'MVU_PLAYER_WRITE_UNKNOWN',error:'暂时无法确认数值，请保留当前修改并重试'})}

@@ -83,10 +83,11 @@ import {createCardAttachmentSources} from './roleplay-card-attachment.js'
 import {createChatCardSources} from './roleplay-chat-card-source.js'
 import {createChatCardNativeContext} from './roleplay-chat-card-context.js'
 import {createRoleplayOpeningSelection,openingIntentKey} from './roleplay-opening-selection.js'
-import type {OpeningIntent, OpeningRejectionCode} from './roleplay-opening-selection.js'
+import type {OpeningIntent, OpeningRejectionCode,OpeningSelectionDeps} from './roleplay-opening-selection.js'
 import {createRoleplayMvuOpening} from './roleplay-mvu-opening.js'
 import {createRoleplayMvuState} from './roleplay-mvu-state.js'
 import {createRoleplayMvuPlayer} from './roleplay-mvu-player.js'
+import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
 import {registerMvuPlayerRoutes} from './roleplay-mvu-player-routes.js'
 import type {Session as NativeSession} from '@deepseek-ai/dsh-session'
 import {createRoleplayMvuDerived,readMvuPrefixCanonical} from './roleplay-mvu-derived.js'
@@ -1196,8 +1197,33 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         text,source:{kind:'programmatic',schemaVersion:1,producer:'dsh-nexttavern',
           origin:`card-opening:${identity.source.importId}`,operationId:identity.operationId}})
     },
+    schema:{
+      agent:session=>{
+        const agent=ctx.agents?.list().find(agent=>(agent.session as unknown)===session)
+        const owned=agent&&ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
+        return owned===agent?owned as NativeInputAdmissionAgentV2|undefined:undefined
+      },
+      resolveAgent:async sid=>{
+        const found=await ctx.sessionController.resolveAgent(sid),agent=found?.agent
+        const owned=agent&&ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
+        return owned===agent?owned as NativeInputAdmissionAgentV2|undefined:undefined
+      },
+      active:session=>isRoleplaySession(session as unknown as CoreSession)&&ensureState(session.id).branchReady,
+      markers:ctx.nexttavernMvuSchemaMarkers,flush:session=>ctx.sessions.flush(session as unknown as CoreSession),
+      appendOpeningOnAgent:commitOpeningOnAgent},
   })
-  const openingSelection:ReturnType<typeof createRoleplayOpeningSelection> = createRoleplayOpeningSelection({
+  function commitOpeningOnAgent(request:Parameters<OpeningSelectionDeps['appendOpening']>[0],input:unknown) {
+    const agent=input as (CoreAgent & {commitProgrammaticAssistant?: (input: {
+      operationId:string;messageId:string;text:string;source:{kind:'programmatic';schemaVersion:1;
+        producer:string;origin:string;operationId:string}
+    }) => Promise<{kind:'committed';turn:number;messageId:string}|{kind:'busy'}
+      |{kind:'unknown';reason:string;code?:OpeningRejectionCode}>})|undefined
+    if(!agent?.commitProgrammaticAssistant)throw Error('原生开场提交能力未就绪')
+    return agent.commitProgrammaticAssistant({operationId:request.operationId,messageId:request.messageId,
+      text:request.text,source:{kind:'programmatic',schemaVersion:1,producer:'dsh-nexttavern',
+        origin:`card-opening:${request.source.importId}`,operationId:request.operationId}})
+  }
+  const openingSelectionDeps:OpeningSelectionDeps={
     ...mvuOpening.callbacks,
     table:openingTable,
     importActiveKey,
@@ -1208,16 +1234,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       return withImportLock(key.slice(prefix.length),'opening-choice',action)
     },
     appendOpening:async request => {
-      const found = await ctx.sessionController.resolveAgent(request.sessionId)
-      const agent = found?.agent as (CoreAgent & {commitProgrammaticAssistant?: (input: {
-        operationId:string; messageId:string; text:string; source:{kind:'programmatic'; schemaVersion:1;
-          producer:string; origin:string; operationId:string}
-      }) => Promise<{kind:'committed';turn:number;messageId:string} | {kind:'busy'}
-        | {kind:'unknown';reason:string;code?:OpeningRejectionCode}>}) | undefined
-      if (!agent?.commitProgrammaticAssistant) throw new Error('原生开场提交能力未就绪')
-      return agent.commitProgrammaticAssistant({operationId:request.operationId,messageId:request.messageId,
-        text:request.text,source:{kind:'programmatic',schemaVersion:1,producer:'dsh-nexttavern',
-          origin:`card-opening:${request.source.importId}`,operationId:request.operationId}})
+      const found=await ctx.sessionController.resolveAgent(request.sessionId)
+      return commitOpeningOnAgent(request,found?.agent)
     },
     findOpeningByOperationId:async (intent:OpeningIntent) => {
       try {
@@ -1260,7 +1278,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         return {status:'committed' as const,turn:Number(turn)}
       } catch { return {status:'unknown' as const} }
     },
-  })
+  }
+  const openingSelection:ReturnType<typeof createRoleplayOpeningSelection> = createRoleplayOpeningSelection({
+    ...openingSelectionDeps,schemaOpening:mvuOpening.createSchemaSelection(openingSelectionDeps)})
+  ctx.effect(()=>()=>mvuOpening.disposeSchema(),'roleplay: owned schema runtime lifetime')
+  ctx.on('session/disposed',session=>mvuOpening.invalidateSchemaSession(session.id),{global:true})
   function editBasisFacts(id:string):MvuEditBasisFacts {
     try {
       const basis=mvuState.readGenesisAuthority(id)
@@ -1347,7 +1369,18 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
     active:session=>isRoleplaySession(session as unknown as CoreSession)&&ensureState(session.id).branchReady,
     sourceSha256:mvuOpening.readSourceSha256,withSourceLock:(id,work)=>withImportLock(id,'mvu-player',work),
+    writeBlockCode:id=>mvuOpening.hasSchemaOpening(id)?'SCHEMA_MANUAL_NOT_ENABLED':undefined,
     flush:session=>ctx.sessions.flush(session as unknown as CoreSession),markers:ctx.nexttavernMvuPlayerMarkers})
+  async function observeNumericalState(id:string):Promise<MvuStateObservation> {
+    if(!mvuOpening.hasSchemaOpening(id))return mvuPlayer.observe(id)
+    const result=await mvuOpening.readSchemaInitialization(id)
+    const session=ctx.sessions.get(id),observedNativeSeq=session?eventsOf(session).at(-1)?.seq??-1:-1
+    const basis={schemaVersion:1 as const,sessionId:id,observedNativeSeq,canEdit:false as const}
+    if(result.kind!=='ready')return {...basis,kind:'blocked',code:result.code}
+    return {...basis,kind:'schema-ready',values:structuredClone(result.event.plan.values),
+      valuesSha256:result.event.valuesSha256,sourceSha256:mvuOpening.readSourceSha256(id),eventId:result.event.eventId,
+      editBlockCode:'SCHEMA_MANUAL_NOT_ENABLED'}
+  }
   const completion=createRoleplayMvuStoryCompletion({table:T.branch,state:mvuState,awaitOwnedCompletion,
     sourceCurrent:(sid,sourceSha256)=>mvuOpening.readSourceSha256(sid)===sourceSha256,
     readCanonical:(sid,turn)=>{
@@ -1440,12 +1473,16 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   inputOwner = createRoleplayInputPreparation({table:T.branch,completion,
     observe:(session:CoreSession) => mvuOpening.readInputObservation(session.id),
     awaitMutationBarrier:mvuPlayer.awaitMutationBarrier,mutationBlockCode:mvuPlayer.mutationBlockCode,
-    onMutationStop:mvuPlayer.onMutationStop,
+    onMutationStop:(session,notice)=>{
+      mvuOpening.invalidateSchemaSession(session.id)
+      mvuPlayer.onMutationStop(session,notice)
+    },
     onError:error => ctx.logger?.warn?.(`roleplay: input permission write is unknown: ${String(error)}`)})
   // Core outlives an individual Native factory/Agent. Releasing that exact
   // owner's hot binding permits a cold incarnation to bind the same durable
   // Session without transferring its old tokens or resending pending input.
   ctx.on('agent/disposed',({agent})=>{
+    mvuOpening.invalidateSchemaAgent(agent)
     inputBindings.get(agent)?.dispose()
     inputBindings.delete(agent)
   },{global:true})
@@ -1464,7 +1501,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     const session=await resolveRoleplaySession(id)
     if(session)await ensureBranch(session)
     return session
-  },player:mvuPlayer})
+  },player:mvuPlayer,observe:observeNumericalState})
   registerOpeningRoutes({ctx,resolveRoleplaySession:async id => {
     const session = await resolveRoleplaySession(id)
     // Opening basis needs a ready branch, but general branch resolution must
@@ -1636,7 +1673,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     selectedStatusRecord,
     selectedStatusGeneration,
     importSummary,
-    numericalState:mvuPlayer.observe,
+    numericalState:observeNumericalState,
     chatImportProjection:(session,record) => {
       // A historical attachment receipt alone must never open a choice for a
       // cancelled, replaced, inherited or incompletely activated import.
@@ -1859,6 +1896,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     resolveRoleplaySession,
     cloneBranchRecord,
     prepareDerivedBasis:mvuDerived.prepare,
+    numericalForkBlockCode:id=>mvuOpening.hasSchemaOpening(id)?'SCHEMA_FORK_NOT_ENABLED':undefined,
     assertStoryBranchActive,
     withForkMutationLock,
     forkOperationKey,

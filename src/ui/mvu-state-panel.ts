@@ -253,10 +253,13 @@ export function createMvuStatePanel({React,invalidateState,fetch=globalThis.fetc
       ready?h('p',null,`当前数值 · 第 ${ready.snapshot.revision} 版`):null,
       draft?.dirty&&!needsCompare?h('p',{role:'status'},'下方修改是尚未保存的草稿。'):null,
       !state?h('p',{role:'status'},'尚未读取到当前世界线的数值，请刷新检查。'):
+        state.kind==='schema-ready'?h('p',{role:'status'},'作者规则初始化已确认，当前可查看数值，暂不支持手动修改。'):
         state.kind!=='ready'?h('p',{role:'status'},reason(state.code)):
         !state.canEdit?h('p',{role:'status'},reason(state.editBlockCode)):null,
       needsCompare&&draft?.dirty?h('p',{role:'status'},'剧情或数值版本已变化。当前显示已读取的数值，旧草稿保留供比较，不能直接覆盖。'):null,
       table,
+      state?.kind==='schema-ready'?h('details',null,h('summary',null,'查看完整数值'),
+        h('pre',{style:{overflow:'auto',maxHeight:'260px'}},JSON.stringify(state.values,null,2))):null,
       limited?h('p',null,'字段较多，部分内容请在对象或列表的 JSON 编辑区查看；完整数值在高级区。'):null,
       ready?h('details',null,h('summary',null,'高级：完整数值 JSON'),
         h('textarea',{'aria-label':'完整数值 JSON',disabled:!editable,rows:6,

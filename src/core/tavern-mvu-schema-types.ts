@@ -39,6 +39,8 @@ export interface MvuSchemaAuthorScript {
 export interface MvuSchemaSourceBinding {
   ownerSessionId:string
   importId:string
+  /** Hash of the original PNG/JSON bytes in OpeningSource.rawSha256. Document,
+   * script text and author descriptor hashes remain separate identities. */
   sourceSha256:string
   importRecordSha256:string
   sourceSnapshotSha256:string

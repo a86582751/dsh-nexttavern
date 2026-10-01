@@ -4,6 +4,12 @@ import {createRoleplayMvuBasis} from './roleplay-mvu-basis.js'
 import {createRoleplayMvuNative} from './roleplay-mvu-native.js'
 import {createRoleplayMvuInitialization, prepareNativeMvuOpeningInitialization} from './roleplay-mvu-initialization.js'
 import {openingIntentKey} from './roleplay-opening-selection.js'
+import {createRoleplayMvuSchemaCore} from './roleplay-mvu-schema-core.js'
+import {createRoleplayMvuSchemaOpening} from './roleplay-mvu-schema-opening.js'
+import {mvuInitializationHeadKey} from './roleplay-mvu-initialization.js'
+import type {MvuSchemaCoreDeps} from './roleplay-mvu-schema-core.js'
+import type {SchemaOpeningSelectionAdapter} from './roleplay-mvu-schema-opening-types.js'
+import type {Session} from '@deepseek-ai/dsh-session'
 import type {MvuSourceDeps} from './roleplay-mvu-source.js'
 import type {MvuOpeningIdentity} from './roleplay-mvu-initialization.js'
 import type {OpeningCatalog, OpeningIntent, OpeningSelectionDeps} from './roleplay-opening-selection.js'
@@ -32,6 +38,10 @@ export interface MvuOpeningDependencies {
   legacyImportPending?(sessionId:string):boolean
   readNumericalAuthority?(sessionId:string):MvuNumericalAuthority
   derivedBasisRequired?(sessionId:string):boolean
+  schema?:Pick<MvuSchemaCoreDeps,'agent'|'resolveAgent'|'active'|'markers'|'flush'>&{
+    appendOpeningOnAgent(request:Parameters<OpeningSelectionDeps['appendOpening']>[0],
+      agent:NonNullable<ReturnType<MvuSchemaCoreDeps['agent']>>):ReturnType<OpeningSelectionDeps['appendOpening']>
+  }
 }
 const same = (a:unknown,b:unknown) => recordSha256(a) === recordSha256(b)
 
@@ -48,6 +58,39 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     readRow:(table,key) => deps.tables[table].get(key),
     recordVersionsFor:deps.recordVersionsFor,readOpeningContext:deps.openingContext,readFreshNativeBasis:basis.fresh,
   })
+  const schemaCore=deps.schema?createRoleplayMvuSchemaCore({...deps.schema,branch:deps.tables.branch,
+    status:deps.tables.status,source,session:id=>deps.session(id) as unknown as Session|undefined,
+    withSourceLock:deps.withSourceLock,nativeRead:(identity,turn)=>native.read(identity,turn)}):undefined
+  let schemaSelection:SchemaOpeningSelectionAdapter|undefined
+  function createSchemaSelection(nativeDeps:Pick<OpeningSelectionDeps,'withLock'|'appendOpening'|'findOpeningByOperationId'>) {
+    if(!schemaCore)return undefined
+    const transaction=createRoleplayMvuSchemaOpening({...schemaCore,branch:deps.tables.branch,status:deps.tables.status,
+      withLock:nativeDeps.withLock,
+      appendOpening:request=>deps.schema!.appendOpeningOnAgent(request,schemaCore.openingAgent(request)),
+      lookupNativeOpening:nativeDeps.findOpeningByOperationId,
+      readNativeOpening:intent=>{
+        const found=native.read({sessionId:intent.sessionId,source:intent.source,operationId:intent.operationId,
+          messageId:intent.messageId,index:intent.index,sourcePointer:intent.sourcePointer,sourceSha256:intent.sourceSha256,
+          renderedSha256:intent.renderedSha256},intent.committedTurn)
+        return found.status==='committed'?{kind:'ready',receipt:found.receipt}:{kind:'blocked',code:'NATIVE_NOT_COMMITTED'}
+      }})
+    schemaSelection={...transaction,handles:request=>{
+      const author=source.readAuthorSource(request.identity.sessionId,request.identity.index)
+      return author.kind==='author-source'&&author.source.scripts.some(script=>script.enabled)
+    }}
+    return schemaSelection
+  }
+  function hasSchemaOpening(sessionId:string):boolean {
+    const pointer=deps.tables.branch.get(deps.importActiveKey(sessionId)) as {importId?:string}|undefined
+    const intent=pointer?.importId?readIntent(sessionId,pointer.importId):undefined
+    const head=deps.tables.status.get(mvuInitializationHeadKey(sessionId)) as {encoding?:unknown}|undefined
+    return intent?.schemaVersion===5||head?.encoding==='mvu-schema-opening-head-v2'
+  }
+  async function readSchemaInitialization(sessionId:string) {
+    if(!schemaSelection)return {kind:'blocked' as const,code:'SCHEMA_RUNTIME_UNAVAILABLE'}
+    try {return await schemaSelection.readVerified(deps.catalog(sessionId).source)}
+    catch {return {kind:'blocked' as const,code:'SCHEMA_OPENING_RECORD_INVALID'}}
+  }
   function sourceCurrent(identity:MvuOpeningIdentity):boolean {
     try {
       const actual = deps.catalog(identity.sessionId)
@@ -130,6 +173,9 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
   function readInputObservation(sessionId:string):InputObservation {
     const {pointer,imported,sourceSha256}=inputSource(sessionId)
     const management = (reason:string):InputObservation => ({kind:'management',sourceSha256,reason})
+    // A schema opening has its own readonly genesis. Its v5 intent cannot
+    // fall through schemaVersion !== 4 into the old legacy story permission.
+    if(hasSchemaOpening(sessionId))return management('SCHEMA_STORY_NOT_ENABLED')
     if (deps.legacyImportPending?.(sessionId)) return {kind:'legacy',sourceSha256,reason:'LEGACY_SEMANTIC_IMPORT'}
     if (!pointer) {
       const hasLegacyMaterial = [...deps.tables.cards.entries(),...deps.tables.worldbook.entries()]
@@ -190,5 +236,9 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
   return {callbacks,sourceCurrent,readInitialization:initialization.read,nativeCurrent:native.current,
     readNative:(identity:MvuOpeningIdentity,turn?:number) => native.read(identity,turn),readInputObservation,
     readGenesis,readSourceSha256:(sessionId:string)=>inputSource(sessionId).sourceSha256,
-    readAuthorSource:source.readAuthorSource,authorSourceCurrent:source.authorSourceCurrent}
+    readAuthorSource:source.readAuthorSource,authorSourceCurrent:source.authorSourceCurrent,
+    createSchemaSelection,hasSchemaOpening,readSchemaInitialization,
+    invalidateSchemaAgent:(agent:object)=>schemaCore?.invalidateAgent(agent),
+    invalidateSchemaSession:(id:string)=>schemaCore?.invalidateSession(id),
+    disposeSchema:()=>schemaCore?.dispose()}
 }
