@@ -5636,6 +5636,52 @@
       },
       "heavy": true,
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-schema-v1-core-upgrade",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "timeoutMs": 2100000,
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance",
+        "windows"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "args": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-schema-legacy-trajectory",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "timeoutMs": 2100000,
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance",
+        "windows"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "args": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }
