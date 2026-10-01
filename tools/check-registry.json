@@ -1490,7 +1490,9 @@
         "compat-session-format-src-storage-contract-ts",
         "compat-session-format-lib-storage-contract-js",
         "compat-session-format-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "compat-session-format-src-mvu-player-marker-ts",
+        "compat-session-format-lib-mvu-player-marker-js"
       ]
     },
     {
@@ -1801,7 +1803,9 @@
         "compat-session-format-src-storage-contract-ts",
         "compat-session-format-lib-storage-contract-js",
         "compat-session-format-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "compat-session-format-src-mvu-player-marker-ts",
+        "compat-session-format-lib-mvu-player-marker-js"
       ]
     },
     {
@@ -3764,7 +3768,9 @@
         "compat-session-controller-archived-session-gate-ts",
         "compat-session-controller-archived-session-gate-js",
         "compat-session-persistence-jsonl-src-catalog-migration-ts",
-        "compat-session-persistence-jsonl-lib-catalog-migration-js"
+        "compat-session-persistence-jsonl-lib-catalog-migration-js",
+        "compat-session-format-src-mvu-player-marker-ts",
+        "compat-session-format-lib-mvu-player-marker-js"
       ],
       "depends": [
         "generated"
@@ -4246,6 +4252,9 @@
       "requires": [
         "compiler"
       ],
+      "args": [
+        "roleplay-mvu-initialization-contract"
+      ],
       "inputs": [],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
@@ -4320,6 +4329,9 @@
       ],
       "requires": [
         "compiler"
+      ],
+      "args": [
+        "tavern-mvu-native-policy-contract"
       ],
       "inputs": [],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
@@ -4550,6 +4562,9 @@
       "requires": [
         "compiler"
       ],
+      "args": [
+        "roleplay-input-terminal-contract"
+      ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
@@ -4564,6 +4579,9 @@
       ],
       "requires": [
         "compiler"
+      ],
+      "args": [
+        "roleplay-mvu-state-contract"
       ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
@@ -4594,6 +4612,9 @@
       ],
       "requires": [
         "compiler"
+      ],
+      "args": [
+        "roleplay-preparation-numerical-contract"
       ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
@@ -4695,6 +4716,9 @@
       "requires": [
         "compiler"
       ],
+      "args": [
+        "roleplay-mvu-derived-state-contract"
+      ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
@@ -4755,6 +4779,153 @@
       "requires": [
         "compiler"
       ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-mvu-yaml.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "args": [
+        "tavern-mvu-yaml-contract"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-mvu-yaml-opening.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-player-marker.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-runtime-dependency.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-input-player-barrier.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-player-state.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "args": [
+        "roleplay-mvu-player-state-contract"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-player-prefix.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-player-core.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-state-panel",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "jsdom",
+        "maintenance"
+      ],
+      "args": [
+        "runtime/alpha3/lib/ui/client.js",
+        "--mvu-state-only"
+      ],
+      "inputs": [],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]

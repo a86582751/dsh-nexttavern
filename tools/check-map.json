@@ -4963,6 +4963,78 @@
       "source": "lib/core/roleplay-mvu-edit-facts.js"
     },
     {
+      "id": "tavern-mvu-yaml-typescript",
+      "source": "src/core/tavern-mvu-yaml.ts"
+    },
+    {
+      "id": "tavern-mvu-yaml-js",
+      "source": "lib/core/tavern-mvu-yaml.js"
+    },
+    {
+      "id": "roleplay-mvu-source-policy-typescript",
+      "source": "src/core/roleplay-mvu-source-policy.ts"
+    },
+    {
+      "id": "roleplay-mvu-source-policy-js",
+      "source": "lib/core/roleplay-mvu-source-policy.js"
+    },
+    {
+      "id": "roleplay-mvu-player-records-typescript",
+      "source": "src/core/roleplay-mvu-player-records.ts"
+    },
+    {
+      "id": "roleplay-mvu-player-records-js",
+      "source": "lib/core/roleplay-mvu-player-records.js"
+    },
+    {
+      "id": "roleplay-mvu-player-types-typescript",
+      "source": "src/core/roleplay-mvu-player-types.ts"
+    },
+    {
+      "id": "roleplay-mvu-player-types-js",
+      "source": "lib/core/roleplay-mvu-player-types.js"
+    },
+    {
+      "id": "roleplay-mvu-player-facts-typescript",
+      "source": "src/core/roleplay-mvu-player-facts.ts"
+    },
+    {
+      "id": "roleplay-mvu-player-facts-js",
+      "source": "lib/core/roleplay-mvu-player-facts.js"
+    },
+    {
+      "id": "roleplay-mvu-player-typescript",
+      "source": "src/core/roleplay-mvu-player.ts"
+    },
+    {
+      "id": "roleplay-mvu-player-js",
+      "source": "lib/core/roleplay-mvu-player.js"
+    },
+    {
+      "id": "roleplay-mvu-player-routes-typescript",
+      "source": "src/core/roleplay-mvu-player-routes.ts"
+    },
+    {
+      "id": "roleplay-mvu-player-routes-js",
+      "source": "lib/core/roleplay-mvu-player-routes.js"
+    },
+    {
+      "id": "mvu-state-panel-typescript",
+      "source": "src/ui/mvu-state-panel.ts"
+    },
+    {
+      "id": "mvu-state-panel-js",
+      "source": "lib/ui/mvu-state-panel.js"
+    },
+    {
+      "id": "compat-session-format-src-mvu-player-marker-ts",
+      "source": "development/session-format/src/mvu-player-marker.ts"
+    },
+    {
+      "id": "compat-session-format-lib-mvu-player-marker-js",
+      "source": "development/session-format/lib/mvu-player-marker.js"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -5842,7 +5914,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -6584,7 +6659,12 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/ui/mvu-state-panel.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -6673,7 +6753,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -6753,7 +6835,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -6907,7 +6991,12 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/ui/mvu-state-panel.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -7123,7 +7212,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -7220,7 +7313,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -7275,7 +7372,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -7363,7 +7462,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -7449,7 +7552,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -7550,7 +7656,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -7634,7 +7744,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -7732,7 +7845,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -7810,7 +7927,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -7900,7 +8020,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -7975,7 +8099,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -8054,7 +8181,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -8134,7 +8264,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -8215,7 +8348,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -8333,7 +8469,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -8452,7 +8592,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -8526,7 +8670,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -8601,7 +8748,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -8709,7 +8859,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -8817,7 +8969,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -8942,7 +9096,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -9060,7 +9216,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -9180,7 +9339,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -9252,7 +9414,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -9325,7 +9490,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -9399,7 +9567,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -9475,7 +9646,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -9653,7 +9827,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -9773,7 +9949,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -10025,7 +10205,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -10099,7 +10282,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -11696,7 +11882,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -11772,7 +11961,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -11844,7 +12036,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -11917,7 +12112,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -12251,7 +12449,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -12323,7 +12523,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -12518,7 +12720,15 @@
         "src/core/roleplay-mvu-derived.ts",
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-mvu-ancestry.ts",
-        "src/core/roleplay-mvu-edit-facts.ts"
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-mvu-player.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "src/core/roleplay-mvu-player-routes.ts"
       ]
     },
     {
@@ -12699,7 +12909,12 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ]
     },
     {
@@ -12752,7 +12967,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -13174,7 +13391,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -13270,7 +13491,11 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ]
     },
     {
@@ -14921,7 +15146,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -14959,7 +15185,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -15028,7 +15255,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -15078,7 +15306,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -15118,7 +15347,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -15158,7 +15388,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -15208,7 +15439,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -15248,7 +15480,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -15288,7 +15521,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -15358,7 +15592,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -15573,7 +15808,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage",
       "builder": "tools/build-modules.mjs"
@@ -18412,7 +18648,8 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "development/session-format/src/mvu-player-marker.ts"
       ],
       "typeContext": "session-storage"
     },
@@ -18653,7 +18890,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ],
       "entry": "src/core/tavern-mvu-initvar.ts",
       "artifact": "tavern-mvu-initvar-js",
@@ -18718,7 +18957,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ],
       "entry": "src/core/roleplay-mvu-initialization.ts",
       "artifact": "roleplay-mvu-initialization-js",
@@ -18827,7 +19068,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -18894,7 +19137,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -18961,7 +19206,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -19045,7 +19292,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -19235,7 +19485,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -19302,7 +19554,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ]
     },
     {
@@ -19399,7 +19653,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -19483,7 +19740,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -19566,7 +19826,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-input-completion.ts"
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ]
     },
     {
@@ -19667,7 +19930,9 @@
         "development/session/src/fork.ts",
         "development/session/src/repair.ts",
         "development/session/src/preparation.ts",
-        "development/session/src/seq-ranges.ts"
+        "development/session/src/seq-ranges.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ],
       "entry": "src/core/roleplay-mvu-update.ts",
       "artifact": "roleplay-mvu-update-js",
@@ -19757,7 +20022,10 @@
         "src/core/roleplay-input-preparation.ts",
         "src/core/roleplay-input-completion.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-mvu-update.ts"
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ],
       "typeContext": "default"
     },
@@ -19841,7 +20109,10 @@
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-mvu-update.ts",
         "src/core/roleplay-mvu-ancestry.ts",
-        "src/core/roleplay-mvu-edit-facts.ts"
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ],
       "typeContext": "default"
     },
@@ -19926,7 +20197,10 @@
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-input-preparation.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-mvu-update.ts"
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ],
       "typeContext": "default"
     },
@@ -20012,7 +20286,10 @@
         "src/core/roleplay-input-terminal.ts",
         "src/core/roleplay-input-preparation.ts",
         "src/core/roleplay-mvu-state.ts",
-        "src/core/roleplay-mvu-update.ts"
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ],
       "typeContext": "default"
     },
@@ -20132,7 +20409,10 @@
         "src/core/character-cluster.ts",
         "src/core/character-cluster-settings.ts",
         "src/core/character-cluster-projection.ts",
-        "src/core/tavern-conversations.ts"
+        "src/core/tavern-conversations.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ],
       "typeContext": "default"
     },
@@ -20215,7 +20495,9 @@
         "src/core/roleplay-input-continuation.ts",
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-mvu-update.ts",
-        "development/session-format/src/projection.ts"
+        "development/session-format/src/projection.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ],
       "typeContext": "default"
     },
@@ -20385,7 +20667,13 @@
         "src/core/roleplay-mvu-prefix-facts.ts",
         "src/core/roleplay-mvu-lineage.ts",
         "src/core/roleplay-mvu-prefix-ledger.ts",
-        "development/session-format/src/projection.ts"
+        "development/session-format/src/projection.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ],
       "typeContext": "default"
     },
@@ -20471,7 +20759,13 @@
         "src/core/roleplay-mvu-update.ts",
         "src/core/roleplay-mvu-prefix-facts.ts",
         "src/core/roleplay-mvu-lineage.ts",
-        "development/session-format/src/projection.ts"
+        "development/session-format/src/projection.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-mvu-player-types.ts"
       ],
       "typeContext": "default"
     },
@@ -20555,7 +20849,9 @@
         "src/core/roleplay-input-continuation.ts",
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-mvu-update.ts",
-        "src/core/roleplay-mvu-lineage.ts"
+        "src/core/roleplay-mvu-lineage.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts"
       ],
       "typeContext": "default"
     },
@@ -20639,9 +20935,458 @@
         "src/core/roleplay-input-continuation.ts",
         "development/agent-loop/src/input-completion.ts",
         "src/core/roleplay-mvu-update.ts",
-        "src/core/roleplay-mvu-lineage.ts"
+        "src/core/roleplay-mvu-lineage.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-records.ts"
       ],
       "typeContext": "default"
+    },
+    {
+      "id": "tavern-mvu-yaml-js-build",
+      "kind": "typescript-module",
+      "artifact": "tavern-mvu-yaml-js",
+      "entry": "src/core/tavern-mvu-yaml.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-mvu-source-policy-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-mvu-source-policy-js",
+      "entry": "src/core/roleplay-mvu-source-policy.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-mvu-player-records-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-mvu-player-records-js",
+      "entry": "src/core/roleplay-mvu-player-records.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "development/session-format/src/projection.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-mvu-player-types-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-mvu-player-types-js",
+      "entry": "src/core/roleplay-mvu-player-types.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "development/session-format/src/projection.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-mvu-player-facts-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-mvu-player-facts-js",
+      "entry": "src/core/roleplay-mvu-player-facts.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-mvu-player-facts.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-mvu-player-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-mvu-player-js",
+      "entry": "src/core/roleplay-mvu-player.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-mvu-player.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "development/session-format/src/projection.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "roleplay-mvu-player-routes-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-mvu-player-routes-js",
+      "entry": "src/core/roleplay-mvu-player-routes.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-mvu-player-routes.ts",
+        "src/core/roleplay-state.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-import.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/card-export.ts",
+        "src/core/card-export-projection.ts",
+        "src/status-template.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "development/session-format/src/projection.ts",
+        "src/core/roleplay-state-types.ts",
+        "src/core/roleplay-worldlines.ts",
+        "src/core/roleplay-worldline-surface.ts",
+        "src/core/roleplay-task-host.ts",
+        "src/core/character-cluster.ts",
+        "src/core/character-cluster-settings.ts",
+        "src/core/character-cluster-projection.ts",
+        "src/core/roleplay-task-host-types.ts",
+        "src/core/roleplay-status-types.ts",
+        "src/core/roleplay-author-context-types.ts",
+        "src/core/narrative-presets.ts",
+        "src/core/narrative-preset-default.ts",
+        "src/core/narrative-preset-catalog.ts",
+        "src/core/narrative-styles/light-novel.ts",
+        "src/core/narrative-styles/otome.ts",
+        "src/core/narrative-styles/cosmic-romance.ts",
+        "src/core/narrative-styles/jrpg.ts",
+        "src/core/narrative-styles/cinematic.ts",
+        "src/core/narrative-styles/annalistic.ts",
+        "src/core/narrative-styles/minimal.ts",
+        "src/core/narrative-styles/delicate.ts",
+        "src/core/narrative-styles/fantasy.ts",
+        "src/core/narrative-styles/horror.ts",
+        "src/core/narrative-styles/luxun.ts",
+        "src/core/narrative-styles/lyrical.ts",
+        "src/core/narrative-styles/comedy.ts",
+        "src/core/narrative-styles/classical.ts",
+        "src/core/roleplay-author-tools-types.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/tavern-conversations.ts",
+        "src/core/roleplay-status.ts",
+        "src/core/roleplay-status-presentation.ts",
+        "src/core/roleplay-inheritance-types.ts",
+        "src/memory/memory-history.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-player.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "mvu-state-panel-js-build",
+      "kind": "typescript-module",
+      "artifact": "mvu-state-panel-js",
+      "entry": "src/ui/mvu-state-panel.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/mvu-state-panel.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-task-context.ts",
+        "src/memory/memory-provenance.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "development/session-format/src/projection.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "default"
+    },
+    {
+      "id": "compat-session-format-mvu-player-marker-js-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-format-lib-mvu-player-marker-js",
+      "entry": "development/session-format/src/mvu-player-marker.ts",
+      "inputs": [
+        "development/session-format/src/mvu-player-marker.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "session-storage",
+      "builder": "tools/build-modules.mjs"
     }
   ],
   "typeScript": {

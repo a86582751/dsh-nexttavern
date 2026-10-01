@@ -6,6 +6,11 @@ import type {MvuUpdatePreparation, PreparedMvuUpdate} from './roleplay-mvu-updat
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuInitializationEvent, MvuInitializationHead} from './roleplay-mvu-initialization.js'
 import type {MvuEditInvalidation} from './roleplay-mvu-edit-facts.js'
+import {cloneMvuPlayerReplacement,mvuPlayerEventFor,mvuPlayerHeadFor,mvuPlayerSettlementFor,MvuPlayerDataRefusal}
+  from './roleplay-mvu-player-records.js'
+import type {MvuPlayerStateIntent,MvuPlayerStateUpdateEvent,MvuPlayerStateCurrentHead,
+  MvuPlayerStatePublisherSettlement,MvuPlayerStateFacts,MvuPlayerStatePublication,MvuPlayerStateReplacement,
+  MvuConsumedManualSettlementFactsInput} from './roleplay-mvu-player-records.js'
 
 export interface VerifiedMvuGenesis {
   sessionId: string
@@ -70,7 +75,7 @@ export interface MvuStateCurrentHead {
   valuesSha256: string
   intentSha256: string
 }
-export type MvuNumericalHead = MvuInitializationHead | MvuDerivedGenesisHead | MvuStateCurrentHead
+export type MvuNumericalHead = MvuInitializationHead | MvuDerivedGenesisHead | MvuStateCurrentHead | MvuPlayerStateCurrentHead
 export interface MvuStateBase {
   root: MvuStateRoot
   currentHead: MvuNumericalHead
@@ -137,6 +142,7 @@ export interface MvuStatePublisherSettlement {
   settlementSha256: string
 }
 export type MvuStateRecord = MvuStateCurrentHead | MvuStateUpdateEvent | MvuStatePublisherSettlement
+  | MvuPlayerStateCurrentHead | MvuPlayerStateUpdateEvent | MvuPlayerStatePublisherSettlement
 export interface MvuStateTable {
   get(key: string): unknown
   put(key: string, value: MvuStateRecord): Promise<unknown>
@@ -156,6 +162,13 @@ export interface MvuStateDeps {
   /** Current numerical use only. Immutable genesis/prefix facts remain read-only
    * facts, independent of subsequent edits and never grant story permission. */
   readEditInvalidation?(sessionId: string): MvuEditInvalidation
+  /** Actual immutable player request/operation and flushed Native marker facts. */
+  verifyStoredManualIntent?(intent:MvuPlayerStateIntent):boolean
+  /** The coordinator's private lease must affirm its existing Source lock. */
+  checkManualPermission?(token:object,intent:MvuPlayerStateIntent,phase:MvuStatePermissionPhase):boolean
+  /** Current readers may not bypass a pending operation. Only publishManual
+   * supplies its exact hot-verified intent, never a caller-controlled exemption. */
+  manualGate?(sessionId:string,allowedIntent?:MvuPlayerStateIntent):string|undefined
 }
 export type MvuNumericalAuthority = {kind: 'ready'; snapshot: MvuNumericalSnapshot}
   | {kind: 'blocked'; code: string}
@@ -260,9 +273,11 @@ function headValid(head: MvuNumericalHead, sid: string, source: string, root: Mv
       || head.basisSha256 !== root.basisSha256 || !hash(head.valuesSha256)
       || recordSha256(head) !== root.derivedHeadSha256) fail('HEAD_INVALID')
   } else {
+    const player=head.encoding==='native-mvu-state-current-head-v2'
     keys(head, ['schemaVersion', 'encoding', 'sessionId', 'sourceSha256', 'root', 'revision',
-      'eventId', 'eventSha256', 'valuesSha256', 'intentSha256'])
-    if (head.encoding !== 'native-mvu-state-current-head-v1' || head.schemaVersion !== 1
+      'eventId', 'eventSha256', 'valuesSha256', 'intentSha256',...(player?['provenance']:[])])
+    if (!(player?head.schemaVersion===2&&head.provenance==='player'
+      :head.encoding==='native-mvu-state-current-head-v1'&&head.schemaVersion===1)
       || head.sessionId !== sid || head.sourceSha256 !== source || !same(head.root, root)
       || !integer(head.revision, 2) || head.revision > MAX_RECORDS + 1
       || head.eventId !== head.intentSha256 || ![head.eventId, head.eventSha256, head.valuesSha256].every(hash)) fail('HEAD_INVALID')
@@ -294,6 +309,22 @@ function intentValid(intent: MvuStateTerminalIntent): void {
   baseValid(intent.base, intent.sessionId, intent.sourceSha256)
   const {intentSha256, ...descriptor} = intent
   if (recordSha256(descriptor) !== intentSha256) fail('INTENT_INVALID')
+}
+function manualIntentValid(intent:MvuPlayerStateIntent):void {
+  keys(intent,['schemaVersion','encoding','sessionId','sourceSha256','operationId','requestSha256',
+    'operation','marker','base','replacement','intentSha256'])
+  keys(intent.operation,['key','sha256']);keys(intent.marker,['seq','sha256'])
+  if(intent.schemaVersion!==1||intent.encoding!=='native-mvu-player-state-intent-v1'
+    ||!id(intent.sessionId)||!id(intent.operationId)||typeof intent.operation.key!=='string'
+    ||!/^[a-zA-Z0-9_-]{1,512}$/.test(intent.operation.key)||!integer(intent.marker.seq)
+    ||![intent.sourceSha256,intent.requestSha256,intent.operation.sha256,intent.marker.sha256,intent.intentSha256].every(hash)) {
+    fail('MANUAL_INTENT_INVALID')
+  }
+  baseValid(intent.base,intent.sessionId,intent.sourceSha256)
+  const replacement=cloneMvuPlayerReplacement(intent.replacement)
+  if(!same(replacement,intent.replacement))fail('MANUAL_REPLACEMENT_INVALID')
+  const {intentSha256,...descriptor}=intent
+  if(recordSha256(descriptor)!==intentSha256)fail('MANUAL_INTENT_INVALID')
 }
 function snapshot(head: MvuNumericalHead, values: MvuJsonObject, sid: string,
   sourceSha256: string, root: MvuStateRoot): MvuNumericalSnapshot {
@@ -353,6 +384,13 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
   function verified(intent: MvuStateTerminalIntent): void {
     if (!deps.verifyStoredIntent(cloneJson(intent))) fail('STORED_INTENT_UNPROVEN')
   }
+  function verifiedManual(intent:MvuPlayerStateIntent):void {
+    if(!deps.verifyStoredManualIntent?.(cloneJson(intent)))fail('MANUAL_STORED_INTENT_UNPROVEN')
+  }
+  function manualGate(sid:string,allowedIntent?:MvuPlayerStateIntent):void {
+    const code=deps.manualGate?.(sid,allowedIntent&&cloneJson(allowedIntent))
+    if(code!==undefined)fail(typeof code==='string'&&code?code:'MANUAL_GATE_UNKNOWN')
+  }
   function genesis(sid: string): {genesis: VerifiedMvuGenesis | VerifiedMvuDerivedGenesis; state: MvuNumericalSnapshot} {
     if (!id(sid)) fail('SESSION_INVALID')
     const supplied = deps.readGenesis(sid)
@@ -407,11 +445,13 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     if ((current !== undefined) !== rows.has(mvuStateCurrentHeadKey(sid))) fail('READ_UNCERTAIN')
     return rows
   }
-  function inspect(sid: string): {state: MvuNumericalSnapshot; settlements: Map<string, MvuStatePublisherSettlement>} {
+  function inspect(sid: string,allowedIntent?:MvuPlayerStateIntent): {state: MvuNumericalSnapshot;
+    settlements:Map<string,MvuStatePublisherSettlement|MvuPlayerStatePublisherSettlement>} {
     unedited(sid)
+    manualGate(sid,allowedIntent)
     const initial = genesis(sid).state, rows = scan(sid), consumed = new Set<string>()
-    const settlements = new Map<string, MvuStatePublisherSettlement>()
-    const chain: MvuStateUpdateEvent[] = [], seen = new Set<string>()
+    const settlements = new Map<string,MvuStatePublisherSettlement|MvuPlayerStatePublisherSettlement>()
+    const chain:(MvuStateUpdateEvent|MvuPlayerStateUpdateEvent)[] = [], seen = new Set<string>()
     const currentKey = mvuStateCurrentHeadKey(sid)
     let head = rows.get(currentKey) as MvuNumericalHead | undefined
     if (head) consumed.add(currentKey)
@@ -419,14 +459,21 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     const target = head
     while (head.revision !== 1) {
       headValid(head, sid, initial.sourceSha256, initial.root)
-      if (head.encoding !== 'native-mvu-state-current-head-v1' || seen.has(head.eventId)) fail('CHAIN_INVALID')
+      if ((head.encoding !== 'native-mvu-state-current-head-v1'&&head.encoding !== 'native-mvu-state-current-head-v2')
+        || seen.has(head.eventId)) fail('CHAIN_INVALID')
       seen.add(head.eventId)
-      const eventKey = mvuStateEventKey(sid, head.eventId), event = rows.get(eventKey) as MvuStateUpdateEvent | undefined
+      const eventKey = mvuStateEventKey(sid, head.eventId)
+      const event=rows.get(eventKey) as MvuStateUpdateEvent|MvuPlayerStateUpdateEvent|undefined
       if (!event) fail('EVENT_MISSING')
-      intentValid(event.intent)
-      verified(event.intent)
-      if (!same(event, eventFor(event.intent, event.proposal)) || !same(head, headFor(event))
-        || event.intent.sessionId !== sid || event.intent.sourceSha256 !== initial.sourceSha256
+      if(event.encoding==='native-mvu-player-state-update-event-v1') {
+        manualIntentValid(event.intent);verifiedManual(event.intent)
+        if(!same(event,mvuPlayerEventFor(event.intent))||!same(head,mvuPlayerHeadFor(event)))fail('EVENT_INVALID')
+      } else {
+        if(event.encoding!=='native-mvu-state-update-event-v1')fail('EVENT_INVALID')
+        intentValid(event.intent);verified(event.intent)
+        if(!same(event,eventFor(event.intent,event.proposal))||!same(head,headFor(event)))fail('EVENT_INVALID')
+      }
+      if (event.intent.sessionId !== sid || event.intent.sourceSha256 !== initial.sourceSha256
         || !same(event.root, initial.root)) fail('EVENT_INVALID')
       consumed.add(eventKey)
       chain.push(event)
@@ -438,33 +485,57 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     const states = new Map<string, MvuNumericalSnapshot>([[state.headSha256, state]])
     for (const event of chain.reverse()) {
       if (!same(event.intent.base, baseOf(state))) fail('BASE_INVALID')
-      candidateValid(event.proposal, state, event.intent)
-      const expected = settlementFor(event.intent, event.proposal, headFor(event), event)
+      let expected:MvuStatePublisherSettlement|MvuPlayerStatePublisherSettlement,next:MvuNumericalSnapshot
+      if(event.encoding==='native-mvu-player-state-update-event-v1') {
+        if(same(event.replacement.values,state.values))fail('MANUAL_EVENT_NO_CHANGE')
+        const head=mvuPlayerHeadFor(event)
+        expected=mvuPlayerSettlementFor(event.intent,head,{key:mvuStateEventKey(sid,event.eventId),sha256:event.eventSha256})
+        next=snapshot(head,event.replacement.values,sid,initial.sourceSha256,initial.root)
+      } else {
+        candidateValid(event.proposal,state,event.intent)
+        expected=settlementFor(event.intent,event.proposal,headFor(event),event)
+        next=snapshot(headFor(event),event.proposal.values,sid,initial.sourceSha256,initial.root)
+      }
       const key = mvuStateSettlementKey(sid, event.eventId), actual = rows.get(key)
       if (!actual || !same(actual, expected)) fail('SETTLEMENT_MISSING_OR_INVALID')
       consumed.add(key)
       settlements.set(event.eventId, expected)
-      state = snapshot(headFor(event), event.proposal.values, sid, initial.sourceSha256, initial.root)
+      state = next
       states.set(state.headSha256, state)
     }
     if (!same(state.currentHead, target)) fail('HEAD_INVALID')
     for (const [key, raw] of rows) if (!consumed.has(key)) {
-      const item = raw as MvuStatePublisherSettlement
-      if (!key.startsWith(`${sid}__mvu-state-settlement-`) || item.candidate?.kind !== 'no-update') fail('OWNED_PARTIAL_OR_ORPHAN')
-      intentValid(item.intent)
-      verified(item.intent)
+      const item = raw as MvuStatePublisherSettlement|MvuPlayerStatePublisherSettlement
+      if(!key.startsWith(`${sid}__mvu-state-settlement-`))fail('OWNED_PARTIAL_OR_ORPHAN')
+      const player=item.encoding==='native-mvu-player-state-publisher-settlement-v1'
+      if(player) {
+        if(item.outcome!=='no-update')fail('OWNED_PARTIAL_OR_ORPHAN')
+        manualIntentValid(item.intent);verifiedManual(item.intent)
+      } else {
+        if(item.encoding!=='native-mvu-state-publisher-settlement-v1'||item.candidate?.kind!=='no-update') {
+          fail('OWNED_PARTIAL_OR_ORPHAN')
+        }
+        intentValid(item.intent);verified(item.intent)
+      }
       const base = states.get(item.intent.base.headSha256)
       if (!base || !same(item.intent.base, baseOf(base)) || item.intent.sessionId !== sid
         || item.intent.sourceSha256 !== initial.sourceSha256) fail('BASE_INVALID')
-      candidateValid(item.candidate, base, item.intent)
-      const expected = settlementFor(item.intent, item.candidate, base.currentHead)
+      let expected:MvuStatePublisherSettlement|MvuPlayerStatePublisherSettlement
+      if(player) {
+        if(!same(item.replacement.values,base.values))fail('MANUAL_NO_UPDATE_INVALID')
+        expected=mvuPlayerSettlementFor(item.intent,base.currentHead)
+      } else {
+        candidateValid(item.candidate,base,item.intent)
+        expected=settlementFor(item.intent,item.candidate,base.currentHead)
+      }
       if (key !== mvuStateSettlementKey(sid, item.intent.intentSha256) || !same(item, expected)) fail('SETTLEMENT_INVALID')
       consumed.add(key)
       settlements.set(item.intent.intentSha256, expected)
     }
     return {state, settlements}
   }
-  const codeOf = (error: unknown) => error instanceof StateRefusal ? error.code : 'READ_OR_PERMISSION_UNKNOWN'
+  const codeOf = (error: unknown) => error instanceof StateRefusal||error instanceof MvuPlayerDataRefusal
+    ? error.code : 'READ_OR_PERMISSION_UNKNOWN'
   function readNumericalAuthority(sid: string): MvuNumericalAuthority {
     try {return {kind: 'ready', snapshot: cloneJson(inspect(sid).state)}}
     catch (error) {return {kind: 'blocked', code: codeOf(error)}}
@@ -479,12 +550,13 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
       if (state.sourceSha256 !== intent.sourceSha256 || !same(state.root, intent.base.root)) fail('SOURCE_CHANGED')
       const settlement = settlements.get(intent.intentSha256)
       if (!settlement) return {kind: 'absent', code: 'SETTLEMENT_ABSENT'}
-      if (!same(settlement.intent, intent)) fail('INTENT_CONFLICT')
+      if (settlement.encoding!=='native-mvu-state-publisher-settlement-v1'||!same(settlement.intent, intent)) fail('INTENT_CONFLICT')
       return {kind: 'committed', settlement: cloneJson(settlement)}
     } catch (error) {return {kind: 'unknown', code: codeOf(error)}}
   }
   function permitted(token: object, intent: MvuStateTerminalIntent, phase: MvuStatePermissionPhase): void {
     unedited(intent.sessionId)
+    manualGate(intent.sessionId)
     verified(intent)
     const current = genesis(intent.sessionId).state
     if (current.sourceSha256 !== intent.sourceSha256 || !same(current.root, intent.base.root)) fail('SOURCE_CHANGED')
@@ -517,6 +589,48 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
       return verifyConsumedSettlementFacts(input)
     }
     catch {return false}
+  }
+  function manualFacts(input:MvuPlayerStateIntent,allowedIntent?:MvuPlayerStateIntent):MvuPlayerStateFacts {
+    try {
+      const intent=cloneJson(input)
+      manualIntentValid(intent);verifiedManual(intent)
+      const {state,settlements}=inspect(intent.sessionId,allowedIntent)
+      if(state.sourceSha256!==intent.sourceSha256||!same(state.root,intent.base.root))fail('SOURCE_CHANGED')
+      const settlement=settlements.get(intent.intentSha256)
+      if(!settlement)return {kind:'absent',code:'SETTLEMENT_ABSENT'}
+      if(settlement.encoding!=='native-mvu-player-state-publisher-settlement-v1'||!same(settlement.intent,intent)) {
+        fail('MANUAL_INTENT_CONFLICT')
+      }
+      return {kind:'committed',settlement:cloneJson(settlement)}
+    } catch(error) {return {kind:'unknown',code:codeOf(error)}}
+  }
+  function reconcileManualFacts(intent:MvuPlayerStateIntent):MvuPlayerStateFacts {return manualFacts(intent)}
+  /** Historical exact numerical descriptors only. The prefix/coordinator owns
+   * independent validation of the original operation and actual Native marker.
+   * Today's Source/head/gate and hot publication rights are never consulted. */
+  function verifyConsumedManualSettlementFacts(input:MvuConsumedManualSettlementFactsInput):boolean {
+    try {
+      const intent=cloneJson(input.intent),base=cloneJson(input.base)
+      const replacement=cloneMvuPlayerReplacement(input.replacement)
+      manualIntentValid(intent)
+      if(!same(base,snapshot(base.currentHead,base.values,base.sessionId,base.sourceSha256,base.root))
+        ||!same(intent.base,baseOf(base))||!same(intent.replacement,replacement)
+        ||base.sessionId!==intent.sessionId||base.sourceSha256!==intent.sourceSha256)return false
+      const event=same(replacement.values,base.values)?undefined:mvuPlayerEventFor(intent)
+      const expected=mvuPlayerSettlementFor(intent,event?mvuPlayerHeadFor(event):base.currentHead,
+        event?{key:mvuStateEventKey(intent.sessionId,event.eventId),sha256:event.eventSha256}:undefined)
+      return same(cloneJson(input.settlement),expected)
+        &&same(cloneJson(deps.table.get(mvuStateSettlementKey(intent.sessionId,intent.intentSha256))),expected)
+        &&(event?same(cloneJson(deps.table.get(mvuStateEventKey(intent.sessionId,event.eventId))),event)
+          :deps.table.get(mvuStateEventKey(intent.sessionId,intent.intentSha256))===undefined)
+    } catch {return false}
+  }
+  function permittedManual(token:object,intent:MvuPlayerStateIntent,phase:MvuStatePermissionPhase):void {
+    unedited(intent.sessionId);verifiedManual(intent)
+    const current=genesis(intent.sessionId).state
+    if(current.sourceSha256!==intent.sourceSha256||!same(current.root,intent.base.root))fail('SOURCE_CHANGED')
+    if(!deps.checkManualPermission?.(token,cloneJson(intent),phase))fail('MANUAL_PERMISSION_REVOKED')
+    manualGate(intent.sessionId,intent)
   }
   /** Exact verified revision-one basis, independent of later state rows. */
   function readGenesisAuthority(sid:string):MvuNumericalAuthority {
@@ -596,6 +710,58 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
       return {kind: wrote ? 'unknown' : 'blocked', code: codeOf(error)}
     }
   }
+  /** The actual coordinator must already hold this session's Source lock. Its
+   * private lease affirms that fact in checkManualPermission at every boundary.
+   * Do not re-enter withSourceLock or accept an HTTP-supplied exemption/token. */
+  async function publishManual(input:{token:object;intent:MvuPlayerStateIntent;
+    base:MvuNumericalSnapshot;replacement:MvuPlayerStateReplacement}):Promise<MvuPlayerStatePublication> {
+    let intent:MvuPlayerStateIntent,base:MvuNumericalSnapshot,replacement:MvuPlayerStateReplacement
+    const token=input.token
+    try {
+      intent=cloneJson(input.intent);base=cloneJson(input.base)
+      replacement=cloneMvuPlayerReplacement(input.replacement);manualIntentValid(intent)
+      if(!same(base,snapshot(base.currentHead,base.values,base.sessionId,base.sourceSha256,base.root))
+        ||base.sessionId!==intent.sessionId||base.sourceSha256!==intent.sourceSha256
+        ||!same(intent.base,baseOf(base))||!same(intent.replacement,replacement))fail('BASE_INVALID')
+      if(!token||typeof token!=='object')fail('MANUAL_PERMISSION_REVOKED')
+    } catch(error) {return {kind:'blocked',code:codeOf(error)}}
+    let wrote=false,settlement:MvuPlayerStatePublisherSettlement|undefined
+    try {
+      permittedManual(token,intent,'before-write')
+      const facts=manualFacts(intent,intent)
+      if(facts.kind==='committed') {
+        permittedManual(token,intent,'after-settlement')
+        return {kind:'acknowledged',settlement:facts.settlement}
+      }
+      if(facts.kind==='unknown')return {kind:'unknown',code:facts.code}
+      const actual=inspect(intent.sessionId,intent).state
+      if(!same(actual,base))fail('BASE_CHANGED')
+      const event=same(replacement.values,actual.values)?undefined:mvuPlayerEventFor(intent)
+      const head=event?mvuPlayerHeadFor(event):actual.currentHead
+      settlement=mvuPlayerSettlementFor(intent,head,
+        event?{key:mvuStateEventKey(intent.sessionId,event.eventId),sha256:event.eventSha256}:undefined)
+      if(event) {
+        permittedManual(token,intent,'before-write');wrote=true
+        await putExact(mvuStateEventKey(intent.sessionId,event.eventId),event)
+        permittedManual(token,intent,'before-head')
+        const pointer=deps.table.get(mvuStateCurrentHeadKey(intent.sessionId))
+        if(!same(pointer??genesis(intent.sessionId).state.currentHead,actual.currentHead))fail('BASE_CHANGED')
+        await putExact(mvuStateCurrentHeadKey(intent.sessionId),head as MvuPlayerStateCurrentHead)
+        permittedManual(token,intent,'after-head')
+      }
+      permittedManual(token,intent,'after-head');wrote=true
+      await putExact(mvuStateSettlementKey(intent.sessionId,intent.intentSha256),settlement)
+      permittedManual(token,intent,'after-settlement')
+      const completed=manualFacts(intent,intent)
+      if(completed.kind!=='committed'||!same(completed.settlement,settlement))fail('SETTLEMENT_UNCONFIRMED')
+      return {kind:'acknowledged',settlement:completed.settlement}
+    } catch(error) {
+      if(settlement&&verifyConsumedManualSettlementFacts({intent,base,replacement,settlement})) {
+        return {kind:'unknown',code:codeOf(error),settlement:cloneJson(settlement)}
+      }
+      return {kind:wrote?'unknown':'blocked',code:codeOf(error)}
+    }
+  }
   return {readNumericalAuthority,readGenesisAuthority,publish,reconcileFacts,
-    verifyConsumedSettlement,verifyConsumedSettlementFacts}
+    verifyConsumedSettlement,verifyConsumedSettlementFacts,publishManual,reconcileManualFacts,verifyConsumedManualSettlementFacts}
 }

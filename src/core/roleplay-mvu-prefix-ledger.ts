@@ -5,6 +5,10 @@ import {recordSha256} from './roleplay-data.js'
 import {prepareMvuUpdate} from './roleplay-mvu-update.js'
 import {verifyInheritedCompletedFact} from './roleplay-mvu-prefix-facts.js'
 import {mvuStateEventKey, mvuStateSettlementKey, MVU_STATE_BOUNDS} from './roleplay-mvu-state.js'
+import {readMvuPlayerOperationFacts, mvuPlayerOperationKey, mvuPlayerCompletionKey} from './roleplay-mvu-player-facts.js'
+import {MVU_PLAYER_EDIT_EVENT, assertMvuPlayerEditEvent} from 'dsh-nexttavern-session-format/mvu-player-marker'
+import type {SessionEvent} from '@deepseek-ai/dsh-session'
+import type {MvuConsumedManualSettlementFactsInput} from './roleplay-mvu-player-records.js'
 import type {MvuInheritedPrefixEvent, MvuInheritedCompletedFactDeps} from './roleplay-mvu-prefix-facts.js'
 import type {InputCompletionRecord, InputCompletionScope} from './roleplay-input-completion.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
@@ -26,6 +30,7 @@ export interface MvuPrefixLedgerDeps {
   status: MvuPrefixLedgerTable
   /** Pure numerical algorithm/readback verification, independent of owner/hot permissions. */
   verifySettlementFacts(input: MvuPrefixSettlementFactsInput): boolean
+  verifyManualSettlementFacts?(input: MvuConsumedManualSettlementFactsInput): boolean
   readProjectedCanonical: MvuInheritedCompletedFactDeps['readProjectedCanonical']
   editProtocol?:MvuInheritedCompletedFactDeps['editProtocol']
 }
@@ -52,19 +57,40 @@ export interface MvuPrefixLedgerStep {
   baseSnapshotSha256: string
   resultSnapshotSha256: string
 }
-export interface MvuPrefixLedgerProof {
-  schemaVersion: 1
-  encoding: 'native-mvu-prefix-ledger-proof-v1'
+interface MvuPrefixLedgerProofFields {
   ownerSessionId: string
   ownerInheritedEventCount: number
   inheritedPrefixLength: number
   historyPrefixSha256: string
   sourceSha256: string
   genesisSnapshotSha256: string
-  steps: readonly MvuPrefixLedgerStep[]
   numericalSnapshot: MvuNumericalSnapshot
   proofSha256: string
 }
+export interface MvuPrefixLedgerPlayerStep {
+  kind: 'player'
+  operationId: string
+  marker: {seq: number; sha256: string}
+  intentSha256: string
+  operation: MvuPrefixLedgerRowRef
+  completion: MvuPrefixLedgerRowRef
+  settlement: MvuPrefixLedgerRowRef
+  event?: MvuPrefixLedgerRowRef
+  baseSnapshotSha256: string
+  resultSnapshotSha256: string
+}
+export type MvuPrefixLedgerStepV2 = (MvuPrefixLedgerStep & {kind: 'story'}) | MvuPrefixLedgerPlayerStep
+export interface MvuPrefixLedgerProofV1 extends MvuPrefixLedgerProofFields {
+  schemaVersion: 1
+  encoding: 'native-mvu-prefix-ledger-proof-v1'
+  steps: readonly MvuPrefixLedgerStep[]
+}
+export interface MvuPrefixLedgerProofV2 extends MvuPrefixLedgerProofFields {
+  schemaVersion: 2
+  encoding: 'native-mvu-prefix-ledger-proof-v2'
+  steps: readonly MvuPrefixLedgerStepV2[]
+}
+export type MvuPrefixLedgerProof = MvuPrefixLedgerProofV1 | MvuPrefixLedgerProofV2
 export type MvuPrefixLedgerResult = {kind: 'ready'; proof: MvuPrefixLedgerProof} | {kind: 'blocked'; code: string}
 interface Work {
   schemaVersion: 2
@@ -224,7 +250,8 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         return value
       }
       for (const [rowKey, row] of deps.branch.entries()) {
-        if (!rowKey.startsWith(ownPrefix(sid))) continue
+        if (!rowKey.startsWith(ownPrefix(sid)) && !rowKey.startsWith(`${sid}__mvu-player-operation-`)
+          && !rowKey.startsWith(`${sid}__mvu-player-complete-`)) continue
         if (branchRows.size >= MVU_STATE_BOUNDS.records) fail('LEDGER_BUDGET')
         branchRows.set(rowKey, read(deps.branch, rowKey, row))
       }
@@ -315,7 +342,41 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
           fail('PREFIX_NUMERICAL_ORPHAN')
         }
       }
+      const players: ReturnType<typeof readMvuPlayerOperationFacts>[] = []
+      for (const event of request.events) {
+        if (event.type !== MVU_PLAYER_EDIT_EVENT || event.seq < request.ownerInheritedEventCount) continue
+        if (!deps.verifyManualSettlementFacts) fail('PREFIX_MANUAL_PROTOCOL_UNPROVEN')
+        const marker = event as SessionEvent
+        let facts: ReturnType<typeof readMvuPlayerOperationFacts>
+        try {
+          assertMvuPlayerEditEvent(marker)
+          facts = readMvuPlayerOperationFacts({branch: deps.branch, status: deps.status,
+            events: request.events as readonly SessionEvent[], sessionId: sid, sourceSha256: request.sourceSha256,
+            marker, verifySettlementFacts: deps.verifyManualSettlementFacts})
+        } catch (error) {
+          // Preserve the maintained protocol's explicit refusal; never fall back
+          // to the current head or treat an unproved marker as a no-op.
+          fail(error instanceof Error && /^MVU_PLAYER_[A-Z_]+$/.test(error.message)
+            ? error.message : 'PREFIX_MANUAL_UNPROVEN')
+        }
+        const operationKey = mvuPlayerOperationKey(sid, facts.operation.operationId)
+        const completionKey = mvuPlayerCompletionKey(sid, facts.operation.operationId)
+        if (!branchRows.has(operationKey) || !branchRows.has(completionKey)) fail('PREFIX_MANUAL_ORPHAN')
+        read(deps.branch, operationKey, facts.operation)
+        read(deps.branch, completionKey, facts.completion)
+        if (!same(branchRows.get(operationKey), facts.operation) || !same(branchRows.get(completionKey), facts.completion)) {
+          fail('LEDGER_READBACK_CHANGED')
+        }
+        players.push(facts)
+      }
       for (const raw of statusRows.values()) {
+        if (object(raw) && object(raw.intent) && raw.intent.encoding === 'native-mvu-player-state-intent-v1') {
+          if (!object(raw.intent.marker) || !integer(raw.intent.marker.seq)) fail('STATE_LEDGER_INVALID')
+          if (raw.intent.marker.seq < cut && !players.some(item => same(item.intent, raw.intent))) {
+            fail('PREFIX_MANUAL_ORPHAN')
+          }
+          continue
+        }
         if (!object(raw) || !object(raw.intent) || !object(raw.intent.canonical) || !integer(raw.intent.canonical.seq)) {
           fail('STATE_LEDGER_INVALID')
         }
@@ -325,7 +386,41 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
       closed.sort((a, b) => a.terminal.scope.receipt.turnEndSeq - b.terminal.scope.receipt.turnEndSeq)
       let current = structuredClone(request.genesis), previousEnd = -1
       const steps: MvuPrefixLedgerStep[] = []
-      for (const item of closed) {
+      const mixedSteps: MvuPrefixLedgerStepV2[] = []
+      const timeline = [
+        ...closed.map(item => ({kind: 'story' as const, seq: item.terminal.scope.receipt.turnEndSeq, item})),
+        ...players.map(item => ({kind: 'player' as const, seq: item.intent.marker.seq, item})),
+      ].sort((a, b) => a.seq - b.seq)
+      let previousSeq = -1
+      for (const entry of timeline) {
+        if (entry.seq <= previousSeq) fail('PREFIX_TIMELINE_COLLISION')
+        previousSeq = entry.seq
+        if (entry.kind === 'player') {
+          const {operation, completion, intent, base, settlement, result} = entry.item
+          snapshotValid(base, sid, request.sourceSha256)
+          snapshotValid(result, sid, request.sourceSha256)
+          if (!same(base, current)) fail('PREFIX_CHAIN_DISCONTINUOUS')
+          const settlementKey = mvuStateSettlementKey(sid, intent.intentSha256)
+          const storedSettlement = read(deps.status, settlementKey, settlement)
+          if (!statusRows.has(settlementKey) || !same(statusRows.get(settlementKey), settlement)) fail('PREFIX_MANUAL_ORPHAN')
+          const step: MvuPrefixLedgerPlayerStep = {kind: 'player', operationId: operation.operationId,
+            marker: structuredClone(intent.marker), intentSha256: intent.intentSha256,
+            operation: {key: mvuPlayerOperationKey(sid, operation.operationId), sha256: recordSha256(operation)},
+            completion: {key: mvuPlayerCompletionKey(sid, operation.operationId), sha256: recordSha256(completion)},
+            settlement: {key: settlementKey, sha256: recordSha256(storedSettlement)},
+            baseSnapshotSha256: base.stateSnapshotSha256, resultSnapshotSha256: result.stateSnapshotSha256}
+          if (settlement.result.event) {
+            const eventKey = mvuStateEventKey(sid, intent.intentSha256), event = read(deps.status, eventKey)
+            if (!object(event) || settlement.result.event.key !== eventKey
+              || settlement.result.event.sha256 !== event.eventSha256 || !same(statusRows.get(eventKey), event)) {
+              fail('NUMERICAL_EVENT_UNPROVEN')
+            }
+            step.event = {key: eventKey, sha256: recordSha256(event)}
+          }
+          mixedSteps.push(step); current = result
+          continue
+        }
+        const item = entry.item
         const {work, terminal} = item, scope = terminal.scope
         if (terminal.plan.kind !== 'numerical') fail('TERMINAL_PLAN_INVALID')
         const {intent, base, proposal} = terminal.plan
@@ -411,7 +506,14 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
           }
           step.event = {key: eventKey, sha256: recordSha256(event)}
         }
-        steps.push(step); current = result
+        steps.push(step); mixedSteps.push({kind: 'story', ...step}); current = result
+      }
+      if (players.length) {
+        const body = {schemaVersion: 2 as const, encoding: 'native-mvu-prefix-ledger-proof-v2' as const,
+          ownerSessionId: sid, ownerInheritedEventCount: request.ownerInheritedEventCount, inheritedPrefixLength: cut,
+          historyPrefixSha256: recordSha256(request.events), sourceSha256: request.sourceSha256,
+          genesisSnapshotSha256: request.genesis.stateSnapshotSha256, steps: mixedSteps, numericalSnapshot: current}
+        return {kind: 'ready', proof: freeze(structuredClone({...body, proofSha256: recordSha256(body)}))}
       }
       const body = {schemaVersion: 1 as const, encoding: 'native-mvu-prefix-ledger-proof-v1' as const,
         ownerSessionId: sid, ownerInheritedEventCount: request.ownerInheritedEventCount, inheritedPrefixLength: cut,

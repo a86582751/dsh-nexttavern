@@ -327,10 +327,10 @@ export class JsonlSessionHandle implements SessionHandle {
     validateStoredEvents(this.header, [...batch])
     await this.ensureLease()
     assertContiguous(this.id, batch, this.state.cursor)
-    if (batch.some(isMessageEdit)) {
+    if (batch.some(event=>isMessageEdit(event)||event.type==='roleplay/mvu-manual-edit')) {
       // The raw handle is also a public write surface. Validate an edit against
       // the owned durable prefix before publishing it, not only on cold read.
-      // This O(history) replay occurs per edit batch, never per streamed token.
+      // This replay occurs per required edit/marker batch, never per streamed token.
       const path = await this.storage.resolveCurrentLog(this.id)
       const prefix = path === undefined ? [] : (await this.storage.readStoredLog(path, this.id)).events
       validateMessageEditHistory([...prefix, ...batch])

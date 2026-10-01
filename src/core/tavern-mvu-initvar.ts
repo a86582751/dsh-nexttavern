@@ -1,6 +1,9 @@
 import {createHash} from 'node:crypto'
-import {NATIVE_MVU_SOURCE_POLICY} from './roleplay-mvu-source.js'
-import type {NativeMvuJsonCandidate, NativeMvuSourcePolicy} from './roleplay-mvu-source.js'
+import {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSourcePolicy,
+  isNativeMvuYamlSourcePolicy,nativeMvuPayloadGrammar} from './roleplay-mvu-source-policy.js'
+import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
+import type {NativeMvuJsonCandidate} from './roleplay-mvu-source.js'
+import {parseMvuYamlData} from './tavern-mvu-yaml.js'
 
 export type MvuJsonValue = null | boolean | number | string | MvuJsonValue[] | MvuJsonObject
 export interface MvuJsonObject { [key: string]: MvuJsonValue }
@@ -85,9 +88,11 @@ export interface NativeMvuInitSourceIdentity {
   policy: NativeMvuSourcePolicy
   originalLoaderSettlement: 'not-proven'
 }
-export interface NativeMvuInitPlan extends Omit<MvuInitPlan, 'schemaVersion' | 'source'> {
+export interface NativeMvuInitPlan extends Omit<MvuInitPlan, 'schemaVersion' | 'source' | 'policy' | 'capability'> {
   schemaVersion: 2
   source: NativeMvuInitSourceIdentity
+  policy:'strict-json-object-v1'|'yaml-1.2-json-data-v1'
+  capability:'native-json-data-only'|'native-json-yaml-data-only'
 }
 export type NativeMvuInitCompileResult =
   | {schemaVersion: 2; kind: 'supported'; plan: NativeMvuInitPlan}
@@ -409,7 +414,7 @@ function merge(left: MvuJsonObject, right: MvuJsonObject): MvuJsonObject {
  * CR/U+2028/U+2029; XML closing accepts a line prefix, while fence closing starts at column zero.
  * This is that capture contract, not a general XML/Markdown interpreter.
  */
-function captureBookWrapper(text: string, fence: boolean): string | undefined {
+function captureBookWrapper(text: string, fence: boolean,metadata?:{header?:string}): string | undefined {
   const header = fence ? '```' : '<initvar>'
   let firstHeaderLf = -1
   let lastClosingLf = -1
@@ -420,7 +425,10 @@ function captureBookWrapper(text: string, fence: boolean): string | undefined {
     const line = text.slice(cursor, end)
     const headerAt = line.lastIndexOf(header)
     const lastDotBreak = Math.max(line.lastIndexOf('\r'), line.lastIndexOf('\u2028'), line.lastIndexOf('\u2029'))
-    if (firstHeaderLf < 0 && lf >= 0 && headerAt >= 0 && headerAt > lastDotBreak) firstHeaderLf = lf
+    if (firstHeaderLf < 0 && lf >= 0 && headerAt >= 0 && headerAt > lastDotBreak) {
+      firstHeaderLf = lf
+      if(metadata)metadata.header=line.slice(headerAt)
+    }
     let closingAt = line.indexOf('</initvar>')
     if (fence) closingAt = line.startsWith('```') ? 0 : -1
     const firstDotBreak = line.search(/[\r\u2028\u2029]/)
@@ -432,15 +440,16 @@ function captureBookWrapper(text: string, fence: boolean): string | undefined {
   return lastClosingLf > firstHeaderLf && firstHeaderLf >= 0
     ? text.slice(firstHeaderLf + 1, lastClosingLf) : undefined
 }
-function extractEntry(content: string): string {
+function extractEntry(content: string,metadata?:{header?:string}): string {
   const xml = captureBookWrapper(content.trim(), false)
   const candidate = xml ?? content
-  const fence = captureBookWrapper(candidate.trim(), true)
+  const fence = captureBookWrapper(candidate.trim(), true,metadata)
+  if(fence===undefined&&metadata)delete metadata.header
   return fence ?? candidate
 }
 
 /** Preserve greeting capture whitespace; native subset accepts balanced non-nested tags and paired simple fences. */
-function greetingPayload(body: string, pointer: string): string {
+function greetingPayload(body: string, pointer: string,metadata?:{header?:string}): string {
   const first = body.search(/\S/)
   const openingFence = first >= 0 && body.startsWith('```', first)
   let end = body.length
@@ -451,13 +460,14 @@ function greetingPayload(body: string, pointer: string): string {
   let headerEnd = first + 3
   while (headerEnd < body.length && !/[\r\n\u2028\u2029]/.test(body[headerEnd]!)) headerEnd++
   if (headerEnd >= end - 3) reject('INITVAR_FENCE_UNSUPPORTED', pointer)
+  if(metadata)metadata.header=body.slice(first,headerEnd)
   const captured = body.slice(headerEnd, end - 3)
   // Another fence is ambiguous here; keep its source unsupported rather than infer Markdown nesting.
   if (captured.includes('```')) reject('INITVAR_FENCE_UNSUPPORTED', pointer)
   return captured
 }
 
-function extractGreetingPayloads(text: string, pointer: string): string[] {
+function extractGreetingPayloads(text: string, pointer: string,headers?:string[]): string[] {
   const result: string[] = []
   let openEnd = -1
   // ASCII tag regexp has no variable repetition and keeps offsets in the ORIGINAL UTF-16 source.
@@ -470,12 +480,45 @@ function extractGreetingPayloads(text: string, pointer: string): string[] {
     } else {
       if (openEnd < 0) reject('INITVAR_WRAPPER_UNSUPPORTED', pointer)
       if (result.length >= BOUNDS.arrayLength) reject('ARRAY_LIMIT', pointer)
-      result.push(greetingPayload(text.slice(openEnd, tag.index), pointer))
+      const metadata:{header?:string}={}
+      result.push(greetingPayload(text.slice(openEnd, tag.index), pointer,headers?metadata:undefined))
+      headers?.push(metadata.header??'')
       openEnd = -1
     }
   }
   if (openEnd >= 0) reject('INITVAR_WRAPPER_UNSUPPORTED', pointer)
   return result
+}
+/** The actual source owner and compiler share this selector and the same pinned
+ * wrappers. Only entries used by InitVar and extracted greeting blocks count;
+ * ordinary prose and unrelated YAML-looking colons cannot choose a policy. */
+export function selectNativeMvuInitializationPolicy(input:{
+  books:readonly {entries:readonly {comment:string;content:string;renderedContent:string}[]}[]
+  swipes:readonly {rawOpening:string;renderedOpening:string}[]
+}):{kind:'selected';policy:NativeMvuSourcePolicy}|{kind:'unsupported';diagnostics:MvuInitDiagnostic[]} {
+  try {
+    let yaml=false
+    for(const book of input.books)for(const entry of book.entries) {
+      if(!entry.comment.toLowerCase().includes('[initvar]'))continue
+      const rawHeader:{header?:string}={},expandedHeader:{header?:string}={}
+      const raw=extractEntry(entry.content,rawHeader)
+      const expanded=extractEntry(entry.renderedContent,expandedHeader)
+      yaml||=nativeMvuPayloadGrammar(expanded,expandedHeader.header,rawHeader.header,raw)==='yaml'
+    }
+    for(const [index,swipe] of input.swipes.entries()) {
+      const rawHeaders:string[]=[],expandedHeaders:string[]=[]
+      const raw=extractGreetingPayloads(swipe.rawOpening,`/swipes/${index}`,rawHeaders)
+      const expanded=extractGreetingPayloads(swipe.renderedOpening,`/swipes/${index}`,expandedHeaders)
+      if(raw.length!==expanded.length)reject('MACRO_BINDING',`/swipes/${index}`)
+      for(const [block,text] of expanded.entries()) {
+        yaml||=nativeMvuPayloadGrammar(text,expandedHeaders[block],rawHeaders[block],raw[block])==='yaml'
+      }
+    }
+    return {kind:'selected',policy:yaml?NATIVE_MVU_YAML_SOURCE_POLICY:NATIVE_MVU_SOURCE_POLICY}
+  } catch(error) {
+    return {kind:'unsupported',diagnostics:[error instanceof Refusal?{code:error.code,pointer:error.pointer}
+      :{code:'INVALID_INPUT',pointer:''}]}
+  }
 }
 interface ParsedPayload {
   data: MvuJsonObject
@@ -488,13 +531,14 @@ interface PayloadContext {
   macros: MvuInitSourceInput['capabilities']['macros']
   nodes: number
   cache: Map<string, ParsedPayload>
+  yaml?:boolean
 }
 function hasClosedMacro(text: string): boolean {
   const start = text.indexOf('{{')
   return start >= 0 && text.indexOf('}}', start + 2) >= 0
 }
 function payload(text: string, rendered: MvuInitRenderedPayload | undefined,
-  context: PayloadContext, pointer: string): ParsedPayload {
+  context: PayloadContext, pointer: string,grammar:'json'|'yaml'='json'): ParsedPayload {
   const cached = context.cache.get(pointer)
   if (cached) return cached
   const macros = context.macros
@@ -507,7 +551,11 @@ function payload(text: string, rendered: MvuInitRenderedPayload | undefined,
   } else if (hasClosedMacro(text)) reject('MACRO_UNSUPPORTED', pointer)
   if (hasClosedMacro(parseText)) reject('MACRO_UNSUPPORTED', pointer)
   let parsed: unknown
-  try { parsed = JSON.parse(parseText) } catch { reject('NON_STRICT_JSON', pointer) }
+  if(context.yaml&&grammar==='yaml') {
+    const result=parseMvuYamlData(parseText)
+    if(result.kind==='rejected')reject(result.code,pointer+(result.pointer??''))
+    parsed=result.data
+  } else try { parsed = JSON.parse(parseText) } catch { reject('NON_STRICT_JSON', pointer) }
   const data = jsonObject(parsed, pointer, context)
   const result = {data, payloadSha256: sha(text), renderedSha256: sha(parseText), dataSha256: dataHash(data)}
   context.cache.set(pointer, result)
@@ -530,7 +578,13 @@ function loadBooks(input: MvuCalculationInput, starting: MvuJsonObject, seen: st
       if (!entry.comment.toLowerCase().includes('[initvar]')) continue
       const pointer = `/books/${index}/entries/${entryIndex}`
       // Reloading a book must not rescan/hash a potentially large immutable payload once per swipe.
-      const parsed = context.cache.get(pointer) ?? payload(extractEntry(entry.content), entry.rendered, context, pointer)
+      let parsed=context.cache.get(pointer)
+      if(!parsed) {
+        const metadata:{header?:string}={}
+        const text=extractEntry(entry.content,metadata)
+        parsed=payload(text,entry.rendered,context,pointer,
+          context.yaml?nativeMvuPayloadGrammar(entry.rendered?.text??text,metadata.header,metadata.header,text):'json')
+      }
       parsed.contentSha256 ??= sha(entry.content)
       merged = merge(merged, parsed.data)
       step.entries.push({identity: entry.identity, contentSha256: parsed.contentSha256,
@@ -544,9 +598,10 @@ function loadBooks(input: MvuCalculationInput, starting: MvuJsonObject, seen: st
   return {statData, dataSha256: dataHash(statData), initializedBooks: [...initialized], books}
 }
 
-function calculate(safe: MvuCalculationInput, existing: MvuInitBasis) {
+function calculate(safe: MvuCalculationInput, existing: MvuInitBasis,nativePolicy?:NativeMvuSourcePolicy) {
   const base = existing.bookStatData
-  const context: PayloadContext = {macros: safe.capabilities.macros, nodes: 0, cache: new Map()}
+  const context: PayloadContext = {macros: safe.capabilities.macros, nodes: 0, cache: new Map(),
+    ...(nativePolicy&&isNativeMvuYamlSourcePolicy(nativePolicy)?{yaml:true}:{})}
   const baseline = loadBooks(safe, base, [...safe.initializedBooks], context)
   const swipes: MvuInitSwipePlan[] = []
   let resultBytes = Buffer.byteLength(canonical(baseline as unknown as MvuJsonObject), 'utf8')
@@ -558,11 +613,13 @@ function calculate(safe: MvuCalculationInput, existing: MvuInitBasis) {
     let statData = merge(jsonObject(swipe.statData, `/swipes/${index}/statData`), structuredClone(baseline.statData))
     const blocks: MvuInitSwipePlan['blocks'] = []
     let replacement: MvuJsonObject = {}
-    const matches = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`)
+    const headers:string[]=[]
+    const matches = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`,headers)
     if (swipe.renderedBlocks && swipe.renderedBlocks.length !== matches.length) reject('MACRO_BINDING', `/swipes/${index}`)
     for (const [blockIndex, match] of matches.entries()) {
       const parsed = payload(match, swipe.renderedBlocks?.[blockIndex], context,
-        `/swipes/${index}/blocks/${blockIndex}`)
+        `/swipes/${index}/blocks/${blockIndex}`,context.yaml?nativeMvuPayloadGrammar(swipe.renderedBlocks?.[blockIndex]?.text??match,
+          headers[blockIndex],headers[blockIndex],match):'json')
       replacement = merge(replacement, parsed.data)
       blocks.push({payloadSha256: parsed.payloadSha256, renderedSha256: parsed.renderedSha256, dataSha256: parsed.dataSha256})
     }
@@ -666,7 +723,7 @@ export function compileNativeMvuInitSources(input: NativeMvuJsonCandidate): Nati
     if (checked.schemaVersion !== 1 || checked.encoding !== 'native-mvu-json-source-candidate-v1') {
       reject('INPUT_VERSION', '/schemaVersion')
     }
-    if (dataHash(checked.policy!) !== dataHash(NATIVE_MVU_SOURCE_POLICY as unknown as MvuJsonObject)) {
+    if (!isNativeMvuSourcePolicy(checked.policy)) {
       reject('NATIVE_POLICY', '/policy')
     }
     const snapshot = requireContentHash(checked.sourceSnapshot, 'snapshotSha256', 'SOURCE_SNAPSHOT_HASH', '/sourceSnapshot')
@@ -755,15 +812,22 @@ export function compileNativeMvuInitSources(input: NativeMvuJsonCandidate): Nati
     validateCalculation(calculationJson)
     const safe = calculationJson as unknown as MvuCalculationInput
     const existing = basis(safe)
-    const {baseline, swipes: compiledSwipes} = calculate(safe, existing)
+    const selectedPolicy=selectNativeMvuInitializationPolicy(candidate)
+    if(selectedPolicy.kind==='unsupported')reject(selectedPolicy.diagnostics[0]!.code,selectedPolicy.diagnostics[0]!.pointer)
+    if(dataHash(selectedPolicy.policy as unknown as MvuJsonObject)!==dataHash(candidate.policy as unknown as MvuJsonObject)) {
+      reject('NATIVE_POLICY','/policy')
+    }
+    const yaml=isNativeMvuYamlSourcePolicy(candidate.policy)
+    const {baseline, swipes: compiledSwipes} = calculate(safe, existing,candidate.policy)
     const source: NativeMvuInitSourceIdentity = {authority: 'core-native-policy',
       sourceId: `import-${sourceSnapshot.source.sourceRecordSessionId}-${sourceSnapshot.source.importId}`,
       sourceSha256: sourceSnapshot.source.rawSha256, policy: candidate.policy, originalLoaderSettlement: 'not-proven'}
     identifier(source.sourceId, '/source/sourceId')
     hash(source.sourceSha256, '/source/sourceSha256')
-    const content = {schemaVersion: 2 as const, policy: 'strict-json-object-v1' as const, source,
+    const content = {schemaVersion: 2 as const, policy: yaml?'yaml-1.2-json-data-v1' as const:'strict-json-object-v1' as const, source,
       staticSourceVersion: {dialect: 'A' as const, sha256: DIALECTS.A.sha256, commit: DIALECTS.A.commit},
-      capability: 'native-json-data-only' as const, bounds: {...BOUNDS}, inputHash: inputHash!, assurance: 'supported-static' as const,
+      capability: yaml?'native-json-yaml-data-only' as const:'native-json-data-only' as const,
+      bounds: {...BOUNDS}, inputHash: inputHash!, assurance: 'supported-static' as const,
       basis: existing, basisHash: dataHash(existing as unknown as MvuJsonObject),
       selectedSwipeIdentity: safe.selectedSwipeIdentity, baseline, swipes: compiledSwipes}
     let bounded: MvuJsonValue

@@ -48,11 +48,9 @@ export {
 } from './roleplay-context.js'
 // roleplay-core.js — DeepSeek Harness roleplay preset 编排核心。
 //
-// 本文件是 preset 自带插件（agent.cordis.yml 以相对路径 './lib/roleplay-core.js'
-// 挂载）。重要约束：preset 目录内的插件文件不能裸 import 任何 npm 包
-// （preset 目录不在任何 node_modules 的向上解析路径上），只能：
-//   1. import node: 内置模块；
-//   2. 通过 inject 消费宿主服务。
+// 正式产品把 preset 保留在 product/preset，运行时依赖来自 product/node_modules。
+// 宿主服务仍通过 inject 取得；历史独立复制的 preset 目录不具有此依赖供给，
+// 不能把产品内解析合同用于那类旧运维布局。
 //
 // 提供的服务（本 preset isolate group 内）：
 //   roleplay — 供 roleplay-memory-engine / 未来 UI 半使用：
@@ -88,6 +86,9 @@ import {createRoleplayOpeningSelection,openingIntentKey} from './roleplay-openin
 import type {OpeningIntent, OpeningRejectionCode} from './roleplay-opening-selection.js'
 import {createRoleplayMvuOpening} from './roleplay-mvu-opening.js'
 import {createRoleplayMvuState} from './roleplay-mvu-state.js'
+import {createRoleplayMvuPlayer} from './roleplay-mvu-player.js'
+import {registerMvuPlayerRoutes} from './roleplay-mvu-player-routes.js'
+import type {Session as NativeSession} from '@deepseek-ai/dsh-session'
 import {createRoleplayMvuDerived,readMvuPrefixCanonical} from './roleplay-mvu-derived.js'
 import {createRoleplayMvuAncestry} from './roleplay-mvu-ancestry.js'
 import {createRoleplayMvuEditFacts} from './roleplay-mvu-edit-facts.js'
@@ -154,6 +155,7 @@ export const inject = [
   'agentLoop',
   'agents',
   'nexttavernMessageEdits',
+  'nexttavernMvuPlayerMarkers',
   'sessionPersistence',
   'sessionQuery',
   'sessionController',
@@ -1331,8 +1333,21 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     readGenesis:id=>mvuDerived.required(id)?mvuDerived.readGenesis(id):mvuOpening.readGenesis(id),
     withSourceLock:(id,work)=>withImportLock(id,'mvu-state',work),
     readEditInvalidation:mvuEdits.readInvalidation,
+    manualGate:(id,intent)=>mvuPlayer.manualGate(id,intent),
+    verifyStoredManualIntent:intent=>mvuPlayer.verifyStoredManualIntent(intent),
+    checkManualPermission:(token,intent,phase)=>mvuPlayer.checkManualPermission(token,intent,phase),
     verifyStoredIntent:intent=>inputOwner?.verifyTerminalIntent(intent)===true,
     checkPermission:(token,intent)=>inputOwner?.checkTerminalPermission(token,intent)===true})
+  const mvuPlayer=createRoleplayMvuPlayer({branch:T.branch,status:T.status,state:()=>mvuState,
+    session:id=>ctx.sessions.get(id) as NativeSession|undefined,
+    agent:session=>{
+      const agent=ctx.agents?.list().find(agent=>(agent.session as unknown)===session)
+      const owned=agent&&ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
+      return owned===agent?owned as NativeInputAdmissionAgentV2|undefined:undefined
+    },
+    active:session=>isRoleplaySession(session as unknown as CoreSession)&&ensureState(session.id).branchReady,
+    sourceSha256:mvuOpening.readSourceSha256,withSourceLock:(id,work)=>withImportLock(id,'mvu-player',work),
+    flush:session=>ctx.sessions.flush(session as unknown as CoreSession),markers:ctx.nexttavernMvuPlayerMarkers})
   const completion=createRoleplayMvuStoryCompletion({table:T.branch,state:mvuState,awaitOwnedCompletion,
     sourceCurrent:(sid,sourceSha256)=>mvuOpening.readSourceSha256(sid)===sourceSha256,
     readCanonical:(sid,turn)=>{
@@ -1424,6 +1439,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   })
   inputOwner = createRoleplayInputPreparation({table:T.branch,completion,
     observe:(session:CoreSession) => mvuOpening.readInputObservation(session.id),
+    awaitMutationBarrier:mvuPlayer.awaitMutationBarrier,mutationBlockCode:mvuPlayer.mutationBlockCode,
+    onMutationStop:mvuPlayer.onMutationStop,
     onError:error => ctx.logger?.warn?.(`roleplay: input permission write is unknown: ${String(error)}`)})
   // Core outlives an individual Native factory/Agent. Releasing that exact
   // owner's hot binding permits a cold incarnation to bind the same durable
@@ -1443,6 +1460,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     if(agent.session.header?.isSeeded)await mvuAncestry.ready(agent.session)
     attachInputOwner(agent)
   }
+  registerMvuPlayerRoutes({ctx,resolveRoleplaySession:async id=>{
+    const session=await resolveRoleplaySession(id)
+    if(session)await ensureBranch(session)
+    return session
+  },player:mvuPlayer})
   registerOpeningRoutes({ctx,resolveRoleplaySession:async id => {
     const session = await resolveRoleplaySession(id)
     // Opening basis needs a ready branch, but general branch resolution must
@@ -1614,6 +1636,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     selectedStatusRecord,
     selectedStatusGeneration,
     importSummary,
+    numericalState:mvuPlayer.observe,
     chatImportProjection:(session,record) => {
       // A historical attachment receipt alone must never open a choice for a
       // cancelled, replaced, inherited or incompletely activated import.

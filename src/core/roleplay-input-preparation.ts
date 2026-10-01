@@ -182,6 +182,7 @@ const workKey = (sessionId: string, refs: readonly NativeInputRef[]) => `${prefi
 const currentKey = (sessionId: string) => `${prefix(sessionId)}current`
 const blocked = (code: string) => ({kind: 'blocked' as const, code})
 const allowed = {kind: 'allow' as const}
+type AdmissionDecision=Awaited<ReturnType<NativeInputAdmissionHookV2['admit']>>
 function fail(code: string): never {throw new Error(code)}
 const sha = (value: string) => /^[a-f0-9]{64}$/.test(value)
 const boundedId = (value: string) => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value)
@@ -218,12 +219,20 @@ const isWork = (value: unknown, sessionId: string): value is Work => {
       preparationKeySha256: digest({sessionId, preparationId: row.preparationId}), credentialSha256: row.credentialSha256})
 }
 
-export function createRoleplayInputPreparation<Session extends {id: string}>({table, observe, onError,completion}: {
+export function createRoleplayInputPreparation<Session extends {id: string}>({table, observe, onError,completion,
+  awaitMutationBarrier,mutationBlockCode,onMutationStop}: {
   table: InputPreparationTable
   /** Trusted synchronous actual Source/head observation; never model intent. */
   observe(session: Session): InputSourceObservation
   onError?(error: unknown): void
   completion?:InputCompletionProcessor
+  /** Await outside the owner FIFO/Source lock before admitting any new work. */
+  awaitMutationBarrier?(session:Session,signal:AbortSignal):Promise<void>
+  /** Only MVU_PLAYER_BUSY denotes a waitable live lease. Every other code is
+   * a refusal, including durable pending/unknown facts; a barrier cannot heal it. */
+  mutationBlockCode?(session:Session):string|undefined
+  /** Actual Native stop revokes the manual lease before any awaited write. */
+  onMutationStop?(session:Session,notice:NativeInputStopNoticeV1):void
 }) {
   const owners = new WeakMap<object, RoleplayInputBinding>()
   const leases = new Map<string, RoleplayInputTransitionLease>()
@@ -239,6 +248,11 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     return next
   }
   const report = (error: unknown) => {try {onError?.(error)} catch { /* Reporting cannot restore authority. */ }}
+  const mutationCode=(session:Session)=>{
+    try {return mutationBlockCode?.(session)}
+    catch(error) {report(error);return 'INPUT_MUTATION_GATE_UNKNOWN'}
+  }
+  const waitForMutation=Symbol('owner-admission-mutation-wait')
   const records = (sid: string): Work[] => [...table.entries()]
     .filter(([key, value]) => key.startsWith(`${prefix(sid)}work-`) && isWork(value, sid))
     .map(([, value]) => clone(value as Work))
@@ -383,6 +397,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       attemptGeneration: work.attemptGeneration, source: clone(work.source),
       ...(work.attempt?.snapshot ? {snapshot: clone(work.attempt.snapshot)} : {})})
     const historical = (currency: InputPreparationCurrency): {work?: Work; code?: string} => {
+      const mutation=mutationCode(agent.session)
+      if(mutation)return {code:mutation}
       const proof = lifecycle.get(currency.preparationId)
       if (!live || !proof || pendingRevocations.has(currency.preparationId)) return {code: 'HISTORICAL_STOP_STATE_UNKNOWN'}
       const matches = records(sid).filter(work => work.preparationId === currency.preparationId)
@@ -429,6 +445,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     }
     const baseCurrency = (work: Work): string | undefined => {
       if (!live || revoked || hot !== work || work.stop || ['stopped', 'unknown'].includes(work.status)) return 'INPUT_PERMISSION_REVOKED'
+      const mutation=mutationCode(agent.session)
+      if(mutation)return mutation
       if (!sameDurable(work)) return 'INPUT_WORK_CHANGED'
       const pointer = table.get(currentKey(sid)) as {preparationId?: string; credentialSha256?: string} | undefined
       if (pointer?.preparationId !== work.preparationId || pointer.credentialSha256 !== work.credentialSha256) return 'INPUT_CURRENT_CHANGED'
@@ -448,6 +466,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       return baseCurrency(entry.work)
     }
     const terminalStored=(scope:InputCompletionScope):string|undefined=>{
+      const mutation=mutationCode(agent.session)
+      if(mutation)return mutation
       const work=hot,pointer=table.get(currentKey(sid)) as {preparationId?:string;credentialSha256?:string}|undefined
       if(!live||revoked||!work||work.status!=='active'||work.stop||pendingRevocations.has(work.preparationId)
         ||!work.terminalRequired||!sameDurable(work)||!equal(currencyOf(work),scope.currency)
@@ -460,6 +480,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     const terminal=completion?createRoleplayInputCompletion({sessionId:sid,table,enqueue,
       processor:completion,
       current:()=>hot?.checkpoint&&hot.terminalRequired&&hot.attempt?.prepared&&!hot.stop&&!revoked&&live
+        &&!mutationCode(agent.session)
         ? {currency:currencyOf(hot),checkpoint:hot.checkpoint,
           ...(hot.transition?{transition:clone(hot.transition) as unknown as Record<string,unknown>}:{})}:undefined,
       checkOriginal:()=>!hot?'INPUT_NO_CURRENT_CLAIM':baseCurrency(hot),checkStored:terminalStored,
@@ -477,6 +498,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         ? 'INPUT_CONTINUATION_SCOPE_INVALID':undefined,
     })
     const stop = (notice: NativeInputStopNoticeV1) => {
+      try {onMutationStop?.(agent.session,notice)} catch(error) {report(error)}
       if (notice.refsCode) for (const preparationId of lifecycle.keys()) pendingRevocations.add(preparationId)
       for (const [preparationId, proof] of lifecycle) {
         if (notice.preparation && equal(proof.receipt.preparation, notice.preparation)
@@ -549,8 +571,11 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         if (!live || signal.aborted || existing) return blocked(existing ? 'INPUT_COLD_RECOVERY_DISABLED' : 'INPUT_PERMISSION_REVOKED')
         if (!proposal.refs.length || proposal.refs.some(ref => ref.sessionId !== sid)) return blocked('INPUT_REFS_INVALID')
         if (!Number.isSafeInteger(boundSeq) || proposal.refs.some(ref => ref.insertSeq <= boundSeq)) return blocked('INPUT_PREEXISTING_REFS_UNKNOWN')
-        return enqueue(async () => {
+        const enter=()=>enqueue(async ():Promise<AdmissionDecision|typeof waitForMutation> => {
           if (!live || signal.aborted) return blocked('INPUT_PERMISSION_REVOKED')
+          const mutation=mutationCode(agent.session)
+          if(mutation)return awaitMutationBarrier&&mutation==='MVU_PLAYER_BUSY'
+            ?waitForMutation:blocked(mutation)
           // Scan owned immutable records, rather than trusting a potentially
           // lost index/current write. The same refs never acquire a new key.
           const previous = records(sid)
@@ -597,6 +622,26 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
               ...(work.terminalRequired?{completedWorkRequired:true as const}:{})}
           } catch (error) {revoked = true; report(error); return refuseUnclaimed(work,'INPUT_CREATION_WRITE_UNKNOWN')}
         })
+        // Preserve the original direct FIFO path when the callbacks are absent.
+        // In that case the private wait result is unreachable.
+        if(!awaitMutationBarrier&&!mutationBlockCode)return enter() as Promise<AdmissionDecision>
+        for(;;) {
+          if(!live||signal.aborted)return blocked('INPUT_PERMISSION_REVOKED')
+          const initialMutation=mutationCode(agent.session)
+          if(initialMutation&&(!awaitMutationBarrier||initialMutation!=='MVU_PLAYER_BUSY'))return blocked(initialMutation)
+          if(awaitMutationBarrier) {
+            try {await awaitMutationBarrier(agent.session,signal)}
+            catch(error) {
+              report(error)
+              return blocked(signal.aborted?'INPUT_PERMISSION_REVOKED':'INPUT_MUTATION_BARRIER_UNKNOWN')
+            }
+          }
+          if(!live||signal.aborted)return blocked('INPUT_PERMISSION_REVOKED')
+          const result=await enter()
+          if(result!==waitForMutation)return result
+          // A newer lease can appear while admission waits for the FIFO. Leave
+          // that queue completely before awaiting/re-reading the current lease.
+        }
       },
       check(input) {
         if (!hot || input.identity !== hot || !equal(input.preparation, hot.preparation)
@@ -746,9 +791,13 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         delete work.attempt.snapshot
         reservations.set(reservation, {work, step})
         const assertLease = () => {
+          const mutation=mutationCode(agent.session)
+          if(mutation)fail(mutation)
           if (hot !== work || revoked || !live || work.stop || steps.get(step)!.signal.aborted) fail('INPUT_PERMISSION_REVOKED')
         }
         const assertLegacyLease = () => {
+          const mutation=mutationCode(agent.session)
+          if(mutation)fail(mutation)
           if (!live || work.stop || steps.get(step)!.signal.aborted || observeExact(agent.session).kind !== 'legacy') {
             fail('INPUT_LEGACY_PERMISSION_REVOKED')
           }

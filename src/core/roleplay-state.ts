@@ -18,7 +18,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   nativeBranchGroupsFor,nativePlayerGroupsFor,assistantMessageId,userForkContext,locatePlayerRecoveryTarget,
   failedForkMembership,isRecoverySourceMember,backfillRecoverySourceMember,importRecordKey,preparationRecordKey,
   tavernTasks,memoryForContext,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,
-  importSummary,chatImportProjection,deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
+  importSummary,chatImportProjection,numericalState,deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
   normalizeDecisionRecord,userValues,svc,resolveRoleplaySession}:StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
     const prefix = `${session.id}__`
@@ -196,6 +196,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       statusSpec: T.status.get(keyOf(session.id, 'spec')) ?? null,
       statusPanel: selectedStatusRecord(session),
       statusGeneration: selectedStatusGeneration(session),
+      numericalState: numericalState?.(session.id) ?? null,
       rules: T.rules.get(keyOf(session.id, 'spec')) ?? null,
       opening: T.opening.get(keyOf(session.id, 'scene')) ?? null,
       cardImport: activeImportRecord

@@ -1,6 +1,7 @@
 // Generated from runtime/alpha3/src/core/roleplay-mvu-initialization.ts; edit the TypeScript source.
 import { createHash } from 'node:crypto';
 import { recordSha256 } from './roleplay-data.js';
+import { isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
 import { compileMvuInitSources, compileNativeMvuInitSources } from './tavern-mvu-initvar.js';
 const hash = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const isHash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -97,8 +98,9 @@ function validatePlan(plan) {
         throw new Error('MVU_INIT_PLAN_INVALID');
     if (compiled.kind === 'supported') {
         const { planHash, ...compiledContent } = compiled.plan;
-        if (compiled.plan.policy !== 'strict-json-object-v1' || compiled.plan.assurance !== 'supported-static'
-            || compiled.plan.capability !== 'native-json-data-only' || recordSha256(compiledContent) !== planHash) {
+        const yaml = plan.schemaVersion === 2 && isNativeMvuYamlSourcePolicy(plan.sourceSnapshot.policy);
+        if (compiled.plan.policy !== (yaml ? 'yaml-1.2-json-data-v1' : 'strict-json-object-v1') || compiled.plan.assurance !== 'supported-static'
+            || compiled.plan.capability !== (yaml ? 'native-json-yaml-data-only' : 'native-json-data-only') || recordSha256(compiledContent) !== planHash) {
             throw new Error('MVU_INIT_PLAN_INVALID');
         }
     }
@@ -116,6 +118,7 @@ function validatePlan(plan) {
             || snapshot.selected.sourceSha256 !== plan.identity.sourceSha256
             || snapshot.selected.renderedSha256 !== plan.identity.renderedSha256
             || plan.compilation.plan.schemaVersion !== 2 || plan.compilation.plan.source.authority !== 'core-native-policy'
+            || !isNativeMvuSourcePolicy(snapshot.policy)
             || !same(snapshot.policy, plan.compilation.plan.source.policy))
             throw new Error('MVU_INIT_PLAN_INVALID');
     }

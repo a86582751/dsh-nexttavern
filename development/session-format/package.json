@@ -10,6 +10,7 @@
     "./projection": "./lib/projection.js",
     "./catalog": "./lib/catalog.js",
     "./storage-contract": "./lib/storage-contract.js",
+    "./mvu-player-marker": "./lib/mvu-player-marker.js",
     "./package.json": "./package.json"
   },
   "files": [

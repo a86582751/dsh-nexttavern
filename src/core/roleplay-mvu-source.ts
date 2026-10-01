@@ -5,6 +5,12 @@ import {compileTavernOpeningCandidates, decodeTavernCard} from './tavern-card.js
 import type {ImportPointer, ImportRecord} from './roleplay-import-types.js'
 import type {OpeningCatalog, OpeningSource} from './roleplay-opening-selection.js'
 import type {TavernOpeningCandidate, TavernOpeningContext} from './tavern-card.js'
+import {selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
+import {NATIVE_MVU_SOURCE_POLICY,isNativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
+import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
+export {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSourcePolicy,isNativeMvuYamlSourcePolicy}
+  from './roleplay-mvu-source-policy.js'
+export type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex')
 const hashPattern = /^[a-f0-9]{64}$/
@@ -15,20 +21,6 @@ const MAX_ROWS = 4096
 type JsonObject = Record<string, unknown>
 export type MvuSourceTable = 'branch' | 'cards' | 'worldbook' | 'rules' | 'status' | 'opening'
 export interface MvuSourceRowRef {table: MvuSourceTable; key: string; exists: boolean; sha256: string}
-
-const policyContent = Object.freeze({
-  schemaVersion:1 as const, id:'native-json-initialization-v1' as const, version:1 as const,
-  classifierId:'native-json-source-classifier-v1' as const, classifierVersion:1 as const,
-  scope:'import-and-session-settings' as const, bindings:'embedded-primary-only' as const,
-  grammar:'strict-json-object-simple-wrappers-v1' as const, originalLoaderSettlement:'not-proven' as const,
-  staticAlgorithm:Object.freeze({dialect:'A' as const,
-    sha256:'3759d0c8b9f82c67a606afae11de9a90e3ee4e63298ef622b89ac9127eb77047',
-    commit:'b13b43bac24d585f2b523c12e423bb803fa9dd7c'}),
-  bounds:Object.freeze({bytes:MAX_BYTES,nodes:32_000,depth:32,membershipRows:MAX_ROWS}),
-})
-/** Maintained program policy, never a flag or loader claim supplied by a client/card. */
-export const NATIVE_MVU_SOURCE_POLICY = Object.freeze({...policyContent, sha256:recordSha256(policyContent)})
-export type NativeMvuSourcePolicy = typeof NATIVE_MVU_SOURCE_POLICY
 
 export interface MvuSourceSnapshot {
   schemaVersion: 1
@@ -160,6 +152,12 @@ function hashMap(value: unknown, pointer: string): Record<string,string> {
     result[key] = hash
   }
   return result
+}
+function withPolicy(snapshot:MvuSourceSnapshot,policy:NativeMvuSourcePolicy):MvuSourceSnapshot {
+  if(same(snapshot.policy,policy))return snapshot
+  const {snapshotSha256:_old,...content}=snapshot
+  const next={...content,policy}
+  return {...next,snapshotSha256:recordSha256(next)}
 }
 
 // Whole input walk is bounded and never calls accessors, regexes supplied by the
@@ -454,7 +452,10 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         if (initSyntax(text) && !primaryRows.has(`${ref.table}:${ref.key}`)) fail('INITVAR_OUTSIDE_BINDING','/settings',text)
       }
     }
-    return {entries,hasInit:entries.length > 0 || openingInit}
+    const selection=selectNativeMvuInitializationPolicy({books:[{entries}],
+      swipes:captured.candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText}))})
+    if(selection.kind==='unsupported')fail('INITVAR_INVALID',selection.diagnostics[0]!.pointer)
+    return {entries,hasInit:entries.length > 0 || openingInit,policy:selection.policy}
   }
 
   const fresh = (snapshot: MvuSourceSnapshot): {proof:FreshNativeBasisProof; facts:FreshNativeBasisFacts} => {
@@ -513,8 +514,8 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       const selected = captured.candidates.find(item => item.index === request.candidate.index)!
       if (!same(captured.snapshot.source,request.catalog.source) || !same(captured.candidates,request.catalog.candidates)
         || !same(selected,request.candidate)) fail('SOURCE_CHANGED','/selected')
-      const {entries,hasInit} = classify(captured)
-      const snapshot = captured.snapshot
+      const {entries,hasInit,policy} = classify(captured)
+      const snapshot = withPolicy(captured.snapshot,policy)
       if (!hasInit) {
         const proof = {schemaVersion:1 as const,encoding:'native-mvu-absence-scope-proof-v1' as const,
           reason:'closed-native-scope-no-initialization' as const,sourceSnapshot:snapshot}
@@ -523,7 +524,7 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       if (!snapshot.bindings.primary || !entries.length) fail('PRIMARY_REQUIRED','/bindings/primary')
       const {proof,facts} = fresh(snapshot)
       return {schemaVersion:1,kind:'native-json',candidate:{schemaVersion:1,encoding:'native-mvu-json-source-candidate-v1',
-        policy:NATIVE_MVU_SOURCE_POLICY,sourceSnapshot:snapshot,freshNativeBasisProof:proof,
+        policy,sourceSnapshot:snapshot,freshNativeBasisProof:proof,
         books:[{identity:'embedded-primary',binding:'primary',sourcePointer:snapshot.bindings.primary.pointer,
           sourceSha256:snapshot.bindings.primary.sha256,entries}],bookStatData:structuredClone(facts.basis.bookStatData),
         initializedBooks:[],messageIndex:0,selectedSwipeIdentity:`swipe-${request.candidate.index}`,
@@ -542,11 +543,12 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       boundedData(snapshot,'SNAPSHOT_INVALID','/snapshot')
       const {snapshotSha256,...content} = snapshot
       if (!isHash(snapshotSha256) || recordSha256(content) !== snapshotSha256
-        || !same(snapshot.policy,NATIVE_MVU_SOURCE_POLICY)) return false
+        || !isNativeMvuSourcePolicy(snapshot.policy)) return false
       // Re-read the whole declared scope, including membership. Do not compare
       // memory/native history/numerical head: our own successful publication must
       // not invalidate an input-source snapshot. Fresh basis has a separate owner.
-      return same(snapshot,capture(snapshot.source.sessionId,snapshot.selected.index).snapshot)
+      const actual=capture(snapshot.source.sessionId,snapshot.selected.index)
+      return same(snapshot,withPolicy(actual.snapshot,classify(actual).policy))
     } catch { return false }
   }
   return {produce,current}

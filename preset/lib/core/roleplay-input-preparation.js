@@ -59,7 +59,7 @@ const isWork = (value, sessionId) => {
         && equal(row.preparation, { schemaVersion: 1, namespace: ROLEPLAY_INPUT_NAMESPACE,
             preparationKeySha256: digest({ sessionId, preparationId: row.preparationId }), credentialSha256: row.credentialSha256 });
 };
-export function createRoleplayInputPreparation({ table, observe, onError, completion }) {
+export function createRoleplayInputPreparation({ table, observe, onError, completion, awaitMutationBarrier, mutationBlockCode, onMutationStop }) {
     const owners = new WeakMap();
     const leases = new Map();
     const reservationLeases = new Map();
@@ -77,6 +77,16 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
         onError?.(error);
     }
     catch { /* Reporting cannot restore authority. */ } };
+    const mutationCode = (session) => {
+        try {
+            return mutationBlockCode?.(session);
+        }
+        catch (error) {
+            report(error);
+            return 'INPUT_MUTATION_GATE_UNKNOWN';
+        }
+    };
+    const waitForMutation = Symbol('owner-admission-mutation-wait');
     const records = (sid) => [...table.entries()]
         .filter(([key, value]) => key.startsWith(`${prefix(sid)}work-`) && isWork(value, sid))
         .map(([, value]) => clone(value));
@@ -246,6 +256,9 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
             attemptGeneration: work.attemptGeneration, source: clone(work.source),
             ...(work.attempt?.snapshot ? { snapshot: clone(work.attempt.snapshot) } : {}) });
         const historical = (currency) => {
+            const mutation = mutationCode(agent.session);
+            if (mutation)
+                return { code: mutation };
             const proof = lifecycle.get(currency.preparationId);
             if (!live || !proof || pendingRevocations.has(currency.preparationId))
                 return { code: 'HISTORICAL_STOP_STATE_UNKNOWN' };
@@ -302,6 +315,9 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
         const baseCurrency = (work) => {
             if (!live || revoked || hot !== work || work.stop || ['stopped', 'unknown'].includes(work.status))
                 return 'INPUT_PERMISSION_REVOKED';
+            const mutation = mutationCode(agent.session);
+            if (mutation)
+                return mutation;
             if (!sameDurable(work))
                 return 'INPUT_WORK_CHANGED';
             const pointer = table.get(currentKey(sid));
@@ -324,6 +340,9 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
             return baseCurrency(entry.work);
         };
         const terminalStored = (scope) => {
+            const mutation = mutationCode(agent.session);
+            if (mutation)
+                return mutation;
             const work = hot, pointer = table.get(currentKey(sid));
             if (!live || revoked || !work || work.status !== 'active' || work.stop || pendingRevocations.has(work.preparationId)
                 || !work.terminalRequired || !sameDurable(work) || !equal(currencyOf(work), scope.currency)
@@ -336,6 +355,7 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
         const terminal = completion ? createRoleplayInputCompletion({ sessionId: sid, table, enqueue,
             processor: completion,
             current: () => hot?.checkpoint && hot.terminalRequired && hot.attempt?.prepared && !hot.stop && !revoked && live
+                && !mutationCode(agent.session)
                 ? { currency: currencyOf(hot), checkpoint: hot.checkpoint,
                     ...(hot.transition ? { transition: clone(hot.transition) } : {}) } : undefined,
             checkOriginal: () => !hot ? 'INPUT_NO_CURRENT_CLAIM' : baseCurrency(hot), checkStored: terminalStored,
@@ -353,6 +373,12 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
                 ? 'INPUT_CONTINUATION_SCOPE_INVALID' : undefined,
         });
         const stop = (notice) => {
+            try {
+                onMutationStop?.(agent.session, notice);
+            }
+            catch (error) {
+                report(error);
+            }
             if (notice.refsCode)
                 for (const preparationId of lifecycle.keys())
                     pendingRevocations.add(preparationId);
@@ -444,9 +470,13 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
                     return blocked('INPUT_REFS_INVALID');
                 if (!Number.isSafeInteger(boundSeq) || proposal.refs.some(ref => ref.insertSeq <= boundSeq))
                     return blocked('INPUT_PREEXISTING_REFS_UNKNOWN');
-                return enqueue(async () => {
+                const enter = () => enqueue(async () => {
                     if (!live || signal.aborted)
                         return blocked('INPUT_PERMISSION_REVOKED');
+                    const mutation = mutationCode(agent.session);
+                    if (mutation)
+                        return awaitMutationBarrier && mutation === 'MVU_PLAYER_BUSY'
+                            ? waitForMutation : blocked(mutation);
                     // Scan owned immutable records, rather than trusting a potentially
                     // lost index/current write. The same refs never acquire a new key.
                     const previous = records(sid);
@@ -509,6 +539,33 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
                         return refuseUnclaimed(work, 'INPUT_CREATION_WRITE_UNKNOWN');
                     }
                 });
+                // Preserve the original direct FIFO path when the callbacks are absent.
+                // In that case the private wait result is unreachable.
+                if (!awaitMutationBarrier && !mutationBlockCode)
+                    return enter();
+                for (;;) {
+                    if (!live || signal.aborted)
+                        return blocked('INPUT_PERMISSION_REVOKED');
+                    const initialMutation = mutationCode(agent.session);
+                    if (initialMutation && (!awaitMutationBarrier || initialMutation !== 'MVU_PLAYER_BUSY'))
+                        return blocked(initialMutation);
+                    if (awaitMutationBarrier) {
+                        try {
+                            await awaitMutationBarrier(agent.session, signal);
+                        }
+                        catch (error) {
+                            report(error);
+                            return blocked(signal.aborted ? 'INPUT_PERMISSION_REVOKED' : 'INPUT_MUTATION_BARRIER_UNKNOWN');
+                        }
+                    }
+                    if (!live || signal.aborted)
+                        return blocked('INPUT_PERMISSION_REVOKED');
+                    const result = await enter();
+                    if (result !== waitForMutation)
+                        return result;
+                    // A newer lease can appear while admission waits for the FIFO. Leave
+                    // that queue completely before awaiting/re-reading the current lease.
+                }
             },
             check(input) {
                 if (!hot || input.identity !== hot || !equal(input.preparation, hot.preparation)
@@ -692,10 +749,16 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
                 delete work.attempt.snapshot;
                 reservations.set(reservation, { work, step });
                 const assertLease = () => {
+                    const mutation = mutationCode(agent.session);
+                    if (mutation)
+                        fail(mutation);
                     if (hot !== work || revoked || !live || work.stop || steps.get(step).signal.aborted)
                         fail('INPUT_PERMISSION_REVOKED');
                 };
                 const assertLegacyLease = () => {
+                    const mutation = mutationCode(agent.session);
+                    if (mutation)
+                        fail(mutation);
                     if (!live || work.stop || steps.get(step).signal.aborted || observeExact(agent.session).kind !== 'legacy') {
                         fail('INPUT_LEGACY_PERMISSION_REVOKED');
                     }

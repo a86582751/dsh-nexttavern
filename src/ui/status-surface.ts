@@ -8,10 +8,13 @@ import { normalizeDecision, normalizePanel, normalizeOption, normalizeField, ren
 
 import { sanitizeStatusHtml, scopeHtmlStyles } from './reader-rendering.js';
 import { statusFactsHtml, decodeStatusTemplate } from './status-rendering.js';
+import {createMvuStatePanel} from './mvu-state-panel.js';
+import type {MvuStateObservation} from '../core/roleplay-mvu-player-types.js';
 interface Position {left: number;top: number;}
 interface Size {w: number;h: number;}
 interface WindowPrefs extends Record<string, unknown> {pos?: Position | null;badgePos?: Position | null;size?: Size;}
 export interface StatusSurfaceState extends StateReply {
+    numericalState?: MvuStateObservation;
     decision?: {seq?: unknown;};
     statusPanel?: {stale?: boolean;};
     statusSpec?: {regexRules?: {match: string;replace?: string;}[];};
@@ -54,6 +57,7 @@ React,
     const { DecisionCard, decisionSeat } = createDecisionSeat({ React, createRoot, resolveActiveSessionId, toast });
     const ChatOpeningCard = createChatOpeningCard({React,toast,invalidateState,
       jsonFetch:jsonFetch ?? (async () => {throw new Error('开场选择服务暂不可用')})})
+    const {MvuStatePanel} = createMvuStatePanel({React,invalidateState})
 
 
 
@@ -471,7 +475,7 @@ React,
 
         const fields = Array.isArray(panel?.fields) ? panel.fields.map(normalizeField) : [];
         // 面板正文只显示状态；建议统一由独立决策卡展示。
-        const renderPanelBody = () => !panel
+        const renderNarrativePanelBody = () => !panel
             ? React.createElement(
             'div',
                 { className: 'dsh-rp-status-empty', role: 'status' },
@@ -546,6 +550,11 @@ React,
                 )
 
             );
+
+        const renderPanelBody = () => React.createElement(React.Fragment,null,
+            React.createElement(MvuStatePanel,{key:activeSessionId,sessionId:activeSessionId,
+                observation:currentState.numericalState,refresh:async()=>refreshPanelRef.current?.(true)}),
+            React.createElement('h3',null,'叙事状态栏'),renderNarrativePanelBody());
 
         let main = null;
         // Keep the mode control mounted even while a malformed/empty panel is

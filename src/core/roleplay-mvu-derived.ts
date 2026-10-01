@@ -9,7 +9,7 @@ import {mvuInitializationEventKey, mvuInitializationHeadKey,
 import {createRoleplayMvuLineage} from './roleplay-mvu-lineage.js'
 import {createRoleplayMvuPrefixLedger} from './roleplay-mvu-prefix-ledger.js'
 import type {MvuLineageDeps, MvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
-import type {MvuPrefixLedgerProof} from './roleplay-mvu-prefix-ledger.js'
+import type {MvuPrefixLedgerProofV1, MvuPrefixLedgerProofV2} from './roleplay-mvu-prefix-ledger.js'
 import type {MvuInheritedPrefixEvent,MvuInheritedMessageEditProtocol} from './roleplay-mvu-prefix-facts.js'
 import type {VerifiedMvuGenesis, VerifiedMvuDerivedGenesis, MvuDerivedGenesisEvent,
   MvuDerivedGenesisHead, MvuNumericalSnapshot, MvuStateRoot, createRoleplayMvuState} from './roleplay-mvu-state.js'
@@ -20,9 +20,7 @@ interface Table {get(key:string):unknown; entries():Iterable<[string,unknown]>; 
 type Genesis = VerifiedMvuGenesis | VerifiedMvuDerivedGenesis
 type GenesisFact = {kind:'opening';eventKey:string;headKey:string;intentKey:string;intentSha256:string}
   | {kind:'derived';basisKey:string;basisSha256:string}
-export interface MvuDerivedPrepared {
-  schemaVersion:1
-  encoding:'native-mvu-derived-prepared-v1'
+interface MvuDerivedPreparedFields {
   operationId:string
   anchorSha256:string
   parentSessionId:string
@@ -34,16 +32,34 @@ export interface MvuDerivedPrepared {
   genesis:Genesis
   genesisFact:GenesisFact
   initial:MvuNumericalSnapshot
-  ledger:MvuPrefixLedgerProof
   preparedSha256:string
 }
-export interface MvuDerivedBasis {
+export interface MvuDerivedPreparedV1 extends MvuDerivedPreparedFields {
+  schemaVersion:1
+  encoding:'native-mvu-derived-prepared-v1'
+  ledger:MvuPrefixLedgerProofV1
+}
+export interface MvuDerivedPreparedV2 extends MvuDerivedPreparedFields {
+  schemaVersion:2
+  encoding:'native-mvu-derived-prepared-v2'
+  ledger:MvuPrefixLedgerProofV2
+}
+export type MvuDerivedPrepared = MvuDerivedPreparedV1 | MvuDerivedPreparedV2
+export interface MvuDerivedBasisV1 {
   schemaVersion:1
   encoding:'native-mvu-derived-basis-v1'
-  prepared:MvuDerivedPrepared
+  prepared:MvuDerivedPreparedV1
   source:MvuDerivedSourceProof
   basisSha256:string
 }
+export interface MvuDerivedBasisV2 {
+  schemaVersion:2
+  encoding:'native-mvu-derived-basis-v2'
+  prepared:MvuDerivedPreparedV2
+  source:MvuDerivedSourceProof
+  basisSha256:string
+}
+export type MvuDerivedBasis = MvuDerivedBasisV1 | MvuDerivedBasisV2
 export interface MvuDerivedDeps extends MvuLineageDeps {
   branch:Table
   status:Table
@@ -61,6 +77,17 @@ export const mvuDerivedHeadKey = (sid:string) => `${sid}__mvu-derived-head`
 const same = (a:unknown,b:unknown) => recordSha256(a) === recordSha256(b)
 const id = (v:unknown):v is string => typeof v === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(v)
 function fail(code:string):never {throw new Error(code)}
+function preparedVersion(prepared:MvuDerivedPrepared):boolean {
+  return prepared.schemaVersion===1&&prepared.encoding==='native-mvu-derived-prepared-v1'
+    &&prepared.ledger?.schemaVersion===1&&prepared.ledger.encoding==='native-mvu-prefix-ledger-proof-v1'
+    ||prepared.schemaVersion===2&&prepared.encoding==='native-mvu-derived-prepared-v2'
+    &&prepared.ledger?.schemaVersion===2&&prepared.ledger.encoding==='native-mvu-prefix-ledger-proof-v2'
+}
+function basisVersion(basis:MvuDerivedBasis):boolean {
+  return preparedVersion(basis.prepared)&&(basis.schemaVersion===1&&basis.encoding==='native-mvu-derived-basis-v1'
+    &&basis.prepared.schemaVersion===1||basis.schemaVersion===2&&basis.encoding==='native-mvu-derived-basis-v2'
+    &&basis.prepared.schemaVersion===2)
+}
 /** Domain evidence is bounded plain JSON. Inspect before cloning/hashing so a
  * forged descriptor cannot execute accessors or disappear during serialization. */
 function data<T>(input:T):T {
@@ -107,6 +134,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
   const lineage=createRoleplayMvuLineage(deps)
   const ledger=createRoleplayMvuPrefixLedger({branch:deps.branch,status:deps.status,
     verifySettlementFacts:input => deps.state().verifyConsumedSettlementFacts(input),
+    verifyManualSettlementFacts:input => deps.state().verifyConsumedManualSettlementFacts(input),
     readProjectedCanonical:(events,turn)=>readMvuPrefixCanonical(events,turn,deps.projectPrefix),editProtocol:deps.editProtocol})
   function prefix(session:ReadBranchSession,cut:number) {
     const events=eventsOf(session)
@@ -176,7 +204,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
     exact(prepared,['schemaVersion','encoding','operationId','anchorSha256','parentSessionId','childSessionId','seedLength',
       'parentInheritedEventCount','parentSourceSha256','prefixSha256','genesis','genesisFact','initial','ledger','preparedSha256'])
     const {preparedSha256,...descriptor}=prepared
-    if(prepared.schemaVersion!==1||prepared.encoding!=='native-mvu-derived-prepared-v1'
+    if(!preparedVersion(prepared)
       ||![prepared.parentSessionId,prepared.childSessionId,prepared.operationId].every(id)
       ||prepared.parentSessionId===prepared.childSessionId||prepared.seedLength!==events.length
       ||!Number.isSafeInteger(prepared.parentInheritedEventCount)||prepared.parentInheritedEventCount<0
@@ -231,11 +259,14 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
         if(!basis)fail('DERIVED_PARENT_BASIS_UNPROVEN')
         return {kind:'derived' as const,basisKey:mvuDerivedBasisKey(owner.id),basisSha256:basis.basisSha256}
       })()
-      const body={schemaVersion:1 as const,encoding:'native-mvu-derived-prepared-v1' as const,
+      const fields={
         operationId:operation.operationId,anchorSha256:recordSha256(operation.anchor),parentSessionId:owner.id,
         childSessionId:reservation.childSessionId,seedLength:reservation.seedLength,
         parentInheritedEventCount:owner.inheritedEventCount!,parentSourceSha256:sourceSha256,
-        prefixSha256:recordSha256(events),genesis:g,genesisFact:prior,initial:initial.snapshot,ledger:captured.proof}
+        prefixSha256:recordSha256(events),genesis:g,genesisFact:prior,initial:initial.snapshot}
+      const body=captured.proof.schemaVersion===1
+        ?{schemaVersion:1 as const,encoding:'native-mvu-derived-prepared-v1' as const,...fields,ledger:captured.proof}
+        :{schemaVersion:2 as const,encoding:'native-mvu-derived-prepared-v2' as const,...fields,ledger:captured.proof}
       await putExact(deps.branch,mvuDerivedPreparedKey(reservation.childSessionId),{...body,preparedSha256:recordSha256(body)})
     })
   }
@@ -275,7 +306,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
       const basis=data(raw) as MvuDerivedBasis
       exact(basis,['schemaVersion','encoding','prepared','source','basisSha256'])
       const {basisSha256,...body}=basis
-      if(basis.schemaVersion!==1||basis.encoding!=='native-mvu-derived-basis-v1'||recordSha256(body)!==basisSha256
+      if(!basisVersion(basis)||recordSha256(body)!==basisSha256
         ||basis.prepared.childSessionId!==sid||!same(deps.branch.get(mvuDerivedPreparedKey(sid)),basis.prepared)
         ||!lineage.historical(basis.source,successor)||basis.source.parentSourceSha256!==basis.prepared.parentSourceSha256
         ||basis.source.parentSessionId!==basis.prepared.parentSessionId||basis.source.childSessionId!==sid
@@ -298,7 +329,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
       const basis=data(raw) as MvuDerivedBasis
       exact(basis,['schemaVersion','encoding','prepared','source','basisSha256'])
       const {basisSha256,...body}=basis
-      if(basis.schemaVersion!==1||basis.encoding!=='native-mvu-derived-basis-v1'||recordSha256(body)!==basisSha256
+      if(!basisVersion(basis)||recordSha256(body)!==basisSha256
         ||basis.prepared.childSessionId!==sid||!same(deps.branch.get(mvuDerivedPreparedKey(sid)),basis.prepared)
         ||!(currentSource?lineage.current(basis.source):lineage.verifyDenialBindingFacts(basis.source))
         ||basis.source.parentSourceSha256!==basis.prepared.parentSourceSha256
@@ -333,8 +364,13 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
         new Set([child.id]),source)
       if(prepared.operationId!==operation.operationId)fail('DERIVED_OPERATION_MISMATCH')
       if(source.parentSourceSha256!==prepared.parentSourceSha256)fail('DERIVED_PARENT_SOURCE_CHANGED')
-      const descriptor={schemaVersion:1 as const,encoding:'native-mvu-derived-basis-v1' as const,prepared,source}
-      const basis:MvuDerivedBasis={...descriptor,basisSha256:recordSha256(descriptor)},g=generated(basis)
+      const descriptor=prepared.schemaVersion===1
+        ?{schemaVersion:1 as const,encoding:'native-mvu-derived-basis-v1' as const,prepared,source}
+        :{schemaVersion:2 as const,encoding:'native-mvu-derived-basis-v2' as const,prepared,source}
+      const basis:MvuDerivedBasis=descriptor.schemaVersion===1
+        ?{...descriptor,basisSha256:recordSha256(descriptor)}
+        :{...descriptor,basisSha256:recordSha256(descriptor)}
+      const g=generated(basis)
       await putExact(deps.status,mvuDerivedEventKey(child.id),g.derivedEvent)
       await putExact(deps.status,mvuDerivedHeadKey(child.id),g.derivedHead)
       await putExact(deps.branch,mvuDerivedBasisKey(child.id),basis)

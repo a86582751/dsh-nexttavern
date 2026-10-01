@@ -8,17 +8,25 @@ import { releasedV2SessionFormatCodec, sessionFormatV1ToV2 } from '@deepseek-ai/
 import { releasedV3SessionFormatCodec, sessionFormatV2ToV3 } from '@deepseek-ai/dsh-session-format-v2-to-v3';
 import { assertReleasedV4Header, releasedV4SessionFormatCodec, restoreReleasedV4Artifact, sessionFormatV3ToV4 } from '@deepseek-ai/dsh-session-format-v3-to-v4';
 import { MESSAGE_EDIT_EVENT, assertMessageEdit, messageEditProjection } from './projection.js';
+import { MVU_PLAYER_EDIT_EVENT, assertMvuPlayerEditEvent, assertMvuPlayerMarkerBoundary } from './mvu-player-marker.js';
 export { SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format';
 // Historical official sessions use the host's child-aware migration. Private
 // alpha.6 edit logs are deliberately unsupported; new edits are V4 only.
 export { createSessionFormatCatalogWithChildren } from '@deepseek-ai/dsh-session-format-catalog';
 export const currentSessionMessageProjections = [...officialProjections, messageEditProjection];
-export const knownSessionEventTypes = new Set([...KNOWN_SESSION_EVENT_TYPES, MESSAGE_EDIT_EVENT]);
+export const knownSessionEventTypes = new Set([
+    ...KNOWN_SESSION_EVENT_TYPES, MESSAGE_EDIT_EVENT, MVU_PLAYER_EDIT_EVENT,
+]);
 function restore(artifact) {
     const restored = restoreReleasedV4Artifact(artifact, knownSessionEventTypes);
     for (const event of restored.events)
         if (event.type === MESSAGE_EDIT_EVENT)
             assertMessageEdit(event.data);
+    for (const event of restored.events)
+        if (event.type === MVU_PLAYER_EDIT_EVENT) {
+            assertMvuPlayerEditEvent(event);
+            assertMvuPlayerMarkerBoundary(restored.events.slice(0, event.seq + 1));
+        }
     // The released decoder validates JSON vocabulary; Session now validates the
     // current branded envelope, seed boundary and projection decisions at runtime.
     Session.fromRestore(SessionId(restored.header.id), restored.events, restored.header, SessionLogOffset(restored.inheritedEventCount), 'detached', currentSessionMessageProjections);
