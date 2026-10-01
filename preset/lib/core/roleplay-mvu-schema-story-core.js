@@ -10,6 +10,7 @@ import { readInputCompletion } from './roleplay-input-completion.js';
 import { inputSnapshotReferenceCurrent } from './roleplay-preparation.js';
 import { createRoleplayMvuSchemaJournal } from './roleplay-mvu-schema-journal.js';
 import { createRoleplayMvuSchemaReplay } from './roleplay-mvu-schema-replay.js';
+import { schemaTraceRequestedStep } from './roleplay-mvu-schema-executor-types.js';
 import { createRoleplayMvuSchemaStory } from './roleplay-mvu-schema-story.js';
 import { validateMvuSchemaOpeningIntent, validateMvuSchemaOpeningEvent, validateMvuSchemaOpeningHead, verifyMvuSchemaOpeningFacts } from './roleplay-mvu-schema-opening-types.js';
 import { sealMvuSchemaStoryFact, validateMvuSchemaNumericalSnapshot, validateMvuSchemaStoryEvent, validateMvuSchemaStorySettlement, mvuSchemaStoryHead, mvuSchemaStoryEventKey, mvuSchemaStorySettlementKey, MVU_SCHEMA_STORY_PHASES, isMvuSchemaGenesisHead } from './roleplay-mvu-schema-story-types.js';
@@ -24,7 +25,8 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
     const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers });
     const views = new Map(), owners = new Map(), scopes = new WeakMap();
     const sourceLeases = new Map();
-    let disposed = false, driver;
+    let disposed = false;
+    const drivers = new Map();
     const all = (session) => session.snapshotEvents();
     const currentSession = (session) => !disposed && deps.session(session.id) === session && deps.active(session);
     const frontier = (ready) => ({ nativeCut: ready.steps.at(-1).completionMarker.seq + 1,
@@ -138,6 +140,14 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         return { state, consumed, eventKeys: rows.map(row => row.key) };
     }
     function readyFor(sid, realmEpoch, events, inheritedCut, historical = false) {
+        // Without inherited rows the preliminary inventory has no merge conflicts.
+        // Keep the other path's raw inherited future-row conflict checks intact.
+        if (!historical && inheritedCut === null) {
+            const ready = journal.capture(sid, realmEpoch, events);
+            if (ready.kind !== 'ready')
+                fail(ready.code);
+            return ready;
+        }
         const rows = new Map(inheritedCut?.records.map(row => [row.key, row]) ?? []);
         if (inheritedCut)
             journal.validateFrozen(inheritedCut, events.slice(0, inheritedCut.nativeCut));
@@ -224,9 +234,8 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             const prefix = validateMvuSchemaFrozenPrefix(input), sid = prefix.sessionId;
             if (events.length !== prefix.journal.nativeCut || !deps.source.originalFactsCurrent(prefix.original))
                 return false;
-            const frozen = journal.validateFrozen(prefix.journal, events);
-            const ready = journal.captureFrozen(sid, prefix.original.realmEpoch, events, frozen.records);
-            if (ready.kind !== 'ready')
+            const ready = journal.validateFrozenReady(prefix.journal, events);
+            if (ready.frozen.sessionId !== sid || ready.frozen.realmEpoch !== prefix.original.realmEpoch)
                 return false;
             let initial, ordinal = 1;
             if (prefix.seed.kind === 'opening') {
@@ -246,10 +255,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                     || genesis.basisSha256 !== prefix.seed.basisSha256 || !same(genesis.original, prefix.original)
                     || genesis.inheritedCut.nativeCut !== prefix.inheritedEventCount)
                     return false;
-                const inherited = journal.validateFrozen(genesis.inheritedCut, events.slice(0, prefix.inheritedEventCount));
-                const prior = journal.captureFrozen(inherited.sessionId, inherited.realmEpoch, events.slice(0, prefix.inheritedEventCount), inherited.records);
-                if (prior.kind !== 'ready')
-                    return false;
+                const prior = journal.validateFrozenReady(genesis.inheritedCut, events.slice(0, prefix.inheritedEventCount));
                 ordinal = prior.steps.length;
                 initial = snapshot({ ...genesis.snapshot, sourceSha256: prefix.sourceSha256 });
             }
@@ -288,7 +294,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             || nativeCut > all(session).length)
             fail('SCHEMA_DERIVED_PARENT_UNPROVEN');
         const history = factual(session, nativeCut, true);
-        const { driver: replay } = await engine();
+        const { driver: replay } = await engine(history.ready);
         const verified = await replay.verifyHistorical({ sessionId: sid, realmEpoch: history.original.realmEpoch, nativeCut });
         if (verified.kind !== 'verified')
             fail(verified.code);
@@ -330,7 +336,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             if (!derived || derived.original.realmEpoch !== selector.realmEpoch)
                 fail('SCHEMA_DERIVED_GENESIS_UNPROVEN');
             const ready = readyFor(session.id, selector.realmEpoch, prefix, derived.inheritedCut, true);
-            await deps.protectedRuntime();
+            await protectedFor(ready);
             return { authorInput: derived.original.authorInput, frozen: ready.frozen, events: all(session) };
         }
         const matches = [...deps.branch.entries()].filter(([key, row]) => key.startsWith(`${session.id}__opening-choice-`)
@@ -346,7 +352,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             fail(ready.code);
         const original = deps.source.readFrozenOriginal(intent.preparation, ready, prefix);
         // Re-admit protected bytes for every waiter, including a cache hit.
-        await deps.protectedRuntime();
+        await protectedFor(ready);
         return { authorInput: original.authorInput, frozen: ready.frozen, events: all(session) };
     }
     function rowsCurrent(owner) {
@@ -432,23 +438,40 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             }
         });
     }
-    async function engine() {
-        const runtime = await deps.protectedRuntime();
+    function identityTuple(ready) {
+        const epoch = ready.epoch;
+        return { compiler: epoch.program.compiler, bridge: epoch.program.bridge, libraries: epoch.program.libraries, runner: epoch.runner };
+    }
+    async function protectedFor(ready) {
+        const tuple = identityTuple(ready), runtime = await deps.protectedRuntime(tuple);
         if (disposed)
             fail('SCHEMA_RUNTIME_DISPOSED');
-        driver ??= createRoleplayMvuSchemaReplay({ table: deps.status, compiler: runtime.compiler, runner: runtime.runner,
-            markers: deps.markers, captureHistoricalCut, flush: deps.flush, captureOwned: selector => {
-                const owner = owners.get(selector.sessionId);
-                if (!owner?.scope || !owner.inSource || !ownerCurrent(owner)
-                    || owner.scope.requestedStep.eventId !== selector.batchId)
-                    fail('SCHEMA_OWNER_UNPROVEN');
-                return owner.scope;
-            }, checkOwned, withSourceBoundary: (scope, action) => {
-                const owner = scopes.get(scope.owner);
-                if (!owner)
-                    fail('SCHEMA_OWNER_UNPROVEN');
-                return withLease(owner, action);
-            } });
+        if (runtime.executorVersion !== ready.epoch.schemaVersion || runtime.implementationKey !== recordSha256(tuple)
+            || !same(tuple, { compiler: runtime.compiler.identity, bridge: runtime.bridge, libraries: runtime.libraries, runner: runtime.runner.identity })) {
+            fail('SCHEMA_IMPLEMENTATION_CHANGED');
+        }
+        return runtime;
+    }
+    async function engine(ready) {
+        const runtime = await protectedFor(ready);
+        let driver = drivers.get(runtime.implementationKey);
+        if (!driver) {
+            driver = createRoleplayMvuSchemaReplay({ table: deps.status, executorVersion: runtime.executorVersion,
+                compiler: runtime.compiler, runner: runtime.runner,
+                markers: deps.markers, captureHistoricalCut, flush: deps.flush, captureOwned: selector => {
+                    const owner = owners.get(selector.sessionId);
+                    if (!owner?.scope || owner.driver !== driver || !owner.inSource || !ownerCurrent(owner)
+                        || owner.scope.requestedStep.eventId !== selector.batchId)
+                        fail('SCHEMA_OWNER_UNPROVEN');
+                    return owner.scope;
+                }, checkOwned, withSourceBoundary: (scope, action) => {
+                    const owner = scopes.get(scope.owner);
+                    if (!owner)
+                        fail('SCHEMA_OWNER_UNPROVEN');
+                    return withLease(owner, action);
+                } });
+            drivers.set(runtime.implementationKey, driver);
+        }
         return { runtime, driver };
     }
     async function preflight(sid, signal) {
@@ -457,7 +480,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         if (!session || !currentSession(session))
             fail('SCHEMA_SESSION_INACTIVE');
         const agent = deps.agent(session), history = factual(session), frame = deps.source.captureFrame(history.original, sid);
-        const { driver: replay } = await engine();
+        const { driver: replay } = await engine(history.ready);
         const verified = await replay.verifyHistorical({ sessionId: sid, realmEpoch: history.original.realmEpoch,
             nativeCut: history.ready.frozen.nativeCut }, signal);
         signal?.throwIfAborted();
@@ -546,9 +569,12 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 owner.scope = { owner: owner.token, incarnation: owner.view.agent, session,
                     signal: AbortSignal.any([owner.view.signal, owner.abort.signal]), authorInput: owner.original.authorInput,
                     realmEpoch: plan.realmEpoch, loadFrame: ready.epoch.loadFrame, inheritedCut: owner.inheritedCut, sourceNativeCut: cut,
-                    requestedStep: { eventId: selector.batchId, frame: { ownerSessionId: session.id,
-                            sourceNativeCutSha256: recordSha256(cut), material: owner.frame.material, input } } };
-                const { driver: replay } = await engine(), result = await replay.execute(selector);
+                    requestedStep: schemaTraceRequestedStep(selector.batchId, { ownerSessionId: session.id,
+                        sourceNativeCutSha256: recordSha256(cut), material: owner.frame.material }, input) };
+                const { driver: replay } = await engine(ready);
+                if (owner.driver !== replay)
+                    fail('SCHEMA_IMPLEMENTATION_CHANGED');
+                const result = await replay.execute(selector);
                 if (result.kind === 'completed') {
                     owner.lastLive = result;
                     owner.associations.push(result.association);
@@ -580,7 +606,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             // tokens are intentionally stale and are covered by the full pinned chain.
             owner.associations.pop();
             try {
-                return !!driver?.checkEvidence(lastLive.evidence, { association: lastLive.association, output: lastLive.output });
+                return owner.driver.checkEvidence(lastLive.evidence, { association: lastLive.association, output: lastLive.output });
             }
             finally {
                 owner.associations.push(lastLive.association);
@@ -612,7 +638,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const events = all(session), initialCut = { schemaVersion: 1, sessionId: sid, ownerSessionId: sid,
             nativeCut: events.length, nativePrefixSha256: recordSha256(events), sourceSnapshotSha256: frame.snapshotSha256,
             materialSha256: frame.materialSha256, stopGeneration: scope.stopGeneration, anchor: selectorsAnchor };
-        const plan = transaction.makePlan(scope, canonical, base, frame, history.original.realmEpoch, history.original.programSha256, initialCut, events[scope.receipt.turnEndSeq].time);
+        const plan = transaction.makePlan(scope, canonical, base, frame, history.original.realmEpoch, history.original.programSha256, initialCut, events[scope.receipt.turnEndSeq].time, history.ready.epoch.schemaVersion);
         if (owners.has(sid))
             fail('SCHEMA_STORY_OWNER_EXISTS');
         const baseline = new Map([...deps.status.entries()].filter(([key]) => key.startsWith(`${sid}__mvu-`)
@@ -621,7 +647,13 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         for (const [key, value] of deps.status.entries())
             if (key.startsWith(`${sid}__mvu-state-schema-story-`))
                 baseline.set(key, recordSha256(value));
-        const owner = { lease: closing, view, original: history.original, frame, base, plan, inheritedCut: history.inheritedCut, abort: new AbortController(),
+        const { driver } = await engine(history.ready);
+        if (!view.current() || factual(session).digest !== history.digest)
+            fail('SCHEMA_STORY_BASIS_CHANGED');
+        if (owners.has(sid))
+            fail('SCHEMA_STORY_OWNER_EXISTS');
+        const owner = { lease: closing, view, original: history.original, frame, base, plan, driver,
+            inheritedCut: history.inheritedCut, abort: new AbortController(),
             token: Object.freeze({}), inSource: false, baseline, associations: [] };
         owners.set(sid, owner);
         scopes.set(owner.token, owner);
@@ -631,7 +663,8 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         for (const [sid, owner] of owners)
             if (owner.lease === lease) {
                 owner.abort.abort();
-                driver?.invalidateOwner(owner.token);
+                for (const driver of drivers.values())
+                    driver.invalidateOwner(owner.token);
                 owners.delete(sid);
                 views.delete(sid);
             }
@@ -668,7 +701,14 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 if (view.agent === agent)
                     views.delete(sid);
         },
-        dispose() { disposed = true; for (const owner of owners.values())
-            releaseClosing(owner.lease); views.clear(); driver?.dispose(); },
+        dispose() {
+            disposed = true;
+            for (const owner of owners.values())
+                releaseClosing(owner.lease);
+            views.clear();
+            for (const driver of drivers.values())
+                driver.dispose();
+            drivers.clear();
+        },
     };
 }

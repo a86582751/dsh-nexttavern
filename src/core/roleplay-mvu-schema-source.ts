@@ -170,11 +170,14 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps,markers:typeof 
       }})
       if(ready.frozen.nativeCut>actualEvents.length)fail('SCHEMA_NATIVE_CUT_UNPROVEN')
       const cut=actualEvents.slice(0,ready.frozen.nativeCut)
-      const frozen=journal.validateFrozen(ready.frozen,cut)
-      const actual=journal.captureFrozen(sid,preparation.realmEpoch,cut,frozen.records)
-      if(actual.kind!=='ready'||!same(actual,ready))fail('SCHEMA_NATIVE_CUT_UNPROVEN')
+      const actual=journal.validateFrozenReady(ready.frozen,cut)
+      if(actual.frozen.sessionId!==sid||actual.frozen.realmEpoch!==preparation.realmEpoch
+        ||!same(actual,ready))fail('SCHEMA_NATIVE_CUT_UNPROVEN')
       const {epoch}=actual,first=actual.steps[0]!
       if(epoch.sessionId!==sid||epoch.realmEpoch!==preparation.realmEpoch
+        ||epoch.schemaVersion!==preparation.schemaVersion
+        ||preparation.schemaVersion===2&&!same(preparation.executor,{compiler:epoch.program.compiler,
+          bridge:epoch.program.bridge,libraries:epoch.program.libraries,runner:epoch.runner})
         ||first.dispatch.batchId!==preparation.selector.batchId
         ||!same(first.dispatch.sourceNativeCut.anchor,preparation.selector.anchor)
         ||first.dispatchMarker.seq!==preparation.freshNativeBasisProof.native.observedThroughSeq+1

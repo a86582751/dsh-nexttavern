@@ -19,7 +19,8 @@ import type {Session} from '@deepseek-ai/dsh-session'
 import type {NativeInputAdmissionAgentV2} from '@deepseek-ai/dsh-agent-loop'
 import type {mvuPlayerMarkers} from 'dsh-nexttavern-session-format/mvu-player-marker'
 import type {mvuSchemaMarkers} from 'dsh-nexttavern-session-format/mvu-schema-marker'
-import type {MvuSchemaRuntime} from 'dsh-nexttavern-mvu-schema-runtime'
+import type {OwnedMvuSchemaExecutor,SchemaExecutorIdentityTuple} from './roleplay-mvu-schema-executor-types.js'
+import {schemaTraceRequestedStep} from './roleplay-mvu-schema-executor-types.js'
 import type {createRoleplayMvuSchemaStoryCore} from './roleplay-mvu-schema-story-core.js'
 import type {createRoleplayMvuSchemaSource} from './roleplay-mvu-schema-source.js'
 import type {SchemaOwnedScope,SchemaBoundary,SchemaExecutionAssociation}
@@ -35,7 +36,7 @@ interface Dependencies {
   agent(session:Session):NativeInputAdmissionAgentV2|undefined
   active(session:Session):boolean
   sourceSha256(sid:string):string
-  protectedRuntime():Promise<MvuSchemaRuntime>
+  protectedRuntime(tuple?:SchemaExecutorIdentityTuple):Promise<OwnedMvuSchemaExecutor>
   withSourceLock<T>(sid:string,action:()=>Promise<T>):Promise<T>
   flush(session:Session):Promise<boolean>
   markers:typeof mvuSchemaMarkers
@@ -52,6 +53,7 @@ interface Owner {
   reservation:Reservation;basis:Basis;operation:MvuSchemaPlayerOperationV1;plan:MvuSchemaPlayerPlanV1
   token:object;baseline:Map<string,string>;associations:SchemaExecutionAssociation[]
   scope?:SchemaOwnedScope;lastLive?:MvuSchemaPlayerLive;publication?:MvuSchemaPlayerPublicationBoundary
+  driver?:ReturnType<typeof createRoleplayMvuSchemaReplay>
 }
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const codeOf=(error:unknown)=>error instanceof Error&&/^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
@@ -61,7 +63,8 @@ function fail(code:string):never {throw Error(code)}
 export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
   const reservations=new Map<string,Reservation>(),tokens=new WeakMap<object,Owner>()
   const journal=createRoleplayMvuSchemaJournal({table:deps.status as never,markers:deps.markers})
-  let disposed=false,driver:ReturnType<typeof createRoleplayMvuSchemaReplay>|undefined
+  let disposed=false
+  const drivers=new Map<string,ReturnType<typeof createRoleplayMvuSchemaReplay>>()
   const events=(session:Session)=>session.snapshotEvents()
   const current=(session:Session)=>!disposed&&deps.active(session)&&deps.session(session.id)===session
   const markerFor=(operation:MvuSchemaPlayerOperationV1,session:Session)=>events(session).find(event=>
@@ -167,10 +170,14 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
       return actual.length===cut+(boundary.completionMarker?2:boundary.dispatchMarker?1:0)
     } catch {return false}
   }
-  async function engine() {
-    const runtime=await deps.protectedRuntime()
+  async function engine(basis:Basis) {
+    const {program,runner}=basis.ready.epoch
+    const runtime=await deps.protectedRuntime({compiler:program.compiler,bridge:program.bridge,libraries:program.libraries,runner})
     if(disposed)fail('SCHEMA_RUNTIME_DISPOSED')
-    driver??=createRoleplayMvuSchemaReplay({table:deps.status as never,compiler:runtime.compiler,runner:runtime.runner,
+    let driver=drivers.get(runtime.implementationKey)
+    if(!driver) {
+      driver=createRoleplayMvuSchemaReplay({table:deps.status as never,compiler:runtime.compiler,runner:runtime.runner,
+      executorVersion:runtime.executorVersion,
       markers:deps.markers,captureHistoricalCut:deps.story.captureHistoricalCut,flush:deps.flush,
       captureOwned:selector=>{
         const owner=reservations.get(selector.sessionId)?.owner
@@ -182,6 +189,8 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
         // The real maintenance callback already holds the one Source lock.
         return action()
       }})
+      drivers.set(runtime.implementationKey,driver)
+    }
     return driver
   }
   const transaction=createRoleplayMvuSchemaPlayer({table:deps.status,
@@ -201,12 +210,15 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
       const cut={...plan.initialCut,nativeCut:actual.length,nativePrefixSha256:recordSha256(actual),anchor:selector.anchor}
       const ready=journal.capture(session.id,plan.realmEpoch,actual,owner.basis.inheritedCut)
       if(ready.kind!=='ready')fail(ready.code)
+      if(ready.epoch.schemaVersion!==plan.schemaVersion)fail('SCHEMA_EXECUTOR_VERSION_MISMATCH')
       owner.scope={owner:owner.token,incarnation:owner.reservation.agent,session,
         signal:AbortSignal.any([owner.reservation.signal!,owner.reservation.abort.signal]),
         authorInput:owner.basis.original.authorInput,realmEpoch:plan.realmEpoch,loadFrame:ready.epoch.loadFrame,
-        inheritedCut:owner.basis.inheritedCut,sourceNativeCut:cut,requestedStep:{eventId:selector.batchId,
-          frame:{ownerSessionId:session.id,sourceNativeCutSha256:recordSha256(cut),material:owner.basis.frame.material,input}}}
-      const replay=await engine(),result=await replay.execute(selector)
+        inheritedCut:owner.basis.inheritedCut,sourceNativeCut:cut,requestedStep:schemaTraceRequestedStep(selector.batchId,
+          {ownerSessionId:session.id,sourceNativeCutSha256:recordSha256(cut),material:owner.basis.frame.material},input)}
+      const replay=await engine(owner.basis)
+      owner.driver=replay
+      const result=await replay.execute(selector)
       if(result.kind==='completed'){owner.lastLive=result;owner.associations.push(result.association)}
       return result
     },withPublicationBoundary:async(token,lastLive,action)=>{
@@ -228,7 +240,7 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
           ||!same(step.dispatchRef,phase.association.dispatch)||!same(step.completionRef,phase.association.completion))return false
       }
       owner.associations.pop()
-      try {return !!driver?.checkEvidence(lastLive.evidence,{association:lastLive.association,output:lastLive.output})}
+      try {return !!owner.driver?.checkEvidence(lastLive.evidence,{association:lastLive.association,output:lastLive.output})}
       finally {owner.associations.push(lastLive.association)}
     }})
   async function putExact(key:string,value:unknown) {
@@ -317,7 +329,8 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
                 stopGeneration:'notice' in agent.lookupInputStop()?(agent.lookupInputStop() as {notice:{stopSequence:number}}).notice.stopSequence:0,
                 anchor:{kind:'manual' as const,operationId:request.operationId,requestSha256:operation.requestSha256,
                   observedNativeSeq:request.expected.observedNativeSeq}}
-              const plan=transaction.makePlan(operation,{seq:marker.seq,sha256:recordSha256(marker)},frame,initialCut,marker.time)
+              const plan=transaction.makePlan(operation,{seq:marker.seq,sha256:recordSha256(marker)},frame,initialCut,
+                marker.time,basis.ready.epoch.schemaVersion)
               await putExact(mvuSchemaPlayerPlanKey(sid,operation.operationId),plan)
               const owner:Owner={reservation,basis,operation,plan,token:Object.freeze({}),
                 baseline:new Map(stateRows(sid).map(([key,row])=>[key,recordSha256(row)])),associations:[]}
@@ -342,7 +355,7 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
         completedEvent=result.event
       } finally {
         reservation.abort.abort()
-        if(reservation.owner)driver?.invalidateOwner(reservation.owner.token)
+        if(reservation.owner)reservation.owner.driver?.invalidateOwner(reservation.owner.token)
         if(reservations.get(sid)===reservation)reservations.delete(sid)
         reservation.release()
       }
@@ -371,11 +384,15 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
   function invalidateSession(sid:string) {
     const reservation=reservations.get(sid)
     reservation?.abort.abort()
-    if(reservation?.owner)driver?.invalidateOwner(reservation.owner.token)
+    if(reservation?.owner)reservation.owner.driver?.invalidateOwner(reservation.owner.token)
   }
   return {submit,pendingCode,editBlockCode:busy,awaitMutationBarrier,
     mutationBlockCode:(session:{id:string})=>reservations.has(session.id)?'MVU_PLAYER_BUSY':undefined,
     invalidateSession,invalidateAgent:(agent:object)=>{
       for(const [sid,reservation] of reservations)if(reservation.agent===agent)invalidateSession(sid)
-    },dispose:()=>{disposed=true;for(const sid of reservations.keys())invalidateSession(sid);driver?.dispose()}}
+    },dispose:()=>{
+      disposed=true
+      for(const sid of reservations.keys())invalidateSession(sid)
+      for(const driver of drivers.values())driver.dispose()
+    }}
 }

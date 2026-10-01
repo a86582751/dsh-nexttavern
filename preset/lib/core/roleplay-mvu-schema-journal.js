@@ -2,9 +2,23 @@
 /** Owned Domain execution facts. Numerical commits never select this history;
  * accepted and completed refused guest steps have the same ordering contract. */
 import { createHash } from 'node:crypto';
+import { types } from 'node:util';
 import { recordSha256, stableJson } from './roleplay-data.js';
 import { cloneSchemaData, cloneSchemaValues, validateSchemaProgram } from './tavern-mvu-schema-data.js';
 import { MVU_SCHEMA_BOUNDS } from './tavern-mvu-schema-types.js';
+import { validateSchemaEvaluationInputV2, validateSchemaGuestOutputV2 } from './tavern-mvu-schema-runner-v2.js';
+function isEpoch(row) {
+    return row.encoding === 'native-mvu-schema-epoch-v1' || row.encoding === 'native-mvu-schema-epoch-v2';
+}
+function isDispatch(row) {
+    return row.encoding === 'native-mvu-schema-dispatch-v1' || row.encoding === 'native-mvu-schema-dispatch-v2';
+}
+function isCompletion(row) {
+    return row.encoding === 'native-mvu-schema-completion-v1' || row.encoding === 'native-mvu-schema-completion-v2';
+}
+function isUnavailable(row) {
+    return row.encoding === 'native-mvu-schema-unavailable-v1' || row.encoding === 'native-mvu-schema-unavailable-v2';
+}
 export const SCHEMA_JOURNAL_BOUNDS = Object.freeze({ records: 512,
     bytes: MVU_SCHEMA_BOUNDS.programBytes + MVU_SCHEMA_BOUNDS.inputBytes + MVU_SCHEMA_BOUNDS.outputBytes + 131072 });
 const bounds = { nodes: MVU_SCHEMA_BOUNDS.evaluationNodes, depth: MVU_SCHEMA_BOUNDS.evaluationDepth };
@@ -108,9 +122,9 @@ function runnerIdentity(value) {
         fail('SCHEMA_RUNNER_IDENTITY_INVALID');
     }
 }
-function loadFrame(value) {
+function loadFrame(value, version) {
     exact(value, ['schemaVersion', 'ownerSessionId', 'sourceNativeCutSha256', 'material', 'values', 'context', 'clockEpochMs', 'randomSeed']);
-    if (value.schemaVersion !== 1 || !id(value.ownerSessionId) || !hash(value.sourceNativeCutSha256)
+    if (value.schemaVersion !== version || !id(value.ownerSessionId) || !hash(value.sourceNativeCutSha256)
         || !integer(value.clockEpochMs) || typeof value.randomSeed !== 'string' || !value.randomSeed.length || value.randomSeed.length > 256) {
         fail('SCHEMA_LOAD_FRAME_INVALID');
     }
@@ -120,7 +134,7 @@ function loadFrame(value) {
     if (Object.hasOwn(value.context, 'stat_data'))
         fail('SCHEMA_CONTEXT_INVALID');
 }
-function requested(value) {
+function requested(value, version) {
     exact(value, ['eventId', 'frame']);
     if (typeof value.eventId !== 'string' || !value.eventId.length || value.eventId.length > 256)
         fail('SCHEMA_STEP_INVALID');
@@ -130,6 +144,10 @@ function requested(value) {
         fail('SCHEMA_STEP_INVALID');
     cloneSchemaValues(frame.material);
     const input = frame.input;
+    if (version === 2) {
+        validateSchemaEvaluationInputV2(input);
+        return;
+    }
     exact(input, ['schemaVersion', 'phase', 'base', 'values', 'commands', 'context', 'clockEpochMs', 'randomSeed']);
     if (input.schemaVersion !== 1 || !['initialization', 'command-parsed', 'commands-parsed', 'update-ended', 'manual-replacement'].includes(input.phase)
         || !Array.isArray(input.commands) || !integer(input.clockEpochMs) || typeof input.randomSeed !== 'string'
@@ -146,7 +164,13 @@ function requested(value) {
 }
 const partialCodes = new Set(['SCHEMA_VM_TIMEOUT', 'SCHEMA_HARD_TIMEOUT', 'SCHEMA_JOB_LIMIT', 'SCHEMA_ASYNC_UNSETTLED',
     'SCHEMA_OUTPUT_LIMIT', 'SCHEMA_MEMORY_LIMIT', 'SCHEMA_GUEST_ERROR']);
-function output(value) {
+function output(value, version) {
+    if (version === 2) {
+        validateSchemaGuestOutputV2(value);
+        if (value.kind === 'refused' && value.diagnostics.some(item => partialCodes.has(item.code)))
+            fail('SCHEMA_PARTIAL_EXECUTION');
+        return;
+    }
     if (value.kind === 'accepted') {
         exact(value, ['kind', 'values', 'commands', 'context', 'registrations']);
         cloneSchemaValues(value.values);
@@ -171,27 +195,34 @@ function output(value) {
     else
         fail('SCHEMA_OUTPUT_INVALID');
 }
-export function validateSchemaJournalRecord(input) {
-    const row = freezeSchemaJournalData(input), common = ['schemaVersion', 'encoding', 'sessionId', 'realmEpoch', 'recordSha256'];
-    if (row.schemaVersion !== 1 || !id(row.sessionId) || !hash(row.realmEpoch) || !hash(row.recordSha256))
+/** Only the public wrapper or this capture's own aggregate clone supplies rows.
+ * Keep semantic/hash checks intact while avoiding a second whole-row clone. */
+function validateClonedSchemaJournalRecord(row) {
+    const common = ['schemaVersion', 'encoding', 'sessionId', 'realmEpoch', 'recordSha256'];
+    if (![1, 2].includes(row.schemaVersion) || !id(row.sessionId) || !hash(row.realmEpoch) || !hash(row.recordSha256))
         fail('SCHEMA_JOURNAL_INVALID');
     const { recordSha256: checksum, ...body } = row;
     if (recordSha256(body) !== checksum)
         fail('SCHEMA_JOURNAL_HASH_MISMATCH');
-    if (row.encoding === 'native-mvu-schema-epoch-v1') {
+    if (!row.encoding.endsWith(`-v${row.schemaVersion}`))
+        fail('SCHEMA_JOURNAL_VERSION_MISMATCH');
+    if (isEpoch(row)) {
         exact(row, [...common, 'program', 'runner', 'loadFrame', 'loadAnchorSha256']);
         validateSchemaProgram(row.program);
         runnerIdentity(row.runner);
-        loadFrame(row.loadFrame);
+        loadFrame(row.loadFrame, row.schemaVersion);
+        if (row.schemaVersion === 2 && (row.program.compiler.version !== 2 || row.program.bridge.version !== 2 || row.runner.version !== 2)) {
+            fail('SCHEMA_IMPLEMENTATION_CHANGED');
+        }
         if (row.loadFrame.ownerSessionId !== row.sessionId || row.loadAnchorSha256 !== recordSha256({
             programSha256: row.program.programSha256, realmEpoch: row.realmEpoch, loadFrame: row.loadFrame
         }))
             fail('SCHEMA_LOAD_ANCHOR_INVALID');
     }
-    else if (row.encoding === 'native-mvu-schema-dispatch-v1') {
+    else if (isDispatch(row)) {
         exact(row, [...common, 'batchId', 'ordinal', 'epoch', 'previousTailSha256', 'requestedStep', 'sourceNativeCut']);
         ref(row.epoch);
-        requested(row.requestedStep);
+        requested(row.requestedStep, row.schemaVersion);
         validateSchemaSourceCut(row.sourceNativeCut);
         if (!id(row.batchId) || !integer(row.ordinal, 1) || !hash(row.previousTailSha256)
             || row.sourceNativeCut.sessionId !== row.sessionId || row.sourceNativeCut.ownerSessionId !== row.sessionId
@@ -200,21 +231,23 @@ export function validateSchemaJournalRecord(input) {
             || recordSha256(row.requestedStep.frame.material) !== row.sourceNativeCut.materialSha256)
             fail('SCHEMA_DISPATCH_INVALID');
     }
-    else if (row.encoding === 'native-mvu-schema-completion-v1') {
+    else if (isCompletion(row)) {
         exact(row, [...common, 'batchId', 'dispatch', 'dispatchMarker', 'runner', 'step']);
         ref(row.dispatch);
         markerRef(row.dispatchMarker);
         runnerIdentity(row.runner);
+        if (row.schemaVersion === 2 && row.runner.version !== 2)
+            fail('SCHEMA_IMPLEMENTATION_CHANGED');
         if (!id(row.batchId))
             fail('SCHEMA_JOURNAL_INVALID');
         exact(row.step, ['eventId', 'frameSha256', 'ordinal', 'previousStepSha256', 'output', 'stepSha256']);
-        output(row.step.output);
+        output(row.step.output, row.schemaVersion);
         if (typeof row.step.eventId !== 'string' || !row.step.eventId.length || row.step.eventId.length > 256
             || !integer(row.step.ordinal, 1) || ![row.step.previousStepSha256, row.step.frameSha256, row.step.stepSha256].every(hash)) {
             fail('SCHEMA_STEP_INVALID');
         }
     }
-    else if (row.encoding === 'native-mvu-schema-unavailable-v1') {
+    else if (isUnavailable(row)) {
         exact(row, [...common, 'batchId', 'dispatch', 'sourceNativeCut', 'code']);
         if (row.dispatch !== null)
             ref(row.dispatch);
@@ -227,34 +260,46 @@ export function validateSchemaJournalRecord(input) {
         fail('SCHEMA_JOURNAL_SHAPE');
     return row;
 }
+export function validateSchemaJournalRecord(input) {
+    return validateClonedSchemaJournalRecord(freezeSchemaJournalData(input));
+}
 export const schemaEpochKey = (sid, epoch) => `${sid}__mvu-schema-epoch-${epoch}`;
 export const schemaDispatchKey = (sid, epoch, batch) => `${sid}__mvu-schema-dispatch-${epoch}-${batch}`;
 export const schemaCompletionKey = (sid, epoch, batch) => `${sid}__mvu-schema-completion-${epoch}-${batch}`;
 export const schemaUnavailableKey = (sid, epoch, batch) => `${sid}__mvu-schema-unavailable-${epoch}-${batch}`;
 export function schemaJournalKey(row) {
-    if (row.encoding === 'native-mvu-schema-epoch-v1')
+    if (isEpoch(row))
         return schemaEpochKey(row.sessionId, row.realmEpoch);
-    if (row.encoding === 'native-mvu-schema-dispatch-v1')
+    if (isDispatch(row))
         return schemaDispatchKey(row.sessionId, row.realmEpoch, row.batchId);
-    if (row.encoding === 'native-mvu-schema-completion-v1')
+    if (isCompletion(row))
         return schemaCompletionKey(row.sessionId, row.realmEpoch, row.batchId);
     return schemaUnavailableKey(row.sessionId, row.realmEpoch, row.batchId);
 }
 const reference = (row) => ({ key: schemaJournalKey(row), sha256: row.recordSha256 });
 function captured(markers, sessionId, realmEpoch, events, rows, historical = false) {
     try {
-        if (!id(sessionId) || !hash(realmEpoch) || rows.length > SCHEMA_JOURNAL_BOUNDS.records)
+        if (!id(sessionId) || !hash(realmEpoch))
+            fail('SCHEMA_JOURNAL_LIMIT');
+        // Reject an untrusted container before even observing its length. Normal
+        // arrays retain the early record-count limit before the aggregate clone.
+        if (types.isProxy(rows))
+            fail('SCHEMA_PROXY_VALUE');
+        const length = Object.getOwnPropertyDescriptor(rows, 'length');
+        if (!length || !Object.hasOwn(length, 'value') || typeof length.value !== 'number')
+            fail('SCHEMA_NON_JSON_VALUE');
+        if (length.value > SCHEMA_JOURNAL_BOUNDS.records)
             fail('SCHEMA_JOURNAL_LIMIT');
         markers.assertHistory(events);
         const records = freezeSchemaJournalData(rows), all = new Map();
         for (const { key, record } of records) {
-            validateSchemaJournalRecord(record);
+            validateClonedSchemaJournalRecord(record);
             if (key !== schemaJournalKey(record) || all.has(key))
                 fail('SCHEMA_JOURNAL_MEMBERSHIP_INVALID');
             all.set(key, record);
         }
         const relevant = records.filter(item => item.record.realmEpoch === realmEpoch);
-        const epochs = relevant.filter(item => item.record.encoding === 'native-mvu-schema-epoch-v1');
+        const epochs = relevant.filter(item => isEpoch(item.record));
         const native = events.filter(event => (event.type === markers.dispatchEventType || event.type === markers.completionEventType)
             && event.data.realmEpoch === realmEpoch);
         if (!epochs.length && !relevant.length && !native.length)
@@ -262,6 +307,10 @@ function captured(markers, sessionId, realmEpoch, events, rows, historical = fal
         if (epochs.length !== 1)
             fail('SCHEMA_REALM_HISTORY_UNPROVEN');
         const epoch = epochs[0].record, epochRef = reference(epoch);
+        // The epoch chooses one execution protocol for all its retained frames.
+        // A valid checksum cannot permit a dispatch/completion from another wire.
+        if (relevant.some(item => item.record.schemaVersion !== epoch.schemaVersion))
+            fail('SCHEMA_JOURNAL_VERSION_MISMATCH');
         const nativePrefixes = schemaNativePrefixSha256(events, native.filter(event => event.type === markers.dispatchEventType).map(event => event.seq));
         let tail = epoch.loadAnchorSha256;
         let pending;
@@ -270,7 +319,7 @@ function captured(markers, sessionId, realmEpoch, events, rows, historical = fal
             if (event.type === markers.dispatchEventType) {
                 const marker = event.data;
                 const key = schemaDispatchKey(marker.sessionId, realmEpoch, marker.batchId), row = all.get(key);
-                if (!row || row.encoding !== 'native-mvu-schema-dispatch-v1')
+                if (!row || !isDispatch(row))
                     fail('SCHEMA_DISPATCH_UNPROVEN');
                 if (row.recordSha256 !== marker.dispatchRecordSha256 || !same(row.epoch, epochRef) || row.ordinal !== steps.length + 1
                     || row.previousTailSha256 !== tail || marker.previousTailSha256 !== tail
@@ -288,7 +337,7 @@ function captured(markers, sessionId, realmEpoch, events, rows, historical = fal
             }
             else if (event.type === markers.completionEventType) {
                 const marker = event.data, key = schemaCompletionKey(marker.sessionId, realmEpoch, marker.batchId), row = all.get(key);
-                if (!pending || !row || row.encoding !== 'native-mvu-schema-completion-v1')
+                if (!pending || !row || !isCompletion(row))
                     fail('SCHEMA_COMPLETION_UNPROVEN');
                 if (row.recordSha256 !== marker.completionRecordSha256 || !same(row.runner, epoch.runner) || !same(row.dispatch, pending.dispatchRef)
                     || !same(row.dispatchMarker, pending.dispatchMarker) || marker.dispatchSeq !== pending.dispatchMarker.seq
@@ -298,7 +347,11 @@ function captured(markers, sessionId, realmEpoch, events, rows, historical = fal
                     || marker.completedTailSha256 !== row.step.stepSha256)
                     fail('SCHEMA_COMPLETION_UNPROVEN');
                 const { frameSha256: _frameHash, ...receipt } = row.step;
-                const step = { ...receipt, frame: pending.dispatch.requestedStep.frame }, { stepSha256, ...body } = step;
+                const step = { ...receipt, frame: pending.dispatch.requestedStep.frame };
+                const { stepSha256, ...body } = step;
+                if (epoch.schemaVersion === 2) {
+                    validateSchemaGuestOutputV2(step.output, validateSchemaEvaluationInputV2(pending.dispatch.requestedStep.frame.input));
+                }
                 if (recordSha256(body) !== stepSha256)
                     fail('SCHEMA_COMPLETION_UNPROVEN');
                 selected.add(key);
@@ -314,13 +367,13 @@ function captured(markers, sessionId, realmEpoch, events, rows, historical = fal
             fail('SCHEMA_JOURNAL_LIMIT');
         for (const { key, record } of relevant)
             if (!selected.has(key)) {
-                if (historical && record.encoding === 'native-mvu-schema-dispatch-v1' && record.sourceNativeCut.nativeCut >= events.length)
+                if (historical && isDispatch(record) && record.sourceNativeCut.nativeCut >= events.length)
                     continue;
-                if (historical && record.encoding === 'native-mvu-schema-completion-v1' && record.dispatchMarker.seq >= events.length)
+                if (historical && isCompletion(record) && record.dispatchMarker.seq >= events.length)
                     continue;
-                if (historical && record.encoding === 'native-mvu-schema-unavailable-v1' && record.sourceNativeCut.nativeCut >= events.length)
+                if (historical && isUnavailable(record) && record.sourceNativeCut.nativeCut >= events.length)
                     continue;
-                fail(record.encoding === 'native-mvu-schema-unavailable-v1' ? 'SCHEMA_EPOCH_UNAVAILABLE' : 'SCHEMA_DISPATCH_PENDING');
+                fail(isUnavailable(record) ? 'SCHEMA_EPOCH_UNAVAILABLE' : 'SCHEMA_DISPATCH_PENDING');
             }
         if (!steps.length)
             fail('SCHEMA_REALM_HISTORY_UNPROVEN');
@@ -403,7 +456,7 @@ export function createRoleplayMvuSchemaJournal(deps) {
             return { kind: 'blocked', code: codeOf(error) };
         }
     }
-    function validateFrozen(input, events) {
+    function validateFrozenReady(input, events) {
         const frozen = freezeSchemaJournalData(input);
         exact(frozen, ['schemaVersion', 'encoding', 'sessionId', 'realmEpoch', 'nativeCut', 'nativePrefixSha256', 'records', 'frontierSha256']);
         if (frozen.schemaVersion !== 1 || frozen.encoding !== 'native-mvu-schema-frozen-cut-v1' || frozen.nativeCut !== events.length
@@ -412,8 +465,14 @@ export function createRoleplayMvuSchemaJournal(deps) {
         const result = captured(deps.markers, frozen.sessionId, frozen.realmEpoch, events, frozen.records, true);
         if (result.kind !== 'ready' || result.frontierSha256 !== frozen.frontierSha256)
             fail(result.kind === 'blocked' ? result.code : 'SCHEMA_FROZEN_CUT_INVALID');
-        return result.frozen;
+        // Capture validates every supplied row before selecting this cut. Expose
+        // those same facts so a synchronous caller need not capture the selection
+        // again; this is neither cached evidence nor a historical executor proof.
+        return result;
     }
-    return { put, read, inventory, capture, validateFrozen,
+    function validateFrozen(input, events) {
+        return validateFrozenReady(input, events).frozen;
+    }
+    return { put, read, inventory, capture, validateFrozen, validateFrozenReady,
         captureFrozen: (sessionId, realmEpoch, events, rows) => captured(deps.markers, sessionId, realmEpoch, events, rows, true) };
 }

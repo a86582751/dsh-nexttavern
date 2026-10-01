@@ -2,6 +2,7 @@
  * lease and execution owner; no Agent, model or maintenance dispatch lives here. */
 import {recordSha256} from './roleplay-data.js'
 import {parseMvuUpdate} from './roleplay-mvu-update.js'
+import {parseMvuUpdateV2} from './roleplay-mvu-update-v2.js'
 import {mvuStateCurrentHeadKey} from './roleplay-mvu-state.js'
 import {freezeMvuSchemaStoryData,sealMvuSchemaStoryFact,validateMvuSchemaStoryPlan,
   validateMvuSchemaNumericalSnapshot,validateMvuSchemaStoryEvent,validateMvuSchemaStorySettlement,
@@ -11,12 +12,14 @@ import {freezeMvuSchemaStoryData,sealMvuSchemaStoryFact,validateMvuSchemaStoryPl
 import type {InputCompletionScope} from './roleplay-input-completion.js'
 import type {SchemaStorySourceFrame} from './roleplay-mvu-schema-source.js'
 import type {SourceNativeCutFacts} from './roleplay-mvu-schema-replay.js'
-import type {MvuSchemaStoryDeps,MvuSchemaStoryCanonical,MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlanV2,
+import type {MvuSchemaStoryDeps,MvuSchemaStoryCanonical,MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlan,
+  MvuSchemaStoryPlanV2,MvuSchemaStoryPlanV3,
   MvuSchemaStoryPhaseFact,MvuSchemaStoryReducerBridge,MvuSchemaStoryLive,MvuSchemaStoryPublication,
   MvuSchemaStoryPublicationBoundary,MvuSchemaStoryEventV2,MvuSchemaStorySettlementV2}
   from './roleplay-mvu-schema-story-types.js'
 
-export type {MvuSchemaStoryDeps,MvuSchemaStoryPlanV2,MvuSchemaNumericalSnapshotV2,MvuSchemaStorySettlementV2}
+export type {MvuSchemaStoryDeps,MvuSchemaStoryPlan,MvuSchemaStoryPlanV2,MvuSchemaStoryPlanV3,
+  MvuSchemaNumericalSnapshotV2,MvuSchemaStorySettlementV2}
   from './roleplay-mvu-schema-story-types.js'
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const codeOf=(error:unknown)=>schemaStoryCode(error instanceof Error?error.message:undefined)
@@ -26,17 +29,21 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
   // A partial attempt is never retried in this owner. Remounts are gated by
   // Root's exact pending terminal ledger and journal, not this process-local set.
   const attempted=new Set<string>()
-  function makePlan(scope:InputCompletionScope,canonical:MvuSchemaStoryCanonical,base:MvuSchemaNumericalSnapshotV2,
+  function makePlan<V extends 1|2=1>(scope:InputCompletionScope,canonical:MvuSchemaStoryCanonical,base:MvuSchemaNumericalSnapshotV2,
     currentFrame:SchemaStorySourceFrame,realmEpoch:string,programSha256:string,initialCut:SourceNativeCutFacts,
-    clockEpochMs=0):MvuSchemaStoryPlanV2 {
+    clockEpochMs=0,executorVersion:V=1 as V):V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2 {
     const input=freezeMvuSchemaStoryData({scope,canonical,base,currentFrame,realmEpoch,programSha256,initialCut,clockEpochMs})
     scope=input.scope;canonical=input.canonical;base=input.base;currentFrame=input.currentFrame
     realmEpoch=input.realmEpoch;programSha256=input.programSha256;initialCut=input.initialCut;clockEpochMs=input.clockEpochMs
-    const body=freezeMvuSchemaStoryData({schemaVersion:2 as const,encoding:'native-mvu-schema-story-plan-v2' as const,
-      scope,canonical,base:validateMvuSchemaNumericalSnapshot(base),candidate:parseMvuUpdate(canonical.narrative),
-      currentFrame,realmEpoch,programSha256,initialCut,clockEpochMs,randomSeed:recordSha256({scope,canonical}),
-      selectors:deriveMvuSchemaStorySelectors(scope,canonical,realmEpoch)})
-    return validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact(body,'planSha256'))
+    if(executorVersion!==1&&executorVersion!==2)fail('SCHEMA_EXECUTOR_VERSION_MISMATCH')
+    const suffix={currentFrame,realmEpoch,programSha256,initialCut,clockEpochMs,randomSeed:recordSha256({scope,canonical}),
+      selectors:deriveMvuSchemaStorySelectors(scope,canonical,realmEpoch)}
+    const body=executorVersion===1?freezeMvuSchemaStoryData({schemaVersion:2 as const,
+      encoding:'native-mvu-schema-story-plan-v2' as const,scope,canonical,base:validateMvuSchemaNumericalSnapshot(base),
+      candidate:parseMvuUpdate(canonical.narrative),...suffix}):freezeMvuSchemaStoryData({schemaVersion:3 as const,
+      encoding:'native-mvu-schema-story-plan-v3' as const,executorVersion:2 as const,scope,canonical,
+      base:validateMvuSchemaNumericalSnapshot(base),candidate:parseMvuUpdateV2(canonical.narrative),...suffix})
+    return validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact(body,'planSha256')) as V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2
   }
   function read(key:string):unknown {
     const value=deps.table.get(key)
@@ -50,15 +57,15 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
     if(!same(actual,value))try {await deps.table.put(key,value)}catch { /* A lost ACK can only be resolved by exact readback. */ }
     if(!same(read(key),value))fail('SCHEMA_STORY_WRITE_UNKNOWN')
   }
-  function checkClosing(closing:object,scope:InputCompletionScope,plan:MvuSchemaStoryPlanV2) {
+  function checkClosing(closing:object,scope:InputCompletionScope,plan:MvuSchemaStoryPlan) {
     if(!deps.closingCurrent(closing,scope,plan))fail('SCHEMA_STORY_PERMISSION_REVOKED')
   }
-  function checkBase(scope:InputCompletionScope,plan:MvuSchemaStoryPlanV2) {
+  function checkBase(scope:InputCompletionScope,plan:MvuSchemaStoryPlan) {
     const ready=deps.readReady(scope,plan)
     if(ready.kind!=='ready')fail(schemaStoryCode(ready.code))
     if(!same(validateMvuSchemaNumericalSnapshot(ready.snapshot),plan.base))fail('SCHEMA_STORY_BASE_CHANGED')
   }
-  function storedFacts(plan:MvuSchemaStoryPlanV2,settlement:unknown):
+  function storedFacts(plan:MvuSchemaStoryPlan,settlement:unknown):
     {event:MvuSchemaStoryEventV2;settlement:MvuSchemaStorySettlementV2}|undefined {
     try {
       const supplied=freezeMvuSchemaStoryData(settlement) as MvuSchemaStorySettlementV2
@@ -70,13 +77,13 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
       return {event,settlement:actual}
     } catch {return}
   }
-  function verifyConsumed(scope:InputCompletionScope,suppliedPlan:MvuSchemaStoryPlanV2,settlement:unknown):boolean {
+  function verifyConsumed(scope:InputCompletionScope,suppliedPlan:MvuSchemaStoryPlan,settlement:unknown):boolean {
     try {
       const plan=validateMvuSchemaStoryPlan(suppliedPlan)
       return same(scope,plan.scope)&&!!storedFacts(plan,settlement)
     } catch {return false}
   }
-  function verifySettlement(scope:InputCompletionScope,suppliedPlan:MvuSchemaStoryPlanV2,settlement:unknown):boolean {
+  function verifySettlement(scope:InputCompletionScope,suppliedPlan:MvuSchemaStoryPlan,settlement:unknown):boolean {
     try {
       const plan=validateMvuSchemaStoryPlan(suppliedPlan),facts=storedFacts(plan,settlement)
       if(!same(scope,plan.scope)||!facts)return false
@@ -88,8 +95,8 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
           ||same(actualHead,facts.settlement.result.head)
     } catch {return false}
   }
-  async function publish(scope:InputCompletionScope,suppliedPlan:MvuSchemaStoryPlanV2,closing:object):Promise<MvuSchemaStoryPublication> {
-    let spent=false,plan:MvuSchemaStoryPlanV2
+  async function publish(scope:InputCompletionScope,suppliedPlan:MvuSchemaStoryPlan,closing:object):Promise<MvuSchemaStoryPublication> {
+    let spent=false,plan:MvuSchemaStoryPlan
     try {
       plan=validateMvuSchemaStoryPlan(suppliedPlan)
       if(!same(scope,plan.scope))fail('SCHEMA_STORY_SCOPE_CHANGED')

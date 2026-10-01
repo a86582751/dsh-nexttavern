@@ -14,7 +14,7 @@ interface CompiledRecipe extends Recipe { outputSource: string; text: string }
 export interface CompilePlan {
   builds: Recipe[]
   artifacts: {id: string; source: string}[]
-  product?:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe}
+  product?:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe;mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[]}
   typeScript: {
     config: string; declarationPackages: string[]; ambientDeclarations?: string[]
     contexts?: Record<string, {
@@ -274,26 +274,31 @@ export function writeTypeScriptBuild(compilation: Compilation, entry: string | u
 /** This recipe comes from the same source manifest/public compiler projection.
  * Presence alone is insufficient for executable bundles and guest assets. */
 export async function checkMvuSchemaRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
-  const recipe=plan.product?.mvuSchemaRuntime
-  if(!recipe)return undefined
-  const metadata=plan.artifacts.find(artifact=>artifact.id===recipe.packageArtifact)
-  if(!metadata)throw Error('Schema runtime package is not registered')
-  const prefix=path.posix.dirname(metadata.source)
-  const outputs=[...recipe.modules.map(module=>module.output),
-    ...recipe.guests.flatMap(guest=>[guest.output,guest.licenseOutput]),recipe.descriptorOutput]
-  for(const output of outputs) {
-    if(plan.artifacts.filter(artifact=>artifact.source===prefix+'/'+output).length!==1) {
-      throw Error('Schema runtime output must have one source mapping: '+output)
-    }
-  }
+  if(!plan.product||!plan.product.mvuSchemaRuntime&&!plan.product.mvuSchemaRuntimes)return undefined
   const builder=plan.artifacts.find(artifact=>artifact.id==='mvu-schema-runtime-assets-js')
   if(!builder)throw Error('Schema runtime builder is not registered')
   // Native TS bootstrap executes from src; installed/public callers execute
   // from lib. The manifest owns one generated implementation for both.
-  const {buildMvuSchemaRuntimeAssets}=await import(pathToFileURL(inside(repo,builder.source)).href) as
+  const {buildMvuSchemaRuntimeAssets,mvuSchemaRuntimeRecipes}=await import(pathToFileURL(inside(repo,builder.source)).href) as
     typeof import('./mvu-schema-runtime-assets.mjs')
-  return buildMvuSchemaRuntimeAssets({repo,plan:{artifacts:plan.artifacts,product:{mvuSchemaRuntime:recipe}},
-    packageRoot:inside(repo,prefix),libraryRoot:inside(repo,path.posix.dirname(plan.typeScript.config)+'/node_modules'),write})
+  const recipes=mvuSchemaRuntimeRecipes(plan.product)
+  if(!recipes.length)return undefined
+  const packages=[]
+  for(const recipe of recipes) {
+    const metadata=plan.artifacts.find(artifact=>artifact.id===recipe.packageArtifact)
+    if(!metadata)throw Error('Schema runtime package is not registered')
+    const prefix=path.posix.dirname(metadata.source)
+    const outputs=[...recipe.modules.map(module=>module.output),
+      ...recipe.guests.flatMap(guest=>[guest.output,guest.licenseOutput]),recipe.descriptorOutput]
+    for(const output of outputs) {
+      if(plan.artifacts.filter(artifact=>artifact.source===prefix+'/'+output).length!==1) {
+        throw Error('Schema runtime output must have one source mapping: '+output)
+      }
+    }
+    packages.push(await buildMvuSchemaRuntimeAssets({repo,plan:{artifacts:plan.artifacts,product:plan.product},recipe,
+      packageRoot:inside(repo,prefix),libraryRoot:inside(repo,path.posix.dirname(plan.typeScript.config)+'/node_modules'),write}))
+  }
+  return {packages,files:packages.flatMap(pkg=>pkg.files.map(file=>({...file,packageName:pkg.name})))}
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

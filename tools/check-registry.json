@@ -5515,6 +5515,127 @@
         "service": false
       },
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:schema-runner-v2",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "cache": true,
+      "timeoutMs": 300000,
+      "depends": [
+        "generated"
+      ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "heavy": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:schema-journal-v2",
+      "action": "test",
+      "modules": [
+        "status",
+        "operations"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "cache": true,
+      "timeoutMs": 300000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "heavy": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:schema-story-v2",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "cache": true,
+      "timeoutMs": 300000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "heavy": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:schema-player-v2",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "cache": true,
+      "timeoutMs": 900000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "heavy": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:schema-executor-assets",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "cache": true,
+      "timeoutMs": 300000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "heavy": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }
