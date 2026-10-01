@@ -23,9 +23,9 @@ export const site = {
     issuesUrl: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose',
     licenseName: 'GPL-3.0-only',
     licenseUrl: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE',
-    releaseVersion: '0.2.5',
+    releaseVersion: '0.2.8',
     developmentLine: '0.3 开发中',
-    harnessLine: 'DeepSeek Harness 0.1.7',
+    harnessLine: 'DeepSeek Harness 0.1.7-rc.2',
     hero: {
         eyebrow: 'DSH 角色扮演 Agent',
         // 标语与首图不写在这里：首页用自有皮肤 dsh-nexttavern-amber 同款的
@@ -50,19 +50,26 @@ export const site = {
         primary: { label: '快速开始', href: 'quickstart.html' },
         secondary: { label: '核心能力', href: 'capabilities.html' },
         facts: [
-            { label: '最新发布', value: '0.2.5' },
+            { label: '最新发布', value: '0.2.8' },
             { label: '运行宿主', value: 'DeepSeek Harness' },
             { label: '许可证', value: 'GPL-3.0-only' }
         ]
     },
     quickInstall: {
         title: '一条命令开始',
-        lead: '安装器只负责准备运行时与工作区：模型和密钥始终由你自己填写，服务只监听本机。',
+        lead: '先安装 Harness 0.1.7-rc.2，再用官方 plugin add 装好酒馆。旧会话不兼容，请先导出卡片或小说并使用新目录。',
         tabs: [
+            {
+                id: 'manual',
+                label: '官方插件安装',
+                note: 'Node.js 22+；先装固定宿主，再运行插件命令。所需组件随包准备，皮肤默认关闭。',
+                primary: { label: '目录与恢复步骤', href: 'manual-install.html' },
+                code: 'npm install -g @deepseek-ai/dsh@0.1.7-rc.2\ndsh plugin --profile web add dsh-nexttavern\ndsh web --host 127.0.0.1'
+            },
             {
                 id: 'windows',
                 label: 'Windows',
-                note: '下载 NextTavern-Setup.exe 双击运行，支持原地升级；ARM64 设备用 arm64 版本。',
+                note: '下载便携运行时安装器，迁移旧版时选新目录；ARM64 设备用 arm64 版本。',
                 primary: { label: 'Windows 安装指南', href: 'install-windows.html' },
                 code: 'NextTavern-Setup.exe'
             },
@@ -71,14 +78,7 @@ export const site = {
                 label: 'Linux',
                 note: '自包含脚本，x86_64 与 aarch64（glibc），不需要 root，也不需要包管理器。',
                 primary: { label: 'Linux 安装指南', href: 'install-linux.html' },
-                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup.sh\nbash NextTavern-Setup.sh'
-            },
-            {
-                id: 'manual',
-                label: '手动安装',
-                note: '想自己控制运行时与补丁：按文档配好六项兼容补丁，再挂载插件包。',
-                primary: { label: '手动安装步骤', href: 'manual-install.html' },
-                code: 'dsh plugin --profile web add ./dsh-nexttavern.tgz'
+                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.8"'
             }
         ]
     },
@@ -134,7 +134,7 @@ export const site = {
         {
             icon: 'install',
             title: '一键安装与公网访问',
-            text: 'Windows 与 Linux 自包含安装器，镜像优先、逐文件校验；需要时再按指南接入公网访问。',
+            text: '官方一条插件命令整合安装，另有 Windows 与 Linux 便携运行时入口；公网访问按指南显式配置。',
             href: 'install-windows.html'
         }
     ],

@@ -1,10 +1,10 @@
 # Contributing
 
-The current 0.3 branch targets Harness `0.1.7-alpha.1` with Session V4. The
-maintenance tree has passed strict compilation for 392 modules and seven UI
-focused checks. Public rebuild, root product assembly and complete installation
-acceptance remain open; see the dated [development status](CHANGELOG.md) before
-selecting checks.
+The released 0.2.8 package targets Harness `0.1.7-rc.2` with Session V4.
+It includes the unified plugin, maintained TypeScript sources and generated
+modules. The GitHub `main` branch may also carry unfinished 0.3 SillyTavern
+compatibility work; use tag `v0.2.8` to reproduce this release and read
+[CHANGELOG](CHANGELOG.md) for its validation boundaries.
 
 This package carries TypeScript/MTS sources and their generated JavaScript/MJS so contributors can verify the files it ships. Its local mapping is `tools/build-map.json`; the quality registry and projection map are `tools/check-registry.json` and `tools/check-map.json`.
 
@@ -52,7 +52,7 @@ This public tree cannot prove a live DeepSeek Harness load, production deploymen
 
 ## Reporting
 
-Bugs and install problems should distinguish the current 0.2.5 release line
-(`0.1.2-alpha.3`) from the 0.3 development target (`0.1.7-alpha.1`), and
+Bugs and install problems should distinguish the current 0.2.8 release line
+(`0.1.7-rc.2`) from the unfinished 0.3 development work, and
 include the operating system and install method (Release tarball, one-click
 installer or npm).
