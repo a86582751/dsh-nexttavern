@@ -67,7 +67,7 @@ export interface TaskHostDependencies {
     } | null | undefined
     get(name: 'tavernConversations'): Pick<ReturnType<typeof import('./tavern-conversations.js').createConversationCatalog>,'rootOf'|'snapshot'> & {ready?:PromiseLike<unknown>} | null | undefined
   }
-  config: {workerProvider?: string; workerModel?: string}
+  config: {workerProvider?: string | null; workerModel?: string | null}
   taskAgents: Map<string, HostAgent>
   storyBranchIsActive(session: HostSession): boolean
   statusFixedContext(session: HostSession): unknown

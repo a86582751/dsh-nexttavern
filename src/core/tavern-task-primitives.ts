@@ -1,6 +1,16 @@
 import { createHash } from 'node:crypto'
 import type { TaskSelection, TaskRoute } from './tavern-task-types.js'
 
+/** Cancel this wait without cancelling work shared with another caller. */
+export function untilAborted<T>(promise: T | PromiseLike<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason ?? new Error('任务已取消'))
+    signal.addEventListener('abort', abort, {once: true})
+    Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+    if (signal.aborted) abort()
+  })
+}
+
 export function decodeTaskSelection(value: unknown): TaskSelection {
   const record = (input: unknown): input is Record<string, unknown> => input !== null && typeof input === 'object' && !Array.isArray(input)
   const route = (input: unknown): input is TaskRoute => record(input) && typeof input.provider === 'string' && typeof input.model === 'string'

@@ -4,6 +4,8 @@ import { internalTaskSeqs, taskStorySeqs } from './tavern-tasks.js'
 import { taskProjectionEvents } from './tavern-task-context.js'
 import { textOf, estimateTokens, sha256 } from './roleplay-data.js'
 import type { TaskBlock, TaskEvent, TaskMessage, TaskContextSession } from './tavern-task-context.js'
+import { projectStoryEvent, messageViewGeneration, type MessageViewSession, type StorySurfaceOp } from './roleplay-message-view.js'
+import {sessionEvents} from './session-history.js'
 
 export interface ContextMessage extends TaskMessage {
   id?: unknown
@@ -13,7 +15,7 @@ export interface ContextMessage extends TaskMessage {
 }
 export interface ContextEvent extends TaskEvent {
   time?: number
-  surfaceOp?: 'append' | { op: string; start: number; end: number }
+  surfaceOp?: StorySurfaceOp
   sourceEventSeqs?: number[]
   data?: NonNullable<TaskEvent['data']> & {
     id?: unknown
@@ -37,12 +39,13 @@ export interface ContextEvent extends TaskEvent {
     model?: string
   }
 }
-export interface ContextSession {
+export interface ContextSession extends MessageViewSession<ContextEvent> {
   id: string
   seq?: number
+  inheritedEventCount?: number
   events?: readonly ContextEvent[]
   log?: readonly ContextEvent[]
-  surface?: { nodes?: readonly number[] }
+  surface?: { nodes?: readonly number[]; contentGeneration?: number }
   header?: { origin?: string; seedLength?: unknown; cwd?: string; agentPreset?: string }
 }
 export function assertWorkspaceSession(session: ContextSession): asserts session is ContextSession & { header: { cwd: string } } {
@@ -75,9 +78,22 @@ export interface StoryEntry {
 
 
 export function eventsOf(session: ContextSession | null | undefined): readonly ContextEvent[] {
-  if (Array.isArray(session?.events)) return session.events
-  if (Array.isArray(session?.log)) return session.log
-  return []
+  return sessionEvents(session)
+}
+
+/**
+ * Classification predicates run for every agent, including sessions this
+ * product does not own. There is no live observation to await then, and the
+ * alpha.6 predicate answered from the header instead of failing; only a read
+ * that needs the actual events must await readiness first.
+ */
+export function sessionEventsIfReady<E>(session: {events?: readonly E[]; log?: readonly E[]} | null | undefined): readonly E[] | null {
+  try {
+    return sessionEvents<E>(session)
+  } catch (error) {
+    if ((error as {code?: unknown} | null)?.code === 'SESSION_HISTORY_NOT_READY') return null
+    throw error
+  }
 }
 
 export function lastSeq(session: ContextSession) {
@@ -101,7 +117,7 @@ export function surfaceEvents(session: ContextSession) {
   const out = []
   for (const seq of nodes) {
     const e = log[Number(seq)]
-    if (e) out.push(e)
+    if (e) out.push(projectStoryEvent(session, e))
   }
   return out
 }
@@ -140,8 +156,8 @@ export function readRoleplayActivity(session: ContextSession,preparation: Contex
     if (!step && type === 'step/start') step = event
     if (type === 'user/message') {
       const source = event.data?.source
-      if (!phase && source?.plugin === 'roleplay-tasks' && source.form === 'phase') phase = event
-      if (!proof && source?.kind === 'plugin' && source.plugin === 'roleplay-tasks' &&
+      if (!phase && source?.kind === 'roleplay-tasks' && source.form === 'phase') phase = event
+      if (!proof && source?.kind === 'roleplay-tasks' &&
         source.stage === 'after-story' && Number.isSafeInteger(source.storySeq)) proof = event
     }
     if (end && phase && step && proof) break
@@ -193,7 +209,7 @@ export function retireRoleplayContexts(session: ContextSession & Pick<TaskContex
   let retired=0
   for(const form of ['director-notes','state']) {
     const field=form==='state'?'stateHash':'notesHash'
-    const valid=(source:TaskMessage['source'])=>source?.kind==='plugin'&&source.plugin==='roleplay-context'
+    const valid=(source:TaskMessage['source'])=>source?.kind==='roleplay-context'
       &&source.schemaVersion===1&&source.form===form&&['full','reference'].includes(String(source.mode))
       &&typeof source.branchId==='string'&&/^[a-f0-9]{64}$/.test(String(source[field]??''))
     const next=prepared.filter(m=>valid(m.source)&&m.source?.branchId===session.id&&textOf(m.content).trim())
@@ -205,9 +221,9 @@ export function retireRoleplayContexts(session: ContextSession & Pick<TaskContex
     if(source.mode==='reference'&&!backing)continue
     for(const event of old) {
       if(event===backing)continue
-      session.append('user/message',{id:randomUUID(),role:'user',source:{kind:'plugin',plugin:'roleplay-context',form:'retired',schemaVersion:1,
+      session.append('user/message',{id:randomUUID(),role:'user',source:{kind: 'roleplay-context',form:'retired',schemaVersion:1,
         retiredForm:form,retiredAtTurn:turn,branchId:session.id,sourceSeq:event.seq},content:[{type:'text',text:'[旧动态上下文已回收；以当前锚点为准。]'}]},
-        {surfaceOp:{op:'replace',start:event.seq,end:event.seq},sourceEventSeqs:[event.seq]})
+        {surfaceOp:{op:'replace',startSeq:event.seq,endSeq:event.seq},sourceEventSeqs:[event.seq]})
       retired++
     }
   }
@@ -218,7 +234,10 @@ export function surfaceEntries(session: ContextSession): StoryEntry[] {
   const surface = surfaceEvents(session)
   const internal = internalTaskSeqs(session)
   const committedStory = taskStorySeqs(session)
-  const completed = new Set(surface
+  // Turn boundaries are log-only in alpha.6, never members of surface.nodes.
+  const boundaries = eventsOf(session).filter(event => event.type === 'turn/end')
+  const ended = new Set(boundaries.map(event => Number(event.data?.turn)))
+  const completed = new Set(boundaries
     .filter((event) => isCompletedTurnEnd(event))
     .map((event) => Number(event.data?.turn))
     .filter(Number.isSafeInteger))
@@ -232,7 +251,7 @@ export function surfaceEntries(session: ContextSession): StoryEntry[] {
     if (!text.trim()) continue
     const turn = Number(event.data?.turn)
     const key = Number.isSafeInteger(turn) ? turn : `seq:${event.seq}`
-    if (completed.size === 0 || completed.has(turn) || committedStory.has(event.seq) || !Number.isSafeInteger(turn)) canonicalByTurn.set(key, event)
+    if (!ended.has(turn) || completed.has(turn) || committedStory.has(event.seq)) canonicalByTurn.set(key, event)
   }
   const out: StoryEntry[] = []
   for (const e of surface) {
@@ -241,7 +260,7 @@ export function surfaceEntries(session: ContextSession): StoryEntry[] {
       const src = e.data?.source
       // 普通玩家输入，以及分支投影中按原文恢复的玩家输入；后台上下文、
       // compact checkpoint、重生指令和工具材料都不属于剧情正文。
-      if (src?.kind !== 'user' && !(src?.kind === 'plugin' && src?.plugin === 'roleplay' && src?.form === 'branch-user')) continue
+      if (src?.kind !== 'user' && !(src?.kind === 'roleplay' && src?.form === 'branch-user')) continue
       const text = textOf(e.data?.content)
       if (text.trim()) out.push({
         seq: e.seq,
@@ -272,7 +291,11 @@ export function isCompletedTurnEnd(event: ContextEvent | null | undefined) {
   return event?.type === 'turn/end' && event.data?.reason?.kind === 'completed'
 }
 
-const canonicalAssistantCache = new WeakMap<ContextSession, { events: readonly ContextEvent[]; length: number; last: ContextEvent | undefined; raw:readonly ContextEvent[];rawLength:number;rawLast:ContextEvent|undefined;surfaceKey: string; byTurn: Map<number, ContextEvent> }>()
+const canonicalAssistantCache = new WeakMap<ContextSession, {
+  events: readonly ContextEvent[]; length: number; last: ContextEvent | undefined
+  raw: readonly ContextEvent[]; rawLength: number; rawLast: ContextEvent | undefined
+  surfaceKey: string; generation: number; byTurn: Map<number, ContextEvent>
+}>()
 /** Native request completion only. Management replies remain excluded from story projections.
  * A terminal internal worker, hidden/empty reply or unfinished turn cannot complete a fork. */
 export function completedAssistantReceiptForTurn(session: ContextSession, turn: unknown) {
@@ -284,9 +307,11 @@ export function completedAssistantReceiptForTurn(session: ContextSession, turn: 
     if(event.type==='turn/start'){current=Number(event.data?.turn);internal=false;if(current===target){candidate=null;completed=false}}
     if(current!==target)continue
     const source=event.type==='user/message'?event.data?.source:null
-    if(source?.kind==='plugin'&&source.plugin==='roleplay-tasks'&&source.form==='phase')internal=source.stage!=='story'
+    if(source?.kind==='roleplay-tasks'&&source.form==='phase')internal=source.stage!=='story'
     if(event.type==='assistant/message'&&Number(event.data?.turn)===target) {
-      const message=event.data?.message
+      // Completion fallbacks must agree with the current visible body. Keep
+      // the original receipt identity, but an edit to empty prose cannot land a fork.
+      const message = projectStoryEvent(session, event).data?.message
       candidate=!internal&&visible.has(event.seq)&&event.data?.interrupted!==true&&message?.id
         &&!(message.content??[]).some(block=>block.type==='tool-call')&&textOf(message.content).trim()?event:null
     }
@@ -296,7 +321,9 @@ export function completedAssistantReceiptForTurn(session: ContextSession, turn: 
 }
 export function canonicalAssistantForTurn(session: ContextSession, turn: unknown) {
   const raw=eventsOf(session),nodes=Array.from(session?.surface?.nodes??[]),surfaceKey=nodes.join(',')
-  const cached=canonicalAssistantCache.get(session)
+  const generation = messageViewGeneration(session)
+  const prior = canonicalAssistantCache.get(session)
+  const cached = generation !== null && prior?.generation === generation ? prior : undefined
   if(cached?.raw===raw&&cached.rawLength===raw.length&&cached.rawLast===raw.at(-1)&&cached.surfaceKey===surfaceKey)return cached.byTurn.get(Number(turn))??null
   const events=taskProjectionEvents(session)
   if(cached?.events===events&&cached.length===events.length&&cached.last===events.at(-1)&&cached.surfaceKey===surfaceKey)return cached.byTurn.get(Number(turn))??null
@@ -305,19 +332,23 @@ export function canonicalAssistantForTurn(session: ContextSession, turn: unknown
   const committedStory = taskStorySeqs(session)
   const visible = new Set(nodes.map(Number)),byTurn=new Map<number, ContextEvent>()
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index],numericTurn=Number(event?.data?.turn)
-    if (event?.type !== 'assistant/message' || byTurn.has(numericTurn)) continue
+    const original = events[index],numericTurn=Number(original?.data?.turn)
+    if (original?.type !== 'assistant/message' || byTurn.has(numericTurn)) continue
+    const event = projectStoryEvent(session, original)
     if (!visible.has(Number(event.seq)) || event.data?.interrupted === true || internal.has(event.seq)) continue
     if (!completed.has(numericTurn) && !committedStory.has(event.seq)) continue
     if (textOf(event.data?.message?.content).trim()) byTurn.set(numericTurn,event)
   }
-  canonicalAssistantCache.set(session,{events,length:events.length,last:events.at(-1),raw,rawLength:raw.length,rawLast:raw.at(-1),surfaceKey,byTurn})
+  if (generation !== null) canonicalAssistantCache.set(session, {
+    events, length: events.length, last: events.at(-1), raw, rawLength: raw.length,
+    rawLast: raw.at(-1), surfaceKey, generation, byTurn,
+  })
   return byTurn.get(Number(turn))??null
 }
 
 export function visibleCompactionCheckpoint(session: ContextSession) {
   for (const event of [...surfaceEvents(session)].reverse()) {
-    if (event?.type !== 'user/message' || event.data?.source?.kind !== 'plugin' || event.data?.source?.plugin !== 'compact') continue
+    if (event?.type !== 'user/message' || event.data?.source?.kind !== 'compact-checkpoint') continue
     const raw = textOf(event.data?.content)
     const match = raw.match(/<compacted-summary>\s*([\s\S]*?)\s*<\/compacted-summary>/i)
     if (match?.[1]?.trim()) return { text: match[1].trim(), seq: Number(event.seq) }
@@ -372,7 +403,7 @@ function roleplayMessageText(message: ContextMessage | undefined) {
 function roleplayMessageIsStory(message: ContextMessage | undefined) {
   if (!message || typeof message !== 'object') return false
   // Assistant messages carry provider/model metadata rather than a
-  // `source.kind === "model"` marker in Harness. Treat every assistant
+  // `source?.kind === "model"` marker in Harness. Treat every assistant
   // message as narrative here; tool calls/results remain separate messages.
   if (message.role === 'assistant') return true
   return message.role === 'user' && message.source?.kind === 'user'
@@ -411,7 +442,7 @@ function internalMaintenanceMessageIds(session: ContextSession) {
   for (const event of events) {
     if (event?.type === 'turn/start' || event?.type === 'turn/end') inMaintenance = false
     const source = event?.type === 'user/message' ? event.data?.source : null
-    if (source?.kind === 'plugin' && source.plugin === 'roleplay-tasks' && source.form === 'phase') {
+    if (source?.kind === 'roleplay-tasks' && source.form === 'phase') {
       inMaintenance = source.stage !== 'story'
     }
     if (event?.type === 'assistant/message' && internal.has(Number(event.seq))) {
@@ -443,7 +474,7 @@ export function retainRoleplayWindowContinuity<M extends ContextMessage>(session
   const list: readonly M[] = Array.isArray(messages) ? messages : []
   const selected = list.filter((message) => {
     const source = message?.source
-    if (source?.kind === 'plugin' && (source.plugin === 'roleplay-tasks' || source.plugin === 'roleplay-context')) return false
+    if ((source?.kind === 'roleplay-tasks' || source?.kind === 'roleplay-context')) return false
     const id = messageIdOf(message)
     if (id && maintenance.ids.has(id)) return false
     const callId = source?.callId ?? message?.callId
@@ -463,7 +494,7 @@ export function roleplayWindowCutStartIndex(surface: readonly ContextEvent[], st
   while (index > 0) {
     const event = surface[index - 1]
     const source = event?.type === 'user/message' ? event.data?.source : null
-    if (source?.kind !== 'plugin' || source.plugin !== 'roleplay-context') break
+    if (source?.kind !== 'roleplay-context') break
     index -= 1
   }
   return index

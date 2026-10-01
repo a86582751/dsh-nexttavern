@@ -1,15 +1,16 @@
+import {sessionEvents} from './session-history.js'
 import { createHash } from 'node:crypto'
 import type { ContextEvent } from './roleplay-context.js'
 import { normalizeUsage as usageOf, failureText as reasonText, telemetryOutcome as outcome, type TelemetryCallRecord } from './tavern-telemetry-normalize.js'
-export interface TelemetrySession { id: string; header?: { seedLength?: unknown }; events?: readonly TelemetryEvent[]; log?: readonly TelemetryEvent[] }
+export interface TelemetrySession { id: string; inheritedEventCount?: unknown; header?: object; events?: readonly TelemetryEvent[]; log?: readonly TelemetryEvent[] }
 export interface TelemetryChunk { type: string; usage?: unknown; reason?: { kind?: string } | null }
 export type TelemetryEvent = ContextEvent
 const hash=(value: unknown): string=>createHash('sha256').update(JSON.stringify(value)).digest('hex')
-const events=(session: TelemetrySession): readonly TelemetryEvent[]=>session.events??session.log??[]
+const events=(session: TelemetrySession): readonly TelemetryEvent[]=>sessionEvents(session)
 /** Fold raw attempts, never the selected story surface. Seeded parent events
  * only establish lifecycle state; they never create a second charge. */
 export function foldSessionCalls(session: TelemetrySession): TelemetryCallRecord[] {
-  const out: TelemetryCallRecord[] = [], seed = Number(session.header?.seedLength ?? 0)
+  const out: TelemetryCallRecord[] = [], seed = Number(session.inheritedEventCount ?? 0)
   let current: TelemetryCallRecord | null = null, route: {provider?: string | null; model?: string | null} = {}, phase = 'narrative'
   const finish=(time: number | undefined, status?: TelemetryCallRecord['status'], error?: string | null)=>{if(!current)return;if(time!=null){current.completedAt=time;current.durationMs=Math.max(0,time-current.startedAt)}if(status)current.status=status;if(error)current.error=error}
   for(const e of events(session)) {
@@ -17,7 +18,7 @@ export function foldSessionCalls(session: TelemetrySession): TelemetryCallRecord
     const d=e.data??{}
     if(e.type==='compaction/summary'&&d.usage&&!d.nativeTask&&e.seq>=seed)out.push({schemaVersion:1,id:hash([session.id,'compaction',d.compactionId??e.seq]),sessionId:session.id,ownerSessionId:session.id,kind:'compaction',provider:d.provider??null,model:d.model??null,status:'completed',startedAt:e.time,completedAt:e.time,durationMs:null,firstTokenMs:null,usage:usageOf(d.usage),source:{kind:'compaction-summary',sessionId:session.id,startSeq:e.seq,evidenceSeq:e.seq}})
     if(e.type==='request/header'){route=d.header?.config??route;if(current){current.provider=route.provider??null;current.model=route.model??null}}
-    if(e.type==='user/message')phase=d.source?.plugin==='roleplay-tasks'?(d.source.jobKind??d.source.stage??'maintenance'):'narrative'
+    if(e.type==='user/message')phase=d.source?.kind==='roleplay-tasks'?(d.source.jobKind??d.source.stage??'maintenance'):'narrative'
     if(e.type==='step/start'||e.type==='llm/retry-started') {
       if(current?.status==='running')finish(e.time,'unknown')
       current={schemaVersion:1,id:hash([session.id,e.seq]),sessionId:session.id,ownerSessionId:session.id,

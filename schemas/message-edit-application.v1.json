@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dsh-roleplay/message-edit-application/v1",
+  "title": "Committed message edit effects v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "state", "role", "targetSeq", "editSeq", "textSha256", "committedAt"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "state": {"const": "committed"},
+    "role": {"enum": ["user", "assistant"]},
+    "targetSeq": {"type": "integer", "minimum": 0},
+    "editSeq": {"type": "integer", "minimum": 0},
+    "textSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "committedAt": {"type": "integer", "minimum": 0}
+  }
+}

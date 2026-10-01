@@ -1,13 +1,14 @@
 // Structural contracts for the native Session branch ledger. Host-owned data
 // retains unknown extension fields so replacements preserve the original record.
 import type { ContextSession, ContextEvent } from './roleplay-context.js'
+import type { StorySurfaceReplacement } from './roleplay-message-view.js'
 export type MessageData = NonNullable<ContextEvent['data']>
 export type StoryEvent = ContextEvent
 export interface ReadBranchSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & {parentSession?: string}
 }
 export interface BranchSession extends ReadBranchSession {
-  append(type: string, data: MessageData, options: { surfaceOp: { op: string; start: number; end: number }; sourceEventSeqs: number[] }): StoryEvent
+  append(type: string, data: MessageData, options: { surfaceOp: StorySurfaceReplacement; sourceEventSeqs: number[] }): StoryEvent
 }
 export interface ForkAnchor {
   sourceSessionId: string
@@ -32,6 +33,7 @@ export interface PlayerTarget {
   playerTextRevision?: number
   playerAppliedRevision?: number
   playerEditSourceSeq?: number
+  playerEditSeq?: number | null
   editedAt?: number
   projectionOnly?: boolean
 }
@@ -43,6 +45,7 @@ export interface ForkMember extends PlayerTarget {
   requestId?: string
   assistantMessageId?: string | null
   assistantSeq?: number | null
+  assistantEditSeq?: number
   createdAt: number
   pending: boolean
   deleted: boolean
@@ -89,6 +92,9 @@ export interface BranchRecord extends Partial<ForkGroup> {
   state?: string
   abortedAt?: number
   sourceSeq?: number
+  targetSeq?: number
+  editSeq?: number | null
+  role?: 'user' | 'assistant'
   textSha256?: string
   userMessageId?: string
   userSeq?: number
@@ -119,7 +125,15 @@ export interface PlayerProjection {
 export interface SurfaceEntry { seq: number; kind: string; messageId?: string }
 export interface RegistrationResult { groupId: string; ordinal: number; total: number; playerOrdinal?: number; playerTotal: number }
 export interface ReplacementResult { changed: number; matched: number; replayed: boolean }
+/** The format plugin owns event construction and interpretation; branch code owns effects and locks. */
+export interface WorldlineMessageEdits {
+  append(session: BranchSession, targetSeq: number, identity: {role: 'user' | 'assistant'; messageId: string}, text: string): StoryEvent
+  latest(events: readonly StoryEvent[], targetSeq: number): StoryEvent | null
+  current(session: ReadBranchSession, events: readonly StoryEvent[]): readonly StoryEvent[]
+}
 export interface WorldlineDependencies {
+  messageEdits: WorldlineMessageEdits
+  flushEdits(session: BranchSession): Promise<void>
   safeId(value: unknown): string
   keyOf(sessionId: string, suffix: string): string
   sha256(value: unknown): string

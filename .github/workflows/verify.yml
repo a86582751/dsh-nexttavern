@@ -1,0 +1,60 @@
+name: verify
+
+# The registry and path projection are generated from the maintainer's single
+# source of truth. No separate CI test list or silent portable/full fallback.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      purpose:
+        type: choice
+        default: changed
+        options: [changed, release]
+        description: Affected checks or explicit complete public offline checks
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    env:
+      BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      PURPOSE: ${{ inputs.purpose || 'changed' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: |
+            build-tools/package-lock.json
+            integrations/auth-webserver/package-lock.json
+      - name: Locked compiler, DOM and Auth dependencies
+        run: |
+          npm ci --prefix build-tools
+          npm ci --prefix integrations/auth-webserver
+      - name: Same affected selector as local contributors
+        if: env.PURPOSE == 'changed'
+        shell: pwsh
+        run: |
+          if (-not $env:BASE -or $env:BASE -match '^0+$') { $env:BASE = 'HEAD^' }
+          npm run check -- changed --base $env:BASE --portable
+          exit $LASTEXITCODE
+      - name: Explicit public offline release scope
+        if: env.PURPOSE == 'release'
+        run: npm run check -- release --portable
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: check-records
+          path: artifacts/checks
+          if-no-files-found: warn
+      - name: Explicit coverage boundary
+        if: always()
+        run: echo '::notice::These checks cover this public source delivery. Maintainer-only archive/installer facilities, live Harness and production health are NOT RUN. Explicit unsupported requests return nonzero.'

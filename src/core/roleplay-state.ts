@@ -12,7 +12,7 @@ export const jsonResponse = (status: number, value: unknown) =>
       headers: { 'content-type': 'application/json; charset=utf-8' },
     })
 
-export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, repairLegacyUserReplacementIdentities, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, importSummary, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession}: StateDependencies) {
+export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, carryTruncationBoundary, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, importSummary, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession}: StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
     const prefix = `${session.id}__`
     const cards = []
@@ -31,7 +31,13 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, r
   const readRoleplayState = async (session: StateSession) => {
     await awaitImportBarrier(session.id)
     await ensureBranch(session)
-    await repairLegacyUserReplacementIdentities(session)
+    // 截断子分支停在删除点：补回边界的决策卡与状态栏（程序完成，0 次模型调用）。
+    // 补回只是读取期的修复：失败时退回“这张卡暂时读不到”，不能让整次状态读取倒下。
+    try {
+      await carryTruncationBoundary(session)
+    } catch (error) {
+      ctx.logger?.warn?.(`roleplay: failed to carry the truncation boundary for ${session.id}: ${String(error instanceof Error ? error.message : error)}`)
+    }
     let forkLookup = buildForkLookupIndex(session)
     await reconcileCanonicalPlayerVariants(session, forkLookup)
     if (!statusRecoveredSessions.has(session.id)) {
@@ -63,7 +69,7 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, r
     let activeTurn: number | null = null
     for (const event of eventsOf(session)) {
       if (event?.type === 'turn/start') activeTurn = Number(event.data?.turn)
-      if (event?.type === 'user/message' && event.data?.source?.plugin === 'roleplay-tasks' && Number.isSafeInteger(activeTurn)) maintenanceTurns.add(activeTurn!)
+      if (event?.type === 'user/message' && event.data?.source?.kind === 'roleplay-tasks' && Number.isSafeInteger(activeTurn)) maintenanceTurns.add(activeTurn!)
       if (event?.type === 'user/message' && event.data?.source?.kind === 'user' && Number.isSafeInteger(activeTurn)) {
         playerTurns.add(activeTurn!)
         try {
@@ -174,7 +180,7 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, r
 
   ctx.effect(
     () =>
-      ctx.connection.fetch.register({
+      ctx.connection.fetch.register({requestBody: 'buffered',
         path: '/api/roleplay/state',
         methods: ['GET'],
         fetch: async (request) => {
@@ -191,7 +197,7 @@ export function createRoleplayState({ctx, T, awaitImportBarrier, ensureBranch, r
     'roleplay: route state'
   )
 
-  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/roleplay/activity',methods:['GET'],fetch:async request=>{
+  ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path:'/api/roleplay/activity',methods:['GET'],fetch:async request=>{
     const session=await resolveRoleplaySession(new URL(request.url).searchParams.get('sessionId'))
     if(!session)return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
     return jsonResponse(200,{ok:true,...readRoleplayActivity(session,T.branch.get(preparationRecordKey(session.id)) as unknown as StatePreparation,tavernTasks.activity(session))})

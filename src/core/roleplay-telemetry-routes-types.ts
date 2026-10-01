@@ -1,3 +1,4 @@
+import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { HostSession } from './roleplay-task-host-types.js'
 import type { createTelemetry } from './tavern-telemetry.js'
 import type { createPriceCatalog, createExchangeRates } from './tavern-pricing.js'
@@ -11,7 +12,7 @@ export interface TelemetryRouteBody {
 export interface TelemetryRoutesDependencies {
   ctx: {
     effect(work: () => unknown, label: string): unknown
-    connection: {fetch: {register(route: {path: string; methods: string[]; fetch(request: Request): Promise<Response>}): unknown}}
+    connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
   }
   resolveRoleplaySession(id: string | null | undefined): Promise<HostSession | null | undefined>
   telemetry: ReturnType<typeof createTelemetry>

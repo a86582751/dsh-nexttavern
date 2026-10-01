@@ -1,8 +1,10 @@
+import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { ContextSession, ContextPreparation } from './roleplay-context.js'
 import type { BranchSession } from './roleplay-worldline-types.js'
 import type { createRoleplayWorldlines } from './roleplay-worldlines.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { createRoleplayStatus } from './roleplay-status.js'
+import type { InheritanceSession, TruncationBoundaryCarry } from './roleplay-inheritance-types.js'
 import type { ImportRecord } from './roleplay-import-types.js'
 
 export type StateSession = ContextSession & BranchSession
@@ -18,17 +20,19 @@ export interface StateTable {
 }
 export interface StateContext {
   effect(work: () => unknown, label: string): unknown
-  connection: {fetch: {register(route: {path: string; methods: string[]; fetch(request: Request): Promise<Response>}): unknown}}
+  connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
   get(name: 'compaction'): {directorNotes?(session: StateSession): unknown} | null | undefined
+  logger?: {warn?(message: string): void}
 }
 type Worldlines = ReturnType<typeof createRoleplayWorldlines>
 type Status = ReturnType<typeof createRoleplayStatus>
-type StateWorldlines = Pick<Worldlines, 'repairLegacyUserReplacementIdentities' | 'buildForkLookupIndex' | 'reconcileCanonicalPlayerVariants' | 'nativeBranchGroupsFor' | 'nativePlayerGroupsFor' | 'assistantMessageId' | 'userForkContext' | 'locatePlayerRecoveryTarget' | 'failedForkMembership' | 'isRecoverySourceMember' | 'backfillRecoverySourceMember' | 'deletedBranchMessageIdsFor' | 'inheritedAssistantMessageIdsFor'>
+type StateWorldlines = Pick<Worldlines, 'buildForkLookupIndex' | 'reconcileCanonicalPlayerVariants' | 'nativeBranchGroupsFor' | 'nativePlayerGroupsFor' | 'assistantMessageId' | 'userForkContext' | 'locatePlayerRecoveryTarget' | 'failedForkMembership' | 'isRecoverySourceMember' | 'backfillRecoverySourceMember' | 'deletedBranchMessageIdsFor' | 'inheritedAssistantMessageIdsFor'>
 export interface StateDependencies extends StateWorldlines {
   ctx: StateContext
   T: Record<'cards' | 'worldbook' | 'memory' | 'branch' | 'status' | 'rules' | 'opening' | 'scene' | 'drafts' | 'decision', StateTable>
   awaitImportBarrier(id: string): Promise<unknown>
   ensureBranch(session: StateSession): Promise<unknown>
+  carryTruncationBoundary(session: InheritanceSession): Promise<TruncationBoundaryCarry | null>
   statusRecoveredSessions: Set<string>
   recoverStatusObligations: Status['recoverStatusObligations']
   selectedStatusRecord: Status['selectedStatusRecord']

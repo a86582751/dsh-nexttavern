@@ -8,6 +8,17 @@ If the current shell has an old PATH, use
 the `dsh-debug.ps1` entry under the current user's `.local/bin` directly.
 Installed docs: `~/.dsh-debug/lib/README.md`.
 Canonical operations source remains in the DSH maintenance repository.
+The target is selectable: `init --ssh-host ... --ssh-key ... [--ssh-port N]`
+keeps the remote contract, and `init --target local [--host H] [--scheme S]
+--port PORT [--cookie-file FILE] --dsh-home DIR --harness-root DIR` runs the
+identical worker inside the CLI process against a directly reachable host and
+port. A loopback host uses that machine's native credential; a non-loopback
+host needs an operator cookie (`--cookie-file`, or `DSH_DEBUG_COOKIE` for one
+run) and refuses `upload-card`/`upload`, which stage files on the DSH host.
+`DSH_DEBUG_TARGET`, `DSH_DEBUG_HOST`, `DSH_DEBUG_SCHEME`, `DSH_DEBUG_PORT`,
+`DSH_DEBUG_COOKIE_FILE`, `DSH_DEBUG_SSH_PORT`, `DSH_DEBUG_DSH_HOME` and
+`DSH_DEBUG_HARNESS_ROOT` override the saved config per invocation, so one
+installed CLI can serve a remote server and several direct ports.
 
 1. Discover native sessions with `sessions`; `resolve --query` matches title or
    ID using server-side metadata projection before SSH transfer. `--limit` and
@@ -80,6 +91,6 @@ dsh-debug --json state --session session-ID
 dsh-debug --json send --session session-ID --text-file player.txt --dry-run
 ```
 
-## Cluster settings (CLI 1.3)
+## Cluster settings (CLI 1.4)
 
 Use `cluster --session ID` for settings/revision and roster IDs. `cluster-set --session ID --enabled true|false` toggles this conversation only. `cluster-route --session ID [--character ID] --provider PROVIDER --model MODEL [--effort LEVEL]` sets default/individual routes; `--main` follows the main model, `--inherit` clears the override. Read `models` for supported values. Writes preserve other characters, enforce revisions, and never automatically retry. Use `--dry-run` for a network-free request preview.

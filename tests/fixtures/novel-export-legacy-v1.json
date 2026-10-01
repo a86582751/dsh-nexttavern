@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "producerCommit": "824fff6b069e0bc568a7529a4c8f526a6c2e04b8",
+  "history": [
+    {
+      "seq": 1,
+      "role": "assistant",
+      "text": "Only after the lamp went out, Ada opened the door.\n\nShe held 3 keys."
+    }
+  ],
+  "job": {
+    "schemaVersion": 1,
+    "id": "fa7a2105-d909-490f-81f1-d3655a700b6d",
+    "kind": "novel-export",
+    "sessionId": "legacy-novel-fixture",
+    "branchId": "legacy-novel-fixture",
+    "source": {
+      "entries": [
+        {
+          "seq": 1,
+          "role": "assistant",
+          "text": "Only after the lamp went out, Ada opened the door.\n\nShe held 3 keys."
+        }
+      ],
+      "cutoff": 1
+    },
+    "sourceHash": "0c06207ed9e42026940c4b13b0edc407fb5113c53bc64e29a7d6e079a2e31863",
+    "selection": {
+      "execution": "inline",
+      "actualRoute": {
+        "provider": "fixture",
+        "model": "fixture"
+      }
+    },
+    "execution": "inline",
+    "actualRoute": {
+      "provider": "fixture",
+      "model": "fixture"
+    },
+    "chunks": [
+      {
+        "id": "chunk-0",
+        "units": [
+          {
+            "id": "seq-1-0",
+            "seq": 1,
+            "role": "assistant",
+            "start": 0,
+            "end": 50,
+            "text": "Only after the lamp went out, Ada opened the door.",
+            "sha256": "7cd1af774d0d5756c0e6f864d91e8252dbbca3cb72e5152434dff8d3656059f5"
+          },
+          {
+            "id": "seq-1-52",
+            "seq": 1,
+            "role": "assistant",
+            "start": 52,
+            "end": 68,
+            "text": "She held 3 keys.",
+            "sha256": "2400d77084cba385ba23ab52463f8e0ffa2a09338d6dca7051355b0175bbab3d"
+          }
+        ]
+      }
+    ],
+    "results": {
+      "chunk-0": {
+        "draft": {
+          "paragraphs": [
+            {
+              "source_ids": [
+                "seq-1-0"
+              ],
+              "text": "Only after the lamp went out, Ada opened the door."
+            },
+            {
+              "source_ids": [
+                "seq-1-52"
+              ],
+              "text": "She held 3 keys."
+            }
+          ]
+        },
+        "verified": true,
+        "sourceHash": "0bc087176e124250b7491be5b7a0fe6729a0a0bd1e637a244c128d0125657863",
+        "checkedAt": 1789167534932
+      }
+    },
+    "status": "failed",
+    "generation": "da8ce6a4-b37b-4b72-8500-13db4391a80c",
+    "attempt": 0,
+    "progress": {
+      "done": 2,
+      "total": 2
+    },
+    "createdAt": 1789167534930,
+    "updatedAt": 1789167534932,
+    "plan": {
+      "title": "The Lamp",
+      "chapters": [
+        {
+          "title": "The Door",
+          "chunk_ids": [
+            "chunk-0"
+          ]
+        }
+      ]
+    },
+    "error": "fixture archive interruption"
+  },
+  "expectedMarkdown": "# The Lamp\n\n## The Door\n\nOnly after the lamp went out, Ada opened the door.\n\nShe held 3 keys.\n"
+}

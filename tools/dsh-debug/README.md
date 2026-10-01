@@ -1,7 +1,7 @@
-# dsh-debug 1.4
+# dsh-debug 1.6
 
 Python 3.14 stdlib CLI for the installed DSH alpha3 REST + Connection RPC.
-Install with PowerShell `-File runtime/alpha3/operations/dsh-debug/install.ps1`.
+Install with PowerShell `-File install.ps1` beside this file.
 This copies a durable command into `~/.local/bin`, adds it to the user PATH and
 keeps its worker in `~/.dsh-debug/lib`. Re-run after source changes.
 
@@ -17,11 +17,39 @@ accepted before the command. No dependency installation or DSH restart needed.
 
 `dsh-debug init --ssh-host user@server --ssh-key C:/path/key.pem`
 
+`dsh-debug init --ssh-host user@server --ssh-key C:/path/key.pem --ssh-port 2222`
+
+`dsh-debug init --target local --port 51080 --dsh-home D:/home --harness-root D:/harness`
+
+`dsh-debug init --target local --host 192.168.0.20 --scheme https --port 3081 --cookie-file C:/secrets/dsh-cookie.txt`
+
 Configuration is `~/.dsh-debug/config.json`, overridden by `DSH_DEBUG_SSH_HOST`,
-`DSH_DEBUG_SSH_KEY`, `DSH_DEBUG_PORT`, `DSH_DEBUG_REMOTE_PYTHON`,
-`DSH_DEBUG_SERVICE`, `DSH_DEBUG_DSH_HOME`, `DSH_DEBUG_HARNESS_ROOT`. The key file is referenced, not copied. SSH verifies the
-existing known_hosts entry; it never accepts a changed host key automatically.
-Run `dsh-debug doctor` first.
+`DSH_DEBUG_SSH_KEY`, `DSH_DEBUG_SSH_PORT`, `DSH_DEBUG_TARGET`, `DSH_DEBUG_HOST`,
+`DSH_DEBUG_SCHEME`, `DSH_DEBUG_COOKIE_FILE`, `DSH_DEBUG_COOKIE`, `DSH_DEBUG_PORT`,
+`DSH_DEBUG_REMOTE_PYTHON`, `DSH_DEBUG_SERVICE`, `DSH_DEBUG_DSH_HOME`,
+`DSH_DEBUG_HARNESS_ROOT`. The key file and any cookie file are referenced, not
+copied, and the config stores no credential value. SSH verifies the existing
+known_hosts entry; it never accepts a changed host key automatically. Run
+`dsh-debug doctor` first; it reports the selected target, endpoint and
+credential source.
+
+`target` selects where the worker runs: `ssh` (default) keeps the remote
+contract below, and `local` runs that same single-file worker inside the CLI
+process against a directly reachable `--host:--port` (default `127.0.0.1` with
+`--scheme http`; a bare IPv6 host must be bracketed, for example `[::1]`). A
+loopback host keeps the native credential adapter of that machine; a
+non-loopback host must carry an operator cookie, because the CLI cannot read
+that host's `DSH_HOME` - configure `--cookie-file` at init (a file whose first
+line is a `Cookie:` header or bare `name=value`), or set `DSH_DEBUG_COOKIE` for
+one run. The value is used only for the request and is never printed, copied or
+written to the config. Local targets need no SSH key, no known_hosts entry and
+no server-side Python; the same command surface, `/api/` allowlist, deadline,
+response cap, redaction and no-auto-retry rules apply. A local config needs
+`port`, and `dsh_home` plus `harness_root` for the loopback credential adapter.
+`{"local": true}` is still accepted as an alias for `{"target": "local"}`.
+`upload-card` and `upload` are refused on a non-loopback endpoint
+(`upload-requires-ssh`): they stage and read files on the DSH host via the
+unit's service account, which only the SSH worker can do.
 
 An ephemeral Python process runs through SSH, exchanges the current native
 launch token when logged, or signs a 60-second loopback-only native browser
@@ -33,6 +61,11 @@ Set `--dsh-home` and `--harness-root` during init for a non-default installation
 The adapter reads `.credentials.yaml` under the configured remote DSH_HOME
 (falling back to the remote environment or `~/.dsh`) and uses Node/yaml under
 the explicitly configured Harness root. It does not guess a server install path.
+A loopback `local` target uses the same credential adapter and the same
+60-second loopback cookie, passed as `Cookie:` instead of exchanged over SSH;
+it signs with the local DSH_HOME and never prints, copies or rewrites that
+secret. A non-loopback `local` target instead sends the operator-supplied
+cookie and never touches any DSH_HOME.
 
 ## Workflows
 
@@ -160,6 +193,16 @@ localStorage behavior; those still require browser verification.
   global persona fields (`name`, `gender`).
 - Native cookie auth remains mandatory; no CSRF bypass/header changes.
 
+### Harness 0.1.7-rc.2 contract
+
+The CLI was re-checked against Harness `0.1.7-rc.2`; every request shape it sends kept its meaning (`session/page`, `session/prompt`, `session/fork`, `session/selectModel`, `session/list`, `workspace/create` and `workspace/follow`), so no command, flag or payload changed. Four details are worth knowing while reading results:
+
+- `workspace/initializeDefault` takes only a signal now and always creates `<Documents>/deepseek-harness/default-workspace`; the display name is localized by each client, so the stored title stays the directory name. `workspaces` therefore reads the registration, not a language-specific label.
+- `session/page` accepts an optional `turnWindow: {minMessages, minTurns}`. `history` keeps its explicit `--through-seq` plus `--limit` contract and does not send a window.
+- `request/header` events carry `reason` and an optional `startsSeries`. `reason: "change"` alone no longer means a new model-message series, so read that flag instead of inferring a series from the reason.
+- First-start and install diagnostics changed upstream: skipped profile bundles are reported once per launch with their reasons, the plugin manager records its package-manager run tree under `.plugin-manager/run.json`, and a lock whose recorded owner process no longer exists may be taken over. These are host-side behaviours the CLI observes; they add no request or retry of its own.
+- Regenerating once stays the caller's single action. The alpha.7 acceptance saw one regeneration leave two turns in the child session; the user's ruling (2026-09-25) is that this is a **CLI-side defect**, so the CLI does not re-send or de-duplicate to compensate and the tavern product is not asked to carry extra logic for it. Report the observation instead of hiding it.
+
 Role-card import has no direct upload RPC. Source audit found the
 official `session/attachment` RPC is read-only: it proves an existing image
 reference is present in a session and returns its bytes. `session/prompt`
@@ -234,7 +277,10 @@ Null routes inherit; `{main:true}` follows the writer, optionally with
 `reasoningEffort`. Preference changes do not generate a story; future enabled
 stories may start paid children, even with the writer's model.
 
-See [cluster evidence](../../../../docs/character-cluster-20260910.md), [operations](../../../../docs/operations.md), and [current baseline](../../../../project.md). Admission, HTTP success, model completion and browser rendering remain separate observations.
+See the maintainer notes `docs/character-cluster-20260910.md`, `docs/operations.md`
+and `project.md` for the cluster evidence, operations contract and current
+baseline. Admission, HTTP success, model completion and browser rendering remain
+separate observations.
 
 ## Character-agent cluster
 
@@ -266,4 +312,4 @@ Writes read the current revision and preserve all untouched fields and other cha
 
 ## Release archive
 
-The shared release manifest includes this tool in the main runtime `.tgz` under `tools/dsh-debug/`, and creates a standalone `dsh-debug.tgz`. Both contain only program/worker/installer/documentation. Connection config and credentials stay local. Run `python dsh_debug.py` directly on systems without PowerShell; Windows `install.ps1` installs the launcher. Codex is not required; `-InstallCodexSkill` is an optional installer flag. The current SSH credential adapter targets the documented alpha3 layout; configuring another host does not automatically adapt unsupported Harness authentication formats.
+The shared release manifest includes this tool in the main runtime `.tgz` under `tools/dsh-debug/`, and creates a standalone `dsh-debug.tgz`. Both contain only program/worker/installer/documentation. Connection config and credentials stay local. Run `python dsh_debug.py` directly on systems without PowerShell; Windows `install.ps1` installs the launcher. Codex is not required; `-InstallCodexSkill` is an optional installer flag. The current SSH and loopback credential adapter targets the documented alpha3 layout; configuring another host does not automatically adapt unsupported Harness authentication formats, which is why a non-loopback direct endpoint needs an operator-supplied cookie.

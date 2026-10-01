@@ -1,38 +1,30 @@
+import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 // Host-wide routes exist before any roleplay Agent has been mounted.
 // Userinfo shares the preset's roleplay-userinfo.json storage.
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createConversationCatalog, type LegacyForkOperation, type ConversationSnapshot } from './tavern-conversations.js'
+import { readUserInfo as readUserInfoFile, writeUserInfo } from './roleplay-userinfo.js'
 
 type UserInfo = Record<string, unknown>
 type SessionEvent = { type?: string; data?: { agentPreset?: unknown } }
-type Session = { id: string; header?: { agentPreset?: unknown }; events?: readonly SessionEvent[] }
+type Session = { id: string; header?: { agentPreset?: unknown } }
+type SessionObservation = Disposable & { events: readonly SessionEvent[] }
 type ResolvedAgent = { agent?: { session?: Session }; error?: unknown }
 type HostContext = {
   connection: { fetch: { register: (route: Route) => unknown } }
   sessionController: { resolveAgent: (id: string) => Promise<ResolvedAgent | null | undefined> }
+  sessionQuery: { observeSession: (id: string, options: { projectionMode: 'none' }) => Promise<SessionObservation> }
+  sessions: { get: (id: string) => Session | null | undefined }
   effect: (work: () => unknown, description?: string) => unknown
   provide?: (name: string, value: unknown) => unknown
   logger?: { warn?: (message: string) => unknown }
 }
-type Route = { path: string; methods: readonly string[]; fetch: (request: Request) => Promise<Response> }
+type Route = ConnectionFetchRoute
 
-const userInfoPath = (): string => process.env.DSH_ROLEPLAY_USERINFO_PATH ??
-  join(process.env.DSH_HOME ?? join(process.env.HOME ?? '.', '.dsh'), 'roleplay-userinfo.json')
-
-const readUserInfo = (): UserInfo => {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(userInfoPath(), 'utf8'))
-    return parsed && typeof parsed === 'object' ? parsed as UserInfo : {}
-  } catch { return {} }
-}
-
-const writeUserInfo = (record: UserInfo): void => {
-  const p = userInfoPath()
-  mkdirSync(join(p, '..'), { recursive: true })
-  writeFileSync(p, JSON.stringify(record, null, 2), 'utf8')
-}
+// HTTP clients expect an object even before a user profile exists.
+const readUserInfo = (): UserInfo => readUserInfoFile() ?? {}
 
 const jsonResponse = (status: number, value: unknown): Response =>
   new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
@@ -44,7 +36,7 @@ const errorText = (error: unknown): string =>
   String(error !== null && typeof error === 'object' && 'message' in error ? error.message ?? error : error)
 
 export const name = 'dsh-roleplay-ui'
-export const inject = ['connection', 'sessionController']
+export const inject = ['connection', 'sessionController', 'sessionQuery', 'sessions']
 
 export function apply(ctx: HostContext): void {
   const home = process.env.DSH_HOME ?? join(process.env.HOME ?? '.', '.dsh')
@@ -82,11 +74,11 @@ export function apply(ctx: HostContext): void {
   // Retain rejection for request-time 503 without an unhandled startup error.
   void ready.catch(() => ctx.logger?.warn?.('roleplay: worldline catalog migration failed; original records retained'))
   ctx.provide?.('tavernConversations', { ...catalog, ready })
-  ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/conversations', methods: ['GET'], fetch: async () => {
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered', path: '/api/roleplay/conversations', methods: ['GET'], fetch: async () => {
     try { await ready; return jsonResponse(200, { ok: true, ...catalog.snapshot() }) }
     catch { return jsonResponse(503, { ok: false, error: '酒馆会话目录未就绪，原有记录未改写' }) }
   }}), 'roleplay-ui: durable book/worldline catalog')
-  ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/userinfo', methods: ['GET', 'POST'], fetch: async request => {
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered', path: '/api/roleplay/userinfo', methods: ['GET', 'POST'], fetch: async request => {
     try {
       if (request.method === 'GET') return jsonResponse(200, { ok: true, userinfo: readUserInfo() })
       const body = requestBody(await request.json().catch(() => null))
@@ -96,16 +88,18 @@ export function apply(ctx: HostContext): void {
   }}), 'roleplay-ui: userinfo route')
   // Resume only the selected Session after a Host restart. No prompt or sibling
   // wake is issued; agent-owned routes become available through native resume.
-  ctx.effect(() => ctx.connection.fetch.register({ path: '/api/roleplay/wake', methods: ['POST'], fetch: async request => {
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered', path: '/api/roleplay/wake', methods: ['POST'], fetch: async request => {
     try {
       const body = requestBody(await request.json().catch(() => null)); const sessionId = String(body.sessionId ?? '').trim()
       if (!sessionId || sessionId.length > 200 || /[\u0000-\u001f]/.test(sessionId)) return jsonResponse(400, { ok: false, error: 'sessionId 无效' })
       const found = await ctx.sessionController.resolveAgent(sessionId)
       if (!found || 'error' in found || !found.agent?.session) return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' })
-      const session = found.agent.session; let preset = session.header?.agentPreset
-      // Pinned alpha.3 synchronous history adapter. GA needs an upstream
-      // projection/async reader (docs/migration-ga.md), not snapshotEvents.
-      const events = session.events ?? []
+      const session = found.agent.session
+      if (ctx.sessions.get(sessionId) !== session) return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' })
+      let preset = session.header?.agentPreset
+      using observation = await ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+      if (ctx.sessions.get(sessionId) !== session) return jsonResponse(404, { ok: false, error: '会话不存在或无法恢复' })
+      const events = observation.events
       for (let index = events.length - 1; index >= 0; index -= 1) {
         const event = events[index]
         if (event?.type === 'agent-preset/selected' && event.data?.agentPreset) {

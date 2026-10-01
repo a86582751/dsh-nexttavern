@@ -4,7 +4,7 @@ import { clusterSettings } from './character-cluster.js'
 import type { ReasoningInfo, SettingsRouteBody, SettingsRoutesDependencies } from './roleplay-settings-routes-types.js'
 
 export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, memorySettingFields, memorySettingsPolicy, svc, narrativePresets}: SettingsRoutesDependencies) {
-  ctx.effect(() => ctx.connection.fetch.register({path: '/api/roleplay/presets', methods: ['GET', 'POST'], fetch: async request => {
+  ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered',path: '/api/roleplay/presets', methods: ['GET', 'POST'], fetch: async request => {
     try {
       const body = request.method === 'POST' ? await request.json() as SettingsRouteBody : null
       const session = await resolveRoleplaySession(body?.sessionId ?? new URL(request.url).searchParams.get('sessionId'))
@@ -17,7 +17,7 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
       return jsonResponse(message.includes('已更新') ? 409 : 400, {ok: false, error: message})
     }
   }}), 'roleplay: narrative preset management')
-  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/roleplay/models',methods:['GET','POST'],fetch:async request=>{
+  ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path:'/api/roleplay/models',methods:['GET','POST'],fetch:async request=>{
     try {
       const url=new URL(request.url), body=request.method==='POST'?await request.json() as SettingsRouteBody:null
       const session=await resolveRoleplaySession(body?.sessionId??url.searchParams.get('sessionId'))
@@ -44,7 +44,7 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
       return jsonResponse(200,{ok:true,...data,catalog})
     }catch(error){return jsonResponse(String((error as Error).message).includes('已更新')?409:400,{ok:false,error:String((error as Error).message)})}
   }}),'roleplay: model policy route')
-  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/roleplay/character-cluster',methods:['GET','POST'],fetch:async request=>{
+  ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path:'/api/roleplay/character-cluster',methods:['GET','POST'],fetch:async request=>{
     try{
       const url=new URL(request.url),body=request.method==='POST'?await request.json() as SettingsRouteBody:null
       const session=await resolveRoleplaySession(body?.sessionId??url.searchParams.get('sessionId'))
@@ -67,7 +67,7 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
       return jsonResponse(200,{ok:true,sessionId:session.id,settings:characterCluster.read(session),session:characterCluster.readLocal(session),global:characterCluster.readGlobal(),characters:characterRoster(session).map(({id,name})=>({id,name}))})
     }catch(error){return jsonResponse(String((error as Error).message).includes('已更新')?409:400,{ok:false,error:String((error as Error).message)})}
   }}),'roleplay: character cluster settings')
-  ctx.effect(()=>ctx.connection.fetch.register({path:'/api/roleplay/memory-settings',methods:['GET','POST'],fetch:async request=>{
+  ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path:'/api/roleplay/memory-settings',methods:['GET','POST'],fetch:async request=>{
     try{
       const url=new URL(request.url),body=request.method==='POST'?await request.json() as SettingsRouteBody<string>:null
       const session=await resolveRoleplaySession(body?.sessionId??url.searchParams.get('sessionId'))

@@ -5,7 +5,7 @@ import { once } from 'node:events'
 import { EventEmitter } from 'node:events'
 import { WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { exportJWK, SignJWT } from 'jose'
-import AuthWebServer, { installConnectionBridge, markAccessAuthenticated } from './index.js'
+import AuthWebServer, { installConnectionBridge, markAccessAuthenticated } from './lib/index.js'
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
 const kid = randomUUID()

@@ -1,8 +1,9 @@
+import {sessionEvents} from '../core/session-history.js'
 export interface BranchScope { isFork: boolean; seedLength: number | null }
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 const eventsOf = (session: unknown): readonly Record<string, unknown>[] => {
   if (!record(session)) return []
-  const events = Array.isArray(session.events) ? session.events : Array.isArray(session.log) ? session.log : []
+  const events = sessionEvents<Record<string, unknown>>(session)
   return events.filter(record)
 }
 export function lastSeqOf(session: unknown): number {
@@ -19,7 +20,7 @@ export function branchScope(session: unknown): BranchScope {
   const header = record(session) && record(session.header) ? session.header : null
   const parent = typeof header?.parentSession === 'string' ? header.parentSession.trim() : ''
   if (!parent) return { isFork: false, seedLength: null }
-  const raw = header?.seedLength
+  const raw = record(session) ? session.inheritedEventCount : undefined
   return { isFork: true, seedLength: Number.isSafeInteger(raw) && Number(raw) >= 0 ? Number(raw) : null }
 }
 export function durableSeq(value: unknown): number | null { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null }
@@ -102,6 +103,7 @@ export function filterMemoryRecordForBranch(value: unknown, session: unknown, ch
 /** Match the native result wrapper to its call; retain direct-text replay compatibility. */
 export function adaptationToolResult(value: unknown): {text:string;failed:boolean}|null {
   if(!record(value)||!record(value.source)||typeof value.source.callId!=='string'||!Array.isArray(value.content))return null
+  if(value.role==='tool'&&(value.source?.kind!=='tool'||value.toolCallId!==value.source.callId))return null
   const wrapped=value.content.filter(b=>record(b)&&b.type==='tool-result')
   if(wrapped.length&&(wrapped.length!==1||wrapped[0].toolCallId!==value.source.callId))return null
   const result=wrapped[0]??value
@@ -151,7 +153,7 @@ export function importedStoryProjection(events:readonly {seq:number;type:string;
   const pending=[...nodes];
   for(let i=0;i<pending.length;i++){
     const event=bySeq.get(pending[i]!),source=record(event?.data?.source)?event.data.source:null;
-    if(event?.type!=='user/message'||source?.kind!=='plugin'||source.plugin!=='roleplay-tasks'||source.form!=='management-receipt'||!Array.isArray(event.sourceEventSeqs))continue;
+    if(event?.type!=='user/message'||source?.kind!=='roleplay-tasks'||source.form!=='management-receipt'||!Array.isArray(event.sourceEventSeqs))continue;
     for(const seq of event.sourceEventSeqs)if(bySeq.has(seq)&&!selected.has(seq)){selected.add(seq);pending.push(seq)}
   }
   const prose=new Set<number>(),boundaries:{turn:number;finalizeSeq:number;storyPhaseSeq:number;importId:string;normalizedSha256:string}[]=[];
@@ -178,7 +180,7 @@ export function importedStoryProjection(events:readonly {seq:number;type:string;
         }
       }
     }
-    if(event.type==='user/message'&&visible.has(event.seq)&&source?.kind==='plugin'&&source.plugin==='roleplay-tasks'&&source.form==='phase'){
+    if(event.type==='user/message'&&visible.has(event.seq)&&source?.kind==='roleplay-tasks'&&source.form==='phase'){
       story=source.stage==='story'&&!!final&&source.openingImportId===final.id&&event.seq>final.seq;
       if(story&&final)boundaries.push({turn,finalizeSeq:final.seq,storyPhaseSeq:event.seq,importId:final.id,normalizedSha256:final.hash});
     }

@@ -1,0 +1,3 @@
+# Package resolution preserves the installed product's resource base.
+- id: nexttavern-roleplay-composition
+  name: dsh-nexttavern-presets/composition

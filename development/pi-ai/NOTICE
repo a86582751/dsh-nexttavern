@@ -1,0 +1,27 @@
+NextTavern pi-ai compatibility candidate
+
+Upstream: https://github.com/earendil-works/pi (packages/ai), pi-ai 0.85.1.
+Original author and copyright: Mario Zechner; original MIT terms are retained
+in LICENSE and LICENSE.upstream. This compatibility package is maintained by
+NextTavern, not published or endorsed by the upstream author.
+
+Formal compatibility fork: https://github.com/a86582751/pi
+Upstream base: d981de1229ef899957bbe968bc8dcda02a21f477 (v0.85.1)
+
+Four maintained TypeScript modules add terminal-event handling for Google,
+OpenAI Completions/Responses and Anthropic. Anthropic cancels its local SSE
+reader on exit. The official Harness 0.1.7-alpha.1 adapter owns request
+cancellation, consumer return and idle timeouts; no second transport owner
+or Gemini URL/authentication rewrite is included. Runtime imports and proven
+array bounds are adapted for this repository's strict compiler.
+
+The fixed alpha.7 performance patch also removes repeated per-delta JSON
+parsing in six providers, retaining final argument parsing. Bedrock, Mistral
+and Pi Messages source modules are maintained for those official differences.
+
+All other distribution files, including the full model catalog and unmodified
+Responses entry point, come from the integrity-locked upstream npm archive.
+ORIGIN.json records archive integrity, source recovery and original hashes,
+and formal fork synchronization status. This is an unpublished candidate;
+source synchronization is not complete-product installation validation.
+Historical patches.json deltas must not be reapplied to this fork's builds.

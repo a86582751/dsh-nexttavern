@@ -1,4 +1,5 @@
 import type { ContextEvent, ContextMessage, ContextSession } from './roleplay-context.js'
+import type { StorySurfaceOp } from './roleplay-message-view.js'
 import type { TaskMessage } from './tavern-task-context.js'
 import type { HostAgent, HostSession } from './roleplay-task-host-types.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
@@ -9,7 +10,7 @@ import type { createRoleplayStatus } from './roleplay-status.js'
 
 export interface LoopSession extends HostSession {
   append(type: string, data: TaskMessage, options: {
-    surfaceOp: 'append' | {op: string; start: number; end: number}
+    surfaceOp: StorySurfaceOp
     sourceEventSeqs?: number[]
   }): ContextEvent
 }

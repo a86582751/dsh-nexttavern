@@ -1,3 +1,4 @@
+import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { CardWorkflowSession, CardWorkflowAgent } from './roleplay-card-workflow-types.js'
 import type { createCardWorkflows } from './roleplay-card-workflow.js'
 import type { createNovelExports } from './novel-export.js'
@@ -46,7 +47,7 @@ type Resources = ReturnType<typeof createResourceBridge>
 export interface JobRoutesDependencies {
   ctx: {
     effect(work: () => unknown, label: string): unknown
-    connection: {fetch: {register(route: {path: string; methods: string[]; fetch(request: Request): Promise<Response>}): unknown}}
+    connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
     sessionController: {resolveAgent(id: string): PromiseLike<{agent?: JobRouteAgent} | null | undefined>}
   }
   T: {branch: {entries(): Iterable<[string, unknown]>; put(key: string, value: unknown): unknown | PromiseLike<unknown>}}

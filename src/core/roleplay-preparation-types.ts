@@ -1,4 +1,5 @@
 import type { ContextEvent, ContextMessage, ContextSession } from './roleplay-context.js'
+import type { StorySurfaceReplacement } from './roleplay-message-view.js'
 import type { TaskAgent } from './tavern-task-types.js'
 import type { StatusRecord } from './roleplay-status-types.js'
 import type { ForkLookup } from './roleplay-worldline-types.js'
@@ -8,7 +9,7 @@ import type { MemoryRecordProjection } from '../memory/memory-provenance.js'
 export interface PreparationSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & { parentSession?: string }
   append?(type: string, data: Record<string, unknown>, options: {
-    surfaceOp: { op: string; start: number; end: number }
+    surfaceOp: StorySurfaceReplacement
     sourceEventSeqs: number[]
   }): ContextEvent
 }

@@ -54,6 +54,14 @@
 
 ![资源管理](screenshots/resources.png)
 
+## 沉浸式游玩
+
+![沉浸式游玩](screenshots/play.png)
+
+## 长文本转角色卡
+
+![长文本转角色卡](screenshots/novel.png)
+
 ## 自有皮肤 · 日间主题
 
 ![自有皮肤 · 日间主题](screenshots/skin-day.png)
@@ -61,14 +69,6 @@
 ## 自有皮肤 · 夜间主题
 
 ![自有皮肤 · 夜间主题](screenshots/skin-night.png)
-
-## 沉浸式游玩（自有皮肤）
-
-![沉浸式游玩（自有皮肤）](screenshots/play.png)
-
-## 长文本转角色卡
-
-![长文本转角色卡](screenshots/novel.png)
 
 ## 记忆检索方式与窗口设置
 

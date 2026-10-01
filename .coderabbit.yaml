@@ -1,0 +1,36 @@
+# CodeRabbit 配置。这个仓库发布的是生成产物：源码是 src/**/*.ts，同名 .js 由
+# `npm run build:modules` 编译得到，preset/lib 与 lib 是它们的安装副本。
+language: zh-CN
+tone_instructions: 只指出真实缺陷、边界情况与安全风险；不要为措辞或风格偏好刷评论。生成的 JavaScript 来自同名 TypeScript，不要单独评审，也不要建议就地编辑它。
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  collapse_walkthrough: true
+  poem: false
+  path_filters:
+    - "**/*"
+    - "!src/**/*.js"
+    - "!preset/lib/**"
+    - "!lib/**"
+    - "!skins/**/lib/*.js"
+    - "!tools/build-map.json"
+    - "!provenance.json"
+    - "!screenshots/**"
+    - "!images/**"
+  path_instructions:
+    - path: "src/**/*.ts"
+      instructions: "这是唯一的源。改行为请改这里；同名 .js 由 npm run build:modules 生成。若一个 PR 只改了 .js，它改错了文件，请明确指出。"
+    - path: "tests/**"
+      instructions: "随包发布的契约套件，CI 上由 node tests/run.mjs 逐个运行。请判断断言是否真的会失败（有没有牙齿），不要为测试文案提建议。"
+    - path: "tools/install.mjs"
+      instructions: "玩家安装入口，会写进 DSH profile。关注安装期副作用、路径校验、失败与回滚；不要建议引入安装期脚本。"
+    - path: "package.json"
+      instructions: "由发布构建重写：name、version、scripts、files、peerDependencies 都是注入的，不要建议手工编辑。"
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+chat:
+  art: false
+  auto_reply: true

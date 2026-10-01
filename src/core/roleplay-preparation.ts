@@ -107,11 +107,11 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
       id: randomUUID(),
       role: 'user',
       content: [{ type: 'text', text: `[角色扮演上下文窗口 ${activeWindow.windowNumber}] 旧剧情已保存在只读历史。当前窗口保留最新 ${continuityTailTokens} tokens 的完整正文；需要旧事实时调用 rp_history。` }],
-      source: { kind: 'plugin', plugin: 'roleplay-context-window', form: 'snapshot', schemaVersion: 1,
+      source: { kind: 'roleplay-context-window', form: 'snapshot', schemaVersion: 1,
         checkpointGeneration: proof.generationId, checkpointSourceKeys: proof.sourceKeys,
         checkpointSourceSeqs: proof.sourceSeqs },
     }, {
-      surfaceOp: { op: 'replace', start: cut[0]!, end },
+      surfaceOp: { op: 'replace', startSeq: cut[0]!, endSeq: end },
       sourceEventSeqs: [...cut],
     })
     return { checkpointSeq: checkpoint.seq, shadowedSeqs: cut, tailSeqs: tail, usedTokens: used }
@@ -122,7 +122,7 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     if (typeof projection === 'function') return projection(session)
     const stored = T.memory.get(keyOf(session.id, 'head')) ?? null
     if (!stored || typeof session?.header?.parentSession !== 'string') return stored
-    const seedLength = durableSeq(session.header?.seedLength)
+    const seedLength = durableSeq(session.inheritedEventCount)
     const proven = (items: unknown) => (Array.isArray(items) ? items as unknown[] : []).filter((item): item is Record<string, unknown> => {
       if (!item || typeof item !== 'object') return false
       const record = item as Record<string, unknown>
@@ -308,12 +308,12 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
       notesSourceSeqs:directorNotes?.sourceSeqs??[],windowId:activeContextWindow.windowId}
     const visibleAnchor = (form: string, hashField: string, hash: string) => surfaceEvents(session).findLast((event) => {
       const source = event?.type === 'user/message' ? event.data?.source : null
-      return source?.kind === 'plugin' && source.plugin === 'roleplay-context'
+      return source?.kind === 'roleplay-context'
         && source.form === form && source.branchId === branchId && source.mode === 'full' && source[hashField] === hash
     }) ?? null
     const contextMessage = (form: string, source: Record<string, unknown>, body: string): ContextMessage => ({
       id: randomUUID(), role: 'user', content: [{ type: 'text', text: body }],
-      source: { kind: 'plugin', plugin: 'roleplay-context', form, schemaVersion: 1, branchId, ...source },
+      source: { kind: 'roleplay-context', form, schemaVersion: 1, branchId, ...source },
     })
     const values = userValues(branchId)
     const renderContextText = (value: unknown) => String(value ?? '')

@@ -41,13 +41,13 @@ export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchI
     for(let index=events.length-1;index>=0;index--){
       const e=events[index]!
       if(e.type==='turn/start'||e.type==='turn/end')return null
-      if(e.type==='user/message'&&e.data?.source?.plugin==='roleplay-tasks'&&e.data.source.form==='phase')return e.data.source
+      if(e.type==='user/message'&&e.data?.source?.kind==='roleplay-tasks'&&e.data.source.form==='phase')return e.data.source
     }
     return null
   }
   const clusterJob=(agent: HostAgent | null | undefined)=>{
     if(!(Number(agent?.options?.subagentDepth)>0)&&agent?.session?.header?.origin!=='subagent')return null
-    const descriptor=eventsOf(agent!.session).findLast(e=>e.type==='subagent/descriptor'&&e.seq>=Number(agent!.session!.header?.seedLength??0))
+    const descriptor=eventsOf(agent!.session).findLast(e=>e.type==='subagent/descriptor'&&e.seq>=Number(agent!.session!.inheritedEventCount??0))
     const id=agent!.options?.tavernTaskId??/^Tavern:([a-f0-9]{64}):/.exec((descriptor?.data?.label as string | undefined)??'')?.[1]
     const job=id?T.branch.get(`tavern_job__${id}`):null
     return job?.kind==='character'?job:null

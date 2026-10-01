@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 import { durableSeq, textOf, adaptationTurns, importedStoryProjection } from './memory-provenance.js'
+import { projectStoryEvent, messageViewGeneration, type MessageViewSession, type StorySurfaceOp } from '../core/roleplay-message-view.js'
+import {sessionEvents} from '../core/session-history.js'
 
 export interface StoryBlock { type?: string; [field: string]: unknown }
 export interface StoryEvent {
@@ -19,16 +21,16 @@ export interface StoryEvent {
     compactionId?: unknown
     error?: unknown
     shadowedSeqs?: unknown
-    source?: { kind?: string; plugin?: string; stage?: string; form?: string; jobKind?: string; storySeq?: unknown; turn?: unknown; compactionId?: unknown }
+    source?: { kind?: string; stage?: string; form?: string; jobKind?: string; storySeq?: unknown; turn?: unknown; compactionId?: unknown }
   }
   sourceEventSeqs?: unknown
-  surfaceOp?: 'append' | { op?: string; start: number; end?: number }
+  surfaceOp?: StorySurfaceOp
 }
-export interface StorySession {
+export interface StorySession extends MessageViewSession<StoryEvent> {
   id: string
   events?: readonly StoryEvent[]
   log?: readonly StoryEvent[]
-  surface?: { nodes?: Iterable<unknown> }
+  surface?: { nodes?: Iterable<unknown>; contentGeneration?: number }
 }
 export interface StoryRow {
   id: string
@@ -56,12 +58,8 @@ export interface NotesRecord {
 interface HistoryOptions { query?: unknown; beforeSeq?: unknown; limit?: unknown; maxChars?: unknown; scope?: string }
 interface ReadOptions { seq?: unknown; offset?: unknown; maxChars?: unknown; scope?: string }
 
-// Pinned alpha.3 positional history adapter. GA requires projections/async
-// pages and changed event shapes, not snapshotEvents (docs/migration-ga.md).
 function eventsOf(session: StorySession): readonly StoryEvent[] {
-  if (Array.isArray(session?.events)) return session.events
-  if (Array.isArray(session?.log)) return session.log
-  return []
+  return sessionEvents(session)
 }
 
 export function surfaceSeqsOf(session: StorySession): number[] {
@@ -93,10 +91,10 @@ export function importManagementInputs(session: StorySession, evidence = eventsO
     }
     if(event.type==='tool/call'&&event.data?.name==='rp_card_draft_check')authoring=true
     if(event.type==='tool/call'&&['rp_card_import_begin','rp_commit_card'].includes(event.data?.name ?? ''))authoring=false
-    if(event.type==='user/message'&&event.data?.source?.plugin==='roleplay-tasks'&&event.data.source.stage==='after-story')authoring=false
+    if(event.type==='user/message'&&event.data?.source?.kind==='roleplay-tasks'&&event.data.source.stage==='after-story')authoring=false
     if(authoring&&event.type==='tool/call'&&event.data?.name==='ask_user_question')exportTurns.add(Number(event.data?.turn??turn))
     if(event.type==='tool/call' && /^(?:rp_card_export_(begin|chunk|finalize)|rp_novel_export|rp_diagnose|rp_preset|rp_card_draft_check)$/.test(event.data?.name??''))exportTurns.add(Number(event.data?.turn??turn))
-    if(event.type==='user/message'&&event.data?.source?.plugin==='roleplay-tasks'&&['card-export','novel-export'].includes(event.data?.source?.jobKind ?? ''))exportTurns.add(turn)
+    if(event.type==='user/message'&&event.data?.source?.kind==='roleplay-tasks'&&['card-export','novel-export'].includes(event.data?.source?.jobKind ?? ''))exportTurns.add(turn)
     if (event.type === 'turn/end') turn = null
   }
   const resumed=importedStoryProjection(evidence,surfaceSeqsOf(session)).prose
@@ -138,9 +136,10 @@ function afterStoryProofs(session: StorySession, visible = new Set(surfaceSeqsOf
   const log = eventsOf(session), committed = new Set<number>(), turns = new Set<number>()
   for (const marker of evidence) {
     const source = marker?.type === 'user/message' ? marker.data?.source : null
-    if (source?.kind !== 'plugin' || source?.plugin !== 'roleplay-tasks' || source?.form !== 'phase' || source?.stage !== 'after-story') continue
+    if (source?.kind !== 'roleplay-tasks' || source?.form !== 'phase' || source?.stage !== 'after-story') continue
     const seq = Number(source.storySeq), turn = Number(source.turn)
-    const story = Number.isSafeInteger(seq) ? log[seq] : null
+    const original = Number.isSafeInteger(seq) ? log[seq] : null
+    const story = original ? projectStoryEvent(session, original) : null
     if (!visible.has(Number(marker.seq)) || !visible.has(seq) || Number(marker.seq) <= seq ||
       !story || story.type !== 'assistant/message' || Number(story.seq) !== seq ||
       story.data?.interrupted === true || !textOf(contentOfEvent(story)).trim() ||
@@ -156,7 +155,7 @@ export function canonicalAssistantSeqsOf(session: StorySession, seqs = surfaceSe
   let inTask=false
   for(const event of evidence) {
     if(event?.type==='turn/start'||event?.type==='turn/end')inTask=false
-    if(event?.type==='user/message'&&event.data?.source?.kind==='plugin'&&event.data?.source?.plugin==='roleplay-tasks'&&event.data?.source?.form==='phase')inTask=event.data.source.stage!=='story'
+    if(event?.type==='user/message'&&event.data?.source?.kind==='roleplay-tasks'&&event.data?.source?.form==='phase')inTask=event.data.source.stage!=='story'
     if(inTask&&event?.type==='assistant/message')internal.add(event.seq)
   }
   const completedTurns = new Set(evidence
@@ -164,7 +163,8 @@ export function canonicalAssistantSeqsOf(session: StorySession, seqs = surfaceSe
     .map((event) => Number(event.data?.turn)))
   const afterStory = afterStoryProofs(session, visible, evidence)
   const lastByTurn = new Map<number, number>()
-  for (const event of evidence) {
+  for (const original of evidence) {
+    const event = projectStoryEvent(session, original)
     if (event?.type !== 'assistant/message' ||
       !visible.has(Number(event.seq)) ||
       internal.has(event.seq) ||
@@ -182,7 +182,9 @@ export function canonicalAssistantSeqsOf(session: StorySession, seqs = surfaceSe
 }
 
 /** Restore only archived plot on the selected surface, never edited/deleted alternatives. */
-const selectedStoryCache = new WeakMap<StorySession, { log: readonly StoryEvent[]; id: string; surfaceKey: string; rows: StoryRow[] }>()
+const selectedStoryCache = new WeakMap<StorySession, {
+  log: readonly StoryEvent[]; id: string; surfaceKey: string; generation: number; rows: StoryRow[]
+}>()
 const immutableStoryValues = new WeakSet()
 const storyDataTypes = new Set(['turn/start','turn/end','user/message','assistant/message','tool/call','compaction/end','compaction/summary'])
 function immutableStoryValue(value: unknown): boolean {
@@ -206,7 +208,7 @@ function expandedHistorySeqs(session: StorySession, evidence = eventsOf(session)
     const event = log[seq]
     if (!event || Number(event.seq) !== seq) return
     if (isCompactedStoryEvent(event)) {
-      if (event.data?.source?.plugin === 'roleplay-context-window') {
+      if (event.data?.source?.kind === 'roleplay-context-window') {
         const archived = Array.isArray(event.sourceEventSeqs) ? event.sourceEventSeqs : []
         for (const source of archived) expand(source, depth + 1)
         return
@@ -226,13 +228,15 @@ function expandedHistorySeqs(session: StorySession, evidence = eventsOf(session)
 export function selectedStoryHistory(session: StorySession): StoryRow[] {
   const log = eventsOf(session)
   const surface = surfaceSeqsOf(session), surfaceKey = surface.join(',')
+  const generation = messageViewGeneration(session)
   // Native snapshots are immutable and replaced on every append. Cache only
   // that contract, never mutable legacy/mock logs; selection is a separate key.
   const cached = selectedStoryCache.get(session)
-  if (cached?.log === log && cached.id === session.id && cached.surfaceKey === surfaceKey) return cached.rows.map(row => ({ ...row }))
+  if (generation !== null && cached?.generation === generation && cached.log === log &&
+    cached.id === session.id && cached.surfaceKey === surfaceKey) return cached.rows.map(row => ({ ...row }))
   // Token chunks contribute only immutable type/seq, not their payload. Story
   // evidence payloads must also be deeply immutable, including legacy callers.
-  let cacheable = Object.isFrozen(log)
+  let cacheable = generation !== null && Object.isFrozen(log)
   const evidence: StoryEvent[] = []
   const turnBySeq = new Map<number, number | null>()
   const researchClosures = new Set<string>(), researchStarts = new Set<string>()
@@ -262,10 +266,13 @@ export function selectedStoryHistory(session: StorySession): StoryRow[] {
     seen.add(event.seq)
     const direct = Number.isSafeInteger(event.data?.turn) ? Number(event.data?.turn) : turnBySeq.get(event.seq)
     if (direct !== null && direct !== undefined) return direct
-    if (typeof event.surfaceOp === 'object' && event.surfaceOp.op === 'replace') return originalTurn(log[event.surfaceOp.start], seen)
+    if (typeof event.surfaceOp === 'object' && event.surfaceOp.op === 'replace') return originalTurn(log[event.surfaceOp.startSeq], seen)
     return null
   }
-  const rows: StoryRow[] = expanded.map((seq) => log[seq]).filter((event): event is StoryEvent => {
+  const rows: StoryRow[] = expanded.map((seq) => {
+    const event = log[seq]
+    return event ? projectStoryEvent(session, event) : undefined
+  }).filter((event): event is StoryEvent => {
     if (!isStoryEvent(event, canonical, management)) return false
     const turn = originalTurn(event)
     return turn !== null && (completed.has(turn) || afterStory.turns.has(turn))
@@ -278,7 +285,9 @@ export function selectedStoryHistory(session: StorySession): StoryRow[] {
     text: textOf(contentOfEvent(event)),
     time: event.time ?? null,
   }))
-  if (cacheable) selectedStoryCache.set(session, { log, id: session.id, surfaceKey, rows: rows.map(row => ({ ...row })) })
+  if (cacheable && generation !== null) selectedStoryCache.set(session, {
+    log, id: session.id, surfaceKey, generation, rows: rows.map(row => ({ ...row })),
+  })
   return rows
 }
 
@@ -410,6 +419,5 @@ export function directorNotesForBranch(value: unknown, session: StorySession, en
 
 export function isCompactedStoryEvent(event: StoryEvent | null | undefined) {
   return event?.type === 'user/message'
-    && event?.data?.source?.kind === 'plugin'
-    && (event?.data?.source?.plugin === 'compact' || event?.data?.source?.plugin === 'roleplay-context-window')
+    && (event?.data?.source?.kind === 'compact-checkpoint' || event?.data?.source?.kind === 'roleplay-context-window')
 }

@@ -19,7 +19,7 @@ interface DecisionQuestionInput {
   multi_select?: unknown
 }
 interface DecisionArgs { questions?: unknown }
-interface Session { id: string; log?: readonly unknown[] }
+interface Session { id: string; seq: number }
 interface Agent { session?: Session }
 interface Execution { agent?: Agent }
 interface RoleplayService {
@@ -85,7 +85,7 @@ export function apply(ctx: ToolContext): void {
       const questions = Array.isArray(input.questions) ? input.questions : []
       const question = questionOf(questions.find(item => item !== null && typeof item === 'object'))
       await roleplay.askDecision(session.id, {
-        source: 'tool', seq: session.log?.length ?? 0, question: String(question.question ?? ''),
+        source: 'tool', seq: session.seq, question: String(question.question ?? ''),
         header: question.header !== undefined ? String(question.header) : undefined,
         options: optionsOf(question.options), multiSelect: question.multi_select === true,
       })

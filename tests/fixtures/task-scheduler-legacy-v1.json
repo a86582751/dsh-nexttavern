@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "legacyCommit": "20b8440",
+  "specs": [
+    {
+      "session": {
+        "id": "scheduler-legacy"
+      },
+      "agent": {
+        "session": {
+          "id": "scheduler-legacy"
+        },
+        "options": {
+          "provider": "fixture",
+          "model": "main"
+        }
+      },
+      "kind": "status",
+      "source": {
+        "seq": 1
+      },
+      "input": {
+        "system": "Synthetic inline contract",
+        "user": "Synthetic source"
+      }
+    },
+    {
+      "session": {
+        "id": "scheduler-legacy"
+      },
+      "agent": {
+        "session": {
+          "id": "scheduler-legacy"
+        },
+        "options": {
+          "provider": "fixture",
+          "model": "main"
+        }
+      },
+      "kind": "decision",
+      "source": {
+        "seq": 2
+      },
+      "input": {
+        "system": "Synthetic pending contract",
+        "user": "Synthetic source"
+      }
+    },
+    {
+      "session": {
+        "id": "scheduler-legacy"
+      },
+      "agent": {
+        "session": {
+          "id": "scheduler-legacy"
+        },
+        "options": {
+          "provider": "fixture",
+          "model": "main"
+        }
+      },
+      "kind": "card-export",
+      "source": {
+        "seq": 3
+      },
+      "input": {
+        "system": "Synthetic spawn contract"
+      },
+      "format": "json"
+    },
+    {
+      "session": {
+        "id": "scheduler-legacy"
+      },
+      "agent": {
+        "session": {
+          "id": "scheduler-legacy"
+        },
+        "options": {
+          "provider": "fixture",
+          "model": "main"
+        }
+      },
+      "kind": "memory",
+      "background": true,
+      "source": {
+        "seq": 4
+      },
+      "input": {
+        "taskStage": "background-notes",
+        "user": "Synthetic background source"
+      },
+      "format": "text",
+      "maxTokens": 1024
+    }
+  ],
+  "outcomes": [
+    {
+      "index": 0,
+      "result": {
+        "value": "inline-result"
+      }
+    },
+    {
+      "index": 1,
+      "pending": true
+    },
+    {
+      "index": 2,
+      "result": {
+        "value": "synthetic-result"
+      }
+    },
+    {
+      "index": 3,
+      "result": "Synthetic background result"
+    }
+  ],
+  "records": [
+    [
+      "tavern_job__fa718ae5d09e3e7c31f6183630114cec10fc8ac78733e3bd0537433e35d8e8f2",
+      {
+        "schemaVersion": 1,
+        "id": "fa718ae5d09e3e7c31f6183630114cec10fc8ac78733e3bd0537433e35d8e8f2",
+        "sessionId": "scheduler-legacy",
+        "branchId": "scheduler-legacy",
+        "kind": "status",
+        "source": {
+          "seq": 1
+        },
+        "sourceHash": "b41e95c43f388d561b146326d84e3a6b9e31c4ef32ab97c04774c31aada3246a",
+        "input": {
+          "system": "Synthetic inline contract",
+          "user": "Synthetic source"
+        },
+        "allowedTools": [],
+        "execution": "inline",
+        "main": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "actualRoute": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "policyRevision": {
+          "global": 1,
+          "session": 0
+        },
+        "generationOptions": {},
+        "status": "completed",
+        "generation": "00000000-0000-4000-8000-000000000001",
+        "progress": {
+          "done": 1,
+          "total": 1
+        },
+        "createdAt": 1700000000000,
+        "updatedAt": 1700000000000,
+        "result": {
+          "value": "inline-result"
+        },
+        "resultHash": "0e2a3f72b296084e23c51f7a5a80f2dd3149fbd4b56415c9124b0222d3cedf56",
+        "completedAt": 1700000000000,
+        "error": null,
+        "failure": null,
+        "failedAt": null
+      }
+    ],
+    [
+      "tavern_job__6c1136c2ba07c960918e203ef9d852ba43ee2f2492a47e6c8c5c2c2d52f9ab84",
+      {
+        "schemaVersion": 1,
+        "id": "6c1136c2ba07c960918e203ef9d852ba43ee2f2492a47e6c8c5c2c2d52f9ab84",
+        "sessionId": "scheduler-legacy",
+        "branchId": "scheduler-legacy",
+        "kind": "decision",
+        "source": {
+          "seq": 2
+        },
+        "sourceHash": "5d5799fb7264dabb6fd150f58bb8bce13e51d23510bcc7206fcdceb4da2c364d",
+        "input": {
+          "system": "Synthetic pending contract",
+          "user": "Synthetic source"
+        },
+        "allowedTools": [],
+        "execution": "inline",
+        "main": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "actualRoute": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "policyRevision": {
+          "global": 1,
+          "session": 0
+        },
+        "generationOptions": {},
+        "status": "queued",
+        "generation": "00000000-0000-4000-8000-000000000001",
+        "progress": {
+          "done": 0,
+          "total": 1
+        },
+        "createdAt": 1700000000000,
+        "updatedAt": 1700000000000
+      }
+    ],
+    [
+      "tavern_job__8fc7db23c2a108f7b1069693d08029f8f15b21fdd952c770ed37b1b48acc519e",
+      {
+        "schemaVersion": 1,
+        "id": "8fc7db23c2a108f7b1069693d08029f8f15b21fdd952c770ed37b1b48acc519e",
+        "sessionId": "scheduler-legacy",
+        "branchId": "scheduler-legacy",
+        "kind": "card-export",
+        "source": {
+          "seq": 3
+        },
+        "sourceHash": "e1f447ad2c2071e1f4f0a269e338e37c2949ec93962633710281e031a7015741",
+        "input": {
+          "system": "Synthetic spawn contract"
+        },
+        "allowedTools": [],
+        "execution": "spawn",
+        "main": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "actualRoute": {
+          "provider": "fixture",
+          "model": "special"
+        },
+        "policyRevision": {
+          "global": 1,
+          "session": 0
+        },
+        "generationOptions": {},
+        "status": "completed",
+        "generation": "00000000-0000-4000-8000-000000000001",
+        "progress": {
+          "done": 1,
+          "total": 1
+        },
+        "createdAt": 1700000000000,
+        "updatedAt": 1700000000000,
+        "childSessionId": "fixture-child-1",
+        "childMaxTokens": null,
+        "startedAt": 1700000000000,
+        "result": {
+          "value": "synthetic-result"
+        },
+        "resultHash": "82dd46479f31a3940d20c177d7b90d505b7be66e22f76d7001c603a4b8215917",
+        "completedAt": 1700000000000,
+        "error": null,
+        "failure": null,
+        "failedAt": null
+      }
+    ],
+    [
+      "tavern_job__bc2757d21d9c3dd97a428df3922852d24cb296fb5ac07030c6b7bc9a3cdb0c61",
+      {
+        "schemaVersion": 1,
+        "id": "bc2757d21d9c3dd97a428df3922852d24cb296fb5ac07030c6b7bc9a3cdb0c61",
+        "sessionId": "scheduler-legacy",
+        "branchId": "scheduler-legacy",
+        "kind": "memory",
+        "source": {
+          "seq": 4
+        },
+        "sourceHash": "e79ea8a4811a0e02a6cf26209e9c7d4865b34c89959244110504ead2642a6a3b",
+        "input": {
+          "taskStage": "background-notes",
+          "user": "Synthetic background source"
+        },
+        "allowedTools": [],
+        "execution": "spawn",
+        "main": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "actualRoute": {
+          "provider": "fixture",
+          "model": "main"
+        },
+        "policyRevision": {
+          "global": 1,
+          "session": 0
+        },
+        "background": true,
+        "generationOptions": {
+          "maxTokens": 1024
+        },
+        "status": "completed",
+        "generation": "00000000-0000-4000-8000-000000000001",
+        "progress": {
+          "done": 1,
+          "total": 1
+        },
+        "createdAt": 1700000000000,
+        "updatedAt": 1700000000000,
+        "childSessionId": "fixture-child-2",
+        "startedAt": 1700000000000,
+        "result": "Synthetic background result",
+        "resultHash": "94647c9d4d0f343e7f505b95750fd24d9f97adf310f0d316bd1a8a0fea8df19f",
+        "completedAt": 1700000000000,
+        "error": null,
+        "failure": null,
+        "failedAt": null
+      }
+    ]
+  ],
+  "spawns": 2
+}
