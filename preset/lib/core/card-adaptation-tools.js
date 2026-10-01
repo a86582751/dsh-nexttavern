@@ -21,10 +21,18 @@ function vectors(source) {
 }
 function boundedRows(rows, limit = 20000) {
     const kept = [];
+    let chars = 2;
+    let bytes = 2;
     for (const row of rows) {
-        const json = JSON.stringify([...kept, row], null, 2);
-        if (json.length > limit || Buffer.byteLength(json, 'utf8') > 47000)
+        // A row has the same two-space indentation at every array position.
+        // Measure it once; serializing the growing prefix on every iteration is quadratic.
+        const item = JSON.stringify([row], null, 2).slice(2, -2);
+        const nextChars = (kept.length ? chars + 2 : 4) + item.length;
+        const nextBytes = (kept.length ? bytes + 2 : 4) + Buffer.byteLength(item, 'utf8');
+        if (nextChars > limit || nextBytes > 47000)
             break;
+        chars = nextChars;
+        bytes = nextBytes;
         kept.push(row);
     }
     return kept;
