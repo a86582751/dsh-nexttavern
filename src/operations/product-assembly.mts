@@ -6,6 +6,7 @@ import {execFileSync} from 'node:child_process'
 import {createRequire} from 'node:module'
 import {assembleOwnedDependency, regularPackageFiles} from './owned-dependency.mjs'
 import {contained as inside} from './public-transaction.mjs'
+import {materializeBundledLibraries} from './bundled-library-assembly.mjs'
 
 interface ProductRecipe {
   packageArtifact: string
@@ -19,6 +20,8 @@ interface ProductRecipe {
   bundles?: {layout: string}[]
   /** Exact library versions every owned package's ordinary dependencies resolve to. */
   bundleLibraries?: Record<string, string>
+  /** Root SDKs with install hooks travel prebuilt, including their locked runtime graph. */
+  rootBundledLibraries?: {libraries: Record<string, string>; lockArtifact: string}
   /**
    * Platform targets the product ships native companions for. A vendored
    * library that declares platform packages (for example koffi's loaders)
@@ -336,8 +339,26 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     fs.mkdirSync(path.dirname(target), {recursive: true})
     fs.copyFileSync(inside(repo, artifact(resource.artifact).source), target)
   }
-  const excludedVendoredFiles = vendorLibraries(output, pkg.name, pkg.dependencies ?? {}, options.libraryRoot,
+  const rootRecipe = plan.product.rootBundledLibraries
+  const ownedRootLibraries = Object.fromEntries(Object.entries(rootRecipe?.libraries ?? {})
+    .filter(([name]) => pkg.bundleDependencies?.includes(name)))
+  for (const [name, version] of Object.entries(ownedRootLibraries)) {
+    if (pkg.dependencies?.[name] !== version || plan.product.bundleLibraries?.[name] !== version) {
+      throw Error('Unpinned owned bundled SDK: ' + pkg.name + ' -> ' + name)
+    }
+  }
+  const ordinaryDependencies = Object.fromEntries(Object.entries(pkg.dependencies ?? {})
+    .filter(([name]) => !Object.hasOwn(ownedRootLibraries, name)))
+  const excludedVendoredFiles = vendorLibraries(output, pkg.name, ordinaryDependencies, options.libraryRoot,
     plan.product.bundleLibraries ?? {}, options.admitVendoredFile, plan.product.bundlePlatforms ?? [])
+  if (Object.keys(ownedRootLibraries).length) {
+    // These packages move to protected file pins outside the product tree.
+    // Their own bundle must retain the locked closure before its inventory is
+    // taken, so a later relink cannot borrow an ancestor or run SDK hooks.
+    materializeBundledLibraries({libraryRoot: options.libraryRoot ?? '', moduleRoot: inside(output, 'node_modules'),
+      lockFile: inside(repo, artifact(rootRecipe!.lockArtifact).source), libraries: ownedRootLibraries,
+      admit: options.admitVendoredFile ?? (() => {throw Error('Owned SDKs require public vendor admission')})})
+  }
   const files = regularPackageFiles(output).sort().map(file => ({path: file,
     sha256: createHash('sha256').update(fs.readFileSync(inside(output, file))).digest('hex')}))
   return {name: pkg.name, version: pkg.version, files, excludedVendoredFiles}
@@ -378,9 +399,15 @@ export function assembleProduct(options: {
   const names = owned.map(row => row.pkg.name).sort()
   if (new Set(names).size !== names.length) throw Error('Duplicate product package')
   const declared = Object.keys(metadata.dependencies ?? {}).filter(name => name.startsWith('dsh-nexttavern-')).sort()
+  const rootLibraries = plan.product.rootBundledLibraries?.libraries ?? {}
+  const bundledNames = [...names, ...Object.keys(rootLibraries)].sort()
   if (JSON.stringify(names) !== JSON.stringify(declared)
-    || JSON.stringify(names) !== JSON.stringify([...(metadata.bundleDependencies ?? [])].sort())) {
+    || JSON.stringify(bundledNames) !== JSON.stringify([...(metadata.bundleDependencies ?? [])].sort())) {
     throw Error('Root dependencies and registered private packages differ')
+  }
+  for (const [name, version] of Object.entries(rootLibraries)) {
+    if (name.startsWith('@deepseek-ai/') || name.startsWith('dsh-nexttavern-')
+      || metadata.dependencies?.[name] !== version) throw Error('Unpinned root bundled SDK: ' + name)
   }
   for (const {pkg} of owned) if (metadata.dependencies?.[pkg.name] !== pkg.version) {
     throw Error('Unpinned product dependency: ' + pkg.name)
@@ -397,6 +424,13 @@ export function assembleProduct(options: {
   const moduleRoot = inside(packageRoot, 'node_modules')
   if (fs.existsSync(moduleRoot)) throw Error('Candidate dependencies must be absent before assembly')
   fs.mkdirSync(moduleRoot)
+  const bundledLibraries = plan.product.rootBundledLibraries
+    ? materializeBundledLibraries({
+      libraryRoot: options.libraryRoot ?? '', moduleRoot,
+      lockFile: inside(repo, artifact(plan.product.rootBundledLibraries.lockArtifact).source),
+      libraries: rootLibraries,
+      admit: options.admitVendoredFile ?? (() => {throw Error('Root SDKs require public vendor admission')}),
+    }).packages : []
   const packages = owned.map(({pkg, packageArtifact, assembly, publicMetadata}) => {
     const output = inside(moduleRoot, pkg.name)
     const result = assembleProductPackage({repo, output, packageArtifact, archives: options.archives,
@@ -448,8 +482,10 @@ export function assembleProduct(options: {
         sha256: createHash('sha256').update(fs.readFileSync(path.join(directory, file))).digest('hex')}))}
   })
   const hostForks = stageHostForks(repo, packageRoot, plan)
+  // SDK bytes remain distinct from owned plugins and host singleton ownership.
   const inventory = {schemaVersion: 1, productVersion: metadata.version,
-    packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles, hostForks}
+    packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles, hostForks,
+    rootBundledLibraries: rootLibraries, bundledLibraries}
   const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
     .map(item => ({package: row.name, ...item})))
   save(path.join(packageRoot, 'package.json'), metadata)

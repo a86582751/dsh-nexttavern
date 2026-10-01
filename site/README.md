@@ -39,3 +39,7 @@ node site/build.mjs --check
 ## 发布
 
 `.github/workflows/pages.yml` 在 `main` 上的文档或本站源码变化时渲染站点并把 `artifacts/site` 作为 Pages 制品发布，不需要密钥，也不修改 npm 包内容。
+
+可选 ffmpeg 安装限时 90 秒；超时沿用生成器复制原图的回退，不能让 apt 镜像阻塞发布。带 `[skip ci]` 的提交不会自动部署，已授权发布时手动 dispatch 一次 Pages，等待同一任务成功；不重复本地构建和云端验证同一输入。发布前保存上一轮精确 artifact，发布后按本次 head 的 artifact 字节核对受影响线上页面与资源，CLI／workflow 成功不能替代 HTTP 健康读回。
+
+当前发行版本与安装入口在 `site.config.mjs` 和对应 Markdown 对齐；更广泛的 0.3 兼容仍在开发时保留首页延期说明，不因补丁发布丢掉这段玩家沟通。文档站只描述已公开的支持范围，不改变固定 npm 版本或 Release 归档。

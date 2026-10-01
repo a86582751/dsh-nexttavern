@@ -5499,6 +5499,22 @@
       "source": "development/schema-executors/v1/lib/core/tavern-mvu-json-types-v1.js"
     },
     {
+      "id": "bundled-library-assembly-typescript",
+      "source": "src/operations/bundled-library-assembly.mts"
+    },
+    {
+      "id": "bundled-library-assembly",
+      "source": "lib/operations/bundled-library-assembly.mjs"
+    },
+    {
+      "id": "nexttavern-product-locale-en",
+      "source": "locale/en.json"
+    },
+    {
+      "id": "nexttavern-product-locale-zh-cn",
+      "source": "locale/zh-CN.json"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -24016,7 +24032,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts"
       ],
       "kind": "typescript-module",
       "entry": "src/operations/product-assembly.mts",
@@ -28627,7 +28644,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -28904,7 +28923,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -29181,7 +29202,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -29458,7 +29481,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ],
       "banner": "runtime/alpha3/compat/mvu-schema-runtime/src/index.ts"
     },
@@ -29736,7 +29761,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ],
       "banner": "runtime/alpha3/compat/mvu-schema-runtime/src/descriptor.ts"
     },
@@ -30014,7 +30041,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -30290,7 +30319,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -30569,7 +30600,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -30848,7 +30881,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -31123,7 +31158,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -31404,7 +31441,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -31682,7 +31721,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -31963,7 +32004,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -32244,7 +32287,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -32529,7 +32574,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -32815,7 +32862,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -33095,7 +33144,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -33376,7 +33427,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -33653,7 +33706,9 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/operations/bundled-library-assembly.mts",
+        "src/operations/test-temp.mts"
       ]
     },
     {
@@ -35011,6 +35066,23 @@
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
       ],
       "builder": "tools/build-modules.mjs"
+    },
+    {
+      "artifact": "bundled-library-assembly",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/operations/tool-resolution.mts",
+        "src/operations/test-temp.mts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/public-transaction.mts",
+        "src/operations/bundled-library-assembly.mts"
+      ],
+      "kind": "typescript-module",
+      "entry": "src/operations/bundled-library-assembly.mts",
+      "id": "bundled-library-assembly-build"
     }
   ],
   "typeScript": {
