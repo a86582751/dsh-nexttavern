@@ -1,8 +1,10 @@
 /** Numerical authority and Source-lock publication. This module never owns a
  * Native receipt/token, input queue, model request or the genesis writer. */
 import {recordSha256} from './roleplay-data.js'
-import {prepareMvuUpdate} from './roleplay-mvu-update.js'
+import {reduceMvuUpdateOperations} from './roleplay-mvu-update.js'
 import type {MvuUpdatePreparation, PreparedMvuUpdate} from './roleplay-mvu-update.js'
+import {reduceMvuUpdateOperationsV2} from './roleplay-mvu-update-v2.js'
+import type {MvuUpdatePreparationV2,PreparedMvuUpdateV2} from './roleplay-mvu-update-v2.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuInitializationEvent, MvuInitializationHead} from './roleplay-mvu-initialization.js'
 import type {MvuEditInvalidation} from './roleplay-mvu-edit-facts.js'
@@ -91,10 +93,9 @@ export interface MvuNumericalSnapshot extends MvuStateBase {
   sourceSha256: string
   values: MvuJsonObject
 }
-export type MvuStateCandidate = Exclude<MvuUpdatePreparation, {kind: 'rejected'}>
-export interface MvuStateTerminalIntent {
-  schemaVersion: 1
-  encoding: 'native-mvu-state-terminal-intent-v1'
+export type MvuStateUpdatePreparation = MvuUpdatePreparation | MvuUpdatePreparationV2
+export type MvuStateCandidate = Exclude<MvuStateUpdatePreparation, {kind: 'rejected'}>
+interface MvuStateTerminalIntentFields {
   sessionId: string
   sourceSha256: string
   preparationId: string
@@ -110,6 +111,12 @@ export interface MvuStateTerminalIntent {
   candidate: {kind: 'prepared' | 'no-update'; candidateSha256: string}
   intentSha256: string
 }
+// The outer intent selects the historical parser even for no-update facts,
+// which had no inner version in v1. Never infer a new dialect from old text.
+export type MvuStateTerminalIntent = MvuStateTerminalIntentFields & (
+  | {schemaVersion:1;encoding:'native-mvu-state-terminal-intent-v1'}
+  | {schemaVersion:2;encoding:'native-mvu-state-terminal-intent-v2'}
+)
 export interface MvuStateUpdateEvent {
   schemaVersion: 1
   encoding: 'native-mvu-state-update-event-v1'
@@ -119,7 +126,7 @@ export interface MvuStateUpdateEvent {
   eventId: string
   revision: number
   intent: MvuStateTerminalIntent
-  proposal: PreparedMvuUpdate
+  proposal: PreparedMvuUpdate | PreparedMvuUpdateV2
   valuesSha256: string
   eventSha256: string
 }
@@ -180,7 +187,7 @@ export type MvuStatePublication = {kind: 'acknowledged'; settlement: MvuStatePub
 export interface MvuConsumedSettlementFactsInput {
   intent: MvuStateTerminalIntent
   base: MvuNumericalSnapshot
-  proposal: MvuUpdatePreparation
+  proposal: MvuStateUpdatePreparation
   settlement: unknown
 }
 
@@ -297,7 +304,9 @@ function intentValid(intent: MvuStateTerminalIntent): void {
   keys(intent.preparationSnapshot, ['key', 'sha256'])
   keys(intent.canonical, ['seq', 'messageId', 'versionSha256', 'narrativeSha256'])
   keys(intent.candidate, ['kind', 'candidateSha256'])
-  if (intent.schemaVersion !== 1 || intent.encoding !== 'native-mvu-state-terminal-intent-v1'
+  const versioned=intent.schemaVersion===1?intent.encoding==='native-mvu-state-terminal-intent-v1'
+    :intent.schemaVersion===2&&intent.encoding==='native-mvu-state-terminal-intent-v2'
+  if (!versioned
     || !id(intent.sessionId) || !id(intent.preparationId) || !id(intent.canonical.messageId)
     || typeof intent.preparationSnapshot.key !== 'string' || !/^[a-zA-Z0-9_-]{1,512}$/.test(intent.preparationSnapshot.key)
     || ![intent.sourceSha256, intent.credentialSha256, intent.refsSha256, intent.preparationSnapshot.sha256,
@@ -339,18 +348,28 @@ function baseOf(state: MvuNumericalSnapshot): MvuStateBase {
 }
 function candidateValid(candidate: MvuStateCandidate, state: MvuNumericalSnapshot,
   intent: MvuStateTerminalIntent): void {
-  if (candidate.kind === 'no-update') keys(candidate, ['kind'])
+  if(intent.schemaVersion===2) {
+    if(candidate.kind==='no-update') {
+      keys(candidate,['kind','schemaVersion','protocol'])
+      if(!('schemaVersion' in candidate)||candidate.schemaVersion!==2
+        ||candidate.protocol!=='native-mvu-update-v2')fail('CANDIDATE_INVALID')
+    }else {
+      const result=reduceMvuUpdateOperationsV2(state.values,candidate.operations)
+      if(result.kind!=='prepared'||!same(candidate,result))fail('CANDIDATE_INVALID')
+    }
+  } else if (candidate.kind === 'no-update') keys(candidate, ['kind'])
   else {
     keys(candidate, ['kind', 'schemaVersion', 'protocol', 'operations', 'baseValuesSha256',
       'values', 'valuesSha256', 'proposalSha256'])
-    // Re-encoding data must not turn a decoded JSON string into protocol markup.
-    const json = JSON.stringify(candidate.operations)?.replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
-    const result = prepareMvuUpdate(`<UpdateVariable><JSONPatch>${json}</JSONPatch></UpdateVariable>`, state.values)
+    // These are already decoded historical operations. Replay the v1 reducer
+    // directly; a synthetic escaped container would impose a different byte
+    // budget on data that passed the original parser, without changing hashes.
+    const result = reduceMvuUpdateOperations(state.values, candidate.operations)
     if (result.kind !== 'prepared' || !same(candidate, result)) fail('CANDIDATE_INVALID')
   }
   if (candidate.kind !== intent.candidate.kind || recordSha256(candidate) !== intent.candidate.candidateSha256) fail('CANDIDATE_INVALID')
 }
-function eventFor(intent: MvuStateTerminalIntent, proposal: PreparedMvuUpdate): MvuStateUpdateEvent {
+function eventFor(intent: MvuStateTerminalIntent, proposal: PreparedMvuUpdate | PreparedMvuUpdateV2): MvuStateUpdateEvent {
   const descriptor = {schemaVersion: 1 as const, encoding: 'native-mvu-state-update-event-v1' as const,
     sessionId: intent.sessionId, sourceSha256: intent.sourceSha256, root: intent.base.root,
     eventId: intent.intentSha256, revision: intent.base.revision + 1, intent, proposal, valuesSha256: proposal.valuesSha256}
@@ -649,7 +668,7 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     if (!same(cloneJson(actual), value)) fail('WRITE_CONFLICT')
   }
   async function publish(input: {token: object; intent: MvuStateTerminalIntent;
-    base: MvuNumericalSnapshot; proposal: MvuUpdatePreparation}): Promise<MvuStatePublication> {
+    base: MvuNumericalSnapshot; proposal: MvuStateUpdatePreparation}): Promise<MvuStatePublication> {
     const token = input.token
     let intent: MvuStateTerminalIntent, base: MvuNumericalSnapshot, candidate: MvuStateCandidate
     try {

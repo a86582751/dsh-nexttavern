@@ -1227,7 +1227,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         const owned=agent&&ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
         return owned===agent?owned as NativeInputAdmissionAgentV2|undefined:undefined
       },
-      active:session=>isRoleplaySession(session as unknown as CoreSession)&&ensureState(session.id).branchReady,
+      active:session=>isRoleplaySession(session as unknown as CoreSession)&&ensureState(session.id).branchReady
+        &&storyBranchIsActive(session as unknown as CoreSession),
       markers:ctx.nexttavernMvuSchemaMarkers,flush:session=>ctx.sessions.flush(session as unknown as CoreSession),
       playerMarkers:ctx.nexttavernMvuPlayerMarkers,observe:id=>observeNumericalState(id),
       appendOpeningOnAgent:commitOpeningOnAgent},
@@ -1391,7 +1392,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const owned=agent&&ctx.get('agentLoop')?.getInputAdmissionAgent(agent)
       return owned===agent?owned as NativeInputAdmissionAgentV2|undefined:undefined
     },
-    active:session=>isRoleplaySession(session as unknown as CoreSession)&&ensureState(session.id).branchReady,
+    active:session=>isRoleplaySession(session as unknown as CoreSession)&&ensureState(session.id).branchReady
+      &&storyBranchIsActive(session as unknown as CoreSession),
     sourceSha256:mvuOpening.readSourceSha256,withSourceLock:(id,work)=>withImportLock(id,'mvu-player',work),
     writeBlockCode:id=>mvuOpening.hasSchemaOpening(id)?'SCHEMA_MANUAL_NOT_ENABLED':undefined,
     flush:session=>ctx.sessions.flush(session as unknown as CoreSession),markers:ctx.nexttavernMvuPlayerMarkers})
@@ -1407,13 +1409,22 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     if(!snapshot)return {...basis,kind:'blocked',code:'SCHEMA_STORY_UNPROVEN',canEdit:false}
     const currentSession=ctx.sessions.get(id)
     const currentNativeSeq=currentSession?eventsOf(currentSession).at(-1)?.seq??-1:-1
-    const editBlockCode=mvuOpening.schemaPlayerEditBlockCode(id)
+    // Version deletion keeps numerical audit facts readable, but revokes live
+    // writes. A stale editor cannot turn those historical facts into permission.
+    const editBlockCode=!currentSession||!storyBranchIsActive(currentSession)
+      ?'MVU_PLAYER_SESSION_INACTIVE':mvuOpening.schemaPlayerEditBlockCode(id)
     return {...basis,observedNativeSeq:currentNativeSeq,kind:'schema-ready',values:structuredClone(snapshot.values),
       valuesSha256:snapshot.valuesSha256,sourceSha256:snapshot.sourceSha256,eventId:snapshot.currentHead.eventId,
       snapshot,canEdit:!editBlockCode,...(editBlockCode?{editBlockCode}:{})}
   }
   const completionDeps:MvuStoryCompletionDependencies={table:T.branch,state:mvuState,awaitOwnedCompletion,
-    sourceCurrent:(sid,sourceSha256)=>mvuOpening.readSourceSha256(sid)===sourceSha256,
+    sourceCurrent:(sid,sourceSha256)=>{
+      const session=ctx.sessions.get(sid)
+      // A version tombstone preserves the Source and closed audit facts. It
+      // revokes hot publication, including work whose Phase B/C just finished.
+      // Historical consumption uses its sealed Native prefix independently.
+      return !!session&&storyBranchIsActive(session)&&mvuOpening.readSourceSha256(sid)===sourceSha256
+    },
     readCanonical:(sid,turn)=>{
       const session=ctx.sessions.get(sid),body=session&&canonicalAssistantForTurn(session,turn)
       const message=body?.data?.message

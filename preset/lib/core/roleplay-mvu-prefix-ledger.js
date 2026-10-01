@@ -4,6 +4,7 @@
  * a live Agent, current owner/head pointer, permission token or flush capability. */
 import { recordSha256 } from './roleplay-data.js';
 import { prepareMvuUpdate } from './roleplay-mvu-update.js';
+import { prepareMvuUpdateV2 } from './roleplay-mvu-update-v2.js';
 import { verifyInheritedCompletedFact } from './roleplay-mvu-prefix-facts.js';
 import { mvuStateEventKey, mvuStateSettlementKey, MVU_STATE_BOUNDS } from './roleplay-mvu-state.js';
 import { readMvuPlayerOperationFacts, mvuPlayerOperationKey, mvuPlayerCompletionKey } from './roleplay-mvu-player-facts.js';
@@ -269,7 +270,9 @@ export function createRoleplayMvuPrefixLedger(deps) {
                     fail('PREFIX_NUMERICAL_UNRESOLVED');
                 exact(raw, ['schemaVersion', 'encoding', 'sessionId', 'scope', 'plan', 'status', 'recordSha256'], ['settlement', 'code']);
                 const { recordSha256: checksum, ...body } = raw;
-                if (raw.schemaVersion !== 1 || raw.encoding !== 'roleplay-input-completion-v1' || raw.sessionId !== sid
+                const versioned = raw.schemaVersion === 1 && raw.encoding === 'roleplay-input-completion-v1'
+                    || raw.schemaVersion === 3 && raw.encoding === 'roleplay-input-completion-v3';
+                if (!versioned || raw.sessionId !== sid
                     || raw.status !== 'settled' || raw.code !== undefined || !hash(checksum) || checksum !== recordSha256(body)
                     || !object(raw.plan) || raw.plan.kind !== 'numerical')
                     fail('PREFIX_NUMERICAL_UNRESOLVED');
@@ -384,6 +387,10 @@ export function createRoleplayMvuPrefixLedger(deps) {
                 if (terminal.plan.kind !== 'numerical')
                     fail('TERMINAL_PLAN_INVALID');
                 const { intent, base, proposal } = terminal.plan;
+                if (terminal.schemaVersion === 1
+                    ? intent.schemaVersion !== 1 || intent.encoding !== 'native-mvu-state-terminal-intent-v1'
+                    : intent.schemaVersion !== 2 || intent.encoding !== 'native-mvu-state-terminal-intent-v2')
+                    fail('TERMINAL_INTENT_MISMATCH');
                 exact(terminal.plan, ['kind', 'intent', 'base', 'proposal']);
                 exact(scope, ['currency', 'receipt', 'stopGeneration']);
                 exact(scope.currency, ['schemaVersion', 'preparationId', 'credentialSha256', 'receiptGeneration',
@@ -436,7 +443,8 @@ export function createRoleplayMvuPrefixLedger(deps) {
                 if (!verifyInheritedCompletedFact({ ownerSessionId: sid, ownerInheritedEventCount: request.ownerInheritedEventCount,
                     events: request.events, receipt: scope.receipt, canonical: intent.canonical }, { readProjectedCanonical: () => frozenCanonical, editProtocol: deps.editProtocol }))
                     fail('PREFIX_NATIVE_COMPLETION_UNPROVEN');
-                const expectedProposal = prepareMvuUpdate(frozenCanonical.narrative, base.values);
+                const expectedProposal = intent.schemaVersion === 1
+                    ? prepareMvuUpdate(frozenCanonical.narrative, base.values) : prepareMvuUpdateV2(frozenCanonical.narrative, base.values);
                 const { intentSha256, ...intentBody } = intent;
                 const { schemaVersion: _schema, encoding: _encoding, sessionId: _sid, sourceSha256: _source, values: _values, ...baseIdentity } = base;
                 if (expectedProposal.kind === 'rejected' || !same(expectedProposal, proposal) || !hash(intentSha256)

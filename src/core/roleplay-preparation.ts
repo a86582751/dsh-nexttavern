@@ -4,7 +4,7 @@ import { eventsOf, surfaceEvents, surfaceEntries, lastSeq, visibleCompactionChec
 import { fenceCardContent } from './tavern-card.js'
 import { activeOpeningSource } from './roleplay-import.js'
 import { internalTaskSeqs, isInlinePending } from './tavern-tasks.js'
-import {nativeMvuAuthorRules} from './roleplay-author-context.js'
+import {nativeMvuAuthorRules,nativeMvuLegacyAuthorRules} from './roleplay-author-context.js'
 import type { PreparationDependencies, PreparationSession, ContextWindow, WindowMetadata, MemoryPreparation, PreparationPayload, PreparationWriteState, PreparationSnapshot } from './roleplay-preparation-types.js'
 import type { ContextMessage } from './roleplay-context.js'
 import type { TaskAgent } from './tavern-task-types.js'
@@ -375,10 +375,12 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     if (numericalState) {
       // Every numerical round owns a full base. Never refer back to a visible
       // anchor or interpolate user macros inside deterministic JSON values.
+      const updateRules=numericalState.encoding==='native-mvu-state-snapshot-v1'
+        ?nativeMvuLegacyAuthorRules:nativeMvuAuthorRules
       anchors.push(contextMessage('native-mvu-state', {mode: 'full',
         sourceSha256: numericalState.sourceSha256, headSha256: numericalState.headSha256,
         stateSnapshotSha256: numericalState.stateSnapshotSha256, revision: numericalState.revision},
-      `[原生数值状态·本轮完整版本 ${numericalState.stateSnapshotSha256}]\n${nativeMvuAuthorRules}\n完整 JSON：\n${JSON.stringify(numericalState)}`))
+      `[原生数值状态·本轮完整版本 ${numericalState.stateSnapshotSha256}]\n${updateRules}\n完整 JSON：\n${JSON.stringify(numericalState)}`))
     }
     const renderedNotes = renderContextText(directorNotes?.text)
     const notesHash = sha256(stableJson({ text: renderedNotes, sourceKeys: directorNotes?.sourceKeys ?? [], sourceSeqs: directorNotes?.sourceSeqs ?? [] }))

@@ -3,6 +3,7 @@
  * deterministic; this coordinator adds no semantic/model request. */
 import { recordSha256, sha256 } from './roleplay-data.js';
 import { prepareMvuUpdate } from './roleplay-mvu-update.js';
+import { prepareMvuUpdateV2 } from './roleplay-mvu-update-v2.js';
 import { inputSnapshotReferenceCurrent } from './roleplay-preparation.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 export function createRoleplayMvuStoryCompletion(deps) {
@@ -42,7 +43,12 @@ export function createRoleplayMvuStoryCompletion(deps) {
             if (!bodyNow || !same(base, intent.base) || !same(intent.canonical, { seq: bodyNow.seq, messageId: bodyNow.messageId,
                 versionSha256: bodyNow.versionSha256, narrativeSha256: sha256(bodyNow.narrative) }))
                 return false;
-            const candidate = prepareMvuUpdate(bodyNow.narrative, state.values);
+            const candidate = intent.schemaVersion === 1 && intent.encoding === 'native-mvu-state-terminal-intent-v1'
+                ? prepareMvuUpdate(bodyNow.narrative, state.values)
+                : intent.schemaVersion === 2 && intent.encoding === 'native-mvu-state-terminal-intent-v2'
+                    ? prepareMvuUpdateV2(bodyNow.narrative, state.values) : undefined;
+            if (!candidate)
+                return false;
             if (candidate.kind === 'rejected' || !same(intent.candidate, { kind: candidate.kind, candidateSha256: recordSha256(candidate) }))
                 return false;
             const { intentSha256, ...body } = intent;
@@ -76,11 +82,25 @@ export function createRoleplayMvuStoryCompletion(deps) {
         if (phase?.state !== 'completed' || phase.sessionId !== sid || phase.turnId !== turn || phase.assistantSeq !== body.seq) {
             throw new Error('INPUT_TERMINAL_PHASE_BC_UNRESOLVED');
         }
-        const proposal = prepareMvuUpdate(body.narrative, base.values);
+        const historical = prepareMvuUpdate(body.narrative, base.values);
+        // Existing RFC/no-update completions retain their byte-identical protocol.
+        // New quoted JSONPatch literals can fail v1 syntax before its dialect
+        // check. Opt in only on a successful bounded v2 parse, or keep the explicit
+        // legacy-dialect rejection; historical facts always use their sealed version.
+        let proposal = historical;
+        if (historical.kind === 'rejected') {
+            const next = prepareMvuUpdateV2(body.narrative, base.values);
+            if (next.kind === 'prepared' || ['LEGACY_COMMAND_UNSUPPORTED', 'OPERATION_UNSUPPORTED'].includes(historical.code)) {
+                proposal = next;
+            }
+        }
         if (proposal.kind === 'rejected')
             throw new Error(`MVU_UPDATE_${proposal.code}`);
         const { schemaVersion: _schema, encoding: _encoding, sessionId: _sid, sourceSha256: _source, values: _values, ...baseIdentity } = base;
-        const descriptor = { schemaVersion: 1, encoding: 'native-mvu-state-terminal-intent-v1',
+        const version = 'schemaVersion' in proposal && proposal.schemaVersion === 2
+            ? { schemaVersion: 2, encoding: 'native-mvu-state-terminal-intent-v2' }
+            : { schemaVersion: 1, encoding: 'native-mvu-state-terminal-intent-v1' };
+        const descriptor = { ...version,
             sessionId: sid, sourceSha256: scope.currency.source.sourceSha256, preparationId: scope.currency.preparationId,
             credentialSha256: scope.currency.credentialSha256, refsSha256: recordSha256(scope.receipt.checkpoint.refs),
             receiptGeneration: scope.currency.receiptGeneration, attemptGeneration: scope.currency.attemptGeneration,

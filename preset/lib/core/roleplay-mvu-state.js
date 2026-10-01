@@ -2,7 +2,8 @@
 /** Numerical authority and Source-lock publication. This module never owns a
  * Native receipt/token, input queue, model request or the genesis writer. */
 import { recordSha256 } from './roleplay-data.js';
-import { prepareMvuUpdate } from './roleplay-mvu-update.js';
+import { reduceMvuUpdateOperations } from './roleplay-mvu-update.js';
+import { reduceMvuUpdateOperationsV2 } from './roleplay-mvu-update-v2.js';
 import { cloneMvuPlayerReplacement, mvuPlayerEventFor, mvuPlayerHeadFor, mvuPlayerSettlementFor, MvuPlayerDataRefusal } from './roleplay-mvu-player-records.js';
 export const mvuStateCurrentHeadKey = (sid) => `${sid}__mvu-state-current-head`;
 export const mvuStateEventKey = (sid, sha256) => `${sid}__mvu-state-event-${sha256}`;
@@ -146,7 +147,9 @@ function intentValid(intent) {
     keys(intent.preparationSnapshot, ['key', 'sha256']);
     keys(intent.canonical, ['seq', 'messageId', 'versionSha256', 'narrativeSha256']);
     keys(intent.candidate, ['kind', 'candidateSha256']);
-    if (intent.schemaVersion !== 1 || intent.encoding !== 'native-mvu-state-terminal-intent-v1'
+    const versioned = intent.schemaVersion === 1 ? intent.encoding === 'native-mvu-state-terminal-intent-v1'
+        : intent.schemaVersion === 2 && intent.encoding === 'native-mvu-state-terminal-intent-v2';
+    if (!versioned
         || !id(intent.sessionId) || !id(intent.preparationId) || !id(intent.canonical.messageId)
         || typeof intent.preparationSnapshot.key !== 'string' || !/^[a-zA-Z0-9_-]{1,512}$/.test(intent.preparationSnapshot.key)
         || ![intent.sourceSha256, intent.credentialSha256, intent.refsSha256, intent.preparationSnapshot.sha256,
@@ -191,14 +194,28 @@ function baseOf(state) {
         headSha256: state.headSha256, valuesSha256: state.valuesSha256, stateSnapshotSha256: state.stateSnapshotSha256 };
 }
 function candidateValid(candidate, state, intent) {
-    if (candidate.kind === 'no-update')
+    if (intent.schemaVersion === 2) {
+        if (candidate.kind === 'no-update') {
+            keys(candidate, ['kind', 'schemaVersion', 'protocol']);
+            if (!('schemaVersion' in candidate) || candidate.schemaVersion !== 2
+                || candidate.protocol !== 'native-mvu-update-v2')
+                fail('CANDIDATE_INVALID');
+        }
+        else {
+            const result = reduceMvuUpdateOperationsV2(state.values, candidate.operations);
+            if (result.kind !== 'prepared' || !same(candidate, result))
+                fail('CANDIDATE_INVALID');
+        }
+    }
+    else if (candidate.kind === 'no-update')
         keys(candidate, ['kind']);
     else {
         keys(candidate, ['kind', 'schemaVersion', 'protocol', 'operations', 'baseValuesSha256',
             'values', 'valuesSha256', 'proposalSha256']);
-        // Re-encoding data must not turn a decoded JSON string into protocol markup.
-        const json = JSON.stringify(candidate.operations)?.replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
-        const result = prepareMvuUpdate(`<UpdateVariable><JSONPatch>${json}</JSONPatch></UpdateVariable>`, state.values);
+        // These are already decoded historical operations. Replay the v1 reducer
+        // directly; a synthetic escaped container would impose a different byte
+        // budget on data that passed the original parser, without changing hashes.
+        const result = reduceMvuUpdateOperations(state.values, candidate.operations);
         if (result.kind !== 'prepared' || !same(candidate, result))
             fail('CANDIDATE_INVALID');
     }

@@ -5404,6 +5404,117 @@
         "service": false
       },
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-schema-player-process-recovery",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "timeoutMs": 2100000,
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance",
+        "windows"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-schema-crash-recovery",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "timeoutMs": 4800000,
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance",
+        "windows"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-schema-delete-core",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "timeoutMs": 1800000,
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance",
+        "windows"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-legacy-update",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "timeoutMs": 180000,
+      "heavy": false,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-legacy-core",
+      "action": "test",
+      "modules": [
+        "status"
+      ],
+      "timeoutMs": 900000,
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance",
+        "windows"
+      ],
+      "heavy": true,
+      "cache": false,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }

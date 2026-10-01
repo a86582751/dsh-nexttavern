@@ -5,8 +5,7 @@ import {createRoleplayInputTerminal} from './roleplay-input-terminal.js'
 import type {InputPreparationCurrency,InputPreparationTable} from './roleplay-input-preparation.js'
 import type {NativeCompletedInputWorkReceiptV1,NativeCompletedInputWorkAcknowledgementV1}
   from '@deepseek-ai/dsh-agent-loop'
-import type {MvuStateTerminalIntent,MvuNumericalSnapshot,MvuStatePublisherSettlement} from './roleplay-mvu-state.js'
-import type {MvuUpdatePreparation} from './roleplay-mvu-update.js'
+import type {MvuStateTerminalIntent,MvuNumericalSnapshot,MvuStatePublisherSettlement,MvuStateUpdatePreparation} from './roleplay-mvu-state.js'
 import type {MvuSchemaStoryPlanV2,MvuSchemaStorySettlementV2} from './roleplay-mvu-schema-story-types.js'
 
 export interface InputCompletionScope {
@@ -17,7 +16,7 @@ export interface InputCompletionScope {
   transition?:Record<string,unknown>
 }
 export type InputCompletionPlan=
-  | {kind:'numerical';intent:MvuStateTerminalIntent;base:MvuNumericalSnapshot;proposal:MvuUpdatePreparation}
+  | {kind:'numerical';intent:MvuStateTerminalIntent;base:MvuNumericalSnapshot;proposal:MvuStateUpdatePreparation}
   | {kind:'schema-numerical';plan:MvuSchemaStoryPlanV2}
   | {kind:'management-transition';descriptor:Record<string,unknown>}
 export type InputCompletionPublication=
@@ -36,8 +35,8 @@ export interface InputCompletionProcessor {
   verifyConsumed(scope:InputCompletionScope,plan:InputCompletionPlan,settlement:unknown):boolean
 }
 export interface InputCompletionRecord {
-  schemaVersion:1|2
-  encoding:'roleplay-input-completion-v1'|'roleplay-input-completion-v2'
+  schemaVersion:1|2|3
+  encoding:'roleplay-input-completion-v1'|'roleplay-input-completion-v2'|'roleplay-input-completion-v3'
   sessionId:string
   scope:InputCompletionScope
   plan:InputCompletionPlan
@@ -55,8 +54,13 @@ const seal=(row:Omit<InputCompletionRecord,'recordSha256'>):InputCompletionRecor
 export function readInputCompletion(table:{get(key:string):unknown},sid:string,id:string):InputCompletionRecord|undefined {
   try {
     const raw=table.get(inputCompletionKey(sid,id)) as InputCompletionRecord|undefined
-    if(!raw||(raw.schemaVersion===1?raw.encoding!=='roleplay-input-completion-v1'||raw.plan?.kind==='schema-numerical'
-      :raw.schemaVersion!==2||raw.encoding!=='roleplay-input-completion-v2'||raw.plan?.kind!=='schema-numerical')||raw.sessionId!==sid
+    const legacy=raw?.plan?.kind==='numerical'&&raw.plan.intent?.schemaVersion===2
+      &&raw.plan.intent.encoding==='native-mvu-state-terminal-intent-v2'
+    const recognized=raw?.schemaVersion===1?raw.encoding==='roleplay-input-completion-v1'
+        &&raw.plan?.kind!=='schema-numerical'&&!legacy
+      :raw?.schemaVersion===2?raw.encoding==='roleplay-input-completion-v2'&&raw.plan?.kind==='schema-numerical'
+      :raw?.schemaVersion===3&&raw.encoding==='roleplay-input-completion-v3'&&legacy
+    if(!raw||!recognized||raw.sessionId!==sid
       ||raw.scope.currency.preparationId!==id||!['pending','settled','unknown'].includes(raw.status))return undefined
     const {recordSha256:hash,...body}=raw
     return hash===recordSha256(body)?structuredClone(raw):undefined
@@ -122,8 +126,10 @@ export function createRoleplayInputCompletion(deps:{
         if(!owned()||!current(scope)||deps.checkOriginal())throw new Error('INPUT_TERMINAL_SCOPE_CHANGED')
         const existing=deps.table.get(inputCompletionKey(deps.sessionId,scope.currency.preparationId))
         if(existing!==undefined)throw new Error('INPUT_TERMINAL_ALREADY_ATTEMPTED')
-        record=seal({schemaVersion:plan.kind==='schema-numerical'?2:1,
-          encoding:plan.kind==='schema-numerical'?'roleplay-input-completion-v2':'roleplay-input-completion-v1',sessionId:deps.sessionId,
+        const legacy=plan.kind==='numerical'&&plan.intent.schemaVersion===2
+        record=seal({schemaVersion:legacy?3:plan.kind==='schema-numerical'?2:1,
+          encoding:legacy?'roleplay-input-completion-v3':plan.kind==='schema-numerical'
+            ?'roleplay-input-completion-v2':'roleplay-input-completion-v1',sessionId:deps.sessionId,
           scope:structuredClone(scope),plan:structuredClone(plan),status:'pending'})
         await put(record)
         if(!owned()||!current(scope))throw new Error('INPUT_TERMINAL_PERMISSION_REVOKED')

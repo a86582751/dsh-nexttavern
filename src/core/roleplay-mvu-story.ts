@@ -2,9 +2,11 @@
  * deterministic; this coordinator adds no semantic/model request. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import {prepareMvuUpdate} from './roleplay-mvu-update.js'
+import {prepareMvuUpdateV2} from './roleplay-mvu-update-v2.js'
 import {inputSnapshotReferenceCurrent} from './roleplay-preparation.js'
 import type {InputCompletionProcessor,InputCompletionScope,InputCompletionPlan} from './roleplay-input-completion.js'
-import type {MvuNumericalSnapshot,MvuStateTerminalIntent,createRoleplayMvuState} from './roleplay-mvu-state.js'
+import type {MvuNumericalSnapshot,MvuStateTerminalIntent,MvuStateUpdatePreparation,
+  createRoleplayMvuState} from './roleplay-mvu-state.js'
 import type {createRoleplayMvuSchemaStoryCore} from './roleplay-mvu-schema-story-core.js'
 
 export interface CompletedStoryBody {
@@ -63,7 +65,11 @@ export function createRoleplayMvuStoryCompletion(deps:MvuStoryCompletionDependen
         :deps.readHistoricalCanonical(intent.sessionId,intent.canonical.seq,scope.receipt.checkpoint.actualTurn)
       if(!bodyNow||!same(base,intent.base)||!same(intent.canonical,{seq:bodyNow.seq,messageId:bodyNow.messageId,
         versionSha256:bodyNow.versionSha256,narrativeSha256:sha256(bodyNow.narrative)}))return false
-      const candidate=prepareMvuUpdate(bodyNow.narrative,state.values)
+      const candidate=intent.schemaVersion===1&&intent.encoding==='native-mvu-state-terminal-intent-v1'
+        ?prepareMvuUpdate(bodyNow.narrative,state.values)
+        :intent.schemaVersion===2&&intent.encoding==='native-mvu-state-terminal-intent-v2'
+          ?prepareMvuUpdateV2(bodyNow.narrative,state.values):undefined
+      if(!candidate)return false
       if(candidate.kind==='rejected'||!same(intent.candidate,{kind:candidate.kind,candidateSha256:recordSha256(candidate)}))return false
       const {intentSha256,...body}=intent
       return recordSha256(body)===intentSha256&&intent.completedReceiptSha256===recordSha256(scope.receipt)
@@ -91,10 +97,24 @@ export function createRoleplayMvuStoryCompletion(deps:MvuStoryCompletionDependen
     if(phase?.state!=='completed'||phase.sessionId!==sid||phase.turnId!==turn||phase.assistantSeq!==body.seq) {
       throw new Error('INPUT_TERMINAL_PHASE_BC_UNRESOLVED')
     }
-    const proposal=prepareMvuUpdate(body.narrative,base.values)
+    const historical=prepareMvuUpdate(body.narrative,base.values)
+    // Existing RFC/no-update completions retain their byte-identical protocol.
+    // New quoted JSONPatch literals can fail v1 syntax before its dialect
+    // check. Opt in only on a successful bounded v2 parse, or keep the explicit
+    // legacy-dialect rejection; historical facts always use their sealed version.
+    let proposal:MvuStateUpdatePreparation=historical
+    if(historical.kind==='rejected') {
+      const next=prepareMvuUpdateV2(body.narrative,base.values)
+      if(next.kind==='prepared'||['LEGACY_COMMAND_UNSUPPORTED','OPERATION_UNSUPPORTED'].includes(historical.code)) {
+        proposal=next
+      }
+    }
     if(proposal.kind==='rejected')throw new Error(`MVU_UPDATE_${proposal.code}`)
     const {schemaVersion:_schema,encoding:_encoding,sessionId:_sid,sourceSha256:_source,values:_values,...baseIdentity}=base
-    const descriptor:Omit<MvuStateTerminalIntent,'intentSha256'>={schemaVersion:1,encoding:'native-mvu-state-terminal-intent-v1',
+    const version='schemaVersion' in proposal&&proposal.schemaVersion===2
+      ?{schemaVersion:2 as const,encoding:'native-mvu-state-terminal-intent-v2' as const}
+      :{schemaVersion:1 as const,encoding:'native-mvu-state-terminal-intent-v1' as const}
+    const descriptor={...version,
       sessionId:sid,sourceSha256:scope.currency.source.sourceSha256,preparationId:scope.currency.preparationId,
       credentialSha256:scope.currency.credentialSha256,refsSha256:recordSha256(scope.receipt.checkpoint.refs),
       receiptGeneration:scope.currency.receiptGeneration,attemptGeneration:scope.currency.attemptGeneration,
