@@ -4,11 +4,11 @@
 
 [简体中文](README.md) · **English**
 
-> **0.2.8 is released: integrated installation and maintenance improvements.** The supported host is Harness `0.1.7-rc.2` / Session V4. One official plugin command installs NextTavern and its required components. `main` continues to receive 0.3 development code; install the npm package or [v0.2.8 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8), and use the [contributor guide](CONTRIBUTING.md) for development.
+> **0.2.9 — Distribution & Installation Fix.** This installation patch builds on 0.2.8: bundled third-party SDK dependencies fix build-script permission failures during first installation and private-component relinking. Official sources are [npm `dsh-nexttavern`](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9) and the [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9). The supported host remains Harness `0.1.7-rc.2` / web / Session V4. See the [contributor guide](CONTRIBUTING.md) for development.
 
-> **Old sessions are incompatible; use fresh directories.** Export character cards or novels in the old environment before installing 0.2.8. A novel export does not retain full session state or restore the original session.
+> **Migrating from 0.2.5 or another old host requires fresh directories.** Export character cards or novels before installing 0.2.9; old sessions are incompatible and novels lack full session state. 0.2.8 → 0.2.9 keeps the same host and session line; see [update, uninstall and rollback](#update-uninstall-and-rollback).
 
-Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, events and recovery chain has proved harder than expected, and work is accelerating. This release delivers completed installation and maintenance improvements; those compatibility features remain in development. Thank you for helping us improve it with your feedback.
+MVU, EJS, RUBY and broader SillyTavern community-card frontend compatibility remain in development for 0.3. 0.2.9 improves distribution, installation and third-party dependency compatibility; roleplay features continue from 0.2.8.
 
 **Let your characters think for themselves, and let the world unfold from your choices.**
 
@@ -20,7 +20,7 @@ NextTavern is a long-form roleplay / Tavern plugin for DeepSeek Harness (DSH), w
 
 ![Play](screenshots/play.png)
 
-**0.2.8** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · project-owned code **GPL-3.0**
+**0.2.9** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · project-owned code **GPL-3.0**
 
 Install the host, then use the official [one-command plugin installation](#one-click-install). For a fresh home, fixed port or local archive, see [manual install](#manual-install).
 
@@ -34,6 +34,8 @@ This document is the English counterpart of the Chinese README. The Chinese one 
 dsh plugin --profile web add dsh-nexttavern
 ```
 
+`dsh-nexttavern` is the official npm package name. Some third-party Hub or market directories fall back to Git source installation when they cannot identify the npm source; their catalog still needs a separate update. Use the official command above or a verified Release archive. This release does not establish Git source installation or DSH 0.2 / desktop compatibility.
+
 For a first DSH installation, install Node.js 24+ and the host first:
 
 ```powershell
@@ -46,11 +48,11 @@ Run `dsh web --host 127.0.0.1`, open the address printed in the terminal, config
 
 ### Windows
 
-For portable runtimes and shortcuts, download [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.exe), or [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup-arm64.exe) on Windows on ARM. Choose a new root when moving from an old version. See the [Windows guide](INSTALL-WINDOWS.md) (Chinese) for steps, unsigned-program prompts and verification limits.
+For portable runtimes and shortcuts, download [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe), or [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe) on Windows on ARM. Choose a new root when moving from 0.2.5. See the [Windows guide](INSTALL-WINDOWS.md) (Chinese) for steps, unsigned-program prompts and verification limits.
 
 ### Linux
 
-[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh) prepares portable Node.js and launchers for x86_64 and aarch64 (glibc), without root or a system package manager. Use a fresh `--root` when moving from an old version. See the [Linux guide](INSTALL-LINUX.md) (Chinese).
+[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh) prepares portable Node.js and launchers for x86_64 and aarch64 (glibc), without root or a system package manager. Use a fresh `--root` when moving from 0.2.5. See the [Linux guide](INSTALL-LINUX.md) (Chinese).
 
 ### Installation and model costs
 
@@ -301,24 +303,24 @@ flowchart TD
 
 ## Downloads
 
-- [Main package dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz) — unified plugin, prebuilt UI, sources, preset, reference cards, bundled components, CLI and the optional public-access auth source package.
-- [Standalone dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-debug.tgz).
-- [Public-access plugin dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-auth-webserver.tgz), see the [public access guide](PUBLIC-ACCESS.md) (Chinese).
+- [Main package dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-nexttavern.tgz) — unified plugin, prebuilt UI, sources, preset, reference cards, bundled components, CLI and the optional public-access auth source package.
+- [Standalone dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-debug.tgz).
+- [Public-access plugin dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-auth-webserver.tgz), see the [public access guide](PUBLIC-ACCESS.md) (Chinese).
 
-Installers: [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.exe) (Windows x64) · [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup-arm64.exe) (Windows on ARM) · [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh) (Linux x86_64 / aarch64).
+Installers: [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe) (Windows x64) · [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe) (Windows on ARM) · [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh) (Linux x86_64 / aarch64).
 
-Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
+Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
 
 ## Manual install
 
 For a separate home/workspace and fixed port, use Node.js 24+ and npm. These are PowerShell examples; continue only after each command succeeds.
 
-**Export cards or novels in the old environment and keep its backup first.** Old sessions cannot continue directly. Novel exports lack full state. Use unoccupied paths for the new home and workspace; do not copy the old session database.
+**Before migrating from 0.2.5, export cards or novels and keep the old backup.** Old sessions cannot continue directly and novels lack full state. The example below is for fresh installations or old-host migration: use unoccupied paths for the new home and workspace, without copying the old session database. For an existing 0.2.8 installation, see [update, uninstall and rollback](#update-uninstall-and-rollback).
 
 ```powershell
 npm install -g @deepseek-ai/dsh@0.1.7-rc.2
-$env:DSH_HOME = Join-Path $PWD 'nexttavern-028-home'
-$Workspace = Join-Path $PWD 'nexttavern-028-workspace'
+$env:DSH_HOME = Join-Path $PWD 'nexttavern-029-home'
+$Workspace = Join-Path $PWD 'nexttavern-029-workspace'
 New-Item -ItemType Directory -Path $env:DSH_HOME,$Workspace -ErrorAction Stop | Out-Null
 dsh plugin --profile web add dsh-nexttavern
 dsh web --host 127.0.0.1 --port 3510
@@ -326,7 +328,7 @@ dsh web --host 127.0.0.1 --port 3510
 
 Select the new workspace in the browser, configure your provider and pick the roleplay preset for a new session. For later starts, set the same `DSH_HOME` and run the last command.
 
-Alternatively download the main archive from [v0.2.8](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8), verify it against `SHA256SUMS`, then replace the npm package name with its local archive:
+Alternatively download the main archive from [v0.2.9](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9), verify it against `SHA256SUMS`, then replace the npm package name with its local archive:
 
 ```powershell
 dsh plugin --profile web add ./dsh-nexttavern.tgz
@@ -345,7 +347,7 @@ dsh plugin --profile web remove dsh-nexttavern
 dsh plugin --profile web add dsh-nexttavern
 ```
 
-If pnpm reports unapproved build scripts, inspect the named packages and `allowBuilds` in `profiles/web/pnpm-workspace.yaml`; do not grant unconditional trust to the whole dependency tree. Preserve the error and versions for a report, removing keys and private content first.
+The 0.2.9 npm and Release packages include the complete runtime dependency closure for `@google/genai` and `protobufjs`. Relinking private SDKs at their fixed directories also avoids those install scripts, and the persistence component carries a prebuilt `koffi` bundle. If these packages still trigger build-script permission errors, first verify the actual version and source are the official 0.2.9 npm package or Release archive. Preserve the error and versions for a report, removing keys and private content first.
 
 ## Document extensions
 
@@ -357,6 +359,8 @@ Upload an original document and explain how it should be used. DOCX reading is c
 
 This release pins Harness **0.1.7-rc.2** and pi-ai **0.85.1**. Owned UI, Session Controller, persistence, projection, metering and pi-ai compatibility providers are verified and prepared as independently versioned components. Players do not need to modify installed host files. Package metadata, `provenance.json` and [NOTICE](NOTICE.md) identify their versions, sources and licenses.
 
+0.2.9 includes Google SDK / protobuf runtime dependencies and the prebuilt `koffi` bundle, with matching private-component dependency declarations. npm metadata adds nine related keywords, the documentation homepage, issue tracker and standard repository URL. English and Simplified Chinese titles and descriptions use the host's official `locale/*` exports. These fields help identify the official package; the third-party market catalog still needs a separate update.
+
 - [anydoc](https://github.com/a86582751/dsh-plugin-anydoc) derives from [beancookie/dsh-plugin-anydoc](https://github.com/beancookie/dsh-plugin-anydoc), preserving upstream history and MIT attribution, with owned TypeScript sources.
 - [pi](https://github.com/a86582751/pi) derives from [earendil-works/pi](https://github.com/earendil-works/pi), preserving MIT attribution; the compatibility layer handles stream completion and cleanup across four protocols.
 - Official uploads, attachments and sidebar replace the retired upload tools and `better-sidebar`.
@@ -367,7 +371,9 @@ For public access, explicitly configure the bundled auth plugin, your Cloudflare
 
 ## Update, uninstall and rollback
 
-**0.2.5 → 0.2.8 requires migration, not continuation of old sessions.** Export cards/novels, back up the old directories, then use fresh directories as described above. One-click installers also need a new root. Keep the old installation separate for reading and exporting old material.
+**0.2.5 → 0.2.9 requires migration, not continuation of old sessions.** Export cards/novels, back up the old directories, then use fresh directories as described above. One-click installers also need a new root. Keep the old installation separate for reading and exporting old material.
+
+**0.2.8 → 0.2.9 is an installation patch on the same host line.** Follow the official plugin update steps below. This release adds no portable-installer in-place upgrade capability; the platform guides retain their existing directory and recovery boundaries.
 
 For updates within a compatible version line: stop the host, back up its home/workspace, check the new release notes, use official `plugin add` with the target package version or archive, and restart to load new modules. Preparation refuses corrupt packages and unknown components, retains versioned components, and reports failures. Rollback requires a matching prior package and backup; never mix another instance's receipts or pins.
 

@@ -1,10 +1,15 @@
 # Contributing
 
-The released 0.2.8 package targets Harness `0.1.7-rc.2` with Session V4.
+The released 0.2.9 package targets Harness `0.1.7-rc.2` / web with Session V4.
 It includes the unified plugin, maintained TypeScript sources and generated
 modules. The GitHub `main` branch may also carry unfinished 0.3 SillyTavern
-compatibility work; use tag `v0.2.8` to reproduce this release and read
+compatibility work; use tag `v0.2.9` to reproduce this release and read
 [CHANGELOG](CHANGELOG.md) for its validation boundaries.
+
+0.2.9 fixes installation and distribution on the 0.2.8 release line. Use the
+official npm package `dsh-nexttavern` or its Release archive for installation;
+source rebuilding is a contributor workflow. The third-party market catalog
+needs a separate update and is not a declaration of supported hosts.
 
 This package carries TypeScript/MTS sources and their generated JavaScript/MJS so contributors can verify the files it ships. Its local mapping is `tools/build-map.json`; the quality registry and projection map are `tools/check-registry.json` and `tools/check-map.json`.
 
@@ -52,7 +57,7 @@ This public tree cannot prove a live DeepSeek Harness load, production deploymen
 
 ## Reporting
 
-Bugs and install problems should distinguish the current 0.2.8 release line
+Bugs and install problems should distinguish the current 0.2.9 release line
 (`0.1.7-rc.2`) from the unfinished 0.3 development work, and
 include the operating system and install method (Release tarball, one-click
 installer or npm).

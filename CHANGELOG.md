@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.9 — Distribution & Installation Fix — 2026-10-02
+
+基于 0.2.8 的安装分发补丁，角色扮演业务功能和兼容范围保持不变：Harness **0.1.7-rc.2**／**web**／Session V4，pi-ai **0.85.1**。0.3 的 MVU、EJS、RUBY 与更完整社区卡前端兼容继续开发。
+
+- 明确正式 npm 包名 **`dsh-nexttavern`**，使用 `dsh plugin --profile web add dsh-nexttavern` 或 [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9) 的已校验归档安装。部分 Hub／市场找不到 npm 来源会回退 Git，第三方 catalog 仍待同步；本版未承诺 Git 源码直装或 DSH 0.2／desktop 兼容。
+- 预置 `@google/genai` **1.52.0**、`protobufjs` **7.6.6** 的完整锁定运行依赖闭包，保留嵌套路径、许可证与逐文件校验。补齐私有 pi-ai SDK 的 bundle／依赖声明，使首次安装及固定目录重新链接无需这些依赖的安装脚本；持久化组件声明并携带 `koffi` 预构建 bundle。
+- 改善 npm 发现元数据：9 个相关关键词、官网、问题反馈及标准 Git 仓库地址；通过官方 `locale/*` 导出机制提供英文／简体中文的 `NextTavern` 标题和说明。元数据改善不代表第三方市场登记已经完成。
+- 更新官网、中英文说明与四平台安装入口。0.2.8 → 0.2.9 使用现有官方插件更新流程；从 0.2.5 旧宿主线迁移仍需先导出并使用新目录，便携安装器沿用现有恢复边界。
+
+This is an installation and distribution patch based on 0.2.8. Roleplay behavior and supported hosts remain Harness **0.1.7-rc.2** / **web** / Session V4 with pi-ai **0.85.1**; broader community-card compatibility continues separately for 0.3.
+
+- Use the official npm package **`dsh-nexttavern`** with `dsh plugin --profile web add dsh-nexttavern`, or a verified v0.2.9 Release archive. A third-party Hub or market may fall back to Git when npm discovery fails. Its catalog needs a separate update; this release does not establish Git source installation or DSH 0.2 / desktop support.
+- Bundle the complete pinned runtime dependencies of `@google/genai` **1.52.0** and `protobufjs` **7.6.6**, including nested paths, licenses and file hashes. Matching private pi-ai SDK declarations let both first installation and fixed-directory relinking proceed without those install scripts. The persistence component declares and ships a prebuilt `koffi` bundle.
+- Add nine discovery keywords, homepage, issue tracker, standard repository URL and English / Simplified Chinese metadata through official `locale/*` exports. Refresh the site, guides and installer links for all four platforms.
+
+本轮本地验证覆盖空脚本许可下的真实首次安装、固定目录重新链接、冻结锁重装，以及 Google SDK 导入和 protobuf 编解码；严格 TypeScript 与生成一致性检查通过。此证据不扩大已有的纯净 VM、Linux 或 ARM64 真机覆盖。安装修复新增运行时模型请求 **0 次**，既有故事与后台任务的触发、缓存和计费保持不变。
+
+Local checks cover real first installation with no script approvals, fixed-directory relinking, frozen-lockfile reinstall, Google SDK imports and protobuf encoding/decoding. Strict TypeScript and generated-source consistency checks passed. This does not expand clean-VM, Linux or ARM64 device coverage. The patch adds **zero runtime model requests** and preserves existing model triggers, caching and billing.
+
 ## 0.2.8 — 2026-10-01
 
 抱歉让大家久等了。0.3 的目标是兼容更广泛的 SillyTavern 社区卡，包括 MVU 变量、EJS、RUBY 与前端美化；让它们进入自有状态、事件和恢复链的难度比预期更大，我们正在加速推进。本次先交付已经完成的整合安装和维护改善，这些兼容仍在开发，不计入 0.2.8。感谢大家继续反馈。
