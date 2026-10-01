@@ -8,6 +8,9 @@ import type {TavernOpeningCandidate, TavernOpeningContext} from './tavern-card.j
 import {selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
 import {NATIVE_MVU_SOURCE_POLICY,isNativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
+import {cloneSchemaData,schemaTextSha256} from './tavern-mvu-schema-data.js'
+import type {MvuJsonObject} from './tavern-mvu-initvar.js'
+import type {MvuSchemaAuthorScript} from './tavern-mvu-schema-types.js'
 export {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSourcePolicy,isNativeMvuYamlSourcePolicy}
   from './roleplay-mvu-source-policy.js'
 export type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
@@ -21,6 +24,26 @@ const MAX_ROWS = 4096
 type JsonObject = Record<string, unknown>
 export type MvuSourceTable = 'branch' | 'cards' | 'worldbook' | 'rules' | 'status' | 'opening'
 export interface MvuSourceRowRef {table: MvuSourceTable; key: string; exists: boolean; sha256: string}
+
+/** Original activated author inputs, not a claim that any script is supported
+ * or that an author realm has been loaded. Compiler assets and Native load
+ * ownership are supplied separately by Core. */
+export interface MvuSchemaAuthorSource {
+  schemaVersion:1
+  encoding:'native-mvu-author-source-v1'
+  snapshot:Omit<MvuSourceSnapshot,'policy'|'encoding'|'snapshotSha256'> & {
+    encoding:'native-mvu-author-source-snapshot-v1'
+    documentSha256:string
+    snapshotSha256:string
+  }
+  scripts:readonly Omit<MvuSchemaAuthorScript,'imports'>[]
+  material:MvuJsonObject
+  materialSha256:string
+  /** Hash of this complete author descriptor; raw source bytes have their own hash. */
+  authorSourceSha256:string
+}
+export type MvuSchemaAuthorSourceDecision={kind:'author-source';source:MvuSchemaAuthorSource}
+  |{kind:'absent'}|{kind:'unsupported';diagnostics:readonly MvuSourceDiagnostic[]}
 
 export interface MvuSourceSnapshot {
   schemaVersion: 1
@@ -551,5 +574,53 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       return same(snapshot,withPolicy(actual.snapshot,classify(actual).policy))
     } catch { return false }
   }
-  return {produce,current}
+  function readAuthorSource(sessionId:string,selectedIndex:number):MvuSchemaAuthorSourceDecision {
+    try {
+      const captured=capture(sessionId,selectedIndex)
+      const extension=captured.data.extensions
+      if(extension===undefined)return {kind:'absent'}
+      if(!isObject(extension))fail('EXTENSION_UNSUPPORTED','/extensions')
+      const helper=extension.tavern_helper
+      if(helper===undefined)return {kind:'absent'}
+      if(!isObject(helper))fail('EXTENSION_UNSUPPORTED','/extensions/tavern_helper')
+      if(helper.scripts===undefined)return {kind:'absent'}
+      if(!Array.isArray(helper.scripts)||helper.scripts.length>64) {
+        fail('FIELD_UNSUPPORTED','/extensions/tavern_helper/scripts')
+      }
+      const root=captured.document.data===captured.data?'/data':''
+      const scripts=helper.scripts.map((raw,index)=>{
+        const pointer=`${root}/extensions/tavern_helper/scripts/${index}`
+        // Preserve every entry and its explicit enable state in original order.
+        // Selecting only apparent schema calls would silently discard other
+        // author effects. Unknown active code is the compiler's explicit refusal.
+        if(!isObject(raw)||raw.type!=='script'||typeof raw.enabled!=='boolean'||typeof raw.content!=='string') {
+          fail('FIELD_UNSUPPORTED',pointer)
+        }
+        return {identity:`script-${index}`,pointer,enabled:raw.enabled,source:raw.content,
+          sourceSha256:schemaTextSha256(raw.content)}
+      })
+      if(!scripts.length)return {kind:'absent'}
+      const {policy:_policy,encoding:_encoding,snapshotSha256:_sha,...scope}=captured.snapshot
+      const snapshotBody={...scope,encoding:'native-mvu-author-source-snapshot-v1' as const,
+        documentSha256:recordSha256(captured.document)}
+      const snapshot={...snapshotBody,snapshotSha256:recordSha256(snapshotBody)}
+      const material=cloneSchemaData({card:captured.document,
+        rows:captured.rows.map(({ref,value})=>({table:ref.table,key:ref.key,exists:ref.exists,value:value??null})),
+        openingContext:captured.context},4*MAX_BYTES) as unknown as MvuJsonObject
+      const body={schemaVersion:1 as const,encoding:'native-mvu-author-source-v1' as const,
+        snapshot,scripts,material,materialSha256:recordSha256(material)}
+      return {kind:'author-source',source:cloneSchemaData({...body,authorSourceSha256:recordSha256(body)},8*MAX_BYTES)}
+    } catch(error) {
+      return {kind:'unsupported',diagnostics:[error instanceof SourceFailure
+        ?error.diagnostic:{code:'SOURCE_INVALID',pointer:'/source'}]}
+    }
+  }
+  function authorSourceCurrent(expected:MvuSchemaAuthorSource):boolean {
+    try {
+      const saved=cloneSchemaData(expected,8*MAX_BYTES)
+      const actual=readAuthorSource(saved.snapshot.source.sessionId,saved.snapshot.selected.index)
+      return actual.kind==='author-source'&&same(saved,actual.source)
+    } catch {return false}
+  }
+  return {produce,current,readAuthorSource,authorSourceCurrent}
 }

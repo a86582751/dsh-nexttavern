@@ -2,9 +2,10 @@ import fs from 'node:fs'
 import {createHash} from 'node:crypto'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath,pathToFileURL } from 'node:url'
 
 import type * as CompilerAPI from '../../build-tools/node_modules/typescript/lib/typescript.js'
+import type {MvuSchemaRuntimeAssetRecipe} from './mvu-schema-runtime-assets.mjs'
 interface Recipe {
   id: string; kind: string; artifact: string; entry: string; inputs: string[]
   outputSource?: string; text?: string; typeContext?: string; banner?: string
@@ -13,6 +14,7 @@ interface CompiledRecipe extends Recipe { outputSource: string; text: string }
 export interface CompilePlan {
   builds: Recipe[]
   artifacts: {id: string; source: string}[]
+  product?:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe}
   typeScript: {
     config: string; declarationPackages: string[]; ambientDeclarations?: string[]
     contexts?: Record<string, {
@@ -269,13 +271,48 @@ export function writeTypeScriptBuild(compilation: Compilation, entry: string | u
   fs.writeFileSync(output + '.meta.json', JSON.stringify({ inputs }, null, 2) + '\n')
 }
 
+/** This recipe comes from the same source manifest/public compiler projection.
+ * Presence alone is insufficient for executable bundles and guest assets. */
+export async function checkMvuSchemaRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
+  const recipe=plan.product?.mvuSchemaRuntime
+  if(!recipe)return undefined
+  const metadata=plan.artifacts.find(artifact=>artifact.id===recipe.packageArtifact)
+  if(!metadata)throw Error('Schema runtime package is not registered')
+  const prefix=path.posix.dirname(metadata.source)
+  const outputs=[...recipe.modules.map(module=>module.output),
+    ...recipe.guests.flatMap(guest=>[guest.output,guest.licenseOutput]),recipe.descriptorOutput]
+  for(const output of outputs) {
+    if(plan.artifacts.filter(artifact=>artifact.source===prefix+'/'+output).length!==1) {
+      throw Error('Schema runtime output must have one source mapping: '+output)
+    }
+  }
+  const builder=plan.artifacts.find(artifact=>artifact.id==='mvu-schema-runtime-assets-js')
+  if(!builder)throw Error('Schema runtime builder is not registered')
+  // Native TS bootstrap executes from src; installed/public callers execute
+  // from lib. The manifest owns one generated implementation for both.
+  const {buildMvuSchemaRuntimeAssets}=await import(pathToFileURL(inside(repo,builder.source)).href) as
+    typeof import('./mvu-schema-runtime-assets.mjs')
+  return buildMvuSchemaRuntimeAssets({repo,plan:{artifacts:plan.artifacts,product:{mvuSchemaRuntime:recipe}},
+    packageRoot:inside(repo,prefix),libraryRoot:inside(repo,path.posix.dirname(plan.typeScript.config)+'/node_modules'),write})
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [entry, output] = process.argv.slice(2)
   if (entry === '--types') {
     const result = compileTypeScript(root)
     console.log(JSON.stringify({modules: result.recipes.length, compiler: result.compiler, mode: 'types', writes: false}))
   }
-  else if (entry === '--check' || entry === '--write') console.log(JSON.stringify(checkTypeScript(root, entry === '--write')))
+  else if(entry==='--schema-assets') {
+    const plan=readJson<CompilePlan>(path.join(root,'release/source-manifest.json'))
+    const assets=await checkMvuSchemaRuntimeBuild(root,plan,process.argv.includes('--write'))
+    console.log(JSON.stringify({schemaAssets:assets?.files??[],mode:process.argv.includes('--write')?'write':'check'}))
+  }
+  else if (entry === '--check' || entry === '--write') {
+    const compilation=compileTypeScript(root)
+    const result=checkTypeScript(root,entry==='--write',compilation)
+    const assets=await checkMvuSchemaRuntimeBuild(root,compilation.plan,entry==='--write')
+    console.log(JSON.stringify({...result,...(assets?{schemaAssets:assets.files}: {})}))
+  }
   else {
     writeTypeScriptBuild(compileTypeScript(), entry, output)
   }

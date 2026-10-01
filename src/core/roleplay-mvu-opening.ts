@@ -189,5 +189,6 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
   }
   return {callbacks,sourceCurrent,readInitialization:initialization.read,nativeCurrent:native.current,
     readNative:(identity:MvuOpeningIdentity,turn?:number) => native.read(identity,turn),readInputObservation,
-    readGenesis,readSourceSha256:(sessionId:string)=>inputSource(sessionId).sourceSha256}
+    readGenesis,readSourceSha256:(sessionId:string)=>inputSource(sessionId).sourceSha256,
+    readAuthorSource:source.readAuthorSource,authorSourceCurrent:source.authorSourceCurrent}
 }

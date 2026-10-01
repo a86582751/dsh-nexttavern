@@ -72,7 +72,8 @@
     "openai": "6.40.0",
     "partial-json": "0.1.7",
     "typebox": "1.3.7",
-    "yaml": "2.8.1"
+    "yaml": "2.8.1",
+    "dsh-nexttavern-mvu-schema-runtime": "0.3.0"
   },
   "bundleDependencies": [
     "dsh-nexttavern-anydoc",
@@ -84,7 +85,8 @@
     "dsh-nexttavern-session-persistence-jsonl",
     "dsh-nexttavern-token-meter",
     "dsh-nexttavern-ui-chat",
-    "dsh-nexttavern-ui-workspace"
+    "dsh-nexttavern-ui-workspace",
+    "dsh-nexttavern-mvu-schema-runtime"
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",

@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {compileTypeScript, type CompilePlan} from './build-typescript.mjs'
+import {compileTypeScript,checkMvuSchemaRuntimeBuild,type CompilePlan} from './build-typescript.mjs'
 
 interface PublicModule {artifact: string; source: string; primaryOutput?: string; outputs: string[]}
 interface PublicBuildMap {
@@ -13,7 +13,7 @@ interface PublicBuildMap {
   compatibilityEntrypoints?: {artifact: string; path: string; invoke?: string}[]
 }
 
-export function publicBuildModulesCli(args = process.argv.slice(2), root = fileURLToPath(new URL('../../', import.meta.url))) {
+export async function publicBuildModulesCli(args = process.argv.slice(2), root = fileURLToPath(new URL('../../', import.meta.url))) {
   const write = args.includes('--write')
   const typesOnly = args.includes('--types')
   const map = JSON.parse(fs.readFileSync(path.join(root, 'tools/build-map.json'), 'utf8')) as PublicBuildMap
@@ -83,5 +83,6 @@ export function publicBuildModulesCli(args = process.argv.slice(2), root = fileU
     compare(entry.path, '// Generated legacy CLI compatibility entry; implementation lives in lib/.\n' + code)
   }
   if (stale) throw Error(`${stale} generated files differ; run npm run build:modules`)
-  console.log(`strict public modules=${map.modules.length}; wrote=${written}`)
+  const assets=await checkMvuSchemaRuntimeBuild(root,map.compilerPlan,write)
+  console.log(`strict public modules=${map.modules.length}; wrote=${written}; schemaAssets=${assets?.files.length??0}`)
 }

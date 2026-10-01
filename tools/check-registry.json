@@ -4290,6 +4290,11 @@
       "requires": [
         "compiler"
       ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
       "inputs": [],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
@@ -5046,6 +5051,78 @@
       ],
       "cache": true,
       "timeoutMs": 180000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-schema-journal",
+      "action": "test",
+      "modules": [
+        "status",
+        "operations"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-mvu-schema-replay",
+      "action": "test",
+      "modules": [
+        "status",
+        "operations"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-schema-runtime-assets",
+      "action": "test",
+      "modules": [
+        "status",
+        "operations"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "cache": true,
+      "timeoutMs": 240000,
       "effects": {
         "build": true,
         "network": false,

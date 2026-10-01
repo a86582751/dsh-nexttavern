@@ -194,6 +194,15 @@ const LIBRARY_TEST_FILE = /(?:^|\/)(?:tests?|__tests__|__mocks__)\/|\.(?:test|sp
 /** Reject bytes that may not travel in this package; asked once per vendored file. */
 export type VendorAdmission = (file: string, bytes: Buffer) => boolean
 
+export interface ProductPackageAssemblyOptions {
+  repo: string
+  output: string
+  packageArtifact: string
+  archives?: Record<string, string>
+  libraryRoot?: string
+  admitVendoredFile?: VendorAdmission
+}
+
 /**
  * Copy each owned package's ordinary dependencies into its own `node_modules`.
  *
@@ -281,6 +290,59 @@ function vendorLibraries(output: string, owner: string, dependencies: Record<str
   return excluded
 }
 
+/** The same registered package collector used by the complete product. A
+ * component check uses this owner, rather than a junction into build-tools or
+ * a second hand-written dependency graph. It never prepares a profile. */
+export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
+  const repo = fs.realpathSync(options.repo)
+  const plan = json<Plan>(path.join(repo, 'release/source-manifest.json'))
+  const artifact = (id: string) => {
+    const row = plan.artifacts.find(item => item.id === id)
+    if (!row) throw Error('Unregistered product artifact: ' + id)
+    return row
+  }
+  const rows = plan.product.packages.filter(row => row.packageArtifact === options.packageArtifact)
+  if (rows.length !== 1) throw Error('Product package must have exactly one registered recipe')
+  const row = rows[0]!
+  const source = artifact(row.packageArtifact).source
+  const pkg = json<Metadata>(inside(repo, source))
+  const product = json<Metadata>(inside(repo, artifact(plan.product.packageArtifact).source))
+  if (!/^dsh-nexttavern-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(pkg.name) || pkg.dsh?.bundle !== undefined
+    || product.dependencies?.[pkg.name] !== pkg.version
+    || product.bundleDependencies?.filter(name => name === pkg.name).length !== 1) {
+    throw Error('Product package identity differs from its root declaration')
+  }
+  if (Object.keys(pkg.dependencies ?? {}).some(name => name.startsWith('@deepseek-ai/'))) {
+    throw Error('Host module must remain a shared peer: ' + pkg.name)
+  }
+  const output = path.resolve(options.output)
+  if (fs.existsSync(output)) throw Error('Product package output must be absent before assembly')
+  if (row.assembly) {
+    const archive = options.archives?.[row.assembly]
+    if (!archive) throw Error('Missing pinned archive: ' + row.assembly)
+    const result = assembleOwnedDependency({repo, id: row.assembly, archive, output})
+    if (result.name !== pkg.name || result.version !== pkg.version) throw Error('Assembly identity differs from recipe')
+  } else {
+    const prefix = path.posix.dirname(source) + '/'
+    const files = new Set(plan.artifacts.filter(item => item.source.startsWith(prefix)).map(item => item.source))
+    for (const file of files) {
+      const target = inside(output, file.slice(prefix.length))
+      fs.mkdirSync(path.dirname(target), {recursive: true})
+      fs.copyFileSync(inside(repo, file), target)
+    }
+  }
+  for (const resource of row.resources ?? []) {
+    const target = inside(output, resource.path)
+    fs.mkdirSync(path.dirname(target), {recursive: true})
+    fs.copyFileSync(inside(repo, artifact(resource.artifact).source), target)
+  }
+  const excludedVendoredFiles = vendorLibraries(output, pkg.name, pkg.dependencies ?? {}, options.libraryRoot,
+    plan.product.bundleLibraries ?? {}, options.admitVendoredFile, plan.product.bundlePlatforms ?? [])
+  const files = regularPackageFiles(output).sort().map(file => ({path: file,
+    sha256: createHash('sha256').update(fs.readFileSync(inside(output, file))).digest('hex')}))
+  return {name: pkg.name, version: pkg.version, files, excludedVendoredFiles}
+}
+
 /**
  * Caller owns a fresh candidate directory. Archives are explicit pinned inputs;
  * this operation has no network, pnpm, profile, or installed-package writes.
@@ -335,11 +397,12 @@ export function assembleProduct(options: {
   const moduleRoot = inside(packageRoot, 'node_modules')
   if (fs.existsSync(moduleRoot)) throw Error('Candidate dependencies must be absent before assembly')
   fs.mkdirSync(moduleRoot)
-  const packages = owned.map(({pkg, source, assembly, publicMetadata, resources}) => {
+  const packages = owned.map(({pkg, packageArtifact, assembly, publicMetadata}) => {
     const output = inside(moduleRoot, pkg.name)
+    const result = assembleProductPackage({repo, output, packageArtifact, archives: options.archives,
+      ...(options.libraryRoot === undefined ? {} : {libraryRoot: options.libraryRoot}),
+      ...(options.admitVendoredFile === undefined ? {} : {admitVendoredFile: options.admitVendoredFile})})
     if (assembly) {
-      const result = assembleOwnedDependency({repo, id: assembly, archive: options.archives[assembly]!, output})
-      if (result.name !== pkg.name || result.version !== pkg.version) throw Error('Assembly identity differs from recipe')
       // The public compiler keeps the maintained SDK overlays at their source
       // package location. Complete that developer copy with the SAME admitted
       // upstream files, otherwise its emitted overlays import absent modules.
@@ -348,30 +411,16 @@ export function assembleProduct(options: {
       if (!publicMetadata) throw Error('Assembled dependency has no public metadata mapping')
       const development = inside(packageRoot, path.posix.dirname(publicMetadata))
       for (const file of regularPackageFiles(output)) {
+        // Component assembly has already vendored dependencies. The developer
+        // overlay retains its prior upstream-only file boundary.
+        if (file.startsWith('node_modules/')) continue
         const target = inside(development, file)
         if (file.endsWith('.map') || fs.existsSync(target)) continue
         fs.mkdirSync(path.dirname(target), {recursive: true})
         fs.copyFileSync(inside(output, file), target)
       }
-    } else {
-      const prefix = path.posix.dirname(source) + '/'
-      const files = new Set(plan.artifacts.filter(row => row.source.startsWith(prefix)).map(row => row.source))
-      for (const file of files) {
-        const target = inside(output, file.slice(prefix.length))
-        fs.mkdirSync(path.dirname(target), {recursive: true})
-        fs.copyFileSync(inside(repo, file), target)
-      }
     }
-    for (const resource of resources ?? []) {
-      const target = inside(output, resource.path)
-      fs.mkdirSync(path.dirname(target), {recursive: true})
-      fs.copyFileSync(inside(repo, artifact(resource.artifact).source), target)
-    }
-    const excluded = vendorLibraries(output, pkg.name, pkg.dependencies ?? {}, options.libraryRoot,
-      plan.product.bundleLibraries ?? {}, options.admitVendoredFile, plan.product.bundlePlatforms ?? [])
-    const files = regularPackageFiles(output).sort().map(file => ({path: file,
-      sha256: createHash('sha256').update(fs.readFileSync(inside(output, file))).digest('hex')}))
-    return {name: pkg.name, version: pkg.version, files, excludedVendoredFiles: excluded}
+    return result
   })
   // The activation layers travel in the same inventory as the compatibility
   // packages: the profile later pins these exact bytes and lists the name in

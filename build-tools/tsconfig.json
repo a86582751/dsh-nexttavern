@@ -38,6 +38,12 @@
       ],
       "dsh-nexttavern-session-format/*": [
         "../development/session-format/src/*.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime": [
+        "../development/mvu-schema-runtime/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime/*": [
+        "../development/mvu-schema-runtime/src/*.ts"
       ]
     },
     "newLine": "lf"
