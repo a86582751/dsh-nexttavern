@@ -8,9 +8,12 @@ import {createRoleplayMvuSchemaCore} from './roleplay-mvu-schema-core.js'
 import {createRoleplayMvuSchemaOpening} from './roleplay-mvu-schema-opening.js'
 import {createRoleplayMvuSchemaSource} from './roleplay-mvu-schema-source.js'
 import {createRoleplayMvuSchemaStoryCore} from './roleplay-mvu-schema-story-core.js'
+import {createRoleplayMvuSchemaPlayerCore} from './roleplay-mvu-schema-player-core.js'
 import type {MvuSchemaStoryCoreDeps} from './roleplay-mvu-schema-story-core.js'
 import {mvuInitializationHeadKey} from './roleplay-mvu-initialization.js'
 import type {MvuSchemaCoreDeps} from './roleplay-mvu-schema-core.js'
+import type {mvuPlayerMarkers} from 'dsh-nexttavern-session-format/mvu-player-marker'
+import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
 import type {SchemaOpeningSelectionAdapter} from './roleplay-mvu-schema-opening-types.js'
 import type {Session} from '@deepseek-ai/dsh-session'
 import type {MvuSourceDeps} from './roleplay-mvu-source.js'
@@ -20,6 +23,7 @@ import type {ReadBranchSession, WorldlineMessageEdits} from './roleplay-worldlin
 import type {TavernOpeningContext} from './tavern-card.js'
 import type {InputObservation} from './roleplay-input-preparation.js'
 import type {MvuNumericalAuthority,VerifiedMvuGenesis} from './roleplay-mvu-state.js'
+import type {MvuSchemaDerivedGenesis} from './roleplay-mvu-schema-derived-types.js'
 
 interface ReadTable {get(key:string):unknown;entries():Iterable<[string,unknown]>}
 interface WritableTable extends ReadTable {put(key:string,value:unknown):Promise<unknown>}
@@ -41,7 +45,12 @@ export interface MvuOpeningDependencies {
   legacyImportPending?(sessionId:string):boolean
   readNumericalAuthority?(sessionId:string):MvuNumericalAuthority
   derivedBasisRequired?(sessionId:string):boolean
+  schemaDerivedRequired?(sessionId:string):boolean
+  readSchemaDerivedGenesis?(sessionId:string,currentSource?:boolean):MvuSchemaDerivedGenesis|undefined
+  readSchemaEditInvalidation?:MvuSchemaStoryCoreDeps['readEditInvalidation']
   schema?:Pick<MvuSchemaCoreDeps,'agent'|'resolveAgent'|'active'|'markers'|'flush'>&{
+    playerMarkers:typeof mvuPlayerMarkers
+    observe(sid:string):Promise<MvuStateObservation>
     appendOpeningOnAgent(request:Parameters<OpeningSelectionDeps['appendOpening']>[0],
       agent:NonNullable<ReturnType<MvuSchemaCoreDeps['agent']>>):ReturnType<OpeningSelectionDeps['appendOpening']>
   }
@@ -67,17 +76,28 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     withSourceLock:deps.withSourceLock,nativeRead:(identity,turn)=>native.read(identity,turn)}):undefined
   let schemaSelection:SchemaOpeningSelectionAdapter|undefined
   let schemaStory:ReturnType<typeof createRoleplayMvuSchemaStoryCore>|undefined
+  let schemaPlayer:ReturnType<typeof createRoleplayMvuSchemaPlayerCore>|undefined
   function createSchemaStory(completion:Pick<MvuSchemaStoryCoreDeps,'closingView'|'verifyNative'|'verifyConsumedScope'|'readCanonical'
     |'readConsumedCanonical'|'awaitOwnedCompletion'>) {
     if(!schemaCore||!deps.schema)return undefined
-    schemaStory??=createRoleplayMvuSchemaStoryCore({...completion,...deps.schema,branch:deps.tables.branch,status:deps.tables.status,
-      source:createRoleplayMvuSchemaSource(sourceDeps,deps.schema.markers),session:id=>deps.session(id) as unknown as Session|undefined,
+    const schemaSource=createRoleplayMvuSchemaSource(sourceDeps,deps.schema.markers)
+    const common={...deps.schema,branch:deps.tables.branch,status:deps.tables.status,
+      source:schemaSource,session:(id:string)=>deps.session(id) as unknown as Session|undefined,
+      sourceSha256:(id:string)=>inputSource(id).sourceSha256,
+      protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock}
+    schemaStory??=createRoleplayMvuSchemaStoryCore({...completion,...common,
+      manualPendingCode:(id:string)=>schemaPlayer?.pendingCode(id),
+      derivedRequired:deps.schemaDerivedRequired,readDerivedGenesis:deps.readSchemaDerivedGenesis,
+      readEditInvalidation:deps.readSchemaEditInvalidation,
+      projectPrefix:events=>deps.messageEdits.projectPrefix(events),editProtocol:deps.messageEdits,
       activePointer:id=>deps.tables.branch.get(deps.importActiveKey(id)),sourceSha256:id=>inputSource(id).sourceSha256,
       protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock,
       verifyOpening:intent=>{
         const found=native.read(intent.initialization!.identity,intent.committedTurn!)
         return found.status==='committed'&&same(found.receipt,intent.nativeReceipt)
       }})
+    schemaPlayer??=createRoleplayMvuSchemaPlayerCore({...common,story:schemaStory,
+      observe:deps.schema.observe,playerMarkers:deps.schema.playerMarkers})
     return schemaStory
   }
   function createSchemaSelection(nativeDeps:Pick<OpeningSelectionDeps,'withLock'|'appendOpening'|'findOpeningByOperationId'>) {
@@ -102,7 +122,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     const pointer=deps.tables.branch.get(deps.importActiveKey(sessionId)) as {importId?:string}|undefined
     const intent=pointer?.importId?readIntent(sessionId,pointer.importId):undefined
     const head=deps.tables.status.get(mvuInitializationHeadKey(sessionId)) as {encoding?:unknown}|undefined
-    return intent?.schemaVersion===5||head?.encoding==='mvu-schema-opening-head-v2'
+    return deps.schemaDerivedRequired?.(sessionId)===true||intent?.schemaVersion===5||head?.encoding==='mvu-schema-opening-head-v2'
   }
   async function readSchemaInitialization(sessionId:string) {
     if(!schemaSelection)return {kind:'blocked' as const,code:'SCHEMA_RUNTIME_UNAVAILABLE'}
@@ -257,13 +277,20 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     readAuthorSource:source.readAuthorSource,authorSourceCurrent:source.authorSourceCurrent,
     createSchemaSelection,hasSchemaOpening,readSchemaInitialization,
     createSchemaStory,readSchemaSnapshot:(id:string)=>schemaStory?.readSnapshot(id),
+    readSchemaEditBasis:(id:string)=>schemaStory?.readEditBasis(id),
+    submitSchemaPlayer:(input:unknown)=>schemaPlayer?.submit(input)??Promise.resolve({ok:false,
+      code:'SCHEMA_PLAYER_UNAVAILABLE',error:'SCHEMA_PLAYER_UNAVAILABLE'}),
+    schemaPlayerEditBlockCode:(id:string)=>schemaPlayer?schemaPlayer.editBlockCode(id):'SCHEMA_PLAYER_UNAVAILABLE',
+    awaitSchemaPlayerBarrier:(session:{id:string},signal:AbortSignal)=>schemaPlayer?.awaitMutationBarrier(session,signal)??Promise.resolve(),
+    schemaPlayerMutationBlockCode:(session:{id:string})=>schemaPlayer?.mutationBlockCode(session),
     preflightSchema:(id:string,signal?:AbortSignal)=>hasSchemaOpening(id)&&schemaStory
       ?schemaStory.preflight(id,signal):Promise.resolve(),
     releaseSchemaClosing:(lease:object)=>schemaStory?.releaseClosing(lease),
     invalidateSchemaAgent:(agent:object)=>{
       schemaCore?.invalidateAgent(agent)
       schemaStory?.invalidateAgent(agent)
+      schemaPlayer?.invalidateAgent(agent)
     },
-    invalidateSchemaSession:(id:string)=>{schemaCore?.invalidateSession(id);schemaStory?.invalidateSession(id)},
-    disposeSchema:()=>{schemaStory?.dispose();return schemaCore?.dispose()}}
+    invalidateSchemaSession:(id:string)=>{schemaCore?.invalidateSession(id);schemaStory?.invalidateSession(id);schemaPlayer?.invalidateSession(id)},
+    disposeSchema:()=>{schemaPlayer?.dispose();schemaStory?.dispose();return schemaCore?.dispose()}}
 }

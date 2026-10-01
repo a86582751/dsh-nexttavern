@@ -91,6 +91,8 @@ import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
 import {registerMvuPlayerRoutes} from './roleplay-mvu-player-routes.js'
 import type {Session as NativeSession} from '@deepseek-ai/dsh-session'
 import {createRoleplayMvuDerived,readMvuPrefixCanonical} from './roleplay-mvu-derived.js'
+import {createRoleplayMvuSchemaDerived} from './roleplay-mvu-schema-derived.js'
+import {mvuSchemaDerivedPreparedKey,mvuSchemaDerivedBasisKey} from './roleplay-mvu-schema-derived-types.js'
 import {createRoleplayMvuAncestry} from './roleplay-mvu-ancestry.js'
 import {createRoleplayMvuEditFacts} from './roleplay-mvu-edit-facts.js'
 import type {MvuEditBasisFacts} from './roleplay-mvu-edit-facts.js'
@@ -750,7 +752,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     replaceUserText
   } = createRoleplayWorldlines({
     messageEdits: ctx.nexttavernMessageEdits,
-    beginNumericalEdit:id=>mvuEdits.begin(id),
+    beginNumericalEdit:id=>{mvuEdits.begin(id);mvuOpening.invalidateSchemaSession(id)},
     persistNumericalEdit:async(id,editSeq)=>{
       const result=await mvuEdits.persistEdit({sessionId:id,editSeq})
       if(result.kind==='unknown')throw Error(result.code)
@@ -775,7 +777,13 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     isRoleplaySession,
     ensureState,
     ensureBranch,
-    commitDerivedBasis:(operation,child)=>mvuDerived.commit(operation,child),
+    commitDerivedBasis:async(operation,child)=>{
+      if(schemaDerived?.required(child.id)) {
+        const actual=ctx.sessions.get(child.id)
+        if(!actual)throw Error('SCHEMA_DERIVED_SESSION_UNAVAILABLE')
+        await schemaDerived.commit(operation,actual as unknown as NativeSession)
+      }else await mvuDerived.commit(operation,child)
+    },
     durableSeq,
     canonicalAssistantForTurn,
     surfaceEntries,
@@ -1167,6 +1175,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     userInfo:recordSha256(readUserInfo()),userCard:recordSha256(T.cards.get(keyOf(id,'user'))),
     context:openingContext(id),
   })})
+  let schemaDerived:ReturnType<typeof createRoleplayMvuSchemaDerived>|undefined
   const mvuDerived:ReturnType<typeof createRoleplayMvuDerived>=createRoleplayMvuDerived({tables:T,branch:T.branch,status:T.status,
     session:id=>ctx.sessions.get(id),readSession:mvuAncestry.readSession,
     projectPrefix:events=>ctx.nexttavernMessageEdits.projectPrefix(events),
@@ -1177,6 +1186,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   const mvuOpening:ReturnType<typeof createRoleplayMvuOpening> = createRoleplayMvuOpening({tables:T,session:id => ctx.sessions.get(id),
     readNumericalAuthority:id=>mvuState.readNumericalAuthority(id),
     derivedBasisRequired:mvuDerived.required,
+    schemaDerivedRequired:id=>T.branch.get(mvuSchemaDerivedPreparedKey(id))!==undefined
+      ||T.branch.get(mvuSchemaDerivedBasisKey(id))!==undefined,
+    readSchemaDerivedGenesis:(id,currentSource)=>schemaDerived?.readGenesis(id,currentSource),
+    readSchemaEditInvalidation:id=>mvuEdits.readInvalidation(id),
     branchReady:id => ensureState(id).branchReady,importActiveKey,importRecordKey,
     withSourceLock:(id,work) => withImportLock(id,'mvu-initialization',work),
     recordVersionsFor:id => recordVersionsFor({id}),
@@ -1216,6 +1229,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       },
       active:session=>isRoleplaySession(session as unknown as CoreSession)&&ensureState(session.id).branchReady,
       markers:ctx.nexttavernMvuSchemaMarkers,flush:session=>ctx.sessions.flush(session as unknown as CoreSession),
+      playerMarkers:ctx.nexttavernMvuPlayerMarkers,observe:id=>observeNumericalState(id),
       appendOpeningOnAgent:commitOpeningOnAgent},
   })
   function commitOpeningOnAgent(request:Parameters<OpeningSelectionDeps['appendOpening']>[0],input:unknown) {
@@ -1287,10 +1301,14 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   }
   const openingSelection:ReturnType<typeof createRoleplayOpeningSelection> = createRoleplayOpeningSelection({
     ...openingSelectionDeps,schemaOpening:mvuOpening.createSchemaSelection(openingSelectionDeps)})
-  ctx.effect(()=>()=>mvuOpening.disposeSchema(),'roleplay: owned schema runtime lifetime')
+  ctx.effect(()=>()=>{schemaDerived?.dispose();return mvuOpening.disposeSchema()},'roleplay: owned schema runtime lifetime')
   ctx.on('session/disposed',session=>mvuOpening.invalidateSchemaSession(session.id),{global:true})
   function editBasisFacts(id:string):MvuEditBasisFacts {
     try {
+      if(mvuOpening.hasSchemaOpening(id)) {
+        const basis=mvuOpening.readSchemaEditBasis(id)
+        return basis?{kind:'verified',sourceSha256:mvuOpening.readSourceSha256(id),...basis}:{kind:'unknown'}
+      }
       const basis=mvuState.readGenesisAuthority(id)
       if(basis.kind==='ready') {
         const genesis=mvuDerived.required(id)?mvuDerived.readGenesis(id):mvuOpening.readGenesis(id)
@@ -1380,16 +1398,19 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   async function observeNumericalState(id:string):Promise<MvuStateObservation> {
     if(!mvuOpening.hasSchemaOpening(id))return mvuPlayer.observe(id)
     const session=ctx.sessions.get(id),observedNativeSeq=session?eventsOf(session).at(-1)?.seq??-1:-1
-    const basis={schemaVersion:1 as const,sessionId:id,observedNativeSeq,canEdit:false as const}
+    const basis={schemaVersion:1 as const,sessionId:id,observedNativeSeq}
     try {await mvuOpening.preflightSchema(id)}catch(error) {
       const code=error instanceof Error&&/^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)?error.message:'SCHEMA_STORY_UNPROVEN'
-      return {...basis,kind:'blocked',code}
+      return {...basis,kind:'blocked',code,canEdit:false}
     }
     const snapshot=mvuOpening.readSchemaSnapshot(id)
-    if(!snapshot)return {...basis,kind:'blocked',code:'SCHEMA_STORY_UNPROVEN'}
-    return {...basis,kind:'schema-ready',values:structuredClone(snapshot.values),
+    if(!snapshot)return {...basis,kind:'blocked',code:'SCHEMA_STORY_UNPROVEN',canEdit:false}
+    const currentSession=ctx.sessions.get(id)
+    const currentNativeSeq=currentSession?eventsOf(currentSession).at(-1)?.seq??-1:-1
+    const editBlockCode=mvuOpening.schemaPlayerEditBlockCode(id)
+    return {...basis,observedNativeSeq:currentNativeSeq,kind:'schema-ready',values:structuredClone(snapshot.values),
       valuesSha256:snapshot.valuesSha256,sourceSha256:snapshot.sourceSha256,eventId:snapshot.currentHead.eventId,
-      editBlockCode:'SCHEMA_MANUAL_NOT_ENABLED'}
+      snapshot,canEdit:!editBlockCode,...(editBlockCode?{editBlockCode}:{})}
   }
   const completionDeps:MvuStoryCompletionDependencies={table:T.branch,state:mvuState,awaitOwnedCompletion,
     sourceCurrent:(sid,sourceSha256)=>mvuOpening.readSourceSha256(sid)===sourceSha256,
@@ -1480,18 +1501,27 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       },
     },scope,descriptor),withSourceLock:(id,work)=>withImportLock(id,'input-management-terminal',work),
   }
-  completionDeps.schema=mvuOpening.createSchemaStory({
+  const schemaStory=mvuOpening.createSchemaStory({
     closingView:(lease,scope)=>inputOwner?.readClosingView(lease,scope),
     verifyConsumedScope:scope=>inputOwner?.verifyConsumedScope(scope)===true,
     verifyNative:completionDeps.verifyNative,readCanonical:completionDeps.readCanonical,
     readConsumedCanonical:completionDeps.readConsumedCanonical!,awaitOwnedCompletion,
   })
+  completionDeps.schema=schemaStory
+  if(schemaStory)schemaDerived=createRoleplayMvuSchemaDerived({tables:T,branch:T.branch,status:T.status,
+    session:id=>ctx.sessions.get(id) as unknown as NativeSession|undefined,readSession:mvuAncestry.readSession,
+    readSourceSha256:mvuOpening.readSourceSha256,readOpeningContext:openingContextBinding,
+    importActiveKey,importRecordKey,withSourceLock:(id,work)=>withImportLock(id,'mvu-schema-derived',work),
+    history:schemaStory})
   const completion=createRoleplayMvuStoryCompletion(completionDeps)
   inputOwner = createRoleplayInputPreparation({table:T.branch,completion,
     observe:(session:CoreSession) => mvuOpening.readInputObservation(session.id),
     preflightObservation:(session,signal)=>mvuOpening.preflightSchema(session.id,signal),
     onClosingRelease:mvuOpening.releaseSchemaClosing,
-    awaitMutationBarrier:mvuPlayer.awaitMutationBarrier,mutationBlockCode:mvuPlayer.mutationBlockCode,
+    awaitMutationBarrier:async(session,signal)=>{
+      await mvuPlayer.awaitMutationBarrier(session,signal)
+      await mvuOpening.awaitSchemaPlayerBarrier(session,signal)
+    },mutationBlockCode:session=>mvuPlayer.mutationBlockCode(session)??mvuOpening.schemaPlayerMutationBlockCode(session),
     onMutationStop:(session,notice)=>{
       mvuOpening.invalidateSchemaSession(session.id)
       mvuPlayer.onMutationStop(session,notice)
@@ -1520,7 +1550,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     const session=await resolveRoleplaySession(id)
     if(session)await ensureBranch(session)
     return session
-  },player:mvuPlayer,observe:observeNumericalState})
+  },player:{observe:mvuPlayer.observe,submit:input=>{
+    const id=(input as {sessionId?:unknown})?.sessionId
+    return typeof id==='string'&&mvuOpening.hasSchemaOpening(id)?mvuOpening.submitSchemaPlayer(input):mvuPlayer.submit(input)
+  }},observe:observeNumericalState})
   registerOpeningRoutes({ctx,resolveRoleplaySession:async id => {
     const session = await resolveRoleplaySession(id)
     // Opening basis needs a ready branch, but general branch resolution must
@@ -1914,8 +1947,14 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     T,
     resolveRoleplaySession,
     cloneBranchRecord,
-    prepareDerivedBasis:mvuDerived.prepare,
-    numericalForkBlockCode:id=>mvuOpening.hasSchemaOpening(id)?'SCHEMA_FORK_NOT_ENABLED':undefined,
+    prepareDerivedBasis:async(operation,reservation)=>{
+      if(mvuOpening.hasSchemaOpening(reservation.sourceSessionId)) {
+        if(!schemaDerived)throw Error('SCHEMA_DERIVED_RUNTIME_UNAVAILABLE')
+        await schemaDerived.prepare(operation,reservation)
+      }else await mvuDerived.prepare(operation,reservation)
+    },
+    numericalForkBlockCode:id=>mvuOpening.hasSchemaOpening(id)
+      ?mvuOpening.schemaPlayerMutationBlockCode(ctx.sessions.get(id)!) :undefined,
     assertStoryBranchActive,
     withForkMutationLock,
     forkOperationKey,

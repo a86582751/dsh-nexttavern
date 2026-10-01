@@ -210,7 +210,10 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps,markers:typeof 
       return freezeSchemaJournalData({...body,originalSha256:recordSha256(body)})
     } catch(error) {fail(codeOf(error))}
   }
-  function originalCurrent(original:SchemaFrozenOriginal):boolean {
+  /** Immutable author identity can be checked without consulting the parent's
+   * current pointer. A verified child basis freezes this identity at its real
+   * Native cut; later parent activation must not rewrite the child's program. */
+  function originalFactsCurrent(original:SchemaFrozenOriginal):boolean {
     try {
       original=freezeSchemaJournalData(original)
       const {originalSha256,...body}=original
@@ -227,26 +230,34 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps,markers:typeof 
         sourceSha256:source.rawSha256,importRecordSha256:author.snapshot.importRecordSha256,
         sourceSnapshotSha256:author.snapshot.snapshotSha256,material:author.material,materialSha256:author.materialSha256})
         ||!same(original.authorInput.scripts.map(({imports:_imports,...script})=>script),author.scripts))return false
-      return same(deps.readActivePointer(original.sessionId),original.sourceSnapshot.source.pointer)
+      return true
     } catch {return false}
   }
-  function captureFrame(original:SchemaFrozenOriginal):SchemaStorySourceFrame {
+  function originalCurrent(original:SchemaFrozenOriginal):boolean {
+    return originalFactsCurrent(original)
+      &&same(deps.readActivePointer(original.sessionId),original.sourceSnapshot.source.pointer)
+  }
+  function captureFrame(original:SchemaFrozenOriginal,sessionId=original.sessionId):SchemaStorySourceFrame {
     try {
-      if(!originalCurrent(original))fail('SCHEMA_ORIGINAL_SOURCE_CHANGED')
-      const found=readMvuSchemaCurrentAuthorSource(deps,original.sessionId,original.preparation.identity.index)
+      const bindingCurrent=()=>sessionId===original.sessionId?originalCurrent(original):originalFactsCurrent(original)
+      if(!bindingCurrent())fail('SCHEMA_ORIGINAL_SOURCE_CHANGED')
+      const found=readMvuSchemaCurrentAuthorSource(deps,sessionId,original.preparation.identity.index)
       if(found.kind!=='author-source')fail('SCHEMA_CURRENT_MATERIAL_INVALID')
-      const author=found.source
+      const author=found.source,currentSource=author.snapshot.source,originalSource=original.sourceSnapshot.source
+      const identity=['sourceRecordSessionId','importId','rawSha256','normalizedSha256','transactionId','coverageSha256'] as const
       if(!same(author.scripts,original.authorInput.scripts.map(({imports:_imports,...script})=>script))
-        ||author.snapshot.documentSha256!==original.sourceSnapshot.documentSha256||!originalCurrent(original)) {
+        ||identity.some(key=>currentSource[key]!==originalSource[key])
+        ||author.snapshot.importRecordSha256!==original.sourceSnapshot.importRecordSha256
+        ||author.snapshot.documentSha256!==original.sourceSnapshot.documentSha256||!bindingCurrent()) {
         fail('SCHEMA_ORIGINAL_SOURCE_CHANGED')
       }
       return validateSchemaStorySourceFrame({schemaVersion:1 as const,encoding:'native-mvu-schema-story-source-frame-v1' as const,
-        sessionId:original.sessionId,material:author.material,materialSha256:author.materialSha256,
+        sessionId,material:author.material,materialSha256:author.materialSha256,
         snapshot:author.snapshot,snapshotSha256:author.snapshot.snapshotSha256})
     } catch(error) {fail(codeOf(error))}
   }
   function frameCurrent(original:SchemaFrozenOriginal,frame:SchemaStorySourceFrame):boolean {
-    try {return same(frame,captureFrame(original))} catch {return false}
+    try {return same(frame,captureFrame(original,frame.sessionId))} catch {return false}
   }
-  return {readFrozenOriginal,captureFrame,originalCurrent,frameCurrent}
+  return {readFrozenOriginal,captureFrame,originalCurrent,originalFactsCurrent,frameCurrent}
 }

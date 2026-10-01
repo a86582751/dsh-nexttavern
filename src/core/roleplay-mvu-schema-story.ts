@@ -7,7 +7,7 @@ import {freezeMvuSchemaStoryData,sealMvuSchemaStoryFact,validateMvuSchemaStoryPl
   validateMvuSchemaNumericalSnapshot,validateMvuSchemaStoryEvent,validateMvuSchemaStorySettlement,
   deriveMvuSchemaStorySelectors,mvuSchemaStoryPhaseInput,mvuSchemaStoryReducerBridge,mvuSchemaStoryEvent,
   mvuSchemaStoryHead,mvuSchemaStorySettlement,mvuSchemaStoryEventKey,mvuSchemaStorySettlementKey,
-  MVU_SCHEMA_STORY_PHASES,schemaStoryCode} from './roleplay-mvu-schema-story-types.js'
+  MVU_SCHEMA_STORY_PHASES,schemaStoryCode,isMvuSchemaGenesisHead} from './roleplay-mvu-schema-story-types.js'
 import type {InputCompletionScope} from './roleplay-input-completion.js'
 import type {SchemaStorySourceFrame} from './roleplay-mvu-schema-source.js'
 import type {SourceNativeCutFacts} from './roleplay-mvu-schema-replay.js'
@@ -84,7 +84,7 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
       // An opening-only baseline has no current-head row. Refused/no-update
       // keep that absence; successful updates use the single shared head key.
       return facts.settlement.outcome==='accepted'?same(actualHead,facts.settlement.result.head):
-        actualHead===undefined&&plan.base.currentHead.encoding==='mvu-schema-opening-head-v2'
+        actualHead===undefined&&isMvuSchemaGenesisHead(plan.base.currentHead)
           ||same(actualHead,facts.settlement.result.head)
     } catch {return false}
   }
@@ -142,7 +142,7 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
           check('before-head')
           const prior=read(headKey)
           if(!same(prior,plan.base.currentHead)
-            &&!(prior===undefined&&plan.base.currentHead.encoding==='mvu-schema-opening-head-v2'))fail('SCHEMA_STORY_BASE_CHANGED')
+            &&!(prior===undefined&&isMvuSchemaGenesisHead(plan.base.currentHead)))fail('SCHEMA_STORY_BASE_CHANGED')
           await putExact(headKey,head,prior)
           check('after-head')
           if(!same(read(headKey),head)||!same(read(eventKey),event))fail('SCHEMA_STORY_WRITE_UNKNOWN')

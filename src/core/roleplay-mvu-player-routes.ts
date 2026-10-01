@@ -3,13 +3,13 @@ import type {createRoleplayMvuPlayer} from './roleplay-mvu-player.js'
 interface Dependencies {
   ctx:{effect(work:()=>unknown,label?:string):unknown;connection:{fetch:{register(route:unknown):unknown}}}
   resolveRoleplaySession(id:unknown):Promise<{id:string}|null|undefined>
-  player:ReturnType<typeof createRoleplayMvuPlayer>
+  player:Pick<ReturnType<typeof createRoleplayMvuPlayer>,'observe'|'submit'>
   observe?(sid:string):Promise<import('./roleplay-mvu-player-types.js').MvuStateObservation>
 }
 const statusFor=(code:string|undefined)=>!code?200:code==='MVU_PLAYER_DATA_LIMIT'?413
   :code==='MVU_PLAYER_DATA_INVALID'?400:code==='MVU_PLAYER_SESSION_INACTIVE'?404
     :code==='MVU_PLAYER_BUSY'?423:['MVU_PLAYER_WRITE_UNKNOWN','MVU_PLAYER_PENDING','READ_OR_PERMISSION_UNKNOWN',
-      'OWNED_PARTIAL_OR_ORPHAN'].includes(code)?503:409
+      'OWNED_PARTIAL_OR_ORPHAN','SCHEMA_PLAYER_PENDING','SCHEMA_PLAYER_HISTORY_UNPROVEN'].includes(code)?503:409
 
 /** The session resolver supplies the actual current owner. Expected hashes are
  * comparison data; the client cannot supply a receipt, intent or write token. */

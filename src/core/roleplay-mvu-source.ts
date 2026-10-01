@@ -303,8 +303,15 @@ function captureSource(deps: MvuSourceDeps, sessionId: string, selectedIndex: nu
   const pointer = deps.readActivePointer(sessionId) as ImportPointer | undefined
   if (!pointer || !idPattern.test(pointer.importId) || !isHash(pointer.normalizedSha256)
     || !isHash(pointer.coverageSha256) || typeof pointer.transactionId !== 'string') fail('SOURCE_INVALID','/source')
-  requireKeys(pointer as unknown as JsonObject,['importId','sourceRecordSessionId','normalizedSha256',
-    'transactionId','coverageSha256','activatedAt'],'/source','SOURCE_INVALID')
+  const pointerKeys=['importId','sourceRecordSessionId','normalizedSha256',
+    'transactionId','coverageSha256','activatedAt']
+  requireKeys(pointer as unknown as JsonObject,currentMaterial?[...pointerKeys,'inheritedFrom']:pointerKeys,
+    '/source','SOURCE_INVALID')
+  const inheritedFrom=(pointer as ImportPointer&{inheritedFrom?:unknown}).inheritedFrom
+  if(currentMaterial&&Object.hasOwn(pointer,'inheritedFrom')
+    &&(typeof inheritedFrom!=='string'||!idPattern.test(inheritedFrom)||inheritedFrom===sessionId)) {
+    fail('SOURCE_INVALID','/source/inheritedFrom')
+  }
   if (!idPattern.test(pointer.transactionId)) fail('SOURCE_INVALID','/source')
   const owner = pointer.sourceRecordSessionId ?? sessionId
   if (!idPattern.test(owner)) fail('SOURCE_INVALID','/source')
@@ -338,14 +345,22 @@ function captureSource(deps: MvuSourceDeps, sessionId: string, selectedIndex: nu
   for (const digest of digests) {
     if (!digest || !['branch','cards','worldbook','rules','status','opening'].includes(digest.tableName)
       || !isHash(digest.sha256)) fail('MATERIAL_INVALID','/material')
-    if (currentMaterial && ((digest.tableName === 'branch' && digest.key !== `${sessionId}__settings`)
-      || (digest.tableName === 'rules' && digest.key !== `${sessionId}__spec`)
-      || (digest.tableName === 'status' && digest.key !== `${sessionId}__spec`)
-      || (digest.tableName === 'opening' && digest.key !== `${sessionId}__scene`))) {
+    let materialKey=digest.key
+    if(currentMaterial) {
+      // The original import keeps ancestor-owned activation keys. Verified
+      // inheritance retains their suffixes in this session's own material;
+      // neither current reads nor schema frames may borrow ancestor rows.
+      if(typeof materialKey!=='string'||!materialKey.startsWith(`${owner}__`))fail('MATERIAL_INVALID','/material')
+      materialKey=`${sessionId}__${materialKey.slice(owner.length+2)}`
+    }
+    if (currentMaterial && ((digest.tableName === 'branch' && materialKey !== `${sessionId}__settings`)
+      || (digest.tableName === 'rules' && materialKey !== `${sessionId}__spec`)
+      || (digest.tableName === 'status' && materialKey !== `${sessionId}__spec`)
+      || (digest.tableName === 'opening' && materialKey !== `${sessionId}__scene`))) {
       fail('MATERIAL_INVALID','/material')
     }
-    read(digest.tableName as MvuSourceTable,digest.key,currentMaterial ? undefined : digest.sha256)
-    activationRows.add(`${digest.tableName}:${digest.key}`)
+    read(digest.tableName as MvuSourceTable,materialKey,currentMaterial ? undefined : digest.sha256)
+    activationRows.add(`${digest.tableName}:${materialKey}`)
   }
   const versions = deps.recordVersionsFor(sessionId)
   const cards = hashMap(versions.cards,'/settings/cards'), worldbook = hashMap(versions.worldbook,'/settings/worldbook')

@@ -3,7 +3,9 @@ import type {MvuJsonObject,MvuJsonValue} from '../core/tavern-mvu-initvar.js'
 import type {MvuPlayerEditExpected,MvuPlayerEditRequest,MvuPlayerEditResponse,MvuStateObservation}
   from '../core/roleplay-mvu-player-types.js'
 
-type Ready=Extract<MvuStateObservation,{kind:'ready'}>
+type Ready=Extract<MvuStateObservation,{kind:'ready'|'schema-ready'}>
+const isReady=(state:MvuStateObservation|undefined):state is Ready=>
+  state?.kind==='ready'||state?.kind==='schema-ready'
 interface Draft {
   base:Ready
   baseKey:string
@@ -32,7 +34,7 @@ const expected=(state:Ready):MvuPlayerEditExpected=>({
   stateSnapshotSha256:state.snapshot.stateSnapshotSha256,observedNativeSeq:state.observedNativeSeq,
 })
 const baseKey=(state:Ready)=>JSON.stringify(expected(state))
-const observationKey=(state:MvuStateObservation|undefined)=>state?.kind==='ready'
+const observationKey=(state:MvuStateObservation|undefined)=>isReady(state)
   ? JSON.stringify([state.sessionId,baseKey(state),state.canEdit,state.editBlockCode])
   : JSON.stringify(state??null)
 const pointer=(parts:readonly string[])=>'/'+parts.map(part=>part.replace(/~/g,'~0').replace(/\//g,'~1')).join('/')
@@ -51,6 +53,13 @@ function reason(code?:string) {
   if(/CONFLICT|CHANGED|STALE|BASE_MISMATCH/.test(code??''))return '数值或剧情已在其他操作中变化。草稿已保留，请刷新后比较并合并。'
   if(/DELETED|NOT_STORY|BRANCH|SESSION_INACTIVE/.test(code??''))return '这条世界线当前不可编辑，请重新打开或切换到可用版本。'
   return '当前数值无法确认，暂不能保存。请刷新检查；程序不会用旧数值继续写入。'
+}
+function schemaRefusalReason(code?:string) {
+  if(code==='SCHEMA_VALIDATION_FAILED')return '这次修改不符合角色卡的数值规则。'
+  if(code==='SCHEMA_OUTPUT_DATA_INVALID'||code==='SCHEMA_ROOT_OBJECT_REQUIRED')return '角色卡规则产生了无效数值。'
+  if(code==='SCHEMA_OUTPUT_LIMIT')return '角色卡规则产生的数值超过了保存限额。'
+  if(code==='MANUAL_COMMANDS_UNSUPPORTED')return '角色卡在手动保存时产生了额外命令，这项规则暂不支持。'
+  return '角色卡规则没有接受这次修改。'
 }
 
 /** Validate editor JSON as data, preserving types before serialization. The
@@ -108,10 +117,10 @@ export function createMvuStatePanel({React,invalidateState,fetch=globalThis.fetc
     },[sessionId,inputKey])
     const rerender=()=>setVersion(value=>value+1)
     let draft=drafts.get(sessionId)
-    if(state?.kind==='ready'&&(!draft||(!draft.dirty&&!draft.operation&&draft.baseKey!==baseKey(state)))) {
+    if(isReady(state)&&(!draft||(!draft.dirty&&!draft.operation&&draft.baseKey!==baseKey(state)))) {
       draft=makeDraft(state);drafts.set(sessionId,draft)
     }
-    const ready=state?.kind==='ready'?state:undefined
+    const ready=isReady(state)?state:undefined
     const stale=!!draft&&(!ready||draft.baseKey!==baseKey(ready))
     const pending=draft?.operation?.state==='pending'
     const uncertain=draft?.operation?.state==='unknown'
@@ -168,7 +177,18 @@ export function createMvuStatePanel({React,invalidateState,fetch=globalThis.fetc
         }
         if(result.operation&&result.operation.operationId!==request.operationId
           ||result.numericalState&&result.numericalState.sessionId!==sessionId)throw Error('保存回应不属于当前操作。')
-        if(result.ok&&response.ok&&result.operation&&['updated','no-update'].includes(result.operation.outcome)) {
+        if(result.ok&&response.ok&&result.operation?.outcome==='refused') {
+          // A completed refusal is a terminal result. Keep the editable draft,
+          // release this operation ID, and do not offer an unknown-write retry.
+          active.operation=undefined
+          active.message=schemaRefusalReason(result.operation.refusalCode)+'已保留原数值，请调整草稿后再保存。'
+          if(isReady(result.numericalState)&&result.numericalState.snapshot.valuesSha256===active.base.snapshot.valuesSha256) {
+            active.base=copy(result.numericalState);active.baseKey=baseKey(active.base)
+          }
+          if(result.numericalState)setReplyObservation({sessionId,inputKey,observation:copy(result.numericalState)})
+          invalidateState(sessionId)
+          await refreshSafely()
+        } else if(result.ok&&response.ok&&result.operation&&['updated','no-update'].includes(result.operation.outcome)) {
           setReplyObservation(undefined)
           setNotice({sessionId,text:result.operation.replayed?'上次保存已确认，不会重复修改。':
             result.operation.outcome==='no-update'?'数值没有变化。':'数值已保存。'})
@@ -253,13 +273,11 @@ export function createMvuStatePanel({React,invalidateState,fetch=globalThis.fetc
       ready?h('p',null,`当前数值 · 第 ${ready.snapshot.revision} 版`):null,
       draft?.dirty&&!needsCompare?h('p',{role:'status'},'下方修改是尚未保存的草稿。'):null,
       !state?h('p',{role:'status'},'尚未读取到当前世界线的数值，请刷新检查。'):
-        state.kind==='schema-ready'?h('p',{role:'status'},'作者规则初始化已确认，当前可查看数值，暂不支持手动修改。'):
-        state.kind!=='ready'?h('p',{role:'status'},reason(state.code)):
+        !isReady(state)?h('p',{role:'status'},reason(state.code)):
         !state.canEdit?h('p',{role:'status'},reason(state.editBlockCode)):null,
+      state?.kind==='schema-ready'&&state.canEdit?h('p',{role:'status'},'保存时会按角色卡规则校验数值。'):null,
       needsCompare&&draft?.dirty?h('p',{role:'status'},'剧情或数值版本已变化。当前显示已读取的数值，旧草稿保留供比较，不能直接覆盖。'):null,
       table,
-      state?.kind==='schema-ready'?h('details',null,h('summary',null,'查看完整数值'),
-        h('pre',{style:{overflow:'auto',maxHeight:'260px'}},JSON.stringify(state.values,null,2))):null,
       limited?h('p',null,'字段较多，部分内容请在对象或列表的 JSON 编辑区查看；完整数值在高级区。'):null,
       ready?h('details',null,h('summary',null,'高级：完整数值 JSON'),
         h('textarea',{'aria-label':'完整数值 JSON',disabled:!editable,rows:6,

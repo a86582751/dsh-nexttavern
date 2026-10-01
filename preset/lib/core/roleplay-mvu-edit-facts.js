@@ -3,6 +3,7 @@
  * This owner can deny authority and repair denial receipts; it never replays a
  * patch, changes a numerical head, or creates Native completion/permission. */
 import { recordSha256, sha256 } from './roleplay-data.js';
+import { validateMvuSchemaStoryRoot } from './roleplay-mvu-schema-story-types.js';
 export const mvuEditInvalidationKey = (sid, eventSha256) => `${sid}__mvu-edit-invalidation-${eventSha256}`;
 const prefix = (sid) => `${sid}__mvu-edit-invalidation-`;
 const hash = (v) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
@@ -75,7 +76,15 @@ function basisValid(input) {
         fail('NUMERICAL_EDIT_BASIS_UNKNOWN');
     exact(basis, ['kind', 'sourceSha256', 'root', 'editFloorSeq']);
     const root = basis.root;
-    if ('encoding' in root) {
+    if ('openingEventId' in root) {
+        try {
+            validateMvuSchemaStoryRoot(root);
+        }
+        catch {
+            fail('NUMERICAL_EDIT_BASIS_UNKNOWN');
+        }
+    }
+    else if ('encoding' in root) {
         exact(root, ['schemaVersion', 'encoding', 'derivedEventId', 'derivedEventSha256', 'derivedHeadSha256', 'basisSha256']);
         if (root.schemaVersion !== 1 || root.encoding !== 'native-mvu-derived-state-root-v1'
             || ![root.derivedEventId, root.derivedEventSha256, root.derivedHeadSha256, root.basisSha256].every(hash)) {
@@ -130,7 +139,9 @@ export function createRoleplayMvuEditFacts(deps) {
     function expected(sid, edit, events, basis) {
         if (edit.seq < basis.editFloorSeq)
             fail('NUMERICAL_EDIT_BEFORE_BASIS');
-        const descriptor = { schemaVersion: 1, encoding: 'native-mvu-edit-invalidation-v1',
+        const schema = 'openingEventId' in basis.root;
+        const descriptor = { schemaVersion: schema ? 2 : 1,
+            encoding: schema ? 'native-mvu-schema-edit-invalidation-v2' : 'native-mvu-edit-invalidation-v1',
             sessionId: sid, sourceSha256: basis.sourceSha256, root: clone(basis.root), editFloorSeq: basis.editFloorSeq,
             ...editIdentity(edit, events) };
         return { ...descriptor, recordSha256: recordSha256(descriptor) };

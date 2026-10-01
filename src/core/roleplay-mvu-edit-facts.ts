@@ -3,22 +3,24 @@
  * patch, changes a numerical head, or creates Native completion/permission. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import type {MvuStateRoot} from './roleplay-mvu-state.js'
+import {validateMvuSchemaStoryRoot} from './roleplay-mvu-schema-story-types.js'
+import type {MvuSchemaStoryRoot} from './roleplay-mvu-schema-story-types.js'
 import type {ReadBranchSession,StoryEvent} from './roleplay-worldline-types.js'
 
 export type MvuEditBasisFacts = {kind:'none'}
-  | {kind:'verified';sourceSha256:string;root:MvuStateRoot;editFloorSeq:number}
+  | {kind:'verified';sourceSha256:string;root:MvuStateRoot|MvuSchemaStoryRoot;editFloorSeq:number}
   | {kind:'unknown';code?:string}
 export type MvuEditInvalidation = {kind:'clear'}
   | {kind:'invalidated';code:'NUMERICAL_EDIT_INVALIDATED';fromSeq:number}
   | {kind:'unknown';code:string}
 export interface MvuEditInvalidationRecord {
-  schemaVersion:1
-  encoding:'native-mvu-edit-invalidation-v1'
+  schemaVersion:1|2
+  encoding:'native-mvu-edit-invalidation-v1'|'native-mvu-schema-edit-invalidation-v2'
   sessionId:string
   /** The writer's observation hash at persistence time. Historical Source
    * descriptors only deny authority; they never prove a snapshot or grant. */
   sourceSha256:string
-  root:MvuStateRoot
+  root:MvuStateRoot|MvuSchemaStoryRoot
   editFloorSeq:number
   targetSeq:number
   editSeq:number
@@ -91,7 +93,9 @@ function basisValid(input:MvuEditBasisFacts):MvuEditBasisFacts {
   if(basis.kind!=='verified'||!hash(basis.sourceSha256)||!seq(basis.editFloorSeq))fail('NUMERICAL_EDIT_BASIS_UNKNOWN')
   exact(basis,['kind','sourceSha256','root','editFloorSeq'])
   const root=basis.root
-  if('encoding' in root) {
+  if('openingEventId' in root) {
+    try {validateMvuSchemaStoryRoot(root)}catch {fail('NUMERICAL_EDIT_BASIS_UNKNOWN')}
+  }else if('encoding' in root) {
     exact(root,['schemaVersion','encoding','derivedEventId','derivedEventSha256','derivedHeadSha256','basisSha256'])
     if(root.schemaVersion!==1||root.encoding!=='native-mvu-derived-state-root-v1'
       ||![root.derivedEventId,root.derivedEventSha256,root.derivedHeadSha256,root.basisSha256].every(hash)) {
@@ -140,7 +144,9 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
   }
   function expected(sid:string,edit:StoryEvent,events:readonly StoryEvent[],basis:Extract<MvuEditBasisFacts,{kind:'verified'}>) {
     if(edit.seq<basis.editFloorSeq)fail('NUMERICAL_EDIT_BEFORE_BASIS')
-    const descriptor={schemaVersion:1 as const,encoding:'native-mvu-edit-invalidation-v1' as const,
+    const schema='openingEventId' in basis.root
+    const descriptor={schemaVersion:schema?2 as const:1 as const,
+      encoding:schema?'native-mvu-schema-edit-invalidation-v2' as const:'native-mvu-edit-invalidation-v1' as const,
       sessionId:sid,sourceSha256:basis.sourceSha256,root:clone(basis.root),editFloorSeq:basis.editFloorSeq,
       ...editIdentity(edit,events)}
     return {...descriptor,recordSha256:recordSha256(descriptor)}

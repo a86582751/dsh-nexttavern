@@ -24,6 +24,14 @@ export interface MvuSchemaStoryRoot {
   openingPlanSha256:string
   realmEpoch:string
   programSha256:string
+  derived?:{
+    schemaVersion:1
+    encoding:'native-mvu-schema-derived-root-v1'
+    eventId:string
+    eventSha256:string
+    headSha256:string
+    basisSha256:string
+  }
 }
 export interface MvuSchemaStoryHeadV2 {
   schemaVersion:2
@@ -37,7 +45,25 @@ export interface MvuSchemaStoryHeadV2 {
   planSha256:string
   valuesSha256:string
 }
-export type MvuSchemaNumericalHead=MvuSchemaOpeningHeadV2|MvuSchemaStoryHeadV2
+export interface MvuSchemaPlayerHeadV1 extends Omit<MvuSchemaStoryHeadV2,'schemaVersion'|'encoding'> {
+  schemaVersion:1
+  encoding:'native-mvu-schema-player-head-v1'
+}
+export interface MvuSchemaDerivedHeadV1 {
+  schemaVersion:1
+  encoding:'native-mvu-schema-derived-head-v1'
+  sessionId:string
+  sourceSha256:string
+  revision:1
+  eventId:string
+  eventSha256:string
+  planSha256:string
+  basisSha256:string
+  valuesSha256:string
+}
+export type MvuSchemaNumericalHead=MvuSchemaOpeningHeadV2|MvuSchemaStoryHeadV2|MvuSchemaPlayerHeadV1|MvuSchemaDerivedHeadV1
+export const isMvuSchemaGenesisHead=(head:MvuSchemaNumericalHead)=>head.encoding==='mvu-schema-opening-head-v2'
+  ||head.encoding==='native-mvu-schema-derived-head-v1'
 export interface MvuSchemaStoryFrontier {nativeCut:number;tailSha256:string;frontierSha256:string}
 export interface MvuSchemaNumericalSnapshotV2 {
   schemaVersion:2
@@ -176,10 +202,20 @@ function fact(value:object,field:string) {
   const {[field]:checksum,...body}=value as Record<string,unknown>
   if(!hash(checksum)||recordSha256(body)!==checksum)fail()
 }
-function root(value:MvuSchemaStoryRoot) {
-  exact(value,['openingEventId','openingEventSha256','openingHeadSha256','openingPlanSha256','realmEpoch','programSha256'])
-  if(!Object.values(value).every(hash))fail()
+export function validateMvuSchemaStoryRoot(input:MvuSchemaStoryRoot):MvuSchemaStoryRoot {
+  const value=freezeMvuSchemaStoryData(input)
+  const keys=['openingEventId','openingEventSha256','openingHeadSha256','openingPlanSha256','realmEpoch','programSha256']
+  exact(value,keys,['derived'])
+  if(!keys.every(key=>hash(value[key as keyof MvuSchemaStoryRoot])))fail()
+  if(value.derived!==undefined) {
+    const derived=value.derived
+    exact(derived,['schemaVersion','encoding','eventId','eventSha256','headSha256','basisSha256'])
+    if(derived.schemaVersion!==1||derived.encoding!=='native-mvu-schema-derived-root-v1'
+      ||![derived.eventId,derived.eventSha256,derived.headSha256,derived.basisSha256].every(hash))fail()
+  }
+  return value
 }
+const root=validateMvuSchemaStoryRoot
 function frontier(value:MvuSchemaStoryFrontier) {
   exact(value,['nativeCut','tailSha256','frontierSha256'])
   if(!integer(value.nativeCut)||!hash(value.tailSha256)||!hash(value.frontierSha256))fail()
@@ -187,10 +223,18 @@ function frontier(value:MvuSchemaStoryFrontier) {
 export function validateMvuSchemaStoryHead(input:MvuSchemaNumericalHead):MvuSchemaNumericalHead {
   const head=freezeMvuSchemaStoryData(input)
   if(head.encoding==='mvu-schema-opening-head-v2')return validateMvuSchemaOpeningHead(head)
+  if(head.encoding==='native-mvu-schema-derived-head-v1') {
+    exact(head,['schemaVersion','encoding','sessionId','sourceSha256','revision','eventId','eventSha256',
+      'planSha256','basisSha256','valuesSha256'])
+    if(head.schemaVersion!==1||!id(head.sessionId,64)||head.revision!==1
+      ||![head.sourceSha256,head.eventId,head.eventSha256,head.planSha256,head.basisSha256,head.valuesSha256].every(hash))fail()
+    return head
+  }
   exact(head,['schemaVersion','encoding','sessionId','sourceSha256','root','revision','eventId',
     'eventSha256','planSha256','valuesSha256'])
   root(head.root)
-  if(head.schemaVersion!==2||head.encoding!=='native-mvu-schema-story-head-v2'||!id(head.sessionId,64)
+  if(!(head.schemaVersion===2&&head.encoding==='native-mvu-schema-story-head-v2'
+    ||head.schemaVersion===1&&head.encoding==='native-mvu-schema-player-head-v1')||!id(head.sessionId,64)
     ||!integer(head.revision,2)||![head.sourceSha256,head.eventId,head.eventSha256,head.planSha256,head.valuesSha256].every(hash))fail()
   return head
 }
@@ -206,8 +250,12 @@ export function validateMvuSchemaNumericalSnapshot(input:MvuSchemaNumericalSnaps
     ||recordSha256(cloneSchemaValues(value.values))!==value.valuesSha256)fail()
   cloneSchemaValues(value.context)
   if(head.encoding==='mvu-schema-opening-head-v2') {
-    if(head.eventId!==value.root.openingEventId||head.eventSha256!==value.root.openingEventSha256
+    if(value.root.derived||head.eventId!==value.root.openingEventId||head.eventSha256!==value.root.openingEventSha256
       ||recordSha256(head)!==value.root.openingHeadSha256||head.planSha256!==value.root.openingPlanSha256)fail()
+  } else if(head.encoding==='native-mvu-schema-derived-head-v1') {
+    const derived=value.root.derived
+    if(!derived||derived.eventId!==head.eventId||derived.eventSha256!==head.eventSha256
+      ||derived.headSha256!==recordSha256(head)||derived.basisSha256!==head.basisSha256)fail()
   } else if(!same(head.root,value.root))fail()
   return value
 }

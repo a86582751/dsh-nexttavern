@@ -3,7 +3,7 @@ import { jsonResponse } from './roleplay-state.js';
 const statusFor = (code) => !code ? 200 : code === 'MVU_PLAYER_DATA_LIMIT' ? 413
     : code === 'MVU_PLAYER_DATA_INVALID' ? 400 : code === 'MVU_PLAYER_SESSION_INACTIVE' ? 404
         : code === 'MVU_PLAYER_BUSY' ? 423 : ['MVU_PLAYER_WRITE_UNKNOWN', 'MVU_PLAYER_PENDING', 'READ_OR_PERMISSION_UNKNOWN',
-            'OWNED_PARTIAL_OR_ORPHAN'].includes(code) ? 503 : 409;
+            'OWNED_PARTIAL_OR_ORPHAN', 'SCHEMA_PLAYER_PENDING', 'SCHEMA_PLAYER_HISTORY_UNPROVEN'].includes(code) ? 503 : 409;
 /** The session resolver supplies the actual current owner. Expected hashes are
  * comparison data; the client cannot supply a receipt, intent or write token. */
 export function registerMvuPlayerRoutes({ ctx, resolveRoleplaySession, player, observe }) {
