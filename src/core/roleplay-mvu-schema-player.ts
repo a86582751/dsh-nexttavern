@@ -25,10 +25,11 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
   // gates supplied by Root prohibit cold retries even when this set is gone.
   const attempted=new Set<string>()
   function makePlan(operation:MvuSchemaPlayerOperationV1,marker:SchemaNativeMarkerRef,
-    currentFrame:SchemaStorySourceFrame,initialCut:SourceNativeCutFacts,clockEpochMs=0):MvuSchemaPlayerPlanV1 {
+    currentFrame:SchemaStorySourceFrame,initialCut:SourceNativeCutFacts,clockEpochMs=0,executorVersion:1|2=1):MvuSchemaPlayerPlanV1 {
     const input=freezeMvuSchemaPlayerData({operation,marker,currentFrame,initialCut,clockEpochMs})
-    return validateMvuSchemaPlayerPlan(sealMvuSchemaPlayerFact({schemaVersion:1 as const,
-      encoding:'native-mvu-schema-player-plan-v1' as const,...input,realmEpoch:input.operation.base.root.realmEpoch,
+    const version=executorVersion===2?{schemaVersion:2 as const,encoding:'native-mvu-schema-player-plan-v2' as const,executorVersion:2 as const}:
+      {schemaVersion:1 as const,encoding:'native-mvu-schema-player-plan-v1' as const}
+    return validateMvuSchemaPlayerPlan(sealMvuSchemaPlayerFact({...version,...input,realmEpoch:input.operation.base.root.realmEpoch,
       programSha256:input.operation.base.root.programSha256,randomSeed:recordSha256({operation:input.operation,marker:input.marker}),
       selectors:deriveMvuSchemaPlayerSelectors(input.operation,input.marker)},'planSha256'))
   }

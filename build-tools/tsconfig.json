@@ -40,10 +40,16 @@
         "../development/session-format/src/*.ts"
       ],
       "dsh-nexttavern-mvu-schema-runtime": [
-        "../development/mvu-schema-runtime/src/index.ts"
+        "../development/schema-executors/v1/compat/mvu-schema-runtime/src/index.ts"
       ],
       "dsh-nexttavern-mvu-schema-runtime/*": [
-        "../development/mvu-schema-runtime/src/*.ts"
+        "../development/schema-executors/v1/compat/mvu-schema-runtime/src/*.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v2": [
+        "../development/mvu-schema-runtime-v2/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v2/*": [
+        "../development/mvu-schema-runtime-v2/src/*.ts"
       ]
     },
     "newLine": "lf"

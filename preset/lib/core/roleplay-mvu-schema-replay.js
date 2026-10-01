@@ -4,6 +4,8 @@
 import { recordSha256 } from './roleplay-data.js';
 import { cloneSchemaData } from './tavern-mvu-schema-data.js';
 import { MVU_SCHEMA_BOUNDS } from './tavern-mvu-schema-types.js';
+import { schemaTraceRequestedStep } from './roleplay-mvu-schema-executor-types.js';
+import { validateSchemaTraceInputV2, validateSchemaGuestOutputV2, validateSchemaEvaluationInputV2 } from './tavern-mvu-schema-runner-v2.js';
 import { createRoleplayMvuSchemaJournal, freezeSchemaJournalData, sealSchemaJournalRecord, validateSchemaSourceCut, validateSchemaAnchor } from './roleplay-mvu-schema-journal.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const id = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -31,7 +33,7 @@ function fullRecords(program, input, evaluation, runner) {
     const value = cloneSchemaData(evaluation, MVU_SCHEMA_BOUNDS.inputBytes + MVU_SCHEMA_BOUNDS.outputBytes + 131072, { nodes: MVU_SCHEMA_BOUNDS.evaluationNodes, depth: MVU_SCHEMA_BOUNDS.evaluationDepth });
     exact(value, ['schemaVersion', 'encoding', 'programSha256', 'runner', 'input', 'inputSha256', 'records', 'evaluationSha256']);
     const { evaluationSha256, ...body } = value;
-    if (value.schemaVersion !== 1 || value.encoding !== 'native-mvu-author-schema-trace-evaluation-v1'
+    if (value.schemaVersion !== input.schemaVersion || value.encoding !== `native-mvu-author-schema-trace-evaluation-v${input.schemaVersion}`
         || value.programSha256 !== program.programSha256 || !same(value.runner, runner.identity) || !same(value.input, input)
         || value.inputSha256 !== recordSha256(input) || evaluationSha256 !== recordSha256(body))
         fail('SCHEMA_REPLAY_MISMATCH');
@@ -42,7 +44,10 @@ function fullRecords(program, input, evaluation, runner) {
     return value.records.map((record, index) => {
         exact(record, ['eventId', 'ordinal', 'previousStepSha256', 'output', 'frameSha256', 'stepSha256']);
         const { frameSha256, ...header } = record, frame = frames[index].frame;
-        const step = { ...header, frame }, { stepSha256, ...content } = step;
+        const step = { ...header, frame };
+        const { stepSha256, ...content } = step;
+        if (input.schemaVersion === 2)
+            validateSchemaGuestOutputV2(step.output, validateSchemaEvaluationInputV2(frame.input));
         if (frameSha256 !== recordSha256(frame) || step.eventId !== frames[index].eventId || step.ordinal !== index + 1
             || step.previousStepSha256 !== previous || stepSha256 !== recordSha256(content)
             || index < input.prefix.length && !same(step, input.prefix[index]))
@@ -52,6 +57,27 @@ function fullRecords(program, input, evaluation, runner) {
     });
 }
 export function createRoleplayMvuSchemaReplay(deps) {
+    const executorVersion = deps.executorVersion ?? 1;
+    function checkExecutor(epoch) {
+        if (![1, 2].includes(executorVersion) || deps.runner.identity.version !== executorVersion
+            || deps.compiler.identity.version !== executorVersion)
+            fail('SCHEMA_IMPLEMENTATION_CHANGED');
+        if (epoch && (epoch.schemaVersion !== executorVersion || epoch.program.compiler.version !== executorVersion
+            || epoch.program.bridge.version !== executorVersion || !same(epoch.runner, deps.runner.identity))) {
+            fail('SCHEMA_IMPLEMENTATION_CHANGED');
+        }
+    }
+    function traceInput(program, epoch, prefix, requestedStep) {
+        checkExecutor(epoch);
+        const trace = { schemaVersion: executorVersion, encoding: `native-mvu-author-schema-trace-input-v${executorVersion}`,
+            realmEpoch: epoch.realmEpoch, loadFrame: epoch.loadFrame, prefix, requestedStep };
+        if (executorVersion === 2)
+            validateSchemaTraceInputV2(program, trace);
+        else if (epoch.loadFrame.schemaVersion !== 1 || requestedStep.frame.input.schemaVersion !== 1
+            || prefix.some(step => step.frame.input.schemaVersion !== 1))
+            fail('SCHEMA_REPLAY_VERSION_MISMATCH');
+        return trace;
+    }
     const journal = createRoleplayMvuSchemaJournal({ table: deps.table, markers: deps.markers });
     const active = new Map();
     const ownerGenerations = new WeakMap();
@@ -69,9 +95,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
         const steps = ready.steps.map(item => item.step), last = steps.at(-1);
         if (!last)
             fail('SCHEMA_REALM_HISTORY_UNPROVEN');
-        const input = { schemaVersion: 1, encoding: 'native-mvu-author-schema-trace-input-v1',
-            realmEpoch: ready.epoch.realmEpoch, loadFrame: ready.epoch.loadFrame, prefix: steps.slice(0, -1),
-            requestedStep: { eventId: last.eventId, frame: last.frame } };
+        const input = traceInput(program, ready.epoch, steps.slice(0, -1), schemaTraceRequestedStep(last.eventId, last.frame, last.frame.input));
         const result = await deps.runner.evaluateTrace(program, input, signal);
         signal.throwIfAborted();
         if (disposed)
@@ -103,6 +127,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
                 fail('SCHEMA_PERMISSION_REVOKED');
         }
         try {
+            checkExecutor();
             scope = await deps.captureOwned(selector);
             if (!scope || !scope.owner || !scope.incarnation || typeof scope.owner !== 'object' || typeof scope.incarnation !== 'object') {
                 fail('SCHEMA_OWNER_UNPROVEN');
@@ -116,6 +141,9 @@ export function createRoleplayMvuSchemaReplay(deps) {
                 requestedStep: freezeSchemaJournalData(scope.requestedStep), sourceNativeCut: validateSchemaSourceCut(scope.sourceNativeCut),
                 inheritedCut: scope.inheritedCut === null ? null : freezeSchemaJournalData(scope.inheritedCut) };
             check('captured');
+            if (scope.loadFrame.schemaVersion !== executorVersion || scope.requestedStep.frame.input.schemaVersion !== executorVersion) {
+                fail('SCHEMA_REPLAY_VERSION_MISMATCH');
+            }
             if (scope.session.id !== selector.sessionId || scope.sourceNativeCut.sessionId !== selector.sessionId
                 || scope.sourceNativeCut.ownerSessionId !== selector.sessionId || !hash(scope.realmEpoch)
                 || !same(scope.sourceNativeCut.anchor, selector.anchor)
@@ -128,6 +156,8 @@ export function createRoleplayMvuSchemaReplay(deps) {
             const original = journal.capture(selector.sessionId, scope.realmEpoch, scope.session.snapshotEvents(), scope.inheritedCut);
             if (original.kind === 'blocked')
                 fail(original.code);
+            if (original.kind === 'ready')
+                checkExecutor(original.epoch);
             if (original.kind === 'ready' && original.steps.some(step => step.dispatch.batchId === selector.batchId)) {
                 fail('SCHEMA_BATCH_ALREADY_EXECUTED');
             }
@@ -136,6 +166,8 @@ export function createRoleplayMvuSchemaReplay(deps) {
             if (compiled.kind !== 'compiled')
                 fail('SCHEMA_COMPILATION_REFUSED');
             const program = compiled.program;
+            if (program.compiler.version !== executorVersion || program.bridge.version !== executorVersion)
+                fail('SCHEMA_IMPLEMENTATION_CHANGED');
             if (!same(compilationInput(program), scope.authorInput))
                 fail('SCHEMA_AUTHOR_SOURCE_MISMATCH');
             const verified = await deps.compiler.verifyProgram(program, scope.signal);
@@ -143,7 +175,8 @@ export function createRoleplayMvuSchemaReplay(deps) {
             if (!verified)
                 fail('SCHEMA_PROGRAM_UNPROVEN');
             const epoch = original.kind === 'ready' ? original.epoch : sealSchemaJournalRecord({
-                schemaVersion: 1, encoding: 'native-mvu-schema-epoch-v1', sessionId: selector.sessionId,
+                schemaVersion: executorVersion, encoding: executorVersion === 1 ? 'native-mvu-schema-epoch-v1' : 'native-mvu-schema-epoch-v2',
+                sessionId: selector.sessionId,
                 realmEpoch: scope.realmEpoch, program, runner: deps.runner.identity, loadFrame: scope.loadFrame,
                 loadAnchorSha256: recordSha256({ programSha256: program.programSha256, realmEpoch: scope.realmEpoch, loadFrame: scope.loadFrame })
             });
@@ -156,8 +189,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
                 check('history-verified');
             }
             const prefix = original.kind === 'ready' ? original.steps.map(item => item.step) : [];
-            const trace = { schemaVersion: 1, encoding: 'native-mvu-author-schema-trace-input-v1', realmEpoch: scope.realmEpoch,
-                loadFrame: epoch.loadFrame, prefix, requestedStep: scope.requestedStep };
+            const trace = traceInput(program, epoch, prefix, scope.requestedStep);
             // Check aggregate trace size before dispatch. Prefix is never truncated
             // to fit limits because doing so would silently change retained closures.
             cloneSchemaData(trace, MVU_SCHEMA_BOUNDS.inputBytes);
@@ -172,8 +204,9 @@ export function createRoleplayMvuSchemaReplay(deps) {
                 return result;
             });
             check('epoch-written');
-            const dispatch = sealSchemaJournalRecord({ schemaVersion: 1,
-                encoding: 'native-mvu-schema-dispatch-v1', sessionId: selector.sessionId, realmEpoch: scope.realmEpoch,
+            const dispatch = sealSchemaJournalRecord({ schemaVersion: executorVersion,
+                encoding: executorVersion === 1 ? 'native-mvu-schema-dispatch-v1' : 'native-mvu-schema-dispatch-v2',
+                sessionId: selector.sessionId, realmEpoch: scope.realmEpoch,
                 batchId: selector.batchId, ordinal: prefix.length + 1, epoch: epochRef,
                 previousTailSha256: original.kind === 'ready' ? original.tailSha256 : epoch.loadAnchorSha256,
                 requestedStep: scope.requestedStep, sourceNativeCut: scope.sourceNativeCut });
@@ -205,8 +238,9 @@ export function createRoleplayMvuSchemaReplay(deps) {
                 fail(evaluated.diagnostics[0]?.code ?? 'SCHEMA_EXECUTION_UNAVAILABLE');
             const steps = fullRecords(program, trace, evaluated.evaluation, deps.runner), step = steps.at(-1);
             const { frame: completedFrame, ...completedReceipt } = step;
-            const completion = sealSchemaJournalRecord({ schemaVersion: 1,
-                encoding: 'native-mvu-schema-completion-v1', sessionId: selector.sessionId, realmEpoch: scope.realmEpoch,
+            const completion = sealSchemaJournalRecord({ schemaVersion: executorVersion,
+                encoding: executorVersion === 1 ? 'native-mvu-schema-completion-v1' : 'native-mvu-schema-completion-v2',
+                sessionId: selector.sessionId, realmEpoch: scope.realmEpoch,
                 batchId: selector.batchId, dispatch: dispatchRef, dispatchMarker: dispatchMarker, runner: deps.runner.identity,
                 step: { ...completedReceipt, frameSha256: recordSha256(completedFrame) } });
             const completionRef = await deps.withSourceBoundary(scope, async () => {
@@ -255,8 +289,9 @@ export function createRoleplayMvuSchemaReplay(deps) {
         catch (error) {
             let code = codeOf(error);
             if (scope && (dispatchRef || epochWritten) && !pairFlushed) {
-                const unavailable = sealSchemaJournalRecord({ schemaVersion: 1,
-                    encoding: 'native-mvu-schema-unavailable-v1', sessionId: selector.sessionId, realmEpoch: scope.realmEpoch,
+                const unavailable = sealSchemaJournalRecord({ schemaVersion: executorVersion,
+                    encoding: executorVersion === 1 ? 'native-mvu-schema-unavailable-v1' : 'native-mvu-schema-unavailable-v2',
+                    sessionId: selector.sessionId, realmEpoch: scope.realmEpoch,
                     batchId: selector.batchId, dispatch: dispatchRef ?? null, sourceNativeCut: scope.sourceNativeCut, code });
                 try {
                     await deps.withSourceBoundary(scope, () => journal.put(unavailable));
@@ -277,6 +312,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
         try {
             if (disposed)
                 fail('SCHEMA_REPLAY_DISPOSED');
+            checkExecutor();
             const value = freezeSchemaJournalData(selector);
             exact(value, ['sessionId', 'realmEpoch', 'nativeCut']);
             if (!id(value.sessionId) || !hash(value.realmEpoch) || !Number.isSafeInteger(value.nativeCut) || value.nativeCut < 0)
@@ -293,6 +329,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
             const ready = journal.captureFrozen(value.sessionId, value.realmEpoch, events, frozen.records);
             if (ready.kind !== 'ready')
                 fail(ready.code);
+            checkExecutor(ready.epoch);
             if (!same(ready.epoch.runner, deps.runner.identity))
                 fail('SCHEMA_IMPLEMENTATION_CHANGED');
             const keyFor = (captured) => recordSha256({ generation, selector: value,

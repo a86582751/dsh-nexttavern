@@ -9,6 +9,7 @@ import {readInputCompletion} from './roleplay-input-completion.js'
 import {inputSnapshotReferenceCurrent} from './roleplay-preparation.js'
 import {createRoleplayMvuSchemaJournal} from './roleplay-mvu-schema-journal.js'
 import {createRoleplayMvuSchemaReplay} from './roleplay-mvu-schema-replay.js'
+import {schemaTraceRequestedStep} from './roleplay-mvu-schema-executor-types.js'
 import {createRoleplayMvuSchemaStory} from './roleplay-mvu-schema-story.js'
 import {validateMvuSchemaOpeningIntent,validateMvuSchemaOpeningEvent,validateMvuSchemaOpeningHead,
   verifyMvuSchemaOpeningFacts} from './roleplay-mvu-schema-opening-types.js'
@@ -22,7 +23,7 @@ import {readMvuSchemaInheritedStoryFacts,verifyMvuSchemaInheritedOpeningFacts}
   from './roleplay-mvu-schema-prefix-facts.js'
 import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
 import type {NativeInputAdmissionAgentV2} from '@deepseek-ai/dsh-agent-loop'
-import type {MvuSchemaRuntime} from 'dsh-nexttavern-mvu-schema-runtime'
+import type {OwnedMvuSchemaExecutor,SchemaExecutorIdentityTuple} from './roleplay-mvu-schema-executor-types.js'
 import type {mvuSchemaMarkers} from 'dsh-nexttavern-session-format/mvu-schema-marker'
 import type {InputCompletionScope} from './roleplay-input-completion.js'
 import type {InputClosingView,InputObservation} from './roleplay-input-preparation.js'
@@ -31,9 +32,8 @@ import type {createRoleplayMvuSchemaSource,SchemaFrozenOriginal,SchemaStorySourc
 import type {SchemaJournalReady,SourceNativeCutFacts} from './roleplay-mvu-schema-journal.js'
 import type {SchemaOwnedScope,SchemaBoundary,SchemaExecutionSelector,SchemaExecutionAssociation,
   HistoricalCutSelector} from './roleplay-mvu-schema-replay.js'
-import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlanV2,MvuSchemaStoryPhase,
+import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlan,MvuSchemaStoryPhase,
   MvuSchemaStoryLive,MvuSchemaStoryPublicationBoundary} from './roleplay-mvu-schema-story-types.js'
-import type {MvuSchemaEvaluationInput} from './tavern-mvu-schema-types.js'
 import type {MvuSchemaDerivedGenesis,MvuSchemaFrozenPrefixV1,MvuSchemaPrefixSeed}
   from './roleplay-mvu-schema-derived-types.js'
 import type {SchemaJournalFrozenCut} from './roleplay-mvu-schema-journal.js'
@@ -52,7 +52,7 @@ export interface MvuSchemaStoryCoreDeps {
   active(session:Session):boolean
   sourceSha256(sid:string):string
   closingView(lease:object,scope:InputCompletionScope):InputClosingView|undefined
-  protectedRuntime():Promise<MvuSchemaRuntime>
+  protectedRuntime(tuple?:SchemaExecutorIdentityTuple):Promise<OwnedMvuSchemaExecutor>
   withSourceLock<T>(sid:string,action:()=>Promise<T>):Promise<T>
   flush(session:Session):Promise<boolean>
   markers:typeof mvuSchemaMarkers
@@ -83,7 +83,8 @@ interface History {
 interface View {session:Session;agent:NativeInputAdmissionAgentV2|undefined;history:History;frame:SchemaStorySourceFrame}
 interface Owner {
   lease:object;view:InputClosingView;original:SchemaFrozenOriginal;frame:SchemaStorySourceFrame
-  base:MvuSchemaNumericalSnapshotV2;plan:MvuSchemaStoryPlanV2;abort:AbortController
+  base:MvuSchemaNumericalSnapshotV2;plan:MvuSchemaStoryPlan;abort:AbortController
+  driver:ReturnType<typeof createRoleplayMvuSchemaReplay>
   inheritedCut:SchemaJournalFrozenCut|null
   token:object;inSource:boolean;baseline:Map<string,string>;associations:SchemaExecutionAssociation[]
   scope?:SchemaOwnedScope;lastLive?:MvuSchemaStoryLive;publication?:MvuSchemaStoryPublicationBoundary
@@ -97,7 +98,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   const journal=createRoleplayMvuSchemaJournal({table:deps.status as never,markers:deps.markers})
   const views=new Map<string,View>(),owners=new Map<string,Owner>(),scopes=new WeakMap<object,Owner>()
   const sourceLeases=new Map<string,Owner>()
-  let disposed=false,driver:ReturnType<typeof createRoleplayMvuSchemaReplay>|undefined
+  let disposed=false
+  const drivers=new Map<string,ReturnType<typeof createRoleplayMvuSchemaReplay>>()
   const all=(session:Session)=>session.snapshotEvents()
   const currentSession=(session:Session)=>!disposed&&deps.session(session.id)===session&&deps.active(session)
   const frontier=(ready:SchemaJournalReady)=>({nativeCut:ready.steps.at(-1)!.completionMarker.seq+1,
@@ -201,6 +203,13 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   }
   function readyFor(sid:string,realmEpoch:string,events:readonly SessionEvent[],
     inheritedCut:SchemaJournalFrozenCut|null,historical=false):SchemaJournalReady {
+    // Without inherited rows the preliminary inventory has no merge conflicts.
+    // Keep the other path's raw inherited future-row conflict checks intact.
+    if(!historical&&inheritedCut===null) {
+      const ready=journal.capture(sid,realmEpoch,events)
+      if(ready.kind!=='ready')fail(ready.code)
+      return ready
+    }
     const rows=new Map(inheritedCut?.records.map(row=>[row.key,row])??[])
     if(inheritedCut)journal.validateFrozen(inheritedCut,events.slice(0,inheritedCut.nativeCut))
     for(const row of journal.inventory(sid)) {
@@ -275,9 +284,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     try {
       const prefix=validateMvuSchemaFrozenPrefix(input),sid=prefix.sessionId
       if(events.length!==prefix.journal.nativeCut||!deps.source.originalFactsCurrent(prefix.original))return false
-      const frozen=journal.validateFrozen(prefix.journal,events)
-      const ready=journal.captureFrozen(sid,prefix.original.realmEpoch,events,frozen.records)
-      if(ready.kind!=='ready')return false
+      const ready=journal.validateFrozenReady(prefix.journal,events)
+      if(ready.frozen.sessionId!==sid||ready.frozen.realmEpoch!==prefix.original.realmEpoch)return false
       let initial:MvuSchemaNumericalSnapshotV2,ordinal=1
       if(prefix.seed.kind==='opening') {
         const seed=prefix.seed
@@ -293,10 +301,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         if(!genesis||genesis.sessionId!==sid||genesis.basisKey!==prefix.seed.basisKey
           ||genesis.basisSha256!==prefix.seed.basisSha256||!same(genesis.original,prefix.original)
           ||genesis.inheritedCut.nativeCut!==prefix.inheritedEventCount)return false
-        const inherited=journal.validateFrozen(genesis.inheritedCut,events.slice(0,prefix.inheritedEventCount))
-        const prior=journal.captureFrozen(inherited.sessionId,inherited.realmEpoch,
-          events.slice(0,prefix.inheritedEventCount),inherited.records)
-        if(prior.kind!=='ready')return false
+        const prior=journal.validateFrozenReady(genesis.inheritedCut,events.slice(0,prefix.inheritedEventCount))
         ordinal=prior.steps.length
         initial=snapshot({...genesis.snapshot,sourceSha256:prefix.sourceSha256})
       }
@@ -326,7 +331,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(!session||!currentSession(session)||!Number.isSafeInteger(nativeCut)||nativeCut<1
       ||nativeCut>all(session).length)fail('SCHEMA_DERIVED_PARENT_UNPROVEN')
     const history=factual(session,nativeCut,true)
-    const {driver:replay}=await engine()
+    const {driver:replay}=await engine(history.ready)
     const verified=await replay.verifyHistorical({sessionId:sid,realmEpoch:history.original.realmEpoch,nativeCut})
     if(verified.kind!=='verified')fail(verified.code)
     if(!currentSession(session)||factual(session,nativeCut,true).digest!==history.digest) {
@@ -361,7 +366,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(deps.derivedRequired?.(session.id)) {
       if(!derived||derived.original.realmEpoch!==selector.realmEpoch)fail('SCHEMA_DERIVED_GENESIS_UNPROVEN')
       const ready=readyFor(session.id,selector.realmEpoch,prefix,derived.inheritedCut,true)
-      await deps.protectedRuntime()
+      await protectedFor(ready)
       return {authorInput:derived.original.authorInput,frozen:ready.frozen,events:all(session)}
     }
     const matches=[...deps.branch.entries()].filter(([key,row])=>key.startsWith(`${session.id}__opening-choice-`)
@@ -374,7 +379,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(ready.kind!=='ready')fail(ready.code)
     const original=deps.source.readFrozenOriginal(intent.preparation,ready,prefix)
     // Re-admit protected bytes for every waiter, including a cache hit.
-    await deps.protectedRuntime()
+    await protectedFor(ready)
     return {authorInput:original.authorInput,frozen:ready.frozen,events:all(session)}
   }
   function rowsCurrent(owner:Owner):boolean {
@@ -434,18 +439,35 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       try {return await action()}finally {owner.inSource=false;if(sourceLeases.get(sid)===owner)sourceLeases.delete(sid)}
     })
   }
-  async function engine() {
-    const runtime=await deps.protectedRuntime()
+  function identityTuple(ready:SchemaJournalReady):SchemaExecutorIdentityTuple {
+    const epoch=ready.epoch
+    return {compiler:epoch.program.compiler,bridge:epoch.program.bridge,libraries:epoch.program.libraries,runner:epoch.runner}
+  }
+  async function protectedFor(ready:SchemaJournalReady):Promise<OwnedMvuSchemaExecutor> {
+    const tuple=identityTuple(ready),runtime=await deps.protectedRuntime(tuple)
     if(disposed)fail('SCHEMA_RUNTIME_DISPOSED')
-    driver??=createRoleplayMvuSchemaReplay({table:deps.status as never,compiler:runtime.compiler,runner:runtime.runner,
-      markers:deps.markers,captureHistoricalCut,flush:deps.flush,captureOwned:selector=>{
-        const owner=owners.get(selector.sessionId)
-        if(!owner?.scope||!owner.inSource||!ownerCurrent(owner)
-          ||owner.scope.requestedStep.eventId!==selector.batchId)fail('SCHEMA_OWNER_UNPROVEN')
-        return owner.scope
-      },checkOwned,withSourceBoundary:(scope,action)=>{
-        const owner=scopes.get(scope.owner);if(!owner)fail('SCHEMA_OWNER_UNPROVEN');return withLease(owner,action)
-      }})
+    if(runtime.executorVersion!==ready.epoch.schemaVersion||runtime.implementationKey!==recordSha256(tuple)
+      ||!same(tuple,{compiler:runtime.compiler.identity,bridge:runtime.bridge,libraries:runtime.libraries,runner:runtime.runner.identity})) {
+      fail('SCHEMA_IMPLEMENTATION_CHANGED')
+    }
+    return runtime
+  }
+  async function engine(ready:SchemaJournalReady) {
+    const runtime=await protectedFor(ready)
+    let driver=drivers.get(runtime.implementationKey)
+    if(!driver) {
+      driver=createRoleplayMvuSchemaReplay({table:deps.status as never,executorVersion:runtime.executorVersion,
+        compiler:runtime.compiler,runner:runtime.runner,
+        markers:deps.markers,captureHistoricalCut,flush:deps.flush,captureOwned:selector=>{
+          const owner=owners.get(selector.sessionId)
+          if(!owner?.scope||owner.driver!==driver||!owner.inSource||!ownerCurrent(owner)
+            ||owner.scope.requestedStep.eventId!==selector.batchId)fail('SCHEMA_OWNER_UNPROVEN')
+          return owner.scope
+        },checkOwned,withSourceBoundary:(scope,action)=>{
+          const owner=scopes.get(scope.owner);if(!owner)fail('SCHEMA_OWNER_UNPROVEN');return withLease(owner,action)
+        }})
+      drivers.set(runtime.implementationKey,driver)
+    }
     return {runtime,driver}
   }
   async function preflight(sid:string,signal?:AbortSignal):Promise<void> {
@@ -453,7 +475,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const session=deps.session(sid)
     if(!session||!currentSession(session))fail('SCHEMA_SESSION_INACTIVE')
     const agent=deps.agent(session),history=factual(session),frame=deps.source.captureFrame(history.original,sid)
-    const {driver:replay}=await engine()
+    const {driver:replay}=await engine(history.ready)
     const verified=await replay.verifyHistorical({sessionId:sid,realmEpoch:history.original.realmEpoch,
       nativeCut:history.ready.frozen.nativeCut},signal)
     signal?.throwIfAborted()
@@ -504,7 +526,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         realmEpoch:original.realmEpoch,programSha256:original.programSha256},editFloorSeq:native.turnEndSeq+1}
     }catch {return undefined}
   }
-  function ownerFor(closing:object,plan:MvuSchemaStoryPlanV2):Owner|undefined {
+  function ownerFor(closing:object,plan:MvuSchemaStoryPlan):Owner|undefined {
     const owner=owners.get(plan.base.sessionId)
     return owner&&owner.lease===closing&&same(owner.plan,plan)?owner:undefined
   }
@@ -529,9 +551,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         owner.scope={owner:owner.token,incarnation:owner.view.agent,session,
           signal:AbortSignal.any([owner.view.signal,owner.abort.signal]),authorInput:owner.original.authorInput,
           realmEpoch:plan.realmEpoch,loadFrame:ready.epoch.loadFrame,inheritedCut:owner.inheritedCut,sourceNativeCut:cut,
-          requestedStep:{eventId:selector.batchId,frame:{ownerSessionId:session.id,
-            sourceNativeCutSha256:recordSha256(cut),material:owner.frame.material,input}}}
-        const {driver:replay}=await engine(),result=await replay.execute(selector)
+          requestedStep:schemaTraceRequestedStep(selector.batchId,{ownerSessionId:session.id,
+            sourceNativeCutSha256:recordSha256(cut),material:owner.frame.material},input)}
+        const {driver:replay}=await engine(ready)
+        if(owner.driver!==replay)fail('SCHEMA_IMPLEMENTATION_CHANGED')
+        const result=await replay.execute(selector)
         if(result.kind==='completed') {owner.lastLive=result;owner.associations.push(result.association)}
         return result
       })
@@ -554,7 +578,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       // Only the final token still represents the current frontier. Earlier
       // tokens are intentionally stale and are covered by the full pinned chain.
       owner.associations.pop()
-      try {return !!driver?.checkEvidence(lastLive.evidence,{association:lastLive.association,output:lastLive.output})}
+      try {return owner.driver.checkEvidence(lastLive.evidence,{association:lastLive.association,output:lastLive.output})}
       finally {owner.associations.push(lastLive.association)}
     }})
   async function prepareCompletion(scope:InputCompletionScope,closing?:object) {
@@ -578,23 +602,29 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       nativeCut:events.length,nativePrefixSha256:recordSha256(events),sourceSnapshotSha256:frame.snapshotSha256,
       materialSha256:frame.materialSha256,stopGeneration:scope.stopGeneration,anchor:selectorsAnchor}
     const plan=transaction.makePlan(scope,canonical,base,frame,history.original.realmEpoch,history.original.programSha256,
-      initialCut,events[scope.receipt.turnEndSeq]!.time)
+      initialCut,events[scope.receipt.turnEndSeq]!.time,history.ready.epoch.schemaVersion)
     if(owners.has(sid))fail('SCHEMA_STORY_OWNER_EXISTS')
     const baseline=new Map([...deps.status.entries()].filter(([key])=>key.startsWith(`${sid}__mvu-`)
       &&!key.startsWith(`${sid}__mvu-schema-`)).map(([key,value])=>[key,recordSha256(value)]))
     // Existing complete story facts remain immutable during this publication.
     for(const [key,value] of deps.status.entries())if(key.startsWith(`${sid}__mvu-state-schema-story-`))baseline.set(key,recordSha256(value))
-    const owner:Owner={lease:closing,view,original:history.original,frame,base,plan,inheritedCut:history.inheritedCut,abort:new AbortController(),
+    const {driver}=await engine(history.ready)
+    if(!view.current()||factual(session).digest!==history.digest)fail('SCHEMA_STORY_BASIS_CHANGED')
+    if(owners.has(sid))fail('SCHEMA_STORY_OWNER_EXISTS')
+    const owner:Owner={lease:closing,view,original:history.original,frame,base,plan,driver,
+      inheritedCut:history.inheritedCut,abort:new AbortController(),
       token:Object.freeze({}),inSource:false,baseline,associations:[]}
     owners.set(sid,owner);scopes.set(owner.token,owner)
     return plan
   }
   function releaseClosing(lease:object):void {
     for(const [sid,owner] of owners)if(owner.lease===lease) {
-      owner.abort.abort();driver?.invalidateOwner(owner.token);owners.delete(sid);views.delete(sid)
+      owner.abort.abort()
+      for(const driver of drivers.values())driver.invalidateOwner(owner.token)
+      owners.delete(sid);views.delete(sid)
     }
   }
-  function verifyConsumed(scope:InputCompletionScope,plan:MvuSchemaStoryPlanV2,settlement:unknown):boolean {
+  function verifyConsumed(scope:InputCompletionScope,plan:MvuSchemaStoryPlan,settlement:unknown):boolean {
     const view=views.get(plan.base.sessionId)
     if(!view||!viewCurrent(view)||!transaction.verifyConsumed(scope,plan,settlement))return false
     try {
@@ -605,7 +635,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   }
   return {preflight,observation,readSnapshot,readEditBasis,captureManualBasis,captureHistoricalCut,captureForkPrefix,verifyForkPrefix,
     prepareCompletion,releaseClosing,verifyConsumed,
-    publishCompletion:(scope:InputCompletionScope,plan:MvuSchemaStoryPlanV2,closing?:object)=>closing
+    publishCompletion:(scope:InputCompletionScope,plan:MvuSchemaStoryPlan,closing?:object)=>closing
       ?transaction.publish(scope,plan,closing):Promise.resolve({kind:'blocked' as const,code:'SCHEMA_OWNER_UNPROVEN'}),
     verifySettlement:transaction.verifySettlement,
     invalidateSession(sid:string):void {
@@ -615,6 +645,12 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       for(const owner of owners.values())if(owner.view.agent===agent)releaseClosing(owner.lease)
       for(const [sid,view] of views)if(view.agent===agent)views.delete(sid)
     },
-    dispose():void {disposed=true;for(const owner of owners.values())releaseClosing(owner.lease);views.clear();driver?.dispose()},
+    dispose():void {
+      disposed=true
+      for(const owner of owners.values())releaseClosing(owner.lease)
+      views.clear()
+      for(const driver of drivers.values())driver.dispose()
+      drivers.clear()
+    },
   }
 }

@@ -6,7 +6,7 @@ import type {InputPreparationCurrency,InputPreparationTable} from './roleplay-in
 import type {NativeCompletedInputWorkReceiptV1,NativeCompletedInputWorkAcknowledgementV1}
   from '@deepseek-ai/dsh-agent-loop'
 import type {MvuStateTerminalIntent,MvuNumericalSnapshot,MvuStatePublisherSettlement,MvuStateUpdatePreparation} from './roleplay-mvu-state.js'
-import type {MvuSchemaStoryPlanV2,MvuSchemaStorySettlementV2} from './roleplay-mvu-schema-story-types.js'
+import type {MvuSchemaStoryPlan,MvuSchemaStorySettlementV2} from './roleplay-mvu-schema-story-types.js'
 
 export interface InputCompletionScope {
   currency:InputPreparationCurrency
@@ -17,7 +17,7 @@ export interface InputCompletionScope {
 }
 export type InputCompletionPlan=
   | {kind:'numerical';intent:MvuStateTerminalIntent;base:MvuNumericalSnapshot;proposal:MvuStateUpdatePreparation}
-  | {kind:'schema-numerical';plan:MvuSchemaStoryPlanV2}
+  | {kind:'schema-numerical';plan:MvuSchemaStoryPlan}
   | {kind:'management-transition';descriptor:Record<string,unknown>}
 export type InputCompletionPublication=
   | {kind:'acknowledged';settlement:MvuStatePublisherSettlement|MvuSchemaStorySettlementV2|Record<string,unknown>}
