@@ -4267,6 +4267,22 @@
       "sha256": "cc90ea42884d81e406eaa4efb4d56bb3bb84d56deb01d3dab2da3af0ba0b0508"
     },
     {
+      "id": "bundled-library-assembly-typescript",
+      "source": "src/operations/bundled-library-assembly.mts"
+    },
+    {
+      "id": "bundled-library-assembly",
+      "source": "lib/operations/bundled-library-assembly.mjs"
+    },
+    {
+      "id": "nexttavern-product-locale-en",
+      "source": "locale/en.json"
+    },
+    {
+      "id": "nexttavern-product-locale-zh-cn",
+      "source": "locale/zh-CN.json"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -12654,7 +12670,8 @@
         "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json",
-        "src/operations/public-transaction.mts"
+        "src/operations/public-transaction.mts",
+        "src/operations/bundled-library-assembly.mts"
       ],
       "kind": "typescript-module",
       "entry": "src/operations/product-assembly.mts",
@@ -12782,6 +12799,23 @@
         "development/ui-workspace/src/css-modules.d.ts"
       ],
       "typeContext": "ui-compat-client"
+    },
+    {
+      "artifact": "bundled-library-assembly",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/operations/tool-resolution.mts",
+        "src/operations/test-temp.mts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/public-transaction.mts",
+        "src/operations/bundled-library-assembly.mts"
+      ],
+      "kind": "typescript-module",
+      "entry": "src/operations/bundled-library-assembly.mts",
+      "id": "bundled-library-assembly-build"
     }
   ],
   "typeScript": {

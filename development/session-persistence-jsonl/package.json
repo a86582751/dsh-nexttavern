@@ -30,5 +30,8 @@
     "@deepseek-ai/node-addon-system": "0.1.2",
     "@deepseek-ai/schemastery": "3.18.4",
     "@deepseek-ai/dsh-session-format-v3-to-v4": "0.1.7-rc.2"
-  }
+  },
+  "bundleDependencies": [
+    "koffi"
+  ]
 }

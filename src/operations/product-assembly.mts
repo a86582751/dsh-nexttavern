@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto'
 import {execFileSync} from 'node:child_process'
 import {assembleOwnedDependency, regularPackageFiles} from './owned-dependency.mjs'
 import {contained as inside} from './public-transaction.mjs'
+import {materializeBundledLibraries} from './bundled-library-assembly.mjs'
 
 interface ProductRecipe {
   packageArtifact: string
@@ -18,6 +19,8 @@ interface ProductRecipe {
   bundles?: {layout: string}[]
   /** Exact library versions every owned package's ordinary dependencies resolve to. */
   bundleLibraries?: Record<string, string>
+  /** Root SDKs with install hooks travel prebuilt, including their locked runtime graph. */
+  rootBundledLibraries?: {libraries: Record<string, string>; lockArtifact: string}
   /**
    * Platform targets the product ships native companions for. A vendored
    * library that declares platform packages (for example koffi's loaders)
@@ -214,9 +217,15 @@ export function assembleProduct(options: {
   const names = owned.map(row => row.pkg.name).sort()
   if (new Set(names).size !== names.length) throw Error('Duplicate product package')
   const declared = Object.keys(metadata.dependencies ?? {}).filter(name => name.startsWith('dsh-nexttavern-')).sort()
+  const rootLibraries = plan.product.rootBundledLibraries?.libraries ?? {}
+  const bundledNames = [...names, ...Object.keys(rootLibraries)].sort()
   if (JSON.stringify(names) !== JSON.stringify(declared)
-    || JSON.stringify(names) !== JSON.stringify([...(metadata.bundleDependencies ?? [])].sort())) {
+    || JSON.stringify(bundledNames) !== JSON.stringify([...(metadata.bundleDependencies ?? [])].sort())) {
     throw Error('Root dependencies and registered private packages differ')
+  }
+  for (const [name, version] of Object.entries(rootLibraries)) {
+    if (name.startsWith('@deepseek-ai/') || name.startsWith('dsh-nexttavern-')
+      || metadata.dependencies?.[name] !== version) throw Error('Unpinned root bundled SDK: ' + name)
   }
   for (const {pkg} of owned) if (metadata.dependencies?.[pkg.name] !== pkg.version) {
     throw Error('Unpinned product dependency: ' + pkg.name)
@@ -233,6 +242,13 @@ export function assembleProduct(options: {
   const moduleRoot = inside(packageRoot, 'node_modules')
   if (fs.existsSync(moduleRoot)) throw Error('Candidate dependencies must be absent before assembly')
   fs.mkdirSync(moduleRoot)
+  const bundledLibraries = plan.product.rootBundledLibraries
+    ? materializeBundledLibraries({
+      libraryRoot: options.libraryRoot ?? '', moduleRoot,
+      lockFile: inside(repo, artifact(plan.product.rootBundledLibraries.lockArtifact).source),
+      libraries: rootLibraries,
+      admit: options.admitVendoredFile ?? (() => {throw Error('Root SDKs require public vendor admission')}),
+    }).packages : []
   const packages = owned.map(({pkg, source, assembly, publicMetadata, resources}) => {
     const output = inside(moduleRoot, pkg.name)
     if (assembly) {
@@ -267,6 +283,21 @@ export function assembleProduct(options: {
     }
     const excluded = vendorLibraries(output, pkg.name, pkg.dependencies ?? {}, options.libraryRoot,
       plan.product.bundleLibraries ?? {}, options.admitVendoredFile, plan.product.bundlePlatforms ?? [])
+    if (Object.keys(rootLibraries).some(name => pkg.bundleDependencies?.includes(name))) {
+      // Protected packages are later pinned outside the product directory.
+      // Carry the same locked closure with their SDK so relinking never asks
+      // the registry for a scripted dependency or borrows a product ancestor.
+      for (const row of bundledLibraries) for (const file of row.files) {
+        const source = inside(moduleRoot, row.path + '/' + file.path)
+        const target = inside(output, 'node_modules/' + row.path + '/' + file.path)
+        const bytes = fs.readFileSync(source)
+        if (fs.existsSync(target) && !fs.readFileSync(target).equals(bytes)) {
+          throw Error('Owned bundled SDK conflicts with root closure: ' + pkg.name + ' -> ' + row.path + '/' + file.path)
+        }
+        fs.mkdirSync(path.dirname(target), {recursive: true})
+        fs.writeFileSync(target, bytes)
+      }
+    }
     const files = regularPackageFiles(output).sort().map(file => ({path: file,
       sha256: createHash('sha256').update(fs.readFileSync(inside(output, file))).digest('hex')}))
     return {name: pkg.name, version: pkg.version, files, excludedVendoredFiles: excluded}
@@ -296,8 +327,11 @@ export function assembleProduct(options: {
       files: regularPackageFiles(directory).map(file => ({path: file,
         sha256: createHash('sha256').update(fs.readFileSync(path.join(directory, file))).digest('hex')}))}
   })
+  // This additive schema-1 field inventories SDK bytes without turning them
+  // into owned profile plugins or changing their runtime singleton ownership.
   const inventory = {schemaVersion: 1, productVersion: metadata.version,
-    packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles}
+    packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles,
+    rootBundledLibraries: rootLibraries, bundledLibraries}
   const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
     .map(item => ({package: row.name, ...item})))
   save(path.join(packageRoot, 'package.json'), metadata)

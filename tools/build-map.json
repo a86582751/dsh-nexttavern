@@ -3682,6 +3682,15 @@
       "outputs": [
         "development/ui-workspace/lib/client/shortcuts.js"
       ]
+    },
+    {
+      "artifact": "bundled-library-assembly",
+      "source": "src/operations/bundled-library-assembly.mts",
+      "banner": "runtime/alpha3/src/operations/bundled-library-assembly.mts",
+      "primaryOutput": "lib/operations/bundled-library-assembly.mjs",
+      "outputs": [
+        "lib/operations/bundled-library-assembly.mjs"
+      ]
     }
   ],
   "compilerPlan": {
@@ -7645,6 +7654,22 @@
       {
         "id": "ui-browser-vendor-deepseek-ai-dsh-api-workspace-controller-lib-types-default-workspace-js",
         "source": "build-tools/node_modules/@deepseek-ai/dsh-api-workspace-controller/lib/types/default-workspace.js"
+      },
+      {
+        "id": "bundled-library-assembly-typescript",
+        "source": "src/operations/bundled-library-assembly.mts"
+      },
+      {
+        "id": "bundled-library-assembly",
+        "source": "lib/operations/bundled-library-assembly.mjs"
+      },
+      {
+        "id": "nexttavern-product-locale-en",
+        "source": "locale/en.json"
+      },
+      {
+        "id": "nexttavern-product-locale-zh-cn",
+        "source": "locale/zh-CN.json"
       }
     ],
     "builds": [
@@ -15973,7 +15998,8 @@
           "lib/operations/build-typescript.mjs",
           "build-tools/package.json",
           "build-tools/package-lock.json",
-          "src/operations/public-transaction.mts"
+          "src/operations/public-transaction.mts",
+          "src/operations/bundled-library-assembly.mts"
         ],
         "kind": "typescript-module",
         "entry": "src/operations/product-assembly.mts",
@@ -16109,6 +16135,24 @@
         ],
         "typeContext": "ui-compat-client",
         "banner": "runtime/alpha3/compat/ui-workspace/src/client/shortcuts.ts"
+      },
+      {
+        "artifact": "bundled-library-assembly",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/operations/tool-resolution.mts",
+          "src/operations/test-temp.mts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/public-transaction.mts",
+          "src/operations/bundled-library-assembly.mts"
+        ],
+        "kind": "typescript-module",
+        "entry": "src/operations/bundled-library-assembly.mts",
+        "id": "bundled-library-assembly-build",
+        "banner": "runtime/alpha3/src/operations/bundled-library-assembly.mts"
       }
     ],
     "typeScript": {

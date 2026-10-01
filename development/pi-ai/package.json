@@ -87,5 +87,8 @@
     "node": ">=22.19.0"
   },
   "private": true,
-  "homepage": "https://github.com/a86582751/pi"
+  "homepage": "https://github.com/a86582751/pi",
+  "bundleDependencies": [
+    "@google/genai"
+  ]
 }

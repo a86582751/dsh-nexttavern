@@ -362,7 +362,8 @@
         "site/*",
         "windows-setup*",
         "linux-setup*",
-        ".gitignore"
+        ".gitignore",
+        "bundled-library-assembly*"
       ]
     },
     {
@@ -3162,7 +3163,10 @@
         "bundled-package-bootstrap-typescript",
         "protected-packages-typescript",
         "public-transaction-typescript",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "nexttavern-product-package",
+        "compat-pi-ai-package-json",
+        "compat-session-persistence-jsonl-package-json"
       ],
       "requires": [
         "compiler"
@@ -3959,6 +3963,24 @@
     },
     {
       "id": "test:plugin-product-assembly.test.mts",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "inputs": [],
+      "cache": false,
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "timeoutMs": 300000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:bundled-library-assembly.test.mts",
       "action": "test",
       "modules": [
         "operations"
