@@ -376,6 +376,9 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
   }
   return {prepare,executeInitialization,releaseExecution,withPublicationBoundary,checkBeforeOpening,openingAgent,
     checkPublication,sourceCurrent,verifyHistorical,
+    /** Shared protected runtime lifecycle for the actual closing-work owner.
+     * Access to compiler/runner objects does not grant a publication lease. */
+    protectedRuntime:async()=>{if(disposed)fail('SCHEMA_RUNTIME_DISPOSED');return assets.get()},
     invalidateAgent(agent:object):void {for(const owner of owners.values())if(owner.agent===agent)releaseOwner(owner)},
     invalidateSession(sid:string):void {const owner=owners.get(sid);if(owner)releaseOwner(owner)},
     async dispose():Promise<void> {disposed=true;for(const owner of owners.values())releaseOwner(owner);replay?.dispose();await assets.dispose()},

@@ -492,6 +492,12 @@ export async function apply(ctx, config = {}) {
         userValues: (...args) => userValues(...args),
         selectedStatusRecord: (...args) => selectedStatusRecord(...args),
         readNumericalState: sessionId => {
+            if (mvuOpening.hasSchemaOpening(sessionId)) {
+                const snapshot = mvuOpening.readSchemaSnapshot(sessionId);
+                if (!snapshot)
+                    throw Error('MVU_SCHEMA_NUMERICAL_STATE_UNAVAILABLE');
+                return snapshot;
+            }
             const result = mvuState.readNumericalAuthority(sessionId);
             if (result.kind !== 'ready')
                 throw new Error(`MVU_NUMERICAL_STATE_${result.code}`);
@@ -1210,16 +1216,23 @@ export async function apply(ctx, config = {}) {
     async function observeNumericalState(id) {
         if (!mvuOpening.hasSchemaOpening(id))
             return mvuPlayer.observe(id);
-        const result = await mvuOpening.readSchemaInitialization(id);
         const session = ctx.sessions.get(id), observedNativeSeq = session ? eventsOf(session).at(-1)?.seq ?? -1 : -1;
         const basis = { schemaVersion: 1, sessionId: id, observedNativeSeq, canEdit: false };
-        if (result.kind !== 'ready')
-            return { ...basis, kind: 'blocked', code: result.code };
-        return { ...basis, kind: 'schema-ready', values: structuredClone(result.event.plan.values),
-            valuesSha256: result.event.valuesSha256, sourceSha256: mvuOpening.readSourceSha256(id), eventId: result.event.eventId,
+        try {
+            await mvuOpening.preflightSchema(id);
+        }
+        catch (error) {
+            const code = error instanceof Error && /^[A-Z][A-Z0-9_]{0,95}$/.test(error.message) ? error.message : 'SCHEMA_STORY_UNPROVEN';
+            return { ...basis, kind: 'blocked', code };
+        }
+        const snapshot = mvuOpening.readSchemaSnapshot(id);
+        if (!snapshot)
+            return { ...basis, kind: 'blocked', code: 'SCHEMA_STORY_UNPROVEN' };
+        return { ...basis, kind: 'schema-ready', values: structuredClone(snapshot.values),
+            valuesSha256: snapshot.valuesSha256, sourceSha256: snapshot.sourceSha256, eventId: snapshot.currentHead.eventId,
             editBlockCode: 'SCHEMA_MANUAL_NOT_ENABLED' };
     }
-    const completion = createRoleplayMvuStoryCompletion({ table: T.branch, state: mvuState, awaitOwnedCompletion,
+    const completionDeps = { table: T.branch, state: mvuState, awaitOwnedCompletion,
         sourceCurrent: (sid, sourceSha256) => mvuOpening.readSourceSha256(sid) === sourceSha256,
         readCanonical: (sid, turn) => {
             const session = ctx.sessions.get(sid), body = session && canonicalAssistantForTurn(session, turn);
@@ -1323,9 +1336,18 @@ export async function apply(ctx, config = {}) {
                     return false;
                 }
             },
-        }, scope, descriptor), withSourceLock: (id, work) => withImportLock(id, 'input-management-terminal', work), });
+        }, scope, descriptor), withSourceLock: (id, work) => withImportLock(id, 'input-management-terminal', work), };
+    completionDeps.schema = mvuOpening.createSchemaStory({
+        closingView: (lease, scope) => inputOwner?.readClosingView(lease, scope),
+        verifyConsumedScope: scope => inputOwner?.verifyConsumedScope(scope) === true,
+        verifyNative: completionDeps.verifyNative, readCanonical: completionDeps.readCanonical,
+        readConsumedCanonical: completionDeps.readConsumedCanonical, awaitOwnedCompletion,
+    });
+    const completion = createRoleplayMvuStoryCompletion(completionDeps);
     inputOwner = createRoleplayInputPreparation({ table: T.branch, completion,
         observe: (session) => mvuOpening.readInputObservation(session.id),
+        preflightObservation: (session, signal) => mvuOpening.preflightSchema(session.id, signal),
+        onClosingRelease: mvuOpening.releaseSchemaClosing,
         awaitMutationBarrier: mvuPlayer.awaitMutationBarrier, mutationBlockCode: mvuPlayer.mutationBlockCode,
         onMutationStop: (session, notice) => {
             mvuOpening.invalidateSchemaSession(session.id);

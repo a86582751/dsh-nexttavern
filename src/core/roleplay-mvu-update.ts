@@ -29,6 +29,14 @@ export interface MvuUpdateRejection {
   operationIndex?:number
 }
 export type MvuUpdatePreparation={kind:'no-update'}|PreparedMvuUpdate|MvuUpdateRejection
+export interface ParsedMvuUpdate {
+  kind:'parsed'
+  schemaVersion:1
+  protocol:'native-jsonpatch-v1'
+  operations:readonly MvuPatchOperation[]
+  candidateSha256:string
+}
+export type MvuUpdateCandidate={kind:'no-update'}|ParsedMvuUpdate|MvuUpdateRejection
 
 const forbidden=new Set(['__proto__','constructor','prototype'])
 const own=(value:object,key:string)=>Object.prototype.hasOwnProperty.call(value,key)
@@ -278,18 +286,43 @@ function apply(root:MvuJsonObject,op:MvuPatchOperation):MvuJsonObject {
   return valuesObject(result)
 }
 
-export function prepareMvuUpdate(narrative:string,baseValues:MvuJsonObject):MvuUpdatePreparation {
+function updateOperations(narrative:string):unknown[]|undefined {
+  const payload=extract(narrative)
+  if(payload===undefined)return
+  const parsed=strictJson(payload)
+  if(!Array.isArray(parsed))reject('PATCH_ARRAY_REQUIRED')
+  if(!parsed.length)reject('EMPTY_PATCH')
+  if(parsed.length>MVU_UPDATE_BOUNDS.operations)reject('OPERATION_LIMIT')
+  return parsed
+}
+function refusal(error:unknown,operationIndex?:number):MvuUpdateRejection {
+  return {kind:'rejected',schemaVersion:1,code:error instanceof UpdateRefusal?error.code:'UPDATE_INPUT_UNKNOWN',
+    ...(error instanceof UpdateRefusal&&error.pointer!==undefined?{pointer:error.pointer}:{}),
+    ...(operationIndex!==undefined?{operationIndex}:{})}
+}
+/** Schema callbacks may transform the basis of later commands. Parse and
+ * normalize once without applying commands to a premature numerical result. */
+export function parseMvuUpdate(narrative:string):MvuUpdateCandidate {
   let operationIndex:number|undefined
   try {
-    const payload=extract(narrative)
-    if(payload===undefined)return {kind:'no-update'}
-    const parsed=strictJson(payload)
-    if(!Array.isArray(parsed))reject('PATCH_ARRAY_REQUIRED')
-    if(!parsed.length)reject('EMPTY_PATCH')
-    if(parsed.length>MVU_UPDATE_BOUNDS.operations)reject('OPERATION_LIMIT')
+    const parsed=updateOperations(narrative)
+    if(parsed===undefined)return {kind:'no-update'}
+    const operations=parsed.map((raw,index)=>{operationIndex=index;return operation(raw)})
+    const descriptor={schemaVersion:1 as const,protocol:'native-jsonpatch-v1' as const,operations}
+    return {kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)}
+  } catch(error) {return refusal(error,operationIndex)}
+}
+/** The same bounded reducer handles legacy patches and commands remaining
+ * after schema callbacks. Even an empty residual validates the actual values. */
+export function reduceMvuUpdateOperations(baseValues:MvuJsonObject,
+  rawOperations:readonly unknown[]):PreparedMvuUpdate|MvuUpdateRejection {
+  let operationIndex:number|undefined
+  try {
+    if(!Array.isArray(rawOperations))reject('PATCH_ARRAY_REQUIRED')
+    if(rawOperations.length>MVU_UPDATE_BOUNDS.operations)reject('OPERATION_LIMIT')
     const base=valuesObject(baseValues),baseValuesSha256=recordSha256(base),operations:MvuPatchOperation[]=[]
     let values=base
-    for(const [index,raw] of parsed.entries()) {
+    for(const [index,raw] of rawOperations.entries()) {
       operationIndex=index
       const op=operation(raw)
       values=apply(values,op);operations.push(op)
@@ -298,9 +331,11 @@ export function prepareMvuUpdate(narrative:string,baseValues:MvuJsonObject):MvuU
     const descriptor={schemaVersion:1 as const,protocol:'native-jsonpatch-v1' as const,
       operations,baseValuesSha256,valuesSha256}
     return {kind:'prepared',...descriptor,values,proposalSha256:recordSha256(descriptor)}
-  } catch(error) {
-    return {kind:'rejected',schemaVersion:1,code:error instanceof UpdateRefusal?error.code:'UPDATE_INPUT_UNKNOWN',
-      ...(error instanceof UpdateRefusal&&error.pointer!==undefined?{pointer:error.pointer}:{}),
-      ...(operationIndex!==undefined?{operationIndex}:{})}
-  }
+  } catch(error) {return refusal(error,operationIndex)}
+}
+export function prepareMvuUpdate(narrative:string,baseValues:MvuJsonObject):MvuUpdatePreparation {
+  try {
+    const operations=updateOperations(narrative)
+    return operations===undefined?{kind:'no-update'}:reduceMvuUpdateOperations(baseValues,operations)
+  } catch(error) {return refusal(error)}
 }

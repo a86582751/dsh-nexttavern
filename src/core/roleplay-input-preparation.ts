@@ -11,13 +11,21 @@ import type {NativeInputAdmissionAgentV2, NativeInputAdmissionHookV2, NativeInpu
   NativeDurableInputWorkReceiptV1, NativeInputRef, NativePreparationReceiptV1,
   NativeInputStopNoticeV1, NativeInputBlocked, NativeInputLinkV1} from '@deepseek-ai/dsh-agent-loop'
 
+export interface InputClosingView {
+  agent:NativeInputAdmissionAgentV2
+  session:NativeInputAdmissionAgentV2['session']
+  signal:AbortSignal
+  scope:InputCompletionScope
+  current():boolean
+}
+
 export const ROLEPLAY_INPUT_NAMESPACE = 'nexttavern.roleplay.input.v2'
 export interface InputPreparationTable {
   get(key: string): unknown
   put(key: string, value: Record<string, unknown>): Promise<unknown>
   entries(): Iterable<[string, unknown]>
 }
-export type InputHeadRef = {kind: 'numerical-head' | 'plain-absence'; sha256: string}
+export type InputHeadRef = {kind: 'numerical-head' | 'schema-head' | 'plain-absence'; sha256: string}
 export type InputObservation =
   | {kind: 'legacy'; sourceSha256: string; reason: string}
   | {kind: 'management'; sourceSha256: string; reason: string}
@@ -220,10 +228,14 @@ const isWork = (value: unknown, sessionId: string): value is Work => {
 }
 
 export function createRoleplayInputPreparation<Session extends {id: string}>({table, observe, onError,completion,
-  awaitMutationBarrier,mutationBlockCode,onMutationStop}: {
+  awaitMutationBarrier,mutationBlockCode,onMutationStop,preflightObservation,onClosingRelease}: {
   table: InputPreparationTable
   /** Trusted synchronous actual Source/head observation; never model intent. */
   observe(session: Session): InputSourceObservation
+  /** Historical schema execution is verified outside this writer FIFO. The
+   * following synchronous observation still checks the private view currency. */
+  preflightObservation?(session:Session,signal:AbortSignal):Promise<void>
+  onClosingRelease?(lease:object):void
   onError?(error: unknown): void
   completion?:InputCompletionProcessor
   /** Await outside the owner FIFO/Source lock before admitting any new work. */
@@ -235,9 +247,11 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   onMutationStop?(session:Session,notice:NativeInputStopNoticeV1):void
 }) {
   const owners = new WeakMap<object, RoleplayInputBinding>()
+  const closingViews=new WeakMap<object,InputClosingView>()
   const leases = new Map<string, RoleplayInputTransitionLease>()
   const reservationLeases = new Map<string, RoleplayInputTransitionLease>()
   const sessionOwners = new Map<string, object>()
+  const liveRevocations=new Map<string,Set<string>>()
   const terminalOwners=new Map<string,ReturnType<typeof createRoleplayInputCompletion>>()
   // A single writer orders this owner's records. It never invokes Source work
   // or waits Agent idle while holding this chain.
@@ -348,6 +362,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     const reservations = new WeakMap<RoleplayInputTransitionReservation, {work: Work; step: RoleplayInputStep}>()
     const lifecycle = new Map<string, {identity: unknown; receipt: NativeDurableInputWorkReceiptV1}>()
     const pendingRevocations = new Set<string>()
+    liveRevocations.set(sid,pendingRevocations)
     const key = (work: Work) => workKey(sid, work.refs)
     const durable = (work: Work) => table.get(key(work))
     const sameDurable = (work: Work) => equal(durable(work), work)
@@ -477,8 +492,31 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       }
       return undefined
     }
+    let closingGeneration=0
+    const closingOwner={
+      begin(scope:InputCompletionScope,signal?:AbortSignal):object {
+        if(!signal||signal.aborted||terminalStored(scope))fail('INPUT_CLOSING_OWNER_UNPROVEN')
+        const actual=agent.lookupInputCompletion(),admittedGeneration=closingGeneration
+        if(actual.status!=='pending'||!equal(actual.receipt,scope.receipt))fail('INPUT_CLOSING_OWNER_UNPROVEN')
+        const lease=Object.freeze({}),session=agent.session
+        const view:InputClosingView={agent,session,signal,scope:clone(scope),current:()=>{
+          const completionNow=agent.lookupInputCompletion()
+          return live&&!revoked&&!signal.aborted&&closingGeneration===admittedGeneration
+            &&agent.session===session&&sessionOwners.get(sid)===agent&&owners.get(agent)===binding
+            &&!terminalStored(scope)&&completionNow.status==='pending'&&equal(completionNow.receipt,scope.receipt)
+        }}
+        closingViews.set(lease,view)
+        return lease
+      },
+      current(lease:object,scope:InputCompletionScope):boolean {
+        const view=closingViews.get(lease)
+        return !!view&&equal(view.scope,scope)&&view.current()
+      },
+      release(lease:object):void {closingViews.delete(lease);onClosingRelease?.(lease)},
+      revoke():void {closingGeneration++},
+    }
     const terminal=completion?createRoleplayInputCompletion({sessionId:sid,table,enqueue,
-      processor:completion,
+      processor:completion,closing:closingOwner,
       current:()=>hot?.checkpoint&&hot.terminalRequired&&hot.attempt?.prepared&&!hot.stop&&!revoked&&live
         &&!mutationCode(agent.session)
         ? {currency:currencyOf(hot),checkpoint:hot.checkpoint,
@@ -624,7 +662,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         })
         // Preserve the original direct FIFO path when the callbacks are absent.
         // In that case the private wait result is unreachable.
-        if(!awaitMutationBarrier&&!mutationBlockCode)return enter() as Promise<AdmissionDecision>
+        if(!awaitMutationBarrier&&!mutationBlockCode&&!preflightObservation)return enter() as Promise<AdmissionDecision>
         for(;;) {
           if(!live||signal.aborted)return blocked('INPUT_PERMISSION_REVOKED')
           const initialMutation=mutationCode(agent.session)
@@ -635,6 +673,11 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
               report(error)
               return blocked(signal.aborted?'INPUT_PERMISSION_REVOKED':'INPUT_MUTATION_BARRIER_UNKNOWN')
             }
+          }
+          if(!live||signal.aborted)return blocked('INPUT_PERMISSION_REVOKED')
+          if(preflightObservation) {
+            try {await preflightObservation(agent.session,signal)}
+            catch(error) {report(error);return blocked(signal.aborted?'INPUT_PERMISSION_REVOKED':'INPUT_PREFLIGHT_UNPROVEN')}
           }
           if(!live||signal.aborted)return blocked('INPUT_PERMISSION_REVOKED')
           const result=await enter()
@@ -973,6 +1016,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         revoked = true; continuation.close(); currentStep = undefined; unregister(); owners.delete(agent)
         if (hot?.transition) reservationLeases.delete(hot.transition.reservation.reservationId)
         if (sessionOwners.get(sid) === agent) sessionOwners.delete(sid)
+        if(liveRevocations.get(sid)===pendingRevocations)liveRevocations.delete(sid)
         for (const leaseKey of leases.keys()) if (leaseKey.startsWith(`${sid}:`)) leases.delete(leaseKey)
       },
     }
@@ -981,7 +1025,31 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   }
   const api = {
     bind,
+    /** A stored scope/hash or a copied object cannot select this WeakMap. */
+    readClosingView(lease:object,scope:InputCompletionScope):InputClosingView|undefined {
+      const view=closingViews.get(lease)
+      return view&&equal(view.scope,scope)&&view.current()?view:undefined
+    },
     readTerminalAdmissionGate:(sessionId:string)=>readTerminalAdmissionGate(sessionId),
+    /** Historical consumption still needs the exact original work ledger. A
+     * late Native stop cannot be hidden by an already written settled row. */
+    verifyConsumedScope(scope:InputCompletionScope):boolean {
+      try {
+        const sid=scope.receipt.checkpoint.sessionId,row=readInputCompletion(table,sid,scope.currency.preparationId)
+        const matches=records(sid).filter(work=>work.preparationId===scope.currency.preparationId)
+        if(!row||row.status!=='settled'||!equal(row.scope,scope)||matches.length!==1)return false
+        const work=matches[0]!
+        if(liveRevocations.get(sid)?.has(work.preparationId))return false
+        for(const [recordKey,value] of table.entries())if(recordKey.startsWith(`${prefix(sid)}stop-`)) {
+          const tombstone=value as {refs?:NativeInputRef[];notice?:NativeInputStopNoticeV1}
+          if(!Array.isArray(tombstone.refs)||tombstone.notice?.refsCode&&!tombstone.refs.length
+            ||tombstone.refs.some(ref=>work.refs.some(owned=>equal(ref,owned))))return false
+        }
+        return work.terminalRequired===true&&work.status==='active'&&!work.stop
+          &&equal(currencyOfStored(work),scope.currency)&&equal(work.checkpoint,scope.receipt.checkpoint)
+          &&equal(work.refs,scope.receipt.checkpoint.refs)&&equal(work.transition,scope.transition)
+      } catch {return false}
+    },
     checkTerminalPermission(token:object,intent:MvuStateTerminalIntent):boolean {
       return terminalOwners.get(intent.sessionId)?.checkPermission(token,intent)===true
     },

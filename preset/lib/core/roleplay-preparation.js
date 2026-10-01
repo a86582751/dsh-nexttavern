@@ -6,6 +6,7 @@ import { fenceCardContent } from './tavern-card.js';
 import { activeOpeningSource } from './roleplay-import.js';
 import { internalTaskSeqs, isInlinePending } from './tavern-tasks.js';
 import { nativeMvuAuthorRules } from './roleplay-author-context.js';
+import { validateMvuSchemaNumericalSnapshot } from './roleplay-mvu-schema-story-types.js';
 /** Check the exact row written by Phase A, including its original input basis.
  * A valid input credential alone cannot prove that a referenced snapshot still
  * contains the bytes used by an already running task. */
@@ -23,16 +24,28 @@ export function createRoleplayPreparation(deps) {
     const { T, ctx, assertStoryBranchActive, cfg, svc, ensureBranch, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userValues, selectedStatusRecord } = deps;
     function numericalStateFor(sessionId, payload) {
         const input = payload.inputPreparation;
-        if (input?.source.kind !== 'story' || input.source.headRef?.kind !== 'numerical-head')
+        const headRef = input?.source.kind === 'story' ? input.source.headRef : undefined;
+        if (input?.source.kind !== 'story' || !headRef || !['numerical-head', 'schema-head'].includes(headRef.kind))
             return undefined;
         const state = deps.readNumericalState?.(sessionId);
         if (!state)
             throw new Error('MVU_NUMERICAL_STATE_UNAVAILABLE');
         const frozen = structuredClone(state);
+        if (headRef.kind === 'schema-head') {
+            if (frozen.schemaVersion !== 2)
+                throw Error('MVU_SCHEMA_NUMERICAL_STATE_MISMATCH');
+            const checked = validateMvuSchemaNumericalSnapshot(frozen);
+            if (checked.sessionId !== sessionId || checked.sourceSha256 !== input.source.sourceSha256
+                || checked.stateSnapshotSha256 !== headRef.sha256)
+                throw Error('MVU_SCHEMA_NUMERICAL_STATE_MISMATCH');
+            return checked;
+        }
+        if (frozen.schemaVersion !== 1)
+            throw Error('MVU_NUMERICAL_STATE_MISMATCH');
         const { stateSnapshotSha256, ...descriptor } = frozen;
         if (frozen.schemaVersion !== 1 || frozen.encoding !== 'native-mvu-state-snapshot-v1'
             || frozen.sessionId !== sessionId || frozen.sourceSha256 !== input.source.sourceSha256
-            || frozen.headSha256 !== input.source.headRef.sha256
+            || frozen.headSha256 !== headRef.sha256
             || frozen.headSha256 !== recordSha256(frozen.currentHead)
             || frozen.valuesSha256 !== recordSha256(frozen.values)
             || frozen.valuesSha256 !== frozen.currentHead.valuesSha256 || frozen.revision !== frozen.currentHead.revision

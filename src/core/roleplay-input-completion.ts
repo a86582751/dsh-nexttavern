@@ -7,6 +7,7 @@ import type {NativeCompletedInputWorkReceiptV1,NativeCompletedInputWorkAcknowled
   from '@deepseek-ai/dsh-agent-loop'
 import type {MvuStateTerminalIntent,MvuNumericalSnapshot,MvuStatePublisherSettlement} from './roleplay-mvu-state.js'
 import type {MvuUpdatePreparation} from './roleplay-mvu-update.js'
+import type {MvuSchemaStoryPlanV2,MvuSchemaStorySettlementV2} from './roleplay-mvu-schema-story-types.js'
 
 export interface InputCompletionScope {
   currency:InputPreparationCurrency
@@ -17,13 +18,14 @@ export interface InputCompletionScope {
 }
 export type InputCompletionPlan=
   | {kind:'numerical';intent:MvuStateTerminalIntent;base:MvuNumericalSnapshot;proposal:MvuUpdatePreparation}
+  | {kind:'schema-numerical';plan:MvuSchemaStoryPlanV2}
   | {kind:'management-transition';descriptor:Record<string,unknown>}
 export type InputCompletionPublication=
-  | {kind:'acknowledged';settlement:MvuStatePublisherSettlement|Record<string,unknown>}
+  | {kind:'acknowledged';settlement:MvuStatePublisherSettlement|MvuSchemaStorySettlementV2|Record<string,unknown>}
   | {kind:'blocked'|'unknown';code:string}
 export interface InputCompletionProcessor {
-  prepare(scope:InputCompletionScope):Promise<InputCompletionPlan>
-  publish(scope:InputCompletionScope,plan:InputCompletionPlan,token?:object):Promise<InputCompletionPublication>
+  prepare(scope:InputCompletionScope,closing?:object):Promise<InputCompletionPlan>
+  publish(scope:InputCompletionScope,plan:InputCompletionPlan,token?:object,closing?:object):Promise<InputCompletionPublication>
   sourceCurrent(sessionId:string,sourceSha256:string):boolean
   canonicalCurrent(intent:MvuStateTerminalIntent):boolean
   /** Historical facts, independent of the latest head/current Native turn. */
@@ -34,13 +36,13 @@ export interface InputCompletionProcessor {
   verifyConsumed(scope:InputCompletionScope,plan:InputCompletionPlan,settlement:unknown):boolean
 }
 export interface InputCompletionRecord {
-  schemaVersion:1
-  encoding:'roleplay-input-completion-v1'
+  schemaVersion:1|2
+  encoding:'roleplay-input-completion-v1'|'roleplay-input-completion-v2'
   sessionId:string
   scope:InputCompletionScope
   plan:InputCompletionPlan
   status:'pending'|'settled'|'unknown'
-  settlement?:MvuStatePublisherSettlement|Record<string,unknown>
+  settlement?:MvuStatePublisherSettlement|MvuSchemaStorySettlementV2|Record<string,unknown>
   code?:string
   recordSha256:string
 }
@@ -53,7 +55,8 @@ const seal=(row:Omit<InputCompletionRecord,'recordSha256'>):InputCompletionRecor
 export function readInputCompletion(table:{get(key:string):unknown},sid:string,id:string):InputCompletionRecord|undefined {
   try {
     const raw=table.get(inputCompletionKey(sid,id)) as InputCompletionRecord|undefined
-    if(!raw||raw.schemaVersion!==1||raw.encoding!=='roleplay-input-completion-v1'||raw.sessionId!==sid
+    if(!raw||(raw.schemaVersion===1?raw.encoding!=='roleplay-input-completion-v1'||raw.plan?.kind==='schema-numerical'
+      :raw.schemaVersion!==2||raw.encoding!=='roleplay-input-completion-v2'||raw.plan?.kind!=='schema-numerical')||raw.sessionId!==sid
       ||raw.scope.currency.preparationId!==id||!['pending','settled','unknown'].includes(raw.status))return undefined
     const {recordSha256:hash,...body}=raw
     return hash===recordSha256(body)?structuredClone(raw):undefined
@@ -69,6 +72,14 @@ export function createRoleplayInputCompletion(deps:{
   checkOriginal():string|undefined
   checkStored(scope:InputCompletionScope):string|undefined
   nativeCurrent(receipt:NativeCompletedInputWorkReceiptV1):boolean
+  /** Created only inside bind(actualAgent). The handle and its SDK signal
+   * remain process-private; neither is part of the terminal ledger. */
+  closing?:{
+    begin(scope:InputCompletionScope,signal?:AbortSignal):object
+    current(lease:object,scope:InputCompletionScope):boolean
+    release(lease:object):void
+    revoke():void
+  }
   processor:InputCompletionProcessor
 }) {
   let generation=0,live=true,active=false
@@ -89,7 +100,7 @@ export function createRoleplayInputCompletion(deps:{
     try {await deps.table.put(key,structuredClone(row) as unknown as Record<string,unknown>)} catch { /* read below */ }
     if(!same(deps.table.get(key),row))throw new Error('INPUT_TERMINAL_WRITE_UNCONFIRMED')
   }
-  async function complete(receipt:NativeCompletedInputWorkReceiptV1):Promise<NativeCompletedInputWorkAcknowledgementV1> {
+  async function complete(receipt:NativeCompletedInputWorkReceiptV1,signal?:AbortSignal):Promise<NativeCompletedInputWorkAcknowledgementV1> {
     const receiptSha256=recordSha256(receipt)
     const refuse=(kind:'blocked'|'unknown',code:string):NativeCompletedInputWorkAcknowledgementV1=>({kind,receiptSha256,code})
     if(active||!live)return refuse('blocked','INPUT_TERMINAL_ALREADY_ATTEMPTED')
@@ -100,37 +111,41 @@ export function createRoleplayInputCompletion(deps:{
     active=true
     const scope:InputCompletionScope={currency:structuredClone(actual.currency),receipt,
       stopGeneration:generation,...(actual.transition?{transition:structuredClone(actual.transition)}:{})}
-    let token:object|undefined,record:InputCompletionRecord|undefined
+    let token:object|undefined,closing:object|undefined,record:InputCompletionRecord|undefined
+    const owned=()=>!signal?.aborted&&(!deps.closing||!!closing&&deps.closing.current(closing,scope))
     try {
+      closing=deps.closing?.begin(scope,signal)
       // Preparation can await already-owned Phase B/C work. It holds neither
       // the input writer queue nor a Source lock and never waits Agent idle.
-      const plan=await deps.processor.prepare(scope)
+      const plan=await deps.processor.prepare(scope,closing)
       await deps.enqueue(async()=>{
-        if(!current(scope)||deps.checkOriginal())throw new Error('INPUT_TERMINAL_SCOPE_CHANGED')
+        if(!owned()||!current(scope)||deps.checkOriginal())throw new Error('INPUT_TERMINAL_SCOPE_CHANGED')
         const existing=deps.table.get(inputCompletionKey(deps.sessionId,scope.currency.preparationId))
         if(existing!==undefined)throw new Error('INPUT_TERMINAL_ALREADY_ATTEMPTED')
-        record=seal({schemaVersion:1,encoding:'roleplay-input-completion-v1',sessionId:deps.sessionId,
+        record=seal({schemaVersion:plan.kind==='schema-numerical'?2:1,
+          encoding:plan.kind==='schema-numerical'?'roleplay-input-completion-v2':'roleplay-input-completion-v1',sessionId:deps.sessionId,
           scope:structuredClone(scope),plan:structuredClone(plan),status:'pending'})
         await put(record)
-        if(!current(scope))throw new Error('INPUT_TERMINAL_PERMISSION_REVOKED')
+        if(!owned()||!current(scope))throw new Error('INPUT_TERMINAL_PERMISSION_REVOKED')
         if(plan.kind==='numerical') {
           const nominated=terminal.nominate(receipt,plan.intent)
           if(nominated.kind!=='nominated')throw new Error(nominated.code)
           token=nominated.token
         }
       })
-      const published=await deps.processor.publish(scope,plan,token)
+      if(!owned())throw new Error('INPUT_TERMINAL_PERMISSION_REVOKED')
+      const published=await deps.processor.publish(scope,plan,token,closing)
       if(published.kind!=='acknowledged')throw new Error(published.code)
       // The numerical head can now differ from the original snapshot. Only
       // the exact hot/stored work and the publisher's complete facts may ACK.
       await deps.enqueue(async()=>{
-        if(!record||!current(scope)||!deps.processor.verifySettlement(scope,plan,published.settlement)
+        if(!record||!owned()||!current(scope)||!deps.processor.verifySettlement(scope,plan,published.settlement)
           ||plan.kind==='numerical'&&(!token||terminal.check(token,plan.intent).kind!=='allow')) {
           throw new Error('INPUT_TERMINAL_SETTLEMENT_UNCONFIRMED')
         }
         record=seal({...record,status:'settled',settlement:structuredClone(published.settlement)})
         await put(record)
-        if(!current(scope))throw new Error('INPUT_TERMINAL_PERMISSION_REVOKED')
+        if(!owned()||!current(scope))throw new Error('INPUT_TERMINAL_PERMISSION_REVOKED')
       })
       if(token)terminal.finish(token)
       active=false
@@ -148,11 +163,11 @@ export function createRoleplayInputCompletion(deps:{
         })
       } catch { /* The prior pending/unknown row remains a cold admission gate. */ }
       return refuse('unknown',code)
-    }
+    } finally {if(closing)deps.closing?.release(closing)}
   }
   return {complete,
     checkPermission:(token:object,intent:MvuStateTerminalIntent)=>terminal.check(token,intent).kind==='allow',
-    revoke():void {generation++;terminal.revoke()},
-    dispose():void {live=false;generation++;terminal.dispose()},
+    revoke():void {generation++;deps.closing?.revoke();terminal.revoke()},
+    dispose():void {live=false;generation++;deps.closing?.revoke();terminal.dispose()},
   }
 }

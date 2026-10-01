@@ -171,125 +171,191 @@ function extensions(value, pointer, authorSchema = false) {
 }
 /** Core owns the existing source/import lock. All reads are synchronous; this
  * module neither acquires a second lock nor writes any Domain/native record. */
-export function createRoleplayMvuSource(deps) {
-    const capture = (sessionId, selectedIndex) => {
-        if (!idPattern.test(sessionId) || !Number.isSafeInteger(selectedIndex) || selectedIndex < 0)
-            fail('REQUEST_INVALID', '');
-        const pointer = deps.readActivePointer(sessionId);
-        if (!pointer || !idPattern.test(pointer.importId) || !isHash(pointer.normalizedSha256)
-            || !isHash(pointer.coverageSha256) || typeof pointer.transactionId !== 'string')
-            fail('SOURCE_INVALID', '/source');
-        requireKeys(pointer, ['importId', 'sourceRecordSessionId', 'normalizedSha256',
-            'transactionId', 'coverageSha256', 'activatedAt'], '/source', 'SOURCE_INVALID');
-        if (!idPattern.test(pointer.transactionId))
-            fail('SOURCE_INVALID', '/source');
-        const owner = pointer.sourceRecordSessionId ?? sessionId;
-        if (!idPattern.test(owner))
-            fail('SOURCE_INVALID', '/source');
-        const record = deps.readImportRecord(owner, pointer.importId);
-        if (!record || ![4, 5].includes(record.schemaVersion) || record.status !== 'active'
-            || record.sessionId !== owner || record.importId !== pointer.importId
-            || record.normalizedSha256 !== pointer.normalizedSha256 || record.activation?.transactionId !== pointer.transactionId) {
-            fail('SOURCE_INVALID', '/source');
-        }
-        try {
-            assertImportRecordIntegrity(record);
-        }
-        catch {
-            fail('SOURCE_INVALID', '/source');
-        }
-        const coverage = importCoverage(record);
-        if (coverage.coverage !== 1 || coverage.uncovered.length || coverage.overlaps.length
-            || recordSha256(coverage) !== pointer.coverageSha256)
-            fail('SOURCE_INVALID', '/source/coverage');
-        const rows = [];
-        const budget = { nodes: 0, bytes: 0 };
-        const seen = new Set();
-        const read = (table, key, expected) => {
-            if (!keyPattern.test(key) || !key.startsWith(`${sessionId}__`) || rows.length >= MAX_ROWS)
-                fail('MATERIAL_INVALID', '/material');
-            const id = `${table}:${key}`;
-            const value = deps.readRow(table, key);
-            if (value !== undefined && !isObject(value))
-                fail('FIELD_UNSUPPORTED', '/settings');
-            if (!seen.has(id))
-                boundedData(value ?? null, 'FIELD_UNSUPPORTED', '/settings', budget);
-            const ref = { table, key, exists: value !== undefined, sha256: recordSha256(value) };
-            if (expected !== undefined && (!ref.exists || ref.sha256 !== expected))
-                fail('MATERIAL_INVALID', '/material');
-            if (!seen.has(id)) {
-                rows.push({ ref, value });
-                seen.add(id);
-            }
-            return ref;
-        };
-        const digests = record.activation.writeDigests;
-        const activationRows = new Set();
-        if (!Array.isArray(digests) || !digests.length || digests.length > MAX_ROWS)
+function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) {
+    if (!idPattern.test(sessionId) || !Number.isSafeInteger(selectedIndex) || selectedIndex < 0)
+        fail('REQUEST_INVALID', '');
+    const pointer = deps.readActivePointer(sessionId);
+    if (!pointer || !idPattern.test(pointer.importId) || !isHash(pointer.normalizedSha256)
+        || !isHash(pointer.coverageSha256) || typeof pointer.transactionId !== 'string')
+        fail('SOURCE_INVALID', '/source');
+    requireKeys(pointer, ['importId', 'sourceRecordSessionId', 'normalizedSha256',
+        'transactionId', 'coverageSha256', 'activatedAt'], '/source', 'SOURCE_INVALID');
+    if (!idPattern.test(pointer.transactionId))
+        fail('SOURCE_INVALID', '/source');
+    const owner = pointer.sourceRecordSessionId ?? sessionId;
+    if (!idPattern.test(owner))
+        fail('SOURCE_INVALID', '/source');
+    const record = deps.readImportRecord(owner, pointer.importId);
+    if (!record || ![4, 5].includes(record.schemaVersion) || record.status !== 'active'
+        || record.sessionId !== owner || record.importId !== pointer.importId
+        || record.normalizedSha256 !== pointer.normalizedSha256 || record.activation?.transactionId !== pointer.transactionId) {
+        fail('SOURCE_INVALID', '/source');
+    }
+    try {
+        assertImportRecordIntegrity(record);
+    }
+    catch {
+        fail('SOURCE_INVALID', '/source');
+    }
+    const coverage = importCoverage(record);
+    if (coverage.coverage !== 1 || coverage.uncovered.length || coverage.overlaps.length
+        || recordSha256(coverage) !== pointer.coverageSha256)
+        fail('SOURCE_INVALID', '/source/coverage');
+    const rows = [];
+    const budget = { nodes: 0, bytes: 0 };
+    const seen = new Set();
+    const read = (table, key, expected) => {
+        if (!keyPattern.test(key) || !key.startsWith(`${sessionId}__`) || rows.length >= MAX_ROWS)
             fail('MATERIAL_INVALID', '/material');
-        for (const digest of digests) {
-            if (!digest || !['branch', 'cards', 'worldbook', 'rules', 'status', 'opening'].includes(digest.tableName)
-                || !isHash(digest.sha256))
-                fail('MATERIAL_INVALID', '/material');
-            read(digest.tableName, digest.key, digest.sha256);
-            activationRows.add(`${digest.tableName}:${digest.key}`);
+        const id = `${table}:${key}`;
+        const value = deps.readRow(table, key);
+        if (value !== undefined && !isObject(value))
+            fail('FIELD_UNSUPPORTED', '/settings');
+        if (!seen.has(id))
+            boundedData(value ?? null, 'FIELD_UNSUPPORTED', '/settings', budget);
+        const ref = { table, key, exists: value !== undefined, sha256: recordSha256(value) };
+        if (expected !== undefined && (!ref.exists || ref.sha256 !== expected))
+            fail('MATERIAL_INVALID', '/material');
+        if (!seen.has(id)) {
+            rows.push({ ref, value });
+            seen.add(id);
         }
-        const versions = deps.recordVersionsFor(sessionId);
-        const cards = hashMap(versions.cards, '/settings/cards'), worldbook = hashMap(versions.worldbook, '/settings/worldbook');
-        if (!isVersion(versions.rules) || !isVersion(versions.settings))
-            fail('MEMBERSHIP_INVALID', '/settings');
-        for (const [id, expected] of Object.entries(cards))
-            read('cards', `${sessionId}__${id}`, expected);
-        for (const [id, expected] of Object.entries(worldbook))
-            read('worldbook', `${sessionId}__${id}`, expected);
-        const rules = read('rules', `${sessionId}__spec`), settings = read('branch', `${sessionId}__settings`);
-        if (rules.sha256 !== versions.rules || settings.sha256 !== versions.settings)
-            fail('MEMBERSHIP_INVALID', '/settings');
-        // A source rule added after import must invalidate even an originally absent
-        // record. These are author inputs, unlike dynamic panel/init-head/event output.
-        read('status', `${sessionId}__spec`);
-        read('opening', `${sessionId}__scene`);
-        const context = deps.readOpeningContext(sessionId);
-        if (!context || !isObject(context.context) || !isHash(context.bindingSha256))
-            fail('MACRO_UNSUPPORTED', '/macros');
-        requireKeys(context.context, ['user', 'char', 'user_gender'], '/macros', 'MACRO_UNSUPPORTED');
-        for (const value of Object.values(context.context)) {
-            if (typeof value !== 'string' || value.length > 512)
-                fail('MACRO_UNSUPPORTED', '/macros');
-        }
-        const envelope = record.sourceEnvelope;
-        const decoded = decodeTavernCard(Buffer.from(envelope.base64, 'base64'), envelope.extension);
-        boundedData(decoded.document, 'FIELD_UNSUPPORTED', '/document', budget);
-        const candidates = compileTavernOpeningCandidates(decoded, context.context);
-        const selected = candidates.find(item => item.index === selectedIndex);
-        if (!selected)
-            fail('REQUEST_INVALID', '/selected');
-        const source = { sessionId, importId: pointer.importId, sourceRecordSessionId: owner,
-            rawSha256: record.rawSha256, normalizedSha256: record.normalizedSha256, transactionId: pointer.transactionId,
-            coverageSha256: pointer.coverageSha256, pointer: { ...pointer } };
-        const root = decoded.document.data === decoded.data ? '/data' : '';
-        const used = JSON.stringify(decoded.document).includes('{{')
-            || rows.some(item => JSON.stringify(item.value ?? null).includes('{{'));
-        const membership = { cards, worldbook, rules: versions.rules, settings: versions.settings };
-        const content = {
-            schemaVersion: 1, encoding: 'native-mvu-source-snapshot-v1', policy: NATIVE_MVU_SOURCE_POLICY,
-            source, pointerSha256: recordSha256(pointer), importRecordSha256: recordSha256(record), coverageSha256: recordSha256(coverage),
-            materialRows: rows.map(item => item.ref).sort((a, b) => {
-                const left = `${a.table}:${a.key}`, right = `${b.table}:${b.key}`;
-                return left < right ? -1 : left > right ? 1 : 0;
-            }),
-            settings: { ...membership, membershipSha256: recordSha256(membership) },
-            bindings: { global: [], primary: decoded.data.character_book === undefined ? null
-                    : { pointer: `${root}/character_book`, sha256: recordSha256(decoded.data.character_book) }, additional: [] },
-            selected: { index: selected.index, pointer: selected.sourcePointer, sourceSha256: selected.sourceSha256,
-                renderedSha256: sha(selected.renderedText) },
-            swipes: candidates.map(item => ({ identity: `swipe-${item.index}`, index: item.index, pointer: item.sourcePointer,
-                sourceSha256: item.sourceSha256, renderedSha256: sha(item.renderedText) })),
-            macroContext: { used, bindingSha256: used ? context.bindingSha256 : null, valuesSha256: used ? recordSha256(context.context) : null },
-        };
-        return { snapshot: { ...content, snapshotSha256: recordSha256(content) }, document: decoded.document,
-            data: decoded.data, context: context.context, candidates, rows, activationRows };
+        return ref;
     };
+    const digests = record.activation.writeDigests;
+    const activationRows = new Set();
+    if (!Array.isArray(digests) || !digests.length || digests.length > MAX_ROWS)
+        fail('MATERIAL_INVALID', '/material');
+    for (const digest of digests) {
+        if (!digest || !['branch', 'cards', 'worldbook', 'rules', 'status', 'opening'].includes(digest.tableName)
+            || !isHash(digest.sha256))
+            fail('MATERIAL_INVALID', '/material');
+        if (currentMaterial && ((digest.tableName === 'branch' && digest.key !== `${sessionId}__settings`)
+            || (digest.tableName === 'rules' && digest.key !== `${sessionId}__spec`)
+            || (digest.tableName === 'status' && digest.key !== `${sessionId}__spec`)
+            || (digest.tableName === 'opening' && digest.key !== `${sessionId}__scene`))) {
+            fail('MATERIAL_INVALID', '/material');
+        }
+        read(digest.tableName, digest.key, currentMaterial ? undefined : digest.sha256);
+        activationRows.add(`${digest.tableName}:${digest.key}`);
+    }
+    const versions = deps.recordVersionsFor(sessionId);
+    const cards = hashMap(versions.cards, '/settings/cards'), worldbook = hashMap(versions.worldbook, '/settings/worldbook');
+    if (!isVersion(versions.rules) || !isVersion(versions.settings))
+        fail('MEMBERSHIP_INVALID', '/settings');
+    for (const [id, expected] of Object.entries(cards))
+        read('cards', `${sessionId}__${id}`, expected);
+    for (const [id, expected] of Object.entries(worldbook))
+        read('worldbook', `${sessionId}__${id}`, expected);
+    const rules = read('rules', `${sessionId}__spec`), settings = read('branch', `${sessionId}__settings`);
+    if (rules.sha256 !== versions.rules || settings.sha256 !== versions.settings)
+        fail('MEMBERSHIP_INVALID', '/settings');
+    // A source rule added after import must invalidate even an originally absent
+    // record. These are author inputs, unlike dynamic panel/init-head/event output.
+    read('status', `${sessionId}__spec`);
+    read('opening', `${sessionId}__scene`);
+    const context = deps.readOpeningContext(sessionId);
+    if (!context || !isObject(context.context) || !isHash(context.bindingSha256))
+        fail('MACRO_UNSUPPORTED', '/macros');
+    requireKeys(context.context, ['user', 'char', 'user_gender'], '/macros', 'MACRO_UNSUPPORTED');
+    for (const value of Object.values(context.context)) {
+        if (typeof value !== 'string' || value.length > 512)
+            fail('MACRO_UNSUPPORTED', '/macros');
+    }
+    const envelope = record.sourceEnvelope;
+    const decoded = decodeTavernCard(Buffer.from(envelope.base64, 'base64'), envelope.extension);
+    boundedData(decoded.document, 'FIELD_UNSUPPORTED', '/document', budget);
+    const candidates = compileTavernOpeningCandidates(decoded, context.context);
+    const selected = candidates.find(item => item.index === selectedIndex);
+    if (!selected)
+        fail('REQUEST_INVALID', '/selected');
+    const source = { sessionId, importId: pointer.importId, sourceRecordSessionId: owner,
+        rawSha256: record.rawSha256, normalizedSha256: record.normalizedSha256, transactionId: pointer.transactionId,
+        coverageSha256: pointer.coverageSha256, pointer: { ...pointer } };
+    const root = decoded.document.data === decoded.data ? '/data' : '';
+    const used = JSON.stringify(decoded.document).includes('{{')
+        || rows.some(item => JSON.stringify(item.value ?? null).includes('{{'));
+    const membership = { cards, worldbook, rules: versions.rules, settings: versions.settings };
+    const content = {
+        schemaVersion: 1, encoding: 'native-mvu-source-snapshot-v1', policy: NATIVE_MVU_SOURCE_POLICY,
+        source, pointerSha256: recordSha256(pointer), importRecordSha256: recordSha256(record), coverageSha256: recordSha256(coverage),
+        materialRows: rows.map(item => item.ref).sort((a, b) => {
+            const left = `${a.table}:${a.key}`, right = `${b.table}:${b.key}`;
+            return left < right ? -1 : left > right ? 1 : 0;
+        }),
+        settings: { ...membership, membershipSha256: recordSha256(membership) },
+        bindings: { global: [], primary: decoded.data.character_book === undefined ? null
+                : { pointer: `${root}/character_book`, sha256: recordSha256(decoded.data.character_book) }, additional: [] },
+        selected: { index: selected.index, pointer: selected.sourcePointer, sourceSha256: selected.sourceSha256,
+            renderedSha256: sha(selected.renderedText) },
+        swipes: candidates.map(item => ({ identity: `swipe-${item.index}`, index: item.index, pointer: item.sourcePointer,
+            sourceSha256: item.sourceSha256, renderedSha256: sha(item.renderedText) })),
+        macroContext: { used, bindingSha256: used ? context.bindingSha256 : null, valuesSha256: used ? recordSha256(context.context) : null },
+    };
+    return { snapshot: { ...content, snapshotSha256: recordSha256(content) }, document: decoded.document,
+        data: decoded.data, context: context.context, candidates, rows, activationRows };
+}
+function authorSourceOf(captured) {
+    try {
+        const extension = captured.data.extensions;
+        if (extension === undefined)
+            return { kind: 'absent' };
+        if (!isObject(extension))
+            fail('EXTENSION_UNSUPPORTED', '/extensions');
+        const helper = extension.tavern_helper;
+        if (helper === undefined)
+            return { kind: 'absent' };
+        if (!isObject(helper))
+            fail('EXTENSION_UNSUPPORTED', '/extensions/tavern_helper');
+        if (helper.scripts === undefined)
+            return { kind: 'absent' };
+        if (!Array.isArray(helper.scripts) || helper.scripts.length > 64) {
+            fail('FIELD_UNSUPPORTED', '/extensions/tavern_helper/scripts');
+        }
+        const root = captured.document.data === captured.data ? '/data' : '';
+        const scripts = helper.scripts.map((raw, index) => {
+            const pointer = `${root}/extensions/tavern_helper/scripts/${index}`;
+            // Preserve every entry and its explicit enable state in original order.
+            // Selecting only apparent schema calls would silently discard other
+            // author effects. Unknown active code is the compiler's explicit refusal.
+            if (!isObject(raw) || raw.type !== 'script' || typeof raw.enabled !== 'boolean' || typeof raw.content !== 'string') {
+                fail('FIELD_UNSUPPORTED', pointer);
+            }
+            return { identity: `script-${index}`, pointer, enabled: raw.enabled, source: raw.content,
+                sourceSha256: schemaTextSha256(raw.content) };
+        });
+        if (!scripts.length)
+            return { kind: 'absent' };
+        const { policy: _policy, encoding: _encoding, snapshotSha256: _sha, ...scope } = captured.snapshot;
+        const snapshotBody = { ...scope, encoding: 'native-mvu-author-source-snapshot-v1',
+            documentSha256: recordSha256(captured.document) };
+        const snapshot = { ...snapshotBody, snapshotSha256: recordSha256(snapshotBody) };
+        const material = cloneSchemaData({ card: captured.document,
+            rows: captured.rows.map(({ ref, value }) => ({ table: ref.table, key: ref.key, exists: ref.exists, value: value ?? null })),
+            openingContext: captured.context }, 4 * MAX_BYTES);
+        const body = { schemaVersion: 1, encoding: 'native-mvu-author-source-v1',
+            snapshot, scripts, material, materialSha256: recordSha256(material) };
+        return { kind: 'author-source', source: cloneSchemaData({ ...body, authorSourceSha256: recordSha256(body) }, 8 * MAX_BYTES) };
+    }
+    catch (error) {
+        return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
+                    ? error.diagnostic : { code: 'SOURCE_INVALID', pointer: '/source' }] };
+    }
+}
+/** Current story material is read with exact current membership/version checks.
+ * Original activation digests are checked separately by the schema provenance
+ * verifier; this explicit mode never changes the opening capture contract. */
+export function readMvuSchemaCurrentAuthorSource(deps, sessionId, selectedIndex) {
+    try {
+        return authorSourceOf(captureSource(deps, sessionId, selectedIndex, true));
+    }
+    catch (error) {
+        return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
+                    ? error.diagnostic : { code: 'SOURCE_INVALID', pointer: '/source' }] };
+    }
+}
+export function createRoleplayMvuSource(deps) {
+    const capture = (sessionId, selectedIndex) => captureSource(deps, sessionId, selectedIndex);
     const classify = (captured, authorSchema = false) => {
         const { data, context, snapshot } = captured;
         if (captured.document !== data)
@@ -531,53 +597,6 @@ export function createRoleplayMvuSource(deps) {
             return false;
         }
     };
-    function authorSourceOf(captured) {
-        try {
-            const extension = captured.data.extensions;
-            if (extension === undefined)
-                return { kind: 'absent' };
-            if (!isObject(extension))
-                fail('EXTENSION_UNSUPPORTED', '/extensions');
-            const helper = extension.tavern_helper;
-            if (helper === undefined)
-                return { kind: 'absent' };
-            if (!isObject(helper))
-                fail('EXTENSION_UNSUPPORTED', '/extensions/tavern_helper');
-            if (helper.scripts === undefined)
-                return { kind: 'absent' };
-            if (!Array.isArray(helper.scripts) || helper.scripts.length > 64) {
-                fail('FIELD_UNSUPPORTED', '/extensions/tavern_helper/scripts');
-            }
-            const root = captured.document.data === captured.data ? '/data' : '';
-            const scripts = helper.scripts.map((raw, index) => {
-                const pointer = `${root}/extensions/tavern_helper/scripts/${index}`;
-                // Preserve every entry and its explicit enable state in original order.
-                // Selecting only apparent schema calls would silently discard other
-                // author effects. Unknown active code is the compiler's explicit refusal.
-                if (!isObject(raw) || raw.type !== 'script' || typeof raw.enabled !== 'boolean' || typeof raw.content !== 'string') {
-                    fail('FIELD_UNSUPPORTED', pointer);
-                }
-                return { identity: `script-${index}`, pointer, enabled: raw.enabled, source: raw.content,
-                    sourceSha256: schemaTextSha256(raw.content) };
-            });
-            if (!scripts.length)
-                return { kind: 'absent' };
-            const { policy: _policy, encoding: _encoding, snapshotSha256: _sha, ...scope } = captured.snapshot;
-            const snapshotBody = { ...scope, encoding: 'native-mvu-author-source-snapshot-v1',
-                documentSha256: recordSha256(captured.document) };
-            const snapshot = { ...snapshotBody, snapshotSha256: recordSha256(snapshotBody) };
-            const material = cloneSchemaData({ card: captured.document,
-                rows: captured.rows.map(({ ref, value }) => ({ table: ref.table, key: ref.key, exists: ref.exists, value: value ?? null })),
-                openingContext: captured.context }, 4 * MAX_BYTES);
-            const body = { schemaVersion: 1, encoding: 'native-mvu-author-source-v1',
-                snapshot, scripts, material, materialSha256: recordSha256(material) };
-            return { kind: 'author-source', source: cloneSchemaData({ ...body, authorSourceSha256: recordSha256(body) }, 8 * MAX_BYTES) };
-        }
-        catch (error) {
-            return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
-                        ? error.diagnostic : { code: 'SOURCE_INVALID', pointer: '/source' }] };
-        }
-    }
     function readAuthorSource(sessionId, selectedIndex) {
         try {
             return authorSourceOf(capture(sessionId, selectedIndex));
@@ -607,6 +626,17 @@ export function createRoleplayMvuSource(deps) {
             macros: captured.snapshot.macroContext.used ? 'verified-identity-rendering' : 'none' };
         const initSource = { ...body, initSourceSha256: recordSha256(body) };
         return { kind: 'schema-opening-data', authorSource: author.source, initSource };
+    }
+    /** Original raw descriptors only: no fresh-basis observation, numerical
+     * capability, Native owner or publication side effect is created here. */
+    function readSchemaOpeningData(sessionId, selectedIndex) {
+        try {
+            return schemaOpeningData(capture(sessionId, selectedIndex));
+        }
+        catch (error) {
+            return { kind: 'unsupported', diagnostics: [error instanceof SourceFailure
+                        ? error.diagnostic : { code: 'SOURCE_INVALID', pointer: '/source' }] };
+        }
     }
     function readSchemaOpeningSource(request) {
         try {
@@ -649,5 +679,6 @@ export function createRoleplayMvuSource(deps) {
             return false;
         }
     }
-    return { produce, current, readAuthorSource, authorSourceCurrent, readSchemaOpeningSource, schemaOpeningSourceCurrent };
+    return { produce, current, readAuthorSource, authorSourceCurrent, readSchemaOpeningData,
+        readSchemaOpeningSource, schemaOpeningSourceCurrent };
 }

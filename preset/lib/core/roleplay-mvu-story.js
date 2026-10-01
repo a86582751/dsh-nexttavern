@@ -56,11 +56,16 @@ export function createRoleplayMvuStoryCompletion(deps) {
             return false;
         }
     }
-    async function prepare(scope) {
+    async function prepare(scope, closing) {
         if (!deps.verifyNative(scope))
             throw new Error('INPUT_TERMINAL_NATIVE_UNPROVEN');
         if (scope.transition)
             return { kind: 'management-transition', descriptor: deps.prepareManagement(scope) };
+        if (scope.currency.source.kind === 'story' && scope.currency.source.headRef?.kind === 'schema-head') {
+            if (!deps.schema)
+                throw Error('SCHEMA_STORY_NOT_ENABLED');
+            return { kind: 'schema-numerical', plan: await deps.schema.prepareCompletion(scope, closing) };
+        }
         const sid = scope.receipt.checkpoint.sessionId, turn = scope.receipt.checkpoint.actualTurn;
         await deps.awaitOwnedCompletion(sid, turn);
         const base = snapshot(scope), body = deps.readCanonical(sid, turn);
@@ -86,7 +91,10 @@ export function createRoleplayMvuStoryCompletion(deps) {
         return { kind: 'numerical', intent: { ...descriptor, intentSha256: recordSha256(descriptor) }, base, proposal };
     }
     return { prepare, sourceCurrent: deps.sourceCurrent, canonicalCurrent, verifyStored,
-        async publish(scope, plan, token) {
+        async publish(scope, plan, token, closing) {
+            if (plan.kind === 'schema-numerical')
+                return deps.schema ? deps.schema.publishCompletion(scope, plan.plan, closing)
+                    : { kind: 'blocked', code: 'SCHEMA_STORY_NOT_ENABLED' };
             if (plan.kind === 'numerical')
                 return token ? deps.state.publish({ token, intent: plan.intent, base: plan.base, proposal: plan.proposal })
                     : { kind: 'blocked', code: 'INPUT_TERMINAL_TOKEN_MISSING' };
@@ -95,12 +103,16 @@ export function createRoleplayMvuStoryCompletion(deps) {
                 : { kind: 'unknown', code: 'INPUT_MANAGEMENT_ACTIVATION_UNPROVEN' });
         },
         verifySettlement(scope, plan, settlement) {
+            if (plan.kind === 'schema-numerical')
+                return deps.schema?.verifySettlement(scope, plan.plan, settlement) === true;
             if (plan.kind === 'management-transition')
                 return same(settlement, plan.descriptor) && deps.verifyManagement(scope, plan.descriptor);
             const facts = deps.state.reconcileFacts(plan.intent);
             return facts.kind === 'committed' && same(facts.settlement, settlement);
         },
         verifyConsumed(scope, plan, settlement) {
+            if (plan.kind === 'schema-numerical')
+                return deps.schema?.verifyConsumed(scope, plan.plan, settlement) === true;
             if (!verifyStored(scope, plan.kind === 'numerical' ? plan.intent : undefined, true))
                 return false;
             if (plan.kind === 'management-transition')

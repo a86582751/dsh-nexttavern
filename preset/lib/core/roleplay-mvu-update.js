@@ -342,22 +342,52 @@ function apply(root, op) {
     // Bound intermediate amplification too, before any following copy/move.
     return valuesObject(result);
 }
-export function prepareMvuUpdate(narrative, baseValues) {
+function updateOperations(narrative) {
+    const payload = extract(narrative);
+    if (payload === undefined)
+        return;
+    const parsed = strictJson(payload);
+    if (!Array.isArray(parsed))
+        reject('PATCH_ARRAY_REQUIRED');
+    if (!parsed.length)
+        reject('EMPTY_PATCH');
+    if (parsed.length > MVU_UPDATE_BOUNDS.operations)
+        reject('OPERATION_LIMIT');
+    return parsed;
+}
+function refusal(error, operationIndex) {
+    return { kind: 'rejected', schemaVersion: 1, code: error instanceof UpdateRefusal ? error.code : 'UPDATE_INPUT_UNKNOWN',
+        ...(error instanceof UpdateRefusal && error.pointer !== undefined ? { pointer: error.pointer } : {}),
+        ...(operationIndex !== undefined ? { operationIndex } : {}) };
+}
+/** Schema callbacks may transform the basis of later commands. Parse and
+ * normalize once without applying commands to a premature numerical result. */
+export function parseMvuUpdate(narrative) {
     let operationIndex;
     try {
-        const payload = extract(narrative);
-        if (payload === undefined)
+        const parsed = updateOperations(narrative);
+        if (parsed === undefined)
             return { kind: 'no-update' };
-        const parsed = strictJson(payload);
-        if (!Array.isArray(parsed))
+        const operations = parsed.map((raw, index) => { operationIndex = index; return operation(raw); });
+        const descriptor = { schemaVersion: 1, protocol: 'native-jsonpatch-v1', operations };
+        return { kind: 'parsed', ...descriptor, candidateSha256: recordSha256(descriptor) };
+    }
+    catch (error) {
+        return refusal(error, operationIndex);
+    }
+}
+/** The same bounded reducer handles legacy patches and commands remaining
+ * after schema callbacks. Even an empty residual validates the actual values. */
+export function reduceMvuUpdateOperations(baseValues, rawOperations) {
+    let operationIndex;
+    try {
+        if (!Array.isArray(rawOperations))
             reject('PATCH_ARRAY_REQUIRED');
-        if (!parsed.length)
-            reject('EMPTY_PATCH');
-        if (parsed.length > MVU_UPDATE_BOUNDS.operations)
+        if (rawOperations.length > MVU_UPDATE_BOUNDS.operations)
             reject('OPERATION_LIMIT');
         const base = valuesObject(baseValues), baseValuesSha256 = recordSha256(base), operations = [];
         let values = base;
-        for (const [index, raw] of parsed.entries()) {
+        for (const [index, raw] of rawOperations.entries()) {
             operationIndex = index;
             const op = operation(raw);
             values = apply(values, op);
@@ -369,8 +399,15 @@ export function prepareMvuUpdate(narrative, baseValues) {
         return { kind: 'prepared', ...descriptor, values, proposalSha256: recordSha256(descriptor) };
     }
     catch (error) {
-        return { kind: 'rejected', schemaVersion: 1, code: error instanceof UpdateRefusal ? error.code : 'UPDATE_INPUT_UNKNOWN',
-            ...(error instanceof UpdateRefusal && error.pointer !== undefined ? { pointer: error.pointer } : {}),
-            ...(operationIndex !== undefined ? { operationIndex } : {}) };
+        return refusal(error, operationIndex);
+    }
+}
+export function prepareMvuUpdate(narrative, baseValues) {
+    try {
+        const operations = updateOperations(narrative);
+        return operations === undefined ? { kind: 'no-update' } : reduceMvuUpdateOperations(baseValues, operations);
+    }
+    catch (error) {
+        return refusal(error);
     }
 }

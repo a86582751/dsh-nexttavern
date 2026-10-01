@@ -135,6 +135,13 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
   const invalidatedOwners=new WeakSet<object>()
   const evidence=new WeakMap<object,{scope:SchemaOwnedScope;association:SchemaExecutionAssociation;
     output:MvuSchemaGuestOutput;generation:number;ownerGeneration:number}>()
+  // These entries prove a frozen historical cut only. No evidence token or
+  // publication owner is stored, and each waiter repeats its actual producer
+  // capture after the shared compiler/guest work has returned.
+  const historicalCache=new Map<string,{frozen:SchemaJournalFrozenCut;bytes:number}>()
+  const historicalFlights=new Map<string,{abort:AbortController;waiters:number;
+    promise:Promise<SchemaJournalFrozenCut>}>()
+  let historicalCacheBytes=0
   let disposed=false,generation=0
   const ownerGeneration=(owner:object)=>ownerGenerations.get(owner)??0
   async function replayHistory(ready:SchemaJournalReady,program:MvuSchemaProgram,signal:AbortSignal):Promise<void> {
@@ -314,14 +321,64 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       const ready=journal.captureFrozen(value.sessionId,value.realmEpoch,events,frozen.records)
       if(ready.kind!=='ready')fail(ready.code)
       if(!same(ready.epoch.runner,deps.runner.identity))fail('SCHEMA_IMPLEMENTATION_CHANGED')
-      const compiled=await deps.compiler.compile(freezeSchemaJournalData(facts.authorInput),signal)
+      const keyFor=(captured:HistoricalCutFacts)=>recordSha256({generation,selector:value,
+        authorInput:captured.authorInput,frozen:captured.frozen,
+        events:captured.events.slice(0,value.nativeCut),compiler:deps.compiler.identity,runner:deps.runner.identity})
+      const key=keyFor(facts),cached=historicalCache.get(key)
+      let result:SchemaJournalFrozenCut
+      if(cached) {
+        // Refresh insertion order for the bounded process-local read cache.
+        historicalCache.delete(key);historicalCache.set(key,cached);result=cached.frozen
+      } else {
+        let flight=historicalFlights.get(key)
+        if(!flight) {
+          const abort=new AbortController(),admittedGeneration=generation
+          const created={abort,waiters:0,promise:undefined as unknown as Promise<SchemaJournalFrozenCut>}
+          const check=()=>{abort.signal.throwIfAborted();if(disposed||generation!==admittedGeneration)fail('SCHEMA_REPLAY_DISPOSED')}
+          created.promise=(async()=>{
+            const compiled=await deps.compiler.compile(freezeSchemaJournalData(facts.authorInput),abort.signal)
+            check()
+            if(compiled.kind!=='compiled'||!same(compiled.program,ready.epoch.program))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
+            const verified=await deps.compiler.verifyProgram(compiled.program,abort.signal)
+            check();if(!verified)fail('SCHEMA_PROGRAM_UNPROVEN')
+            await replayHistory(ready,compiled.program,abort.signal);check()
+            const bytes=Buffer.byteLength(JSON.stringify(frozen),'utf8')
+            // Large valid cuts remain readable; they simply do not occupy this
+            // optional cache. Failed/aborted work never becomes a success entry.
+            if(bytes<=16*1024*1024) {
+              while(historicalCache.size&&(historicalCache.size>=4||historicalCacheBytes+bytes>32*1024*1024)) {
+                const oldest=historicalCache.keys().next().value!
+                historicalCacheBytes-=historicalCache.get(oldest)!.bytes;historicalCache.delete(oldest)
+              }
+              historicalCache.set(key,{frozen,bytes});historicalCacheBytes+=bytes
+            }
+            return frozen
+          })().finally(()=>{if(historicalFlights.get(key)===created)historicalFlights.delete(key)})
+          // A waiter can cancel before a worker finishes. Keep rejection
+          // observed even when there are no remaining caller promises.
+          void created.promise.catch(()=>{})
+          historicalFlights.set(key,created);flight=created
+        }
+        flight.waiters++
+        try {
+          result=await new Promise<SchemaJournalFrozenCut>((resolve,reject)=>{
+            const canceled=()=>reject(signal?.reason??Error('SCHEMA_HISTORICAL_CANCELLED'))
+            signal?.addEventListener('abort',canceled,{once:true})
+            if(signal?.aborted)canceled()
+            flight!.promise.then(resolve,reject).finally(()=>signal?.removeEventListener('abort',canceled))
+          })
+        } finally {
+          flight.waiters--
+          if(!flight.waiters&&historicalFlights.get(key)===flight) {
+            historicalFlights.delete(key);flight.abort.abort()
+          }
+        }
+      }
       signal?.throwIfAborted();if(disposed)fail('SCHEMA_REPLAY_DISPOSED')
-      if(compiled.kind!=='compiled'||!same(compiled.program,ready.epoch.program))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
-      const verified=await deps.compiler.verifyProgram(compiled.program,signal)
+      const currentFacts=await deps.captureHistoricalCut(value,signal)
       signal?.throwIfAborted();if(disposed)fail('SCHEMA_REPLAY_DISPOSED')
-      if(!verified)fail('SCHEMA_PROGRAM_UNPROVEN')
-      await replayHistory(ready,compiled.program,signal??new AbortController().signal)
-      return {kind:'verified',frozen}
+      if(keyFor(currentFacts)!==key)fail('SCHEMA_HISTORICAL_FACTS_CHANGED')
+      return {kind:'verified',frozen:result}
     } catch(error) {return {kind:'blocked',code:codeOf(error)}}
   }
   function checkEvidence(token:object,input:SchemaPublicationBinding):boolean {
@@ -342,6 +399,12 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       ownerGenerations.set(owner,ownerGeneration(owner)+1)
       for(const job of active.values())if(job.owner===owner)job.abort.abort()
     },
-    dispose():void {if(disposed)return;disposed=true;generation++;for(const job of active.values())job.abort.abort()},
+    dispose():void {
+      if(disposed)return
+      disposed=true;generation++
+      for(const job of active.values())job.abort.abort()
+      for(const flight of historicalFlights.values())flight.abort.abort()
+      historicalFlights.clear();historicalCache.clear();historicalCacheBytes=0
+    },
   }
 }

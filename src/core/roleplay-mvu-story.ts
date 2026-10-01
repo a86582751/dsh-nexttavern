@@ -5,6 +5,7 @@ import {prepareMvuUpdate} from './roleplay-mvu-update.js'
 import {inputSnapshotReferenceCurrent} from './roleplay-preparation.js'
 import type {InputCompletionProcessor,InputCompletionScope,InputCompletionPlan} from './roleplay-input-completion.js'
 import type {MvuNumericalSnapshot,MvuStateTerminalIntent,createRoleplayMvuState} from './roleplay-mvu-state.js'
+import type {createRoleplayMvuSchemaStoryCore} from './roleplay-mvu-schema-story-core.js'
 
 export interface CompletedStoryBody {
   seq:number
@@ -13,6 +14,7 @@ export interface CompletedStoryBody {
   narrative:string
 }
 export interface MvuStoryCompletionDependencies {
+  schema?:Pick<ReturnType<typeof createRoleplayMvuSchemaStoryCore>,'prepareCompletion'|'publishCompletion'|'verifySettlement'|'verifyConsumed'>
   table:{get(key:string):unknown}
   state:ReturnType<typeof createRoleplayMvuState>
   readCanonical(sessionId:string,turn:number):CompletedStoryBody|undefined
@@ -71,9 +73,13 @@ export function createRoleplayMvuStoryCompletion(deps:MvuStoryCompletionDependen
         &&intent.refsSha256===recordSha256(scope.receipt.checkpoint.refs)
     } catch {return false}
   }
-  async function prepare(scope:InputCompletionScope):Promise<InputCompletionPlan> {
+  async function prepare(scope:InputCompletionScope,closing?:object):Promise<InputCompletionPlan> {
     if(!deps.verifyNative(scope))throw new Error('INPUT_TERMINAL_NATIVE_UNPROVEN')
     if(scope.transition)return {kind:'management-transition',descriptor:deps.prepareManagement(scope)}
+    if(scope.currency.source.kind==='story'&&scope.currency.source.headRef?.kind==='schema-head') {
+      if(!deps.schema)throw Error('SCHEMA_STORY_NOT_ENABLED')
+      return {kind:'schema-numerical',plan:await deps.schema.prepareCompletion(scope,closing)}
+    }
     const sid=scope.receipt.checkpoint.sessionId,turn=scope.receipt.checkpoint.actualTurn
     await deps.awaitOwnedCompletion(sid,turn)
     const base=snapshot(scope),body=deps.readCanonical(sid,turn)
@@ -99,7 +105,9 @@ export function createRoleplayMvuStoryCompletion(deps:MvuStoryCompletionDependen
     return {kind:'numerical',intent:{...descriptor,intentSha256:recordSha256(descriptor)},base,proposal}
   }
   return {prepare,sourceCurrent:deps.sourceCurrent,canonicalCurrent,verifyStored,
-    async publish(scope,plan,token) {
+    async publish(scope,plan,token,closing) {
+      if(plan.kind==='schema-numerical')return deps.schema?deps.schema.publishCompletion(scope,plan.plan,closing)
+        :{kind:'blocked',code:'SCHEMA_STORY_NOT_ENABLED'}
       if(plan.kind==='numerical')return token?deps.state.publish({token,intent:plan.intent,base:plan.base,proposal:plan.proposal})
         :{kind:'blocked',code:'INPUT_TERMINAL_TOKEN_MISSING'}
       return deps.withSourceLock(scope.receipt.checkpoint.sessionId,async()=>deps.verifyManagement(scope,plan.descriptor)
@@ -107,11 +115,13 @@ export function createRoleplayMvuStoryCompletion(deps:MvuStoryCompletionDependen
         :{kind:'unknown',code:'INPUT_MANAGEMENT_ACTIVATION_UNPROVEN'})
     },
     verifySettlement(scope,plan,settlement) {
+      if(plan.kind==='schema-numerical')return deps.schema?.verifySettlement(scope,plan.plan,settlement)===true
       if(plan.kind==='management-transition')return same(settlement,plan.descriptor)&&deps.verifyManagement(scope,plan.descriptor)
       const facts=deps.state.reconcileFacts(plan.intent)
       return facts.kind==='committed'&&same(facts.settlement,settlement)
     },
     verifyConsumed(scope,plan,settlement) {
+      if(plan.kind==='schema-numerical')return deps.schema?.verifyConsumed(scope,plan.plan,settlement)===true
       if(!verifyStored(scope,plan.kind==='numerical'?plan.intent:undefined,true))return false
       if(plan.kind==='management-transition')return same(settlement,plan.descriptor)
         &&same(plan.descriptor,deps.prepareManagement(scope))

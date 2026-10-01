@@ -59,11 +59,13 @@ const isWork = (value, sessionId) => {
         && equal(row.preparation, { schemaVersion: 1, namespace: ROLEPLAY_INPUT_NAMESPACE,
             preparationKeySha256: digest({ sessionId, preparationId: row.preparationId }), credentialSha256: row.credentialSha256 });
 };
-export function createRoleplayInputPreparation({ table, observe, onError, completion, awaitMutationBarrier, mutationBlockCode, onMutationStop }) {
+export function createRoleplayInputPreparation({ table, observe, onError, completion, awaitMutationBarrier, mutationBlockCode, onMutationStop, preflightObservation, onClosingRelease }) {
     const owners = new WeakMap();
+    const closingViews = new WeakMap();
     const leases = new Map();
     const reservationLeases = new Map();
     const sessionOwners = new Map();
+    const liveRevocations = new Map();
     const terminalOwners = new Map();
     // A single writer orders this owner's records. It never invokes Source work
     // or waits Agent idle while holding this chain.
@@ -203,6 +205,7 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
         const reservations = new WeakMap();
         const lifecycle = new Map();
         const pendingRevocations = new Set();
+        liveRevocations.set(sid, pendingRevocations);
         const key = (work) => workKey(sid, work.refs);
         const durable = (work) => table.get(key(work));
         const sameDurable = (work) => equal(durable(work), work);
@@ -352,8 +355,33 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
             }
             return undefined;
         };
+        let closingGeneration = 0;
+        const closingOwner = {
+            begin(scope, signal) {
+                if (!signal || signal.aborted || terminalStored(scope))
+                    fail('INPUT_CLOSING_OWNER_UNPROVEN');
+                const actual = agent.lookupInputCompletion(), admittedGeneration = closingGeneration;
+                if (actual.status !== 'pending' || !equal(actual.receipt, scope.receipt))
+                    fail('INPUT_CLOSING_OWNER_UNPROVEN');
+                const lease = Object.freeze({}), session = agent.session;
+                const view = { agent, session, signal, scope: clone(scope), current: () => {
+                        const completionNow = agent.lookupInputCompletion();
+                        return live && !revoked && !signal.aborted && closingGeneration === admittedGeneration
+                            && agent.session === session && sessionOwners.get(sid) === agent && owners.get(agent) === binding
+                            && !terminalStored(scope) && completionNow.status === 'pending' && equal(completionNow.receipt, scope.receipt);
+                    } };
+                closingViews.set(lease, view);
+                return lease;
+            },
+            current(lease, scope) {
+                const view = closingViews.get(lease);
+                return !!view && equal(view.scope, scope) && view.current();
+            },
+            release(lease) { closingViews.delete(lease); onClosingRelease?.(lease); },
+            revoke() { closingGeneration++; },
+        };
         const terminal = completion ? createRoleplayInputCompletion({ sessionId: sid, table, enqueue,
-            processor: completion,
+            processor: completion, closing: closingOwner,
             current: () => hot?.checkpoint && hot.terminalRequired && hot.attempt?.prepared && !hot.stop && !revoked && live
                 && !mutationCode(agent.session)
                 ? { currency: currencyOf(hot), checkpoint: hot.checkpoint,
@@ -541,7 +569,7 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
                 });
                 // Preserve the original direct FIFO path when the callbacks are absent.
                 // In that case the private wait result is unreachable.
-                if (!awaitMutationBarrier && !mutationBlockCode)
+                if (!awaitMutationBarrier && !mutationBlockCode && !preflightObservation)
                     return enter();
                 for (;;) {
                     if (!live || signal.aborted)
@@ -556,6 +584,17 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
                         catch (error) {
                             report(error);
                             return blocked(signal.aborted ? 'INPUT_PERMISSION_REVOKED' : 'INPUT_MUTATION_BARRIER_UNKNOWN');
+                        }
+                    }
+                    if (!live || signal.aborted)
+                        return blocked('INPUT_PERMISSION_REVOKED');
+                    if (preflightObservation) {
+                        try {
+                            await preflightObservation(agent.session, signal);
+                        }
+                        catch (error) {
+                            report(error);
+                            return blocked(signal.aborted ? 'INPUT_PERMISSION_REVOKED' : 'INPUT_PREFLIGHT_UNPROVEN');
                         }
                     }
                     if (!live || signal.aborted)
@@ -985,6 +1024,8 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
                     reservationLeases.delete(hot.transition.reservation.reservationId);
                 if (sessionOwners.get(sid) === agent)
                     sessionOwners.delete(sid);
+                if (liveRevocations.get(sid) === pendingRevocations)
+                    liveRevocations.delete(sid);
                 for (const leaseKey of leases.keys())
                     if (leaseKey.startsWith(`${sid}:`))
                         leases.delete(leaseKey);
@@ -995,7 +1036,38 @@ export function createRoleplayInputPreparation({ table, observe, onError, comple
     }
     const api = {
         bind,
+        /** A stored scope/hash or a copied object cannot select this WeakMap. */
+        readClosingView(lease, scope) {
+            const view = closingViews.get(lease);
+            return view && equal(view.scope, scope) && view.current() ? view : undefined;
+        },
         readTerminalAdmissionGate: (sessionId) => readTerminalAdmissionGate(sessionId),
+        /** Historical consumption still needs the exact original work ledger. A
+         * late Native stop cannot be hidden by an already written settled row. */
+        verifyConsumedScope(scope) {
+            try {
+                const sid = scope.receipt.checkpoint.sessionId, row = readInputCompletion(table, sid, scope.currency.preparationId);
+                const matches = records(sid).filter(work => work.preparationId === scope.currency.preparationId);
+                if (!row || row.status !== 'settled' || !equal(row.scope, scope) || matches.length !== 1)
+                    return false;
+                const work = matches[0];
+                if (liveRevocations.get(sid)?.has(work.preparationId))
+                    return false;
+                for (const [recordKey, value] of table.entries())
+                    if (recordKey.startsWith(`${prefix(sid)}stop-`)) {
+                        const tombstone = value;
+                        if (!Array.isArray(tombstone.refs) || tombstone.notice?.refsCode && !tombstone.refs.length
+                            || tombstone.refs.some(ref => work.refs.some(owned => equal(ref, owned))))
+                            return false;
+                    }
+                return work.terminalRequired === true && work.status === 'active' && !work.stop
+                    && equal(currencyOfStored(work), scope.currency) && equal(work.checkpoint, scope.receipt.checkpoint)
+                    && equal(work.refs, scope.receipt.checkpoint.refs) && equal(work.transition, scope.transition);
+            }
+            catch {
+                return false;
+            }
+        },
         checkTerminalPermission(token, intent) {
             return terminalOwners.get(intent.sessionId)?.checkPermission(token, intent) === true;
         },

@@ -7,6 +7,8 @@ import type { DirectorNotes } from '../memory/memory-history.js'
 import type { MemoryRecordProjection } from '../memory/memory-provenance.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 import type {MvuNumericalSnapshot} from './roleplay-mvu-state.js'
+import type {MvuSchemaNumericalSnapshotV2} from './roleplay-mvu-schema-story-types.js'
+export type RoleplayNumericalSnapshot=MvuNumericalSnapshot|MvuSchemaNumericalSnapshotV2
 
 export interface PreparationSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & { parentSession?: string }
@@ -69,7 +71,7 @@ export interface PreparationPayload {
 }
 export interface PreparationSnapshot {
   inputPreparation?: InputPreparationCurrency
-  numericalState?: MvuNumericalSnapshot
+  numericalState?: RoleplayNumericalSnapshot
   branchId: string
   agent: TaskAgent
   turnId: number
@@ -112,7 +114,7 @@ export interface PreparationWriteState {
 }
 export interface PreparationDependencies {
   /** Actual validated numerical authority, read only for an admitted numerical story. */
-  readNumericalState?(sessionId: string): MvuNumericalSnapshot | undefined
+  readNumericalState?(sessionId: string): RoleplayNumericalSnapshot | undefined
   T: PreparationTables
   ctx: PreparationContext
   cfg: { contextWindowTokens?: number; continuityTailTokens?: number; contextWindowEnabled?: boolean }
