@@ -4,9 +4,11 @@
 
 **简体中文** · [English](README.en.md)
 
-> **0.3 正在开发，代码会持续同步到本仓库。** 当前包含未发布的源码布局与内聚性重构；统一插件安装、启停和升级仍在实现与验收中。GitHub Releases 待 0.3 完成后发布，下方安装链接仍指向 **0.2.5**。开发进展与兼容变更见 [CHANGELOG](CHANGELOG.md)，参与开发请读[重建指南](CONTRIBUTING.md)。
+> **0.2.8 已发布：整合安装与维护改善。** 宿主升级到 Harness `0.1.7-rc.2`／Session V4，一条官方插件命令即可安装酒馆与所需组件。当前 `main` 继续同步 0.3 开发源码；安装请使用 npm 发布包或 [v0.2.8 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8)，开发请读[重建指南](CONTRIBUTING.md)。
 
-> **0.3 正在迁移到 `0.1.7-alpha.1`／Session V4。** 本轮已同步依赖锁、存储／Controller／适配器和自有聊天／工作区源码；维护树严格编译、编辑／冷分页／维护分组定点测试及 browser bundle 校验通过。根产品、公开构建入口与完整安装验收仍在推进，当前 `main` 不是可直接安装的 0.3 发行版。不承诺旧会话数据可迁移；升级前请在旧环境导出角色卡或小说，小说不包含完整状态。
+> **旧会话不兼容，请使用新目录。** 先在旧环境导出角色卡或小说，再安装 0.2.8。小说稿不保存完整会话状态，不能用它恢复原会话。
+
+抱歉让大家久等了。0.3 希望兼容更广泛的 SillyTavern 社区卡，包括 MVU 变量、EJS、RUBY 与前端美化；要让它们接入自有状态、事件和恢复链，难度比预期更大，我们正在加速推进。这次先交付已完成的整合安装和维护改善，上述兼容仍在开发。感谢大家继续反馈、陪我们把它打磨好。
 
 **让角色独立推演，让世界随你的选择展开。**
 
@@ -20,36 +22,41 @@
 
 Roleplay workspace for DeepSeek Harness: interactive character creation, on-demand worldbook reading, long-form memory, multi-model collaboration, character agents, branching stories, novel exports and one-click installers.
 
-**0.2.5 预览版** · Harness **0.1.2-alpha.3** · pi-ai **0.84.4** · 自有代码 **GPL-3.0**
+**0.2.8** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · 自有代码 **GPL-3.0**
 
-想快点开一章，用[一键安装](#一键安装)；想自己控制运行时和补丁，就按[手动安装](#安装)配好那六项兼容补丁。
+先装宿主，再用[一键安装](#一键安装)的官方插件命令。需要自己指定目录、端口或使用归档时，见[安装](#安装)。
 
 ## 一键安装
 
-**不想手动配运行时、也不想自己打补丁？现在有两条一键路径。** 安装器只做一件事：把运行时和工作区准备好。模型和密钥仍然由你自己决定。
+**已经装好 Harness 的玩家，只需这一条命令：**
+
+```powershell
+dsh plugin --profile web add dsh-nexttavern
+```
+
+第一次使用 DSH，请先安装 Node.js 24+ 和宿主：
+
+```powershell
+npm install -g @deepseek-ai/dsh@0.1.7-rc.2
+```
+
+安装后运行 `dsh web --host 127.0.0.1`，按终端地址打开浏览器，配置自己的模型与 Key，再选择“角色扮演模式”。所需兼容组件、文档读取组件和自有皮肤由统一插件准备；皮肤随包安装、默认关闭。首次准备需要时间与网络，准备完成后的启动会复用已校验的组件。
+
+**从旧版本迁移：先导出，再用新目录。** 0.2.5 的旧会话无法直接延续，目录隔离步骤见[安装](#安装)。不要对旧 home 或工作区执行这条命令来尝试迁移会话。
 
 ### Windows
 
-下载 [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup.exe)，双击，选一个安装目录，然后等它跑完。它会准备便携的 PowerShell 与 Node.js 运行时、按需安装 Microsoft Visual C++ 运行库、建好工作区与启动／停止快捷方式，完成后直接替你打开浏览器。默认装到 `%LOCALAPPDATA%\NextTavern`。Windows on ARM 设备请用 [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup-arm64.exe)。
+希望由安装器准备便携运行时与快捷方式，可下载 [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.exe)。Windows on ARM 使用 [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup-arm64.exe)。从旧版本迁移时选择新的安装目录；完整步骤、未签名提示与验证范围见 [Windows 一键安装指南](INSTALL-WINDOWS.md)。
 
-**0.2.5 起支持原地升级**：在旧安装上直接运行新安装器，你的故事、角色卡和设置都会留着。完整步骤与注意事项见 [Windows 一键安装指南](INSTALL-WINDOWS.md)。
-
-Windows 安装器还没有代码签名，首次运行可能出现 SmartScreen 提示；ARM64 安装器是这一版新增的，装上后遇到问题欢迎来[反馈](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)说一声。
+两端安装器准备便携宿主后，也通过官方 `plugin add` 安装已校验的归档；不再向宿主重放旧兼容补丁。安装失败时保留未完成回执，重新运行可以恢复本安装器拥有的工作。
 
 ### Linux
 
-[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup.sh) 是 0.2.5 新增的自包含脚本，对起点的要求很低：一个 POSIX shell、`curl` 或 `wget`、`tar`，再加一个能算 SHA-256 的工具。脚本自己下载并校验便携 Node.js 运行时，然后准备好安装目录、桌面入口和启动／停止启动器。支持 x86_64 与 aarch64（glibc），**不需要 root，也不需要系统包管理器**。完整步骤见 [Linux 一键安装指南](INSTALL-LINUX.md)。
+[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从旧版本迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
 
-### 两条路径共同的部分
+### 安装与模型费用
 
-| 项目 | 说明 |
-| --- | --- |
-| **只监听本机** | 本地服务绑定 `127.0.0.1`，端口在 3510–3599 之间自动选择，默认不对局域网或公网开放。 |
-| **密钥自己填** | 模型 API Key 由玩家输入并保存在本机；安装包不携带、也不分发任何密钥。 |
-| **下载先校验** | 镜像优先的下载来源，逐文件 SHA-256 校验，已校验的文件会被缓存复用。 |
-| **中断可续** | 网络失败或中途关闭后重新运行安装器，会跳过已校验的文件继续安装。 |
-
-**两个安装器都只是更省事的入口**：它们产出的 preset 和兼容补丁，与[手动安装](#安装)路径完全一致。
+安装、字节校验、恢复和卸载由程序完成，不调用故事模型。模型 API Key 由玩家输入，安装包不携带密钥；本机服务绑定 `127.0.0.1`。故事生成及既有后台记忆、状态等任务仍按所配置模型计费，打开已有会话也可能恢复后台维护。
 
 ## 开始体验
 
@@ -64,7 +71,7 @@ Windows 安装器还没有代码签名，首次运行可能出现 SmartScreen �
 
 > 帮我创作一张蒸汽都市悬疑角色卡。我想扮演刚到港口的调查员，故事慢热，有多方势力，也有人物关系的发展。其他细节你来决定。
 
-告诉 AI 你想遇见怎样的人、经历怎样的故事。你可以一起打磨细节，也可以说“你来决定”，让它带着世界、人设、开场与文风继续创作。DOCX/PDF 读卡可通过[文档扩展](#文档扩展)启用。手边只有一部长篇小说？也可以直接让它读成一张卡，见[长文本转角色卡](#长文本转角色卡)。
+告诉 AI 你想遇见怎样的人、经历怎样的故事。你可以一起打磨细节，也可以说“你来决定”，让它带着世界、人设、开场与文风继续创作。DOCX 等文档的读取方式见[文档扩展](#文档扩展)。手边只有一部长篇小说？也可以直接让它读成一张卡，见[长文本转角色卡](#长文本转角色卡)。
 
 ### 导入 SillyTavern / TauriTavern 人物卡
 
@@ -86,7 +93,7 @@ Windows 安装器还没有代码签名，首次运行可能出现 SmartScreen �
 
 | 能力 | 你可以获得什么 |
 | --- | --- |
-| **一键安装** | Windows 与 Linux 两个自包含安装器：便携运行时、工作区、快捷方式与镜像优先的校验下载，Windows 支持原地升级。 |
+| **一键安装** | 官方一条 plugin add 安装酒馆与所需组件；另有 Windows／Linux 便携运行时安装器。旧版迁移使用新目录。 |
 | **SillyTavern / TauriTavern 卡片导入** | 直接读取 PNG `chara`/`ccv3` 和 JSON v1/v2/v3 人物卡，保留原件并支持内嵌世界书。 |
 | **固定设定 + 硬切窗口 + 导演笔记 + 混合检索** | 固定设定不压缩始终注入；窗口保留近期完整正文与尾部衔接；后台笔记带来源哈希与世界线锚点；历史召回支持关键词／语义／混合三种方式。 |
 | **预设与文风系统** | 独立预设页，作用范围可选当前对话／指定对话／全局，三种文风模式，16 种自带文风，200 个自定义槽位。 |
@@ -261,9 +268,9 @@ flowchart TD
 
 ## 全新自有皮肤
 
-0.2.5 带来了项目**第一套自有皮肤 `dsh-nexttavern-amber`**：整套界面用同一套设计 token 重绘，**日间与夜间两套主题**切换一次就是两种气氛；侧栏坐着一位 Q 版酒馆看板娘，日夜各是一张不同的画；夜间主题下的酒馆阅读模式铺在陈旧羊皮纸上，作者自己写的墨色一点没动——喜欢安静地读完一篇长文的人，会喜欢这一版。
+项目提供**第一套自有皮肤 `dsh-nexttavern-amber`**：整套界面用同一套设计 token 重绘，**日间与夜间两套主题**切换一次就是两种气氛；侧栏坐着一位 Q 版酒馆看板娘，日夜各是一张不同的画；夜间主题下的酒馆阅读模式铺在陈旧羊皮纸上，作者自己写的墨色一点没动——喜欢安静地读完一篇长文的人，会喜欢这一版。
 
-皮肤随安装包一起装好，但**默认不开**，所以你的界面还是原来的样子。想换上它：打开 **设置 → 插件市场 → 已安装**，找到 `dsh-nexttavern-amber`，把开关打开。它写进 profile 的 `cordis.patch.yml`，热加载大约一秒生效，**不用重启**；看腻了拨回去就行，你的选择在重启后依然保留。这个开关由随包的第三方插件市场提供，来源、出站请求与关闭方法见[补丁与依赖来源](#补丁与依赖来源)。
+皮肤随安装包一起装好，但**默认不开**，所以你的界面还是原来的样子。想换上它：打开 **设置 → 插件市场 → 已安装**，找到 `dsh-nexttavern-amber`，把开关打开。它写进 profile 的 `cordis.patch.yml`，热加载大约一秒生效，**不用重启**；看腻了拨回去就行，你的选择在重启后依然保留。这个开关由第三方插件市场提供；已有市场会复用，缺少时才由产品安装上游市场，来源、出站请求与关闭方法见[补丁与依赖来源](#补丁与依赖来源)。
 
 ![自有皮肤 · 日间主题](screenshots/skin-day.png)
 
@@ -359,135 +366,110 @@ flowchart TD
 
 **架构说完，下面是取用与维护这一版需要的材料。** 先看这一版发布了哪些文件。
 
-- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/dsh-nexttavern.tgz)，含预构建 UI、源码、preset、参考卡、补丁器、CLI 和可选公网鉴权源包。
-- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/dsh-debug.tgz)。
-- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
+- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz)，含统一插件、预构建 UI、源码、preset、参考卡、随包组件、CLI 和可选公网鉴权源包。
+- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-debug.tgz)。
+- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
 
 一键安装器：
 
-- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup.exe)（Windows x64）
-- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup-arm64.exe)（Windows on ARM）
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/nexttavern-setup.tgz)（安装器的 npm 归档）
+- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.exe)（Windows x64）
+- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup-arm64.exe)（Windows on ARM）
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/nexttavern-setup.tgz)（安装器的 npm 归档）
 
 校验与来源：
 
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/provenance.json)
-- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.5)。未发布到 npm，不要使用 `npm install dsh-nexttavern`。
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/provenance.json)
+- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8)。npm 包名为 `dsh-nexttavern`，通过官方 `dsh plugin --profile web add dsh-nexttavern` 安装。
 
 ## 安装
 
-一键安装器已经覆盖了绝大多数场景；这一节是**手动路径**，适合想自己控制运行时版本、自己应用补丁、需要固定端口，或者要接进自己运维流程的用户。
+此处适合指定独立 home、工作区与固定端口的玩家。需要 Node.js 24+ 和 npm；以下为 PowerShell 示例，每条命令成功后再继续。
 
-需要 Node.js 22+、npm、Python 3 和 tgz 解压工具。以下为 PowerShell 7 示例，使用独立的新目录。先下载主包；每条命令成功后再继续。
-
-```powershell
-$ReleaseDir = Join-Path $PWD 'nexttavern-release'
-$HarnessRoot = Join-Path $PWD 'nexttavern-harness'
-$env:DSH_HOME = Join-Path $PWD 'nexttavern-home'
-New-Item -ItemType Directory -Path $ReleaseDir,$HarnessRoot -ErrorAction Stop | Out-Null
-tar -xzf ./dsh-nexttavern.tgz -C $ReleaseDir
-Copy-Item -LiteralPath "$ReleaseDir/package/harness/package.json" -Destination $HarnessRoot
-Copy-Item -LiteralPath "$ReleaseDir/package/harness/package-lock.json" -Destination $HarnessRoot
-npm ci --prefix $HarnessRoot --ignore-scripts --no-audit --no-fund
-node "$HarnessRoot/node_modules/@deepseek-ai/dsh/lib/bin.js" web --dump-config | Out-Null
-$ProfileDir = Join-Path $env:DSH_HOME 'profiles/web'
-npm install --prefix $ProfileDir --legacy-peer-deps --ignore-scripts --no-audit --no-fund "$PWD/dsh-nexttavern.tgz" "$HarnessRoot/node_modules/@deepseek-ai/dsh-tools"
-$PackageRoot = Join-Path $ProfileDir 'node_modules/dsh-nexttavern'
-```
-
-随包 Harness 锁文件固定 alpha.3 官方依赖，避免旧 prerelease 的宽范围解析到新版本。本地目录依赖让社区文档工具复用 Harness 的同一个 `dsh-tools` 实例；不要在 profile 中另装不同版本的官方工具注册表。
-
-安装 preset 和修改 Harness 前，停止目标实例，为每次操作选择新的备份目录：
+**升级前先在旧环境导出角色卡或小说，并保留旧目录备份。** 旧会话不能直接延续，小说不包含完整状态。新 home 和新工作区应使用未占用的路径，不复制旧会话数据库。
 
 ```powershell
-node "$PackageRoot/tools/install.mjs" --home $env:DSH_HOME --harness $HarnessRoot
-node "$PackageRoot/tools/install.mjs" --home $env:DSH_HOME --harness $HarnessRoot --apply --stopped --backup "$PWD/nexttavern-preset-backup-1"
-node "$PackageRoot/tools/patch-harness.mjs" --harness $HarnessRoot
-$env:DSH_ALLOW_HARNESS_PATCH = '1'
-node "$PackageRoot/tools/patch-harness.mjs" --harness $HarnessRoot --apply --stopped --backup "$PWD/nexttavern-harness-backup-1"
-Remove-Item Env:DSH_ALLOW_HARNESS_PATCH
-node "$HarnessRoot/node_modules/@deepseek-ai/dsh/lib/bin.js" web --host 127.0.0.1 --port 3510
+npm install -g @deepseek-ai/dsh@0.1.7-rc.2
+$env:DSH_HOME = Join-Path $PWD 'nexttavern-028-home'
+$Workspace = Join-Path $PWD 'nexttavern-028-workspace'
+New-Item -ItemType Directory -Path $env:DSH_HOME,$Workspace -ErrorAction Stop | Out-Null
+dsh plugin --profile web add dsh-nexttavern
+dsh web --host 127.0.0.1 --port 3510
 ```
 
-浏览器中配置自己的供应商，选择工作区，在新会话预设菜单中选择“角色扮演模式”。打开角色扮演会话后，可见“酒馆管理”侧栏入口和“酒馆”TAB。未打补丁也能加载插件，但会缺少完整的 UI slots 和世界线支持，那不算完整安装。
+浏览器中选择刚建的工作区，配置自己的模型供应商，新建会话时选“角色扮演模式”。后续启动仍须使用同一个 `DSH_HOME`，再运行最后一条命令。
 
-已有 alpha.3 的用户可以用自己的 HarnessRoot/DSH_HOME，先跑一次 audit。已有但不受安装器管理的 roleplay preset 会被拒绝覆盖，请先自行备份和迁移。遇到未知版本或文件指纹，安装会停下，不会降级成部分安装。`--stopped` 是你的停机确认，工具不会替你终止服务或会话。
+也可以从 [v0.2.8 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8) 下载主包，与 `SHA256SUMS` 核对后，以本地归档替代 npm 包名：
+
+```powershell
+dsh plugin --profile web add ./dsh-nexttavern.tgz
+```
+
+不再需要 alpha.3 的手工 preset 初始化和宿主字节补丁。统一插件使用自己的兼容提供者，停用或激活失败时恢复原生提供者；普通 DSH 上传、附件和侧栏由官方提供。
+
+### 首次准备失败时
+
+网络失败后先恢复网络，再用同一 home 重试。首启准备有校验、锁与事务检查点，能识别中断并恢复；不要手工改 receipt、pin 或删除用户目录。
+
+如果官方命令失败后包已装上、bundle 却未登记，可在停止目标服务后用同一个 home 执行以下两条，再重启：
+
+```powershell
+dsh plugin --profile web remove dsh-nexttavern
+dsh plugin --profile web add dsh-nexttavern
+```
+
+若 pnpm 提示构建脚本未批准，先核对提示的包和 `profiles/web/pnpm-workspace.yaml` 中的 `allowBuilds`；不要把整个依赖树设为无条件信任。再次失败时保留终端错误与版本信息，隐去密钥后[反馈](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)。
 
 ## 文档扩展
 
-上传和 `read_document` 随完整安装提供。anydoc 的 DOCX/PDF 转换与 office 的 DOCX 导出定义和配置入口也随包交付；启用需安装依赖后重新安装 preset：
+PNG／JSON 人物卡解析由产品内置；文件上传和附件使用宿主的原生入口。统一插件随包准备自有 `dsh-nexttavern-anydoc`，用于 TXT、CSV、DOCX 等文档解析、分页读取与完整 Markdown 转换，保留上游署名；不需要再装旧 `file-upload`／`read_document` 或 Office 插件。
 
-```powershell
-npm install --prefix $ProfileDir --legacy-peer-deps --ignore-scripts --no-audit --no-fund 'https://github.com/a86582751/dsh-plugin-anydoc/releases/download/v0.1.0-nexttavern.1/dsh-plugin-anydoc-0.1.0-nexttavern.1.tgz' '@huiliyi37/dsh-office@0.2.2'
-node "$PackageRoot/tools/install.mjs" --home $env:DSH_HOME --harness $HarnessRoot --documents
-node "$PackageRoot/tools/install.mjs" --home $env:DSH_HOME --harness $HarnessRoot --documents --apply --stopped --backup "$PWD/nexttavern-documents-backup-1"
-```
-
-省略 `--documents` 再安装可关闭这两个挂载，不删除文档。显式启用但缺依赖会报错。扫描版 PDF 走 OCR，能否读出内容取决于文件本身；能读哪些格式，也取决于系统里可用的组件。office 的 `docx_read` 有长度上限，完整读卡使用 `read_document` 分页或 anydoc。长文本转角色卡读的是工作区 TXT，不依赖这一节的扩展。
+想把文档作为角色卡来源，可上传原文件并说明用途。DOCX 读取已经覆盖；PDF／扫描件的可读性仍取决于文档和所用转换组件，本版不承诺 OCR 或所有格式都可用。长文本转角色卡读取工作区 TXT，不依赖 PDF 转换。可选工具请按各自的宿主兼容要求安装，不要把旧 alpha.3 扩展直接挂进新 profile。
 
 ## 补丁与依赖来源
 
-| 单元 | 目标版本 | 作用 |
-| --- | --- | --- |
-| ui-chat | 0.1.2-alpha.3 | slots、动作栏与维护投影 |
-| ui-workspace | 0.1.2-alpha.3 | 侧栏 slots、CSS 标识符 |
-| token-meter | 0.1.2-alpha.3 | 编辑计量与热路径 |
-| session-projection | 0.1.2-alpha.3 | 投影热路径与缺事件恢复 |
-| Session Controller | 0.1.2-alpha.3 | 原生 forkPrepared 世界线准备 |
-| pi-ai | 0.84.4 | Google、OpenAI Completions/Responses、Anthropic 流终止 |
+本版固定 Harness **0.1.7-rc.2** 与 pi-ai **0.85.1**。产品使用自有 UI、Session Controller、持久化、投影、计量和 pi-ai 兼容提供者；它们随包校验并准备为独立版本组件，不要求玩家修改宿主已安装文件。版本、来源与许可证见随包 metadata、`provenance.json` 和 [NOTICE](NOTICE.md)。
 
-全部目标先在内存里转换、核对，再备份和写入。重复应用完全相同的补丁是幂等的；失败会恢复本批改动，中断后可按事务备份回滚。被其他升级或你自己改过的文件不会被强制覆盖。npm 安装没有 postinstall 补丁。
+- [anydoc](https://github.com/a86582751/dsh-plugin-anydoc) 基于 [beancookie/dsh-plugin-anydoc](https://github.com/beancookie/dsh-plugin-anydoc)，保留原作者历史与 MIT 署名，由自有 TypeScript 源码维护。
+- [pi](https://github.com/a86582751/pi) 基于 [earendil-works/pi](https://github.com/earendil-works/pi)，保留 MIT 署名；兼容层统一处理四条协议的流终止与释放。
+- 官方上传、附件和侧栏替代旧社区上传工具与 `better-sidebar`，不需要额外安装这些退休组件。
 
-社区兼容包使用正式 fork，保留上游历史和署名，不会被误认作原作者发布：
+第三方 [dsh-market](https://github.com/dsh-market/dsh-market)（npm 名 `dshmarket`，MIT）用于浏览社区插件和开关[自有皮肤](#全新自有皮肤)。已有市场会原样复用；缺少时产品才解析并安装上游版本，将解析版本与校验信息留在当前 profile，不再固定旧 1.39.0，也不使用市场 fork。它仍是独立的第三方项目；市场目录和评论可能访问 [awesome-dsh-plugin.com](https://awesome-dsh-plugin.com)、giscus 与 GitHub。在设置里停用市场即可关闭这些市场功能；酒馆本身的启停不依赖市场。
 
-- [dsh-file-upload](https://github.com/a86582751/dsh-file-upload)，上游 [HongMing-Huang/dsh-file-upload](https://github.com/HongMing-Huang/dsh-file-upload) 0.4.3。修复上传回调、稳定引用、附件关闭不删资源、完整分页和 Markdown 转义；基础包保留原版 Host 检查。显式安装公网兼容后，额外接受鉴权插件完成 JWT 与 Origin 校验后写入的服务器标记。
-- [anydoc](https://github.com/a86582751/dsh-plugin-anydoc)，上游 [beancookie/dsh-plugin-anydoc](https://github.com/beancookie/dsh-plugin-anydoc) 固定提交的 0.1.0，保守还原 Markdown 转义。
-- [pi-ai 差分](https://github.com/a86582751/pi/tree/codex/nexttavern-alpha3/nexttavern-compat)，上游 [earendil-works/pi](https://github.com/earendil-works/pi) 0.84.4。统一补丁器解析 Harness 实际使用的实例，不另装无效的 profile 副本。
-
-随包还装了一个第三方插件市场，[上面那套皮肤](#全新自有皮肤)的开关就由它提供：
-
-- [dsh-market](https://github.com/dsh-market/dsh-market)（npm 名 `dshmarket`）固定 **1.39.0**，MIT，就是 [dshmarket.com](https://dshmarket.com) 的插件市场：在设置里浏览、搜索、一键安装社区插件。
-- 它是独立的第三方项目，由 [dsh-market](https://github.com/dsh-market/dsh-market) 维护，不是我们写的。打开市场会读取 [awesome-dsh-plugin.com](https://awesome-dsh-plugin.com) 的公共插件目录，打开评论会连 giscus 和 GitHub——这是我们「本地服务只监听 127.0.0.1」之外额外出站请求的来源。我们固定版本、不跟随上游，也不改它的代码。
-- 不想让它联网，可以在 **设置 → 插件 → 插件配置** 里把它关掉；那之后皮肤也能继续用，只是换肤要手动改 profile 的 `cordis.patch.yml`。
-
-`better-sidebar` 不是必需依赖，用官方侧栏就好。公网玩家可按[手机电脑公网访问指南](PUBLIC-ACCESS.md)显式安装随包提供的 `@isund/dsh-auth-webserver`（0.1.0-alpha.3.2），配置自己的 Cloudflare Access、域名和登录身份。鉴权源码、脱敏模板、三个可回滚的公网兼容选项都已交付；默认的本机安装不会自动开放网络。个人密钥、地址、systemd/Nginx 实例配置和私有模型路由不随包分发。通用 Qwen reasoning 配置辅助工具保留在 integrations 目录，只在你的路由确实需要时使用。
+公网玩家可按[手机电脑公网访问指南](PUBLIC-ACCESS.md)显式配置随包提供的鉴权插件、自己的 Cloudflare Access、域名和登录身份。默认安装只监听本机，模型 Key、私人地址和会话不随包分发。旧公网配置请单独核对新宿主兼容情况，不当作旧会话迁移工具。
 
 ## 更新、卸载与回滚
 
-用一键安装器的玩家，更新就是在旧安装上运行新安装器（Windows 支持原地升级，保留故事与设置）；卸载则在停止服务后删除安装目录和快捷方式。细节见 [Windows](INSTALL-WINDOWS.md#卸载与回滚) 与 [Linux](INSTALL-LINUX.md#卸载与回滚) 指南。
+**0.2.5 → 0.2.8 是迁移，不是旧会话原地续写。** 在旧环境导出角色卡／小说，备份旧目录，再按[安装](#安装)使用新 home 和工作区。一键安装器也应选择新根目录；旧安装保持独立，必要时继续用旧版本读取或导出资料。
 
-手动安装的更新流程：先停止实例并备份，核对新版本兼容情况；安装新 tgz 后运行新安装器和补丁 audit。你改过的受管 preset 文件不会被覆盖，但要先保留并核对改动。安装器用 `.nexttavern-install.json` 管理文件。
+同一兼容版本线内更新时，先停止当前服务、备份当前 home 和工作区，核对新版本说明，再通过官方 `plugin add` 安装目标包版本或归档，重启宿主以加载新模块。准备过程拒绝坏包和未知组件，不会把失败写成成功；持久组件按版本保留，回滚须使用匹配的旧包与对应备份，不混用其他实例的 receipt 或 pin。
+
+**停用／重新启用：** 在官方 **设置 → 插件 → 插件配置** 中切换 `dsh-nexttavern` 总开关；停用后恢复原生 UI 和提供者。皮肤是独立开关，默认关闭，见[自有皮肤](#全新自有皮肤)。
+
+**卸载插件：** 先停止目标服务，确认 `DSH_HOME` 指向要操作的安装，再执行：
 
 ```powershell
-# 卸载 preset 与 bundle 注册，保留故事、资源、笔记和模型配置。
-node "$PackageRoot/tools/install.mjs" --home $env:DSH_HOME --harness $HarnessRoot --uninstall --apply --stopped --backup "$PWD/nexttavern-uninstall-backup-1"
-# 回滚指定的安装或卸载事务。
-node "$PackageRoot/tools/install.mjs" --rollback "$PWD/nexttavern-uninstall-backup-1" --stopped
-# 单独恢复原版 Harness，完整酒馆功能随之不可用。
-$env:DSH_ALLOW_HARNESS_PATCH = '1'
-node "$PackageRoot/tools/patch-harness.mjs" --rollback "$PWD/nexttavern-harness-backup-1" --stopped
-Remove-Item Env:DSH_ALLOW_HARNESS_PATCH
+dsh plugin --profile web remove dsh-nexttavern
 ```
 
-卸载器不删除 npm 依赖。确认不再使用后，可以从 profile 里移除插件包；其他插件仍然依赖的上传/文档工具要留着。回滚只用对应实例的原始备份。
+受控卸载移除产品注册及其受管配置，保留故事、卡片、资源、笔记、用户预设副本和模型设置，也不把玩家已有市场当作产品删除。它不会删除整个 home 或工作区；之后重新安装仍可使用该版本线兼容的用户资料。删除安装器根目录会连同 `home`／`workspace` 删除用户资料，完整清理前必须先备份，详见 [Windows](INSTALL-WINDOWS.md#卸载与回滚) 与 [Linux](INSTALL-LINUX.md#卸载与回滚)。
 
 ## 源码与验证范围
 
 如果你想自己重建一套界面，或者核对这个包是怎么做出来的，这一节就是路线图。
 
-**TypeScript 是唯一维护源码。** 手写 `.ts` / `.mts`，`.js` / `.mjs` 由共享构建清单经 TypeScript 5.9.3 生成。本版发布包含 637 个构建产物、24 个 schema 和 158 个 TypeScript 模块，运行时已经整体迁移过来，包括核心、UI、记忆、鉴权、读卡、任务、遥测、分支与世界线路由，以及发布与安装工具链。
+**TypeScript 是唯一维护源码。** 手写 `.ts` / `.mts`，`.js` / `.mjs` 由共享构建清单经 TypeScript 5.9.3 生成。维护源码集中在 `src/`，生成物在 `lib/`，包含运行时、UI、记忆、鉴权、读卡、遥测、分支及发布工具链。根入口和 `./client` 导出保持，内部深路径已有迁移；开发者请按[重建指南](CONTRIBUTING.md)更新直接引用。
 
-`provenance.json` 记录维护源码提交、逐文件来源、工具版本和 SHA-256；`tools/harness-patches.json` 记录上游固定来源及前后指纹。主仓库不携带完整官方补丁快照。想重建 UI：
+`provenance.json` 记录维护源码提交、逐文件来源、工具版本和 SHA-256；随包 metadata 记录组件版本与上游固定来源。主仓库不携带完整官方补丁快照。想重建 UI：
 
 ```powershell
 npm ci --prefix ./build-tools --ignore-scripts --no-audit --no-fund
 npm run build
 ```
 
-同一份源码和锁文件应当重建出相同的 lib/client.js。改动源码后请更新自己的版本号与 provenance，不要冒充原始 Release。兼容 fork 各自有无需维护仓库的独立重建命令和归档摘要。
+公开源码可按登记配方重建四份浏览器 bundle，包括根产品与兼容提供者。改动源码后请更新自己的版本号与 provenance，不要冒充原始 Release。兼容 fork 各自有无需维护仓库的独立重建命令和归档摘要。
 
-架构设计与各部分的取舍写在[架构说明](ARCHITECTURE.md)里。安装、补丁和记忆部分的改动都有对应的测试；两个一键安装器各自适用哪些场景，写在 [Windows 一键安装指南](INSTALL-WINDOWS.md) 与 [Linux 一键安装指南](INSTALL-LINUX.md) 里。
+架构设计与各部分的取舍写在[架构说明](ARCHITECTURE.md)里。整合安装、生命周期、记忆和 UI 有对应验收证据。完整付费行为验收使用 alpha.1 候选；迁移到 rc.2 后完成了最小源码检查和本机／服务器实际安装，没有在 rc.2 重跑整套付费验收。纯净 VM 与真实 ARM64 仍未验证；两个一键安装器各自适用哪些场景，写在 [Windows 一键安装指南](INSTALL-WINDOWS.md) 与 [Linux 一键安装指南](INSTALL-LINUX.md) 里。
 
 ## 社区支持
 
@@ -499,4 +481,4 @@ npm run build
 
 带着你的世界来，也把体验和想法带回来。[分享反馈与建议](https://github.com/a86582751/dsh-nexttavern/issues)，一起打磨下一段更好的创作旅程。反馈问题时请附版本与复现步骤，并隐去密钥和私密内容。
 
-自有代码以 **[GPL-3.0](LICENSE)** 开源。随包的上游补丁与社区改动各自保留原许可（DeepSeek 与 pi 的 MIT 条款、上传与 anydoc fork 的 MIT、office 的 Apache-2.0），逐项列在 [NOTICE](NOTICE.md) 里。
+自有代码以 **[GPL-3.0](LICENSE)** 开源。随包的上游补丁与社区改动各自保留原许可（DeepSeek、pi 和 anydoc 的 MIT 条款等），逐项列在 [NOTICE](NOTICE.md) 里。

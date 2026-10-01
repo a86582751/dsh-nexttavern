@@ -2,7 +2,7 @@
 
 [返回首页](README.md) · [Linux 安装](INSTALL-LINUX.md) · [手动安装](README.md#安装) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-`NextTavern-Setup.exe` 是给玩家的推荐安装方式：不用自己装运行时、不用自己配补丁，双击、选目录、等待，就能在自己的电脑上打开角色扮演工作台。
+`NextTavern-Setup.exe` 是 0.2.8 的便携运行时安装入口：不用自己装运行时、不用自己配补丁，双击、选目录、等待，就能在自己的电脑上打开角色扮演工作台。
 
 ## 它替你做了什么，需要你做什么
 
@@ -19,7 +19,7 @@
 ## 三步完成安装
 
 1. **运行安装器。** 双击下载到的 `NextTavern-Setup.exe`（64 位系统用它），Windows on ARM 设备使用 `NextTavern-Setup-arm64.exe`。它会打开一个原生窗口，不需要额外的框架或运行库。
-2. **选择安装文件夹。** 默认是 `%LOCALAPPDATA%\NextTavern`，也就是你自己账号的本地应用目录。建议保持默认；如果想改，请选择本机磁盘上的普通目录，不要用网络共享路径。
+2. **选择安装文件夹。** 默认是 `%LOCALAPPDATA%\NextTavern`，也就是你自己账号的本地应用目录。从旧版本迁移时必须选新目录，例如 `%LOCALAPPDATA%\NextTavern-0.2.8`。请选择本机磁盘上的普通目录，不要用网络共享路径。
 3. **等待，然后开始。** 窗口里会显示当前阶段和下载进度。完成后浏览器会自动打开工作台；第一次进入时按提示选择工作区、填写模型供应商，然后在新建会话的预设菜单里切到“角色扮演模式”。
 
 安装过程中途关掉窗口不会留下半套可用环境：重新运行安装器会继续复用已经下载并校验过的文件，不必从头再来。
@@ -56,12 +56,13 @@
 
 ## 升级已有安装
 
-**0.2.5 这一版新增了原地升级。** 在旧安装上直接运行新版本的安装器，它会识别已有安装、保留你的故事、角色卡、工作区和模型设置，只替换需要更新的部分；升级前会在 `backups` 下留下备份，方便回滚。
+**0.2.5 的旧会话不能直接在 0.2.8 中延续，请安装到新目录。** 新版采用 Harness `0.1.7-rc.2`／Session V4 与统一插件；不要把旧 `home`／会话数据库复制进去，也不要把本次迁移当作原地无损升级。
 
-两点前提：
+1. 在旧环境导出需要保留的角色卡或小说；小说稿不包含完整会话状态。
+2. 用 `Stop Next Tavern` 停止旧服务，另行备份旧安装的 `home` 与 `workspace`。
+3. 运行 0.2.8 安装器，选择新的根目录，配置模型，再将原卡或导出的角色卡导入新工作区。
 
-- 如果服务正在运行，先用 `Stop Next Tavern` 停下来再升级。
-- 升级是有版本范围的。安装器只接受它登记过的旧版本；版本不匹配或指纹不符时会明确停止并说明原因，不会降级成一套半新半旧的环境。
+旧目录保持独立，必要时可继续用旧版读取和导出资料。已有 Node.js 的玩家也可以直接采用[官方插件命令](README.md#安装)，明确指定新 `DSH_HOME`。
 
 ## 安全边界
 
@@ -87,24 +88,24 @@
 
 ## 卸载与回滚
 
-**回滚一次升级。** 停止服务，然后用 `backups` 里对应的备份目录还原安装根目录，再启动即可。
+**仅停用或卸载酒馆插件：** 使用官方设置中的 `dsh-nexttavern` 总开关，或停止目标服务后在该安装的 `DSH_HOME` 下执行 `dsh plugin --profile web remove dsh-nexttavern`。详情见[更新、卸载与回滚](README.md#更新卸载与回滚)。受控卸载保留故事、资源、笔记和模型设置。
 
-**完全卸载。** 停止服务后，删除桌面和开始菜单里的 `NextTavern` / `Stop Next Tavern` 快捷方式，再删除整个安装根目录（默认 `%LOCALAPPDATA%\NextTavern`）。
+**回到旧版：** 停止新服务，使用原来保留的旧安装与对应备份。新版会话不能借此转换成旧版会话；不要混用两个实例的 home、receipt 或 pin。
 
-**你的故事在哪。** 角色卡、故事文本、笔记、导出文件和模型配置都在安装根目录的 `workspace` 与 `home` 里。删除根目录会一并删除它们，所以想保留内容时，先单独备份这两个目录。
+**完全删除便携安装：** 停止服务，先单独备份 `home` 与 `workspace`，再删除桌面和开始菜单里的 `NextTavern`／`Stop Next Tavern` 快捷方式及要删除的安装根目录。删除根目录会删除其中的角色卡、故事、笔记、导出文件和模型配置，不等同于插件的受控卸载。
 
 ## 我们还不能保证的事
 
 - **安装器没有代码签名。** 首次运行时 Windows SmartScreen 可能弹出提示，这是未签名程序的正常表现，不代表安装包被篡改。
-- **没有在全新 Win11 虚拟机和真实 ARM64 设备上验证过。** x64 的 `NextTavern-Setup.exe` 是主要测试路径；`NextTavern-Setup-arm64.exe` 已构建并可供 ARM 设备使用，但作者的验证范围有限，欢迎反馈实际结果。
+- **没有在全新 Win11 虚拟机和真实 ARM64 设备上验证过。** 构建产物与安装契约检查不代表这些环境已通过真机安装验收；欢迎反馈实际结果。
 - **安装需要网络。** 便携运行时和主包在安装时下载，首次安装不可避免需要联网。
 - **Visual C++ 运行库若需新装，会请求一次管理员授权。** 已安装且版本足够时会自动跳过。
 - 安装目录请使用本机磁盘路径（不支持 `\\` 网络路径）。
 
 ## 下载
 
-- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup.exe)
-- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup-arm64.exe)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.5)
+- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.exe)
+- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup-arm64.exe)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8)
 
-想自己控制运行时、自己应用兼容补丁，或者需要固定端口，请走首页的[手动安装](README.md#安装)；两条路径产出的都是同一套 preset 与同一套补丁。
+已有 Node.js、需要固定端口或明确隔离新目录，请用首页的[官方插件安装步骤](README.md#安装)。无需沿用 alpha.3 的手工 preset 初始化和补丁命令。

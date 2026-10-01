@@ -4,6 +4,8 @@
 
 最省事的路线是：把本机的 AI 编程助手作为安装员。你只需要准备域名、模型 API、Cloudflare 和服务器登录材料；AI 负责读取现有环境、安装固定版本、配置鉴权、建立 Tunnel、测试和留下回滚记录。
 
+**0.2.8 版本边界：** 宿主为 `0.1.7-rc.2`，鉴权使用原生 WebServer 接口。下文保留的旧连接调优数值来自 alpha.3 部署历史，不是 rc.2 的自动补丁清单；请以实际宿主和现场验收为准，不执行旧字节重放工具。
+
 我们最初部署时，正是通过本地 `cloudflare-admin.env` 和服务器 SSH 私钥，让 AI 接手了最繁琐的 DSH 安装、Cloudflare 配置和通道建立。你不需要先学会服务器运维，只需要准备材料、限定允许操作的范围，并按下面的结果清单验收。
 
 ## 先看结论
@@ -114,7 +116,7 @@ Access 的登录方式可使用已经配置好的 Google 身份提供方，也�
 
 执行边界：
 1. 先读取当前服务、版本、监听端口、磁盘和工作区，说明会影响哪些文件；不要先重启或停止未知服务。
-2. 固定 DeepSeek Harness 0.1.2-alpha.3、dsh-NextTavern 0.1.2 和 @isund/dsh-auth-webserver 0.1.0-alpha.3.2。只使用公开 release 资产，不使用 npm 浮动版本。
+2. 固定 DeepSeek Harness 0.1.7-rc.2、dsh-nexttavern 0.2.8；独立鉴权包使用 v0.2.8 Release 的 dsh-auth-webserver.tgz，核对其 peerDependencies 与源码。新建隔离 home，不把旧 alpha.3 会话直接迁入；升级前在旧环境导出角色卡或小说。
 3. 先建立带 SHA-256 的全新备份和回滚目录，再安装或修改。故事、会话、工作区和模型凭据不能删除。
 4. Cloudflare Access 先创建单一允许身份的应用策略，再创建 Tunnel 和 DNS；禁止 Everyone、Bypass 和公开源站端口。
 5. Tunnel 必须原样转发公网 Host/Origin，不得把公网 Host 伪装成 localhost。
@@ -124,11 +126,8 @@ Access 的登录方式可使用已经配置好的 Google 身份提供方，也�
 8. 创建私有 access.env，按公开包 integrations/auth-webserver/access.env.example 配置 team domain、Access AUD、允许邮箱和公网 Host。该模板不会自动加载。
 9. Harness 使用回环监听和鉴权 patch 启动：
    node --env-file=<PRIVATE_ACCESS_ENV> <HARNESS_ROOT>/node_modules/@deepseek-ai/dsh/lib/bin.js web --patch <PROFILE_DIR>/node_modules/@isund/dsh-auth-webserver/cordis.patch.yml --host 127.0.0.1 --port 3510 --no-open
-10. 先只审计 public-access 工具：
-    node tools/public-access.mjs --root <HARNESS_ROOT> --group harness
-    node tools/public-access.mjs --root <PROFILE_DIR> --group profile
-    在本次部署授权范围内，完成审计、停止目标实例并指定全新备份目录后，使用 DSH_ALLOW_PUBLIC_ACCESS=1、--apply、--stopped。工具默认不改文件、不配置 Cloudflare、不重启服务。
-11. harness 组只启用已登记的 remote settings 和 continuous reconnect；profile 组只启用有 verified JWT marker 保护的上传兼容。不要全局放行 Host/Origin。
+10. 0.2.8 使用宿主原生 webServer 鉴权与上传接口；旧 public-access 字节补丁入口已退役，不向 rc.2 重放 alpha.3 补丁。先核对独立鉴权包的 README 和安装后路由，再验证 HTTP、WebSocket 与上传的正确 Host、Origin 和身份边界。
+11. remote settings 在真实公网路径上单独验收。某次服务器手工修补不能作为发行包已经自动兼容的证据；遇到不兼容时停止并报告，不全局放行 Host/Origin。
 12. 使用公开包里的 nginx.conf.example，Nginx 在 127.0.0.1:8184 反代到 127.0.0.1:3510。保留默认拒绝虚拟主机，只允许我的公网 Host，包括拒绝从隧道传入的 Host: localhost。保留 WebSocket 和流式响应，关闭 buffer 与 request replay。Harness 与 cloudflared 使用独立 systemd 服务；Harness 用户不能重启 cloudflared。
 13. 完成后逐项验证：Access 白名单、未登录拒绝、错误身份拒绝、错误/过期 JWT、伪造认证头、正确 Host、HTTP、WebSocket、remote settings、模型列表、真实模型调用、上传、导出、服务重启恢复、Tunnel 停止后的公网离线。
 14. 最后给出：变更文件、版本、备份路径、验证结果、未验证项和精确回滚命令。输出只能是脱敏摘要，不得输出任何秘密。
@@ -139,8 +138,8 @@ Access 的登录方式可使用已经配置好的 Google 身份提供方，也�
 
 公开发布包含 NextTavern 主包和独立鉴权包。鉴权包是管理员可选安装项，单独安装 NextTavern 不会自动打开公网访问：
 
-- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.2/dsh-nexttavern.tgz)
-- [鉴权包 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.1.2/dsh-auth-webserver.tgz)
+- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz)
+- [鉴权包 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-auth-webserver.tgz)
 - [鉴权配置模板](integrations/auth-webserver/access.env.example)
 - [Nginx 配置模板](integrations/auth-webserver/nginx.conf.example)
 - [公网补丁工具](tools/public-access.mjs)
@@ -165,9 +164,9 @@ DSH_PUBLIC_HOST=play.example.com
 | 1. 本机准备 | 检查 Token、私钥、env 路径和权限，不打印值 | 材料齐全，未连接生产 |
 | 2. 服务器审计 | 检查现有服务、版本、端口和备份位置 | 确认不会覆盖无关服务 |
 | 3. 安装 | 安装 Harness、NextTavern、auth 包，生成 access.env | Harness 仍只在回环监听 |
-| 4. 鉴权 | 创建 Access 白名单、验证 JWT 和官方 alpha.3 Cookie 衔接 | 错误身份不能进入 |
+| 4. 鉴权 | 创建 Access 白名单、验证 JWT 和官方原生鉴权衔接 | 错误身份不能进入 |
 | 5. Tunnel | 建立 Tunnel、DNS 和 Nginx 回环代理 | 公网只经过 Access/Tunnel |
-| 6. 连接调优 | 应用登记的心跳、持续重连、HMR 和 Nginx/Tunnel 参数 | 手机短暂切网后更容易恢复 |
+| 6. 连接调优 | 核对宿主原生连接行为与 Nginx/Tunnel 参数，旧补丁不重放 | 手机切网后的恢复有现场证据 |
 | 7. 验收 | 先电脑，再手机蜂窝网络、收发、上传、导出、锁屏和切 Wi-Fi | 形成可审计的成功/未验证清单 |
 | 8. 交付 | 保存备份、哈希、systemd 状态和回滚命令 | 下次升级可以先审计再回退 |
 
@@ -227,24 +226,7 @@ curl -I https://play.example.com/
 
 预期是未登录时由 Cloudflare Access 拒绝或重定向；不要把直接访问服务器公网 IP 当作成功标准。
 
-检查补丁前先审计：
-
-```bash
-node tools/public-access.mjs --root <HARNESS_ROOT> --group harness
-node tools/public-access.mjs --root <PROFILE_DIR> --group profile
-```
-
-应用或回滚都必须明确声明服务已停止，并使用全新、精确的备份目录：
-
-```bash
-export DSH_ALLOW_PUBLIC_ACCESS=1
-node tools/public-access.mjs --root <HARNESS_ROOT> --group harness --apply --stopped --backup <NEW_HARNESS_BACKUP_DIR>
-node tools/public-access.mjs --root <PROFILE_DIR> --group profile --apply --stopped --backup <NEW_PROFILE_BACKUP_DIR>
-node tools/public-access.mjs --rollback <BACKUP_DIR> --stopped
-unset DSH_ALLOW_PUBLIC_ACCESS
-```
-
-工具不会替你停止服务、配置 Cloudflare 或重启系统。执行命令前先确认没有正在进行的模型任务，并让 AI 记录事务返回值。
+0.2.8 不运行旧字节补丁工具。核对鉴权包 peerDependencies 与固定宿主版本，按鉴权包 README 用原生 `--patch` 启动，然后检查未登录、错误 JWT、错误 Host/Origin、正确身份、WebSocket 和上传响应。配置变更和回滚必须先停目标服务，使用这次部署自己的精确备份；由 AI 记录版本、哈希和实际结果。
 
 ## 常见故障
 
@@ -265,7 +247,7 @@ unset DSH_ALLOW_PUBLIC_ACCESS
 sudo systemctl stop cloudflared-deepseek-harness.service
 ```
 
-这样公网访问立即中断，Harness 仍绑定回环地址，可以通过 SSH 检查。需要回滚补丁时，保留故事和工作区，按备份清单执行 `public-access.mjs --rollback ... --stopped`；如果要恢复官方登录流程，先停 Tunnel，再移除启动命令中的 `--patch`，不要直接删除安装目录或 Session 原始事件。
+这样公网访问立即中断，Harness 仍绑定回环地址，可以通过 SSH 检查。0.2.8 回滚按本次部署留下的精确备份进行，不运行旧 `public-access.mjs` 重放工具；恢复官方登录流程时，先停 Tunnel，再移除启动命令中的鉴权 `--patch`，不要删除安装目录或 Session 原始事件。
 
 ## 设计边界
 

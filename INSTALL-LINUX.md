@@ -2,7 +2,7 @@
 
 [返回首页](README.md) · [Windows 安装](INSTALL-WINDOWS.md) · [手动安装](README.md#安装) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-`NextTavern-Setup.sh` 是 0.2.5 新增的 Linux 一键安装脚本。它是一个自包含的 shell 脚本：不需要预装 Node.js，不需要 root，也不需要系统包管理器——脚本自己下载并校验一份便携的 Node.js 运行时，然后把工作区、桌面入口和启动／停止入口准备好。
+`NextTavern-Setup.sh` 是 0.2.8 的 Linux 便携运行时安装入口。它是一个自包含的 shell 脚本：不需要预装 Node.js，不需要 root，也不需要系统包管理器——脚本自己下载并校验一份便携的 Node.js 运行时，然后把工作区、桌面入口和启动／停止入口准备好。
 
 ## 需要什么，不需要什么
 
@@ -17,7 +17,7 @@
 
 ## 安装
 
-一条命令即可：
+先从[下载](#下载)取得 0.2.8 脚本。全新安装运行：
 
 ```sh
 sh NextTavern-Setup.sh
@@ -25,7 +25,7 @@ sh NextTavern-Setup.sh
 
 脚本会依次做这些事：检查架构与基本工具 → 下载便携 Node.js 运行时并校验 SHA-256 → 解压到安装目录的 `runtime` 下 → 准备 `harness`、`home`、`workspace` 等目录 → 启动本地服务并打开浏览器。第一次进入时，按提示选择工作区、填写自己的模型供应商，然后在新建会话的预设菜单里切到“角色扮演模式”。
 
-**再次运行同一个脚本不会重装**：如果已经装好了，它会直接打开现有安装。
+**从 0.2.5 迁移请先导出并使用新目录。** 旧会话不兼容，小说稿不包含完整状态。保留旧 `home`／`workspace` 备份，使用 `--root "$HOME/NextTavern-0.2.8"` 建立新安装，不复制旧会话数据库。再次运行脚本时也须传入同一个新根目录；默认路径如果已有旧安装，不能用它当作本次迁移路径。
 
 常用参数：
 
@@ -96,25 +96,27 @@ sh NextTavern-Setup.sh --action stop
 
 ## 卸载与回滚
 
-**停止**：用 `Stop Next Tavern` 桌面条目，或 `sh NextTavern-Setup.sh --action stop`。
+**停止：** 用 `Stop Next Tavern` 桌面条目或 `sh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.8" --action stop`；根目录须与实际安装一致。
 
-**卸载**：停服务后，删除 `~/.local/share/applications/nexttavern.desktop`、`nexttavern-stop.desktop` 以及 `~/Desktop/NextTavern.desktop`，再删除整个安装根目录。
+**仅停用或卸载插件：** 使用官方设置里的 `dsh-nexttavern` 总开关，或停服务后在该安装的 `DSH_HOME` 下运行 `dsh plugin --profile web remove dsh-nexttavern`。详情见[更新、卸载与回滚](README.md#更新卸载与回滚)。受控卸载保留用户资料，不删除整个目录。
 
-**你的故事在哪。** 角色卡、故事文本、笔记、导出文件和模型配置都在安装根目录的 `workspace` 与 `home` 里；删除安装目录会一并删除它们，想保留内容就先单独备份这两个目录。
+**回到旧版：** 停止新服务，使用保留的旧安装及对应备份；不要混用两个实例的会话、receipt 和 pin，新会话不能转换为旧会话。
+
+**完全删除便携安装：** 先停止服务，单独备份根目录内的 `home` 与 `workspace`，再删除该安装的桌面条目、启动器和根目录。默认桌面条目是 `~/.local/share/applications/nexttavern.desktop`、`nexttavern-stop.desktop` 及 `~/Desktop/NextTavern.desktop`。删除根目录会连同故事、角色卡、笔记、导出文件与模型配置一起删除。
 
 ## 我们还不能保证的事
 
-- **这个安装器是 0.2.5 新增的。** 上面列出的架构与发行版范围就是已经测试过的范围；其他发行版、其他架构或容器环境没有逐一验证。
+- **构建支持不等于真机验收。** 本轮没有在干净 Linux x86_64／aarch64 环境逐一验证安装器；服务器实际安装使用官方插件路径，不能替代这些检查。
 - **不支持 musl 发行版。** Alpine 等系统请自行安装 Node.js 22+ 并使用[手动安装](README.md#安装)。
-- **安装需要网络。** 首次安装要下载便携运行时与主包，离线环境请走手动安装。
+- **安装需要网络。** 首次安装要下载便携运行时、主包与依赖；本版没有承诺完整离线安装。
 - **桌面图标依赖桌面环境。** 脚本写入的是标准 XDG 条目，但不保证每个桌面环境都会立刻刷新。
 - **本机服务不代表公网可用。** 想从手机或外网访问，请按[手机电脑公网访问指南](PUBLIC-ACCESS.md)显式配置。
 
 ## 下载
 
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/NextTavern-Setup.sh)
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/nexttavern-setup.tgz)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.5/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.5)
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh)
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/nexttavern-setup.tgz)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8)
 
 下载后先校验再运行是个好习惯：
 
