@@ -4514,6 +4514,16 @@
         "lib/core/tavern-mvu-schema-worker.mjs",
         "preset/lib/core/tavern-mvu-schema-worker.mjs"
       ]
+    },
+    {
+      "artifact": "compat-session-format-lib-mvu-schema-marker-js",
+      "source": "development/session-format/src/mvu-schema-marker.ts",
+      "banner": "runtime/alpha3/compat/session-format/src/mvu-schema-marker.ts",
+      "primaryOutput": "development/session-format/lib/mvu-schema-marker.js",
+      "outputs": [
+        "development/session-format/lib/mvu-schema-marker.js"
+      ],
+      "exactOptionalPropertyTypes": true
     }
   ],
   "compilerPlan": {
@@ -9261,6 +9271,14 @@
       {
         "id": "tavern-mvu-schema-worker-mjs",
         "source": "lib/core/tavern-mvu-schema-worker.mjs"
+      },
+      {
+        "id": "compat-session-format-src-mvu-schema-marker-ts",
+        "source": "development/session-format/src/mvu-schema-marker.ts"
+      },
+      {
+        "id": "compat-session-format-lib-mvu-schema-marker-js",
+        "source": "development/session-format/lib/mvu-schema-marker.js"
       }
     ],
     "builds": [
@@ -19418,7 +19436,8 @@
           "development/session/src/repair.ts",
           "development/session/src/preparation.ts",
           "development/session/src/seq-ranges.ts",
-          "development/session-format/src/mvu-player-marker.ts"
+          "development/session-format/src/mvu-player-marker.ts",
+          "development/session-format/src/mvu-schema-marker.ts"
         ],
         "typeContext": "session-storage",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
@@ -19458,7 +19477,8 @@
           "development/session/src/repair.ts",
           "development/session/src/preparation.ts",
           "development/session/src/seq-ranges.ts",
-          "development/session-format/src/mvu-player-marker.ts"
+          "development/session-format/src/mvu-player-marker.ts",
+          "development/session-format/src/mvu-schema-marker.ts"
         ],
         "typeContext": "session-storage",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
@@ -19530,7 +19550,8 @@
           "development/session/src/repair.ts",
           "development/session/src/preparation.ts",
           "development/session/src/seq-ranges.ts",
-          "development/session-format/src/mvu-player-marker.ts"
+          "development/session-format/src/mvu-player-marker.ts",
+          "development/session-format/src/mvu-schema-marker.ts"
         ],
         "typeContext": "session-storage",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
@@ -25931,6 +25952,22 @@
         ],
         "typeContext": "default",
         "banner": "runtime/alpha3/src/core/tavern-mvu-schema-worker.mts"
+      },
+      {
+        "id": "compat-session-format-mvu-schema-marker-js-build",
+        "kind": "typescript-module",
+        "artifact": "compat-session-format-lib-mvu-schema-marker-js",
+        "entry": "development/session-format/src/mvu-schema-marker.ts",
+        "inputs": [
+          "development/session-format/src/mvu-schema-marker.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "typeContext": "session-storage",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "banner": "runtime/alpha3/compat/session-format/src/mvu-schema-marker.ts"
       }
     ],
     "typeScript": {

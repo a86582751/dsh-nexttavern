@@ -6,7 +6,7 @@ import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
 export const MVU_SCHEMA_BOUNDS=Object.freeze({sourceBytes:1048576,programBytes:4194304,scripts:64,
   syntaxTokens:64000,syntaxDepth:128,inputBytes:8388608,outputBytes:2097152,
   valuesBytes:1048576,dataNodes:32000,dataDepth:32,arrayLength:4096,
-  evaluationNodes:131072,evaluationDepth:66,
+  evaluationNodes:131072,evaluationDepth:66,traceSteps:64,
   vmMemoryBytes:134217728,vmStackBytes:1048576,vmDeadlineMs:2000,parentDeadlineMs:5000})
 export type MvuSchemaDependencyKind='zod'|'lodash'|'schema-bridge'
 export interface MvuSchemaImplementationIdentity {
@@ -112,6 +112,66 @@ export interface MvuSchemaEvaluation {
 }
 export type MvuSchemaRunResult={kind:'evaluated';evaluation:MvuSchemaEvaluation}
   |{kind:'unavailable'|'cancelled';diagnostics:readonly MvuSchemaDiagnostic[]}
+
+/** Realm/cut fields are comparison data supplied by Core, never capabilities.
+ * Core must prove the load boundary and complete execution journal, including
+ * attempts that changed closures without a successful numerical commit. */
+export interface MvuSchemaRealmReadBinding {
+  ownerSessionId:string
+  sourceNativeCutSha256:string
+  /** Allowed read material at this frame; original author-source identity
+   * remains program.source and does not change when this material changes. */
+  material:MvuJsonObject
+}
+export interface MvuSchemaRealmLoadFrame extends MvuSchemaRealmReadBinding {
+  schemaVersion:1
+  values:MvuJsonObject
+  context:MvuJsonObject
+  clockEpochMs:number
+  randomSeed:string
+}
+export interface MvuSchemaTraceFrame extends MvuSchemaRealmReadBinding {
+  input:MvuSchemaEvaluationInput
+}
+export interface MvuSchemaTraceRequestedStep {
+  eventId:string
+  frame:MvuSchemaTraceFrame
+}
+/** A deterministic completed event can be refused and still mutate a closure.
+ * Unknown partial execution (timeout/cancellation) never produces this record.
+ * Ordinals are one-based; the first previousStepSha256 is the load anchor. */
+export interface MvuSchemaTraceStepRecord extends MvuSchemaTraceRequestedStep {
+  ordinal:number
+  previousStepSha256:string
+  output:MvuSchemaGuestOutput
+  stepSha256:string
+}
+export interface MvuSchemaTraceInput {
+  schemaVersion:1
+  encoding:'native-mvu-author-schema-trace-input-v1'
+  realmEpoch:string
+  loadFrame:MvuSchemaRealmLoadFrame
+  prefix:readonly MvuSchemaTraceStepRecord[]
+  requestedStep:MvuSchemaTraceRequestedStep
+}
+/** Compact execution receipt. Full frames already live in input; duplicating
+ * them would consume the record budget after a legal execution completed.
+ * stepSha256 still hashes the full canonical MvuSchemaTraceStepRecord body. */
+export type MvuSchemaTraceEvaluationStep=Omit<MvuSchemaTraceStepRecord,'frame'> & {frameSha256:string}
+export interface MvuSchemaTraceEvaluation {
+  schemaVersion:1
+  encoding:'native-mvu-author-schema-trace-evaluation-v1'
+  programSha256:string
+  runner:MvuSchemaRunnerIdentity
+  input:MvuSchemaTraceInput
+  inputSha256:string
+  /** Load exactly once, then reproduce every prefix output in order before
+   * executing requestedStep. These are facts about execution, not authority. */
+  records:readonly MvuSchemaTraceEvaluationStep[]
+  evaluationSha256:string
+}
+export type MvuSchemaTraceRunResult={kind:'evaluated-trace';evaluation:MvuSchemaTraceEvaluation}
+  |{kind:'unavailable'|'cancelled';diagnostics:readonly MvuSchemaDiagnostic[]}
 export interface MvuSchemaCompiler {
   readonly identity:MvuSchemaCompilerIdentity
   compile(input:MvuSchemaCompilationInput,signal?:AbortSignal):Promise<MvuSchemaCompilation>
@@ -126,6 +186,11 @@ export interface MvuSchemaRunner {
   /** Executes original pre-transform input. Saved normalized values are not
    * passed through a non-idempotent author transformation a second time. */
   verifyEvaluation(program:MvuSchemaProgram,evaluation:MvuSchemaEvaluation,signal?:AbortSignal):Promise<boolean>
+  /** Full trace shares a realm and closures. Complete trace input/output use
+   * existing aggregate byte/node bounds, not per-step multiplied allowances.
+   * Clock/seed switch per frame under the owned deterministic contract. */
+  evaluateTrace(program:MvuSchemaProgram,input:MvuSchemaTraceInput,signal?:AbortSignal):Promise<MvuSchemaTraceRunResult>
+  verifyTrace(program:MvuSchemaProgram,evaluation:MvuSchemaTraceEvaluation,signal?:AbortSignal):Promise<boolean>
   dispose():Promise<void>
 }
 export interface MvuSchemaCompilerDeps {

@@ -4,6 +4,7 @@ import type {Session, SessionEvent, SessionSeq} from '@deepseek-ai/dsh-session'
 import {foldSurface} from '@deepseek-ai/dsh-session/surface'
 import {MESSAGE_EDIT_EVENT, assertMessageEdit, editMessageText, messageEditProjection, type MessageEdit} from './projection.js'
 import {mvuPlayerMarkers} from './mvu-player-marker.js'
+import {mvuSchemaMarkers} from './mvu-schema-marker.js'
 
 export interface MessageEdits {
   append: typeof appendMessageEdit
@@ -23,6 +24,7 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     nexttavernMessageEdits: MessageEdits
     nexttavernMvuPlayerMarkers: typeof mvuPlayerMarkers
+    nexttavernMvuSchemaMarkers: typeof mvuSchemaMarkers
   }
 }
 
@@ -38,6 +40,7 @@ export function apply(ctx: Context): void {
     assertMessageEdit, editMessageText,
   })
   ctx.provide('nexttavernMvuPlayerMarkers', mvuPlayerMarkers)
+  ctx.provide('nexttavernMvuSchemaMarkers', mvuSchemaMarkers)
 }
 
 /** Fold one complete original-seq prefix without borrowing a live Session surface. */

@@ -7,10 +7,12 @@ import {dirname,resolve} from 'node:path'
 import {newQuickJSWASMModuleFromVariant} from 'quickjs-emscripten-core'
 import variant from '@jitl/quickjs-wasmfile-release-sync'
 import {prepareMvuUpdate} from './roleplay-mvu-update.js'
+import {recordSha256} from './roleplay-data.js'
 import {cloneSchemaData,cloneSchemaValues,schemaTextSha256,validateSchemaProgram} from './tavern-mvu-schema-data.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import type {QuickJSContext,QuickJSHandle,QuickJSRuntime} from 'quickjs-emscripten-core'
 import type {MvuSchemaWorkerRequest,MvuSchemaWorkerResponse} from './tavern-mvu-schema-runner.js'
+import type {MvuSchemaEvaluationInput,MvuSchemaTraceFrame} from './tavern-mvu-schema-types.js'
 
 const require=createRequire(import.meta.url)
 const MAX_JOBS=1024
@@ -42,15 +44,15 @@ function checked(result:{value?:QuickJSHandle;error?:QuickJSHandle},context?:Qui
   if(result.error)guestError(result.error,context)
   return result.value!
 }
-function runJobs(runtime:QuickJSRuntime,context:QuickJSContext):void {
-  for(let count=0;runtime.hasPendingJob();count++) {
-    if(count>=MAX_JOBS)throw new GuestRefusal('SCHEMA_JOB_LIMIT')
+function runJobs(runtime:QuickJSRuntime,context:QuickJSContext,budget:{jobs:number}):void {
+  while(runtime.hasPendingJob()) {
+    if(budget.jobs++>=MAX_JOBS)throw new GuestRefusal('SCHEMA_JOB_LIMIT')
     const result=runtime.executePendingJobs(1)
     if(result.error)guestError(result.error,context)
   }
 }
-function completed(context:QuickJSContext,runtime:QuickJSRuntime,handle:QuickJSHandle):void {
-  runJobs(runtime,context)
+function completed(context:QuickJSContext,runtime:QuickJSRuntime,handle:QuickJSHandle,budget:{jobs:number}):void {
+  runJobs(runtime,context,budget)
   const state=context.getPromiseState(handle)
   if(state.type==='pending')throw new GuestRefusal('SCHEMA_ASYNC_UNSETTLED')
   if(state.type==='rejected')guestError(state.error,context)
@@ -68,16 +70,22 @@ function peerVersions():boolean {
 // original constructor remains only in this closure, including through the
 // prototype; no guest path exposes real time or the old Math.random function.
 const DETERMINISM=String.raw`(wire=>{
-  const input=JSON.parse(wire),OriginalDate=Date,construct=Reflect.construct;
-  function FixedDate(...args){const value=construct(OriginalDate,args.length?args:[input.clockEpochMs]);
+  const parse=JSON.parse,OriginalDate=Date,construct=Reflect.construct,imul=Math.imul;
+  const char=String.prototype.charCodeAt,apply=Reflect.apply;
+  let clock,seed;
+  function frame(wire){const input=parse(wire);clock=input.clockEpochMs;seed=2166136261;
+    for(let index=0;index<input.randomSeed.length;index++)seed=imul(seed^apply(char,input.randomSeed,[index]),16777619)>>>0;}
+  frame(wire);
+  function FixedDate(...args){const value=construct(OriginalDate,args.length?args:[clock]);
     return new.target?value:value.toString();}
   FixedDate.prototype=OriginalDate.prototype;
   Object.defineProperty(FixedDate.prototype,'constructor',{value:FixedDate,writable:false,configurable:false});
-  FixedDate.now=()=>input.clockEpochMs;FixedDate.parse=OriginalDate.parse;FixedDate.UTC=OriginalDate.UTC;
+  FixedDate.now=()=>clock;FixedDate.parse=OriginalDate.parse;FixedDate.UTC=OriginalDate.UTC;
   Object.defineProperty(globalThis,'Date',{value:FixedDate,writable:false,configurable:false});
-  let seed=2166136261;
-  for(let index=0;index<input.randomSeed.length;index++)seed=Math.imul(seed^input.randomSeed.charCodeAt(index),16777619)>>>0;
   Math.random=()=>{seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return (seed>>>0)/4294967296;};
+  // Only the worker holds this frame setter. Re-seeding per event is an owned
+  // deterministic replay rule, not an emulation of a host-wide RNG lifetime.
+  return frame;
 })`
 
 /** All transport serialization uses captured intrinsics and data descriptors.
@@ -92,7 +100,7 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,reduceOperation)=>{
   const char=String.prototype.charCodeAt,push=A.prototype.push,slice=A.prototype.slice;
   const split=String.prototype.split;
   const objectProto=O.prototype,arrayProto=A.prototype;
-  const input=Jparse(wire),material=Jparse(materialWire),libraries=Jparse(libraryWire);
+  let input=Jparse(wire);const material=Jparse(materialWire),libraries=Jparse(libraryWire);
   const zNamespace=G[libraries.zod],z=zNamespace.z||zNamespace,rawLodash=G[libraries.lodash],lodash=rawLodash.default||rawLodash;
   const ZodObject=z.ZodObject,looseObject=z.looseObject;
   const registrations=[],readyCallbacks=[];
@@ -155,7 +163,7 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,reduceOperation)=>{
     return Jparse(encode(value,1048576,32,32000));}
   function frozen(value){if(value&&typeof value==='object'){
     const names=keys(value);for(let index=0;index<names.length;index++)frozen(value[names[index]]);freeze(value);}return value;}
-  const source=frozen(material);
+  let source=frozen(material);
   function fullData(){
     const result=clone(metadata);
     define(result,'stat_data',{value:clone(values),enumerable:true,writable:true,configurable:true});
@@ -201,6 +209,9 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,reduceOperation)=>{
   const Mvu=freeze({getMvuData:readonlyData,getMvuVariable:getVariable});
   define(G,'Mvu',{value:Mvu,writable:false,configurable:false});
   return {
+    frame(wire,materialWire){input=Jparse(wire);values=input.values;commands=input.commands;metadata=input.context;
+      source=frozen(Jparse(materialWire));},
+    loaded(){if(!registrations.length)fail('SCHEMA_REGISTRATION_MISSING');},
     async ready(){for(let index=0;index<readyCallbacks.length;index++){
       await readyCallbacks[index]();}
     },
@@ -252,7 +263,10 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,reduceOperation)=>{
 async function evaluateGuest(request:MvuSchemaWorkerRequest):Promise<MvuSchemaWorkerResponse> {
   if(!peerVersions())return {kind:'unavailable',code:'SCHEMA_IMPLEMENTATION_UNAVAILABLE'}
   const program=validateSchemaProgram(request.program)
-  const input=cloneSchemaData(request.input,MVU_SCHEMA_BOUNDS.inputBytes)
+  const trace='trace' in request?cloneSchemaData(request.trace,MVU_SCHEMA_BOUNDS.inputBytes):undefined
+  const input:MvuSchemaEvaluationInput=trace?{schemaVersion:1,phase:'initialization',base:null,values:trace.loadFrame.values,
+    commands:[],context:trace.loadFrame.context,clockEpochMs:trace.loadFrame.clockEpochMs,randomSeed:trace.loadFrame.randomSeed}:
+    cloneSchemaData((request as Extract<MvuSchemaWorkerRequest,{input:unknown}>).input,MVU_SCHEMA_BOUNDS.inputBytes)
   const libraries=cloneSchemaData(request.libraries,MVU_SCHEMA_BOUNDS.programBytes)
   for(const library of libraries)if(schemaTextSha256(library.code)!==library.bundleSha256) {
     return {kind:'unavailable',code:'SCHEMA_LIBRARY_UNAVAILABLE'}
@@ -263,12 +277,13 @@ async function evaluateGuest(request:MvuSchemaWorkerRequest):Promise<MvuSchemaWo
   runtime.setMaxStackSize(MVU_SCHEMA_BOUNDS.vmStackBytes)
   const deadline=Date.now()+MVU_SCHEMA_BOUNDS.vmDeadlineMs
   let timedOut=false,denied=false
+  const budget={jobs:0}
   runtime.setInterruptHandler(()=>{if(Date.now()>=deadline)timedOut=true;return timedOut})
   const context=runtime.newContext(),owned:QuickJSHandle[]=[]
   try {
     const inputHandle=context.newString(JSON.stringify(input));owned.push(inputHandle)
     const determinism=checked(context.evalCode(DETERMINISM,'trusted-clock.js'));owned.push(determinism)
-    checked(context.callFunction(determinism,context.undefined,inputHandle)).dispose()
+    const clockFrame=checked(context.callFunction(determinism,context.undefined,inputHandle));owned.push(clockFrame)
     for(const library of libraries)checked(context.evalCode(library.code,`trusted-${library.kind}.js`)).dispose()
     const reduce=context.newFunction('nativeJsonPatch',wireHandle=>{
       try {
@@ -291,11 +306,13 @@ async function evaluateGuest(request:MvuSchemaWorkerRequest):Promise<MvuSchemaWo
       } catch {return context.newString('{"kind":"refused"}')}
     });owned.push(reduce)
     const libraryNames=Object.fromEntries(libraries.map(library=>[library.kind,library.globalName]))
-    const material=context.newString(JSON.stringify(program.source.material)),names=context.newString(JSON.stringify(libraryNames))
+    const material=context.newString(JSON.stringify(trace?.loadFrame.material??program.source.material))
+    const names=context.newString(JSON.stringify(libraryNames))
     owned.push(material,names)
     const bootstrap=checked(context.evalCode(BOOTSTRAP,'trusted-schema-bridge.js'));owned.push(bootstrap)
     const controller=checked(context.callFunction(bootstrap,context.undefined,inputHandle,material,names,reduce));owned.push(controller)
-    const ready=context.getProp(controller,'ready'),run=context.getProp(controller,'run');owned.push(ready,run)
+    const ready=context.getProp(controller,'ready'),run=context.getProp(controller,'run')
+    const frame=context.getProp(controller,'frame'),loaded=context.getProp(controller,'loaded');owned.push(ready,run,frame,loaded)
     const modules=new Map<string,string>()
     for(const library of libraries) {
       const handle=context.getProp(context.global,library.globalName)
@@ -324,17 +341,66 @@ async function evaluateGuest(request:MvuSchemaWorkerRequest):Promise<MvuSchemaWo
     // Cache library/bridge exports before author code can mutate library globals.
     const preload=checked(context.evalCode([...modules.keys()].map(name=>`import ${JSON.stringify(name)};`).join('\n'),
       'trusted-preload.mjs',{type:'module'}))
-    try {completed(context,runtime,preload)}finally {preload.dispose()}
+    try {completed(context,runtime,preload,trace?budget:{jobs:0})}finally {preload.dispose()}
     for(const [index,script] of program.scripts.entries()) {
       if(!script.enabled)continue
       const result=checked(context.evalCode(script.javascript,`author-${index}.mjs`,{type:'module'}),context)
-      try {completed(context,runtime,result)}finally {result.dispose()}
+      try {completed(context,runtime,result,trace?budget:{jobs:0})}finally {result.dispose()}
     }
-    const readyResult=checked(context.callFunction(ready,controller))
-    try {completed(context,runtime,readyResult)}finally {readyResult.dispose()}
+    const readyResult=checked(context.callFunction(ready,controller),context)
+    try {completed(context,runtime,readyResult,trace?budget:{jobs:0})}finally {readyResult.dispose()}
+    if(trace) {
+      if(trace.prefix.length>=MVU_SCHEMA_BOUNDS.traceSteps)return {kind:'unavailable',code:'SCHEMA_TRACE_INPUT_INVALID'}
+      // The load boundary must finish before any historical event exists.
+      checked(context.callFunction(loaded,controller),context).dispose()
+      const outputs:unknown[]=[]
+      for(const step of [...trace.prefix,trace.requestedStep]) {
+        if(timedOut||Date.now()>=deadline)return {kind:'unavailable',code:'SCHEMA_VM_TIMEOUT'}
+        const current:MvuSchemaTraceFrame=step.frame
+        const wire=context.newString(JSON.stringify(current.input)),source=context.newString(JSON.stringify(current.material))
+        try {
+          checked(context.callFunction(clockFrame,context.undefined,wire),context).dispose()
+          checked(context.callFunction(frame,controller,wire,source),context).dispose()
+        } finally {wire.dispose();source.dispose()}
+        let output:unknown
+        try {
+          const handle=checked(context.callFunction(run,controller),context)
+          try {
+            completed(context,runtime,handle,budget)
+            if(context.typeof(handle)!=='string')throw new GuestRefusal('SCHEMA_TRACE_OUTPUT_INVALID')
+            const json=context.getString(handle)
+            if(Buffer.byteLength(json,'utf8')>MVU_SCHEMA_BOUNDS.outputBytes)throw new GuestRefusal('SCHEMA_OUTPUT_LIMIT')
+            output=cloneSchemaData(JSON.parse(json),MVU_SCHEMA_BOUNDS.outputBytes)
+          } finally {handle.dispose()}
+        } catch(error) {
+          // Only known synchronous bridge refusals can complete an event.
+          // Generic VM errors may be allocation failures, so they cannot prove
+          // a completed phase or revive a partially executed realm.
+          // Declared asymmetry: single-phase evidence may record output/job
+          // limits; traces conservatively discard the whole partial execution.
+          if(!(error instanceof GuestRefusal)||!guestCodes.has(error.code)
+            ||['SCHEMA_OUTPUT_LIMIT','SCHEMA_JOB_LIMIT'].includes(error.code))throw error
+          runJobs(runtime,context,budget)
+          output={kind:'refused',diagnostics:[{code:error.code}]}
+        }
+        if(timedOut||Date.now()>=deadline)return {kind:'unavailable',code:'SCHEMA_VM_TIMEOUT'}
+        if(denied)return {kind:'unavailable',code:'SCHEMA_IMPORT_UNAVAILABLE'}
+        // A disproved old event stops replay before the next event can change
+        // a closure. Parent independently validates the same complete outputs.
+        if('output' in step&&recordSha256(output)!==recordSha256(step.output)) {
+          return {kind:'unavailable',code:'SCHEMA_TRACE_PREFIX_MISMATCH'}
+        }
+        outputs.push(output)
+        // Bound the complete response as it grows, never one envelope per step.
+        try {cloneSchemaData(outputs,MVU_SCHEMA_BOUNDS.outputBytes)}catch {throw new GuestRefusal('SCHEMA_OUTPUT_LIMIT')}
+      }
+      const json=JSON.stringify(outputs)
+      if(timedOut||Date.now()>=deadline)return {kind:'unavailable',code:'SCHEMA_VM_TIMEOUT'}
+      return {kind:'trace-output',json}
+    }
     const output=checked(context.callFunction(run,controller),context)
     try {
-      completed(context,runtime,output)
+      completed(context,runtime,output,{jobs:0})
       // A guest can catch QuickJS's soft interrupt. Exhausting this budget
       // still invalidates its output; the parent owns the hard termination.
       if(timedOut||Date.now()>=deadline)return refuse('SCHEMA_VM_TIMEOUT')
@@ -346,9 +412,9 @@ async function evaluateGuest(request:MvuSchemaWorkerRequest):Promise<MvuSchemaWo
       return {kind:'output',json}
     } finally {output.dispose()}
   } catch(error) {
-    if(timedOut||Date.now()>=deadline)return refuse('SCHEMA_VM_TIMEOUT')
-    if(denied)return refuse('SCHEMA_IMPORT_UNAVAILABLE')
-    return refuse(error instanceof GuestRefusal?error.code:'SCHEMA_GUEST_ERROR')
+    const code=timedOut||Date.now()>=deadline?'SCHEMA_VM_TIMEOUT':denied?'SCHEMA_IMPORT_UNAVAILABLE':
+      error instanceof GuestRefusal?error.code:'SCHEMA_GUEST_ERROR'
+    return trace?{kind:'unavailable',code}:refuse(code)
   } finally {
     for(const handle of owned.reverse())handle.dispose()
     context.dispose();runtime.dispose()

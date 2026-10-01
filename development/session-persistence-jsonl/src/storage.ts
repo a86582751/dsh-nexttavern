@@ -10,6 +10,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { isDeepStrictEqual } from 'node:util'
 import { errorChain } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionHeader, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import {
@@ -327,13 +328,25 @@ export class JsonlSessionHandle implements SessionHandle {
     validateStoredEvents(this.header, [...batch])
     await this.ensureLease()
     assertContiguous(this.id, batch, this.state.cursor)
-    if (batch.some(event=>isMessageEdit(event)||event.type==='roleplay/mvu-manual-edit')) {
+    if (batch.some(event=>isMessageEdit(event)||event.type==='roleplay/mvu-manual-edit'
+      ||event.type==='roleplay/mvu-schema-dispatched'||event.type==='roleplay/mvu-schema-completed')) {
       // The raw handle is also a public write surface. Validate an edit against
       // the owned durable prefix before publishing it, not only on cold read.
       // This replay occurs per required edit/marker batch, never per streamed token.
       const path = await this.storage.resolveCurrentLog(this.id)
       const prefix = path === undefined ? [] : (await this.storage.readStoredLog(path, this.id)).events
-      validateMessageEditHistory([...prefix, ...batch])
+      const logical = [...prefix]
+      // The initial decoder already includes recovered events. After truncate
+      // succeeds but their rewrite fails, a retry sees a shorter physical log;
+      // fill only its verified missing suffix, never duplicate a recovered row.
+      for (const event of this.state.recoveredTail ?? []) {
+        if (event.seq < logical.length) {
+          if (!isDeepStrictEqual(logical[event.seq], event)) throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
+        } else if (event.seq === logical.length) logical.push(event)
+        else throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
+      }
+      if (logical.length !== this.state.cursor) throw Error('SESSION_RECOVERY_PREFIX_MISMATCH')
+      validateMessageEditHistory([...logical, ...batch])
     }
     // Commit any pending torn-tail repair first, clearing each step's state
     // only once it lands so a failed step retries on the next mutation:

@@ -3416,6 +3416,11 @@
         "compiler"
       ],
       "timeoutMs": 30000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
@@ -4827,6 +4832,11 @@
       "requires": [
         "compiler"
       ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
@@ -5013,6 +5023,29 @@
       "depends": [
         "generated"
       ],
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-schema-marker",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "cache": true,
+      "timeoutMs": 180000,
       "effects": {
         "build": true,
         "network": false,

@@ -2,6 +2,7 @@
 import { foldSurface } from '@deepseek-ai/dsh-session/surface';
 import { MESSAGE_EDIT_EVENT, assertMessageEdit, editMessageText, messageEditProjection } from './projection.js';
 import { mvuPlayerMarkers } from './mvu-player-marker.js';
+import { mvuSchemaMarkers } from './mvu-schema-marker.js';
 export const name = 'nexttavern-message-edits';
 export const inject = ['sessions'];
 /** Register once at profile scope, before sessions are created or restored. */
@@ -13,6 +14,7 @@ export function apply(ctx) {
         assertMessageEdit, editMessageText,
     });
     ctx.provide('nexttavernMvuPlayerMarkers', mvuPlayerMarkers);
+    ctx.provide('nexttavernMvuSchemaMarkers', mvuSchemaMarkers);
 }
 /** Fold one complete original-seq prefix without borrowing a live Session surface. */
 export function projectMessageEditPrefix(events) {

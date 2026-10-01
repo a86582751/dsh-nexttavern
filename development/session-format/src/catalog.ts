@@ -11,6 +11,8 @@ import {assertReleasedV4Header, releasedV4SessionFormatCodec, restoreReleasedV4A
   sessionFormatV3ToV4} from '@deepseek-ai/dsh-session-format-v3-to-v4'
 import {MESSAGE_EDIT_EVENT, assertMessageEdit, messageEditProjection} from './projection.js'
 import {MVU_PLAYER_EDIT_EVENT, assertMvuPlayerEditEvent,assertMvuPlayerMarkerBoundary} from './mvu-player-marker.js'
+import {MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT,
+  assertMvuSchemaHistory, assertMvuSchemaEventVocabulary} from './mvu-schema-marker.js'
 
 export {SessionFormatUnsupportedMigrationError} from '@deepseek-ai/dsh-session-format'
 // Historical official sessions use the host's child-aware migration. Private
@@ -19,14 +21,21 @@ export {createSessionFormatCatalogWithChildren} from '@deepseek-ai/dsh-session-f
 export const currentSessionMessageProjections = [...officialProjections, messageEditProjection]
 export const knownSessionEventTypes: ReadonlySet<string> = new Set([
   ...KNOWN_SESSION_EVENT_TYPES, MESSAGE_EDIT_EVENT, MVU_PLAYER_EDIT_EVENT,
+  MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT,
 ])
 
 function restore(artifact: SessionFormatArtifact): SessionFormatArtifact {
+  // Reject reserved unknowns before the official unknown-ignorable contract
+  // can skip them. Other upstream ignorable vocabulary keeps its old behavior.
+  for (const event of artifact.events) assertMvuSchemaEventVocabulary(event.type)
   const restored = restoreReleasedV4Artifact(artifact, knownSessionEventTypes)
   for (const event of restored.events) if (event.type === MESSAGE_EDIT_EVENT) assertMessageEdit(event.data)
   for (const event of restored.events) if (event.type === MVU_PLAYER_EDIT_EVENT) {
     assertMvuPlayerEditEvent(event as unknown as SessionEvent)
     assertMvuPlayerMarkerBoundary(restored.events.slice(0,event.seq+1) as unknown as SessionEvent[])
+  }
+  if (restored.events.some(event => event.type === MVU_SCHEMA_DISPATCH_EVENT || event.type === MVU_SCHEMA_COMPLETION_EVENT)) {
+    assertMvuSchemaHistory(restored.events as unknown as SessionEvent[])
   }
   // The released decoder validates JSON vocabulary; Session now validates the
   // current branded envelope, seed boundary and projection decisions at runtime.
