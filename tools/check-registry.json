@@ -4927,6 +4927,34 @@
       ],
       "inputs": [],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:mvu-player-yaml-process",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance",
+        "windows"
+      ],
+      "heavy": true,
+      "cache": false,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "args": [
+        "--player-yaml-proof"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }
