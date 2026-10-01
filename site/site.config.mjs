@@ -62,9 +62,9 @@ export const site = {
             {
                 id: 'manual',
                 label: '官方插件安装',
-                note: 'Node.js 22+；先装固定宿主，再运行插件命令。所需组件随包准备，皮肤默认关闭。',
+                note: 'Node.js 24+；npm 首次发布正在等待维护者完成认证，暂用本次固定的 GitHub 包地址。先装固定宿主，再运行插件命令；皮肤默认关闭。',
                 primary: { label: '目录与恢复步骤', href: 'manual-install.html' },
-                code: 'npm install -g @deepseek-ai/dsh@0.1.7-rc.2\ndsh plugin --profile web add dsh-nexttavern\ndsh web --host 127.0.0.1'
+                code: 'npm install -g @deepseek-ai/dsh@0.1.7-rc.2\ndsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz\ndsh web --host 127.0.0.1'
             },
             {
                 id: 'windows',
