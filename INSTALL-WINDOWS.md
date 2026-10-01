@@ -1,5 +1,7 @@
 # Windows 一键安装
 
+> GitHub 发行资产已就绪。npm 包正在完成首次发布，暂时请使用本页安装器或下方固定 GitHub 地址安装；npm 发布完成后可改用包名 `dsh-nexttavern`。
+
 [返回首页](README.md) · [Linux 安装](INSTALL-LINUX.md) · [手动安装](README.md#安装) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
 `NextTavern-Setup.exe` 是 0.2.8 的便携运行时安装入口：不用自己装运行时、不用自己配补丁，双击、选目录、等待，就能在自己的电脑上打开角色扮演工作台。

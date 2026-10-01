@@ -1,5 +1,7 @@
 ![dsh-NextTavern：创作一个世界，走进它，再把它带走。](images/cover.png)
 
+> GitHub 发行资产已就绪。npm 包正在完成首次发布，暂时请使用本页安装器或下方固定 GitHub 地址安装；npm 发布完成后可改用包名 `dsh-nexttavern`。
+
 # dsh-NextTavern
 
 **简体中文** · [English](README.en.md)
@@ -31,7 +33,7 @@ Roleplay workspace for DeepSeek Harness: interactive character creation, on-dema
 **已经装好 Harness 的玩家，只需这一条命令：**
 
 ```powershell
-dsh plugin --profile web add dsh-nexttavern
+dsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz
 ```
 
 第一次使用 DSH，请先安装 Node.js 24+ 和宿主：
@@ -380,7 +382,7 @@ flowchart TD
 校验与来源：
 
 - [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/provenance.json)
-- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8)。npm 包名为 `dsh-nexttavern`，通过官方 `dsh plugin --profile web add dsh-nexttavern` 安装。
+- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8)。npm 包名为 `dsh-nexttavern`，通过官方 `dsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz` 安装。
 
 ## 安装
 
@@ -393,7 +395,7 @@ npm install -g @deepseek-ai/dsh@0.1.7-rc.2
 $env:DSH_HOME = Join-Path $PWD 'nexttavern-028-home'
 $Workspace = Join-Path $PWD 'nexttavern-028-workspace'
 New-Item -ItemType Directory -Path $env:DSH_HOME,$Workspace -ErrorAction Stop | Out-Null
-dsh plugin --profile web add dsh-nexttavern
+dsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz
 dsh web --host 127.0.0.1 --port 3510
 ```
 
@@ -415,7 +417,7 @@ dsh plugin --profile web add ./dsh-nexttavern.tgz
 
 ```powershell
 dsh plugin --profile web remove dsh-nexttavern
-dsh plugin --profile web add dsh-nexttavern
+dsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz
 ```
 
 若 pnpm 提示构建脚本未批准，先核对提示的包和 `profiles/web/pnpm-workspace.yaml` 中的 `allowBuilds`；不要把整个依赖树设为无条件信任。再次失败时保留终端错误与版本信息，隐去密钥后[反馈](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)。

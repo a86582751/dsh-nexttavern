@@ -1,5 +1,7 @@
 # Changelog
 
+> GitHub 发行资产已就绪。npm 包正在完成首次发布，暂时请使用本页安装器或下方固定 GitHub 地址安装；npm 发布完成后可改用包名 `dsh-nexttavern`。
+
 ## 0.2.8 — 2026-10-01
 
 抱歉让大家久等了。0.3 的目标是兼容更广泛的 SillyTavern 社区卡，包括 MVU 变量、EJS、RUBY 与前端美化；让它们进入自有状态、事件和恢复链的难度比预期更大，我们正在加速推进。本次先交付已经完成的整合安装和维护改善，这些兼容仍在开发，不计入 0.2.8。感谢大家继续反馈。
@@ -8,7 +10,7 @@ Sorry for the long wait. Broader SillyTavern community-card compatibility — MV
 
 **Breaking migration:** the host is now Harness **0.1.7-rc.2** / Session V4, with pi-ai **0.85.1**. Old sessions cannot continue directly. Export character cards or novels in the old environment and use a fresh home/workspace; novels do not retain full session state. Keep the old installation and its backups separate.
 
-- Install the unified `dsh-nexttavern` plugin through `dsh plugin --profile web add dsh-nexttavern`. It prepares the product, required compatibility providers, anydoc and the bundled skin. The host npm package is `@deepseek-ai/dsh@0.1.7-rc.2`. The official plugin manager controls enablement and removal; native UI/providers return on disable or failed activation, while user configuration and disabled choices are preserved. Unrelated appearance-setting writes no longer restart the whole product or blank its UI.
+- Install the unified `dsh-nexttavern` plugin through `dsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz`. It prepares the product, required compatibility providers, anydoc and the bundled skin. The host npm package is `@deepseek-ai/dsh@0.1.7-rc.2`. The official plugin manager controls enablement and removal; native UI/providers return on disable or failed activation, while user configuration and disabled choices are preserved. Unrelated appearance-setting writes no longer restart the whole product or blank its UI.
 - Route both one-click installers through the same official plugin manager using the hash-checked release archive. Retire legacy profile-lock installation and host-byte replay for the unified product, verify installed identity and bundle registration before marking it ready, and recover an interrupted owned installation. Fix the Linux archive-root mismatch and refuse an old installation before bootstrap writes to its directory. Native receipts record the exact payload and component inventory hashes.
 - Verify independently versioned owned components before loading, persist exact versioned references and reject corrupt archives or incompatible host peers. Preparation records lock/transaction checkpoints and can recover interrupted work. Install, upgrade, rollback, remove and reinstall lifecycle evidence preserves user files; controlled removal does not delete stories, resources, notes, user preset copies or model settings. Historical alpha.1 local measurements reduced first preparation from 355 s to 55 s and prepared restart from 18.6 s to 6.1 s; these are measurements, not a latency guarantee.
 - Register `dsh-nexttavern-amber` as an independent bundle in the same installation, **off by default**. Reuse an existing upstream market unchanged; resolve and install `dshmarket` only when absent, recording the resolved version and verification information. Skin toggles remain reversible and survive product settings writes. A custom market fork and the old 1.39.0 pin are no longer required.
