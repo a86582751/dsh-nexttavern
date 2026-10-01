@@ -4,11 +4,11 @@
 
 **简体中文** · [English](README.en.md)
 
-> **0.2.8 已发布：整合安装与维护改善。** 宿主升级到 Harness `0.1.7-rc.2`／Session V4，一条官方插件命令即可安装酒馆与所需组件。当前 `main` 继续同步 0.3 开发源码；安装请使用 npm 发布包或 [v0.2.8 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8)，开发请读[重建指南](CONTRIBUTING.md)。
+> **0.2.9 — Distribution & Installation Fix。** 这是基于 0.2.8 的安装分发补丁：预置第三方 SDK 依赖，修复首次安装及私有组件重新链接时的构建脚本许可问题。正式来源为 [npm `dsh-nexttavern`](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9) 和 [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)，支持 Harness `0.1.7-rc.2`／web／Session V4。开发请读[重建指南](CONTRIBUTING.md)。
 
-> **旧会话不兼容，请使用新目录。** 先在旧环境导出角色卡或小说，再安装 0.2.8。小说稿不保存完整会话状态，不能用它恢复原会话。
+> **从 0.2.5 等旧宿主版本迁移，请使用新目录。** 先在旧环境导出角色卡或小说，再安装 0.2.9；旧会话不兼容，小说稿不保存完整会话状态。0.2.8 → 0.2.9 延续同一宿主与会话线，更新步骤见[更新、卸载与回滚](#更新卸载与回滚)。
 
-抱歉让大家久等了。0.3 希望兼容更广泛的 SillyTavern 社区卡，包括 MVU 变量、EJS、RUBY 与前端美化；要让它们接入自有状态、事件和恢复链，难度比预期更大，我们正在加速推进。这次先交付已完成的整合安装和维护改善，上述兼容仍在开发。感谢大家继续反馈、陪我们把它打磨好。
+抱歉让大家久等了。0.3 希望兼容更广泛的 SillyTavern 社区卡，包括 MVU 变量、EJS、RUBY 与前端美化；要让它们接入自有状态、结构化事件和恢复机制，难度比预期更大，我们正在加速推进。这次 0.2.9 先把安装分发和第三方依赖兼容的坑补上，角色扮演功能继续沿用 0.2.8，上述更广泛的兼容仍在开发。感谢大家继续反馈、陪我们把它打磨好。
 
 **让角色独立推演，让世界随你的选择展开。**
 
@@ -22,7 +22,7 @@
 
 Roleplay workspace for DeepSeek Harness: interactive character creation, on-demand worldbook reading, long-form memory, multi-model collaboration, character agents, branching stories, novel exports and one-click installers.
 
-**0.2.8** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · 自有代码 **GPL-3.0**
+**0.2.9** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · 自有代码 **GPL-3.0**
 
 先装宿主，再用[一键安装](#一键安装)的官方插件命令。需要自己指定目录、端口或使用归档时，见[安装](#安装)。
 
@@ -34,6 +34,8 @@ Roleplay workspace for DeepSeek Harness: interactive character creation, on-dema
 dsh plugin --profile web add dsh-nexttavern
 ```
 
+这里的 `dsh-nexttavern` 是正式 npm 包名。部分第三方 Hub／市场目录未识别 npm 来源时会回退到 Git 源码安装；目录来源仍待第三方同步。请直接使用上面的官方命令，或下载已校验的 Release 归档。本版未承诺 Git 源码直装，也未扩展到 DSH 0.2／desktop。
+
 第一次使用 DSH，请先安装 Node.js 24+ 和宿主：
 
 ```powershell
@@ -42,17 +44,17 @@ npm install -g @deepseek-ai/dsh@0.1.7-rc.2
 
 安装后运行 `dsh web --host 127.0.0.1`，按终端地址打开浏览器，配置自己的模型与 Key，再选择“角色扮演模式”。所需兼容组件、文档读取组件和自有皮肤由统一插件准备；皮肤随包安装、默认关闭。首次准备需要时间与网络，准备完成后的启动会复用已校验的组件。
 
-**从旧版本迁移：先导出，再用新目录。** 0.2.5 的旧会话无法直接延续，目录隔离步骤见[安装](#安装)。不要对旧 home 或工作区执行这条命令来尝试迁移会话。
+**从 0.2.5 迁移：先导出，再用新目录。** 0.2.5 的旧会话无法直接延续，目录隔离步骤见[安装](#安装)。不要对旧 home 或工作区执行这条命令来尝试迁移会话。
 
 ### Windows
 
-希望由安装器准备便携运行时与快捷方式，可下载 [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.exe)。Windows on ARM 使用 [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup-arm64.exe)。从旧版本迁移时选择新的安装目录；完整步骤、未签名提示与验证范围见 [Windows 一键安装指南](INSTALL-WINDOWS.md)。
+希望由安装器准备便携运行时与快捷方式，可下载 [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe)。Windows on ARM 使用 [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe)。从 0.2.5 迁移时选择新的安装目录；完整步骤、未签名提示与验证范围见 [Windows 一键安装指南](INSTALL-WINDOWS.md)。
 
 两端安装器准备便携宿主后，也通过官方 `plugin add` 安装已校验的归档；不再向宿主重放旧兼容补丁。安装失败时保留未完成回执，重新运行可以恢复本安装器拥有的工作。
 
 ### Linux
 
-[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从旧版本迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
+[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从 0.2.5 迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
 
 ### 安装与模型费用
 
@@ -366,32 +368,32 @@ flowchart TD
 
 **架构说完，下面是取用与维护这一版需要的材料。** 先看这一版发布了哪些文件。
 
-- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz)，含统一插件、预构建 UI、源码、preset、参考卡、随包组件、CLI 和可选公网鉴权源包。
-- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-debug.tgz)。
-- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
+- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-nexttavern.tgz)，含统一插件、预构建 UI、源码、preset、参考卡、随包组件、CLI 和可选公网鉴权源包。
+- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-debug.tgz)。
+- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
 
 一键安装器：
 
-- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.exe)（Windows x64）
-- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup-arm64.exe)（Windows on ARM）
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/nexttavern-setup.tgz)（安装器的 npm 归档）
+- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe)（Windows x64）
+- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe)（Windows on ARM）
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/nexttavern-setup.tgz)（安装器的 npm 归档）
 
 校验与来源：
 
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/provenance.json)
-- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8)。npm 包名为 `dsh-nexttavern`，通过官方 `dsh plugin --profile web add dsh-nexttavern` 安装。
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/provenance.json)
+- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)。npm 包名为 `dsh-nexttavern`，通过官方 `dsh plugin --profile web add dsh-nexttavern` 安装。
 
 ## 安装
 
 此处适合指定独立 home、工作区与固定端口的玩家。需要 Node.js 24+ 和 npm；以下为 PowerShell 示例，每条命令成功后再继续。
 
-**升级前先在旧环境导出角色卡或小说，并保留旧目录备份。** 旧会话不能直接延续，小说不包含完整状态。新 home 和新工作区应使用未占用的路径，不复制旧会话数据库。
+**从 0.2.5 迁移前，先在旧环境导出角色卡或小说，并保留旧目录备份。** 旧会话不能直接延续，小说不包含完整状态。以下为全新安装／旧宿主迁移示例，新 home 和新工作区应使用未占用的路径，不复制旧会话数据库。已有 0.2.8 的更新见[更新、卸载与回滚](#更新卸载与回滚)。
 
 ```powershell
 npm install -g @deepseek-ai/dsh@0.1.7-rc.2
-$env:DSH_HOME = Join-Path $PWD 'nexttavern-028-home'
-$Workspace = Join-Path $PWD 'nexttavern-028-workspace'
+$env:DSH_HOME = Join-Path $PWD 'nexttavern-029-home'
+$Workspace = Join-Path $PWD 'nexttavern-029-workspace'
 New-Item -ItemType Directory -Path $env:DSH_HOME,$Workspace -ErrorAction Stop | Out-Null
 dsh plugin --profile web add dsh-nexttavern
 dsh web --host 127.0.0.1 --port 3510
@@ -399,7 +401,7 @@ dsh web --host 127.0.0.1 --port 3510
 
 浏览器中选择刚建的工作区，配置自己的模型供应商，新建会话时选“角色扮演模式”。后续启动仍须使用同一个 `DSH_HOME`，再运行最后一条命令。
 
-也可以从 [v0.2.8 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8) 下载主包，与 `SHA256SUMS` 核对后，以本地归档替代 npm 包名：
+也可以从 [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9) 下载主包，与 `SHA256SUMS` 核对后，以本地归档替代 npm 包名：
 
 ```powershell
 dsh plugin --profile web add ./dsh-nexttavern.tgz
@@ -418,7 +420,7 @@ dsh plugin --profile web remove dsh-nexttavern
 dsh plugin --profile web add dsh-nexttavern
 ```
 
-若 pnpm 提示构建脚本未批准，先核对提示的包和 `profiles/web/pnpm-workspace.yaml` 中的 `allowBuilds`；不要把整个依赖树设为无条件信任。再次失败时保留终端错误与版本信息，隐去密钥后[反馈](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)。
+0.2.9 的 npm／Release 包已预置 `@google/genai`、`protobufjs` 的完整运行依赖闭包，私有 SDK 在固定目录重新链接也不需要执行它们的安装脚本；持久化组件携带 `koffi` 预构建 bundle。如果仍提示这些包的构建脚本未批准，先核对实际版本与来源是否为正式 0.2.9 npm 包或 Release 归档，保留终端错误与版本信息，隐去密钥后[反馈](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)。
 
 ## 文档扩展
 
@@ -430,6 +432,8 @@ PNG／JSON 人物卡解析由产品内置；文件上传和附件使用宿主的
 
 本版固定 Harness **0.1.7-rc.2** 与 pi-ai **0.85.1**。产品使用自有 UI、Session Controller、持久化、投影、计量和 pi-ai 兼容提供者；它们随包校验并准备为独立版本组件，不要求玩家修改宿主已安装文件。版本、来源与许可证见随包 metadata、`provenance.json` 和 [NOTICE](NOTICE.md)。
 
+0.2.9 预置 Google SDK／protobuf 运行依赖及 `koffi` 预构建 bundle，补齐私有组件的依赖声明；npm 元数据新增 9 个相关关键词、官网／问题反馈／标准仓库地址，并通过宿主官方 `locale/*` 导出机制提供英文和简体中文标题与说明。这些发现字段可以帮助识别正式包，第三方市场 catalog 仍需另行同步。
+
 - [anydoc](https://github.com/a86582751/dsh-plugin-anydoc) 基于 [beancookie/dsh-plugin-anydoc](https://github.com/beancookie/dsh-plugin-anydoc)，保留原作者历史与 MIT 署名，由自有 TypeScript 源码维护。
 - [pi](https://github.com/a86582751/pi) 基于 [earendil-works/pi](https://github.com/earendil-works/pi)，保留 MIT 署名；兼容层统一处理四条协议的流终止与释放。
 - 官方上传、附件和侧栏替代旧社区上传工具与 `better-sidebar`，不需要额外安装这些退休组件。
@@ -440,7 +444,9 @@ PNG／JSON 人物卡解析由产品内置；文件上传和附件使用宿主的
 
 ## 更新、卸载与回滚
 
-**0.2.5 → 0.2.8 是迁移，不是旧会话原地续写。** 在旧环境导出角色卡／小说，备份旧目录，再按[安装](#安装)使用新 home 和工作区。一键安装器也应选择新根目录；旧安装保持独立，必要时继续用旧版本读取或导出资料。
+**0.2.5 → 0.2.9 是迁移，不是旧会话原地续写。** 在旧环境导出角色卡／小说，备份旧目录，再按[安装](#安装)使用新 home 和工作区。一键安装器也应选择新根目录；旧安装保持独立，必要时继续用旧版本读取或导出资料。
+
+**0.2.8 → 0.2.9 是同一宿主线的安装分发补丁。** 按下面的官方插件更新步骤操作；本版未新增便携安装器原地升级能力，安装器仍沿用各平台指南的目录与恢复边界。
 
 同一兼容版本线内更新时，先停止当前服务、备份当前 home 和工作区，核对新版本说明，再通过官方 `plugin add` 安装目标包版本或归档，重启宿主以加载新模块。准备过程拒绝坏包和未知组件，不会把失败写成成功；持久组件按版本保留，回滚须使用匹配的旧包与对应备份，不混用其他实例的 receipt 或 pin。
 

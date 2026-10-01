@@ -23,8 +23,8 @@ export const site = {
     issuesUrl: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose',
     licenseName: 'GPL-3.0-only',
     licenseUrl: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE',
-    releaseVersion: '0.2.8',
-    developmentLine: '0.3 开发中',
+    releaseVersion: '0.2.9',
+    developmentLine: '0.3 开发中，抱歉让大家久等了',
     harnessLine: 'DeepSeek Harness 0.1.7-rc.2',
     hero: {
         eyebrow: 'DSH 角色扮演 Agent',
@@ -50,26 +50,26 @@ export const site = {
         primary: { label: '快速开始', href: 'quickstart.html' },
         secondary: { label: '核心能力', href: 'capabilities.html' },
         facts: [
-            { label: '最新发布', value: '0.2.8' },
+            { label: '最新发布', value: '0.2.9' },
             { label: '运行宿主', value: 'DeepSeek Harness' },
             { label: '许可证', value: 'GPL-3.0-only' }
         ]
     },
     quickInstall: {
         title: '一条命令开始',
-        lead: '先安装 Harness 0.1.7-rc.2，再用官方 plugin add 装好酒馆。旧会话不兼容，请先导出卡片或小说并使用新目录。',
+        lead: '0.2.9 修复安装分发与依赖脚本许可。先安装 Harness 0.1.7-rc.2，再从正式 npm 包 dsh-nexttavern 安装 web 酒馆；从 0.2.5 迁移时先导出并使用新目录。',
         tabs: [
             {
                 id: 'manual',
                 label: '官方插件安装',
-                note: 'Node.js 24+；先装固定宿主，再运行插件命令。所需组件随包准备，皮肤默认关闭。',
+                note: 'Node.js 24+；第三方市场目录仍待同步，请使用正式 npm 包名。所需组件随包准备，皮肤默认关闭。',
                 primary: { label: '目录与恢复步骤', href: 'manual-install.html' },
                 code: 'npm install -g @deepseek-ai/dsh@0.1.7-rc.2\ndsh plugin --profile web add dsh-nexttavern\ndsh web --host 127.0.0.1'
             },
             {
                 id: 'windows',
                 label: 'Windows',
-                note: '下载便携运行时安装器，迁移旧版时选新目录；ARM64 设备用 arm64 版本。',
+                note: '下载便携运行时安装器，从 0.2.5 迁移时选新目录；ARM64 设备用 arm64 版本。',
                 primary: { label: 'Windows 安装指南', href: 'install-windows.html' },
                 code: 'NextTavern-Setup.exe'
             },
@@ -78,7 +78,7 @@ export const site = {
                 label: 'Linux',
                 note: '自包含脚本，x86_64 与 aarch64（glibc），不需要 root，也不需要包管理器。',
                 primary: { label: 'Linux 安装指南', href: 'install-linux.html' },
-                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.8"'
+                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.9"'
             }
         ]
     },

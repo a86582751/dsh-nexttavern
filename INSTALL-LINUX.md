@@ -2,7 +2,7 @@
 
 [返回首页](README.md) · [Windows 安装](INSTALL-WINDOWS.md) · [手动安装](README.md#安装) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-`NextTavern-Setup.sh` 是 0.2.8 的 Linux 便携运行时安装入口。它是一个自包含的 shell 脚本：不需要预装 Node.js，不需要 root，也不需要系统包管理器——脚本自己下载并校验一份便携的 Node.js 运行时，然后把工作区、桌面入口和启动／停止入口准备好。
+`NextTavern-Setup.sh` 是 0.2.9 的 Linux 便携运行时安装入口。它是一个自包含的 shell 脚本：不需要预装 Node.js，不需要 root，也不需要系统包管理器——脚本自己下载并校验一份便携的 Node.js 运行时，然后把工作区、桌面入口和启动／停止入口准备好。
 
 ## 需要什么，不需要什么
 
@@ -17,7 +17,7 @@
 
 ## 安装
 
-先从[下载](#下载)取得 0.2.8 脚本。全新安装运行：
+先从[下载](#下载)取得 0.2.9 脚本。全新安装运行：
 
 ```sh
 sh NextTavern-Setup.sh
@@ -25,7 +25,9 @@ sh NextTavern-Setup.sh
 
 脚本会依次做这些事：检查架构与基本工具 → 下载便携 Node.js 运行时并校验 SHA-256 → 解压到安装目录的 `runtime` 下 → 准备 `harness`、`home`、`workspace` 等目录 → 启动本地服务并打开浏览器。第一次进入时，按提示选择工作区、填写自己的模型供应商，然后在新建会话的预设菜单里切到“角色扮演模式”。
 
-**从 0.2.5 迁移请先导出并使用新目录。** 旧会话不兼容，小说稿不包含完整状态。保留旧 `home`／`workspace` 备份，使用 `--root "$HOME/NextTavern-0.2.8"` 建立新安装，不复制旧会话数据库。再次运行脚本时也须传入同一个新根目录；默认路径如果已有旧安装，不能用它当作本次迁移路径。
+**从 0.2.5 迁移请先导出并使用新目录。** 旧会话不兼容，小说稿不包含完整状态。保留旧 `home`／`workspace` 备份，使用 `--root "$HOME/NextTavern-0.2.9"` 建立新安装，不复制旧会话数据库。再次运行脚本时也须传入同一个新根目录；默认路径如果已有旧安装，不能用它当作本次迁移路径。
+
+已有 0.2.8 的玩家请按首页的[官方插件更新流程](README.md#更新卸载与回滚)操作。0.2.9 保持同一宿主与会话线，本补丁未新增安装器原地升级能力。
 
 常用参数：
 
@@ -96,7 +98,7 @@ sh NextTavern-Setup.sh --action stop
 
 ## 卸载与回滚
 
-**停止：** 用 `Stop Next Tavern` 桌面条目或 `sh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.8" --action stop`；根目录须与实际安装一致。
+**停止：** 用 `Stop Next Tavern` 桌面条目或 `sh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.9" --action stop`；根目录须与实际安装一致。
 
 **仅停用或卸载插件：** 使用官方设置里的 `dsh-nexttavern` 总开关，或停服务后在该安装的 `DSH_HOME` 下运行 `dsh plugin --profile web remove dsh-nexttavern`。详情见[更新、卸载与回滚](README.md#更新卸载与回滚)。受控卸载保留用户资料，不删除整个目录。
 
@@ -114,9 +116,9 @@ sh NextTavern-Setup.sh --action stop
 
 ## 下载
 
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh)
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/nexttavern-setup.tgz)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.8)
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh)
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/nexttavern-setup.tgz)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)
 
 下载后先校验再运行是个好习惯：
 
