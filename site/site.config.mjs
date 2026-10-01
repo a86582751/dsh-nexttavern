@@ -24,7 +24,7 @@ export const site = {
     licenseName: 'GPL-3.0-only',
     licenseUrl: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE',
     releaseVersion: '0.2.9',
-    developmentLine: '0.3 开发中',
+    developmentLine: '0.3 开发中，抱歉让大家久等了',
     harnessLine: 'DeepSeek Harness 0.1.7-rc.2',
     hero: {
         eyebrow: 'DSH 角色扮演 Agent',
