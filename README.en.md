@@ -1,7 +1,5 @@
 ![dsh-NextTavern: create a world, step into it, and take it with you.](images/cover.png)
 
-> The GitHub release is available. The first npm publication is awaiting account verification; use the installers or the pinned GitHub archive below for now.
-
 # dsh-NextTavern
 
 [简体中文](README.md) · **English**
@@ -33,7 +31,7 @@ This document is the English counterpart of the Chinese README. The Chinese one 
 **With Harness already installed, run one command:**
 
 ```powershell
-dsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz
+dsh plugin --profile web add dsh-nexttavern
 ```
 
 For a first DSH installation, install Node.js 24+ and the host first:
@@ -309,7 +307,7 @@ flowchart TD
 
 Installers: [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.exe) (Windows x64) · [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup-arm64.exe) (Windows on ARM) · [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/NextTavern-Setup.sh) (Linux x86_64 / aarch64).
 
-Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz`.
+Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
 
 ## Manual install
 
@@ -322,7 +320,7 @@ npm install -g @deepseek-ai/dsh@0.1.7-rc.2
 $env:DSH_HOME = Join-Path $PWD 'nexttavern-028-home'
 $Workspace = Join-Path $PWD 'nexttavern-028-workspace'
 New-Item -ItemType Directory -Path $env:DSH_HOME,$Workspace -ErrorAction Stop | Out-Null
-dsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz
+dsh plugin --profile web add dsh-nexttavern
 dsh web --host 127.0.0.1 --port 3510
 ```
 
@@ -344,7 +342,7 @@ If an unsuccessful official install left the package installed but its bundle un
 
 ```powershell
 dsh plugin --profile web remove dsh-nexttavern
-dsh plugin --profile web add https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.8/dsh-nexttavern.tgz
+dsh plugin --profile web add dsh-nexttavern
 ```
 
 If pnpm reports unapproved build scripts, inspect the named packages and `allowBuilds` in `profiles/web/pnpm-workspace.yaml`; do not grant unconditional trust to the whole dependency tree. Preserve the error and versions for a report, removing keys and private content first.

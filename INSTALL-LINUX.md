@@ -1,7 +1,5 @@
 # Linux 一键安装
 
-> GitHub 发行资产已就绪。npm 包正在完成首次发布，暂时请使用本页安装器或下方固定 GitHub 地址安装；npm 发布完成后可改用包名 `dsh-nexttavern`。
-
 [返回首页](README.md) · [Windows 安装](INSTALL-WINDOWS.md) · [手动安装](README.md#安装) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
 `NextTavern-Setup.sh` 是 0.2.8 的 Linux 便携运行时安装入口。它是一个自包含的 shell 脚本：不需要预装 Node.js，不需要 root，也不需要系统包管理器——脚本自己下载并校验一份便携的 Node.js 运行时，然后把工作区、桌面入口和启动／停止入口准备好。
