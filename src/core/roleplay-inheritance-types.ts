@@ -1,6 +1,8 @@
 import type { ContextSession, ContextEvent } from './roleplay-context.js'
 import type { DirectorNotes } from '../memory/memory-history.js'
 import type { StatusRecord, StatusSource, FixedStatusContext } from './roleplay-status-types.js'
+import type {TavernSourceInheritanceOwnerV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js'
 
 export interface InheritanceSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & { parentSession?: string }
@@ -51,6 +53,9 @@ export interface InheritanceTables {
   rolls: InheritanceTable<unknown>
 }
 export interface InheritanceDependencies {
+  /** Actual child writer provenance; parent rows never mint this entry. */
+  rowFacts?:PhaseABranchRowFactsWriterV1
+  sourceInheritance?:TavernSourceInheritanceOwnerV1
   ensureState(sessionId: string): InheritanceState
   cloneBranchRecord<T>(record: T): T
   T: InheritanceTables

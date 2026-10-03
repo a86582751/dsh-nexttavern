@@ -6,13 +6,15 @@ import type { PanelRouteBody, PanelRoutesDependencies } from './roleplay-panel-r
 import { statusTemplateDiagnostics } from '../status-template.js';
 import type { HostSession } from './roleplay-task-host-types.js';
 import type { StateSession } from './roleplay-state-types.js';
+import { SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1 } from './roleplay-tavern-legacy-write-target-types.js';
 // Shared by the panel and bounded agent edits: one revision check and one mutation path.
 export async function savePanelSetting({ ctx,
      T,
      recordVersionsFor,
      svc,
-     RULE_TEXT_FIELDS }: Pick<PanelRoutesDependencies,
-     'ctx' | 'T' | 'recordVersionsFor' | 'svc' | 'RULE_TEXT_FIELDS'>,
+     RULE_TEXT_FIELDS,
+     checkLegacyWorldbookWriteTarget }: Pick<PanelRoutesDependencies,
+     'ctx' | 'T' | 'recordVersionsFor' | 'svc' | 'RULE_TEXT_FIELDS' | 'checkLegacyWorldbookWriteTarget'>,
      session: HostSession,
      body: PanelRouteBody,
      validate?: () => void,
@@ -24,6 +26,14 @@ export async function savePanelSetting({ ctx,
         `panel-save:${session.id}`,
         async () => {
             validate?.();
+            if (kind === 'worldbook' || kind === 'worldbook-delete') {
+                const id = String(body.id ?? '');
+                // Managed targets use the structured editor even with a stale legacy revision.
+                // Invalid save ids retain their original CAS -> 400 validation order.
+                if ((kind === 'worldbook-delete' || /^[a-zA-Z0-9_-]{1,64}$/.test(id))
+                    && checkLegacyWorldbookWriteTarget?.(session, id).kind === 'source-managed-data')
+                    return jsonResponse(409, SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1);
+            }
             if (body.expectedRevision !== undefined) {
                 const versions = recordVersionsFor(session);
                 const expected = kind === 'card' ? versions.cards[body.card_id!] ?? 'missing'
@@ -120,7 +130,8 @@ export async function savePanelSetting({ ctx,
                 await T.worldbook.put(keyOf(session.id, id), entry);
             }
             else if (kind === 'worldbook-delete') {
-                await T.worldbook.delete(keyOf(session.id, String(body.id ?? '')));
+                const id = String(body.id ?? '');
+                await T.worldbook.delete(keyOf(session.id, id));
             }
             else if (kind === 'memory') {
                 const patch: Record<string, unknown> = {};

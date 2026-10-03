@@ -5,6 +5,7 @@
  */
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm';
 import { foldRequestHeader } from '@deepseek-ai/dsh-session';
+import { nativeRequestMaterialInvariant } from './request-material-sidecar.js';
 const PACKAGE_NAME = '@deepseek-ai/dsh-agent-loop';
 /** Cordis companion plugin name. */
 export const name = 'agent-loop-invariant';
@@ -35,7 +36,7 @@ const install = Object.assign((ctx, fail) => {
         if (header === undefined) {
             return fail('a loop-built request with no request/header event in its session log');
         }
-        const expected = session.deriveMessages();
+        const expected = nativeRequestMaterialInvariant(options, session, events) ?? session.deriveMessages();
         if (JSON.stringify(options.messages) !== JSON.stringify(expected)) {
             fail(`llm request for session "${String(session.id)}" diverges from the dispatch-time durable derivation (log-reconstruction desync)`);
         }

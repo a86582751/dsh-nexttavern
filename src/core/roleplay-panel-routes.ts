@@ -65,11 +65,12 @@ ctx,
      readRoleplayState,
      svc,
      RULE_TEXT_FIELDS,
-     withImportLock
+     withImportLock,
+     checkLegacyWorldbookWriteTarget
 }: Pick<PanelRoutesDependencies,
       'ctx' | 'T' | 'resolveRoleplaySession' | 'ensureBranch' | 'withDecisionMutationLock'
       | 'normalizeDecisionRecord' | 'recordVersionsFor' | 'readRoleplayState' | 'svc'
-      | 'RULE_TEXT_FIELDS' | 'withImportLock'>) {
+      | 'RULE_TEXT_FIELDS' | 'withImportLock' | 'checkLegacyWorldbookWriteTarget'>) {
     // 轮末决策卡：玩家点选后标记已答；前端随即以「我选择：…」用户消息开启下一轮。
     ctx.effect(
     () => ctx.connection.fetch.register({requestBody: 'buffered',
@@ -167,7 +168,7 @@ ctx,
                     null,
                     () => savePanelSetting(
                     {
-                        ctx, T, recordVersionsFor, svc, RULE_TEXT_FIELDS
+                        ctx, T, recordVersionsFor, svc, RULE_TEXT_FIELDS, checkLegacyWorldbookWriteTarget
                     },
                         session,
                         body

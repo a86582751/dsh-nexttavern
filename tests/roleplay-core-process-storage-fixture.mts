@@ -27,11 +27,18 @@ const hash = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).
 const equalPath = (left: string, right: string) => process.platform === 'win32'
   ? left.toLowerCase() === right.toLowerCase() : left === right
 
-/** Only an orchestrator-owned direct child of this repository's fixed D test
- * root is accepted. This module and child processes never delete that scope. */
+/** Only a direct child of the actual orchestrator test-temp scope is accepted.
+ * A quality run can nest its scope under the fixed D root. This module and
+ * child processes never delete a scope owned by their orchestrator. */
 export async function processFixtureDataRoot(input: string): Promise<string> {
   assert.ok(path.isAbsolute(input), 'process dataRoot must be a real absolute path')
-  const root = await realpath(fileURLToPath(new URL('../../../artifacts/test-temp/', import.meta.url)))
+  const fixedRoot = await realpath(fileURLToPath(new URL('../../../artifacts/test-temp/', import.meta.url)))
+  const configuredRoot = process.env.DSH_TEST_TMPDIR
+  if(configuredRoot)assert.ok(path.isAbsolute(configuredRoot),'orchestrator test-temp scope must be absolute')
+  const root = configuredRoot?await realpath(configuredRoot):fixedRoot
+  const relativeRoot = path.relative(fixedRoot,root)
+  assert.ok(!path.isAbsolute(relativeRoot)&&relativeRoot!=='..'&&!relativeRoot.startsWith('..'+path.sep),
+    'orchestrator test-temp scope must remain under the fixed repository root')
   const actual = await realpath(input)
   assert.equal((await lstat(input)).isSymbolicLink(), false, 'dataRoot must not be a junction')
   assert.equal(equalPath(path.dirname(actual), root), true, 'dataRoot must be an owned direct test-temp scope')

@@ -29,6 +29,7 @@ function registrationFacts(profiles) {
         provider,
         displayName: profile.displayName,
         retryPolicy: profile.retryPolicy,
+        requestMaterialSerialization: profile.requestMaterialSerialization,
     }))
         .sort((left, right) => left.provider.localeCompare(right.provider));
 }

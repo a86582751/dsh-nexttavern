@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {compileTypeScript,checkMvuSchemaRuntimeBuild,type CompilePlan} from './build-typescript.mjs'
+import {compileTypeScript,checkMvuSchemaRuntimeBuild,checkTavernTemplateRuntimeBuild,type CompilePlan} from './build-typescript.mjs'
 
 interface PublicModule {artifact: string; source: string; primaryOutput?: string; outputs: string[]}
 interface PublicBuildMap {
@@ -26,6 +26,13 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
   const sources = new Set(map.modules.map(module => safe(module.source)))
   const outputs = new Set(map.modules.flatMap(module => module.outputs.map(output => {safe(output); return output})))
   const allowedOutputs = new Set([...outputs, ...map.bundles])
+  const generatedDeclarations = new Set(map.compilerPlan.builds.flatMap(recipe => {
+    if (recipe.declarationArtifact === undefined) return []
+    const artifact = map.compilerPlan.artifacts.find(item => item.id === recipe.declarationArtifact)
+    if (!artifact) throw Error('Missing public declaration output: ' + recipe.id)
+    safe(artifact.source)
+    return [artifact.source]
+  }))
   const declarations = new Set(map.compilerPlan.artifacts.filter(artifact => /\.d\.[cm]?ts$/.test(artifact.source))
     .map(artifact => safe(artifact.source)))
   if (sources.size !== map.modules.length || outputs.size !== map.modules.flatMap(module => module.outputs).length) {
@@ -48,7 +55,8 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
       if (item.isSymbolicLink()) throw Error('Unexpected link in generated tree: ' + file)
       if (item.isDirectory()) {inspect(file, sourceTree); continue}
       if (/\.(?:tsx?|mts)$/.test(file)
-        && (!sourceTree || (!sources.has(safe(file)) && !declarations.has(safe(file))))) throw Error('Unmapped TypeScript source: ' + file)
+        && (sourceTree ? !sources.has(safe(file)) && !declarations.has(safe(file))
+          : !generatedDeclarations.has(file))) throw Error('Unmapped TypeScript source: ' + file)
       if (/\.(?:js|mjs|cjs)$/.test(file) && (sourceTree || !allowedOutputs.has(file))) throw Error('Unmapped generated module: ' + file)
     }
   }
@@ -72,6 +80,10 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
     const recipe = compilation.recipes.find(recipe => recipe.artifact === module.artifact)
     if (!recipe || recipe.entry !== module.source) throw Error('Public compiler/delivery mapping differs: ' + module.artifact)
     for (const output of module.outputs) compare(output, recipe.text)
+    if (recipe.declarationOutputSource !== undefined) {
+      if (recipe.declarationText === undefined) throw Error('Missing public declaration text: ' + recipe.id)
+      compare(recipe.declarationOutputSource, recipe.declarationText)
+    }
   }
   for (const entry of map.compatibilityEntrypoints ?? []) {
     const module = map.modules.find(module => module.artifact === entry.artifact)
@@ -84,5 +96,6 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
   }
   if (stale) throw Error(`${stale} generated files differ; run npm run build:modules`)
   const assets=await checkMvuSchemaRuntimeBuild(root,map.compilerPlan,write)
-  console.log(`strict public modules=${map.modules.length}; wrote=${written}; schemaAssets=${assets?.files.length??0}`)
+  const templateAssets=await checkTavernTemplateRuntimeBuild(root,map.compilerPlan,write)
+  console.log(`strict public modules=${map.modules.length}; wrote=${written}; schemaAssets=${assets?.files.length??0}; templateAssets=${templateAssets?.files.length??0}`)
 }

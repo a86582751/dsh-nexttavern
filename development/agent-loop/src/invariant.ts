@@ -7,6 +7,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { isAgentLoopRequest, type GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import { foldRequestHeader } from '@deepseek-ai/dsh-session'
+import {nativeRequestMaterialInvariant} from './request-material-sidecar.js'
 
 const PACKAGE_NAME = '@deepseek-ai/dsh-agent-loop'
 
@@ -37,7 +38,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     if (header === undefined) {
       return fail('a loop-built request with no request/header event in its session log')
     }
-    const expected = session.deriveMessages()
+    const expected = nativeRequestMaterialInvariant(options,session,events) ?? session.deriveMessages()
     if (JSON.stringify(options.messages) !== JSON.stringify(expected)) {
       fail(`llm request for session "${String(session.id)}" diverges from the dispatch-time durable derivation (log-reconstruction desync)`)
     }

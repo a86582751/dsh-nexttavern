@@ -8,6 +8,7 @@ import { importedStoryProjection } from '../memory/memory-provenance.js';
 import { fenceCardContent } from './tavern-card.js';
 import { TaskValidationError, isInlinePending } from './tavern-tasks.js';
 import { importActiveKey } from './roleplay-import.js';
+import { createRoleplayStatusControlFactsV1 } from './roleplay-status-control-facts.js';
 export function createRoleplayStatus(deps) {
     const { ctx, storyBranchIsActive, T, cloneBranchRecord, taskCancellation, ensureBranch, modelPolicy, sameModelRoute, retrieveWorldbook, cfg, llmJson, resolveRoute, STATUS_SYSTEM, DEFAULT_CONFIG, importRecordKey, spanText, } = deps;
     // Status owns a separate turn-end transaction. Neither Phase-A snapshots nor
@@ -72,6 +73,21 @@ export function createRoleplayStatus(deps) {
     };
     const statusSourceLive = (session, event, source) => !statusDisposed
         && recordSha256(statusSource(session, event)) === recordSha256(source);
+    // Separate readonly data association from scheduler/live Source guards.
+    // The getter calls only this owner's original Native prose association.
+    const statusFactsTable = T.status, statusFactsLookup = deps.sessionForRowFacts, statusFactsProjections = deps.projectionsForRowFacts, statusFactsAncestry = deps.retainedSourceOwnerFacts, statusFactsOriginCatalog = deps.retainedSourceOwnerCatalog;
+    const { readOwnedStatusControlFacts } = createRoleplayStatusControlFactsV1({
+        table: statusFactsTable, sessionForRowFacts: statusFactsLookup,
+        projectionsForRowFacts: statusFactsProjections, statusSource,
+        retainedSourceOwnerFacts: statusFactsAncestry,
+        retainedSourceOwnerCatalog: statusFactsOriginCatalog,
+        assertOwnerAvailable: () => {
+            if (statusDisposed || deps.T !== T || T.status !== statusFactsTable
+                || deps.sessionForRowFacts !== statusFactsLookup || deps.projectionsForRowFacts !== statusFactsProjections
+                || deps.retainedSourceOwnerFacts !== statusFactsAncestry || deps.retainedSourceOwnerCatalog !== statusFactsOriginCatalog)
+                throw Error('STATUS_CONTROL_OWNER_CHANGED');
+        },
+    });
     const selectedStatusRecord = (session) => {
         const record = normalizeStatusRecord(T.status.get(keyOf(session.id, 'panel')));
         if (!record?.provenance)
@@ -106,6 +122,9 @@ export function createRoleplayStatus(deps) {
         return record ?? null;
     };
     const statusFixedContext = (session) => {
+        const projected = deps.fixedAuthorContext?.(session);
+        if (projected)
+            return projected;
         const prefix = `${session.id}__`;
         const entries = (table) => [...table.entries()].filter(([key, value]) => key.startsWith(prefix) && value)
             .sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => ({
@@ -498,23 +517,35 @@ export function createRoleplayStatus(deps) {
         return job;
     }
     function queueStatusObligation(session, event, via, agent, signal) {
-        void (async () => {
-            await runStatusObligation(session, event, via, {
-                agent, signal
-            });
-        })().catch(() => {
-            ctx.logger?.warn?.(`roleplay: status admission failed turn=${event?.data?.turn}`);
-        });
+        const report = () => {
+            try {
+                ctx.logger?.warn?.(`roleplay: status admission failed turn=${event?.data?.turn}`);
+            }
+            catch { /* Reporting cannot replace an ended or rejected job. */ }
+        };
+        let job;
+        try {
+            job = runStatusObligation(session, event, via, { agent, signal });
+        }
+        catch {
+            report();
+            return Promise.resolve(null);
+        }
+        // Observe background rejection without wrapping the actual job or
+        // losing its admission/cancellation fields and settlement boundary.
+        void job.catch(report);
+        return job;
     }
     function recoverStatusObligations(session, via, agent) {
+        const jobs = [];
         const latest = latestStatusEvent(session);
         const lastBoundary = eventsOf(session).findLast(event => event.type === 'turn/start' || event.type === 'turn/end');
         if (lastBoundary?.type === 'turn/start' && (!latest || latest.seq < lastBoundary.seq))
-            return;
+            return jobs;
         // A new worldline is about to replay its player input. Do not separately
         // backfill the inherited tail while its new story will settle that prefix.
         if (session.header?.parentSession && Number(latest?.seq) < Number(session.inheritedEventCount))
-            return;
+            return jobs;
         const runStart = statusRunStartSeq.get(session.id) ?? Infinity;
         // Recover pending durable work and this run's completed turns. A cold
         // legacy session only backfills its latest turn, not its entire archive.
@@ -529,9 +560,10 @@ export function createRoleplayStatus(deps) {
                             || record.publicationState === 'retry'))) {
                 const event = canonicalAssistantForTurn(session, entry.turn);
                 if (event)
-                    queueStatusObligation(session, event, via, agent);
+                    jobs.push(queueStatusObligation(session, event, via, agent));
             }
         }
+        return jobs;
     }
     const recoverStatusSpecFromImport = async (session) => {
         const edited = T.status.get(keyOf(session.id, 'spec'));
@@ -564,6 +596,7 @@ export function createRoleplayStatus(deps) {
         return next;
     };
     return {
+        readOwnedStatusControlFacts,
         statusFixedContext,
         runStatusObligation,
         textAlias,

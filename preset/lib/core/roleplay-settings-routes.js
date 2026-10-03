@@ -2,7 +2,8 @@
 import { jsonResponse } from './roleplay-state.js';
 import { selectedMainRoute, withTavernLock } from './tavern-tasks.js';
 import { clusterSettings } from './character-cluster.js';
-export function registerSettingsRoutes({ ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, memorySettingFields, memorySettingsPolicy, svc, narrativePresets }) {
+export function registerSettingsRoutes({ ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, memorySettingFields, memorySettingsPolicy, svc, narrativePresets, mutateSource }) {
+    const writeSource = mutateSource ?? (async (_session, work) => work());
     ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path: '/api/roleplay/presets', methods: ['GET', 'POST'], fetch: async (request) => {
             try {
                 const body = request.method === 'POST' ? await request.json() : null;
@@ -112,7 +113,7 @@ export function registerSettingsRoutes({ ctx, T, resolveRoleplaySession, modelPo
                     }
                     if (!Object.keys(patch).length)
                         throw new Error('没有需要保存的字段');
-                    await withTavernLock(T.branch, body.scope === 'global' ? 'memory-settings-global' : `panel-save:${session.id}`, async () => {
+                    const save = () => withTavernLock(T.branch, body.scope === 'global' ? 'memory-settings-global' : `panel-save:${session.id}`, async () => {
                         const policy = memorySettingsPolicy(session.id);
                         if (body.expectedRevision !== policy[body.scope].revision)
                             throw new Error('记忆设置已更新，请刷新后重试');
@@ -121,6 +122,11 @@ export function registerSettingsRoutes({ ctx, T, resolveRoleplaySession, modelPo
                         else
                             await T.branch.put('memory-settings-global', { schemaVersion: 1, settings: { ...policy.global.settings, ...patch }, updatedAt: Date.now() });
                     });
+                    // Session settings are part of Source; retain the existing panel CAS lock inside it.
+                    if (body.scope === 'session')
+                        await writeSource(session, save, request.signal);
+                    else
+                        await save();
                 }
                 return jsonResponse(200, { ok: true, ...memorySettingsPolicy(session.id) });
             }

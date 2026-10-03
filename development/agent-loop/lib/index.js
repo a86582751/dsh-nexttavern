@@ -60,6 +60,7 @@ import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm';
 import { interruptedTurnClosers, SessionLogOffset, SessionPreparation, SessionSeq } from '@deepseek-ai/dsh-session';
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence';
 import { ReactLoopAgent, nativeInputAdmissionCapability } from './agent.js';
+import { nativeProgrammaticOpeningCapability } from './agent.js';
 import { inboxProjectionDefinition } from './inbox.js';
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js';
 /** Fiber states that cannot own or serve a new lifecycle. */
@@ -206,7 +207,12 @@ function assertAgentOptions(options) {
     }
 }
 export { DEFAULT_MAX_PARALLEL_TOOL_CALLS };
-export { nativeInputAdmissionCapability } from './agent.js';
+export { nativeInputAdmissionCapability, assertNativeRequestMaterialSelectionV1 } from './agent.js';
+export { nativeProgrammaticOpeningCapability } from './agent.js';
+export { inspectNativeOpeningGenerationV1, inspectNativeOpeningGenerationObservationV1, inspectInheritedOpeningGenerationObservationV1, buildNativeGeneratedOpeningReceiptObservationV1 } from './opening-generation.js';
+export { nativeOpeningRecordSha256V1, nativeOpeningInstructionSha256V1, nativeOpeningTextSha256V1, validateNativeOpeningInvocationV1, validateNativeOpeningRequestAttemptV1, validateNativeGeneratedOpeningReceiptV1, validateNativeOpeningClosingAckV1 } from './opening-record-hashes.js';
+export { nativeInputSha256, inspectNativeInboxHistory } from './input-admission.js';
+export { reconstructNativeRequestMaterialV1, NativeRequestMaterialFailure } from './request-material.js';
 /**
  * Context key a launcher sets before any Loader entry mounts
  * (`ctx.provide(CONFIGURED_AGENT_IDENTITIES_KEY, identities)`) to fix
@@ -332,6 +338,15 @@ export class AgentLoop extends Service {
         if (!actual || !this.ownership.isActive() || !(actual instanceof ReactLoopAgent)
             || !this.runtime.admissionAgents.has(actual)
             || this.runtime.ctx.agents.get(actual.id) !== actual)
+            return undefined;
+        return actual;
+    }
+    /** Independent opening capability on the same actual factory-owned Agent.
+     * A saved invocation/receipt cannot substitute for this live registry seam. */
+    getProgrammaticOpeningAgent(agent) {
+        const actual = nativeProgrammaticOpeningCapability(agent);
+        if (!actual || !this.ownership.isActive() || !(actual instanceof ReactLoopAgent)
+            || !this.runtime.admissionAgents.has(actual) || this.runtime.ctx.agents.get(actual.id) !== actual)
             return undefined;
         return actual;
     }

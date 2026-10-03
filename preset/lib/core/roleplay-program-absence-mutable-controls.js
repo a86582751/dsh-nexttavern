@@ -1,0 +1,292 @@
+// Generated from runtime/alpha3/src/core/roleplay-program-absence-mutable-controls.ts; edit the TypeScript source.
+/** Source-free mutable branch control data. Native material binds selected
+ * input/window facts, never the entire later row or its scheduling state. */
+import { types } from 'node:util';
+import { nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
+import { recordSha256, textOf } from './roleplay-data.js';
+import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
+import { validateRoleplayPhaseABranchRowDataV1 } from './roleplay-phase-a-row-facts.js';
+import { inputSnapshotReferenceCurrent } from './roleplay-preparation.js';
+import { internalTaskSeqs } from './tavern-task-context.js';
+const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const integer = (value, min = 0) => typeof value === 'number' && Number.isSafeInteger(value)
+    && value >= min && !Object.is(value, -0);
+const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const id = (value) => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
+function fail(code = 'PROGRAM_ABSENCE_MUTABLE_CONTROL_UNPROVEN') { throw Error(code); }
+function freeze(value) {
+    if (value && typeof value === 'object') {
+        for (const child of Object.values(value))
+            freeze(child);
+        Object.freeze(value);
+    }
+    return value;
+}
+function exact(raw, required, optional = []) {
+    if (!object(raw) || required.some(key => !Object.hasOwn(raw, key))
+        || Object.keys(raw).some(key => !required.includes(key) && !optional.includes(key)))
+        fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_SCHEMA');
+}
+function sameData(actual, expected) {
+    if (Object.is(actual, expected))
+        return true;
+    if (!actual || !expected || typeof actual !== 'object' || typeof expected !== 'object'
+        || types.isProxy(actual) || types.isProxy(expected) || Array.isArray(actual) !== Array.isArray(expected))
+        return false;
+    if (Array.isArray(actual) ? Object.getPrototypeOf(actual) !== Array.prototype
+        : ![Object.prototype, null].includes(Object.getPrototypeOf(actual)))
+        return false;
+    const a = Object.getOwnPropertyDescriptors(actual), b = Object.getOwnPropertyDescriptors(expected), left = Reflect.ownKeys(actual), right = Reflect.ownKeys(expected);
+    return left.length === right.length && left.every(key => typeof key === 'string' && right.includes(key)) && right.every(key => {
+        if (typeof key !== 'string')
+            return false;
+        const x = a[key], y = b[key];
+        return !!x && !!y && Object.hasOwn(x, 'value') && Object.hasOwn(y, 'value') && x.enumerable === y.enumerable
+            && sameData(x.value, y.value);
+    });
+}
+function strictData(raw) {
+    const data = cloneRoleplayTavernLoreDataV1(raw, 16_777_216, { nodes: 131072, depth: 66 });
+    if (!sameData(raw, data))
+        fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_SPELLING');
+    return freeze(data);
+}
+function ref(raw) {
+    exact(raw, ['key', 'sha256']);
+    if (typeof raw['key'] !== 'string' || !/^[a-zA-Z0-9_-]{1,512}$/.test(raw['key']) || !hash(raw['sha256']))
+        fail();
+    return raw;
+}
+function absenceCurrency(raw, snapshot) {
+    exact(raw, ['schemaVersion', 'preparationId', 'credentialSha256', 'receiptGeneration', 'attemptGeneration', 'source'], snapshot ? ['snapshot'] : []);
+    if (raw['schemaVersion'] !== 2 || !id(raw['preparationId']) || !hash(raw['credentialSha256'])
+        || !integer(raw['receiptGeneration'], 1) || !integer(raw['attemptGeneration'], 1))
+        fail();
+    exact(raw['source'], ['kind', 'sourceSha256', 'absenceScopeRef']);
+    const source = raw['source'], absent = source['absenceScopeRef'];
+    exact(absent, ['kind', 'sha256']);
+    if (source['kind'] !== 'story' || !hash(source['sourceSha256']) || !hash(absent['sha256'])
+        || !['plain-absence', 'prompt-template-only-domain', 'inherited-prompt-domain', 'prompt-program-domain',
+            'prompt-program-inherited-domain'].includes(String(absent['kind'])))
+        fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_NUMERICAL');
+    if (Object.hasOwn(raw, 'snapshot'))
+        ref(raw['snapshot']);
+    return raw;
+}
+function projectionPin(definition) {
+    if (!object(definition) || types.isProxy(definition)
+        || ![Object.prototype, null].includes(Object.getPrototypeOf(definition)))
+        fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_PROJECTION');
+    const descriptors = Object.getOwnPropertyDescriptors(definition);
+    if (Reflect.ownKeys(definition).length !== 2 || !descriptors['type']?.enumerable || !descriptors['project']?.enumerable
+        || !Object.hasOwn(descriptors['type'], 'value') || !Object.hasOwn(descriptors['project'], 'value')
+        || typeof descriptors['type'].value !== 'string' || typeof descriptors['project'].value !== 'function')
+        fail();
+    return { definition, type: descriptors['type'].value, project: descriptors['project'].value };
+}
+export function createRoleplayProgramAbsenceMutableControlsV1(deps) {
+    const branch = deps.branch, get = branch.get, lookup = deps.session, readEvents = deps.events, projections = deps.projections, readMaterialHistory = deps.readMaterialHistory;
+    function capture(session) {
+        const sid = session.id;
+        const assertIdentity = () => {
+            if (deps.branch !== branch || branch.get !== get || deps.session !== lookup || deps.events !== readEvents
+                || deps.projections !== projections || deps.readMaterialHistory !== readMaterialHistory
+                || lookup(sid) !== session || session.id !== sid || !id(sid))
+                fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_OWNER_CHANGED');
+        };
+        assertIdentity();
+        const events = readEvents(session), cursor = Number(session.seq), inherited = session.inheritedEventCount, headerSha256 = nativeInputSha256(session.header), historySha256 = nativeInputSha256(events), pins = [...projections()].map(projectionPin), surface = session.surface, derive = session.deriveEventMessage;
+        if (!integer(cursor) || events.length !== cursor || !integer(inherited) || inherited > cursor
+            || session.header.id !== sid || events.some((event, index) => !integer(event.seq) || event.seq !== index))
+            fail();
+        function surfaceData() {
+            const actual = session.surface;
+            if (actual !== surface || session.deriveEventMessage !== derive || typeof derive !== 'function'
+                || !Array.isArray(actual.nodes) || !integer(actual.contentGeneration)
+                || actual.nodes.some(seq => !integer(seq) || seq >= cursor))
+                fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_SURFACE_CHANGED');
+            return { nodes: [...actual.nodes], contentGeneration: actual.contentGeneration };
+        }
+        const surfaceSha256 = nativeInputSha256(surfaceData()), material = readMaterialHistory(session), materialAssert = material.assertCurrent, publications = material.publications, rows = new Map();
+        if (!Array.isArray(publications) || typeof materialAssert !== 'function')
+            fail();
+        materialAssert.call(material);
+        function read(key) {
+            const pinned = rows.get(key);
+            if (pinned)
+                return pinned.value;
+            const raw = get.call(branch, key), exists = raw !== undefined, value = exists ? strictData(raw) : undefined;
+            rows.set(key, { exists, value, ...exists ? { sha256: recordSha256(value) } : {} });
+            return value;
+        }
+        const view = { get: read };
+        function exactRow(reference) {
+            const value = read(reference.key);
+            if (!object(value) || recordSha256(value) !== reference.sha256)
+                fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_BOUND_ROW_CHANGED');
+            return value;
+        }
+        function nativeRef(event) { return { seq: Number(event.seq), sha256: nativeInputSha256(event) }; }
+        const associations = [];
+        for (const publication of publications) {
+            const { event, snapshot, plan } = publication, actual = events[Number(event.seq)], turn = Number(snapshot.turn), snapshotRef = ref(event.data.snapshot), planRef = ref(event.data.plan);
+            if (!actual || event.type !== 'request/material' || event.seq < inherited || nativeInputSha256(actual) !== nativeInputSha256(event)
+                || snapshot.sessionId !== sid || plan.sessionId !== sid || snapshot.turn !== plan.turn || snapshot.step !== plan.step)
+                fail();
+            if (!sameData(snapshot, exactRow(snapshotRef)) || !sameData(plan, exactRow(planRef)))
+                fail();
+            const start = events.filter(item => item.type === 'turn/start' && Number(item.data.turn) === turn && item.seq < event.seq).at(-1), end = events.find(item => item.type === 'turn/end' && Number(item.data.turn) === turn && item.seq > event.seq);
+            // A publication can explain typed local data after a failed request;
+            // its real closed turn is not a completed/admission capability.
+            if (!start || start.seq < inherited || !end)
+                continue;
+            let phaseRef, currency, phaseKind;
+            if (snapshot.encoding === 'core-input-material-record-v1') {
+                currency = absenceCurrency(snapshot.currency, true);
+                if (!Object.hasOwn(currency, 'snapshot') || !sameData(currency, absenceCurrency(plan.currency, true)))
+                    fail();
+                phaseRef = ref(snapshot.payload['phaseASnapshotRef']);
+                phaseKind = 'task-input-snapshot';
+                if (!sameData(phaseRef, currency['snapshot'])
+                    || !inputSnapshotReferenceCurrent(view, sid, currency))
+                    fail();
+            }
+            else if (snapshot.encoding === 'core-program-opening-material-record-v1') {
+                const preparation = snapshot.payload['openingPreparation'];
+                exact(preparation, ['snapshotRef', 'ownedBranchRefs', 'scopeFacts', 'attempt']);
+                const scopes = preparation['scopeFacts'];
+                if (!object(scopes) || !object(scopes['input']) || scopes['input']['initialization'] !== 'absent') {
+                    fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_NUMERICAL');
+                }
+                exact(scopes['initialization'], ['kind', 'markerCount', 'inventorySha256', 'initialized']);
+                if (scopes['initialization']['kind'] !== 'absent' || scopes['initialization']['markerCount'] !== 0
+                    || scopes['initialization']['initialized'] !== false || !hash(scopes['initialization']['inventorySha256']))
+                    fail();
+                phaseRef = ref(preparation['snapshotRef']);
+                phaseKind = 'task-snapshot';
+            }
+            else
+                fail();
+            const phase = validateRoleplayPhaseABranchRowDataV1(session, phaseRef.key, phaseKind, exactRow(phaseRef));
+            if (phase['turnId'] !== turn || Object.hasOwn(phase, 'numericalState')
+                || phaseKind === 'task-snapshot' && Object.hasOwn(phase, 'inputPreparation'))
+                fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_NUMERICAL');
+            associations.push({ publication, phaseRef, phase, currency, binding: { publication: nativeRef(event), snapshotRef, planRef,
+                    phaseASnapshotRef: phaseRef, turn, turnStart: nativeRef(start), turnEnd: nativeRef(end) } });
+        }
+        const facts = [], skippedRows = [];
+        const preparationKey = `${sid}__task-preparation`, rawPreparation = read(preparationKey);
+        if (rawPreparation !== undefined) {
+            const value = validateRoleplayPhaseABranchRowDataV1(session, preparationKey, 'task-preparation', rawPreparation);
+            if (Object.hasOwn(value, 'numericalState'))
+                fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_NUMERICAL');
+            if (!Array.isArray(value['messages']) || value['messages'].length !== 0 || !Object.hasOwn(value, 'inputPreparation')) {
+                // Exact opening rows and hot Phase-A facts are supplied separately.
+                // Absence of this narrower cold association never blocks those facts.
+                skippedRows.push({ key: preparationKey, sha256: recordSha256(value), reason: 'requires-exact-opening-or-other-owner-facts' });
+            }
+            else {
+                const currency = absenceCurrency(value['inputPreparation'], true), matches = associations.filter(item => {
+                    if (!item.currency || value['turn'] !== item.phase['turnId'] || value['id'] !== currency['preparationId'])
+                        return false;
+                    const { snapshot: _snapshot, ...materialBasis } = item.currency;
+                    return Object.hasOwn(currency, 'snapshot') ? sameData(currency, item.currency) : sameData(currency, materialBasis);
+                });
+                if (!matches.length)
+                    skippedRows.push({ key: preparationKey, sha256: recordSha256(value), reason: 'no-closed-bound-story-material' });
+                else
+                    facts.push({ table: 'branch', key: preparationKey, kind: 'task-preparation', family: 'branch-control',
+                        evidenceKind: 'native-associated-typed-local-data', value, sha256: recordSha256(value),
+                        boundFields: { inputPreparation: currency, associations: matches.map(item => item.binding) },
+                        unboundControlFields: ['status', 'createdAt', 'completedAt', 'sourceHash', 'messages(empty-display-control-shape)'] });
+            }
+        }
+        const windowKey = `${sid}__context-window`, rawWindow = read(windowKey);
+        if (rawWindow !== undefined) {
+            const value = validateRoleplayPhaseABranchRowDataV1(session, windowKey, 'context-window', rawWindow), matches = associations.filter(item => {
+                const window = item.phase['contextWindow'];
+                return value['windowNumber'] === window['windowNumber'] && value['windowId'] === window['windowId']
+                    && (value['previousWindowId'] ?? null) === window['previousWindowId'];
+            });
+            if (!matches.length) {
+                skippedRows.push({ key: windowKey, sha256: recordSha256(value), reason: 'no-closed-bound-window-identity' });
+            }
+            else {
+                const start = Number(value['startSeq']), through = Object.hasOwn(value, 'throughSeq') ? Number(value['throughSeq']) : undefined;
+                if (start >= events.length || through !== undefined && (through >= events.length || through < start))
+                    fail();
+                if (Object.hasOwn(value, 'inheritedFrom') || Object.hasOwn(value, 'inheritedAtSeedLength')) {
+                    if (value['inheritedFrom'] !== session.header.parentSession || value['inheritedAtSeedLength'] !== inherited
+                        || !id(session.header.parentSession))
+                        fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_WINDOW_INHERITANCE_INVALID');
+                }
+                const tail = value['tailSeqs'], shadowed = value['shadowedSeqs'], checkpoint = value['checkpointSeq'], referenced = [];
+                if (checkpoint !== undefined) {
+                    const event = events[Number(checkpoint)];
+                    if (!event || event.type !== 'user/message' || !Array.isArray(tail) || !tail.length
+                        || !Array.isArray(shadowed) || !shadowed.length || new Set(tail).size !== tail.length
+                        || new Set(shadowed).size !== shadowed.length)
+                        fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_CHECKPOINT_INVALID');
+                    const source = event.data.source, operation = event.surfaceOp;
+                    if (!source || source['kind'] !== 'roleplay-context-window' || source['form'] !== 'snapshot' || source['schemaVersion'] !== 1
+                        || operation === 'append' || !operation || operation.op !== 'replace' || operation.startSeq !== shadowed[0]
+                        || operation.endSeq !== shadowed.at(-1) || recordSha256(event.sourceEventSeqs) !== recordSha256(shadowed)
+                        || shadowed.some(seq => !events[Number(seq)] || Number(seq) >= Number(checkpoint))
+                        || tail.some(seq => !events[Number(seq)] || Number(seq) >= Number(checkpoint) || shadowed.includes(seq))
+                        || start !== Number(tail[0]) - 1)
+                        fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_CHECKPOINT_INVALID');
+                    // This is the same actual Session object, viewed by the existing Core
+                    // event classifier. No fabricated Session or reconstructed Agent exists.
+                    const internal = internalTaskSeqs(session);
+                    for (const seq of tail) {
+                        const original = events[Number(seq)], message = session.deriveEventMessage(original), data = original.data;
+                        if (original.type === 'user/message' ? data['source']?.['kind'] !== 'user'
+                            : original.type !== 'assistant/message' || internal.has(Number(seq))
+                                || !message || !textOf(message.content).trim()
+                                || message.content.some(block => ['tool-call', 'tool-result'].includes(block.type)))
+                            fail();
+                        referenced.push({ seq: Number(seq), sha256: nativeInputSha256(original), relation: 'retained-story-tail' });
+                    }
+                    referenced.push({ ...nativeRef(event), relation: 'actual-checkpoint-replacement' });
+                }
+                else if (tail !== undefined || shadowed !== undefined)
+                    fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_CHECKPOINT_INVALID');
+                facts.push({ table: 'branch', key: windowKey, kind: 'context-window', family: 'branch-control',
+                    evidenceKind: 'native-associated-typed-local-data', value, sha256: recordSha256(value),
+                    boundFields: { windowIdentity: { windowNumber: value['windowNumber'], windowId: value['windowId'],
+                            previousWindowId: value['previousWindowId'] ?? null }, associations: matches.map(item => item.binding), referencedNative: referenced },
+                    unboundControlFields: ['startSeq(range-checked)', 'throughSeq(range-checked)', 'storyTokens', 'previousStoryTokens',
+                        'continuityTailTokens', 'continuityTokens', 'createdAt', 'updatedAt', 'rolloverCount', 'reason',
+                        'inheritedFrom(header-associated)', 'inheritedAtSeedLength(header-associated)',
+                        'tailSeqs(order-selection-not-whole-writer-ack)'] });
+            }
+        }
+        const assertCurrent = () => {
+            assertIdentity();
+            materialAssert.call(material);
+            const actualEvents = readEvents(session), actualProjections = projections();
+            if (material.assertCurrent !== materialAssert || material.publications !== publications
+                || Number(session.seq) !== cursor || session.inheritedEventCount !== inherited
+                || nativeInputSha256(session.header) !== headerSha256 || nativeInputSha256(surfaceData()) !== surfaceSha256
+                || actualEvents.length !== events.length || nativeInputSha256(actualEvents) !== historySha256
+                || actualProjections.length !== pins.length || actualProjections.some((definition, index) => {
+                const pin = projectionPin(definition), expected = pins[index];
+                return pin.definition !== expected.definition || pin.type !== expected.type || pin.project !== expected.project;
+            }))
+                fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_NATIVE_CHANGED');
+            for (const [key, row] of rows) {
+                const raw = get.call(branch, key);
+                if (row.exists ? (raw === undefined || !sameData(raw, row.value) || recordSha256(raw) !== row.sha256) : raw !== undefined) {
+                    fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_ROW_CHANGED');
+                }
+            }
+            materialAssert.call(material);
+            assertIdentity();
+        };
+        assertCurrent();
+        return { rows: freeze(facts), evidence: freeze({ schemaVersion: 1, encoding: 'native-associated-absence-mutable-controls-v1',
+                authority: 'consumer-data-only', sessionId: sid, historySha256, inheritedEventCount: inherited,
+                rowRefs: facts.map(({ key, kind, sha256, evidenceKind }) => ({ key, kind, sha256, evidenceKind })), skippedRows }), assertCurrent };
+    }
+    return { capture };
+}

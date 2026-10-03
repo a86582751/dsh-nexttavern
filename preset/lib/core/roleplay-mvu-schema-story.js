@@ -5,6 +5,10 @@ import { recordSha256 } from './roleplay-data.js';
 import { parseMvuUpdate } from './roleplay-mvu-update.js';
 import { parseMvuUpdateV2 } from './roleplay-mvu-update-v2.js';
 import { mvuStateCurrentHeadKey } from './roleplay-mvu-state.js';
+import { validateSchemaEvaluationInputV3 } from './tavern-mvu-schema-runner-v3.js';
+import { validateSchemaEvaluationInputV4 } from './tavern-mvu-schema-runner-v4.js';
+import { validateMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
+import { schemaScopeReadFactsEqual } from './roleplay-mvu-schema-scope-facts.js';
 import { freezeMvuSchemaStoryData, sealMvuSchemaStoryFact, validateMvuSchemaStoryPlan, validateMvuSchemaNumericalSnapshot, validateMvuSchemaStoryEvent, validateMvuSchemaStorySettlement, deriveMvuSchemaStorySelectors, mvuSchemaStoryPhaseInput, mvuSchemaStoryReducerBridge, mvuSchemaStoryEvent, mvuSchemaStoryHead, mvuSchemaStorySettlement, mvuSchemaStoryEventKey, mvuSchemaStorySettlementKey, MVU_SCHEMA_STORY_PHASES, schemaStoryCode, isMvuSchemaGenesisHead } from './roleplay-mvu-schema-story-types.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const codeOf = (error) => schemaStoryCode(error instanceof Error ? error.message : undefined);
@@ -13,7 +17,7 @@ export function createRoleplayMvuSchemaStory(deps) {
     // A partial attempt is never retried in this owner. Remounts are gated by
     // Root's exact pending terminal ledger and journal, not this process-local set.
     const attempted = new Set();
-    function makePlan(scope, canonical, base, currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs = 0, executorVersion = 1) {
+    function makePlan(scope, canonical, base, currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs = 0, executorVersion = 1, scopeReadFrame) {
         const input = freezeMvuSchemaStoryData({ scope, canonical, base, currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs });
         scope = input.scope;
         canonical = input.canonical;
@@ -23,15 +27,23 @@ export function createRoleplayMvuSchemaStory(deps) {
         programSha256 = input.programSha256;
         initialCut = input.initialCut;
         clockEpochMs = input.clockEpochMs;
-        if (executorVersion !== 1 && executorVersion !== 2)
+        if (![1, 2, 3, 4].includes(executorVersion))
             fail('SCHEMA_EXECUTOR_VERSION_MISMATCH');
+        if (executorVersion >= 3 && !scopeReadFrame)
+            fail('SCHEMA_SCOPE_READ_REQUIRED');
         const suffix = { currentFrame, realmEpoch, programSha256, initialCut, clockEpochMs, randomSeed: recordSha256({ scope, canonical }),
             selectors: deriveMvuSchemaStorySelectors(scope, canonical, realmEpoch) };
         const body = executorVersion === 1 ? freezeMvuSchemaStoryData({ schemaVersion: 2,
             encoding: 'native-mvu-schema-story-plan-v2', scope, canonical, base: validateMvuSchemaNumericalSnapshot(base),
-            candidate: parseMvuUpdate(canonical.narrative), ...suffix }) : freezeMvuSchemaStoryData({ schemaVersion: 3,
+            candidate: parseMvuUpdate(canonical.narrative), ...suffix }) : executorVersion === 2 ? freezeMvuSchemaStoryData({ schemaVersion: 3,
             encoding: 'native-mvu-schema-story-plan-v3', executorVersion: 2, scope, canonical,
-            base: validateMvuSchemaNumericalSnapshot(base), candidate: parseMvuUpdateV2(canonical.narrative), ...suffix });
+            base: validateMvuSchemaNumericalSnapshot(base), candidate: parseMvuUpdateV2(canonical.narrative), ...suffix }) : executorVersion === 4 ?
+            freezeMvuSchemaStoryData({ schemaVersion: 5, encoding: 'native-mvu-schema-story-plan-v5',
+                executorVersion: 4, scope, canonical, base: validateMvuSchemaNumericalSnapshot(base),
+                candidate: parseMvuUpdateV2(canonical.narrative), scopeReadFrame: validateMvuScopeReadFrameV1(scopeReadFrame), ...suffix }) :
+            freezeMvuSchemaStoryData({ schemaVersion: 4, encoding: 'native-mvu-schema-story-plan-v4',
+                executorVersion: 3, scope, canonical, base: validateMvuSchemaNumericalSnapshot(base),
+                candidate: parseMvuUpdateV2(canonical.narrative), scopeReadFrame: validateMvuScopeReadFrameV1(scopeReadFrame), ...suffix });
         return validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact(body, 'planSha256'));
     }
     function read(key) {
@@ -137,10 +149,23 @@ export function createRoleplayMvuSchemaStory(deps) {
                     return { kind: 'unknown', code: schemaStoryCode(result.code) };
                 if (!result.evidence || typeof result.evidence !== 'object')
                     fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
+                let capturedInput = input;
+                if (plan.schemaVersion === 4 || plan.schemaVersion === 5) {
+                    if (!result.capturedInput)
+                        fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
+                    const actual = plan.schemaVersion === 5 ? validateSchemaEvaluationInputV4(result.capturedInput)
+                        : validateSchemaEvaluationInputV3(result.capturedInput);
+                    if (!schemaScopeReadFactsEqual(actual.scopeReadFrame, plan.scopeReadFrame)
+                        || actual.scopeReadFrame.sourceNativeCutSha256 !== result.association.sourceNativeCutSha256
+                        || !same(actual, mvuSchemaStoryPhaseInput(plan, index, phases, reducer, actual.scopeReadFrame))) {
+                        fail('SCHEMA_STORY_EXECUTION_UNPROVEN');
+                    }
+                    capturedInput = actual;
+                }
                 // The private evidence is kept only in this invocation. Durable phase
                 // facts contain its association/output, never the evidence object.
                 lastLive = result;
-                phases.push(freezeMvuSchemaStoryData({ phase, input, association: result.association, output: result.output }));
+                phases.push(freezeMvuSchemaStoryData({ phase, input: capturedInput, association: result.association, output: result.output }));
                 if (result.output.kind === 'refused')
                     break;
                 if (index === 0) {

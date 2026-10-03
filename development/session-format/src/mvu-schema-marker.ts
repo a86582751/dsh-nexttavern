@@ -39,7 +39,8 @@ export interface MvuSchemaCompletionMarker {
 }
 export type MvuSchemaMarker = MvuSchemaDispatchMarker | MvuSchemaCompletionMarker
 export type MvuSchemaMarkerEvent = SessionEvent<typeof MVU_SCHEMA_DISPATCH_EVENT | typeof MVU_SCHEMA_COMPLETION_EVENT>
-declare module '@deepseek-ai/dsh-session' {
+// Use the same declaring module as SessionEvent, message edits and the inbox.
+declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     'roleplay/mvu-schema-dispatched': MvuSchemaDispatchMarker
     'roleplay/mvu-schema-completed': MvuSchemaCompletionMarker

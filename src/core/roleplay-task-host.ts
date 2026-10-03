@@ -6,7 +6,18 @@ import type { ModelRoute } from './tavern-model-policy.js'
 import type {StoredTask} from './tavern-task-types.js'
 import type { HostSession, HostAgent, HostSource, NativeTaskInput, TaskHostDependencies } from './roleplay-task-host-types.js'
 
-export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchIsActive, statusFixedContext, taskDependenciesCurrent, taskInstruction, getMaintenanceJob, runStatusObligation, STATUS_SYSTEM, DECISION_SYSTEM, ORGANIZE_WORKER_SYSTEM,inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent}: TaskHostDependencies) {
+export function createRoleplayTaskHost({
+  T,ctx,config,taskAgents,storyBranchIsActive,statusFixedContext,taskDependenciesCurrent,
+  taskInstruction,getMaintenanceJob,runStatusObligation,STATUS_SYSTEM,DECISION_SYSTEM,ORGANIZE_WORKER_SYSTEM,
+  inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,
+}:TaskHostDependencies) {
+  const continuationTimers=new Set<ReturnType<typeof setTimeout>>()
+  let disposed=false
+  ctx.effect(()=>()=>{
+    disposed=true
+    for(const timer of continuationTimers)clearTimeout(timer)
+    continuationTimers.clear()
+  },'roleplay: task host continuation lifetime')
   const sameModelRoute=(a: Partial<Pick<ModelRoute, 'provider' | 'model'>> | null | undefined,b: Partial<Pick<ModelRoute, 'provider' | 'model'>> | null | undefined)=>Boolean(a?.provider&&a?.model&&a.provider===b?.provider&&a.model===b?.model)
   const canonicalModelRoute=async (selection: ModelRoute)=>{if(!ctx.llm?.resolveModelInfo)return selection
     const info=await ctx.llm.resolveModelInfo(selection.provider,selection.model)
@@ -54,10 +65,13 @@ export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchI
     return job?.kind==='character'?job:null
   }
   function taskSourceCurrent(session:HostSession,job:StoredTask,historical=false) {
+      if(disposed||ctx.sessions.get(session.id)!==session)return false
       const source=job.source as HostSource
-      if(!storyBranchIsActive(session))return false
       const currencyCurrent=historical ? inputHistoricalCurrencyCurrent : inputCurrencyCurrent
+      // Reject stale prepared work before projecting the active branch's
+      // history; cold task polling must not spend that scan on expired currency.
       if(source.inputPreparation && currencyCurrent?.(session,source.inputPreparation)!==true)return false
+      if(!storyBranchIsActive(session))return false
       if (historical && (!source.inputPreparation || source.preparationId
         && source.preparationId!==source.inputPreparation.preparationId)) return false
       if(!historical && source.preparationId && T.branch.get(keyOf(session.id,'task-preparation'))?.id!==source.preparationId)return false
@@ -88,6 +102,14 @@ export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchI
       if(found?.agent)agent=found.agent
     }
     if(agent)taskAgents.set(session.id,agent)
+    const main=agent??taskAgents.get(session.id)
+    const assertIdleRecovery=()=>{
+      // Running Phase B owns its still-pending terminal. Only a new idle
+      // recovery must respect the predecessor's durable refusal before writes.
+      const code=main?.status==='idle'?inputTaskRecoveryBlockCode?.(session):undefined
+      if(code)throw Error(code)
+    }
+    assertIdleRecovery()
     kind=kind??(system===STATUS_SYSTEM?'status':system===DECISION_SYSTEM?'decision':system===ORGANIZE_WORKER_SYSTEM?'novel-export':'memory')
     const preparation=T.branch.get(keyOf(session.id,'task-preparation'))
     const currency=inputCurrency?.(session)
@@ -96,17 +118,38 @@ export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchI
       ),...(currency?{inputPreparation:currency}:{})}
     // Nonces protect prompt boundaries, but are not a changing task input.
     const requestKey={system,user:String(user).replace(/(<\/?rp-content:)[0-9a-f]{36}(>)/g,'$1NONCE$2'),generationKey}
-    try {return await tavernTasks.request({session,agent:agent??taskAgents.get(session.id),kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,tools:allowedTools,onResult,onAdmission,
+    try {return await tavernTasks.request({session,agent:main,kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,tools:allowedTools,onResult,onAdmission,
       validate:validate??(value=>{
         if(format==='text'){if(typeof value!=='string'||!value.trim())throw new Error('任务文本为空');return value}
         if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('任务需要 JSON 对象')
         return value
       }),
     }) as Result}catch(error){
+      if(isInlinePending(error))assertIdleRecovery()
       if(isInlinePending(error)&&kind==='memory'&&format==='text')await T.branch.put(keyOf(session.id,'task-memory-resume'),{schemaVersion:1,sessionId:session.id,status:'pending',taskStage:taskStage??'notes',source:{taskId:(error as {jobId?: string}).jobId},updatedAt:Date.now()})
-      const main=agent??taskAgents.get(session.id)
-      if(isInlinePending(error)&&!signal?.aborted&&main?.status==='idle'&&typeof main.steer==='function') {
-        const timer=setTimeout(()=>{if(!signal?.aborted&&main.status==='idle'&&tavernTasks.pending(session).length)main.steer!(taskPhaseMessage('management',taskInstruction(session)))},0);timer.unref?.()
+      if(isInlinePending(error)&&!disposed&&!signal?.aborted&&main?.status==='idle'&&typeof main.steer==='function') {
+        const timer=setTimeout(()=>{
+          continuationTimers.delete(timer)
+          try {
+            const current=()=>!disposed&&!signal?.aborted&&ctx.sessions.get(session.id)===session
+              &&main.session===session&&taskAgents.get(session.id)===main&&main.status==='idle'
+            // A timer can outlive Native idle and Session replacement. Keep
+            // old instances out of each reader and the final steer boundary.
+            if(!current()||!tavernTasks.pending(session).length)return
+            if(!current())return
+            const message=taskPhaseMessage('management',taskInstruction(session))
+            if(!current())return
+            // A stopped or unresolved predecessor can become known after this
+            // timer was queued. Preserve the pending job and end this wake.
+            if(inputTaskRecoveryBlockCode?.(session))return
+            main.steer!(message)
+          }catch(steeringError) {
+            try {ctx.logger?.warn?.(`roleplay: task continuation steering failed: ${String(steeringError)}`)}
+            catch { /* A reporting failure must not escape an owned timer. */ }
+          }
+        },0)
+        continuationTimers.add(timer)
+        timer.unref?.()
       }
       throw error
     }

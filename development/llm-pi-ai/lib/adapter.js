@@ -78,11 +78,64 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     var e = new Error(message);
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
-import { attributionHeaders, contentHasImage, LlmAdapter, LlmError, ReasoningEffortId, } from '@deepseek-ai/dsh-llm';
+import { attributionHeaders, contentHasImage, LlmAdapter, LlmError, assertAgentLoopRequestCurrent, ReasoningEffortId, } from '@deepseek-ai/dsh-llm';
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout';
-import { toPiContext } from './context.js';
+import { toPiContext, toOrderedCompletionsInputV1 } from './context.js';
 import { createModels, getSupportedThinkingLevels } from './models.js';
 import { toStreamChunks } from './stream.js';
+import { catalogProvider } from './catalog.js';
+/** Capability belongs to the frozen resolved serializer configuration, never
+ * an API/model label. The exact owned SDK wire contract is tested separately. */
+function supportsRequestMaterialText(profile, model) {
+    if (profile.api !== 'openai-completions' || model.api !== 'openai-completions'
+        || catalogProvider(profile.provider) !== undefined || model.reasoning !== false)
+        return false;
+    const compat = model.compat;
+    return compat?.supportsDeveloperRole === false && compat.requiresAssistantAfterToolResult === false
+        && compat.requiresThinkingAsText === false && compat.requiresReasoningContentOnAssistantMessages === false
+        && compat.deferredToolsMode === undefined;
+}
+/** The ordered entry has its own narrow protocol domain. Capability must
+ * refuse incompatible body/tool/cache modes before Native makes any commits. */
+function supportsOrderedMaterial(profile, model) {
+    if (profile.requestMaterialSerialization !== 'ordered-chat-v1' || profile.apiKeyEnv === undefined
+        || !supportsRequestMaterialText(profile, model) || profile.thinkingBudgets !== undefined
+        || profile.reasoning !== undefined && profile.reasoning !== 'off'
+        || profile.transport !== undefined && profile.transport !== 'sse')
+        return false;
+    const compat = model.compat;
+    return compat?.cacheControlFormat === undefined && compat?.deferredToolsMode === undefined
+        && compat?.supportsOpenAIGrammarTools !== true && compat?.zaiToolStream !== true
+        && compat?.requiresToolResultName !== true && model.samplingParams === undefined;
+}
+/** Material must preserve text and cannot cause the SDK to synthesize missing
+ * tool results by interrupting an open assistant/tool transaction. */
+function assertMaterialPlacement(options, supported, ordered = false) {
+    const pending = new Set();
+    let hasMaterial = false;
+    for (const message of options.messages) {
+        if (message.source?.kind === 'request-material') {
+            hasMaterial = true;
+            const block = message.content[0];
+            if (!supported || message.role === 'system' && !ordered || pending.size !== 0 || message.content.length !== 1
+                || block?.type !== 'text' || !block.text.trim() || !block.text.isWellFormed()) {
+                throw new LlmError('pi-ai cannot preserve this request-only text placement', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
+            }
+            continue;
+        }
+        if (message.role === 'assistant') {
+            pending.clear();
+            for (const block of message.content)
+                if (block.type === 'tool-call')
+                    pending.add(String(block.id));
+        }
+        else if (message.role === 'tool')
+            pending.delete(String(message.toolCallId));
+        else if (message.role === 'user')
+            pending.clear();
+    }
+    return hasMaterial;
+}
 /** Copy profile stream knobs into pi-ai's common option vocabulary. */
 function profileOptions(profile, reasoning, apiKey) {
     const enabledReasoning = reasoning === 'off' ? undefined : reasoning;
@@ -244,29 +297,36 @@ export class PiAiAdapter extends LlmAdapter {
             return this.modelInfo(snapshot, provider, model);
         });
     }
-    modelInfo(snapshot, provider, model) {
+    async modelInfo(snapshot, provider, model) {
         const profile = this.profileOf(snapshot, provider);
         const resolvedModel = this.modelOf(snapshot, provider, model);
         const defaultLevel = describableReasoningLevel(resolvedModel, profile.reasoning);
         // Only a cap the deployment configured is a request default; the
         // catalog's `maxTokens` sizes the model and stops there.
         const configuredMaxTokens = profile.configuredMaxTokens.get(model);
+        const ordered = await this.orderedModelSupported(profile, resolvedModel);
+        const materialText = profile.requestMaterialSerialization === undefined
+            ? supportsRequestMaterialText(profile, resolvedModel) : ordered;
         return {
             provider,
             id: model,
             name: resolvedModel.name,
             inputModalities: [...resolvedModel.input],
             context: { contextWindow: resolvedModel.contextWindow },
+            requestMaterialText: { schemaVersion: 1,
+                user: materialText ? 'role-and-position' : 'unsupported',
+                assistant: materialText ? 'role-and-position' : 'unsupported',
+                systemAtDepth: ordered ? 'role-and-position' : 'unsupported' },
             ...configuredMaxTokens === undefined ? {} : { defaultMaxTokens: configuredMaxTokens },
             ...reasoningInfo(resolvedModel, defaultLevel),
         };
     }
-    prepareCall(provider, model, _signal) {
+    async prepareCall(provider, model, _signal) {
         const snapshot = this.current();
-        return Promise.resolve({
-            model: this.modelInfo(snapshot, provider, model),
+        return {
+            model: await this.modelInfo(snapshot, provider, model),
             stream: options => this.streamWithSnapshot(options, snapshot),
-        });
+        };
     }
     stream(options) {
         return this.streamWithSnapshot(options, this.current());
@@ -284,8 +344,26 @@ export class PiAiAdapter extends LlmAdapter {
             // the one it started with and the next call picks up the new one.
             const profile = this.profileOf(snapshot, options.provider);
             const model = this.modelOf(snapshot, options.provider, options.model);
+            const ordered = profile.requestMaterialSerialization === 'ordered-chat-v1';
+            const supported = ordered ? await this.orderedModelSupported(profile, model) : supportsRequestMaterialText(profile, model);
+            if (ordered && !supported) {
+                throw new LlmError('ordered chat material is unsupported by this captured route', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
+            }
+            const hasMaterial = assertMaterialPlacement(options, supported, ordered);
+            // Even an empty insertion delta has a live material owner and residual
+            // section changes. Every supported route keeps that guard through fetch.
+            const guardedTransport = hasMaterial || supported;
+            const transportFetch = globalThis.fetch;
+            const assertCurrent = () => {
+                options.signal?.throwIfAborted();
+                assertAgentLoopRequestCurrent(options);
+            };
+            if (guardedTransport)
+                assertCurrent();
             const reasoning = resolveReasoningLevel(model, options.reasoningEffort ?? profile.reasoning);
             const apiKey = await this.config.resolveApiKey(options.provider, profile);
+            if (guardedTransport)
+                assertCurrent();
             const consumer = new AbortController();
             const upstream = options.signal === undefined
                 ? consumer.signal
@@ -304,19 +382,30 @@ export class PiAiAdapter extends LlmAdapter {
                 const onReplayDegrade = (reason) => {
                     this.config.onReplayDegrade?.({ provider: options.provider, model: options.model, reason });
                 };
-                const context = attachments === undefined
-                    ? toPiContext(options, undefined, onReplayDegrade)
-                    : await toPiContext({ ...options, signal: watchdog.signal }, {
-                        attachments,
-                        resolveImageAccess: ref => this.config.resolveImageAccess?.(attachments, ref),
-                        maxRequestImageBytes: profile.maxRequestImageBytes,
-                        requestImagePolicy: {
-                            maxPixels: profile.requestImagePixelBudget,
-                            maxBytes: profile.requestImageMaxBytes,
-                        },
-                    }, onReplayDegrade);
-                const events = snapshot.models.streamSimple(model, context, {
+                const imageContext = attachments === undefined ? undefined : {
+                    attachments,
+                    resolveImageAccess: ref => this.config.resolveImageAccess?.(attachments, ref),
+                    maxRequestImageBytes: profile.maxRequestImageBytes,
+                    requestImagePolicy: {
+                        maxPixels: profile.requestImagePixelBudget,
+                        maxBytes: profile.requestImageMaxBytes,
+                    },
+                };
+                const context = ordered ? undefined : imageContext === undefined ? toPiContext(options, undefined, onReplayDegrade)
+                    : await toPiContext({ ...options, signal: watchdog.signal }, imageContext, onReplayDegrade);
+                const orderedInput = ordered ? await toOrderedCompletionsInputV1({ ...options, signal: watchdog.signal }, imageContext, onReplayDegrade) : undefined;
+                if (guardedTransport)
+                    assertCurrent();
+                // SDK auth, lazy API loading and payload hooks may await afterwards.
+                // Each HTTP delegation checks the same owner immediately before fetch.
+                const materialTransportFetch = (input, init) => {
+                    assertCurrent();
+                    watchdog.signal.throwIfAborted();
+                    return transportFetch(input, init);
+                };
+                const streamOptions = {
                     ...profileOptions(profile, reasoning, apiKey),
+                    ...guardedTransport ? { fetch: materialTransportFetch } : {},
                     ...options.temperature === undefined ? {} : { temperature: options.temperature },
                     ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
                     ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
@@ -324,7 +413,10 @@ export class PiAiAdapter extends LlmAdapter {
                     // Profile headers are deployment-owned; attribution names are
                     // Harness-owned and therefore win collisions.
                     headers: requestHeaders(profile.headers),
-                });
+                };
+                const events = orderedInput === undefined
+                    ? snapshot.models.streamSimple(model, context, streamOptions)
+                    : await this.orderedStream(model, orderedInput, streamOptions, apiKey, assertCurrent);
                 const iterator = toStreamChunks(events, model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]();
                 let exhausted = false;
                 try {
@@ -372,5 +464,37 @@ export class PiAiAdapter extends LlmAdapter {
         finally {
             __disposeResources(env_1);
         }
+    }
+    /** The same captured route and credential reach the owned ordered entry.
+     * Lazy import cannot revoke the final guard or select another profile. */
+    async orderedStream(model, input, options, apiKey, assertCurrent) {
+        if (model.api !== 'openai-completions' || apiKey === undefined || !apiKey.trim()) {
+            throw new LlmError('ordered chat requires its resolved credential', 'MISSING_CREDENTIAL');
+        }
+        const { streamOrderedCompletions } = await import('dsh-nexttavern-pi-ai/api/openai-completions');
+        assertCurrent();
+        const { reasoning: _reasoning, thinkingBudgets: _budgets, ...ordinary } = options;
+        const boundaries = input.messages.map(message => ({ key: message.key, role: message.role }));
+        const onOrderedTrace = (receipt) => {
+            assertCurrent();
+            if (receipt.schemaVersion !== 1 || receipt.encoding !== 'nexttavern-ordered-chat-completions-trace-v1'
+                || ![receipt.inputSha256, receipt.wireSha256, receipt.traceSha256].every(value => /^[a-f0-9]{64}$/.test(value))
+                || receipt.trace.length !== boundaries.length || receipt.trace.some((row, index) => {
+                const expected = boundaries[index];
+                return !expected || row.inputKey !== expected.key || row.inputRole !== expected.role
+                    || row.wireIndices.length !== 1 || row.wireIndices[0] !== index;
+            })) {
+                throw new LlmError('ordered SDK trace differs from the captured request boundaries', 'REQUEST_MATERIAL_WIRE_TRACE_INVALID');
+            }
+        };
+        return streamOrderedCompletions(model, input, { ...ordinary, apiKey, maxRetries: 0, onOrderedTrace });
+    }
+    /** Actual effective SDK defaults participate in the same captured model
+     * capability used by dispatch; URL/provider heuristics are not re-guessed. */
+    async orderedModelSupported(profile, model) {
+        if (!supportsOrderedMaterial(profile, model) || model.api !== 'openai-completions')
+            return false;
+        const { supportsOrderedCompletionsModelV1 } = await import('dsh-nexttavern-pi-ai/api/openai-completions');
+        return supportsOrderedCompletionsModelV1(model);
     }
 }

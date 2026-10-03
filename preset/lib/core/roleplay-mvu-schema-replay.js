@@ -6,6 +6,9 @@ import { cloneSchemaData } from './tavern-mvu-schema-data.js';
 import { MVU_SCHEMA_BOUNDS } from './tavern-mvu-schema-types.js';
 import { schemaTraceRequestedStep } from './roleplay-mvu-schema-executor-types.js';
 import { validateSchemaTraceInputV2, validateSchemaGuestOutputV2, validateSchemaEvaluationInputV2 } from './tavern-mvu-schema-runner-v2.js';
+import { validateSchemaTraceInputV3, validateSchemaGuestOutputV3, validateSchemaEvaluationInputV3 } from './tavern-mvu-schema-runner-v3.js';
+import { validateSchemaTraceInputV4, validateSchemaGuestOutputForProgramV4, validateSchemaEvaluationInputV4 } from './tavern-mvu-schema-runner-v4.js';
+import { validateSchemaProgramV4 } from './tavern-mvu-schema-program-v4.js';
 import { createRoleplayMvuSchemaJournal, freezeSchemaJournalData, sealSchemaJournalRecord, validateSchemaSourceCut, validateSchemaAnchor } from './roleplay-mvu-schema-journal.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const id = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -17,7 +20,14 @@ function exact(value, keys) {
     if (!same(Object.keys(value).sort(), [...keys].sort()))
         fail('SCHEMA_REPLAY_SHAPE');
 }
-function compilationInput(program) {
+function compilationInput(program, expected) {
+    if (program.schemaVersion === 2) {
+        const value = validateSchemaProgramV4(program);
+        return { schemaVersion: 2, encoding: 'native-mvu-author-compilation-input-v2', source: value.source,
+            libraries: value.libraries, bridge: value.bridge, stateLoader: value.stateLoader,
+            executionPlan: expected?.schemaVersion === 2 && expected.executionPlan === null ? null : value.executionPlan,
+            scripts: value.scripts.map(({ javascript: _javascript, javascriptSha256: _hash, ...script }) => script) };
+    }
     return { schemaVersion: 1, source: program.source, libraries: program.libraries, bridge: program.bridge,
         scripts: program.scripts.map(({ javascript: _javascript, javascriptSha256: _hash, ...script }) => script) };
 }
@@ -48,6 +58,10 @@ function fullRecords(program, input, evaluation, runner) {
         const { stepSha256, ...content } = step;
         if (input.schemaVersion === 2)
             validateSchemaGuestOutputV2(step.output, validateSchemaEvaluationInputV2(frame.input));
+        if (input.schemaVersion === 3)
+            validateSchemaGuestOutputV3(step.output, validateSchemaEvaluationInputV3(frame.input));
+        if (input.schemaVersion === 4)
+            validateSchemaGuestOutputForProgramV4(step.output, validateSchemaProgramV4(program), validateSchemaEvaluationInputV4(frame.input));
         if (frameSha256 !== recordSha256(frame) || step.eventId !== frames[index].eventId || step.ordinal !== index + 1
             || step.previousStepSha256 !== previous || stepSha256 !== recordSha256(content)
             || index < input.prefix.length && !same(step, input.prefix[index]))
@@ -59,7 +73,7 @@ function fullRecords(program, input, evaluation, runner) {
 export function createRoleplayMvuSchemaReplay(deps) {
     const executorVersion = deps.executorVersion ?? 1;
     function checkExecutor(epoch) {
-        if (![1, 2].includes(executorVersion) || deps.runner.identity.version !== executorVersion
+        if (![1, 2, 3, 4].includes(executorVersion) || deps.runner.identity.version !== executorVersion
             || deps.compiler.identity.version !== executorVersion)
             fail('SCHEMA_IMPLEMENTATION_CHANGED');
         if (epoch && (epoch.schemaVersion !== executorVersion || epoch.program.compiler.version !== executorVersion
@@ -71,8 +85,18 @@ export function createRoleplayMvuSchemaReplay(deps) {
         checkExecutor(epoch);
         const trace = { schemaVersion: executorVersion, encoding: `native-mvu-author-schema-trace-input-v${executorVersion}`,
             realmEpoch: epoch.realmEpoch, loadFrame: epoch.loadFrame, prefix, requestedStep };
-        if (executorVersion === 2)
+        if (executorVersion === 4)
+            validateSchemaTraceInputV4(validateSchemaProgramV4(program), trace);
+        else if (executorVersion === 3) {
+            if (program.schemaVersion !== 1)
+                fail('SCHEMA_REPLAY_VERSION_MISMATCH');
+            validateSchemaTraceInputV3(program, trace);
+        }
+        else if (executorVersion === 2) {
+            if (program.schemaVersion !== 1)
+                fail('SCHEMA_REPLAY_VERSION_MISMATCH');
             validateSchemaTraceInputV2(program, trace);
+        }
         else if (epoch.loadFrame.schemaVersion !== 1 || requestedStep.frame.input.schemaVersion !== 1
             || prefix.some(step => step.frame.input.schemaVersion !== 1))
             fail('SCHEMA_REPLAY_VERSION_MISMATCH');
@@ -153,6 +177,19 @@ export function createRoleplayMvuSchemaReplay(deps) {
                 || scope.requestedStep.frame.ownerSessionId !== selector.sessionId
                 || scope.sourceNativeCut.materialSha256 !== recordSha256(scope.requestedStep.frame.material))
                 fail('SCHEMA_SOURCE_CUT_INVALID');
+            if (executorVersion === 3 || executorVersion === 4) {
+                const stepFrame = scope.requestedStep.frame;
+                const frame = (executorVersion === 4 ? validateSchemaEvaluationInputV4(stepFrame.input)
+                    : validateSchemaEvaluationInputV3(stepFrame.input)).scopeReadFrame;
+                // Current child frames may read a later controlled Source cut than the
+                // ancestor program/load. Match this dispatch's owner and cut, rather
+                // than substituting the realm's original source snapshot or authority.
+                if (frame.source.sessionId !== selector.sessionId
+                    || frame.sourceNativeCutSha256 !== stepFrame.sourceNativeCutSha256
+                    || frame.source.sourceSnapshotSha256 !== scope.sourceNativeCut.sourceSnapshotSha256) {
+                    fail('SCHEMA_SCOPE_BINDING_INVALID');
+                }
+            }
             const original = journal.capture(selector.sessionId, scope.realmEpoch, scope.session.snapshotEvents(), scope.inheritedCut);
             if (original.kind === 'blocked')
                 fail(original.code);
@@ -168,14 +205,16 @@ export function createRoleplayMvuSchemaReplay(deps) {
             const program = compiled.program;
             if (program.compiler.version !== executorVersion || program.bridge.version !== executorVersion)
                 fail('SCHEMA_IMPLEMENTATION_CHANGED');
-            if (!same(compilationInput(program), scope.authorInput))
+            if (!same(compilationInput(program, scope.authorInput), scope.authorInput))
                 fail('SCHEMA_AUTHOR_SOURCE_MISMATCH');
             const verified = await deps.compiler.verifyProgram(program, scope.signal);
             check('program-verified');
             if (!verified)
                 fail('SCHEMA_PROGRAM_UNPROVEN');
             const epoch = original.kind === 'ready' ? original.epoch : sealSchemaJournalRecord({
-                schemaVersion: executorVersion, encoding: executorVersion === 1 ? 'native-mvu-schema-epoch-v1' : 'native-mvu-schema-epoch-v2',
+                schemaVersion: executorVersion, encoding: executorVersion === 1 ? 'native-mvu-schema-epoch-v1'
+                    : executorVersion === 2 ? 'native-mvu-schema-epoch-v2' : executorVersion === 3 ? 'native-mvu-schema-epoch-v3'
+                        : 'native-mvu-schema-epoch-v4',
                 sessionId: selector.sessionId,
                 realmEpoch: scope.realmEpoch, program, runner: deps.runner.identity, loadFrame: scope.loadFrame,
                 loadAnchorSha256: recordSha256({ programSha256: program.programSha256, realmEpoch: scope.realmEpoch, loadFrame: scope.loadFrame })
@@ -205,7 +244,9 @@ export function createRoleplayMvuSchemaReplay(deps) {
             });
             check('epoch-written');
             const dispatch = sealSchemaJournalRecord({ schemaVersion: executorVersion,
-                encoding: executorVersion === 1 ? 'native-mvu-schema-dispatch-v1' : 'native-mvu-schema-dispatch-v2',
+                encoding: executorVersion === 1 ? 'native-mvu-schema-dispatch-v1'
+                    : executorVersion === 2 ? 'native-mvu-schema-dispatch-v2' : executorVersion === 3 ? 'native-mvu-schema-dispatch-v3'
+                        : 'native-mvu-schema-dispatch-v4',
                 sessionId: selector.sessionId, realmEpoch: scope.realmEpoch,
                 batchId: selector.batchId, ordinal: prefix.length + 1, epoch: epochRef,
                 previousTailSha256: original.kind === 'ready' ? original.tailSha256 : epoch.loadAnchorSha256,
@@ -239,7 +280,9 @@ export function createRoleplayMvuSchemaReplay(deps) {
             const steps = fullRecords(program, trace, evaluated.evaluation, deps.runner), step = steps.at(-1);
             const { frame: completedFrame, ...completedReceipt } = step;
             const completion = sealSchemaJournalRecord({ schemaVersion: executorVersion,
-                encoding: executorVersion === 1 ? 'native-mvu-schema-completion-v1' : 'native-mvu-schema-completion-v2',
+                encoding: executorVersion === 1 ? 'native-mvu-schema-completion-v1'
+                    : executorVersion === 2 ? 'native-mvu-schema-completion-v2' : executorVersion === 3 ? 'native-mvu-schema-completion-v3'
+                        : 'native-mvu-schema-completion-v4',
                 sessionId: selector.sessionId, realmEpoch: scope.realmEpoch,
                 batchId: selector.batchId, dispatch: dispatchRef, dispatchMarker: dispatchMarker, runner: deps.runner.identity,
                 step: { ...completedReceipt, frameSha256: recordSha256(completedFrame) } });
@@ -290,7 +333,9 @@ export function createRoleplayMvuSchemaReplay(deps) {
             let code = codeOf(error);
             if (scope && (dispatchRef || epochWritten) && !pairFlushed) {
                 const unavailable = sealSchemaJournalRecord({ schemaVersion: executorVersion,
-                    encoding: executorVersion === 1 ? 'native-mvu-schema-unavailable-v1' : 'native-mvu-schema-unavailable-v2',
+                    encoding: executorVersion === 1 ? 'native-mvu-schema-unavailable-v1'
+                        : executorVersion === 2 ? 'native-mvu-schema-unavailable-v2' : executorVersion === 3 ? 'native-mvu-schema-unavailable-v3'
+                            : 'native-mvu-schema-unavailable-v4',
                     sessionId: selector.sessionId, realmEpoch: scope.realmEpoch,
                     batchId: selector.batchId, dispatch: dispatchRef ?? null, sourceNativeCut: scope.sourceNativeCut, code });
                 try {

@@ -1,6 +1,7 @@
 import type { ContextEvent, ContextSession } from './roleplay-context.js'
 import type { ContextWindow, PreparationMemory, PreparationSnapshot, PreparationTable } from './roleplay-preparation-types.js'
 import type { TaskAgent } from './tavern-task-types.js'
+import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js'
 
 export interface CompletionAgent extends TaskAgent {
   id?: string
@@ -44,6 +45,7 @@ export interface CompletionWorkerResult extends Record<string, unknown> {
   conflicts?: Record<string, unknown>[]
 }
 export interface CompletionDependencies {
+  rowFacts?:PhaseABranchRowFactsWriterV1
   inputSnapshotCurrent?(session:ContextSession,snapshot:CompletionSnapshot):boolean
   isManagementInput?(session:ContextSession,turn:number):boolean
   storyBranchIsActive(session: ContextSession): boolean

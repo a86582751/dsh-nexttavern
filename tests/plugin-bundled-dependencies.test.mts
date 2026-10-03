@@ -90,7 +90,119 @@ function product(root: string, version: string, kind: 'bundled' | 'relative-file
   }
   return pack(source, path.join(root, 'tarballs'))
 }
+
+test('prebuilt SDK runtime imports survive a fresh pnpm profile with no build approvals', () => {
+  const root = path.join(temp, 'sdk-build-policy')
+  const metadata = JSON.parse(fs.readFileSync(new URL('../product/package.json', import.meta.url), 'utf8'))
+  const profile = path.join(root, 'profile')
+  const source = path.join(root, 'source')
+  const tarballs = path.join(root, 'tarballs')
+  const proto = path.join(root, 'sdk', 'protobufjs')
+  const leaf = path.join(root, 'sdk', 'leaf')
+  const genai = path.join(root, 'sdk', 'genai')
+  const ordinary = path.join(root, 'sdk', 'ordinary')
+  const protoVersion = metadata.dependencies.protobufjs ?? '7.6.6'
+  pkg(leaf, 'fixture-protobuf-runtime', '1.0.0', {}, 'export const encode = value => Buffer.from(value).toString("hex")')
+  const leafArchive = pack(leaf, tarballs).file
+  pkg(proto, 'protobufjs', protoVersion, {scripts: {postinstall: 'node postinstall.cjs'},
+    dependencies: {'fixture-protobuf-runtime': 'file:' + leafArchive}}, 'export {encode} from "fixture-protobuf-runtime"')
+  write(path.join(proto, 'postinstall.cjs'), 'throw Error("prebuilt SDK must not execute install scripts")')
+  const protoArchive = pack(proto, tarballs).file
+  pkg(genai, '@google/genai', metadata.dependencies['@google/genai'], {
+    scripts: {preinstall: 'node preinstall.cjs'}, dependencies: {protobufjs: 'file:' + protoArchive},
+  }, 'export {encode} from "protobufjs"')
+  write(path.join(genai, 'preinstall.cjs'), 'throw Error("prebuilt SDK must not execute install scripts")')
+  const genaiArchive = pack(genai, tarballs).file
+  pkg(ordinary, 'fixture-ordinary-sdk', '1.0.0', {}, 'export const label = "ordinary"')
+  const ordinaryArchive = pack(ordinary, tarballs).file
+  const ownedBundles=JSON.parse(fs.readFileSync(new URL('../development/pi-ai/package.json',import.meta.url),'utf8')).bundleDependencies??[]
+  const owned=path.join(source,'node_modules/dsh-nexttavern-pi-ai')
+  pkg(owned, 'dsh-nexttavern-pi-ai', '1.0.0',
+    {dependencies: {'@google/genai': metadata.dependencies['@google/genai']},bundleDependencies:ownedBundles.filter((name:string)=>name==='@google/genai')},
+    'export {encode} from "@google/genai"')
+  // Existing owned SDKs have their direct library, but not the hoisted closure.
+  fs.cpSync(genai, path.join(source, 'node_modules/dsh-nexttavern-pi-ai/node_modules/@google/genai'), {recursive: true})
+  const sdkBundles = ['@google/genai', 'protobufjs'].filter(name => metadata.bundleDependencies.includes(name))
+  for (const name of sdkBundles) {
+    fs.cpSync(name === 'protobufjs' ? proto : genai, path.join(source, 'node_modules', name), {recursive: true})
+  }
+  fs.cpSync(leaf,path.join(source,'node_modules/fixture-protobuf-runtime'),{recursive:true})
+  if(ownedBundles.includes('@google/genai')){
+    fs.cpSync(proto,path.join(owned,'node_modules/protobufjs'),{recursive:true})
+    fs.cpSync(leaf,path.join(owned,'node_modules/fixture-protobuf-runtime'),{recursive:true})
+  }
+  pkg(source, 'dsh-nexttavern', '1.0.0', {
+    dependencies: {'dsh-nexttavern-pi-ai': '1.0.0', '@google/genai': 'file:' + genaiArchive,
+      ...(metadata.dependencies.protobufjs ? {protobufjs: 'file:' + protoArchive} : {}),
+      'fixture-ordinary-sdk': 'file:' + ordinaryArchive},
+    bundleDependencies: ['dsh-nexttavern-pi-ai', ...sdkBundles],
+  }, 'export {encode} from "dsh-nexttavern-pi-ai"; export {label} from "fixture-ordinary-sdk"')
+  write(path.join(profile, 'package.json'), {private: true, type: 'module'})
+  write(path.join(profile, 'pnpm-workspace.yaml'), 'packages: ["."]\nautoInstallPeers: false\nfailOnIgnoredBuilds: true\nallowBuilds: {}\n')
+  const packed = pack(source, tarballs)
+  assert(packed.members.includes('node_modules/fixture-protobuf-runtime/index.js'),
+    'npm pack must retain the undeclared sibling dependency of a bundled SDK')
+  cli(pnpm!, ['add', packed.file, '--offline', '--reporter=append-only',
+    '--store-dir', path.join(root, 'store')], profile)
+  const checked = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', [
+    'import path from "node:path"; import {createRequire} from "node:module"; import {pathToFileURL} from "node:url";',
+    'const require = createRequire(path.join(process.cwd(), "package.json"));',
+    'const entry = require.resolve("dsh-nexttavern");',
+    'const {encode, label} = await import(pathToFileURL(entry).href);',
+    'const sdkRequire = createRequire(require.resolve("dsh-nexttavern-pi-ai", {paths:[path.dirname(entry)]}));',
+    'const sdk = sdkRequire.resolve("@google/genai");',
+    'const protobuf = createRequire(sdk).resolve("protobufjs");',
+    'const rootSdk = createRequire(path.join(path.dirname(entry), "package.json")).resolve("@google/genai");',
+    'const rootLeaf = createRequire(createRequire(rootSdk).resolve("protobufjs")).resolve("fixture-protobuf-runtime");',
+    'console.log(JSON.stringify({value:encode("ok"),label,protobuf,rootLeaf}));',
+  ].join('\n')], {cwd: profile, env: environment, encoding: 'utf8', timeout: 20000}))
+  assert.equal(checked.value, '6f6b')
+  assert.equal(checked.label, 'ordinary', 'ordinary runtime dependencies remain functional')
+  assert(checked.protobuf.startsWith(profile + path.sep), 'SDK resolution cannot borrow the source tree or an ancestor install')
+  assert(checked.rootLeaf.startsWith(profile+path.sep),'the root SDK closure must travel in the npm tarball')
+  const pinned=path.join(root,'fixed-owned-sdk')
+  fs.cpSync(path.join(profile,'node_modules/dsh-nexttavern/node_modules/dsh-nexttavern-pi-ai'),pinned,{recursive:true})
+  cli(pnpm!,['add','dsh-nexttavern-pi-ai@file:'+pinned,'--offline','--reporter=append-only',
+    '--store-dir',path.join(root,'store')],profile)
+  cli(pnpm!,['install','--offline','--frozen-lockfile','--reporter=append-only',
+    '--store-dir',path.join(root,'store')],profile)
+  const relinked=execFileSync(process.execPath,['--input-type=module','-e',
+    'import {encode} from "dsh-nexttavern-pi-ai"; console.log(encode("relinked"))'],
+    {cwd:profile,env:environment,encoding:'utf8',timeout:20000}).trim()
+  assert.equal(relinked,Buffer.from('relinked').toString('hex'))
+})
 const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+
+test('prebuilt koffi stays scriptless when its protected package is relinked',()=>{
+  const root=path.join(temp,'native-build-policy')
+  const profile=path.join(root,'profile')
+  const source=path.join(root,'product')
+  const native=path.join(root,'koffi')
+  const meta=JSON.parse(fs.readFileSync(new URL('../development/session-persistence-jsonl/package.json',import.meta.url),'utf8'))
+  pkg(native,'koffi',meta.dependencies.koffi,{scripts:{install:'node install.cjs'}},'export const nativeReady=true')
+  write(path.join(native,'install.cjs'),'throw Error("prebuilt native library must not run its installer")')
+  const owned=path.join(source,'node_modules/dsh-nexttavern-session-persistence-jsonl')
+  pkg(owned,'dsh-nexttavern-session-persistence-jsonl','1.0.0',{
+    dependencies:{koffi:meta.dependencies.koffi},bundleDependencies:meta.bundleDependencies??[],
+  },'export {nativeReady} from "koffi"')
+  fs.cpSync(native,path.join(owned,'node_modules/koffi'),{recursive:true})
+  pkg(source,'dsh-nexttavern','1.0.0',{
+    dependencies:{'dsh-nexttavern-session-persistence-jsonl':'1.0.0'},bundleDependencies:['dsh-nexttavern-session-persistence-jsonl'],
+  })
+  write(path.join(profile,'package.json'),{private:true,type:'module'})
+  write(path.join(profile,'pnpm-workspace.yaml'),'packages: ["."]\nautoInstallPeers: false\nfailOnIgnoredBuilds: true\nallowBuilds: {}\n')
+  const run=(spec:string)=>cli(pnpm!,['add',spec,'--offline','--reporter=append-only',
+    '--store-dir',path.join(root,'store')],profile)
+  run(pack(source,path.join(root,'tarballs')).file)
+  const pinned=path.join(root,'fixed-native')
+  fs.cpSync(path.join(profile,'node_modules/dsh-nexttavern/node_modules/dsh-nexttavern-session-persistence-jsonl'),pinned,{recursive:true})
+  run('dsh-nexttavern-session-persistence-jsonl@file:'+pinned)
+  cli(pnpm!,['install','--offline','--frozen-lockfile','--reporter=append-only',
+    '--store-dir',path.join(root,'store')],profile)
+  assert.equal(execFileSync(process.execPath,['--input-type=module','-e',
+    'import {nativeReady} from "dsh-nexttavern-session-persistence-jsonl"; console.log(nativeReady)'],
+    {cwd:profile,env:environment,encoding:'utf8',timeout:20000}).trim(),'true')
+})
 
 test('a published tarball cannot treat relative file dependencies as bundled directories', () => {
   const fixture = setup('relative-file')

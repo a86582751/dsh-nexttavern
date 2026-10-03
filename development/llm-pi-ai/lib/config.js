@@ -123,6 +123,7 @@ const profile = z.object({
     apiKeyEnv: z.string().role('credential-ref'),
     displayName: z.string(),
     api: z.union(supportedProtocols()),
+    requestMaterialSerialization: z.union(['ordered-chat-v1']),
     baseURL: z.string(),
     models: z.array(modelProfile),
     modelOverrides: z.dict(modelOverride),
@@ -198,6 +199,11 @@ export function resolveProfiles(providers, validation = 'strict') {
     const resolved = new Map();
     for (const [provider, source] of entries) {
         rejectRemovedFields(provider, source);
+        if (source.requestMaterialSerialization !== undefined
+            && (source.requestMaterialSerialization !== 'ordered-chat-v1' || source.api !== 'openai-completions'
+                || source.apiKeyEnv === undefined)) {
+            throw Error(`llm-pi-ai: provider "${provider}" ordered chat material requires openai-completions and a credential reference`);
+        }
         if (provider.length === 0)
             throw new Error('llm-pi-ai: provider names must be non-empty');
         if (source.baseURL !== undefined && source.baseURL.length === 0) {

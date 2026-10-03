@@ -1,8 +1,10 @@
 // Generated from runtime/alpha3/src/core/roleplay-worldlines.ts; edit the TypeScript source.
 import { randomUUID } from 'node:crypto';
+import { recordSha256 } from './roleplay-data.js';
 import { completedAssistantReceiptForTurn } from './roleplay-context.js';
 import { createWorldlineSurface } from './roleplay-worldline-surface.js';
 import { activeOpeningSource } from './roleplay-import.js';
+import { tavernSourceOwnedRecordKeysV1 } from './roleplay-tavern-source-inheritance-data.js';
 import { provenImportPreludeAssistants } from './tavern-task-retirement.js';
 export { assertBranchSession } from './roleplay-worldline-surface.js';
 export function createRoleplayWorldlines(deps) {
@@ -295,10 +297,12 @@ export function createRoleplayWorldlines(deps) {
         };
     }
     function locateProgrammaticOpeningTarget(session, requestedMessageId, requestedSeq) {
-        const seq = durableSeq(requestedSeq);
         const events = eventsOf(session);
-        const event = seq === null ? null : events.find(item => Number(item.seq) === seq);
         const messageId = String(requestedMessageId ?? '');
+        const matched = requestedSeq === undefined ? events.filter(item => item.type === 'assistant/message'
+            && assistantMessageId(item) === messageId) : [];
+        const seq = durableSeq(requestedSeq === undefined && matched.length === 1 ? matched[0].seq : requestedSeq);
+        const event = seq === null ? null : events.find(item => Number(item.seq) === seq);
         const source = event?.data?.message?.source;
         const turn = Number(event?.data?.turn);
         const originalOpening = source?.kind === 'programmatic' && source.schemaVersion === 1
@@ -307,9 +311,9 @@ export function createRoleplayWorldlines(deps) {
             && typeof source.operationId === 'string' && !!source.operationId;
         const pointer = source?.kind === 'model' ? forkPointerFor(session, messageId) : null;
         const group = pointer?.groupId ? hydrateForkGroup(T.branch.get(forkGroupKey(pointer.groupId))) : null;
-        const generatedOpening = source?.kind === 'model' && group?.anchor?.openingOnly === true
-            && group.members.some(member => !member.deleted && member.sessionId === session.id
-                && member.assistantMessageId === messageId && Number(member.assistantSeq) === seq);
+        const generatedMember = group?.members.find(member => !member.deleted && member.sessionId === session.id
+            && member.assistantMessageId === messageId && Number(member.assistantSeq) === seq);
+        const generatedOpening = source?.kind === 'model' && group?.anchor?.openingOnly === true && !!generatedMember;
         const active = activeOpeningSource(T.branch, session.id);
         const inheritedSource = generatedOpening ? group?.anchor.openingSource : null;
         const openingImportId = originalOpening ? String(source.origin).slice('card-opening:'.length)
@@ -342,8 +346,23 @@ export function createRoleplayWorldlines(deps) {
             expectedSeedLength: 0,
             promptText: '',
             openingOnly: true,
-            openingSource: generatedOpening ? inheritedSource : (() => {
+            openingSource: (() => {
+                const program = deps.readProgramOpeningTarget?.(session, event);
+                if (program) {
+                    if (program.seq !== seq || program.turn !== turn || program.messageId !== messageId
+                        || program.operationId !== (originalOpening ? source.operationId : generatedMember?.operationId)
+                        || recordSha256(program.source) !== recordSha256(active)
+                        || sha256(program.renderedText) !== program.renderedSha256)
+                        throw Object.assign(new Error('开场来源或原始消息已变化；暂不能重新生成'), { code: 'ROLEPLAY_SOURCE_CHANGED' });
+                    return { schemaVersion: 1, importId: active.importId,
+                        normalizedSha256: active.normalizedSha256, transactionId: active.transactionId,
+                        renderedText: program.renderedText, renderedSha256: program.renderedSha256 };
+                }
                 const stored = T.branch.get(keyOf(session.id, `opening-choice-${active.importId}`));
+                if (stored?.schemaVersion === 7)
+                    throw Object.assign(new Error('开场来源或原始消息已变化；暂不能重新生成'), { code: 'ROLEPLAY_SOURCE_CHANGED' });
+                if (generatedOpening)
+                    return inheritedSource;
                 const versioned = stored?.schemaVersion === 3 || stored?.schemaVersion === 4;
                 const intent = versioned ? deps.readOpeningIntent?.(stored.source) : stored;
                 if (versioned && (!intent || intent.status !== 'completed')) {
@@ -419,22 +438,31 @@ export function createRoleplayWorldlines(deps) {
             const existingMembership = [...T.branch.entries()].some(([key, value]) => {
                 if (key === forkOperationKey(operation.operationId))
                     return false;
+                if (tavernSourceOwnedRecordKeysV1(child.id).has(key))
+                    return false;
                 return value && typeof value === 'object' && (value.childSessionId === child.id ||
                     value.sessionId === child.id ||
                     value.members?.some?.((member) => member?.sessionId === child.id));
             });
             if (existingMembership)
                 throw new Error('首轮分支会话已经绑定其他分支操作');
-            await copyStaticBranchConfig(source.id, child.id);
+            const sourceBinding = await deps.sourceInheritance?.applyPreparedSourceInheritance(child.id);
+            if (!sourceBinding)
+                await copyStaticBranchConfig(source.id, child.id);
             const openingSource = operation.anchor.openingSource;
             if (openingSource?.renderedText && openingSource.renderedSha256
                 && sha256(openingSource.renderedText) === openingSource.renderedSha256) {
                 await T.branch.put(keyOf(child.id, 'opening-reference'), cloneBranchRecord(openingSource));
             }
-            await T.branch.put(keyOf(child.id, 'meta'), {
+            const readyMetadata = {
                 createdAt: Date.now(), lastTurn: 0, lastSeq: -1,
                 freshBranchFrom: source.id, inheritedAtSeedLength: 0,
-            });
+            };
+            if (sourceBinding)
+                await deps.sourceInheritance.publishSourceInheritanceReady(child.id, readyMetadata);
+            else
+                await T.branch.put(keyOf(child.id, 'meta'), readyMetadata);
+            deps.sourceInheritance?.assertSourceInheritanceReady(child.id);
             ensureState(child.id).branchReady = true;
         }
         else {

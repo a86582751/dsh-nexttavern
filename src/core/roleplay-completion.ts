@@ -1,6 +1,7 @@
 import { keyOf, textOf, estimateTokens } from './roleplay-data.js'
 import { eventsOf, lastSeq, surfaceEntries, canonicalAssistantForTurn, completedAssistantReceiptForTurn, isCompletedTurnEnd } from './roleplay-context.js'
 import { internalTaskSeqs, isInlinePending, awaitTaskAdmissions } from './tavern-tasks.js'
+import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import type { CompletionDependencies, CompletionSnapshot, CompletionState } from './roleplay-completion-types.js'
 import type { ContextEvent, ContextSession } from './roleplay-context.js'
 
@@ -207,12 +208,15 @@ export function createRoleplayCompletion(deps: CompletionDependencies) {
           const windowStart = Number(activeWindow.startSeq ?? -1)
           const storyTokens = surfaceEntries(session).reduce((sum, entry) =>
             Number(entry.seq) > windowStart ? sum + estimateTokens(entry.text) : sum, 0)
-          await T.branch.put(contextWindowKey(branchId), {
+          const window={
             ...activeWindow,
             throughSeq: Number(event.seq),
             storyTokens,
             updatedAt: Date.now(),
-          })
+          },stored=deps.rowFacts?cloneRoleplayTavernLoreDataV1(window,16_777_216,{nodes:131072,depth:66}):window,
+            key=contextWindowKey(branchId),written=deps.rowFacts?.beforeWrite(session,key,'context-window',stored)
+          await T.branch.put(key,stored)
+          written?.readback()
         }
 
         // 重新生成版本的账本登记（本轮的正文即该锚点的新版本）

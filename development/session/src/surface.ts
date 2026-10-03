@@ -11,6 +11,9 @@
 import type { Message, ToolSchema } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, SessionSeq } from './types.js'
 import { KNOWN_SESSION_EVENT_TYPES, MESSAGE_PROJECTION_EVENT_TYPES } from './known-event-types.js'
+import {validateNativeRequestMaterialDataV1} from './request-material-types.js'
+import {NATIVE_OPENING_EVENT_TYPES_V1,validateNativeOpeningSessionEventV1} from './opening-records.js'
+export * from './opening-records.js'
 import type {
   SessionEvent,
   SessionEventType,
@@ -196,6 +199,8 @@ export function validateSessionEventData(
   subject: string,
 ): void {
   const data: unknown = event.data
+  if(event.type==='request/material')validateNativeRequestMaterialDataV1(data,subject)
+  if(NATIVE_OPENING_EVENT_TYPES_V1.has(event.type))validateNativeOpeningSessionEventV1(event.type,data)
   if (event.type === 'turn/start' && isRecord(data) && Object.hasOwn(data, 'programmatic')) {
     validateProgrammaticTurnIdentity(data['programmatic'], subject)
   }
@@ -270,6 +275,8 @@ export interface SurfaceFoldResult {
   replacements: SurfaceFoldReplacement[]
   /** Immutable projected messages, keyed by their original event sequences. */
   projectedMessages: ReadonlyMap<SessionSeq, Message>
+  /** Exact canonical count of replacements and content projection changes. */
+  contentGeneration: number
 }
 
 /** Readonly live projection of the message-producing session events. */
@@ -433,6 +440,13 @@ function assertDeveloperHeader(
  * @throws when metadata violates event-local eligibility, marker, or source-sequence rules.
  */
 export function validateSurfaceMetadata(event: SessionEvent): SurfaceOp | undefined {
+  if(event.type==='request/material'){
+    validateNativeRequestMaterialDataV1(event.data,`request/material at seq ${event.seq}`)
+    if(event.seq!==event.data.base.boundarySeq+1||event.ignorable!==undefined
+      ||event.surfaceOp!==undefined||event.sourceEventSeqs!==undefined){
+      throw Error(`request/material at seq ${event.seq} has invalid required envelope`)
+    }
+  }
   const op = surfaceOpOf(event)
   if (op !== undefined && op !== 'append'
     && (op.startSeq >= event.seq || op.endSeq >= event.seq)) {
@@ -636,7 +650,8 @@ export function foldSurface(events: readonly SessionEvent[], projections: readon
     )
     if (replacement !== undefined) replacements.push(replacement)
   }
-  return { nodes: [...state.nodes], replacements, projectedMessages: new Map(state.projectedMessages) }
+  return { nodes: [...state.nodes], replacements, projectedMessages: new Map(state.projectedMessages),
+    contentGeneration: state.contentGeneration }
 }
 
 /** Incremental ordered surface view and append-boundary validator. */

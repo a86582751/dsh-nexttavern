@@ -6,8 +6,12 @@ import { boundedRegexMatch } from './bounded-regex.js'
 import { simpleTool } from './roleplay-task-tools.js'
 import type { TaskToolExecution } from './roleplay-task-tools-types.js'
 import type { AuthoringInput, AuthoringDependencies, DraftDependencies, DraftInput, DraftRegex } from './roleplay-authoring-types.js'
+import { SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1 } from './roleplay-tavern-legacy-write-target-types.js'
 
-export function registerCardAuthoring({ctx, T, svc, RULE_TEXT_FIELDS, sessionOf,beforeWrite}: AuthoringDependencies) {
+export function registerCardAuthoring({ctx, T, svc, RULE_TEXT_FIELDS, sessionOf,beforeWrite,mutateSource,
+  checkLegacyWorldbookWriteTargets}: AuthoringDependencies) {
+  const writeSource: NonNullable<AuthoringDependencies['mutateSource']> =
+    mutateSource ?? (async (_session, work) => work())
   // rp_commit_card 的结构化写入（id 一律 sanitize）
   async function commitParsedCard(session: ContextSession, data: AuthoringInput, atSeq: number) {
     const written = []
@@ -160,8 +164,24 @@ export function registerCardAuthoring({ctx, T, svc, RULE_TEXT_FIELDS, sessionOf,
             opening: args.opening ?? null,
             beauty: args.beauty ?? null,
           }
-          const written = await commitParsedCard(session, data, lastSeq(session))
-          return { ok: true, written }
+          // beforeWrite may await admission/research; only the deterministic bulk mutation owns Source.
+          return writeSource(session, async () => {
+            // A managed worldbook target refuses the entire bulk before any durable write.
+            // Other parameter failures retain the original card -> worldbook -> status order.
+            if(checkLegacyWorldbookWriteTargets) {
+              const ids:string[]=[]
+              for(const entry of data.worldbook) {
+                try {ids.push(stableImportId(entry.id??entry.name))}
+                catch {continue} // The actual writer reports this mapping error at its original position.
+              }
+              // Classification reads Source once before any await/put. Do not
+              // re-check its full snapshot after our own author writes dirty it.
+              if(ids.length&&checkLegacyWorldbookWriteTargets(session,ids).kind==='source-managed-data')
+                return SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1
+            }
+            const written=await commitParsedCard(session,data,lastSeq(session))
+            return {ok:true,written}
+          },exec.signal)
         }
       )
     ),

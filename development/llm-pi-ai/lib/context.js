@@ -12,8 +12,7 @@ import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } f
 /** Join the text blocks of a harness message. */
 function flattenText(message) {
     return message.content
-        .filter(block => block.type === 'text')
-        .map(block => block.text)
+        .map(block => block.type === 'text' ? block.text : '')
         .join('');
 }
 /** Recover the pi-ai toolResult message for one harness tool-role message. */
@@ -142,6 +141,9 @@ function appendAssistant(message, messages, toolNames, onReplayDegrade) {
 /** Append the system and assistant roles both context builders treat identically; true when consumed. */
 function appendSystemOrAssistant(message, messages, toolNames, onReplayDegrade) {
     if (message.role === 'system') {
+        if (message.source.kind === 'request-material') {
+            throw new LlmError('pi-ai cannot retain system role at a request-only depth', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
+        }
         // pi-ai has a single systemPrompt slot; a system message that did not
         // supply it folds into a user message to preserve order.
         messages.push({ role: 'user', content: flattenText(message), timestamp: 0 });
@@ -182,21 +184,11 @@ export function toPiContext(options, images, onReplayDegrade) {
         : toPiContextWithImages(options, images, onReplayDegrade);
 }
 async function toPiContextWithImages(options, images, onReplayDegrade) {
-    const { attachments, resolveImageAccess, maxRequestImageBytes } = images;
-    const requestImagePolicy = images.requestImagePolicy ?? {
-        maxPixels: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
-        maxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
-    };
     assertSupportedHistory(options.messages);
     const split = splitSystemPrompt(options);
-    const requestImages = await prepareRequestImages(split.messages, attachments, requestImagePolicy, options.signal);
-    if (maxRequestImageBytes !== undefined) {
-        const offloadImages = requiredImageOffload(split.messages, { representation: 'base64', maxBytes: maxRequestImageBytes }, block => requestImages.get(block.attachment.attachmentId).bytes);
-        if (offloadImages > 0) {
-            throw new LlmError(`pi-ai request images exceed the ${maxRequestImageBytes}-byte base64 bound; ${offloadImages} more oldest occurrence(s) must be offloaded.`, IMAGE_OFFLOAD_REQUIRED_CODE, { offloadImages });
-        }
-    }
-    const exactMessages = projectOffloadedImages(split.messages, ref => offloadedImageText(ref, resolveImageAccess(ref)));
+    const prepared = await prepareImageHistory(split.messages, options.signal, images);
+    const { requestImages, messages: exactMessages } = prepared;
+    const { resolveImageAccess } = images;
     const toolNames = new Map();
     const messages = [];
     for (const message of exactMessages) {
@@ -210,4 +202,128 @@ async function toPiContextWithImages(options, images, onReplayDegrade) {
         messages.push({ role: 'user', content, timestamp: 0 });
     }
     return piContext(split.systemPrompt, options, messages);
+}
+/** Shared controlled image preparation. Each serializer keeps its own ordered
+ * role grammar; this helper owns request versions, byte budgets and offloads. */
+async function prepareImageHistory(messages, signal, images) {
+    const { attachments, resolveImageAccess, maxRequestImageBytes } = images;
+    const requestImagePolicy = images.requestImagePolicy ?? {
+        maxPixels: DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
+        maxBytes: DEFAULT_REQUEST_IMAGE_MAX_BYTES,
+    };
+    const requestImages = await prepareRequestImages(messages, attachments, requestImagePolicy, signal);
+    if (maxRequestImageBytes !== undefined) {
+        const offloadImages = requiredImageOffload(messages, { representation: 'base64', maxBytes: maxRequestImageBytes }, block => requestImages.get(block.attachment.attachmentId).bytes);
+        if (offloadImages > 0) {
+            throw new LlmError(`pi-ai request images exceed the ${maxRequestImageBytes}-byte base64 bound; ${offloadImages} more oldest occurrence(s) must be offloaded.`, IMAGE_OFFLOAD_REQUIRED_CODE, { offloadImages });
+        }
+    }
+    const exactMessages = projectOffloadedImages(messages, ref => offloadedImageText(ref, resolveImageAccess(ref)));
+    return { messages: exactMessages, requestImages };
+}
+/** The protocol-specific input preserves every surviving system position.
+ * LLM has already projected files and tool registry updates before this call.
+ * Signatures/reasoning and tool images are explicit unsupported domains. */
+export async function toOrderedCompletionsInputV1(options, images, onReplayDegrade) {
+    if (options.system !== undefined && options.messages.some(message => message.source?.kind === 'request-material')) {
+        throw new LlmError('ordered material requires the Native ordered system history', 'UNSUPPORTED_OPTION');
+    }
+    assertSupportedHistory(options.messages);
+    for (const message of options.messages) {
+        if (message.role === 'tool' && contentHasImage(message.content)) {
+            throw new LlmError('ordered chat cannot move tool images into another message', 'UNSUPPORTED_CONTENT');
+        }
+    }
+    let history = options.messages;
+    let versions = new Map();
+    if (images) {
+        const prepared = await prepareImageHistory(history, options.signal, images);
+        history = prepared.messages;
+        versions = prepared.requestImages;
+    }
+    else if (history.some(message => contentHasImage(message.content))) {
+        throw new LlmError('ordered chat images require the durable attachment service', 'UNSUPPORTED_CONTENT');
+    }
+    const messages = [];
+    if (options.system !== undefined && options.system.length > 0) {
+        // One-shot callers own a separate system slot. Place that slot first while
+        // retaining the existing explicit-slot projection below. Native material
+        // uses its branded history and does not manufacture this separate slot.
+        const keys = new Set(history.map((message, index) => message.id === undefined ? `request-user-${index}` : String(message.id)));
+        let index = 0;
+        while (keys.has(`request-system-${index}`))
+            index++;
+        messages.push({ key: `request-system-${index}`, origin: 'durable', role: 'system',
+            content: [{ type: 'text', text: options.system }] });
+    }
+    for (const [index, message] of history.entries()) {
+        const key = message.id === undefined ? `request-user-${index}` : String(message.id);
+        const origin = message.source?.kind === 'request-material' ? 'request-material' : 'durable';
+        if (origin === 'request-material') {
+            const part = message.content[0];
+            if (message.role === 'tool' || message.role === 'developer' || message.content.length !== 1 || part?.type !== 'text'
+                || !part.text.trim() || !part.text.isWellFormed()) {
+                throw new LlmError('ordered material requires one unchanged scalar text block', 'UNSUPPORTED_CONTENT');
+            }
+            messages.push({ key, origin, role: message.role, content: [{ type: 'text', text: part.text }] });
+            continue;
+        }
+        if (message.role === 'assistant') {
+            const replay = toPiAssistant(message, onReplayDegrade);
+            if (replay.content.some(part => part.type === 'thinking' || part.type === 'text' && part.textSignature !== undefined
+                || part.type === 'toolCall' && part.thoughtSignature !== undefined)) {
+                throw new LlmError('ordered chat cannot discard signed or reasoning assistant history', 'UNSUPPORTED_CONTENT');
+            }
+            const content = [];
+            for (const part of message.content) {
+                if (part.type === 'text')
+                    content.push({ type: 'text', text: part.text });
+                else if (part.type === 'tool-call')
+                    content.push({ type: 'tool-call', id: String(part.id), name: part.name, arguments: part.arguments });
+                else
+                    throw new LlmError('ordered chat cannot represent this assistant block', 'UNSUPPORTED_CONTENT');
+            }
+            messages.push({ key, origin: 'durable', role: 'assistant', content });
+            continue;
+        }
+        if (message.role === 'user') {
+            const prepared = images ? userContent(message.content, versions, images.resolveImageAccess) : flattenText(message);
+            const content = [];
+            if (typeof prepared === 'string')
+                content.push({ type: 'text', text: prepared });
+            else
+                for (const part of prepared) {
+                    if (part.type === 'text')
+                        content.push({ type: 'text', text: part.text });
+                    else {
+                        const mime = part.mimeType;
+                        if (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp' && mime !== 'image/gif') {
+                            throw new LlmError('ordered chat cannot represent this prepared image type', 'UNSUPPORTED_CONTENT');
+                        }
+                        content.push({ type: 'image', data: part.data, mimeType: mime });
+                    }
+                }
+            if (message.content.some(part => part.type !== 'text' && part.type !== 'image')) {
+                throw new LlmError('ordered chat cannot discard an unprojected user block', 'UNSUPPORTED_CONTENT');
+            }
+            messages.push({ key, origin: 'durable', role: 'user', content });
+            continue;
+        }
+        if (message.role === 'system' || message.role === 'tool') {
+            if (message.content.some(part => part.type !== 'text')) {
+                throw new LlmError('ordered system/tool history requires text', 'UNSUPPORTED_CONTENT');
+            }
+            const content = message.content.map(part => ({ type: 'text', text: part.type === 'text' ? part.text : '' }));
+            if (message.role === 'system')
+                messages.push({ key, origin: 'durable',
+                    role: options.system === undefined ? 'system' : 'user', content });
+            else
+                messages.push({ key, origin: 'durable', role: 'tool', toolCallId: String(message.toolCallId), content });
+            continue;
+        }
+        throw new LlmError('ordered chat requires projected developer history', 'UNSUPPORTED_CONTENT');
+    }
+    const tools = toolsOf(options);
+    return { schemaVersion: 1, encoding: 'nexttavern-ordered-chat-completions-v1', messages,
+        ...tools === undefined ? {} : { tools } };
 }

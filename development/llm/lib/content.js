@@ -1,6 +1,11 @@
 // Generated from runtime/alpha3/compat/llm/src/content.ts; edit the TypeScript source.
 /** Content-block structure helpers. @module @deepseek-ai/dsh-llm/content */
 import { assertNever } from '@deepseek-ai/dsh-util-values';
+/** Request material is already one owned immutable text block. Attachment
+ * projection cannot replace its tuple, content hash or Native provenance. */
+function isRequestMaterialText(message) {
+    return message.source?.kind === 'request-material';
+}
 /**
  * Bridge one attachment provider's host object location into the mounted
  * tool execution world. The consumer supplies the current filesystem
@@ -134,6 +139,8 @@ export function projectFilesToText(messages, resolvePath) {
     if (!messages.some(message => contentHasFile(message.content)))
         return messages;
     return messages.map((message) => {
+        if (isRequestMaterialText(message))
+            return message;
         const content = replaceFilesWithHandles(message.content, resolvePath);
         return content === message.content ? message : { ...message, content };
     });
@@ -168,6 +175,8 @@ function replaceOffloadedImages(blocks, placeholder) {
 }
 export function projectOffloadedImages(messages, placeholder) {
     return messages.map((message) => {
+        if (isRequestMaterialText(message))
+            return message;
         const content = replaceOffloadedImages(message.content, placeholder);
         return content === message.content ? message : { ...message, content };
     });
@@ -242,6 +251,8 @@ export function projectImagesForTextModel(messages) {
     if (!messages.some(message => contentHasImage(message.content)))
         return messages;
     return messages.map((message) => {
+        if (isRequestMaterialText(message))
+            return message;
         const content = replaceImagesForTextModel(message.content);
         return content === message.content ? message : { ...message, content };
     });

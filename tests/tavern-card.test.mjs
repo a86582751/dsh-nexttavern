@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs'
 import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
-import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernOpeningCandidates, compileTavernExtensionInventory, compileTavernExtensionInventoryV1, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
+import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernOpeningCandidates, compileTavernExtensionInventory, compileTavernExtensionInventoryV1, compileTavernExtensionInventoryV3, compileTavernCapabilityReport, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/tavern-card-legacy-v1.json', import.meta.url), 'utf8'))
 assert.equal(legacy.schemaVersion, 1)
@@ -83,6 +83,32 @@ const extensionsSource = {spec:'chara_card_v3',spec_version:'3.0',data:{name:'Ex
   RubyAnalyzer:{presets:[]},odysseia_trace:'opaque bytes', 'other/~key':{unknown:true},
 }}}
 const extensionsDecoded = decodeTavernCard(Buffer.from(JSON.stringify(extensionsSource)),'.json')
+const capabilitySource = {spec:'chara_card_v3',spec_version:'3.0',data:{name:'Capabilities',
+  first_mes:'Hello {{user}}',assets:[{uri:'https://invalid.example/not-fetched.png'},{uri:'data:image/png;base64,AA==' }],
+  extensions:{RubyAnalyzer:{activePresetId:'a',presets:[{id:'a',tasks:[{enabled:true}]}]},
+    risuai:{triggerscript:[{type:'manual'}]},'unknown/~key':{code:'inert'}}}}
+const capabilityDecoded = decodeTavernCard(Buffer.from(JSON.stringify(capabilitySource)),'.json')
+const capabilityReport = compileTavernCapabilityReport(capabilityDecoded)
+assert.equal(capabilityReport.schemaVersion,1)
+assert.equal(capabilityReport.sourceSha256,capabilityDecoded.sourceSha256)
+assert.deepEqual(capabilityReport.counts,{interpreted:2,'preserved-unexecuted':3,
+  'missing-external-resource':1,'requires-optional-analysis':1})
+assert.deepEqual(capabilityReport.entries.map(entry=>entry.sourcePointer),
+  [...capabilityReport.entries.map(entry=>entry.sourcePointer)].sort())
+assert.equal(capabilityReport.entries.find(entry=>entry.sourcePointer==='/data/assets/0').reason,
+  'external-asset-not-bundled')
+assert.equal(capabilityReport.entries.find(entry=>entry.sourcePointer==='/data/extensions/unknown~1~0key').status,
+  'preserved-unexecuted')
+assert.ok(capabilityReport.entries.every(entry=>/^[a-f0-9]{64}$/.test(entry.valueSha256)))
+assert.ok(!JSON.stringify(capabilityReport).includes('not-fetched.png'),
+  'resource references are hashed and never fetched or duplicated into the report')
+const capabilityReordered = structuredClone(capabilitySource)
+capabilityReordered.data = Object.fromEntries(Object.entries(capabilityReordered.data).reverse())
+assert.deepEqual(compileTavernCapabilityReport(decodeTavernCard(Buffer.from(JSON.stringify(capabilityReordered)),'.json')).entries,
+  capabilityReport.entries,'entry ordering and hashes are independent of JSON object order')
+assert.throws(()=>compileTavernCapabilityReport(decodeTavernCard(Buffer.from(JSON.stringify({
+  name:'Invalid greetings',alternate_greetings:[42],
+})),'.json')),/备选开场/,'unparsed greetings cannot be called interpreted')
 const inventory = compileTavernExtensionInventory(extensionsDecoded)
 assert.equal(inventory.schemaVersion,2)
 assert.equal(inventory.sourceSha256,extensionsDecoded.sourceSha256)
@@ -137,6 +163,55 @@ assert.equal(JSON.stringify(frozenV1),
 assert.equal(compileTavernExtensionInventory(decodeTavernCard(Buffer.from(frozenV1Source),'.json')).schemaVersion,2)
 assert.equal(byKey.chaoshen_jixieshi.phase,'interaction')
 assert.equal(byKey.card_agent.phase,'interaction')
+const v3Source={name:'V3 synthetic',first_mes:'First',alternate_greetings:['Second'],
+  character_book:{entries:[{id:1,content:'Book'}]},extensions:{
+    chaoshen_jixieshi:Object.fromEntries(['embedded_worldbook_id','embedded_worldbook_version','opening_protocol',
+      'opening_mode','ui_panel_version','ui_panel_id','ui_mode','ui_source','mvu_protocol_version',
+      'mvu_loader_id','mvu_remote_ref','mvu_remote_fallback','mvu_commit','mvu_initvar_id']
+      .map(key=>[key,'synthetic-identifier'])),
+    card_agent:{binding_id:'synthetic-binding',greetings:[{id:'a',name:'A'},{id:'b',name:'B'}],
+      worldbooks:[{id:'c',name:'C'}]},
+    risuai:{triggerscript:[{type:'manual',effect:[{type:'inert',code:'never run'}]},
+      {type:'manual',effect:[]}]},odysseia_trace:{ciphertext:'opaque'},
+  }}
+const v3Decoded=decodeTavernCard(Buffer.from(JSON.stringify(v3Source)),'.json')
+const legacyV1Before=JSON.stringify(compileTavernExtensionInventoryV1(v3Decoded))
+const legacyV2Before=JSON.stringify(compileTavernExtensionInventory(v3Decoded))
+const v3=compileTavernExtensionInventoryV3(v3Decoded)
+assert.equal(v3.schemaVersion,3)
+assert.deepEqual(v3.entries.map(entry=>entry.key),['chaoshen_jixieshi','card_agent','risuai'])
+assert.deepEqual(v3.entries.map(entry=>entry.status),['unexecuted','requires-review','unsupported'])
+assert.deepEqual(v3.entries[1].detail.references.map(ref=>ref.status),
+  ['requires-review','requires-review','requires-review'])
+assert.deepEqual(v3.entries[2].detail.triggers.map(trigger=>[trigger.status,trigger.effectCount]),
+  [['unsupported',1],['unsupported',0]])
+assert.ok(!JSON.stringify(v3).includes('never run'))
+assert.ok(!JSON.stringify(v3).includes('ciphertext'))
+assert.ok(!JSON.stringify(v3).includes('synthetic-identifier'))
+const badV3=structuredClone(v3Source)
+badV3.extensions.card_agent.greetings.push({id:'extra',name:'Extra'})
+badV3.extensions.risuai.triggerscript[0].effect='malformed'
+badV3.extensions.chaoshen_jixieshi.mvu_loader_id=42
+assert.deepEqual(compileTavernExtensionInventoryV3(decodeTavernCard(Buffer.from(JSON.stringify(badV3)),'.json'))
+  .entries.map(entry=>entry.status),['requires-review','requires-review','requires-review'])
+assert.equal(compileTavernExtensionInventoryV3(decodeTavernCard(Buffer.from(JSON.stringify(badV3)),'.json'))
+  .entries[1].detail.references[2].status,'requires-review',
+  'opaque bindings are not disproved by list position alone')
+const emptyV3=structuredClone(v3Source)
+emptyV3.extensions.card_agent.greetings=[]
+emptyV3.extensions.card_agent.worldbooks=[]
+emptyV3.extensions.risuai.triggerscript=[]
+const emptyDeclarations=compileTavernExtensionInventoryV3(
+  decodeTavernCard(Buffer.from(JSON.stringify(emptyV3)),'.json')).entries
+assert.equal(emptyDeclarations[1].reason,'empty-binding-declaration')
+assert.equal(emptyDeclarations[2].reason,'empty-trigger-declaration')
+const oversizedV3=structuredClone(v3Source)
+oversizedV3.extensions.card_agent.greetings=Array(2049).fill({id:'a',name:'A'})
+assert.equal(compileTavernExtensionInventoryV3(decodeTavernCard(Buffer.from(JSON.stringify(oversizedV3)),'.json'))
+  .entries[1].status,'unsupported')
+assert.equal(JSON.stringify(compileTavernExtensionInventoryV1(v3Decoded)),legacyV1Before)
+assert.equal(JSON.stringify(compileTavernExtensionInventory(v3Decoded)),legacyV2Before,
+  'V3 does not mutate the older inventory views')
 const reorderedExtensions = structuredClone(extensionsSource)
 reorderedExtensions.data.extensions=Object.fromEntries(Object.entries(reorderedExtensions.data.extensions).reverse())
 assert.deepEqual(compileTavernExtensionInventory(decodeTavernCard(Buffer.from(JSON.stringify(reorderedExtensions)),'.json')).entries,

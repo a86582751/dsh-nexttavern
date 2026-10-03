@@ -81,6 +81,10 @@ function validateEvent(trace, event, fail) {
             requireOpenStep(trace, 'assistant/attempt', event.data.turn, event.data.step, fail);
             break;
         }
+        case 'request/material': {
+            requireOpenStep(trace, 'request/material', event.data.turn, event.data.step, fail);
+            break;
+        }
         case 'assistant/message': {
             requireOpenStep(trace, 'assistant/message', event.data.turn, event.data.step, fail);
             break;

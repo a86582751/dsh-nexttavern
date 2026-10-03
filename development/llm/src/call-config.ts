@@ -11,6 +11,9 @@ import type { ReasoningEffortId } from './brand.js'
 
 /** Process-local identities of request objects assembled by dsh-agent-loop. */
 const AGENT_LOOP_REQUESTS = new WeakSet<GenerateOptions>()
+/** A material owner's synchronous assertion, associated with exact request
+ * identity. It never appears in configuration, messages, headers or JSON. */
+const AGENT_LOOP_REQUEST_GUARDS=new WeakMap<GenerateOptions,()=>void>()
 
 // TODO(call-config-shape): Revisit which fields are epoch-level for cache reuse
 // and where provider-specific request options belong.
@@ -75,4 +78,31 @@ export function markAgentLoopRequest<T extends GenerateOptions>(request: T): T {
  */
 export function isAgentLoopRequest(request: GenerateOptions): boolean {
   return AGENT_LOOP_REQUESTS.has(request)
+}
+
+/** Bind once after Native has frozen and branded the original request. A
+ * serializable material record alone cannot create this hot association. */
+export function bindAgentLoopRequestGuard(request:GenerateOptions,guard:()=>void):void {
+  if(!AGENT_LOOP_REQUESTS.has(request)||!Object.isFrozen(request)||!Object.isFrozen(request.messages)
+    ||typeof guard!=='function'||AGENT_LOOP_REQUEST_GUARDS.has(request)){
+    throw Error('invalid Native request guard binding')
+  }
+  AGENT_LOOP_REQUEST_GUARDS.set(request,guard)
+}
+
+/** Adapter implementations claiming exact request material support must call
+ * this again after awaited preflight and immediately before transport. */
+export function assertAgentLoopRequestCurrent(request:GenerateOptions):void {
+  const guard=AGENT_LOOP_REQUEST_GUARDS.get(request)
+  if(guard){guard();return}
+  if(request.messages.some(message=>message.source?.kind==='request-material')){
+    throw Error('request material lacks a live Native request owner')
+  }
+}
+
+/** Internal LLM projection carries liveness to its detached adapter envelope,
+ * without marking that projected array as the durable Native request. */
+export function forwardAgentLoopRequestGuard(source:GenerateOptions,target:GenerateOptions):void {
+  const guard=AGENT_LOOP_REQUEST_GUARDS.get(source)
+  if(guard)AGENT_LOOP_REQUEST_GUARDS.set(target,guard)
 }

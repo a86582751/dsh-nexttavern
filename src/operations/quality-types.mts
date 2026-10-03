@@ -20,6 +20,7 @@ export interface CheckRegistry {schemaVersion: 1; modules: CheckModule[]; tasks:
 export interface Artifact {id: string; source: string; sha256?: string; public?: {path?: string}}
 export interface BuildMapping {
   id: string; kind?: string; artifact: string; entry: string; builder: string; inputs: string[]
+  declarationArtifact?: string
   browser?: {moduleId: string; external: string[]; inlineArtifactImports?: Record<string, string>; minifyWhitespace?: boolean}
 }
 export interface SourceMapping {

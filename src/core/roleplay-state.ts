@@ -13,6 +13,32 @@ export const jsonResponse = (status: number, value: unknown) =>
       headers: { 'content-type': 'application/json; charset=utf-8' },
     })
 
+/** Source readers consume exactly these author versions. Runtime memory and
+ * panel state have different owners and are not part of Source membership. */
+export function captureRoleplaySourceRecordVersionsV1(
+  T:Pick<StateDependencies['T'],'cards'|'worldbook'|'branch'|'rules'>,sessionId:string,
+) {
+  return {
+    cards:Object.fromEntries([...T.cards.entries()].filter(([k])=>k.startsWith(`${sessionId}__`))
+      .map(([k,v])=>[k.slice(sessionId.length+2),recordSha256(v)])),
+    worldbook:Object.fromEntries([...T.worldbook.entries()].filter(([k])=>k.startsWith(`${sessionId}__`))
+      .map(([k,v])=>[k.slice(sessionId.length+2),recordSha256(v)])),
+    settings:recordSha256(T.branch.get(keyOf(sessionId,'settings'))),
+    rules:recordSha256(T.rules.get(keyOf(sessionId,'spec'))),
+  }
+}
+
+/** Actual table versions are available as soon as Core opens its domain.
+ * Readers during cold Agent attachment must not wait for state-route wiring. */
+export function captureRoleplayRecordVersionsV1(T:StateDependencies['T'],sessionId:string) {
+  return {
+    ...captureRoleplaySourceRecordVersionsV1(T,sessionId),
+    memory:recordSha256(T.memory.get(keyOf(sessionId,'head'))),
+    status:recordSha256(T.status.get(keyOf(sessionId,'spec'))),
+    opening:recordSha256(T.opening.get(keyOf(sessionId,'scene'))),
+  }
+}
+
 export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carryTruncationBoundary,
   buildForkLookupIndex,reconcileCanonicalPlayerVariants,statusRecoveredSessions,recoverStatusObligations,
   nativeBranchGroupsFor,nativePlayerGroupsFor,assistantMessageId,userForkContext,locatePlayerRecoveryTarget,
@@ -29,12 +55,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
     return { cards, worldbook }
   }
 
-  const recordVersionsFor = (session: Pick<StateSession,'id'>) => ({
-    cards:Object.fromEntries([...T.cards.entries()].filter(([k])=>k.startsWith(`${session.id}__`)).map(([k,v])=>[k.slice(session.id.length+2),recordSha256(v)])),
-    worldbook:Object.fromEntries([...T.worldbook.entries()].filter(([k])=>k.startsWith(`${session.id}__`)).map(([k,v])=>[k.slice(session.id.length+2),recordSha256(v)])),
-    memory:recordSha256(T.memory.get(keyOf(session.id,'head'))),settings:recordSha256(T.branch.get(keyOf(session.id,'settings'))),
-    status:recordSha256(T.status.get(keyOf(session.id,'spec'))),rules:recordSha256(T.rules.get(keyOf(session.id,'spec'))),opening:recordSha256(T.opening.get(keyOf(session.id,'scene'))),
-  })
+  const recordVersionsFor=(session:Pick<StateSession,'id'>)=>captureRoleplayRecordVersionsV1(T,session.id)
   const readRoleplayState = async (session: StateSession) => {
     await awaitImportBarrier(session.id)
     await ensureBranch(session)

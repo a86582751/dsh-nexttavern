@@ -34,6 +34,8 @@ import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persis
 import type { SessionHandle, SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { ReactLoopAgent, nativeInputAdmissionCapability } from './agent.js'
 import type {NativeInputAdmissionAgentV2} from './input-admission.js'
+import {nativeProgrammaticOpeningCapability} from './agent.js'
+import type {NativeProgrammaticOpeningAgentV1} from './agent.js'
 import { inboxProjectionDefinition } from './inbox.js'
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js'
 import type {} from './runtime-context.js'
@@ -240,7 +242,30 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export { DEFAULT_MAX_PARALLEL_TOOL_CALLS }
-export {nativeInputAdmissionCapability} from './agent.js'
+export {nativeInputAdmissionCapability,assertNativeRequestMaterialSelectionV1} from './agent.js'
+export {nativeProgrammaticOpeningCapability} from './agent.js'
+export type {NativeProgrammaticOpeningAgentV1,ProgrammaticAssistantGeneration,ProgrammaticAssistantGenerationResult} from './agent.js'
+export type {NativeOpeningGenerationInspectionV1,NativeOpeningHistoryObservationV1,
+  NativeInheritedOpeningGenerationObservationV1} from './opening-generation.js'
+export {inspectNativeOpeningGenerationV1,inspectNativeOpeningGenerationObservationV1,
+  inspectInheritedOpeningGenerationObservationV1,buildNativeGeneratedOpeningReceiptObservationV1} from './opening-generation.js'
+export type {NativeOpeningMaterialOwnerV1,NativeOpeningMaterialInputV1,NativeOpeningMaterialPrepareInputV1,
+  NativeOpeningMaterialCheckV1,NativeOpeningOwnerIdentityV1,NativeOpeningClosingInputV1,
+  NativeOpeningClosingAcknowledgementV1} from './request-material-owner.js'
+export type {NativeOpeningIdentityV1,NativeOpeningInvocationV1,NativeOpeningRequestAttemptV1,
+  NativeGeneratedOpeningReceiptV1,NativeOpeningClosingAckV1,NativeOpeningEventRefV1} from '@deepseek-ai/dsh-session'
+export {nativeOpeningRecordSha256V1,nativeOpeningInstructionSha256V1,nativeOpeningTextSha256V1,validateNativeOpeningInvocationV1,
+  validateNativeOpeningRequestAttemptV1,validateNativeGeneratedOpeningReceiptV1,validateNativeOpeningClosingAckV1}
+  from './opening-record-hashes.js'
+export type {NativeRequestMaterialOwnerV1,NativeRequestMaterialInputV1,NativeRequestMaterialDecisionV1,
+  NativeRequestMaterialTransformV1,NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,
+  NativeOwnedMaterialAnchorV1,NativeOwnedMaterialAnchoredInsertionV1,
+  NativeRequestMaterialPrepareDecisionV1,NativeMaterialSelectionEvidenceV1,
+  NativeMaterialSelectionEventV1} from './request-material-owner.js'
+export {nativeInputSha256,inspectNativeInboxHistory} from './input-admission.js'
+export type {NativeInboxHistory} from './input-admission.js'
+export {reconstructNativeRequestMaterialV1,NativeRequestMaterialFailure} from './request-material.js'
+export type {NativeRequestMaterialRecordV1,NativeRequestMaterialEventV1} from './request-material.js'
 export type {NativeInputRef, NativePreparationReceiptV1, NativeInputLinkV1} from '@deepseek-ai/dsh-session'
 export type {NativeInputAdmissionAgentV2, NativeInputAdmissionCapabilityV2, NativeInputAdmissionHookV2, NativeInputAdmissionHook,
   NativeInputAdmissionCheckV2, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,
@@ -422,6 +447,14 @@ export class AgentLoop extends Service implements AgentFactory {
     if (!actual || !this.ownership.isActive() || !(actual instanceof ReactLoopAgent)
       || !this.runtime.admissionAgents.has(actual)
       || this.runtime.ctx.agents.get(actual.id) !== actual) return undefined
+    return actual
+  }
+  /** Independent opening capability on the same actual factory-owned Agent.
+   * A saved invocation/receipt cannot substitute for this live registry seam. */
+  getProgrammaticOpeningAgent(agent:unknown):NativeProgrammaticOpeningAgentV1|undefined {
+    const actual=nativeProgrammaticOpeningCapability(agent)
+    if(!actual||!this.ownership.isActive()||!(actual instanceof ReactLoopAgent)
+      ||!this.runtime.admissionAgents.has(actual)||this.runtime.ctx.agents.get(actual.id)!==actual)return undefined
     return actual
   }
 

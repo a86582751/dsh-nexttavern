@@ -152,6 +152,7 @@ export function canonicalAssistantSeqsOf(session, seqs = surfaceSeqsOf(session),
 }
 /** Restore only archived plot on the selected surface, never edited/deleted alternatives. */
 const selectedStoryCache = new WeakMap();
+const selectedChatCache = new WeakMap();
 const immutableStoryValues = new WeakSet();
 const storyDataTypes = new Set(['turn/start', 'turn/end', 'user/message', 'assistant/message', 'tool/call', 'compaction/end', 'compaction/summary']);
 function immutableStoryValue(value) {
@@ -203,13 +204,14 @@ function expandedHistorySeqs(session, evidence = eventsOf(session)) {
         expand(seq);
     return expanded;
 }
-export function selectedStoryHistory(session) {
+function selectedCanonicalHistory(session, includeOpenUsers) {
     const log = eventsOf(session);
     const surface = surfaceSeqsOf(session), surfaceKey = surface.join(',');
     const generation = messageViewGeneration(session);
     // Native snapshots are immutable and replaced on every append. Cache only
     // that contract, never mutable legacy/mock logs; selection is a separate key.
-    const cached = selectedStoryCache.get(session);
+    const cache = includeOpenUsers ? selectedChatCache : selectedStoryCache;
+    const cached = cache.get(session);
     if (generation !== null && cached?.generation === generation && cached.log === log &&
         cached.id === session.id && cached.surfaceKey === surfaceKey)
         return cached.rows.map(row => ({ ...row }));
@@ -265,7 +267,8 @@ export function selectedStoryHistory(session) {
         if (!isStoryEvent(event, canonical, management))
             return false;
         const turn = originalTurn(event);
-        return turn !== null && (completed.has(turn) || afterStory.turns.has(turn));
+        return turn !== null && (completed.has(turn) || afterStory.turns.has(turn)
+            || includeOpenUsers && event.type === 'user/message');
     }).map((event) => ({
         id: `${session.id}:${event.seq}`,
         seq: event.seq,
@@ -276,10 +279,20 @@ export function selectedStoryHistory(session) {
         time: event.time ?? null,
     }));
     if (cacheable && generation !== null)
-        selectedStoryCache.set(session, {
+        cache.set(session, {
             log, id: session.id, surfaceKey, generation, rows: rows.map(row => ({ ...row })),
         });
     return rows;
+}
+export function selectedStoryHistory(session) {
+    return selectedCanonicalHistory(session, false);
+}
+/** Full logical selected chat: canonical completed prose plus still selected
+ * real player inputs from open/failed turns. Compaction expands proven source
+ * events; tool commentary, management and alternative/deleted replies remain
+ * governed by the same owner policy used for the original story history. */
+export function selectedCanonicalChatHistory(session) {
+    return selectedCanonicalHistory(session, true);
 }
 function queryHistoryRows(session, scope) {
     if (scope === 'story' || scope === undefined)

@@ -3,21 +3,26 @@ import { randomUUID } from 'node:crypto';
 import { keyOf, durableSeq, provenanceSeq, rollLogEntries, rollLogRecord, recordSha256 } from './roleplay-data.js';
 import { eventsOf, surfaceEntries, visibleCompactionCheckpoint, canonicalAssistantForTurn } from './roleplay-context.js';
 import { importActiveKey } from './roleplay-import.js';
+import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 export function createRoleplayInheritance(deps) {
     const { ensureState, cloneBranchRecord, T, clusterLoreVisible, contextWindowKey, cloneContextWindow, ctx, statusSource, statusFixedContext, normalizeDecisionRecord } = deps;
     async function ensureBranch(session, { cadenceAnchorSeq = null, cadenceTurn = null } = {}) {
         const st = ensureState(session.id);
-        if (st.branchReady)
+        if (st.branchReady) {
+            deps.sourceInheritance?.assertSourceInheritanceReady(session.id);
             return;
+        }
         if (st.branchPreparing) {
             await st.branchPreparing;
             return;
         }
         st.branchPreparing = (async () => {
             try {
+                let pendingSourceReady;
                 const parent = session.header?.parentSession;
                 if (parent) {
                     const meta = cloneBranchRecord(T.branch.get(keyOf(session.id, 'meta')));
+                    const sourceBinding = await deps.sourceInheritance?.applyPreparedSourceInheritance(session.id);
                     // A previous process can die after writing a provisional marker.
                     // Existence alone is not an inheritance commit: only the explicit
                     // ready marker permits skipping the copy/replay pass.
@@ -48,18 +53,20 @@ export function createRoleplayInheritance(deps) {
                             : null;
                         // 创作配置：fork 后仍应保留同一角色卡、世界书和作者美化；这些
                         // 不是剧情正史，不能因从较早轮次分叉而突然消失。
-                        for (const [k, v] of T.cards.entries()) {
-                            if (k.startsWith(pPrefix) && v)
-                                await T.cards.put(cP + k.slice(pPrefix.length), cloneBranchRecord(v));
-                        }
-                        for (const [k, v] of T.worldbook.entries()) {
-                            if (k.startsWith(pPrefix) && v)
-                                await T.worldbook.put(cP + k.slice(pPrefix.length), cloneBranchRecord(v));
-                        }
-                        for (const table of [T.rules, T.opening]) {
-                            for (const [k, v] of table.entries()) {
+                        if (!sourceBinding) {
+                            for (const [k, v] of T.cards.entries()) {
                                 if (k.startsWith(pPrefix) && v)
-                                    await table.put(cP + k.slice(pPrefix.length), cloneBranchRecord(v));
+                                    await T.cards.put(cP + k.slice(pPrefix.length), cloneBranchRecord(v));
+                            }
+                            for (const [k, v] of T.worldbook.entries()) {
+                                if (k.startsWith(pPrefix) && v)
+                                    await T.worldbook.put(cP + k.slice(pPrefix.length), cloneBranchRecord(v));
+                            }
+                            for (const table of [T.rules, T.opening]) {
+                                for (const [k, v] of table.entries()) {
+                                    if (k.startsWith(pPrefix) && v)
+                                        await table.put(cP + k.slice(pPrefix.length), cloneBranchRecord(v));
+                                }
                             }
                         }
                         const parentSettings = T.branch.get(keyOf(parent, 'settings'));
@@ -68,7 +75,7 @@ export function createRoleplayInheritance(deps) {
                                 await T.branch.put(keyOf(session.id, `cluster-lore-${v.seq}`), { ...cloneBranchRecord(v), branchId: session.id });
                         // A fresh native fork can receive explicit settings before its first story turn.
                         // Inheritance fills missing fields without overwriting those saved choices.
-                        if (parentSettings)
+                        if (!sourceBinding && parentSettings)
                             await T.branch.put(keyOf(session.id, 'settings'), {
                                 ...cloneBranchRecord(parentSettings),
                                 ...cloneBranchRecord(T.branch.get(keyOf(session.id, 'settings')) ?? {}),
@@ -82,25 +89,29 @@ export function createRoleplayInheritance(deps) {
                             // boundary. In that case the copied boundary would hide visible
                             // seed history, so restart the child at a conservative window 1.
                             if (inheritedStart >= seedBoundary) {
-                                await T.branch.put(contextWindowKey(session.id), {
+                                const window = {
                                     windowNumber: 1, windowId: randomUUID(), previousWindowId: null,
                                     branchId: session.id, startSeq: -1, throughSeq: seedBoundary - 1,
                                     storyTokens: 0, createdAt: Date.now(), rolloverCount: 0,
                                     reason: 'fork-before-parent-window-boundary',
-                                });
+                                }, stored = deps.rowFacts ? cloneRoleplayTavernLoreDataV1(window, 16_777_216, { nodes: 131072, depth: 66 }) : window, key = contextWindowKey(session.id), written = deps.rowFacts?.beforeWrite(session, key, 'context-window', stored);
+                                await T.branch.put(key, stored);
+                                written?.readback();
                             }
                             else {
-                                await T.branch.put(contextWindowKey(session.id), {
+                                const window = {
                                     ...inheritedWindow,
                                     branchId: session.id,
                                     throughSeq: Math.min(Number(inheritedWindow.throughSeq ?? -1), seedBoundary - 1),
                                     inheritedFrom: parent,
                                     inheritedAtSeedLength: Number.isFinite(seedLength) ? seedLength : null,
-                                });
+                                }, stored = deps.rowFacts ? cloneRoleplayTavernLoreDataV1(window, 16_777_216, { nodes: 131072, depth: 66 }) : window, key = contextWindowKey(session.id), written = deps.rowFacts?.beforeWrite(session, key, 'context-window', stored);
+                                await T.branch.put(key, stored);
+                                written?.readback();
                             }
                         }
                         const parentStatusSpec = T.status.get(keyOf(parent, 'spec'));
-                        if (parentStatusSpec)
+                        if (!sourceBinding && parentStatusSpec)
                             await T.status.put(keyOf(session.id, 'spec'), cloneBranchRecord(parentStatusSpec));
                         // Story-derived memory is fail-closed.  The child surface itself is
                         // the only proof that a compacted summary belongs before the fork;
@@ -181,7 +192,7 @@ export function createRoleplayInheritance(deps) {
                             }
                         }
                         const parentImport = T.branch.get(importActiveKey(parent));
-                        if (parentImport) {
+                        if (!sourceBinding && parentImport) {
                             await T.branch.put(importActiveKey(session.id), {
                                 ...cloneBranchRecord(parentImport),
                                 inheritedFrom: parent,
@@ -191,18 +202,29 @@ export function createRoleplayInheritance(deps) {
                         // Meta is the inheritance commit marker and MUST be last.  All
                         // earlier copies are idempotent, so a failed attempt can replay;
                         // publishing meta first would make a half-inherited child look ready.
-                        await T.branch.put(keyOf(session.id, 'meta'), {
+                        const readyMetadata = {
                             createdAt: Date.now(),
                             lastTurn: 0,
                             lastSeq: -1,
                             inheritedFrom: parent,
                             inheritedAtSeedLength: Number.isFinite(seedLength) ? seedLength : null,
                             inheritanceState: 'ready',
-                        });
+                        };
+                        if (sourceBinding)
+                            pendingSourceReady = readyMetadata;
+                        else
+                            await T.branch.put(keyOf(session.id, 'meta'), readyMetadata);
                     }
                 }
                 else if (!T.branch.get(keyOf(session.id, 'meta'))) {
-                    await T.branch.put(keyOf(session.id, 'meta'), { createdAt: Date.now(), lastTurn: 0, lastSeq: -1 });
+                    // Native may initialize a reserved fresh Session before the worldline
+                    // attach route. Use the same frozen writer rather than minting a
+                    // generic meta row that would conflict with that reservation.
+                    const sourceBinding = await deps.sourceInheritance?.applyPreparedSourceInheritance(session.id);
+                    if (sourceBinding)
+                        pendingSourceReady = { lastTurn: 0, lastSeq: -1 };
+                    else
+                        await T.branch.put(keyOf(session.id, 'meta'), { createdAt: Date.now(), lastTurn: 0, lastSeq: -1 });
                 }
                 // Native cloning copies a parent's durable panel, including its owner.
                 // Rebind only an unchanged, proven prefix within this child's seed.
@@ -228,6 +250,9 @@ export function createRoleplayInheritance(deps) {
                                     ? { fixedContextHash: recordSha256(fixed) } : {}) } });
                     }
                 }
+                if (pendingSourceReady)
+                    await deps.sourceInheritance.publishSourceInheritanceReady(session.id, pendingSourceReady);
+                deps.sourceInheritance?.assertSourceInheritanceReady(session.id);
                 st.branchReady = true;
             }
             catch (error) {

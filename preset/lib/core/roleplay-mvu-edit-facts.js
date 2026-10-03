@@ -84,6 +84,12 @@ function basisValid(input) {
             fail('NUMERICAL_EDIT_BASIS_UNKNOWN');
         }
     }
+    else if ('encoding' in root && root.encoding === 'native-program-mvu-state-root-v1') {
+        exact(root, ['schemaVersion', 'encoding', 'programEventId', 'programEventSha256', 'programHeadSha256', 'planSha256']);
+        if (root.schemaVersion !== 1 || ![root.programEventId, root.programEventSha256, root.programHeadSha256, root.planSha256].every(hash)) {
+            fail('NUMERICAL_EDIT_BASIS_UNKNOWN');
+        }
+    }
     else if ('encoding' in root) {
         exact(root, ['schemaVersion', 'encoding', 'derivedEventId', 'derivedEventSha256', 'derivedHeadSha256', 'basisSha256']);
         if (root.schemaVersion !== 1 || root.encoding !== 'native-mvu-derived-state-root-v1'

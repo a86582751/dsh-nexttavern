@@ -345,12 +345,13 @@ for(const background of [false,true]) {
 }
 // Exercise the core host adapter with the real task store and inline scheduler.
 {
- const branch=new Table(),cards=new Table(),taskAgents=new Map(),maintenance=new Map(),inbox=[],children=[]
+ const branch=new Table(),cards=new Table(),taskAgents=new Map(),maintenance=new Map(),inbox=[],children=[],cleanups=[]
  const session={id:'host-adapter',events:[],surface:{nodes:[]}},route={provider:'fixture',model:'main'}
  const agent={session,options:route,status:'idle',steer:message=>inbox.push(message)}
  let resolves=0,active=true,fixed={setting:'one'},instruction='first',resumeFailure=true,statusResult
  const engine={storyEvidence:()=>[{seq:0,text:'old'},{seq:4,text:'archived'}],async resumeTask(a,signal,stage){assert.equal(a,agent);assert.equal(stage,'notes');if(resumeFailure)throw Error('resume failed')}}
  const host=createRoleplayTaskHost({T:{branch,cards},ctx:{
+  effect(work){const cleanup=work();if(typeof cleanup==='function')cleanups.push(cleanup)},
   sessions:{get:()=>session},sessionController:{async resolveAgent(){resolves++;return {agent}}},
   agentDefaultModel:{currentSelection:()=>route},subagents:{start(mode,request){assert.equal(mode,'spawn');children.push(request);return {id:'host-child',result:Promise.resolve({stopReason:'completed',output:[{type:'text',text:'background notes'}]}),dispose(){}}}},
   get:name=>name==='compaction'?engine:undefined,
@@ -358,6 +359,7 @@ for(const background of [false,true]) {
  taskDependenciesCurrent:()=>true,taskInstruction:()=>instruction,getMaintenanceJob:id=>maintenance.get(id),
  async runStatusObligation(s,event,reason,options){assert.equal(s,session);assert.equal(event,session.events[0]);assert.equal(reason,'maintenance-resume');assert.equal(options.agent,agent);return statusResult},
  STATUS_SYSTEM:'status-system',DECISION_SYSTEM:'decision-system',ORGANIZE_WORKER_SYSTEM:'novel-system'})
+ try {
  const add=(type,data)=>{const event={seq:session.events.length,type,data};session.events.push(event);session.surface.nodes.push(event.seq);return event}
  add('user/message',{source:{kind:'user'},content:[{type:'text',text:'visible'}]})
  assert.deepEqual(host.taskStory(session).map(({seq,text})=>({seq,text})),[{seq:0,text:'visible'},{seq:4,text:'archived'}],'visible projection wins without changing evidence order')
@@ -424,5 +426,139 @@ for(const background of [false,true]) {
  }
  await new Promise(resolve=>setTimeout(resolve,10))
  assert.equal(inbox.length,1,'scheduled idle steer rechecks current agent state')
+ }finally {for(const cleanup of cleanups.reverse())cleanup()}
+}
+
+// This adapter fixture keeps the actual TaskStore/scheduler and executes the
+// host's effect initializer/cleanup. A denial is data, never Native permission.
+async function recoveryHost(branch=new Table(),status='idle') {
+ const session={id:'host-idle-recovery',events:[],surface:{nodes:[]}},route={provider:'fixture',model:'main'},
+  inbox=[],cleanups=[],taskAgents=new Map(),warnings=[]
+ const agent={session,options:route,status,steer:message=>inbox.push(message)}
+ let blockCode,gateReads=0
+ const host=createRoleplayTaskHost({T:{branch,cards:new Table()},ctx:{
+  effect(work){const cleanup=work();if(typeof cleanup==='function')cleanups.push(cleanup)},
+  logger:{warn:message=>warnings.push(message)},sessions:{get:id=>id===session.id?session:undefined},
+  sessionController:{async resolveAgent(){return {agent}}},agentDefaultModel:{currentSelection:()=>route},
+  subagents:{start(){throw Error('inline recovery must not spawn a child')}},get:()=>undefined,
+ },config:{},taskAgents,storyBranchIsActive:()=>true,statusFixedContext:()=>({}),
+ taskDependenciesCurrent:()=>true,taskInstruction:()=> 'Retained pending maintenance.',getMaintenanceJob:()=>undefined,
+ runStatusObligation:async()=>undefined,STATUS_SYSTEM:'status-system',DECISION_SYSTEM:'decision-system',
+ ORGANIZE_WORKER_SYSTEM:'novel-system',inputTaskRecoveryBlockCode:s=>{
+  assert.equal(s,session);gateReads++;return blockCode
+ }})
+ // Establish the real default policy before measuring task-side writes. Its
+ // first read legitimately publishes one global record; cold reads write none.
+ const policyKey='tavern_policy__global',before=structuredClone([...branch]),put=branch.put,
+  expectedWrites=branch.has(policyKey)?[]:[policyKey],policyWrites=[]
+ branch.put=async function(key,value){policyWrites.push(key);return put.call(this,key,value)}
+ try {
+  const policy=await host.modelPolicy.read(session,agent)
+  assert.deepEqual(policyWrites,expectedWrites,'policy setup may publish only its original global record')
+  assert.deepEqual([...branch],expectedWrites.length?[...before,[policyKey,policy.global]]:before,
+    'policy setup retains every existing task and recovery record')
+  assert.equal(policy.effective.allMain,true);assert.deepEqual(policy.main,route)
+ }catch(error) {
+  for(const cleanup of cleanups.splice(0).reverse())cleanup()
+  throw error
+ }finally {branch.put=put}
+ return {branch,session,agent,inbox,warnings,host,
+  request:()=>host.nativeTask({session,agent,system:'memory-system',user:'Retained notes.',format:'text',taskStage:'notes'}),
+  block(code){blockCode=code},gateReads:()=>gateReads,
+  close(){for(const cleanup of cleanups.splice(0).reverse())cleanup()},
+ }
+}
+const continuationTick=()=>new Promise(resolve=>setTimeout(resolve,10))
+
+// A known idle refusal ends before the scheduler can create any durable work.
+{
+ const f=await recoveryHost(),before=structuredClone([...f.branch])
+ const put=f.branch.put.bind(f.branch)
+ let writes=0
+ f.branch.put=async(...args)=>{writes++;return put(...args)}
+ try {
+  f.block('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
+  await assert.rejects(f.request(),/INPUT_PREVIOUS_TERMINAL_UNRESOLVED/)
+  await continuationTick()
+  assert.deepEqual([...f.branch],before,'initial idle refusal writes neither a job nor a resume marker')
+  assert.equal(writes,0)
+  assert.deepEqual(f.host.tavernTasks.list(f.session),[]);assert.deepEqual(f.inbox,[])
+  assert.equal(f.gateReads(),1)
+ }finally {f.close()}
+}
+
+// A running Phase B may admit its task. If its request await reaches idle with
+// a refusal, preserve that exact queued task without writing a recovery marker.
+{
+ const f=await recoveryHost(undefined,'running'),entered=deferred(),release=deferred(),put=f.branch.put.bind(f.branch)
+ const writes=[]
+ let pendingJob
+ f.branch.put=async(key,value)=>{
+  writes.push(key)
+  if(key.startsWith('tavern_job__')){entered.resolve();await release.promise}
+  await put(key,value)
+  if(key.startsWith('tavern_job__'))pendingJob=structuredClone(value)
+ }
+ const work=f.request();work.catch(()=>{})
+ try {
+  await Promise.race([entered.promise,work.then(()=>{throw Error('task returned before its queued write')})])
+  assert.equal(f.gateReads(),0,'running admission does not inspect the idle recovery denial')
+  f.agent.status='idle';f.block('INPUT_PREVIOUS_TERMINAL_UNRESOLVED');release.resolve()
+  await assert.rejects(work,/INPUT_PREVIOUS_TERMINAL_UNRESOLVED/)
+  await continuationTick()
+  assert.ok(pendingJob);assert.equal(pendingJob.status,'queued')
+  assert.deepEqual(f.host.tavernTasks.list(f.session),[pendingJob])
+  assert.deepEqual(f.host.tavernTasks.pending(f.session),[pendingJob])
+  assert.equal(f.branch.has(f.session.id+'__task-memory-resume'),false)
+  assert.deepEqual(writes,[`tavern_job__${pendingJob.id}`],'only the admitted pending job was written')
+  assert.deepEqual(f.inbox,[])
+ }finally {release.resolve();await work.catch(()=>{});f.close()}
+}
+
+// The refusal can appear after a timer has been queued. It must stop the final
+// steer while leaving both the pending job and its original resume marker.
+{
+ const f=await recoveryHost()
+ try {
+  await assert.rejects(f.request(),{code:'TAVERN_INLINE_PENDING'})
+  const pending=structuredClone(f.host.tavernTasks.pending(f.session)),before=structuredClone([...f.branch])
+  const put=f.branch.put.bind(f.branch)
+  let writes=0
+  f.branch.put=async(...args)=>{writes++;return put(...args)}
+  assert.equal(pending.length,1)
+  assert.equal(f.branch.get(f.session.id+'__task-memory-resume').status,'pending')
+  f.block('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
+  await continuationTick()
+  assert.deepEqual(f.inbox,[]);assert.deepEqual(f.host.tavernTasks.pending(f.session),pending)
+  assert.deepEqual([...f.branch],before,'timer refusal cannot complete or rewrite pending recovery work')
+  assert.equal(writes,0)
+  assert.ok(f.gateReads()>=3,'the queued continuation reaches its final idle denial check')
+  assert.deepEqual(f.warnings,[])
+ }finally {f.close()}
+}
+
+// Running continuation ignores the idle-only projection. A rebuilt host with
+// no known durable refusal hydrates that same real TaskStore job and wakes once;
+// no schema view or Native permission is manufactured for this recovery.
+{
+ const first=await recoveryHost(undefined,'running')
+ let cold
+ try {
+  first.block('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
+  await assert.rejects(first.request(),{code:'TAVERN_INLINE_PENDING'})
+  const pending=structuredClone(first.host.tavernTasks.pending(first.session))
+  assert.equal(pending.length,1);assert.equal(first.gateReads(),0)
+  assert.equal(first.branch.get(first.session.id+'__task-memory-resume').source.taskId,pending[0].id)
+  await continuationTick();assert.deepEqual(first.inbox,[])
+  first.close()
+  cold=await recoveryHost(first.branch)
+  await assert.rejects(cold.request(),{code:'TAVERN_INLINE_PENDING'})
+  await continuationTick()
+  assert.deepEqual(cold.host.tavernTasks.pending(cold.session),pending,'cold polling retains the original task and generation')
+  assert.equal(cold.host.tavernTasks.list(cold.session).length,1)
+  assert.equal(cold.inbox.length,1);assert.ok(cold.gateReads()>=3)
+  assert.equal(cold.branch.get(cold.session.id+'__task-memory-resume').status,'pending')
+  assert.deepEqual(cold.warnings,[])
+ }finally {cold?.close();first.close()}
 }
 console.log('tavern-task-lifecycle=ok (batch lifecycle, native host adapter, recovery and source fences)')

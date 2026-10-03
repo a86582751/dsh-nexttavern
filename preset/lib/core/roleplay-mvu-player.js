@@ -99,11 +99,12 @@ export function createRoleplayMvuPlayer(deps) {
         if (!session)
             return { ...basis, kind: 'unknown', code: 'MVU_PLAYER_SESSION_INACTIVE', canEdit: false };
         try {
-            const actual = deps.state().readNumericalAuthority(sid);
+            const actual = deps.state().readNumericalObservation(sid);
             if (actual.kind !== 'ready')
                 return { ...basis, kind: 'blocked', code: actual.code, canEdit: false };
             const editBlockCode = busy(session);
-            return { ...basis, kind: 'ready', snapshot: actual.snapshot, canEdit: !editBlockCode, ...(editBlockCode ? { editBlockCode } : {}) };
+            return { ...basis, kind: 'ready', snapshot: actual.snapshot, displayUpdates: actual.displayUpdates,
+                canEdit: !editBlockCode, ...(editBlockCode ? { editBlockCode } : {}) };
         }
         catch {
             return { ...basis, kind: 'unknown', code: 'READ_OR_PERMISSION_UNKNOWN', canEdit: false };

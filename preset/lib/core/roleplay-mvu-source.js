@@ -169,6 +169,18 @@ function extensions(value, pointer, authorSchema = false) {
             fail('STATE_SYNTAX_UNSUPPORTED', pointer, value);
     }
 }
+/** Existing strict literal policy, exposed for the separate template Source
+ * domain. No allow-EJS switch is added to this module's old classifier. */
+export function assertMvuLiteralSourceTextV1(text, context, pointer) {
+    if (typeof text !== 'string')
+        fail('FIELD_UNSUPPORTED', pointer);
+    if (stateSyntax(text) || initSyntax(text))
+        fail('STATE_SYNTAX_UNSUPPORTED', pointer, text);
+    render(text, context, false);
+}
+export function assertMvuNonSchemaSourceExtensionsV1(value, pointer) {
+    extensions(value, pointer);
+}
 /** Core owns the existing source/import lock. All reads are synchronous; this
  * module neither acquires a second lock nor writes any Domain/native record. */
 function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) {

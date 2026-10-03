@@ -5,7 +5,7 @@
  * @module dsh-agent-loop/agent
  */
 import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent';
-import { LlmError, createAssistantMessage, createDeveloperMessage, errorChain, freezeMessage, markAgentLoopRequest, } from '@deepseek-ai/dsh-llm';
+import { LlmError, IMAGE_OFFLOAD_REQUIRED_CODE, createAssistantMessage, createDeveloperMessage, errorChain, freezeMessage, markAgentLoopRequest, } from '@deepseek-ai/dsh-llm';
 import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values';
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { inspectProgrammaticCommit, programmaticTurnIdentity } from './programmatic-commit.js';
@@ -20,9 +20,44 @@ import { RuntimeContextProjection } from './runtime-context.js';
 import { AssistantStreamAttempt } from './assistant-stream.js';
 import { SystemPromptProjection } from './runtime-context.js';
 import { executeToolCalls } from './tool-calls.js';
+import { nativeRequestMaterialDecisionV1, nativeRequestMaterialOwnerRegistrationV1, nativeRequestMaterialOwnerCheckV1, nativeRequestMaterialPrepareDecisionV1, applyNativeOwnedSectionsV1, resolveNativeOwnedMaterialAnchorsV1, nativeOpeningMaterialOwnerRegistrationV1, nativeOpeningClosingAcknowledgementV1 } from './request-material-owner.js';
+import { sealNativeOpeningRecordV1, nativeOpeningInstructionSha256V1, validateNativeOpeningInvocationV1, validateNativeOpeningRequestAttemptV1, validateNativeOpeningClosingAckV1 } from './opening-record-hashes.js';
+import { inspectNativeOpeningGenerationV1, openingEventRefV1, hasUnclosedNativeOpeningV1 } from './opening-generation.js';
+import { planNativeRequestEnvelope } from './request-envelope.js';
+import { planNativeRequestMaterialV1 } from './request-material.js';
+import { bindNativeRequestMaterial } from './request-material-sidecar.js';
 const nativeAdmissionAgents = new WeakSet();
+const openingSelectionAppendTypes = new Set(['step/start', 'system/message', 'developer/message',
+    'request/header', 'request/context', 'request/material', 'assistant/attempt', 'opening/request-attempt']);
+const nativeMaterialSelections = new WeakMap();
+/** Only exact objects created by the live Agent's prepared lineage are
+ * accepted. The current object expires at the next boundary; copied data and
+ * returned evidence can never register a selected cut or grant dispatch. */
+export function assertNativeRequestMaterialSelectionV1(initial, current) {
+    const root = nativeMaterialSelections.get(initial), selected = nativeMaterialSelections.get(current);
+    if (!root || !selected || root.lineage !== selected.lineage || root.lineage.initial !== initial) {
+        throw Error('REQUEST_MATERIAL_SELECTION_NOT_NATIVE');
+    }
+    const lineage = root.lineage;
+    lineage.assertCurrent();
+    if (selected.revision !== lineage.revision || selected.pendingCursor !== lineage.pendingCursor
+        || selected.boundarySha256 !== lineage.expected.sha256) {
+        throw Error('REQUEST_MATERIAL_SELECTION_CUT_EXPIRED');
+    }
+    return Object.freeze({ schemaVersion: 1, encoding: 'native-request-material-selection-lineage-v1',
+        sessionId: String(lineage.session.id), turn: lineage.turn, step: lineage.step,
+        initialSha256: initial.sha256, currentSha256: current.sha256,
+        boundarySeq: Number(lineage.expected.boundary.boundarySeq),
+        contentGeneration: lineage.expected.boundary.contentGeneration,
+        pendingMessages: lineage.pending.length - lineage.pendingCursor, revision: lineage.revision,
+        ...lineage.checkpointSha256 ? { checkpointSha256: lineage.checkpointSha256 } : {},
+        events: Object.freeze([...lineage.events]) });
+}
 /** Actual constructor identity, not a caller-supplied capability/verified flag. */
 export function nativeInputAdmissionCapability(agent) {
+    return agent instanceof ReactLoopAgent && nativeAdmissionAgents.has(agent) ? agent : undefined;
+}
+export function nativeProgrammaticOpeningCapability(agent) {
     return agent instanceof ReactLoopAgent && nativeAdmissionAgents.has(agent) ? agent : undefined;
 }
 /** Remove adapter-derived values before plugins propose the next request config. */
@@ -91,6 +126,9 @@ export class ReactLoopAgent {
     /** An unclosed append-only turn forbids another driver from writing behind it. */
     programmaticTurnPoisoned = false;
     inputAdmission;
+    /** JS-private issuer state; no exported registration seam exists. It is
+     * retired at step exit and never reconstructed from serialized evidence. */
+    #materialSelection;
     existingInputWork;
     inputAdmissionBlocked;
     inputWakeStopped = false;
@@ -103,6 +141,12 @@ export class ReactLoopAgent {
     /** Independent terminal gate. An ordinary wake or acknowledged cancellation
      * cannot turn an uncertain post-close Source write into replay permission. */
     inputCompletion;
+    openingMaterial;
+    openingRecovery;
+    openingDomainCompletion;
+    get openingCompletionBlocked() {
+        return this.openingDomainCompletion !== undefined && this.openingDomainCompletion.status !== 'settled';
+    }
     get inputCompletionBlocked() {
         return this.inputCompletion !== undefined && this.inputCompletion.result.status !== 'settled';
     }
@@ -122,9 +166,56 @@ export class ReactLoopAgent {
         this.runtimeContext = new RuntimeContextProjection(this.ctx, session);
         this.systemPrompt = new SystemPromptProjection(session);
         nativeAdmissionAgents.add(this);
+        if (hasUnclosedNativeOpeningV1(session, this.ctx.sessions.messageProjections))
+            this.openingDomainCompletion = { status: 'unknown', code: 'OPENING_COLD_RECOVERY_REQUIRED' };
     }
     get nativeInputAdmissionVersion() { return 2; }
+    get nativeRequestMaterialVersion() { return 1; }
     get nativeInputStopVersion() { return 1; }
+    get nativeProgrammaticOpeningVersion() { return 1; }
+    registerOpeningMaterialOwner(owner) {
+        if (this.inputDisposed || !nativeAdmissionAgents.has(this) || this.phase.kind !== 'idle' || this.openingMaterial?.active)
+            throw Error('OPENING_OWNER_REGISTRATION_BUSY_OR_DISPOSED');
+        const registration = { owner: nativeOpeningMaterialOwnerRegistrationV1(owner), active: true };
+        this.openingMaterial = registration;
+        return () => {
+            if (!registration.active)
+                return;
+            registration.active = false;
+            if (this.openingMaterial === registration)
+                this.openingMaterial = undefined;
+            if (this.phase.kind === 'running' && this.phase.programmatic?.opening?.registration === registration) {
+                this.openingDomainCompletion = { status: 'unknown', code: 'OPENING_OWNER_REVOKED',
+                    invocationRef: openingEventRefV1(this.phase.programmatic.opening.invocation) };
+                this.phase.abort.abort({ kind: 'hook', reason: 'OPENING_OWNER_REVOKED' });
+            }
+            else if (this.phase.kind === 'maintenance' && this.openingRecovery?.registration === registration) {
+                this.openingDomainCompletion = { status: 'unknown', code: 'OPENING_OWNER_REVOKED',
+                    invocationRef: openingEventRefV1(this.openingRecovery.invocation) };
+                this.phase.abort.abort({ kind: 'hook', reason: 'OPENING_OWNER_REVOKED' });
+            }
+        };
+    }
+    openingCompletion() {
+        return Object.freeze(this.openingDomainCompletion ? { ...this.openingDomainCompletion } : { status: 'none' });
+    }
+    openingIdentity(input) {
+        const opening = input.opening;
+        if (!opening || opening.schemaVersion !== 1 || opening.kind !== 'programmatic-opening'
+            || Object.keys(opening).length !== 3)
+            throw Error('OPENING_GENERATION_OWNER_INPUT_INVALID');
+        // The strict invocation parser also verifies complete identity and ref
+        // shape before this detached object can reach a callback or Native append.
+        return validateNativeOpeningInvocationV1(sealNativeOpeningRecordV1({ schemaVersion: 1,
+            encoding: 'native-programmatic-opening-invocation-v1',
+            identity: { kind: 'programmatic-opening', sessionId: String(this.id), operationId: input.operationId,
+                messageId: input.messageId, instruction: input.instruction,
+                instructionSha256: nativeOpeningInstructionSha256V1(input.instruction), intentRef: opening.intentRef },
+            expectedTurn: 1, prefix: { eventCount: 0, inheritedEventCount: 0, sha256: nativeInputSha256([]) } }, 'invocationSha256')).identity;
+    }
+    lookupProgrammaticOpening(input) {
+        return inspectNativeOpeningGenerationV1(this.session, this.openingIdentity(input), this.ctx.sessions.messageProjections);
+    }
     get status() {
         return this.phase.kind === 'idle' || this.phase.kind === 'maintenance' ? 'idle' : 'running';
     }
@@ -167,6 +258,14 @@ export class ReactLoopAgent {
         this.send(input, 'next-step', false);
     }
     cancel(cause, options = {}) {
+        if (this.phase.kind === 'running' && this.phase.programmatic?.opening) {
+            this.openingDomainCompletion = { status: 'unknown', code: 'OPENING_GENERATION_CANCELLED',
+                invocationRef: openingEventRefV1(this.phase.programmatic.opening.invocation) };
+        }
+        else if (this.phase.kind === 'maintenance' && this.openingRecovery) {
+            this.openingDomainCompletion = { status: 'unknown', code: 'OPENING_GENERATION_CANCELLED',
+                invocationRef: openingEventRefV1(this.openingRecovery.invocation) };
+        }
         if (cause.kind === 'disposed') {
             this.inputDisposed = true;
             nativeAdmissionAgents.delete(this);
@@ -321,7 +420,10 @@ export class ReactLoopAgent {
         if (hook.schemaVersion === 2 && hook.completedWork !== undefined && typeof hook.completedWork !== 'function') {
             throw Error('invalid native completed input hook');
         }
-        const registration = { hook, active: true, ...(stopOwner ? { stopOwner: stopOwner.bind(hook) } : {}),
+        const requestMaterial = hook.schemaVersion === 2 && hook.requestMaterial !== undefined
+            ? nativeRequestMaterialOwnerRegistrationV1(hook.requestMaterial) : undefined;
+        const registration = { hook, active: true,
+            ...(requestMaterial ? { requestMaterial } : {}), ...(stopOwner ? { stopOwner: stopOwner.bind(hook) } : {}),
             ...(ownsContinuations ? { nominations: new Map(), usedTokens: new WeakSet() } : {}) };
         this.inputAdmission = registration;
         if (ownsContinuations && hook.schemaVersion === 2) {
@@ -655,6 +757,7 @@ export class ReactLoopAgent {
             this.abortInput(admission, 'INPUT_DRIVER_CHANGED', 'final', admission.claim);
         const signal = this.phase.abort.signal;
         this.checkInput(admission, messages);
+        this.#assertSelectionCurrent();
         let flushed;
         try {
             flushed = await this.awaitInputOperation(this.ctx.sessions.flush(this.session), signal, admission.registration);
@@ -671,6 +774,7 @@ export class ReactLoopAgent {
         if (!flushed)
             this.abortInput(admission, 'INPUT_LINK_FLUSH_FAILED', 'final', admission.claim);
         this.checkInput(admission, messages);
+        this.#assertSelectionCurrent();
         const receipt = this.inbox.linkReceipt(admission.startSeq);
         if (!receipt || receipt.firstStepStartSeq !== stepStartSeq || receipt.actualTurn !== this.phase.turn
             || receipt.workSha256 !== admission.marker?.workSha256
@@ -694,8 +798,10 @@ export class ReactLoopAgent {
         signal.throwIfAborted();
         if (outcome?.kind !== 'allow')
             this.abortInput(admission, outcome?.code ?? 'INPUT_CHECKPOINT_BLOCKED', 'final', admission.claim);
+        this.#assertSelectionCurrent();
         admission.receipt = receipt;
         this.checkInput(admission, messages);
+        this.#assertSelectionCurrent();
     }
     runMaintenance(job) {
         if (this.phase.kind !== 'idle')
@@ -718,7 +824,7 @@ export class ReactLoopAgent {
                     await this.whenInputStopSettled();
                 this.setPhase({ kind: 'idle', lastTurn: maintenance.lastTurn });
                 const cause = abortedCancelCause(maintenance.abort.signal);
-                if (!this.programmaticTurnPoisoned && cause?.kind !== 'disposed'
+                if (!this.programmaticTurnPoisoned && !this.openingCompletionBlocked && cause?.kind !== 'disposed'
                     && maintenance.wakeRequested && (this.inbox.hasPending || this.existingInputWork))
                     this.wakeDriver();
                 done.resolve();
@@ -732,7 +838,7 @@ export class ReactLoopAgent {
      * still owns durability; a partial turn is never continued by a second writer.
      */
     async commitProgrammaticAssistant(input) {
-        if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inputCompletionBlocked)
+        if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inputCompletionBlocked || this.openingCompletionBlocked)
             return { kind: 'busy' };
         const identity = programmaticTurnIdentity(input);
         return this.runMaintenance(async () => {
@@ -843,6 +949,8 @@ export class ReactLoopAgent {
     }
     /** Run one model turn from the assembled system prompt without creating a user message. */
     async generateProgrammaticAssistant(input) {
+        if (input?.opening !== undefined)
+            return this.generateOwnedOpening(input);
         const valid = (value) => typeof value === 'string' && value.length > 0
             && value.length <= 256 && value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value);
         if (!input || !valid(input.operationId) || !valid(input.messageId)
@@ -850,7 +958,8 @@ export class ReactLoopAgent {
             || new TextEncoder().encode(input.instruction).length > 65_536) {
             throw new Error('invalid programmatic generation identity or instruction');
         }
-        if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inputCompletionBlocked || this.inbox.hasPending)
+        if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inputCompletionBlocked
+            || this.openingCompletionBlocked || this.inbox.hasPending)
             return { kind: 'busy' };
         const events = this.session.snapshotEvents();
         const matching = events.filter((event) => event.type === 'assistant/message' && event.data.message.id === input.messageId);
@@ -872,7 +981,8 @@ export class ReactLoopAgent {
         const driver = Promise.withResolvers();
         this.activityDone = driver.promise;
         this.setPhase({ kind: 'running', abort: new AbortController(), turn: this.phase.lastTurn,
-            step: 0, wakeRequested: false, programmatic: input });
+            step: 0, wakeRequested: false, programmatic: { operationId: input.operationId,
+                messageId: input.messageId, instruction: input.instruction } });
         this.loopCtx.agents.withInitiator(this, () => this.kick()).then(driver.resolve, driver.reject);
         // This operation owns only its opening turn. A queued player follow-up may
         // start a new driver immediately after it, without delaying this receipt.
@@ -885,6 +995,213 @@ export class ReactLoopAgent {
             return { kind: 'committed', turn: turn, messageId: input.messageId };
         }
         return { kind: 'unknown', reason: 'generation did not complete durably' };
+    }
+    openingOwnerIdentity(work) {
+        return Object.freeze({ kind: 'programmatic-opening', identity: work.identity, invocationRef: openingEventRefV1(work.invocation) });
+    }
+    assertOpeningLive(work, signal) {
+        signal.throwIfAborted();
+        if (this.inputDisposed || !nativeAdmissionAgents.has(this) || !work.registration.active
+            || this.openingMaterial !== work.registration
+            || this.session.snapshotEvents()[Number(work.invocation.seq)] !== work.invocation)
+            throw Error('OPENING_OWNER_REVOKED');
+        if (this.phase.kind === 'running' && this.phase.programmatic?.opening !== work)
+            throw Error('OPENING_PHASE_CHANGED');
+        if (this.phase.kind === 'maintenance' && this.openingRecovery !== work)
+            throw Error('OPENING_PHASE_CHANGED');
+        if (this.phase.kind === 'idle')
+            throw Error('OPENING_PHASE_CHANGED');
+    }
+    /** Reservation may contain only the captured prefix and this live invocation.
+     * Repeat after the callback: synchronous owner hooks can append or revoke. */
+    assertOpeningReservation(work, phase, prefixLength) {
+        this.assertOpeningLive(work, phase.abort.signal);
+        const events = this.session.snapshotEvents();
+        if (this.phase !== phase || phase.programmatic?.opening !== work || this.inbox.hasPending
+            || events.length !== prefixLength + 1 || work.invocation.seq !== prefixLength
+            || events[prefixLength] !== work.invocation || this.session.seq !== events.length) {
+            throw Error('OPENING_RESERVATION_CHANGED');
+        }
+    }
+    checkOpeningIdentity(registration, input) {
+        input.signal.throwIfAborted();
+        if (this.inputDisposed || !registration.active || this.openingMaterial !== registration || !nativeAdmissionAgents.has(this))
+            throw Error('OPENING_OWNER_REVOKED');
+        const checked = nativeRequestMaterialOwnerCheckV1(registration.owner.check(input));
+        if (checked.kind !== 'allow')
+            throw Error(checked.code);
+        input.signal.throwIfAborted();
+        if (!registration.active || this.openingMaterial !== registration)
+            throw Error('OPENING_OWNER_REVOKED');
+    }
+    /** Separate reservation. An incomplete durable marker is an actionable
+     * recovery anchor, never permission to run a second request with that id. */
+    async generateOwnedOpening(input) {
+        const identity = this.openingIdentity(input), registration = this.openingMaterial;
+        if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inputCompletionBlocked || this.inputDisposed)
+            return { kind: 'busy' };
+        if (!registration?.active)
+            return { kind: 'unknown', reason: 'OPENING_OWNER_REGISTRATION_REQUIRED' };
+        const inspected = inspectNativeOpeningGenerationV1(this.session, identity, this.ctx.sessions.messageProjections);
+        if (inspected.kind === 'unknown') {
+            if (hasUnclosedNativeOpeningV1(this.session, this.ctx.sessions.messageProjections))
+                this.openingDomainCompletion = {
+                    status: 'unknown', code: inspected.code, ...inspected.invocationRef ? { invocationRef: inspected.invocationRef } : {}
+                };
+            return { kind: 'unknown', reason: inspected.code };
+        }
+        if (inspected.kind === 'complete') {
+            return this.runMaintenance(async (signal) => {
+                const work = { registration, identity, invocation: inspected.invocation, attempts: new Map() };
+                this.openingRecovery = work;
+                try {
+                    this.checkOpeningIdentity(registration, { identity, phase: 'cold-closing-recovery', signal });
+                    if (!await this.closeOwnedOpening(work, signal))
+                        return { kind: 'unknown', reason: this.openingDomainCompletion?.code ?? 'OPENING_CLOSING_UNKNOWN' };
+                    const actual = inspectNativeOpeningGenerationV1(this.session, identity, this.ctx.sessions.messageProjections);
+                    if (actual.kind !== 'complete' || !actual.receiptEvent)
+                        return { kind: 'unknown', reason: 'OPENING_GENERATION_RECEIPT_CHANGED' };
+                    return { kind: 'committed', turn: actual.receipt.turn, messageId: identity.messageId,
+                        generatedReceiptRef: openingEventRefV1(actual.receiptEvent), receipt: actual.receipt };
+                }
+                catch (error) {
+                    const code = error instanceof Error ? error.message : 'OPENING_COLD_RECOVERY_FAILED';
+                    this.openingDomainCompletion = { status: 'unknown', code, invocationRef: openingEventRefV1(inspected.invocation) };
+                    return { kind: 'unknown', reason: code };
+                }
+                finally {
+                    if (this.openingRecovery === work)
+                        this.openingRecovery = undefined;
+                }
+            });
+        }
+        if (this.openingCompletionBlocked || this.inbox.hasPending)
+            return { kind: 'busy' };
+        const events = this.session.snapshotEvents();
+        if (events.some(event => event.type === 'turn/start' && !events.some(end => end.type === 'turn/end' && end.data.turn === event.data.turn)))
+            return { kind: 'unknown', reason: 'OPENING_NATIVE_TURN_ALREADY_OPEN' };
+        const driver = Promise.withResolvers(), phase = { kind: 'running', abort: new AbortController(),
+            turn: this.phase.lastTurn, step: 0, wakeRequested: false,
+            programmatic: { operationId: identity.operationId, messageId: identity.messageId, instruction: identity.instruction } };
+        this.activityDone = driver.promise;
+        this.setPhase(phase);
+        try {
+            this.checkOpeningIdentity(registration, { identity, phase: 'invocation-reservation', signal: phase.abort.signal });
+            // setPhase changes the field and emits synchronous callbacks. Re-read the
+            // full union rather than retaining the earlier idle admission narrowing.
+            if (this.phase !== phase || this.inbox.hasPending)
+                throw Error('OPENING_RESERVATION_CHANGED');
+            const prefix = this.session.snapshotEvents(), record = validateNativeOpeningInvocationV1(sealNativeOpeningRecordV1({
+                schemaVersion: 1, encoding: 'native-programmatic-opening-invocation-v1', identity,
+                expectedTurn: phase.turn + 1, prefix: { eventCount: prefix.length, inheritedEventCount: this.session.inheritedEventCount,
+                    sha256: nativeInputSha256(prefix) }
+            }, 'invocationSha256')), invocation = this.session.append('opening/invocation', record), work = { registration, identity, invocation, attempts: new Map() };
+            phase.programmatic.opening = work;
+            this.openingDomainCompletion = { status: 'pending', invocationRef: openingEventRefV1(invocation) };
+            this.assertOpeningLive(work, phase.abort.signal);
+            // Reservation persistence settles before the driver can start a turn.
+            // Cancellation does not race this write or release its Agent ownership.
+            const flushed = await this.ctx.sessions.flush(this.session);
+            this.assertOpeningLive(work, phase.abort.signal);
+            if (!flushed)
+                throw Error('OPENING_INVOCATION_FLUSH_UNCONFIRMED');
+            this.assertOpeningReservation(work, phase, prefix.length);
+            // The original basis now ends immediately before this owned invocation.
+            // Carry its actual ref; the post-flush gate must not require Phase-A yet.
+            this.checkOpeningIdentity(registration, { identity: work.identity, phase: 'invocation-reserved',
+                invocationRef: openingEventRefV1(work.invocation), signal: phase.abort.signal });
+            this.assertOpeningReservation(work, phase, prefix.length);
+            this.loopCtx.agents.withInitiator(this, () => this.kick()).then(driver.resolve, driver.reject);
+        }
+        catch (error) {
+            const code = error instanceof Error ? error.message : 'OPENING_RESERVATION_FAILED';
+            if (phase.programmatic?.opening)
+                this.openingDomainCompletion = { status: 'unknown', code,
+                    invocationRef: openingEventRefV1(phase.programmatic.opening.invocation) };
+            if (this.phase === phase)
+                this.setPhase({ kind: 'idle', lastTurn: phase.turn });
+            driver.resolve();
+            return { kind: 'unknown', reason: code };
+        }
+        await driver.promise;
+        const actual = inspectNativeOpeningGenerationV1(this.session, identity, this.ctx.sessions.messageProjections);
+        if (actual.kind === 'complete' && actual.receiptEvent && this.openingDomainCompletion?.status === 'settled')
+            return { kind: 'committed', turn: actual.receipt.turn, messageId: identity.messageId,
+                generatedReceiptRef: openingEventRefV1(actual.receiptEvent), receipt: actual.receipt };
+        return { kind: 'unknown', reason: this.openingDomainCompletion?.code ?? 'OPENING_GENERATION_NOT_COMPLETED' };
+    }
+    async closeOwnedOpening(work, signal) {
+        const fail = (code) => {
+            this.openingDomainCompletion = { status: 'unknown', code, invocationRef: openingEventRefV1(work.invocation) };
+            return false;
+        };
+        try {
+            this.assertOpeningLive(work, signal);
+            if (!await this.ctx.sessions.flush(this.session))
+                return fail('OPENING_TERMINAL_FLUSH_UNCONFIRMED');
+            this.assertOpeningLive(work, signal);
+            let actual = inspectNativeOpeningGenerationV1(this.session, work.identity, this.ctx.sessions.messageProjections);
+            if (actual.kind !== 'complete')
+                return fail(actual.kind === 'unknown' ? actual.code : 'OPENING_INVOCATION_MISSING');
+            let receiptEvent = actual.receiptEvent;
+            if (!receiptEvent)
+                receiptEvent = this.session.append('opening/generated-receipt', actual.receipt);
+            if (!await this.ctx.sessions.flush(this.session))
+                return fail('OPENING_RECEIPT_FLUSH_UNCONFIRMED');
+            this.assertOpeningLive(work, signal);
+            actual = inspectNativeOpeningGenerationV1(this.session, work.identity, this.ctx.sessions.messageProjections);
+            if (actual.kind !== 'complete' || !actual.receiptEvent || actual.receiptEvent !== receiptEvent)
+                return fail('OPENING_GENERATION_RECEIPT_CHANGED');
+            const receipt = actual.receipt, generatedReceiptRef = openingEventRefV1(receiptEvent), owner = this.openingOwnerIdentity(work), events = this.session.snapshotEvents(), originalModelMessages = receipt.outputs.map(output => {
+                const event = events[output.eventRef.seq];
+                if (!event || event.type !== 'assistant/message' || nativeInputSha256(event.data.message) !== output.messageSha256)
+                    throw Error('OPENING_GENERATION_OUTPUT_CHANGED');
+                return Object.freeze({ eventRef: output.eventRef, message: event.data.message });
+            }), toolEvents = receipt.toolEvents.map(ref => {
+                const event = events[ref.eventRef.seq];
+                if (!event || (event.type !== 'tool/call' && event.type !== 'tool/result') || event.type !== ref.type
+                    || nativeInputSha256(event) !== ref.eventRef.sha256)
+                    throw Error('OPENING_GENERATION_TOOL_CHANGED');
+                return event;
+            });
+            this.openingDomainCompletion = { status: 'pending', invocationRef: owner.invocationRef, generatedReceiptRef };
+            this.checkOpeningIdentity(work.registration, { identity: work.identity, phase: 'closing-precommit', signal });
+            this.assertOpeningLive(work, signal);
+            // Await the real publisher to settlement even when its signal is revoked.
+            // A late success cannot make a replaced registration current.
+            const acknowledgement = await work.registration.owner.closing(Object.freeze({ schemaVersion: 1, owner,
+                generatedReceiptRef, receipt, originalModelMessages: Object.freeze(originalModelMessages),
+                toolEvents: Object.freeze(toolEvents), signal }));
+            this.assertOpeningLive(work, signal);
+            const checked = nativeOpeningClosingAcknowledgementV1(acknowledgement, receipt.receiptSha256), current = inspectNativeOpeningGenerationV1(this.session, work.identity, this.ctx.sessions.messageProjections);
+            if (current.kind !== 'complete' || !current.receiptEvent || nativeInputSha256(current.receipt) !== nativeInputSha256(receipt)
+                || nativeInputSha256(current.receiptEvent) !== generatedReceiptRef.sha256)
+                return fail('OPENING_CLOSING_PROOF_CHANGED');
+            if (checked.kind !== 'settled') {
+                this.openingDomainCompletion = { status: checked.kind, code: checked.code, invocationRef: owner.invocationRef, generatedReceiptRef };
+                return false;
+            }
+            const ack = validateNativeOpeningClosingAckV1(sealNativeOpeningRecordV1({ schemaVersion: 1,
+                encoding: 'native-programmatic-opening-closing-ack-v1', invocationRef: owner.invocationRef,
+                generatedReceiptRef, receiptSha256: receipt.receiptSha256, ownerReceiptSha256: checked.ownerReceiptSha256 }, 'ackSha256'));
+            if (current.closingAck) {
+                if (nativeInputSha256(current.closingAck.data) !== nativeInputSha256(ack))
+                    return fail('OPENING_CLOSING_ACK_CHANGED');
+            }
+            else
+                this.session.append('opening/closing-ack', ack);
+            if (!await this.ctx.sessions.flush(this.session))
+                return fail('OPENING_CLOSING_ACK_FLUSH_UNCONFIRMED');
+            this.assertOpeningLive(work, signal);
+            const closed = inspectNativeOpeningGenerationV1(this.session, work.identity, this.ctx.sessions.messageProjections);
+            if (closed.kind !== 'complete' || !closed.closingAck || nativeInputSha256(closed.closingAck.data) !== nativeInputSha256(ack))
+                return fail('OPENING_CLOSING_ACK_CHANGED');
+            this.openingDomainCompletion = { status: 'settled', invocationRef: owner.invocationRef, generatedReceiptRef };
+            return true;
+        }
+        catch (error) {
+            return fail(signal.aborted ? 'OPENING_CLOSING_REVOKED' : error instanceof Error ? error.message : 'OPENING_CLOSING_FAILED');
+        }
     }
     /** Close only boundaries that this append opened; an unconfirmable closure poisons future writes. */
     closePartialProgrammaticTurn(turn, step) {
@@ -928,7 +1245,7 @@ export class ReactLoopAgent {
      *   the inbox insertion so a reentrant cancel cannot reclassify it.
      */
     wakeDriver(wakeAfterAbort = false) {
-        if (this.programmaticTurnPoisoned || this.inputDisposed || this.inputStop
+        if (this.programmaticTurnPoisoned || this.inputDisposed || this.inputStop || this.openingCompletionBlocked
             || this.inputCompletionBlocked || this.inputAdmission?.stopOwner && this.inputWakeStopped)
             return;
         if (this.phase.kind !== 'idle') {
@@ -1001,7 +1318,7 @@ export class ReactLoopAgent {
                         catch { /* notification cannot restart input */ }
                     }
                 }
-                else if (wakeRequested && this.inbox.hasPending)
+                else if (wakeRequested && this.inbox.hasPending && !this.openingCompletionBlocked)
                     this.wakeDriver();
             }
         }
@@ -1010,6 +1327,7 @@ export class ReactLoopAgent {
         /* v8 ignore next -- private callers establish the running phase before proposing a step */
         if (this.phase.kind !== 'running')
             throw new Error(`agent "${this.id}": pre-step outside running phase`);
+        const activeOpening = this.phase.programmatic?.opening;
         // A readable old assistant-only transcript cannot acquire a later system
         // head. Refuse before claim, leaving the original input durably pending.
         this.systemPrompt.assertCanProject();
@@ -1102,9 +1420,18 @@ export class ReactLoopAgent {
             // Do not start assembly or owner preparation under that stale identity.
             this.checkInput(admission, claimed);
         }
-        else
+        else if (activeOpening && target === 'next-turn') {
+            // A player queued behind this opening remains pending for domain-ready.
+            // The no-player turn never consumes that real Native inbox proposal.
+            claimed = [];
+        }
+        else {
+            if (activeOpening && this.inbox.nextStep.some(message => message.source.kind === 'user'))
+                throw Error('OPENING_PLAYER_CONTINUATION_REFUSED');
             claimed = this.inbox.claim(target, position.turn);
+        }
         const assembled = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal));
+        const opening = this.phase.programmatic?.opening;
         const generation = position.step === 1 ? this.phase.programmatic : undefined;
         const assembly = generation ? { ...assembled, tools: [], sections: [...assembled.sections,
                 { name: 'programmatic:opening-regenerate', text: generation.instruction, interpolate: false }] } : assembled;
@@ -1118,11 +1445,13 @@ export class ReactLoopAgent {
         signal.throwIfAborted();
         if (decision.kind === 'reject')
             return decision;
-        if (!generation)
-            return { ...decision, assembly, ...(admission ? { admission } : {}) };
+        if (!generation && !opening)
+            return { ...decision, assembly, ...admission ? { admission } : {} };
         if (decision.messages.some(message => message.source.kind === 'user')) {
             throw new Error('programmatic generation cannot admit a player message');
         }
+        if (opening && decision.messages.some(message => message.content.some(block => block.type !== 'text')))
+            throw Error('OPENING_NON_TEXT_CONTEXT_UNSUPPORTED');
         const systemSections = decision.systemSections ?? [];
         const contextSections = decision.messages.map(message => message.content
             .filter(block => block.type === 'text').map(block => block.text).join('')).filter(Boolean);
@@ -1207,14 +1536,380 @@ export class ReactLoopAgent {
             return fail(signal.aborted ? 'INPUT_COMPLETION_REVOKED' : 'INPUT_COMPLETION_OPERATION_FAILED');
         }
     }
-    /** Open one turn before claiming its first proposed step. */
+    materialRequestOwner(decision) {
+        const admission = decision.admission;
+        if (admission?.registration.requestMaterial)
+            return { kind: 'player-input', admission, owner: admission.registration.requestMaterial };
+        const opening = this.phase.kind === 'running' ? this.phase.programmatic?.opening : undefined;
+        return opening ? { kind: 'programmatic-opening', opening, owner: opening.registration.owner } : undefined;
+    }
+    assertMaterialRequestOwner(owner, messages) {
+        if (owner.kind === 'player-input') {
+            this.checkInput(owner.admission, messages);
+            return;
+        }
+        if (this.phase.kind !== 'running' || this.phase.programmatic?.opening !== owner.opening || messages.length)
+            throw Error('OPENING_NO_PLAYER_SELECTION_CHANGED');
+        this.assertOpeningLive(owner.opening, this.phase.abort.signal);
+    }
+    checkPreparedOpening(owner, decision) {
+        this.assertMaterialRequestOwner(owner, decision.messages);
+        const selected = this.#captureSelection(undefined, decision.messages), checked = nativeRequestMaterialOwnerCheckV1(owner.owner.check({
+            owner: this.openingOwnerIdentity(owner.opening), phase: 'prepared-precheckpoint', selected,
+            assemblySha256: nativeInputSha256(decision.assembly)
+        }));
+        if (checked.kind !== 'allow')
+            this.abortMaterialRequestOwner(owner, checked.code);
+        this.assertMaterialRequestOwner(owner, decision.messages);
+        this.#assertSelectionCurrent();
+    }
+    async checkpointOpening(decision, stepStart, signal) {
+        const owner = this.materialRequestOwner(decision);
+        if (!owner || owner.kind !== 'programmatic-opening')
+            return;
+        this.checkPreparedOpening(owner, decision);
+        const flushed = await this.ctx.sessions.flush(this.session);
+        this.assertMaterialRequestOwner(owner, decision.messages);
+        if (!flushed)
+            this.abortMaterialRequestOwner(owner, 'OPENING_CHECKPOINT_FLUSH_UNCONFIRMED');
+        signal.throwIfAborted();
+        this.checkPreparedOpening(owner, decision);
+        if (!this.#materialSelection || this.#materialSelection.kind !== 'programmatic-opening')
+            this.abortMaterialRequestOwner(owner, 'OPENING_CHECKPOINT_LINEAGE_CHANGED');
+        this.#materialSelection.checkpointSha256 = nativeInputSha256({ schemaVersion: 1,
+            encoding: 'native-programmatic-opening-checkpoint-v1', invocationRef: openingEventRefV1(owner.opening.invocation),
+            stepStartRef: openingEventRefV1(stepStart), flushed: true });
+    }
+    recordOpeningRequestAttempt(decision, position, firstAttempt) {
+        const owner = this.materialRequestOwner(decision);
+        if (!owner || owner.kind !== 'programmatic-opening')
+            return;
+        this.assertMaterialRequestOwner(owner, decision.messages);
+        const selected = this.#captureSelection(undefined, decision.messages, firstAttempt), attempt = (owner.opening.attempts.get(position.step) ?? 0) + 1;
+        owner.opening.attempts.set(position.step, attempt);
+        const record = validateNativeOpeningRequestAttemptV1(sealNativeOpeningRecordV1({ schemaVersion: 1,
+            encoding: 'native-programmatic-opening-request-attempt-v1', invocationRef: openingEventRefV1(owner.opening.invocation),
+            ...position, attempt, assemblySha256: nativeInputSha256(decision.assembly), selectedSha256: selected.sha256 }, 'attemptSha256'));
+        this.#recordSelectionAppend(() => this.session.append('opening/request-attempt', record));
+    }
+    abortMaterialRequestOwner(owner, code) {
+        if (owner.kind === 'player-input')
+            this.abortInput(owner.admission, code, 'final', owner.admission.claim);
+        this.openingDomainCompletion = { status: 'blocked', code, invocationRef: openingEventRefV1(owner.opening.invocation) };
+        throw Error(code);
+    }
+    #selectionCut() {
+        const boundary = this.session.currentRequestBoundary();
+        return { boundary, sha256: nativeInputSha256({ boundarySeq: Number(boundary.boundarySeq),
+                contentGeneration: boundary.contentGeneration, surfaceNodes: boundary.surfaceNodes,
+                messages: boundary.messageNodes.map(({ seq, message }) => ({ seq: Number(seq), id: String(message.id),
+                    role: message.role, messageSha256: nativeInputSha256(message) })) }) };
+    }
+    #retireSelection() {
+        if (this.#materialSelection)
+            this.#materialSelection.active = false;
+        this.#materialSelection = undefined;
+    }
+    #failSelection(lineage, code) {
+        // A partial/unknown write cannot be adopted by a later successful cut.
+        lineage.active = false;
+        throw Error(code);
+    }
+    #assertSelectionOwner(lineage) {
+        const { phase } = lineage;
+        if (!lineage.active || this.#materialSelection !== lineage || this.session !== lineage.session
+            || this.phase !== phase || phase.turn !== lineage.turn
+            || !(phase.step === lineage.step || phase.step + 1 === lineage.step && lineage.stepStartSeq === undefined)
+            || this.inputDisposed) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_LINEAGE_REVOKED');
+        }
+        if (lineage.kind === 'player-input') {
+            const { admission } = lineage;
+            if (admission.registration !== lineage.registration || admission.identity !== lineage.identity
+                || admission.registration.requestMaterial !== lineage.owner
+                || !lineage.registration.active || this.inputAdmission !== lineage.registration
+                || admission.claim !== lineage.claim || nativeInputSha256(admission.claim) !== lineage.claimSha256)
+                this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_LINEAGE_REVOKED');
+        }
+        else {
+            if (phase.programmatic?.opening !== lineage.opening || lineage.opening.registration !== lineage.registration
+                || this.openingMaterial !== lineage.registration || !lineage.registration.active
+                || lineage.registration.owner !== lineage.owner || lineage.pending.length)
+                this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_LINEAGE_REVOKED');
+            this.assertOpeningLive(lineage.opening, phase.abort.signal);
+        }
+        phase.abort.signal.throwIfAborted();
+    }
+    #assertSelectionCurrent(lineage = this.#materialSelection) {
+        if (!lineage)
+            return;
+        this.#assertSelectionOwner(lineage);
+        if (this.#selectionCut().sha256 !== lineage.expected.sha256) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_BOUNDARY_CHANGED');
+        }
+    }
+    #assertSelectionDecision(lineage, admission, messages) {
+        this.#assertSelectionCurrent(lineage);
+        if ((lineage.kind === 'player-input' ? admission !== lineage.admission : admission !== undefined)
+            || messages.length !== lineage.pending.length
+            || messages.some((message, index) => nativeInputSha256(message) !== lineage.pending[index]?.messageSha256)) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_PENDING_CHANGED');
+        }
+    }
+    #captureSelection(admission, messages, firstAttempt) {
+        const lineage = this.#materialSelection;
+        if (!lineage)
+            return this.#materialSelected(messages, firstAttempt ?? false);
+        this.#assertSelectionDecision(lineage, admission, messages);
+        if (firstAttempt !== undefined && firstAttempt === lineage.attemptStarted) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_ATTEMPT_CHANGED');
+        }
+        const pending = lineage.pending.slice(lineage.pendingCursor).map(row => {
+            if (row.message.role !== 'user')
+                return this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_PENDING_INVALID');
+            return row.message;
+        });
+        const selected = this.#materialSelected(pending, true);
+        this.#assertSelectionCurrent(lineage);
+        nativeMaterialSelections.set(selected, { lineage, revision: lineage.revision,
+            pendingCursor: lineage.pendingCursor, boundarySha256: lineage.expected.sha256 });
+        return selected;
+    }
+    #recordSelectionAppend(append, pendingMessage) {
+        const lineage = this.#materialSelection;
+        if (!lineage)
+            return append();
+        this.#assertSelectionCurrent(lineage);
+        const before = lineage.expected;
+        const pending = pendingMessage === undefined ? undefined : lineage.pending[lineage.pendingCursor];
+        if (pendingMessage !== undefined && (!pending || nativeInputSha256(pendingMessage) !== pending.messageSha256)) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_PENDING_APPEND_CHANGED');
+        }
+        let event;
+        try {
+            event = append();
+        }
+        catch (error) {
+            lineage.active = false;
+            throw error;
+        }
+        if (lineage.kind === 'programmatic-opening') {
+            if (!openingSelectionAppendTypes.has(event.type) || pendingMessage !== undefined)
+                this.#failSelection(lineage, 'OPENING_SELECTION_FOREIGN_APPEND');
+            if (event.type === 'opening/request-attempt') {
+                const attempt = validateNativeOpeningRequestAttemptV1(event.data);
+                if (attempt.turn !== lineage.turn || attempt.step !== lineage.step
+                    || nativeInputSha256(attempt.invocationRef) !== nativeInputSha256(openingEventRefV1(lineage.opening.invocation))
+                    || attempt.attempt !== lineage.opening.attempts.get(lineage.step))
+                    this.#failSelection(lineage, 'OPENING_SELECTION_ATTEMPT_OWNER_CHANGED');
+            }
+        }
+        const after = this.#selectionCut();
+        // Publication can synchronously notify arbitrary observers. Only the
+        // actual append's returned event may be the new latest log boundary.
+        if (Number(event.seq) !== Number(before.boundary.boundarySeq) + 1 || after.boundary.boundarySeq !== event.seq) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_APPEND_BOUNDARY_CHANGED');
+        }
+        this.#assertSelectionOwner(lineage);
+        if (pending) {
+            if (event.type !== 'user/message' || nativeInputSha256(event.data) !== pending.messageSha256) {
+                this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_ADMITTED_MESSAGE_CHANGED');
+            }
+            const admitted = after.boundary.messageNodes.find(row => row.seq === event.seq);
+            if (!admitted || nativeInputSha256(admitted.message) !== pending.messageSha256) {
+                this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_ADMITTED_SURFACE_CHANGED');
+            }
+            lineage.pendingCursor++;
+        }
+        const eventSha256 = nativeInputSha256(event);
+        lineage.events.push(Object.freeze({ kind: 'native-append', seq: Number(event.seq), type: event.type,
+            sha256: eventSha256, beforeBoundarySha256: before.sha256, afterBoundarySha256: after.sha256,
+            ...pending ? { admitted: Object.freeze({ pendingIndex: lineage.pendingCursor - 1, id: pending.id,
+                    role: 'user', messageSha256: pending.messageSha256 }) } : {} }));
+        lineage.actualEvents.push(event);
+        lineage.expected = after;
+        lineage.revision++;
+        if (event.type === 'step/start')
+            lineage.stepStartSeq = Number(event.seq);
+        const actualEvent = event;
+        if (actualEvent.type === 'assistant/attempt')
+            lineage.lastAttempt = { event: actualEvent, sha256: eventSha256 };
+        return event;
+    }
+    #recoveryCut(failure) {
+        const lineage = this.#materialSelection;
+        if (!lineage)
+            return undefined;
+        this.#assertSelectionCurrent(lineage);
+        if (!lineage.attemptStarted || lineage.pendingCursor !== lineage.pending.length || !lineage.lastAttempt
+            || lineage.lastAttempt.event.seq !== lineage.expected.boundary.boundarySeq) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_RETRY_ATTEMPT_CHANGED');
+        }
+        // One explicit read cut around this actual failure waterfall. The Session
+        // owns its frozen log and projections; no detached fold is reimplemented.
+        // oxlint-disable-next-line typescript/no-deprecated -- Native's exact recovery window requires actual event refs.
+        const events = this.session.snapshotEvents();
+        if (events.length !== Number(lineage.expected.boundary.boundarySeq) + 1
+            || events.at(-1) !== lineage.lastAttempt.event
+            || nativeInputSha256(lineage.lastAttempt.event) !== lineage.lastAttempt.sha256) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_RETRY_LOG_CHANGED');
+        }
+        const basic = { lineage, before: lineage.expected, events, failureSha256: nativeInputSha256(failure) };
+        if (failure.code !== IMAGE_OFFLOAD_REQUIRED_CODE)
+            return basic;
+        const count = failure.offloadImages;
+        if (typeof count !== 'number' || !Number.isSafeInteger(count) || count <= 0) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_IMAGE_OFFLOAD_COUNT_INVALID');
+        }
+        let remaining = count;
+        const targets = [];
+        for (const { seq, message } of lineage.expected.boundary.messageNodes) {
+            if (remaining === 0)
+                break;
+            const event = events[Number(seq)];
+            if (event?.type !== 'user/message' && event?.type !== 'tool/result')
+                continue;
+            let imageIndex = 0;
+            const imageIndexes = [];
+            for (const block of message.content) {
+                if (block.type !== 'image')
+                    continue;
+                if (block.offloaded !== true && remaining > 0) {
+                    imageIndexes.push(imageIndex);
+                    remaining--;
+                }
+                imageIndex++;
+            }
+            if (imageIndexes.length)
+                targets.push(Object.freeze({ seq: Number(seq), imageIndexes: Object.freeze(imageIndexes) }));
+        }
+        if (remaining !== 0)
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_IMAGE_OFFLOAD_COUNT_EXCEEDS_RETAINED');
+        return { ...basic, offloadImages: count, targets: Object.freeze(targets) };
+    }
+    #acceptRecovery(cut) {
+        if (!cut)
+            return;
+        const { lineage, before } = cut;
+        this.#assertSelectionOwner(lineage);
+        if (lineage.expected !== before)
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_RETRY_CUT_CHANGED');
+        const after = this.#selectionCut();
+        if (cut.offloadImages === undefined) {
+            if (after.sha256 !== before.sha256)
+                this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_RETRY_FOREIGN_APPEND');
+            return;
+        }
+        // oxlint-disable-next-line typescript/no-deprecated -- Inspect only the actual recovery tail against the captured frozen prefix.
+        const events = this.session.snapshotEvents();
+        const event = events[cut.events.length];
+        if (!event || events.length !== cut.events.length + 1 || cut.events.some((prior, index) => events[index] !== prior)
+            || Number(event.seq) !== cut.events.length || after.boundary.boundarySeq !== event.seq
+            || String(event.type) !== 'image/offload' || Reflect.ownKeys(event).some(key => typeof key !== 'string' || !['type', 'seq', 'time', 'data'].includes(key))
+            || nativeInputSha256(event.data) !== nativeInputSha256({ targets: cut.targets })
+            || after.boundary.contentGeneration !== before.boundary.contentGeneration + 1
+            || nativeInputSha256(after.boundary.surfaceNodes) !== nativeInputSha256(before.boundary.surfaceNodes)
+            || after.boundary.messageNodes.length !== before.boundary.messageNodes.length) {
+            this.#failSelection(lineage, 'REQUEST_MATERIAL_IMAGE_OFFLOAD_RECOVERY_CHANGED');
+        }
+        const targets = new Map(cut.targets?.map(target => [target.seq, new Set(target.imageIndexes)]));
+        for (const [index, row] of before.boundary.messageNodes.entries()) {
+            const actual = after.boundary.messageNodes[index];
+            const indexes = targets.get(Number(row.seq));
+            let imageIndex = 0;
+            const expected = indexes ? { ...row.message, content: row.message.content.map(block => {
+                    if (block.type !== 'image')
+                        return block;
+                    const selected = indexes.has(imageIndex++);
+                    return selected ? { ...block, offloaded: true } : block;
+                }) } : row.message;
+            if (!actual || actual.seq !== row.seq || nativeInputSha256(actual.message) !== nativeInputSha256(expected)) {
+                this.#failSelection(lineage, 'REQUEST_MATERIAL_IMAGE_OFFLOAD_MESSAGE_CHANGED');
+            }
+        }
+        // This certifies the precise effect during Native's failure window, not
+        // which plugin handler ran. An identical authorized effect is equivalent.
+        lineage.events.push(Object.freeze({ kind: 'image-offload-recovery', seq: Number(event.seq), type: String(event.type),
+            sha256: nativeInputSha256(event), beforeBoundarySha256: before.sha256, afterBoundarySha256: after.sha256,
+            failureSha256: cut.failureSha256, offloadImages: cut.offloadImages, targets: cut.targets }));
+        lineage.actualEvents.push(event);
+        lineage.expected = after;
+        lineage.revision++;
+    }
+    /** Prepare belongs to this final decision before step/start. Only a fully
+     * checked prepared result starts a new private selection lineage. */
+    async #prepareRequestMaterial(decision, position, signal) {
+        this.#retireSelection();
+        const requestOwner = this.materialRequestOwner(decision);
+        if (!requestOwner || !requestOwner.owner.prepare)
+            return;
+        this.assertMaterialRequestOwner(requestOwner, decision.messages);
+        const selected = this.#materialSelected(decision.messages, true);
+        const finalAssembly = deepFreeze(structuredClone(decision.assembly));
+        const assemblySha256 = nativeInputSha256(finalAssembly);
+        const common = { schemaVersion: 1, ...position, signal, finalAssembly, assemblySha256, selected };
+        let result;
+        try {
+            if (requestOwner.kind === 'player-input') {
+                const preparation = Object.freeze({ ...common,
+                    admission: this.materialAdmission(requestOwner.admission, decision.messages) });
+                result = nativeRequestMaterialPrepareDecisionV1(await requestOwner.owner.prepare(preparation));
+            }
+            else {
+                const preparation = Object.freeze({ ...common,
+                    owner: this.openingOwnerIdentity(requestOwner.opening), noPlayer: Object.freeze({ kind: 'no-player',
+                        selectedUserMessageIds: Object.freeze([]) }) });
+                result = nativeRequestMaterialPrepareDecisionV1(await requestOwner.owner.prepare(preparation));
+            }
+        }
+        catch (error) {
+            const code = error instanceof Error && /^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
+                ? error.message : 'REQUEST_MATERIAL_PREPARATION_FAILED';
+            this.abortMaterialRequestOwner(requestOwner, code);
+        }
+        signal.throwIfAborted();
+        this.assertMaterialRequestOwner(requestOwner, decision.messages);
+        // Preparation may write Core data, but the exact Native request cut and
+        // complete assembly cannot change before step/start and checkpoint.
+        if (this.#materialSelected(decision.messages, true).sha256 !== selected.sha256) {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_PREPARATION_BASE_CHANGED');
+        }
+        if (nativeInputSha256(decision.assembly) !== assemblySha256) {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_PREPARATION_ASSEMBLY_CHANGED');
+        }
+        if (result.kind === 'blocked')
+            this.abortMaterialRequestOwner(requestOwner, result.code);
+        if (result.kind !== 'prepared') {
+            if (requestOwner.kind === 'programmatic-opening')
+                this.abortMaterialRequestOwner(requestOwner, 'OPENING_MATERIAL_PREPARATION_REQUIRED');
+            return;
+        }
+        if (this.phase.kind !== 'running' || requestOwner.kind === 'player-input' && !requestOwner.admission.claim) {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_SELECTION_OWNER_CHANGED');
+        }
+        const shared = { session: this.session, phase: this.phase, ...position, initial: selected,
+            pending: Object.freeze(selected.messages.filter(row => row.origin === 'pending-decision')),
+            expected: this.#selectionCut(), active: true, revision: 0, pendingCursor: 0, attemptStarted: false,
+            events: [], actualEvents: [],
+            assertCurrent: () => this.#assertSelectionCurrent(lineage) };
+        const lineage = requestOwner.kind === 'player-input'
+            ? { ...shared, kind: 'player-input', admission: requestOwner.admission, registration: requestOwner.admission.registration,
+                identity: requestOwner.admission.identity, owner: requestOwner.owner, claim: requestOwner.admission.claim,
+                claimSha256: nativeInputSha256(requestOwner.admission.claim) }
+            : { ...shared, kind: 'programmatic-opening', opening: requestOwner.opening,
+                registration: requestOwner.opening.registration, owner: requestOwner.owner };
+        this.#materialSelection = lineage;
+        nativeMaterialSelections.set(selected, { lineage, revision: 0, pendingCursor: 0, boundarySha256: lineage.expected.sha256 });
+        if (requestOwner.kind === 'programmatic-opening')
+            this.checkPreparedOpening(requestOwner, decision);
+    }
     async turn() {
         if (this.phase.kind !== 'running') {
             this.throwError(new Error(`agent "${this.id}": turn without driver reservation`));
         }
         const phase = this.phase;
         const { signal } = phase.abort;
-        if (this.inputCompletionBlocked)
+        if (this.inputCompletionBlocked || this.openingCompletionBlocked && !phase.programmatic?.opening)
             return false;
         signal.throwIfAborted();
         const requiresAdmission = this.inputAdmission !== undefined && !phase.programmatic;
@@ -1263,11 +1958,22 @@ export class ReactLoopAgent {
                     return false;
                 }
                 signal.throwIfAborted();
-                const stepStart = this.session.append('step/start', { turn, step });
+                // Empty/no-request exits above spend no material work or records. The
+                // existing Core step and final decision are retained; hooks do not rerun.
+                if (!phase.programmatic || phase.programmatic.opening)
+                    await this.#prepareRequestMaterial(decision, { turn, step }, signal);
+                signal.throwIfAborted();
+                const stepStart = this.#recordSelectionAppend(() => this.session.append('step/start', { turn, step }));
                 phase.step = step;
                 try {
                     if (step === 1 && decision.admission)
                         await this.checkpointInput(decision.admission, stepStart.seq, decision.messages);
+                    if (phase.programmatic?.opening)
+                        await this.checkpointOpening(decision, stepStart, signal);
+                    this.#assertSelectionCurrent();
+                    if (this.#materialSelection && decision.admission?.receipt) {
+                        this.#materialSelection.checkpointSha256 = nativeInputSha256(decision.admission.receipt);
+                    }
                     // max-tokens is sticky: once any step hits the ceiling, later steps
                     // that complete normally must not downgrade the turn outcome.
                     const stepEnd = await this.step(decision);
@@ -1277,6 +1983,7 @@ export class ReactLoopAgent {
                         turnEnds = stepEnd;
                 }
                 finally {
+                    this.#retireSelection();
                     this.session.append('step/end', { turn, step });
                 }
                 signal.throwIfAborted();
@@ -1311,6 +2018,12 @@ export class ReactLoopAgent {
             this.throwError(error);
         }
         finally {
+            this.#retireSelection();
+            if (phase.programmatic?.opening && turnEnds?.kind !== 'completed')
+                this.openingDomainCompletion = {
+                    status: 'blocked', code: 'OPENING_GENERATION_TURN_NOT_COMPLETED',
+                    invocationRef: openingEventRefV1(phase.programmatic.opening.invocation)
+                };
             if (requiresCompletion && currentAdmission?.receipt) {
                 this.inputCompletion = { registration: currentAdmission.registration,
                     result: Object.freeze({ status: turnEnds?.kind === 'completed' ? 'pending' : 'blocked',
@@ -1345,6 +2058,8 @@ export class ReactLoopAgent {
         if (requiresCompletion && currentAdmission
             && !await this.completeInputWork(currentAdmission, capturedEnd, signal))
             return false;
+        if (phase.programmatic?.opening && !await this.closeOwnedOpening(phase.programmatic.opening, signal))
+            return false;
         if (phase.programmatic || !this.inbox.hasPending)
             return false;
         phase.abort = new AbortController();
@@ -1363,6 +2078,7 @@ export class ReactLoopAgent {
         const renderedPrompt = renderPrompt(assembly);
         let firstAttempt = true;
         while (true) {
+            this.recordOpeningRequestAttempt(decision, { turn, step }, firstAttempt);
             const { config, preparedCall } = await this.prepareRequest(turn, step, signal);
             // Adapter preparation can await arbitrary work. Recheck before every
             // system/user/header commit and provider stream, including retries.
@@ -1370,22 +2086,36 @@ export class ReactLoopAgent {
             if (admission)
                 this.checkInput(admission, decision.messages);
             const startsRequestSeries = firstAttempt && decision.startsRequestSeries === true;
-            const commits = this.systemPrompt.project(renderedPrompt, {
-                inHistory: preparedCall?.systemPromptUpdate === 'in-history',
-                startsSeries: startsRequestSeries
-                    || this.requestSurfaceGeneration !== this.session.surface.contentGeneration
-                    || (preparedCall?.toolUpdate === undefined && this.toolsChanged(assembly.tools)),
-            });
-            for (const { message, intent } of commits) {
-                this.session.append('system/message', { turn, step, message }, intent);
-            }
-            if (firstAttempt) {
-                for (const message of decision.messages) {
-                    this.session.append('user/message', message, { surfaceOp: 'append' });
+            let request = this.materialRequestOwner(decision)
+                ? this.buildMaterialRequest(decision, { config, preparedCall, turn, step, firstAttempt, signal }) : undefined;
+            if (request === undefined) {
+                const commits = this.systemPrompt.project(renderedPrompt, {
+                    inHistory: preparedCall?.systemPromptUpdate === 'in-history',
+                    startsSeries: startsRequestSeries
+                        || this.requestSurfaceGeneration !== this.session.surface.contentGeneration
+                        || (preparedCall?.toolUpdate === undefined && this.toolsChanged(assembly.tools)),
+                });
+                for (const { message, intent } of commits) {
+                    this.#recordSelectionAppend(() => this.session.append('system/message', { turn, step, message }, intent));
                 }
+                if (firstAttempt) {
+                    for (const message of decision.messages) {
+                        this.#recordSelectionAppend(() => this.session.append('user/message', message, { surfaceOp: 'append' }), message);
+                    }
+                }
+                firstAttempt = false;
+                request = this.buildRequest(config, preparedCall, assembly.tools, { turn, step }, startsRequestSeries, signal);
             }
-            firstAttempt = false;
-            const request = this.buildRequest(config, preparedCall, assembly.tools, { turn, step }, startsRequestSeries, signal);
+            else {
+                firstAttempt = false;
+            }
+            if (this.#materialSelection) {
+                this.#assertSelectionCurrent();
+                if (this.#materialSelection.pendingCursor !== this.#materialSelection.pending.length) {
+                    this.#failSelection(this.#materialSelection, 'REQUEST_MATERIAL_SELECTION_PENDING_NOT_ADMITTED');
+                }
+                this.#materialSelection.attemptStarted = true;
+            }
             // Session append notifications can synchronously invalidate Source or
             // readiness. The already-written input is admitted, never replayable.
             if (admission)
@@ -1408,6 +2138,9 @@ export class ReactLoopAgent {
             catch (error) {
                 if (!started)
                     throw error;
+                // Thrown/aborted streams have no recovery reentry. Retire proof before
+                // the established interrupted/attempt settlement, including aborted signals.
+                this.#retireSelection();
                 try {
                     if (signal.aborted) {
                         const content = live.interruptedBlocks();
@@ -1444,7 +2177,8 @@ export class ReactLoopAgent {
             try {
                 const finish = live.finish;
                 if (finish.kind === 'error' || finish.kind === 'aborted') {
-                    live.settle('assistant/attempt', () => this.session.append('assistant/attempt', { turn, step, stream: live.stream }).seq);
+                    live.settle('assistant/attempt', () => this.#recordSelectionAppend(() => this.session.append('assistant/attempt', { turn, step, stream: live.stream })).seq);
+                    const recovery = this.#recoveryCut(finish.failure);
                     const action = await this.dispatch.waterfall('agent/request-error', {
                         turn,
                         step,
@@ -1457,8 +2191,13 @@ export class ReactLoopAgent {
                     if (action?.kind !== 'retry') {
                         throw new LlmError(finish.failure.message, finish.failure.code, finish.failure);
                     }
+                    this.#acceptRecovery(recovery);
                     continue;
                 }
+                this.#assertSelectionCurrent();
+                // A successful model message closes this request lineage. Tool output
+                // and the next step are admitted under their own fresh preparation.
+                this.#retireSelection();
                 const createdMessage = createAssistantMessage({
                     content: live.blocks(),
                     source: {
@@ -1535,6 +2274,213 @@ export class ReactLoopAgent {
         signal.throwIfAborted();
         return { config, ...preparedCall === undefined ? {} : { preparedCall } };
     }
+    /** Actual v2 input objects for the same registered material owner. */
+    materialAdmission(admission, messages) {
+        if (admission.registration.hook.schemaVersion !== 2 || !admission.preparation || !admission.claim) {
+            this.abortInput(admission, 'REQUEST_MATERIAL_V2_OWNER_REQUIRED', 'final', admission.claim);
+        }
+        return Object.freeze({ proposal: admission.proposal, claim: admission.claim, identity: admission.identity, messages,
+            preparation: admission.preparation, ...admission.continuation ? { continuation: true } : {},
+            ...admission.receipt ? { receipt: admission.receipt } : {}, ...admission.supplement ? { supplement: admission.supplement } : {} });
+    }
+    /** The selected data precedes planned system/header/tool operations. It
+     * distinguishes actual surface nodes from not-yet-appended decision input. */
+    #materialSelected(messages, firstAttempt) {
+        const boundary = this.session.currentRequestBoundary();
+        const selected = [...boundary.messageNodes.map(({ seq, message }) => Object.freeze({ origin: 'surface',
+                eventSeq: Number(seq), id: String(message.id), role: message.role, messageSha256: nativeInputSha256(message), message })),
+            ...firstAttempt ? messages.map(original => {
+                const message = freezeMessage(original);
+                return Object.freeze({ origin: 'pending-decision', eventSeq: null, id: String(message.id), role: message.role,
+                    messageSha256: nativeInputSha256(message), message });
+            }) : []];
+        const data = { contentGeneration: boundary.contentGeneration, boundarySeq: Number(boundary.boundarySeq),
+            surfaceNodes: Object.freeze([...boundary.surfaceNodes]), messages: Object.freeze(selected) };
+        // Message refs bind content as well as membership; plain append does not
+        // increase contentGeneration, so that counter alone cannot certify a cut.
+        return Object.freeze({ ...data, sha256: nativeInputSha256({ ...data,
+                messages: selected.map(({ message: _message, ...ref }) => ref) }) });
+    }
+    checkMaterialOwner(requestOwner, messages, decision, phase, materialRef) {
+        this.assertMaterialRequestOwner(requestOwner, messages);
+        const admission = requestOwner.kind === 'player-input' ? requestOwner.admission : undefined;
+        const selected = this.#materialSelection ? this.#captureSelection(admission, messages) : undefined;
+        let result;
+        try {
+            if (requestOwner.kind === 'player-input')
+                result = nativeRequestMaterialOwnerCheckV1(requestOwner.owner.check({
+                    admission: this.materialAdmission(requestOwner.admission, messages), phase, decision,
+                    ...selected ? { selected } : {}, ...materialRef ? { materialRef } : {}
+                }));
+            else {
+                if (!selected)
+                    this.abortMaterialRequestOwner(requestOwner, 'OPENING_NATIVE_SELECTION_REQUIRED');
+                result = nativeRequestMaterialOwnerCheckV1(requestOwner.owner.check({ owner: this.openingOwnerIdentity(requestOwner.opening),
+                    phase, decision, selected, ...materialRef ? { materialRef } : {} }));
+            }
+        }
+        catch {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_OWNER_CHECK_FAILED');
+        }
+        if (result.kind !== 'allow')
+            this.abortMaterialRequestOwner(requestOwner, result.code);
+        this.assertMaterialRequestOwner(requestOwner, messages);
+        this.#assertSelectionCurrent();
+    }
+    /** One synchronous transform per actual request retry. All refusals and
+     * planning finish before the first system/user/header/context commit. */
+    buildMaterialRequest(decision, input) {
+        const requestOwner = this.materialRequestOwner(decision);
+        if (!requestOwner)
+            return undefined;
+        const admission = requestOwner.kind === 'player-input' ? requestOwner.admission : undefined, owner = requestOwner.owner;
+        const { config, preparedCall, turn, step, firstAttempt, signal } = input;
+        signal.throwIfAborted();
+        const selected = this.#captureSelection(admission, decision.messages, firstAttempt);
+        const finalAssembly = deepFreeze(structuredClone(decision.assembly));
+        const common = { schemaVersion: 1, turn, step, firstAttempt, signal,
+            preparedRoute: Object.freeze({ configSha256: nativeInputSha256(config),
+                ...preparedCall?.requestMaterialText ? { requestMaterialText: preparedCall.requestMaterialText } : {},
+                ...preparedCall?.systemPromptUpdate ? { systemPromptUpdate: preparedCall.systemPromptUpdate } : {},
+                ...preparedCall?.toolUpdate ? { toolUpdate: preparedCall.toolUpdate } : {} }),
+            finalAssembly, assemblySha256: nativeInputSha256(finalAssembly), selected };
+        let materialDecision;
+        try {
+            if (requestOwner.kind === 'player-input') {
+                const payload = Object.freeze({ ...common,
+                    admission: this.materialAdmission(requestOwner.admission, decision.messages) });
+                materialDecision = nativeRequestMaterialDecisionV1(requestOwner.owner.transform(payload));
+            }
+            else {
+                const attempt = requestOwner.opening.attempts.get(step);
+                if (attempt === undefined)
+                    this.abortMaterialRequestOwner(requestOwner, 'OPENING_REQUEST_ATTEMPT_REQUIRED');
+                const payload = Object.freeze({ ...common, attempt,
+                    owner: this.openingOwnerIdentity(requestOwner.opening), noPlayer: Object.freeze({ kind: 'no-player',
+                        selectedUserMessageIds: Object.freeze([]) }) });
+                materialDecision = nativeRequestMaterialDecisionV1(requestOwner.owner.transform(payload));
+            }
+        }
+        catch {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_TRANSFORM_FAILED');
+        }
+        this.assertMaterialRequestOwner(requestOwner, decision.messages);
+        if (this.#materialSelected(decision.messages, firstAttempt).sha256 !== selected.sha256) {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_SELECTED_BASE_CHANGED');
+        }
+        if (materialDecision.kind === 'blocked')
+            this.abortMaterialRequestOwner(requestOwner, materialDecision.code);
+        if (materialDecision.kind === 'unchanged') {
+            if (requestOwner.kind === 'programmatic-opening')
+                this.abortMaterialRequestOwner(requestOwner, 'OPENING_MATERIAL_TRANSFORM_REQUIRED');
+            return undefined;
+        }
+        const plan = materialDecision;
+        if (plan.expectedAssemblySha256 !== common.assemblySha256 || plan.expectedSelectedBaseSha256 !== selected.sha256) {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_PRECONDITION_CHANGED');
+        }
+        // A route's system replacement bit is not additive system-at-depth support.
+        // Missing exact-route capability refuses each required insertion before writes.
+        const capability = preparedCall?.requestMaterialText;
+        if (capability?.schemaVersion !== 1 || ![capability.user, capability.assistant, capability.systemAtDepth]
+            .includes('role-and-position')) {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
+        }
+        for (const insertion of [...plan.insertions, ...(plan.anchoredInsertions ?? [])]) {
+            const support = insertion.requestedRole === 'system' ? capability?.systemAtDepth : capability?.[insertion.requestedRole];
+            if (capability?.schemaVersion !== 1 || support !== 'role-and-position') {
+                this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
+            }
+        }
+        let assembly;
+        try {
+            assembly = applyNativeOwnedSectionsV1(finalAssembly, plan, owner.sectionNames);
+        }
+        catch {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_SECTION_SUPPRESSED_OR_CHANGED');
+        }
+        const systemCommits = this.systemPrompt.project(renderPrompt(assembly), {
+            inHistory: preparedCall?.systemPromptUpdate === 'in-history', startsSeries: true
+        });
+        // Material owns a new request series: normalize old effective system heads
+        // so their prior resident contributions cannot survive behind the residual.
+        const appends = systemCommits.map(({ message, intent }) => ({ type: 'system/message',
+            data: { turn, step, message }, intent }));
+        if (firstAttempt)
+            for (const message of decision.messages) {
+                appends.push({ type: 'user/message', data: message, intent: { surfaceOp: 'append' } });
+            }
+        const envelope = planNativeRequestEnvelope({ config, ...preparedCall ? { preparedCall } : {}, tools: assembly.tools,
+            position: { turn, step }, startsSeries: true, requestHeaderLogged: this.requestHeaderLogged,
+            nextSeq: Number(this.session.seq) + appends.length, baseline: this.session.requestHeaderBoundary(),
+            previousContext: this.session.requestContext() });
+        appends.push(...envelope.appends);
+        const preview = this.session.previewRequestAppends(appends);
+        let protectedPrefixLength = 0;
+        while (preview.messages[protectedPrefixLength]?.role === 'system'
+            || preview.messages[protectedPrefixLength]?.role === 'developer')
+            protectedPrefixLength++;
+        let anchored;
+        try {
+            anchored = resolveNativeOwnedMaterialAnchorsV1(plan, selected, preview, protectedPrefixLength);
+        }
+        catch (error) {
+            const code = error instanceof Error && /^REQUEST_MATERIAL_ANCHOR_[A-Z_]+$/.test(error.message)
+                ? error.message : 'REQUEST_MATERIAL_ANCHOR_RESOLUTION_FAILED';
+            this.abortMaterialRequestOwner(requestOwner, code);
+        }
+        const result = planNativeRequestMaterialV1({ turn, step, header: { seq: envelope.headerSeq, sha256: nativeInputSha256(envelope.header) },
+            snapshot: plan.snapshot, plan: plan.plan, boundarySeq: Number(preview.boundarySeq), contentGeneration: preview.contentGeneration,
+            surfaceNodes: preview.surfaceNodes, baseMessages: preview.messages,
+            baseRefs: preview.messageNodes.map(({ seq, message }) => ({ seq: Number(seq), id: String(message.id), role: message.role,
+                messageSha256: nativeInputSha256(message) })), protectedPrefixLength, insertions: anchored.insertions });
+        for (const expected of anchored.resolutions) {
+            const actual = result.record.placements.find(row => row.contributionRef === expected.contributionRef);
+            if (!actual || actual.baseIndex !== expected.baseIndex) {
+                this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_ANCHOR_PLACEMENT_CHANGED');
+            }
+        }
+        this.checkMaterialOwner(requestOwner, decision.messages, plan, 'planned-precommit');
+        if (this.#materialSelected(decision.messages, firstAttempt).sha256 !== selected.sha256) {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_SELECTED_BASE_CHANGED');
+        }
+        for (const planned of preview.events) {
+            this.checkMaterialOwner(requestOwner, decision.messages, plan, 'planned-precommit');
+            const event = this.#recordSelectionAppend(() => {
+                const committed = this.session.appendRequestPreviewEvent(preview);
+                if (committed !== planned)
+                    throw Error('REQUEST_MATERIAL_COMMIT_CHANGED');
+                return committed;
+            }, planned.type === 'user/message' ? planned.data : undefined);
+            if (event !== planned)
+                throw Error('REQUEST_MATERIAL_COMMIT_CHANGED');
+            if (event.type === 'request/header')
+                this.requestHeaderLogged = true;
+        }
+        this.requestSurfaceGeneration = preview.contentGeneration;
+        const actual = this.session.currentRequestBoundary();
+        if (actual.boundarySeq !== preview.boundarySeq || actual.contentGeneration !== preview.contentGeneration
+            || nativeInputSha256(actual.surfaceNodes) !== nativeInputSha256(preview.surfaceNodes)
+            || nativeInputSha256(actual.messages) !== nativeInputSha256(preview.messages)) {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_COMMITTED_BASE_CHANGED');
+        }
+        this.checkMaterialOwner(requestOwner, decision.messages, plan, 'committed-predispatch');
+        const material = this.#recordSelectionAppend(() => this.session.append('request/material', result.record));
+        const materialRef = { seq: Number(material.seq), sha256: nativeInputSha256(material) };
+        this.checkMaterialOwner(requestOwner, decision.messages, plan, 'committed-predispatch', materialRef);
+        signal.throwIfAborted();
+        const boundaryMessages = [...result.messages];
+        Object.freeze(boundaryMessages);
+        deepFreeze(envelope.header);
+        const request = markAgentLoopRequest(Object.freeze({ ...envelope.header.config, messages: boundaryMessages,
+            toolHistory: this.session.toolHistory(), ...envelope.header.tools ? { tools: envelope.header.tools } : {},
+            sessionId: this.session.id, signal }));
+        bindNativeRequestMaterial(request, { session: this.session, event: material, assertOwnerCurrent: () => {
+                signal.throwIfAborted();
+                this.checkMaterialOwner(requestOwner, decision.messages, plan, 'committed-predispatch', materialRef);
+            } });
+        return request;
+    }
     /** Log the resolved envelope and derive a frozen request from the admitted surface. */
     buildRequest(config, preparedCall, tools, position, startsRequestSeries, signal) {
         const { session } = this;
@@ -1550,22 +2496,22 @@ export class ReactLoopAgent {
         let headerSeq;
         if (!this.requestHeaderLogged) {
             // Compaction during the first resumed pre-step must still mark a new series.
-            headerSeq = this.session.append('request/header', {
+            headerSeq = this.#recordSelectionAppend(() => this.session.append('request/header', {
                 header,
                 reason: baseline === undefined ? 'initial' : 'resume',
                 ...startsSeries ? { startsSeries: true } : {},
-            }).seq;
+            })).seq;
             this.requestHeaderLogged = true;
         }
         else if (baseline === undefined || !headerEquals(baseline, header)) {
-            headerSeq = this.session.append('request/header', {
+            headerSeq = this.#recordSelectionAppend(() => this.session.append('request/header', {
                 header,
                 reason: 'change',
                 ...startsSeries ? { startsSeries: true } : {},
-            }).seq;
+            })).seq;
         }
         else if (startsSeries) {
-            this.session.append('request/header', { header, reason: 'series' });
+            this.#recordSelectionAppend(() => this.session.append('request/header', { header, reason: 'series' }));
         }
         if (baseline !== undefined && headerSeq !== undefined) {
             const previousNames = new Set(baseline.tools?.map(tool => tool.name));
@@ -1575,11 +2521,11 @@ export class ReactLoopAgent {
             const removals = (baseline.tools ?? []).filter(tool => !currentNames.has(tool.name))
                 .map(tool => ({ type: 'tool-removal', toolName: tool.name }));
             if (additions.length > 0 || removals.length > 0) {
-                session.append('developer/message', {
+                this.#recordSelectionAppend(() => session.append('developer/message', {
                     ...position,
                     message: createDeveloperMessage({ source: { kind: 'tool-registry' }, content: [...additions, ...removals] }),
                     ...additions.length > 0 ? { headerSeq } : {},
-                }, { surfaceOp: 'append' });
+                }, { surfaceOp: 'append' }));
             }
         }
         this.requestSurfaceGeneration = surfaceGeneration;
@@ -1596,7 +2542,7 @@ export class ReactLoopAgent {
             || previousContext.model !== requestContext.model
             || previousContext.contextWindow !== requestContext.contextWindow
             || previousContext.systemPromptUpdate !== requestContext.systemPromptUpdate) {
-            session.append('request/context', requestContext);
+            this.#recordSelectionAppend(() => session.append('request/context', requestContext));
         }
         signal.throwIfAborted();
         // canonicalHeader is shallow; append logs a detached snapshot, not these local values.

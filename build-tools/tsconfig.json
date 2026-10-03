@@ -46,10 +46,22 @@
         "../development/schema-executors/v1/compat/mvu-schema-runtime/src/*.ts"
       ],
       "dsh-nexttavern-mvu-schema-runtime-v2": [
-        "../development/mvu-schema-runtime-v2/src/index.ts"
+        "../development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/index.ts"
       ],
       "dsh-nexttavern-mvu-schema-runtime-v2/*": [
-        "../development/mvu-schema-runtime-v2/src/*.ts"
+        "../development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/*.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v3": [
+        "../development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v3/*": [
+        "../development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/*.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4": [
+        "../development/mvu-schema-runtime-v4/src/index.ts"
+      ],
+      "dsh-nexttavern-mvu-schema-runtime-v4/*": [
+        "../development/mvu-schema-runtime-v4/src/*.ts"
       ]
     },
     "newLine": "lf"

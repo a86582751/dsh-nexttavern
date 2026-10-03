@@ -15,6 +15,7 @@ import type {
   UserMessage,
 } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import type {NativeRequestMaterialRecordV1} from './request-material-types.js'
 
 /** Identifies one session in the store (and its persistence artifacts). */
 export type SessionId = Branded<'SessionId'>
@@ -326,7 +327,90 @@ export type NativeInputLinkV1 = NativeInputLinkIdentityV1 & (
  * sequence numbers stay contiguous. Assistant attempt events embed their exact
  * compact raw streams so persistence stores one durable settlement per attempt.
  */
+export interface NativeOpeningEventRefV1 {readonly seq:number;readonly sha256:string}
+export interface NativeOpeningDataRefV1 {readonly key:string;readonly sha256:string}
+export interface NativeOpeningIdentityV1 {
+  readonly kind:'programmatic-opening'
+  readonly sessionId:string
+  readonly operationId:string
+  readonly messageId:string
+  readonly instruction:string
+  readonly instructionSha256:string
+  readonly intentRef:NativeOpeningDataRefV1
+}
+export interface NativeOpeningInvocationV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-programmatic-opening-invocation-v1'
+  readonly identity:NativeOpeningIdentityV1
+  readonly expectedTurn:number
+  readonly prefix:{readonly eventCount:number;readonly inheritedEventCount:number;readonly sha256:string}
+  readonly invocationSha256:string
+}
+export interface NativeOpeningRequestAttemptV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-programmatic-opening-request-attempt-v1'
+  readonly invocationRef:NativeOpeningEventRefV1
+  readonly turn:number
+  readonly step:number
+  readonly attempt:number
+  readonly assemblySha256:string
+  readonly selectedSha256:string
+  readonly attemptSha256:string
+}
+export interface NativeOpeningRequestPublicationV1 {
+  readonly attemptRef:NativeOpeningEventRefV1
+  readonly materialRef:NativeOpeningEventRefV1
+  readonly headerRef:NativeOpeningEventRefV1
+  readonly configSha256:string
+  readonly requestMessagesSha256:string
+  readonly snapshot:NativeOpeningDataRefV1
+  readonly plan:NativeOpeningDataRefV1
+}
+export interface NativeOpeningOutputRefV1 {
+  readonly eventRef:NativeOpeningEventRefV1
+  readonly messageId:string
+  readonly messageSha256:string
+  readonly textEncoding:'native-model-text-blocks-concat-v1'
+  readonly textSha256:string
+  readonly step:number
+}
+export interface NativeGeneratedOpeningReceiptV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-generated-opening-receipt-v1'
+  readonly production:'generated-opening'
+  readonly invocationRef:NativeOpeningEventRefV1
+  readonly identity:NativeOpeningIdentityV1
+  readonly turn:number
+  readonly turnStartRef:NativeOpeningEventRefV1
+  readonly turnEndRef:NativeOpeningEventRefV1
+  readonly turnSpanSha256:string
+  readonly invocationSpanSha256:string
+  readonly steps:readonly {readonly step:number;readonly startRef:NativeOpeningEventRefV1;
+    readonly endRef:NativeOpeningEventRefV1;readonly requests:readonly NativeOpeningRequestPublicationV1[]}[]
+  readonly outputs:readonly NativeOpeningOutputRefV1[]
+  readonly requestedOutput:NativeOpeningOutputRefV1
+  readonly terminalOutput:NativeOpeningOutputRefV1
+  readonly toolEvents:readonly {readonly type:'tool/call'|'tool/result';readonly eventRef:NativeOpeningEventRefV1}[]
+  readonly flushed:true
+  readonly receiptSha256:string
+}
+export interface NativeOpeningClosingAckV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-programmatic-opening-closing-ack-v1'
+  readonly invocationRef:NativeOpeningEventRefV1
+  readonly generatedReceiptRef:NativeOpeningEventRefV1
+  readonly receiptSha256:string
+  readonly ownerReceiptSha256:string
+  readonly ackSha256:string
+}
+
 export interface SessionEventMap {
+  /** Required Native no-player generation records. They are immutable recovery
+   * data; only the actual Agent's live opening registration grants execution. */
+  'opening/invocation': NativeOpeningInvocationV1
+  'opening/request-attempt': NativeOpeningRequestAttemptV1
+  'opening/generated-receipt': NativeGeneratedOpeningReceiptV1
+  'opening/closing-ack': NativeOpeningClosingAckV1
   /**
    * Opens turn `turn` before the loop claims queued input or runs pre-step.
    * Rejection, empty input, cancellation, or failure may close it with no
@@ -448,6 +532,10 @@ export interface SessionEventMap {
    * call's capability, not this snapshot from an earlier request.
    */
   'request/context': RequestContext
+  /** Required non-surface prepared request delta. It is not dispatched work,
+   * an input/assistant message, or a live Core permission. Old readers reject
+   * the unknown non-ignorable type rather than silently losing prompt lore. */
+  'request/material':NativeRequestMaterialRecordV1
   /**
    * Separates inherited or restored history from later lifecycle-owned work.
    * This log-only marker need not be at {@link Session.firstLiveSeq}: a fork
@@ -556,7 +644,8 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
      * defaulting to required means a forgotten marker over-refuses (an
      * inconvenience) rather than silently resuming a gutted session.
      */
-    ignorable?: true
+    ignorable?: K extends 'request/material' | 'opening/invocation' | 'opening/request-attempt'
+      | 'opening/generated-receipt' | 'opening/closing-ack' ? never : true
   } & (K extends SurfaceEventType ? SurfaceIntent<K> : {
     surfaceOp?: never
     sourceEventSeqs?: never

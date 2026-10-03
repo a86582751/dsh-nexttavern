@@ -21,14 +21,17 @@ import type {mvuPlayerMarkers} from 'dsh-nexttavern-session-format/mvu-player-ma
 import type {mvuSchemaMarkers} from 'dsh-nexttavern-session-format/mvu-schema-marker'
 import type {OwnedMvuSchemaExecutor,SchemaExecutorIdentityTuple} from './roleplay-mvu-schema-executor-types.js'
 import {schemaTraceRequestedStep} from './roleplay-mvu-schema-executor-types.js'
+import {schemaScopeReadFactsEqual} from './roleplay-mvu-schema-scope-facts.js'
 import type {createRoleplayMvuSchemaStoryCore} from './roleplay-mvu-schema-story-core.js'
 import type {createRoleplayMvuSchemaSource} from './roleplay-mvu-schema-source.js'
 import type {SchemaOwnedScope,SchemaBoundary,SchemaExecutionAssociation}
   from './roleplay-mvu-schema-replay.js'
 import type {MvuPlayerEditRequest,MvuPlayerEditResponse,MvuStateObservation} from './roleplay-mvu-player-types.js'
+import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
 
 interface Table {get(key:string):unknown;put(key:string,value:unknown):Promise<unknown>;entries():Iterable<[string,unknown]>}
 interface Dependencies {
+  inputState:RoleplayInputStateOwner
   branch:Table;status:Table
   story:ReturnType<typeof createRoleplayMvuSchemaStoryCore>
   source:ReturnType<typeof createRoleplayMvuSchemaSource>
@@ -74,6 +77,14 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
     return readMvuSchemaPlayerCompletedFacts(deps.branch,deps.status,operation,events(session))
   }
   function pendingCode(sid:string):string|undefined {
+    if(!deps.session(sid))return 'MVU_PLAYER_SESSION_INACTIVE'
+    try {return deps.inputState.capturePlayerLedger(sid,()=>readPlayerLedger(sid)).data}
+    catch {return 'SCHEMA_PLAYER_PENDING'}
+  }
+  /** Only the persistent ledger validation is retained. Agent status, inbox,
+   * stop/completion identities and maintenance reservations remain live checks
+   * in busy/ownerCurrent; this DATA cannot recreate a maintenance lease. */
+  function readPlayerLedger(sid:string):string|undefined {
     try {
       const session=deps.session(sid)
       if(!session)return 'MVU_PLAYER_SESSION_INACTIVE'
@@ -106,7 +117,7 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
   }
   function busy(sid:string):string|undefined {
     const session=deps.session(sid)
-    if(!session||!current(session))return 'MVU_PLAYER_SESSION_INACTIVE'
+    if(!session||disposed||deps.session(sid)!==session||!deps.inputState.currentSession(sid))return 'MVU_PLAYER_SESSION_INACTIVE'
     const agent=deps.agent(session)
     if(!agent||agent.session!==session||typeof agent.runMaintenance!=='function')return 'READ_OR_PERMISSION_UNKNOWN'
     if(reservations.has(sid)||agent.status!=='idle'||agent.inbox.nextTurn.length||agent.inbox.nextStep.length) {
@@ -148,6 +159,8 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
       const marker=markerFor(owner.operation,reservation.session)
       if(!marker)return false
       verifyMvuSchemaPlayerMarker(owner.operation,marker,events(reservation.session))
+      if((owner.plan.schemaVersion===3||owner.plan.schemaVersion===4)&&!schemaScopeReadFactsEqual(owner.plan.scopeReadFrame,
+        owner.basis.scopeReadFrame(owner.plan.initialCut)))return false
       if(owner.publication&&events(reservation.session).length!==owner.publication.event.frontier.nativeCut)return false
       return same(owner.plan.marker,{seq:marker.seq,sha256:recordSha256(marker)})
     } catch {return false}
@@ -158,9 +171,10 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
       if(!owner||!session||!ownerCurrent(owner)||scope.session!==session||scope.incarnation!==owner.reservation.agent
         ||scope.signal.aborted||!owner.scope||!same(scope.requestedStep,owner.scope.requestedStep))return false
       const actual=events(session),initial=owner.plan.initialCut,cut=scope.sourceNativeCut.nativeCut
-      if(recordSha256(actual.slice(0,initial.nativeCut))!==initial.nativePrefixSha256
-        ||cut!==initial.nativeCut+2*owner.associations.length
-        ||recordSha256(actual.slice(0,cut))!==scope.sourceNativeCut.nativePrefixSha256)return false
+      // Replay verifies a newly captured full cut once. The same Native log's
+      // frozen prefix stays fixed while its actual marker tail is checked below.
+      if(!same(scope.sourceNativeCut,owner.scope.sourceNativeCut)
+        ||cut!==initial.nativeCut+2*owner.associations.length)return false
       for(const association of owner.associations)for(const ref of [association.dispatchMarker,association.completionMarker]) {
         if(recordSha256(actual[ref.seq])!==ref.sha256)return false
       }
@@ -196,7 +210,7 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
   const transaction=createRoleplayMvuSchemaPlayer({table:deps.status,
     readReady:plan=>{
       const owner=reservations.get(plan.operation.sessionId)?.owner
-      return owner&&same(owner.plan,plan)&&ownerCurrent(owner)
+      return owner&&same(owner.plan,plan)
         ?{kind:'ready',snapshot:owner.operation.base}:{kind:'blocked',code:'SCHEMA_PLAYER_BASE_CHANGED'}
     },ownerCurrent:(token,plan)=>{
       const owner=tokens.get(token)
@@ -211,15 +225,25 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
       const ready=journal.capture(session.id,plan.realmEpoch,actual,owner.basis.inheritedCut)
       if(ready.kind!=='ready')fail(ready.code)
       if(ready.epoch.schemaVersion!==plan.schemaVersion)fail('SCHEMA_EXECUTOR_VERSION_MISMATCH')
+      let capturedInput=input
+      if(input.schemaVersion===3||input.schemaVersion===4) {
+        if((plan.schemaVersion!==3&&plan.schemaVersion!==4)||plan.schemaVersion!==input.schemaVersion)fail('SCHEMA_SCOPE_BASIS_UNPROVEN')
+        const expected=owner.basis.scopeReadFrame(cut)
+        if(!schemaScopeReadFactsEqual(expected,plan.scopeReadFrame))fail('SCHEMA_SCOPE_BASIS_UNPROVEN')
+        capturedInput={...input,scopeReadFrame:expected}
+      }
       owner.scope={owner:owner.token,incarnation:owner.reservation.agent,session,
         signal:AbortSignal.any([owner.reservation.signal!,owner.reservation.abort.signal]),
         authorInput:owner.basis.original.authorInput,realmEpoch:plan.realmEpoch,loadFrame:ready.epoch.loadFrame,
         inheritedCut:owner.basis.inheritedCut,sourceNativeCut:cut,requestedStep:schemaTraceRequestedStep(selector.batchId,
-          {ownerSessionId:session.id,sourceNativeCutSha256:recordSha256(cut),material:owner.basis.frame.material},input)}
+          {ownerSessionId:session.id,sourceNativeCutSha256:recordSha256(cut),material:owner.basis.frame.material},capturedInput)}
       const replay=await engine(owner.basis)
       owner.driver=replay
       const result=await replay.execute(selector)
-      if(result.kind==='completed'){owner.lastLive=result;owner.associations.push(result.association)}
+      if(result.kind==='completed') {
+        if(input.schemaVersion===3||input.schemaVersion===4)result.capturedInput=capturedInput
+        owner.lastLive=result;owner.associations.push(result.association)
+      }
       return result
     },withPublicationBoundary:async(token,lastLive,action)=>{
       const owner=tokens.get(token)
@@ -330,7 +354,8 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
                 anchor:{kind:'manual' as const,operationId:request.operationId,requestSha256:operation.requestSha256,
                   observedNativeSeq:request.expected.observedNativeSeq}}
               const plan=transaction.makePlan(operation,{seq:marker.seq,sha256:recordSha256(marker)},frame,initialCut,
-                marker.time,basis.ready.epoch.schemaVersion)
+                marker.time,basis.ready.epoch.schemaVersion,
+                basis.ready.epoch.schemaVersion>=3?basis.scopeReadFrame(initialCut):undefined)
               await putExact(mvuSchemaPlayerPlanKey(sid,operation.operationId),plan)
               const owner:Owner={reservation,basis,operation,plan,token:Object.freeze({}),
                 baseline:new Map(stateRows(sid).map(([key,row])=>[key,recordSha256(row)])),associations:[]}

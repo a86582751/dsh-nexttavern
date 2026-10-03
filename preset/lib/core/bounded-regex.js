@@ -1,5 +1,6 @@
 // Generated from runtime/alpha3/src/core/bounded-regex.ts; edit the TypeScript source.
 import { Worker } from 'node:worker_threads';
+import { TAVERN_PROMPT_TRANSFORM_LIMITS_V1 } from './tavern-prompt-transform-types.mjs';
 export const ST_REGEX_LIMITS = Object.freeze({
     inputChars: 2_000_000,
     patternChars: 4_096,
@@ -155,4 +156,70 @@ export function worldbookRegex(key, caseSensitive = false) {
         return { pattern: key.slice(1, end), flags: key.slice(end + 1).replace(/[gy]/g, '') };
     }
     return { pattern: key, flags: caseSensitive ? '' : 'i' };
+}
+/** One real worker processes the complete catalog as independent strings. It
+ * shares the existing replacement-worker slots; cancellation settles once and
+ * always awaits termination before returning. No result survives cancellation. */
+export async function boundedSTPromptTransformBatchV1(data, signal) {
+    const failure = (code, kind = 'refused') => ({
+        kind, diagnostics: [{ schemaVersion: 1, code, entryKey: null, ruleId: null, macro: null, limit: null }],
+    });
+    if (signal?.aborted)
+        return failure('PROMPT_TRANSFORM_CANCELLED', 'cancelled');
+    if (replacementActive >= TAVERN_PROMPT_TRANSFORM_LIMITS_V1.concurrentWorkers)
+        return failure('PROMPT_TRANSFORM_BUSY');
+    replacementActive++;
+    let worker;
+    let timer;
+    let abort;
+    try {
+        const result = await new Promise(resolve => {
+            let settled = false;
+            const done = (value) => {
+                if (settled)
+                    return;
+                settled = true;
+                if (timer)
+                    clearTimeout(timer);
+                resolve(value);
+            };
+            abort = () => done(failure('PROMPT_TRANSFORM_CANCELLED', 'cancelled'));
+            signal?.addEventListener('abort', abort, { once: true });
+            timer = setTimeout(() => done(failure('PROMPT_TRANSFORM_TIMEOUT')), TAVERN_PROMPT_TRANSFORM_LIMITS_V1.deadlineMs);
+            // The listener is installed before worker construction; pre-existing and
+            // synchronous aborts cannot dispatch work and then publish late output.
+            if (signal?.aborted) {
+                abort();
+                return;
+            }
+            try {
+                worker = new Worker(new URL('./tavern-prompt-transform-worker.mjs', import.meta.url), {
+                    workerData: data, resourceLimits: { maxOldGenerationSizeMb: 64, stackSizeMb: 2 },
+                });
+                worker.once('message', (value) => done(value));
+                worker.once('error', () => done(failure('PROMPT_TRANSFORM_WORKER')));
+                worker.once('exit', () => done(failure('PROMPT_TRANSFORM_WORKER')));
+            }
+            catch {
+                done(failure('PROMPT_TRANSFORM_WORKER'));
+            }
+        });
+        if (worker)
+            await worker.terminate();
+        worker = undefined;
+        return signal?.aborted ? failure('PROMPT_TRANSFORM_CANCELLED', 'cancelled') : result;
+    }
+    finally {
+        if (timer)
+            clearTimeout(timer);
+        if (abort)
+            signal?.removeEventListener('abort', abort);
+        try {
+            if (worker)
+                await worker.terminate();
+        }
+        finally {
+            replacementActive--;
+        }
+    }
 }

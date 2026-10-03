@@ -117,7 +117,11 @@ function compileScriptWithinBudget(script, input) {
             fail('MVU_SCHEMA_IMPORT_TYPE_UNSUPPORTED', script, file, node);
         if (ts.isMetaProperty(node) || node.kind === ts.SyntaxKind.WithStatement)
             fail('MVU_SCHEMA_HOST_ACCESS', script, file, node);
-        if (ts.isIdentifier(node) && !isNameOnly(node) && hostNames.has(node.text) && !checker.getSymbolAtLocation(node)) {
+        // Executor v3 binds the free globalThis reference to a per-script guest
+        // facade in its owned worker. Older admitted executors retain their frozen
+        // host-access refusal and cannot borrow that capability through a new wire.
+        const scopedGlobal = input.bridge.version === 3 && ts.isIdentifier(node) && node.text === 'globalThis';
+        if (ts.isIdentifier(node) && !isNameOnly(node) && hostNames.has(node.text) && !scopedGlobal && !checker.getSymbolAtLocation(node)) {
             fail('MVU_SCHEMA_HOST_ACCESS', script, file, node);
         }
         if (ts.isPropertyAccessExpression(node) && escapeProperties.has(node.name.text)

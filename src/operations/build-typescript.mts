@@ -6,15 +6,19 @@ import { fileURLToPath,pathToFileURL } from 'node:url'
 
 import type * as CompilerAPI from '../../build-tools/node_modules/typescript/lib/typescript.js'
 import type {MvuSchemaRuntimeAssetRecipe} from './mvu-schema-runtime-assets.mjs'
+import type {TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
 interface Recipe {
   id: string; kind: string; artifact: string; entry: string; inputs: string[]
   outputSource?: string; text?: string; typeContext?: string; banner?: string
+  declarationArtifact?: string; declarationOutputSource?: string; declarationText?: string
 }
 interface CompiledRecipe extends Recipe { outputSource: string; text: string }
 export interface CompilePlan {
   builds: Recipe[]
   artifacts: {id: string; source: string}[]
-  product?:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe;mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[]}
+  product?:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe;mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[];
+    templateRuntime?:TavernTemplateRuntimeAssetRecipeV1;
+    packages?:readonly {packageArtifact:string;resources?:readonly {artifact:string;path:string}[]}[]}
   typeScript: {
     config: string; declarationPackages: string[]; ambientDeclarations?: string[]
     contexts?: Record<string, {
@@ -29,6 +33,7 @@ export interface CompilePlan {
 interface PackageLock { packages: Record<string, {version?: string}> }
 interface Compilation {
   outputs: Map<string, string>
+  declarationOutputs: Map<string, string>
   recipes: CompiledRecipe[]
   plan: CompilePlan
   sources?: string[]
@@ -43,11 +48,22 @@ const inside = (repo: string, relative: string) => {
   return path.join(repo, relative)
 }
 
+/** Supplied public/fixture plans cross the same compiler boundary as the
+ * maintenance manifest. Ambiguous artifact IDs cannot select an output. */
+const validateArtifactIds = (plan: CompilePlan) => {
+  const ids = new Set<string>()
+  for (const artifact of plan.artifacts) {
+    if (!artifact.id || ids.has(artifact.id)) throw Error('Duplicate or invalid TypeScript artifact id: ' + artifact.id)
+    ids.add(artifact.id)
+  }
+}
+
 export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Compilation {
   // Audit/install/rollback import this module without developer dependencies.
   // The public projection supplies its own mapped plan and root; resolve the
   // compiler beside that plan's config, never through a maintenance checkout.
   const plan = suppliedPlan ?? readJson<CompilePlan>(path.join(repo, 'release/source-manifest.json'))
+  validateArtifactIds(plan)
   const compilerPackage = path.posix.dirname(plan.typeScript.config)
   if (!plan.typeScript.declarationPackages.includes(compilerPackage)) throw Error('Compiler package must be lock-audited')
   const require = createRequire(inside(repo, compilerPackage + '/package.json'))
@@ -62,13 +78,30 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
     return {prefix:directory+'/',lock:readJson<PackageLock>(path.join(repo,directory,'package-lock.json'))}
   })
   if (ts.version !== lock.packages['node_modules/typescript']?.version) throw Error('TypeScript differs from lockfile')
-  if (!recipes.length) return { outputs: new Map<string, string>(), recipes: recipes as CompiledRecipe[], plan, compiler: ts.version }
+  if (!recipes.length) return { outputs: new Map<string, string>(), declarationOutputs: new Map<string, string>(), recipes: recipes as CompiledRecipe[], plan, compiler: ts.version }
   const configPath = inside(repo, plan.typeScript.config)
   const config = ts.readConfigFile(configPath, ts.sys.readFile)
   const converted = ts.convertCompilerOptionsFromJson((config.config as {compilerOptions?: Record<string, unknown>} | undefined)?.compilerOptions ?? {}, path.dirname(configPath))
   if (!converted.options.strict || !converted.options.noUncheckedIndexedAccess || !converted.options.noEmitOnError) throw Error('TypeScript strict safety options are required')
   const diagnostics = [...(config.error ? [config.error] : []), ...converted.errors]
   const outputs = new Map<string, string>()
+  const declarationOutputs = new Map<string, string>()
+  const destinations = new Set<string>()
+  for (const recipe of recipes) {
+    const output = plan.artifacts.find(artifact => artifact.id === recipe.artifact)?.source
+    if (!output || destinations.has(output)) throw Error('Duplicate or missing TypeScript output: ' + recipe.id)
+    inside(repo, output)
+    destinations.add(output)
+    if (recipe.declarationArtifact === undefined) continue
+    const declaration = plan.artifacts.find(artifact => artifact.id === recipe.declarationArtifact)?.source
+    const expected = output.replace(/\.(mjs|cjs|js)$/, recipe.entry.endsWith('.mts') ? '.d.mts' : '.d.ts')
+    if (!declaration || declaration !== expected || destinations.has(declaration)) {
+      throw Error('Invalid TypeScript declaration mapping: ' + recipe.id)
+    }
+    inside(repo, declaration)
+    destinations.add(declaration)
+    recipe.declarationOutputSource = declaration
+  }
   const sourceSet = new Set<string>()
   // Host and browser augment the same Cordis names with different services.
   // Keep strict programs separate, while inventory and output ownership remain
@@ -84,6 +117,10 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
     const rootDirs = plan.typeScript.contexts?.[context]?.rootDirs
     const options = {
       ...converted.options,
+      // Declarations share this exact strict program and its lock-audited
+      // inputs. Only manifest-owned outputs below are delivered to disk.
+      declaration: contextRecipes.some(recipe => recipe.declarationArtifact !== undefined),
+      emitDeclarationOnly: false,
       paths: {...converted.options.paths, ...plan.typeScript.contexts?.[context]?.paths},
       ...(plan.typeScript.contexts?.[context]?.rewriteRelativeImportExtensions
         ? {rewriteRelativeImportExtensions: true} : {}),
@@ -158,12 +195,15 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
       // Capture compiler output by its actual source file, then route it through
       // the manifest artifact. No emitted filename or sibling convention is a
       // second source of truth for the destination on disk.
-      const emitted = program.emit(undefined, (_file, text, _bom, _error, sources) => {
+      const emitted = program.emit(undefined, (emittedFile, text, _bom, _error, sources) => {
         if (!sources || sources.length !== 1) throw Error('Ambiguous TypeScript compiler output')
         const file = path.resolve(sources[0]!.fileName)
         const output = normalize(text)
-        if (outputs.has(file) && outputs.get(file) !== output) throw Error('TypeScript contexts disagree on output: ' + file)
-        outputs.set(file, output)
+        const target = /\.d\.[cm]?ts$/.test(emittedFile) ? declarationOutputs
+          : /\.(?:mjs|cjs|js)$/.test(emittedFile) ? outputs : undefined
+        if (!target) throw Error('Unsupported TypeScript compiler output: ' + emittedFile)
+        if (target.has(file) && target.get(file) !== output) throw Error('TypeScript contexts disagree on output: ' + file)
+        target.set(file, output)
       })
       diagnostics.push(...emitted.diagnostics)
     }
@@ -180,8 +220,13 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
     const banner = '// Generated from ' + (recipe.banner ?? recipe.entry) + '; edit the TypeScript source.\n'
     const shebangEnd = emitted.startsWith('#!') ? emitted.indexOf('\n') + 1 : 0
     recipe.text = emitted.slice(0, shebangEnd) + banner + emitted.slice(shebangEnd)
+    if (recipe.declarationArtifact !== undefined) {
+      const declaration = declarationOutputs.get(path.resolve(repo, recipe.entry))
+      if (declaration === undefined) throw Error('Missing TypeScript declaration: ' + recipe.id)
+      recipe.declarationText = banner + declaration
+    }
   }
-  return { outputs, recipes: recipes as CompiledRecipe[], plan, sources: [...sourceSet], compiler: ts.version }
+  return { outputs, declarationOutputs, recipes: recipes as CompiledRecipe[], plan, sources: [...sourceSet], compiler: ts.version }
 }
 
 // Reverse coverage is rooted at each package's src/lib pair, including nested
@@ -189,6 +234,7 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
 // cannot authorize JavaScript in src, TypeScript in lib, or an orphan output.
 export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
   const source = plan ?? readJson<CompilePlan>(path.join(repo, 'release/source-manifest.json'))
+  validateArtifactIds(source)
   const registered = source.builds.filter(build => build.kind === 'typescript-module')
   const treeRoot = (file: string, name: string) => {
     const marker = '/' + name + '/'
@@ -204,6 +250,15 @@ export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
   }
   const outputs = new Map(registered.map(build => [outputFor(build), build.entry] as const))
   if (outputs.size !== registered.length) throw Error('Duplicate TypeScript output mapping')
+  const declarations = new Map(registered.filter(build => build.declarationArtifact !== undefined).map(build => {
+    const declaration = source.artifacts.find(artifact => artifact.id === build.declarationArtifact)?.source
+    const expected = outputFor(build).replace(/\.(mjs|cjs|js)$/, build.entry.endsWith('.mts') ? '.d.mts' : '.d.ts')
+    if (!declaration || declaration !== expected) throw Error('Invalid TypeScript declaration mapping: ' + build.id)
+    return [declaration, build.entry] as const
+  }))
+  if (declarations.size !== registered.filter(build => build.declarationArtifact !== undefined).length) {
+    throw Error('Duplicate TypeScript declaration output mapping')
+  }
   const outputRoots = [...new Set(registered.map(build => treeRoot(outputFor(build), 'lib')))]
   const directories = [...sourceRoots, ...outputRoots]
   const allBuildOutputs = new Set(source.builds.map(outputFor))
@@ -222,7 +277,10 @@ export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
       }
       if (!item.isFile()) continue
       if (/\.(tsx?|mts)$/.test(item.name)) {
-        if (!sourceTree) findings.push(file + ': TypeScript source inside lib/')
+        if (!sourceTree && declarations.has(file)) {
+          if (!fs.existsSync(inside(repo, declarations.get(file)!))) findings.push(file + ': declaration source is missing')
+        }
+        else if (!sourceTree) findings.push(file + ': TypeScript source inside lib/')
         else if (!entries.has(file) && !(/\.d\.(ts|mts)$/.test(file) && declared.has(file))) findings.push(file + ': unregistered TypeScript source')
         continue
       }
@@ -248,13 +306,20 @@ export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
 export function checkTypeScript(repo = root, write = false, compilation = compileTypeScript(repo)) {
   const { recipes, compiler, plan } = compilation
   for (const recipe of recipes) {
-    const output = path.join(repo, recipe.outputSource)
-    if (write) {
-      fs.mkdirSync(path.dirname(output), {recursive: true})
-      fs.writeFileSync(output, recipe.text)
+    const targets = [{source: recipe.outputSource, text: recipe.text}]
+    if (recipe.declarationOutputSource !== undefined) {
+      if (recipe.declarationText === undefined) throw Error('Missing compiled declaration: ' + recipe.id)
+      targets.push({source: recipe.declarationOutputSource, text: recipe.declarationText})
     }
-    else if (!fs.existsSync(output) || normalize(fs.readFileSync(output, 'utf8')) !== recipe.text) {
-      throw Error('Stale TypeScript output: ' + recipe.outputSource + '; run node runtime/alpha3/lib/operations/build-typescript.mjs --write')
+    for (const target of targets) {
+      const output = inside(repo, target.source)
+      if (write) {
+        fs.mkdirSync(path.dirname(output), {recursive: true})
+        fs.writeFileSync(output, target.text)
+      }
+      else if (!fs.existsSync(output) || normalize(fs.readFileSync(output, 'utf8')) !== target.text) {
+        throw Error('Stale TypeScript output: ' + target.source + '; run node runtime/alpha3/lib/operations/build-typescript.mjs --write')
+      }
     }
   }
   const ownership = checkTypeScriptOwnership(repo, plan)
@@ -267,8 +332,18 @@ export function writeTypeScriptBuild(compilation: Compilation, entry: string | u
   if (!recipe || !output) throw Error('TypeScript build requires a registered entry and output')
   fs.mkdirSync(path.dirname(path.resolve(output)), { recursive: true })
   fs.writeFileSync(output, recipe.text)
+  let declaration: {artifact: string; path: string} | undefined
+  if (recipe.declarationArtifact !== undefined) {
+    if (!recipe.declarationOutputSource || recipe.declarationText === undefined) throw Error('Missing compiled declaration: ' + recipe.id)
+    const extension = recipe.declarationOutputSource.endsWith('.d.mts') ? '.d.mts' : '.d.ts'
+    const target = path.resolve(output).replace(/\.(?:mjs|cjs|js)$/, extension)
+    if (target === path.resolve(output)) throw Error('TypeScript build output extension is invalid')
+    fs.writeFileSync(target, recipe.declarationText)
+    declaration = {artifact: recipe.declarationArtifact, path: target}
+  }
   const inputs = Object.fromEntries(sources!.map(source => [path.relative(path.dirname(path.join(repo, recipe.entry)), path.join(repo, source)).replaceAll('\\', '/'), { bytes: fs.statSync(path.join(repo, source)).size }]))
   fs.writeFileSync(output + '.meta.json', JSON.stringify({ inputs }, null, 2) + '\n')
+  return {declaration}
 }
 
 /** This recipe comes from the same source manifest/public compiler projection.
@@ -301,6 +376,22 @@ export async function checkMvuSchemaRuntimeBuild(repo:string,plan:CompilePlan,wr
   return {packages,files:packages.flatMap(pkg=>pkg.files.map(file=>({...file,packageName:pkg.name})))}
 }
 
+/** The independent component uses its own registered producer. Its declaration
+ * and generated-module ownership remains with the same compiler program. */
+export async function checkTavernTemplateRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
+  if(!plan.product?.templateRuntime)return undefined
+  const rows=plan.artifacts.filter(artifact=>artifact.id==='tavern-template-runtime-assets-generated')
+  if(rows.length!==1)throw Error('Template runtime builder must have one registered output')
+  const {buildTavernTemplateRuntimeAssetsV1}=await import(pathToFileURL(inside(repo,rows[0]!.source)).href) as
+    typeof import('./tavern-template-runtime-assets.mjs')
+  const recipe=plan.product.templateRuntime,metadata=plan.artifacts.filter(artifact=>artifact.id===recipe.packageArtifact)
+  if(metadata.length!==1)throw Error('Template runtime package must have one source mapping')
+  return buildTavernTemplateRuntimeAssetsV1({repo,
+    plan:{artifacts:plan.artifacts,product:{templateRuntime:recipe,packages:plan.product.packages??[]}},
+    packageRoot:inside(repo,path.posix.dirname(metadata[0]!.source)),
+    libraryRoot:inside(repo,path.posix.dirname(plan.typeScript.config)+'/node_modules'),write})
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [entry, output] = process.argv.slice(2)
   if (entry === '--types') {
@@ -312,11 +403,18 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const assets=await checkMvuSchemaRuntimeBuild(root,plan,process.argv.includes('--write'))
     console.log(JSON.stringify({schemaAssets:assets?.files??[],mode:process.argv.includes('--write')?'write':'check'}))
   }
+  else if(entry==='--template-assets') {
+    const plan=readJson<CompilePlan>(path.join(root,'release/source-manifest.json'))
+    const templateAssets=await checkTavernTemplateRuntimeBuild(root,plan,process.argv.includes('--write'))
+    console.log(JSON.stringify({templateAssets:templateAssets?.files??[],mode:process.argv.includes('--write')?'write':'check'}))
+  }
   else if (entry === '--check' || entry === '--write') {
     const compilation=compileTypeScript(root)
     const result=checkTypeScript(root,entry==='--write',compilation)
     const assets=await checkMvuSchemaRuntimeBuild(root,compilation.plan,entry==='--write')
-    console.log(JSON.stringify({...result,...(assets?{schemaAssets:assets.files}: {})}))
+    const templateAssets=await checkTavernTemplateRuntimeBuild(root,compilation.plan,entry==='--write')
+    console.log(JSON.stringify({...result,...(assets?{schemaAssets:assets.files}: {}),
+      ...(templateAssets?{templateAssets:templateAssets.files}:{})}))
   }
   else {
     writeTypeScriptBuild(compileTypeScript(), entry, output)

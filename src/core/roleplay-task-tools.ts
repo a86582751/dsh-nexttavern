@@ -25,8 +25,8 @@ export const simpleTool = <A, E, R>(name: string, description: string, parameter
     timeoutMs: 120000,
   })
 
-export function registerTaskTools({ctx, T, clusterJob, resolveRoleplaySession, storyBranchIsActive, characterCluster, cardWorkflowKey, isRoleplaySession, ensureBranch, tavernTasks, startExportJob, activeCardWorkflow, characterRoster, contextWindowKey, clusterLoreVisible}: TaskToolsDependencies) {
-  const sessionOf = async (exec: {agent?: HostAgent}) => {
+export function registerTaskTools({ctx,T,clusterJob,resolveRoleplaySession,storyBranchIsActive,characterCluster,cardWorkflowKey,isRoleplaySession,ensureBranch,ensureSourceActivationBranch,tavernTasks,startExportJob,activeCardWorkflow,characterRoster,contextWindowKey,clusterLoreVisible,assertClusterSource}: TaskToolsDependencies) {
+  const sessionOf = async (exec: {agent?: HostAgent},purpose:'ordinary'|'source-activation-management'='ordinary') => {
     let session: HostSession | null | undefined = exec?.agent?.session
     const roleJob=clusterJob(exec?.agent)
     if(roleJob){
@@ -45,7 +45,8 @@ export function registerTaskTools({ctx, T, clusterJob, resolveRoleplaySession, s
       session=await resolveRoleplaySession(task.sessionId)
     }
     if (!session || !isRoleplaySession(session)) throw new Error('roleplay 工具需要在 roleplay 会话内使用')
-    await ensureBranch(session)
+    if(purpose==='source-activation-management'&&ensureSourceActivationBranch)await ensureSourceActivationBranch(session)
+    else await ensureBranch(session)
     return session
   }
 
@@ -87,6 +88,7 @@ export function registerTaskTools({ctx, T, clusterJob, resolveRoleplaySession, s
     {type:'object',properties:{character_ids:{type:'array',items:{type:'string'},uniqueItems:true,maxItems:24}},required:['character_ids'],additionalProperties:false},
     async(args,exec)=>{
       const session=await sessionOf(exec),agent=exec.agent
+      assertClusterSource?.(session)
       assertSteeringAgent(agent)
       if(Number(agent.options?.subagentDepth)>0)throw new Error('角色不能递归创建集群')
       const turn=Number(eventsOf(session).findLast(e=>e.type==='turn/start')?.data?.turn)

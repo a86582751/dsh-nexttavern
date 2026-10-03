@@ -15,6 +15,7 @@ import type { StoredTask } from './tavern-task-types.js'
 import type { HostSession } from './roleplay-task-host-types.js'
 import type { CompletionSnapshot } from './roleplay-completion-types.js'
 import type {ContextMessage} from './roleplay-context.js'
+import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 
 /** Bound silence at the native request boundary without changing adapter
  * options, retrying a paid call or discarding queued player input. */
@@ -41,7 +42,12 @@ export function createFirstResponseWatchdog(timeoutMs=90000) {
   }
 }
 
-export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRoleplaySession, characterCluster, activeCardWorkflow, taskAgents, ensureState, clusterPhase, withDecisionMutationLock, normalizeDecisionRecord, resumeStatusMaintenance, resumeMemoryWork, resumeCardWorkflows, resumeNovelExports, withImportLock, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation, publishTurnDecision, runPhaseBC,adaptationScope,importPromptCheckpoint,authorContext,inputBinding,inputSnapshotCurrent}: LoopDependencies) {
+export function registerRoleplayLoop({
+  ctx,T,tavernTasks,clusterJob,isRoleplaySession,characterCluster,activeCardWorkflow,taskAgents,ensureState,clusterPhase,
+  withDecisionMutationLock,normalizeDecisionRecord,resumeStatusMaintenance,resumeMemoryWork,resumeCardWorkflows,resumeNovelExports,
+  withImportLock,buildPhaseA,characterRoster,storyWindowSettings,runStatusObligation,publishTurnDecision,runPhaseBC,
+  adaptationScope,importPromptCheckpoint,authorContext,inputBinding,inputSnapshotCurrent,programOpeningOwner,rowFacts,
+}:LoopDependencies) {
   const preparationRecordKey = (sid: string) => keyOf(sid,'task-preparation')
   const handledImportPrompts=new Map<string,string>()
   const firstResponse=createFirstResponseWatchdog()
@@ -144,8 +150,9 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
     await ensureSessionHistory(session, payload.signal)
     if(!session||!isRoleplaySession(session)||Number(payload.agent?.options?.subagentDepth)>0)return next()
     taskAgents.set(session.id,payload.agent)
-    const programmaticOpening = !!payload.agent.programmaticGeneration && payload.step === 1
-    const input = programmaticOpening ? undefined : inputBinding?.(payload.agent)
+    const programmaticGeneration=!!payload.agent.programmaticGeneration
+    const programmaticOpening = programmaticGeneration && payload.step === 1
+    const input = programmaticGeneration ? undefined : inputBinding?.(payload.agent)
     const inputStep = input ? await input.beginStep({turn:payload.turn,step:payload.step,
       signal:payload.signal ?? AbortSignal.abort('Native step signal missing')}) : undefined
     const assertInput = () => {
@@ -225,7 +232,11 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
         messages:inputStep?.kind === 'story' ? [] : cloneRecord(payload.messages),
         ...(inputStep?.kind === 'story' ? {inputPreparation:inputStep.currency} : {}),
         status:'preparing',createdAt:Date.now(),sourceHash:recordSha256(payload.messages)}
-      await T.branch.put(preparationRecordKey(session.id),preparation)
+      const stored=rowFacts?cloneRoleplayTavernLoreDataV1(preparation,16_777_216,{nodes:131072,depth:66}):preparation,
+        key=preparationRecordKey(session.id),written=rowFacts?.beforeWrite(session,key,'task-preparation',stored)
+      await T.branch.put(key,stored)
+      written?.readback()
+      if(rowFacts)assertInput()
     }
     await tavernTasks.invalidate(session)
     if(hasUser&&payload.step===1){
@@ -279,7 +290,12 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
           assertInput()
         }
         retireRoleplayContexts(session,payload.turn,hidden)
-        await T.branch.put(preparationRecordKey(session.id),{...preparation,status:'completed',completedAt:Date.now()})
+        const key=preparationRecordKey(session.id),completed={...preparation,status:'completed',completedAt:Date.now()},
+          stored=rowFacts?cloneRoleplayTavernLoreDataV1(completed,16_777_216,{nodes:131072,depth:66}):completed,
+          written=rowFacts?.beforeWrite(session,key,'task-preparation',stored)
+        await T.branch.put(key,stored)
+        written?.readback()
+        if(rowFacts)assertInput()
         const researching=adaptationTurns(eventsOf(session)).has(payload.turn)
         const needsCast=!programmaticOpening&&!researching&&characterCluster.read(session).enabled
           &&characterRoster(session).length>0&&!activeCardWorkflow(session)
@@ -314,6 +330,9 @@ export function registerRoleplayLoop({ctx, T, tavernTasks, clusterJob, isRolepla
     const session=agent?.session
     await ensureSessionHistory(session, signal)
     if(!session||!isRoleplaySession(session)||Number(agent.options?.subagentDepth)>0)return
+    // This Native owner closes the original opening body and its independent
+    // genesis. Player Phase B/C requires an admitted player terminal scope.
+    if(programOpeningOwner?.(agent,turn))return
     taskAgents.set(session.id,agent)
     const input = agent.programmaticGeneration ? undefined : inputBinding?.(agent)
     if (input?.current()?.kind === 'management') return

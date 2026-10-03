@@ -21,8 +21,8 @@ export const simpleTool = (name, description, parameters, execute) => ({
     execute,
     timeoutMs: 120000,
 });
-export function registerTaskTools({ ctx, T, clusterJob, resolveRoleplaySession, storyBranchIsActive, characterCluster, cardWorkflowKey, isRoleplaySession, ensureBranch, tavernTasks, startExportJob, activeCardWorkflow, characterRoster, contextWindowKey, clusterLoreVisible }) {
-    const sessionOf = async (exec) => {
+export function registerTaskTools({ ctx, T, clusterJob, resolveRoleplaySession, storyBranchIsActive, characterCluster, cardWorkflowKey, isRoleplaySession, ensureBranch, ensureSourceActivationBranch, tavernTasks, startExportJob, activeCardWorkflow, characterRoster, contextWindowKey, clusterLoreVisible, assertClusterSource }) {
+    const sessionOf = async (exec, purpose = 'ordinary') => {
         let session = exec?.agent?.session;
         const roleJob = clusterJob(exec?.agent);
         if (roleJob) {
@@ -46,7 +46,10 @@ export function registerTaskTools({ ctx, T, clusterJob, resolveRoleplaySession, 
         }
         if (!session || !isRoleplaySession(session))
             throw new Error('roleplay 工具需要在 roleplay 会话内使用');
-        await ensureBranch(session);
+        if (purpose === 'source-activation-management' && ensureSourceActivationBranch)
+            await ensureSourceActivationBranch(session);
+        else
+            await ensureBranch(session);
         return session;
     };
     ctx.effect(() => ctx.tools.register(simpleTool('rp_task_read', '读取尚未完整内联的维护任务来源。默认每页64000字符，可用maxChars调至128000；按nextOffset连续读完，不推进剧情。已带completeSource的任务可直接提交。', { type: 'object', properties: { id: { type: 'string' }, offset: { type: 'integer' }, maxChars: { type: 'integer' } }, required: ['id'], additionalProperties: false }, async (args, exec) => tavernTasks.read(await sessionOf(exec), args.id, args.offset, args.maxChars))), 'roleplay: task source tool');
@@ -72,6 +75,7 @@ export function registerTaskTools({ ctx, T, clusterJob, resolveRoleplaySession, 
     })), 'roleplay: history query tool');
     ctx.effect(() => ctx.tools.register(simpleTool('rp_character_cast', '正式剧情动笔前选定本回合主要人物 ID，程序并行推演人物意向。无需传剧情、人设或笔记；新重要人物先保存独立人设。每轮只调用一次，结果仅供主笔参考。', { type: 'object', properties: { character_ids: { type: 'array', items: { type: 'string' }, uniqueItems: true, maxItems: 24 } }, required: ['character_ids'], additionalProperties: false }, async (args, exec) => {
         const session = await sessionOf(exec), agent = exec.agent;
+        assertClusterSource?.(session);
         assertSteeringAgent(agent);
         if (Number(agent.options?.subagentDepth) > 0)
             throw new Error('角色不能递归创建集群');

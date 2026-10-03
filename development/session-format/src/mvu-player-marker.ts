@@ -17,7 +17,9 @@ export interface MvuPlayerEditMarker {
   replacementValuesSha256: string
   observedNativeSeq: number
 }
-declare module '@deepseek-ai/dsh-session' {
+// Extend the declaring module shared by SessionEvent and upstream plugins.
+// Augmenting its re-export can split the map in a wider compilation graph.
+declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {'roleplay/mvu-manual-edit': MvuPlayerEditMarker}
 }
 const keys = ['schemaVersion', 'encoding', 'sessionId', 'operationId', 'requestSha256',

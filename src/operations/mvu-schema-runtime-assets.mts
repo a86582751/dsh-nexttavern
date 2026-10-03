@@ -18,7 +18,7 @@ const schemaAssetPath=(value:string)=>typeof value==='string'&&value.length>0&&!
 
 export interface MvuSchemaRuntimeAssetRecipe {
   schemaVersion:1
-  executorVersion?:1|2
+  executorVersion?:1|2|3|4
   packageArtifact:string
   modules:readonly {role:SchemaRuntimeRole;artifact:string;output:string}[]
   guests:readonly {kind:'zod'|'lodash';packageAlias:string;version:string;globalName:string;output:string;licenseOutput:string}[]
@@ -38,7 +38,7 @@ interface SchemaRuntimeDescriptor {
 export function mvuSchemaRuntimeRecipes(product:MvuSchemaRuntimeAssetPlan['product']):readonly MvuSchemaRuntimeAssetRecipe[] {
   if(product.mvuSchemaRuntime&&product.mvuSchemaRuntimes)throw Error('SCHEMA_ASSET_RECIPE_DUPLICATE')
   const recipes=product.mvuSchemaRuntimes??(product.mvuSchemaRuntime?[product.mvuSchemaRuntime]:[])
-  if(recipes.length>2||new Set(recipes.map(row=>row.executorVersion??1)).size!==recipes.length) {
+  if(recipes.length>4||new Set(recipes.map(row=>row.executorVersion??1)).size!==recipes.length) {
     throw Error('SCHEMA_ASSET_RECIPE_DUPLICATE')
   }
   return recipes
@@ -55,16 +55,18 @@ export async function buildMvuSchemaRuntimeAssets(options:{
   const repo=fs.realpathSync(options.repo),recipes=mvuSchemaRuntimeRecipes(options.plan.product)
   const recipe=options.recipe??(recipes.length===1?recipes[0]:undefined)
   if(!recipe||recipe.schemaVersion!==1||recipe.descriptorOutput!==SCHEMA_RUNTIME_DESCRIPTOR
-    ||!recipes.includes(recipe)||![1,2].includes(recipe.executorVersion??1)
+    ||!recipes.includes(recipe)||![1,2,3,4].includes(recipe.executorVersion??1)
     ||!same(recipe.dependencies,SCHEMA_RUNTIME_PINS))throw Error('SCHEMA_ASSET_RECIPE_INVALID')
-  const packageName=recipe.executorVersion===2?SCHEMA_RUNTIME_NAME+'-v2':SCHEMA_RUNTIME_NAME
+  const version=recipe.executorVersion??1
+  const packageVersion=version===4?'0.4.0':SCHEMA_RUNTIME_VERSION
+  const packageName=version===1?SCHEMA_RUNTIME_NAME:SCHEMA_RUNTIME_NAME+'-v'+version
   const artifact=(id:string)=>{
     const rows=options.plan.artifacts.filter(row=>row.id===id)
     if(rows.length!==1)throw Error('SCHEMA_ASSET_ARTIFACT_UNKNOWN')
     return inside(repo,rows[0]!.source)
   }
   const metadata=JSON.parse(fs.readFileSync(artifact(recipe.packageArtifact),'utf8'))
-  if(metadata.name!==packageName||metadata.version!==SCHEMA_RUNTIME_VERSION
+  if(metadata.name!==packageName||metadata.version!==packageVersion
     ||!same(metadata.dependencies,SCHEMA_RUNTIME_PINS))throw Error('SCHEMA_ASSET_PACKAGE_INVALID')
   const roles=['provider','compiler','compiler-worker','runner','runner-worker']
   if(recipe.modules.length!==roles.length||new Set(recipe.modules.map(row=>row.role)).size!==roles.length
@@ -135,7 +137,7 @@ export async function buildMvuSchemaRuntimeAssets(options:{
     guests.push({kind:row.kind,packageName:guest.name,version:row.version,globalName:row.globalName,
       path:row.output,sha256:schemaAssetSha(code),licensePath:row.licenseOutput})
   }
-  const descriptor:SchemaRuntimeDescriptor={schemaVersion:1,name:packageName,version:SCHEMA_RUNTIME_VERSION,
+  const descriptor:SchemaRuntimeDescriptor={schemaVersion:1,name:packageName,version:packageVersion,
     modules,guests,dependencies:{...SCHEMA_RUNTIME_PINS}}
   add(recipe.descriptorOutput,JSON.stringify(descriptor,null,2)+'\n')
   const root=path.resolve(options.packageRoot)
@@ -144,7 +146,7 @@ export async function buildMvuSchemaRuntimeAssets(options:{
     if(options.write) {fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes)}
     else if(!fs.existsSync(target)||!fs.readFileSync(target).equals(bytes))throw Error('SCHEMA_ASSET_GENERATED_STALE')
   }
-  return {name:packageName,version:SCHEMA_RUNTIME_VERSION,graphs,
+  return {name:packageName,version:packageVersion,graphs,
     files:[...outputs].map(([output,bytes])=>({path:output,sha256:schemaAssetSha(bytes)}))
       .sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0)}
 }

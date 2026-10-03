@@ -47,6 +47,8 @@ export function taskFiles(context: CheckContext, plan: CheckPlan, task: CheckTas
       for (const file of build.inputs) include(file)
       const output = context.artifactPaths.get(build.artifact)
       if (task.action === 'generated' && output) include(output)
+      const declaration = build.declarationArtifact && context.artifactPaths.get(build.declarationArtifact)
+      if (task.action === 'generated' && declaration) include(declaration)
       // Include newly added, deleted and unregistered modules in ownership keys.
       for (const file of [build.entry, output].filter((file): file is string => !!file)) {
         const match = /^(.*?(?:^|\/)(?:src|lib))\//.exec(file)

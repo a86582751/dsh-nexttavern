@@ -2,10 +2,14 @@
 /** Frozen schema inheritance is a factual baseline. None of these versioned
  * records carries a Native input capability, live lease or publication token. */
 import { recordSha256 } from './roleplay-data.js';
+import { createImmutableDescriptorValidator } from './roleplay-mvu-schema-descriptor-data.js';
 import { freezeMvuSchemaStoryData, sealMvuSchemaStoryFact, validateMvuSchemaNumericalSnapshot } from './roleplay-mvu-schema-story-types.js';
 import { validateMvuSchemaOpeningIntent, validateMvuSchemaOpeningEvent, validateMvuSchemaOpeningHead } from './roleplay-mvu-schema-opening-types.js';
 import { validateMvuDerivedSourceProof } from './roleplay-mvu-lineage.js';
+import { validateMvuDerivedSourceProofUnion, validateMvuPreparedSourceRefV1 } from './roleplay-mvu-frozen-lineage.js';
+import { freezeImmutableDescriptorData } from './roleplay-mvu-schema-descriptor-data.js';
 export const mvuSchemaDerivedPreparedKey = (sid) => `${sid}__mvu-schema-derived-prepared`;
+export const mvuSchemaPrefixClosureKey = (sid, sha) => `${sid}__mvu-schema-prefix-input-${sha}`;
 export const mvuSchemaDerivedBasisKey = (sid) => `${sid}__mvu-schema-derived-basis`;
 export const mvuSchemaDerivedEventKey = (sid) => `${sid}__mvu-state-schema-derived-event`;
 export const mvuSchemaDerivedHeadKey = (sid) => `${sid}__mvu-state-schema-derived-head`;
@@ -23,7 +27,11 @@ function checksum(value, key) {
     if (!hash(digest) || recordSha256(body) !== digest)
         fail();
 }
+const validateFrozenPrefixDescriptor = createImmutableDescriptorValidator(validateFrozenPrefixUncached);
 export function validateMvuSchemaFrozenPrefix(input) {
+    return validateFrozenPrefixDescriptor(input);
+}
+function validateFrozenPrefixUncached(input) {
     const prefix = freezeMvuSchemaStoryData(input);
     exact(prefix, ['schemaVersion', 'encoding', 'sessionId', 'inheritedEventCount', 'sourceSha256', 'original',
         'seed', 'initial', 'journal', 'eventKeys', 'snapshot', 'consumed', 'prefixSha256']);
@@ -64,13 +72,20 @@ export function validateMvuSchemaFrozenPrefix(input) {
         fail();
     return prefix;
 }
+const validateDerivedPreparedDescriptor = createImmutableDescriptorValidator(validateDerivedPreparedUncached);
 export function validateMvuSchemaDerivedPrepared(input) {
-    const prepared = freezeMvuSchemaStoryData(input);
+    return validateDerivedPreparedDescriptor(input);
+}
+function validateDerivedPreparedUncached(input) {
+    const bounded = freezeImmutableDescriptorData(input, 16_777_216, { nodes: 131_072, depth: 96 });
+    const prepared = bounded.schemaVersion === 2 ? bounded : freezeMvuSchemaStoryData(bounded);
     exact(prepared, ['schemaVersion', 'encoding', 'operationId', 'anchorSha256', 'parentSessionId', 'childSessionId',
-        'seedLength', 'parentInheritedEventCount', 'parentSourceSha256', 'prefix', 'preparedSha256']);
+        'seedLength', 'parentInheritedEventCount', 'parentSourceSha256', 'prefix', 'preparedSha256',
+        ...(prepared.schemaVersion === 2 ? ['sourcePreparedRef', 'parentNumericDescriptorSha256', 'prefixClosureRef', 'forkReservationBinding'] : [])]);
     checksum(prepared, 'preparedSha256');
     const prefix = validateMvuSchemaFrozenPrefix(prepared.prefix);
-    if (prepared.schemaVersion !== 1 || prepared.encoding !== 'native-mvu-schema-derived-prepared-v1'
+    if ((prepared.schemaVersion === 1 ? prepared.encoding !== 'native-mvu-schema-derived-prepared-v1'
+        : prepared.schemaVersion !== 2 || prepared.encoding !== 'native-mvu-schema-derived-prepared-v2')
         || ![prepared.operationId, prepared.parentSessionId, prepared.childSessionId].every(id)
         || prepared.parentSessionId === prepared.childSessionId || !hash(prepared.anchorSha256)
         || !integer(prepared.seedLength) || prepared.seedLength < 1 || !integer(prepared.parentInheritedEventCount)
@@ -78,14 +93,39 @@ export function validateMvuSchemaDerivedPrepared(input) {
         || prefix.sessionId !== prepared.parentSessionId || prefix.journal.nativeCut !== prepared.seedLength
         || prefix.inheritedEventCount !== prepared.parentInheritedEventCount || prefix.sourceSha256 !== prepared.parentSourceSha256)
         fail();
+    if (prepared.schemaVersion === 2) {
+        const ref = validateMvuPreparedSourceRefV1(prepared.sourcePreparedRef), binding = prepared.forkReservationBinding;
+        exact(prepared.prefixClosureRef, ['key', 'sha256', 'closureSha256']);
+        exact(binding, ['operationId', 'anchor', 'reservation', 'bindingSha256']);
+        const { bindingSha256, ...body } = binding;
+        if (ref.childSessionId !== prepared.childSessionId || ref.parentSessionId !== prepared.parentSessionId
+            || ref.operationId !== prepared.operationId || ref.anchorSha256 !== prepared.anchorSha256
+            || ref.seedLength !== prepared.seedLength || ref.prefixSha256 !== prefix.journal.nativePrefixSha256
+            || prepared.parentNumericDescriptorSha256 !== prepared.parentSourceSha256
+            || !hash(prepared.prefixClosureRef.sha256) || !hash(prepared.prefixClosureRef.closureSha256)
+            || prepared.prefixClosureRef.key !== mvuSchemaPrefixClosureKey(prepared.childSessionId, prepared.prefixClosureRef.closureSha256)
+            || binding.operationId !== prepared.operationId || recordSha256(binding.anchor) !== prepared.anchorSha256
+            || !same(binding.reservation, { sourceSessionId: prepared.parentSessionId,
+                childSessionId: prepared.childSessionId, seedLength: prepared.seedLength })
+            || !hash(bindingSha256) || bindingSha256 !== recordSha256(body))
+            fail();
+    }
     return prepared;
 }
+const validateDerivedBasisDescriptor = createImmutableDescriptorValidator(validateDerivedBasisUncached);
 export function validateMvuSchemaDerivedBasis(input) {
-    const basis = freezeMvuSchemaStoryData(input);
+    return validateDerivedBasisDescriptor(input);
+}
+function validateDerivedBasisUncached(input) {
+    const bounded = freezeImmutableDescriptorData(input, 16_777_216, { nodes: 131_072, depth: 96 });
+    const basis = bounded.schemaVersion === 2 ? bounded : freezeMvuSchemaStoryData(bounded);
     exact(basis, ['schemaVersion', 'encoding', 'prepared', 'source', 'basisSha256']);
     checksum(basis, 'basisSha256');
-    const prepared = validateMvuSchemaDerivedPrepared(basis.prepared), source = validateMvuDerivedSourceProof(basis.source);
-    if (basis.schemaVersion !== 1 || basis.encoding !== 'native-mvu-schema-derived-basis-v1'
+    const prepared = validateMvuSchemaDerivedPrepared(basis.prepared), source = basis.schemaVersion === 2
+        ? validateMvuDerivedSourceProofUnion(basis.source) : validateMvuDerivedSourceProof(basis.source);
+    if ((basis.schemaVersion === 1 ? basis.encoding !== 'native-mvu-schema-derived-basis-v1'
+        || prepared.schemaVersion !== 1 || source.schemaVersion !== 1 : basis.schemaVersion !== 2
+        || basis.encoding !== 'native-mvu-schema-derived-basis-v2' || prepared.schemaVersion !== 2 || source.schemaVersion !== 2)
         || source.parentSessionId !== prepared.parentSessionId || source.childSessionId !== prepared.childSessionId
         || source.expectedSeedLength !== prepared.seedLength || source.parentSourceSha256 !== prepared.parentSourceSha256)
         fail();

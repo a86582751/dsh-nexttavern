@@ -62,14 +62,18 @@ export type CoreContext = {
   nexttavernMvuPlayerMarkers:typeof import('dsh-nexttavern-session-format/mvu-player-marker').mvuPlayerMarkers
   nexttavernMvuSchemaMarkers:typeof import('dsh-nexttavern-session-format/mvu-schema-marker').mvuSchemaMarkers
   userQuestions: {ask(input:{agent:NonNullable<import('./roleplay-task-tools-types.js').TaskToolExecution['agent']>;signal?:AbortSignal;questions:{id:string;question:string;header?:string;detail?:string;options?:{label:string;description:string}[]}[]}):Promise<{answers:{id:string;selected:string[];custom?:string}[]}>}
-  sessions: {get(id: string): CoreSession | undefined; flush(session: BranchSession): Promise<boolean>}
+  sessions: {get(id: string): CoreSession | undefined; flush(session: BranchSession): Promise<boolean>;
+    readonly messageProjections:readonly import('@deepseek-ai/dsh-session').SessionMessageProjection[]}
   agents?: {list(): readonly CoreAgent[]}
   sessionController: {resolveAgent(id: string): Promise<{agent?: CoreAgent; error?: Error} | undefined>}
-  get(name:'agentLoop'):{getInputAdmissionAgent(agent:unknown):object | undefined} | undefined
+  get(name:'agentLoop'):{getInputAdmissionAgent(agent:unknown):object | undefined;
+    getProgrammaticOpeningAgent(agent:unknown):import('@deepseek-ai/dsh-agent-loop').NativeProgrammaticOpeningAgentV1|undefined} | undefined
   storageDomain: {open(options: unknown): Promise<{table<K extends keyof CoreTables>(name: K): CoreTables[K]; close(): unknown}>}
   sessionQuery: Parameters<typeof createTelemetry>[0]['query']
   get(name: 'roleplay'): {nativeTask: NativeTask}
   provide(name: 'roleplay', service: unknown): unknown
+  on(name:'domain/changed',hook:(change:import('@deepseek-ai/dsh-storage-domain').DomainChanged)=>void,
+    options:{global:boolean;prepend?:boolean}):unknown
   on(name: 'llm/stream', hook: Telemetry['observe'], options: {global: boolean}): unknown
   on(name: 'session/event', hook: (session: CoreSession, event: ContextEvent) => void, options: {global: boolean; prepend?: boolean}): unknown
   on(name: 'session/created', hook: (session: CoreSession) => void, options: {global: boolean}): unknown

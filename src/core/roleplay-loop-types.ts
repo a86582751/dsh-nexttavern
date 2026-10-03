@@ -8,6 +8,7 @@ import type { DecisionJob, DecisionRecord } from './roleplay-decision-types.js'
 import type { PreparationTable } from './roleplay-preparation-types.js'
 import type { createRoleplayStatus } from './roleplay-status.js'
 import type {RoleplayInputBinding,InputPreparationCurrency} from './roleplay-input-preparation.js'
+import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js'
 
 export interface LoopSession extends HostSession {
   append(type: string, data: TaskMessage, options: {
@@ -65,7 +66,10 @@ export interface LoopContext {
 }
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface LoopDependencies {
+  /** Same actual Core Phase-A writer registry as preparation/inheritance. */
+  rowFacts?:PhaseABranchRowFactsWriterV1
   inputBinding?(agent:LoopAgent):RoleplayInputBinding | undefined
+  programOpeningOwner?(agent:LoopAgent,turn?:number):boolean
   inputSnapshotCurrent?(session:LoopSession,snapshot:CompletionSnapshot):boolean
   authorContext?(session:HostSession):{revision:string;parts:{section:string;name:string;text:string;renderedText:string}[]}
   adaptationScope?(session:LoopSession):string

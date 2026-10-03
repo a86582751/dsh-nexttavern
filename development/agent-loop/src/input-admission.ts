@@ -153,6 +153,9 @@ export type NativeInputCompletionLookupV1 = {readonly status: 'none'}
       readonly code?: string; readonly ownerReceiptSha256?: string}
 export interface NativeInputAdmissionHookV2 {
   readonly schemaVersion: 2
+  /** Optional synchronous extension under this same actual registration. Old
+   * Hosts must be rejected by Core when a required material capability is absent. */
+  readonly requestMaterial?:import('./request-material-owner.js').NativeRequestMaterialOwnerV1
   admit(proposal: NativeInputProposal, signal: AbortSignal, existing?: NativeExistingInputWorkV2): Promise<
     | {kind: 'blocked'; code: string}
     | {kind: 'allow'; identity: unknown; preparation: NativePreparationReceiptV1;
@@ -220,6 +223,7 @@ export interface NativeInputStopCapabilityV1 {
 }
 export interface NativeInputAdmissionCapabilityV2 {
   readonly nativeInputAdmissionVersion: 2
+  readonly nativeRequestMaterialVersion:1
   registerInputAdmission(hook: NativeInputAdmissionHookV2): () => void
   lookupInputOwnership(ref: NativeInputRef): NativeInputOwnership
   /** Refolds actual events. A hot query is not an I/O barrier or Core readiness.

@@ -2,6 +2,10 @@
  * journal execution belong to Root; durable facts cannot recreate this owner. */
 import {recordSha256} from './roleplay-data.js'
 import {mvuStateCurrentHeadKey} from './roleplay-mvu-state.js'
+import {validateSchemaEvaluationInputV3} from './tavern-mvu-schema-runner-v3.js'
+import {validateSchemaEvaluationInputV4} from './tavern-mvu-schema-runner-v4.js'
+import {validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
+import {schemaScopeReadFactsEqual} from './roleplay-mvu-schema-scope-facts.js'
 import {freezeMvuSchemaPlayerData,sealMvuSchemaPlayerFact,validateMvuSchemaPlayerPlan,
   validateMvuSchemaPlayerEvent,validateMvuSchemaPlayerSettlement,deriveMvuSchemaPlayerSelectors,
   mvuSchemaPlayerPhaseInput,mvuSchemaPlayerReducerBridge,mvuSchemaPlayerEvent,mvuSchemaPlayerHead,
@@ -14,8 +18,9 @@ import type {MvuSchemaPlayerDeps,MvuSchemaPlayerOperationV1,MvuSchemaPlayerPlanV
 import type {SchemaNativeMarkerRef} from './roleplay-mvu-schema-journal.js'
 import type {SchemaStorySourceFrame} from './roleplay-mvu-schema-source.js'
 import type {SourceNativeCutFacts} from './roleplay-mvu-schema-replay.js'
+import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 
-export type {MvuSchemaPlayerDeps,MvuSchemaPlayerPlanV1,MvuSchemaPlayerSettlementV1}
+export type {MvuSchemaPlayerDeps,MvuSchemaPlayerPlanV1,MvuSchemaPlayerPlanV3,MvuSchemaPlayerSettlementV1}
   from './roleplay-mvu-schema-player-types.js'
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 function fail(code:string):never {throw Error(code)}
@@ -25,9 +30,15 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
   // gates supplied by Root prohibit cold retries even when this set is gone.
   const attempted=new Set<string>()
   function makePlan(operation:MvuSchemaPlayerOperationV1,marker:SchemaNativeMarkerRef,
-    currentFrame:SchemaStorySourceFrame,initialCut:SourceNativeCutFacts,clockEpochMs=0,executorVersion:1|2=1):MvuSchemaPlayerPlanV1 {
+    currentFrame:SchemaStorySourceFrame,initialCut:SourceNativeCutFacts,clockEpochMs=0,executorVersion:1|2|3|4=1,
+    scopeReadFrame?:MvuScopeReadFrameV1):MvuSchemaPlayerPlanV1 {
+    if(executorVersion>=3&&!scopeReadFrame)fail('SCHEMA_SCOPE_READ_REQUIRED')
     const input=freezeMvuSchemaPlayerData({operation,marker,currentFrame,initialCut,clockEpochMs})
-    const version=executorVersion===2?{schemaVersion:2 as const,encoding:'native-mvu-schema-player-plan-v2' as const,executorVersion:2 as const}:
+    const version=executorVersion===4?{schemaVersion:4 as const,encoding:'native-mvu-schema-player-plan-v4' as const,
+      executorVersion:4 as const,scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame)}:
+      executorVersion===3?{schemaVersion:3 as const,encoding:'native-mvu-schema-player-plan-v3' as const,
+      executorVersion:3 as const,scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame)}:
+      executorVersion===2?{schemaVersion:2 as const,encoding:'native-mvu-schema-player-plan-v2' as const,executorVersion:2 as const}:
       {schemaVersion:1 as const,encoding:'native-mvu-schema-player-plan-v1' as const}
     return validateMvuSchemaPlayerPlan(sealMvuSchemaPlayerFact({...version,...input,realmEpoch:input.operation.base.root.realmEpoch,
       programSha256:input.operation.base.root.programSha256,randomSeed:recordSha256({operation:input.operation,marker:input.marker}),
@@ -97,8 +108,20 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
         checkOwner(owner,plan)
         if(result.kind!=='completed')return {kind:'unknown',code:schemaPlayerCode(result.code)}
         if(!result.evidence||typeof result.evidence!=='object')fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
+        let capturedInput=input
+        if(plan.schemaVersion===3||plan.schemaVersion===4) {
+          if(!result.capturedInput)fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
+          const actual=plan.schemaVersion===4?validateSchemaEvaluationInputV4(result.capturedInput)
+            :validateSchemaEvaluationInputV3(result.capturedInput)
+          if(!schemaScopeReadFactsEqual(actual.scopeReadFrame,plan.scopeReadFrame)
+            ||actual.scopeReadFrame.sourceNativeCutSha256!==result.association.sourceNativeCutSha256
+            ||!same(actual,mvuSchemaPlayerPhaseInput(plan,index,phases,actual.scopeReadFrame))) {
+            fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
+          }
+          capturedInput=actual
+        }
         lastLive=result
-        phases.push(freezeMvuSchemaPlayerData({phase,input,association:result.association,output:result.output}))
+        phases.push(freezeMvuSchemaPlayerData({phase,input:capturedInput,association:result.association,output:result.output}))
         if(result.output.kind==='refused'||result.output.commands.length)break
         if(index===1&&mvuSchemaPlayerReducerBridge(phases[1]!).result.kind==='rejected')break
       }

@@ -1,6 +1,7 @@
 import type { ContextSession } from './roleplay-context.js'
 import type { AuthorRecord } from './roleplay-author-context-types.js'
 import type { TaskToolExecution } from './roleplay-task-tools-types.js'
+import type { CheckLegacyWorldbookWriteTargetsV1 } from './roleplay-tavern-legacy-write-target-types.js'
 
 export interface AuthoredCard extends AuthorRecord {card_id?: string}
 export interface AuthoredWorldbook extends AuthorRecord {token_budget?: number; always_on?: boolean}
@@ -24,6 +25,9 @@ export interface AuthoringContext {
 }
 export interface AuthoringDependencies {
   beforeWrite?(exec:TaskToolExecution):Promise<void>
+  /** Fixed private Core dependency; authoring does not create another Source queue. */
+  mutateSource?<Result>(session: ContextSession, work: () => Promise<Result>,signal?:AbortSignal): Promise<Result>
+  checkLegacyWorldbookWriteTargets?:CheckLegacyWorldbookWriteTargetsV1
   ctx: AuthoringContext
   T: {cards: AuthoringTable; worldbook: AuthoringTable; rules: AuthoringTable}
   RULE_TEXT_FIELDS: readonly string[]

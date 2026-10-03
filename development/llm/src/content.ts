@@ -1,12 +1,18 @@
 /** Content-block structure helpers. @module @deepseek-ai/dsh-llm/content */
 
 import type { ContentBlock, ImageBlock, LlmImageRequestBudget, ToolSchema, ToolUpdate, ToolHistory } from './types.js'
-import type { RequestMessage } from './types.js'
+import type { RequestMessage, RequestMaterialMessageV1 } from './types.js'
 import type { Message } from './message.js'
 import type {
   AttachmentStore, FileAttachmentRef, ImageAttachmentRef, ImageMediaType, RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
+
+/** Request material is already one owned immutable text block. Attachment
+ * projection cannot replace its tuple, content hash or Native provenance. */
+function isRequestMaterialText(message:RequestMessage):message is RequestMaterialMessageV1 {
+  return message.source?.kind==='request-material'
+}
 
 /** Execution-world path that model tools can use to read one normalized attachment. */
 export interface ImageAttachmentAccess {
@@ -202,6 +208,7 @@ export function projectFilesToText(
 ): readonly RequestMessage[] {
   if (!messages.some(message => contentHasFile(message.content))) return messages
   return messages.map((message) => {
+    if(isRequestMaterialText(message))return message
     const content = replaceFilesWithHandles(message.content, resolvePath)
     return content === message.content ? message : { ...message, content }
   })
@@ -267,6 +274,7 @@ export function projectOffloadedImages(
   placeholder: (ref: ImageAttachmentRef) => string,
 ): readonly RequestMessage[] {
   return messages.map((message) => {
+    if(isRequestMaterialText(message))return message
     const content = replaceOffloadedImages(message.content, placeholder)
     return content === message.content ? message : { ...message, content }
   })
@@ -360,6 +368,7 @@ export function projectImagesForTextModel(messages: readonly RequestMessage[]): 
 export function projectImagesForTextModel(messages: readonly RequestMessage[]): readonly RequestMessage[] {
   if (!messages.some(message => contentHasImage(message.content))) return messages
   return messages.map((message) => {
+    if(isRequestMaterialText(message))return message
     const content = replaceImagesForTextModel(message.content)
     return content === message.content ? message : { ...message, content }
   })

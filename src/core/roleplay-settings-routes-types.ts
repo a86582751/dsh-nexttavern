@@ -29,6 +29,8 @@ export interface SettingsRoutesDependencies {
   }
   T: {branch: {put(key: string, value: unknown): unknown | PromiseLike<unknown>}}
   resolveRoleplaySession(id: string | null | undefined): Promise<HostSession | null | undefined>
+  /** Core guards the captured Session while holding its existing Source lock. */
+  mutateSource?<Result>(session: HostSession, work: () => Promise<Result>,signal?:AbortSignal): Promise<Result>
   modelPolicy: TaskHost['modelPolicy']
   ensureBranch(session: HostSession): Promise<unknown>
   taskAgents: Map<string, HostAgent>

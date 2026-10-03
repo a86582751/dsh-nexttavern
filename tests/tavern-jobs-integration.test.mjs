@@ -148,13 +148,31 @@ try {
   writeFileSync(join(workspace,'structured-fastpath.json'),JSON.stringify({spec:'chara_card_v3',spec_version:'3.0',
     data:{name:'Local Import',description:'A synthetic card.',extensions:{unknown:{retained:true}}}}))
   const structured = await request('POST','/api/roleplay/jobs',
-    {sessionId:session.id,kind:'card-import',sourceFile:'structured-fastpath.json'})
+    {sessionId:session.id,kind:'card-import',sourceFile:'structured-fastpath.json',requestId:'structured-1'})
   assert.equal(structured.response.status,202)
   assert.equal(structured.body.job.execution,'deterministic')
   assert.equal(structured.body.job.status,'completed',structured.body.job.error)
   assert.ok(structured.body.job.resourceId)
+  assert.equal(structured.body.job.requestId,'structured-1')
+  const beforeReplayInbox=inbox.length
+  const sameRequest=await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,kind:'card-import',sourceFile:'structured-fastpath.json',requestId:'structured-1'})
+  assert.equal(sameRequest.body.job.id,structured.body.job.id,'replayed POST cannot create another import')
+  assert.equal(sameRequest.body.job.resourceId,structured.body.job.resourceId)
+  assert.equal(inbox.length,beforeReplayInbox,'completed replay cannot steer the model')
   assert.equal(spawns,0,'structured UI import cannot start a classification worker')
   assert.equal(direct,0,'structured UI import cannot call the model stream')
+  writeFileSync(join(workspace,'tool-direct.json'),JSON.stringify({name:'Direct tool card',
+    description:'The tool caller uses the programmatic driver.'}))
+  const directToolArgs={source_file:'tool-direct.json',request_id:'tool-direct-1'}
+  const directTool=await tools.get('rp_card_import_begin').execute(directToolArgs,{agent:{session}})
+  assert.equal(directTool.ok,true,directTool.error)
+  assert.equal(directTool.job.status,'completed','external tool enters the same deterministic driver')
+  const toolReplay=await tools.get('rp_card_import_begin').execute(directToolArgs,{agent:{session}})
+  assert.equal(toolReplay.importId,directTool.importId,'tool retry returns one durable import')
+  assert.equal(toolReplay.job.id,directTool.job.id)
+  assert.equal(spawns,0)
+  assert.equal(direct,0,'tool import adds no classification stream')
   const structuredRecord=[...table('branch').values()].find(row=>row?.workflowId===structured.body.job.id&&row?.importId)
   assert.equal(structuredRecord?.schemaVersion,5)
   assert.equal(structuredRecord?.reviewComplete,false)
@@ -176,14 +194,24 @@ try {
   writeFileSync(join(workspace,'recoverable.json'),JSON.stringify({name:'Recoverable',description:'One durable source.'}))
   table('cards').failPut=()=>true
   const interrupted=await request('POST','/api/roleplay/jobs',
-    {sessionId:session.id,kind:'card-import',sourceFile:'recoverable.json'})
+    {sessionId:session.id,kind:'card-import',sourceFile:'recoverable.json',requestId:'recoverable-1'})
   assert.equal(interrupted.body.job.status,'failed')
+  assert.ok(interrupted.body.job.failedAt)
+  const failedReplay=await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,kind:'card-import',sourceFile:'recoverable.json',requestId:'recoverable-1'})
+  assert.equal(failedReplay.body.job.id,interrupted.body.job.id)
+  assert.equal(failedReplay.body.job.status,'failed','failed request requires explicit retry')
+  assert.equal(inbox.length,beforeReplayInbox,'failed replay cannot steer the model')
+  assert.equal((await request('POST','/api/roleplay/jobs',
+    {sessionId:session.id,kind:'card-import',sourceFile:'structured-fastpath.json',requestId:'recoverable-1'}))
+    .response.status,400,'one request identity cannot change source')
   const failedRecord=[...table('branch').values()].find(row=>row?.workflowId===interrupted.body.job.id&&row?.importId)
   assert.ok(failedRecord?.importId,'retry must retain the staged import identity')
   const recovered=await request('POST','/api/roleplay/jobs',
     {sessionId:session.id,action:'retry',jobId:interrupted.body.job.id})
   assert.equal(recovered.body.job.id,interrupted.body.job.id)
   assert.equal(recovered.body.job.status,'completed',recovered.body.job.error)
+  assert.equal(recovered.body.job.failedAt,null,'successful retry clears the prior failure timestamp')
   assert.equal([...table('branch').values()].filter(row=>row?.workflowId===interrupted.body.job.id&&row?.importId).length,1)
   writeFileSync(join(workspace,'changed-source.json'),'{"name":')
   const invalid=await request('POST','/api/roleplay/jobs',

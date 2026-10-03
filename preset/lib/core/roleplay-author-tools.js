@@ -3,7 +3,10 @@ import { keyOf, recordSha256 } from './roleplay-data.js';
 import { lastSeq, eventsOf } from './roleplay-context.js';
 import { retrieveWorldbook } from './roleplay-author-context.js';
 import { fenceCardContent } from './tavern-card.js';
-export function registerAuthorTools({ ctx, T, simpleTool, sessionOf, storyBranchIsActive }) {
+import { SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1 } from './roleplay-tavern-legacy-write-target-types.js';
+export function registerAuthorTools({ ctx, T, simpleTool, sessionOf, storyBranchIsActive, mutateSource, captureSourceRead, checkLegacyWorldbookWriteTarget }) {
+    // The fallback preserves independent legacy fixtures; production Core owns the mandatory lock/guard.
+    const writeSource = mutateSource ?? (async (_session, work) => work());
     ctx.effect(() => ctx.tools.register(simpleTool('rp_card_set', '写入或更新当前分支的一张角色卡（玩家角色用 card_id="user"）。角色卡始终作为独立设定注入；locked 仅表示关键设定，不会复制进剧情摘要。', {
         type: 'object',
         properties: {
@@ -20,20 +23,22 @@ export function registerAuthorTools({ ctx, T, simpleTool, sessionOf, storyBranch
         const cardId = String(args.card_id);
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(cardId))
             return { ok: false, error: `card_id 只能包含字母/数字/下划线/连字符（1-64 字符）：${cardId}` };
-        const prev = T.cards.get(keyOf(session.id, cardId)) ?? {};
-        const card = {
-            ...prev, schemaVersion: 1, verified: false,
-            editedFrom: { sha256: recordSha256(prev), source: 'native-tool', seq: lastSeq(session) },
-            id: cardId,
-            name: args.name ?? prev.name ?? cardId,
-            kind: args.kind ?? prev.kind ?? (cardId === 'user' ? 'user' : 'npc'),
-            content: String(args.content),
-            locked: args.locked === true,
-            version: (Number(prev.version) || 0) + 1,
-            updatedAtSeq: lastSeq(session),
-        };
-        await T.cards.put(keyOf(session.id, card.id), card);
-        return { ok: true, card_id: card.id, version: card.version };
+        return writeSource(session, async () => {
+            const prev = T.cards.get(keyOf(session.id, cardId)) ?? {};
+            const card = {
+                ...prev, schemaVersion: 1, verified: false,
+                editedFrom: { sha256: recordSha256(prev), source: 'native-tool', seq: lastSeq(session) },
+                id: cardId,
+                name: args.name ?? prev.name ?? cardId,
+                kind: args.kind ?? prev.kind ?? (cardId === 'user' ? 'user' : 'npc'),
+                content: String(args.content),
+                locked: args.locked === true,
+                version: (Number(prev.version) || 0) + 1,
+                updatedAtSeq: lastSeq(session),
+            };
+            await T.cards.put(keyOf(session.id, card.id), card);
+            return { ok: true, card_id: card.id, version: card.version };
+        }, exec.signal);
     })), 'roleplay: tool rp_card_set');
     ctx.effect(() => ctx.tools.register(simpleTool('rp_card_list', '列出当前分支的全部角色卡（仅摘要，不含正文）。', { type: 'object', properties: {}, additionalProperties: false }, async (_args, exec) => {
         const session = await sessionOf(exec);
@@ -68,26 +73,30 @@ export function registerAuthorTools({ ctx, T, simpleTool, sessionOf, storyBranch
         const id = String(args.id);
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id))
             return { ok: false, error: `条目 id 只能包含字母/数字/下划线/连字符（1-64 字符）：${id}` };
-        const prev = T.worldbook.get(keyOf(session.id, id));
-        if (prev)
-            return { ok: false, error: `条目 ${id} 已存在；用 rp_worldbook_update 修改，或先 rp_worldbook_remove` };
-        const entry = {
-            id,
-            kind: args.kind ?? 'term',
-            name: String(args.name),
-            aliases: args.aliases ?? [],
-            keywords: args.keywords ?? [],
-            triggers: args.triggers ?? [],
-            priority: Number(args.priority) || 0,
-            tokenBudget: Number(args.token_budget) || 400,
-            alwaysOn: args.always_on === true,
-            content: String(args.content),
-            locked: args.locked === true,
-            version: 1,
-            updatedAtSeq: lastSeq(session),
-        };
-        await T.worldbook.put(keyOf(session.id, id), entry);
-        return { ok: true, id, version: 1 };
+        return writeSource(session, async () => {
+            if (checkLegacyWorldbookWriteTarget?.(session, id).kind === 'source-managed-data')
+                return SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1;
+            const prev = T.worldbook.get(keyOf(session.id, id));
+            if (prev)
+                return { ok: false, error: `条目 ${id} 已存在；用 rp_worldbook_update 修改，或先 rp_worldbook_remove` };
+            const entry = {
+                id,
+                kind: args.kind ?? 'term',
+                name: String(args.name),
+                aliases: args.aliases ?? [],
+                keywords: args.keywords ?? [],
+                triggers: args.triggers ?? [],
+                priority: Number(args.priority) || 0,
+                tokenBudget: Number(args.token_budget) || 400,
+                alwaysOn: args.always_on === true,
+                content: String(args.content),
+                locked: args.locked === true,
+                version: 1,
+                updatedAtSeq: lastSeq(session),
+            };
+            await T.worldbook.put(keyOf(session.id, id), entry);
+            return { ok: true, id, version: 1 };
+        }, exec.signal);
     })), 'roleplay: tool rp_worldbook_add');
     ctx.effect(() => ctx.tools.register(simpleTool('rp_worldbook_update', '更新当前分支的世界书条目（只改传入的字段；lock 或解锁用 locked 字段）。', {
         type: 'object',
@@ -110,38 +119,55 @@ export function registerAuthorTools({ ctx, T, simpleTool, sessionOf, storyBranch
         const id = String(args.id);
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id))
             return { ok: false, error: `条目 id 只能包含字母/数字/下划线/连字符（1-64 字符）：${id}` };
-        const prev = T.worldbook.get(keyOf(session.id, id));
-        if (!prev)
-            return { ok: false, error: `条目 ${id} 不存在` };
-        const next = { ...prev };
-        for (const f of ['name', 'content'])
-            if (args[f] !== undefined)
-                next[f] = String(args[f]);
-        for (const f of ['aliases', 'keywords', 'triggers'])
-            if (Array.isArray(args[f]))
-                next[f] = args[f].map(String);
-        if (args.priority !== undefined)
-            next.priority = Number(args.priority) || 0;
-        if (args.token_budget !== undefined)
-            next.tokenBudget = Number(args.token_budget) || 400;
-        if (args.always_on !== undefined)
-            next.alwaysOn = args.always_on === true;
-        if (args.locked !== undefined)
-            next.locked = args.locked === true;
-        next.version = (Number(prev.version) || 1) + 1;
-        next.updatedAtSeq = lastSeq(session);
-        await T.worldbook.put(keyOf(session.id, id), next);
-        return { ok: true, id, version: next.version };
+        return writeSource(session, async () => {
+            if (checkLegacyWorldbookWriteTarget?.(session, id).kind === 'source-managed-data')
+                return SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1;
+            const prev = T.worldbook.get(keyOf(session.id, id));
+            if (!prev)
+                return { ok: false, error: `条目 ${id} 不存在` };
+            const next = { ...prev };
+            for (const f of ['name', 'content'])
+                if (args[f] !== undefined)
+                    next[f] = String(args[f]);
+            for (const f of ['aliases', 'keywords', 'triggers'])
+                if (Array.isArray(args[f]))
+                    next[f] = args[f].map(String);
+            if (args.priority !== undefined)
+                next.priority = Number(args.priority) || 0;
+            if (args.token_budget !== undefined)
+                next.tokenBudget = Number(args.token_budget) || 400;
+            if (args.always_on !== undefined)
+                next.alwaysOn = args.always_on === true;
+            if (args.locked !== undefined)
+                next.locked = args.locked === true;
+            next.version = (Number(prev.version) || 1) + 1;
+            next.updatedAtSeq = lastSeq(session);
+            await T.worldbook.put(keyOf(session.id, id), next);
+            return { ok: true, id, version: next.version };
+        }, exec.signal);
     })), 'roleplay: tool rp_worldbook_update');
     ctx.effect(() => ctx.tools.register(simpleTool('rp_worldbook_remove', '从当前分支删除世界书条目。', { type: 'object', properties: { id: { type: 'string' } }, required: ['id'], additionalProperties: false }, async (args, exec) => {
         const session = await sessionOf(exec);
-        await T.worldbook.delete(keyOf(session.id, String(args.id)));
-        return { ok: true };
+        return writeSource(session, async () => {
+            const id = String(args.id);
+            if (checkLegacyWorldbookWriteTarget?.(session, id).kind === 'source-managed-data')
+                return SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1;
+            if (!T.worldbook.get(keyOf(session.id, id)))
+                return { ok: false, code: 'WORLDBOOK_NOT_FOUND', error: `条目 ${id} 不存在` };
+            await T.worldbook.delete(keyOf(session.id, id));
+            return { ok: true };
+        }, exec.signal);
     })), 'roleplay: tool rp_worldbook_remove');
     ctx.effect(() => ctx.tools.register(simpleTool('rp_worldbook_list', '列出当前分支的世界书条目摘要（供查重与触发条件管理）。', { type: 'object', properties: {}, additionalProperties: false }, async (_args, exec) => {
         const session = await sessionOf(exec);
         const prefix = `${session.id}__`;
         const out = [];
+        const projected = captureSourceRead?.(session);
+        if (projected) {
+            projected.assertCurrent();
+            return { entries: projected.entries, count: projected.entries.length,
+                sourceHash: projected.sourceProjectionSha256, policy: 'native-worldbook-automatic' };
+        }
         for (const [k, v] of T.worldbook.entries()) {
             if (!k.startsWith(prefix) || !v)
                 continue;
@@ -163,13 +189,16 @@ export function registerAuthorTools({ ctx, T, simpleTool, sessionOf, storyBranch
         const session = await sessionOf(exec), query = String(args.query ?? '').trim();
         if (!query || query.length > 2400)
             return { ok: false, error: '请输入 1–2400 字的世界书查询关键词' };
-        const sourceHash = recordSha256([...T.worldbook.entries()].filter(([key]) => key.startsWith(`${session.id}__`)));
-        const found = await retrieveWorldbook(T, session.id, query, null, Math.min(16000, Math.max(500, Number(args.max_tokens) || 6000)));
-        if (!storyBranchIsActive(session) || sourceHash !== recordSha256([...T.worldbook.entries()].filter(([key]) => key.startsWith(`${session.id}__`))))
+        const projected = captureSourceRead?.(session), tables = projected?.tables ?? T;
+        const sourceHash = projected?.sourceProjectionSha256 ?? recordSha256([...T.worldbook.entries()].filter(([key]) => key.startsWith(`${session.id}__`)));
+        const found = await retrieveWorldbook(tables, session.id, query, null, Math.min(16000, Math.max(500, Number(args.max_tokens) || 6000)));
+        projected?.assertCurrent();
+        if (!storyBranchIsActive(session) || !projected && sourceHash !== recordSha256([...T.worldbook.entries()].filter(([key]) => key.startsWith(`${session.id}__`))))
             return { ok: false, error: '查询来源已变更，请重试' };
         if (found.text)
             await T.branch.put(keyOf(session.id, `cluster-lore-${lastSeq(session)}`), { schemaVersion: 1, branchId: session.id, seq: lastSeq(session),
-                turn: Number(eventsOf(session).findLast(e => e.type === 'turn/start')?.data?.turn), callId: exec.rootCallId ?? exec.callId, text: found.text, sourceHash });
+                turn: Number(eventsOf(session).findLast(e => e.type === 'turn/start')?.data?.turn), callId: exec.rootCallId ?? exec.callId, text: found.text, sourceHash,
+                ...(projected ? { sourceProjectionSha256: projected.sourceProjectionSha256 } : {}) });
         return { ok: true, branchId: session.id, sourceHash, count: found.entries.length, entries: found.entries.map(e => ({ id: e.id, name: e.name, version: e.version })), text: found.text ? fenceCardContent(found.text, 'worldbook') : '' };
     })), 'roleplay: tool rp_worldbook_search');
 }

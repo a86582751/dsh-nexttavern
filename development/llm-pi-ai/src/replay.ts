@@ -9,7 +9,7 @@
  */
 
 import { LlmError } from '@deepseek-ai/dsh-llm'
-import type { AssistantMessage as HarnessAssistantMessage, ModelMessageSource, ReplayEnvelope } from '@deepseek-ai/dsh-llm'
+import type { AssistantMessage as HarnessAssistantMessage, ModelMessageSource, ReplayEnvelope, RequestMaterialMessageV1 } from '@deepseek-ai/dsh-llm'
 import type { Api, AssistantMessage, Usage as PiUsage } from 'dsh-nexttavern-pi-ai'
 
 /** Per-block half of the pi-ai replay envelope, one entry per content block. */
@@ -246,7 +246,25 @@ function replayedAssistant(message: HarnessAssistantMessage, source: ModelMessag
  *   state falls back to provider-neutral conversion.
  * @returns a native pi-ai assistant message reconstructed from durable content.
  */
-export function toPiAssistant(message: HarnessAssistantMessage, onDegrade?: (reason: string) => void): AssistantMessage {
+export function toPiRequestMaterialAssistant(message:Extract<RequestMaterialMessageV1,{role:'assistant'}>):AssistantMessage {
+  const source=message.source
+  if(source.kind!=='request-material'||source.schemaVersion!==1
+    ||source.encoding!=='native-request-material-message-v1'||message.content.length!==1
+    ||message.content[0]?.type!=='text'||typeof message.content[0].text!=='string'){
+    throw new LlmError('invalid request-only assistant text','UNSUPPORTED_CONTENT')
+  }
+  return {role:'assistant',content:[{type:'text',text:message.content[0].text}],
+    api:'dsh-foreign',provider:'dsh-request-material',model:'dsh-request-material-v1',
+    usage:emptyPiUsage(),stopReason:'stop',timestamp:0}
+}
+
+function isRequestMaterialAssistant(message:HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>):
+  message is Extract<RequestMaterialMessageV1,{role:'assistant'}> {
+  return message.source.kind==='request-material'
+}
+
+export function toPiAssistant(message: HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>, onDegrade?: (reason: string) => void): AssistantMessage {
+  if(isRequestMaterialAssistant(message))return toPiRequestMaterialAssistant(message)
   const source = message.source
   if (source.kind !== 'model' || source.replayState === undefined) return foreignAssistant(message)
   try {

@@ -2,6 +2,7 @@
 import { keyOf, textOf, estimateTokens } from './roleplay-data.js';
 import { eventsOf, lastSeq, surfaceEntries, canonicalAssistantForTurn, completedAssistantReceiptForTurn, isCompletedTurnEnd } from './roleplay-context.js';
 import { internalTaskSeqs, isInlinePending, awaitTaskAdmissions } from './tavern-tasks.js';
+import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 export function createRoleplayCompletion(deps) {
     const { storyBranchIsActive, T, cloneBranchRecord, reconcileNativeFork, ctx, resolveRoute, memoryForContext, publishTurnDecision, llmJson, LEDGER_WORKER_SYSTEM, cfg, CONTINUITY_WORKER_SYSTEM, contextWindowFor, contextWindowKey, svc, sessions, failPendingNativeFork, isRoleplaySession, queueStatusObligation, statusRunStartSeq, recoverStatusObligations } = deps;
     function isStale(session, snapshot, canonicalSeq) {
@@ -209,12 +210,14 @@ export function createRoleplayCompletion(deps) {
                 if (activeWindow && Number(event.seq) > Number(activeWindow.throughSeq ?? -1)) {
                     const windowStart = Number(activeWindow.startSeq ?? -1);
                     const storyTokens = surfaceEntries(session).reduce((sum, entry) => Number(entry.seq) > windowStart ? sum + estimateTokens(entry.text) : sum, 0);
-                    await T.branch.put(contextWindowKey(branchId), {
+                    const window = {
                         ...activeWindow,
                         throughSeq: Number(event.seq),
                         storyTokens,
                         updatedAt: Date.now(),
-                    });
+                    }, stored = deps.rowFacts ? cloneRoleplayTavernLoreDataV1(window, 16_777_216, { nodes: 131072, depth: 66 }) : window, key = contextWindowKey(branchId), written = deps.rowFacts?.beforeWrite(session, key, 'context-window', stored);
+                    await T.branch.put(key, stored);
+                    written?.readback();
                 }
                 // 重新生成版本的账本登记（本轮的正文即该锚点的新版本）
                 if (st.regenerateAnchor !== null) {

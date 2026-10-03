@@ -16,6 +16,7 @@ import { SurfaceManager, validateSessionEventData, validateSurfaceMetadata } fro
 import { foldRequestHeader } from './request-header.js';
 import { ToolHistoryProjection } from './tool-history.js';
 import { buildForkSeed } from './fork.js';
+import { previewSessionRequestAppends } from './request-preview.js';
 export { buildForkSeed } from './fork.js';
 export * from './types.js';
 export { SessionPreparation } from './preparation.js';
@@ -348,6 +349,9 @@ export class Session {
     log = [];
     /** Single incremental owner of surface acceptance and projection state. */
     surfaceManager;
+    /** The preview uses these same pure definitions; it has no observer fiber. */
+    requestPreviewProjections;
+    requestPreviews = new WeakMap();
     /** The ordered surface over this session's event log. */
     get surface() {
         return this.surfaceManager;
@@ -420,6 +424,7 @@ export class Session {
         return new Session(id, seed, header, eventState, inheritedEventCount, projections);
     }
     constructor(id, seed, header, mode = 'snapshot', suppliedInheritedEventCount, projections = []) {
+        this.requestPreviewProjections = projections;
         this.surfaceManager = new SurfaceManager(this.log, SessionLogOffset(0), projections);
         const restoredHeader = mode === 'snapshot' ? undefined : validateRestoredSessionHeader(id, header);
         if (seed !== undefined) {
@@ -539,6 +544,60 @@ export class Session {
     get seq() {
         return SessionLogOffset(this.log.length);
     }
+    /** Snapshot uncommitted Native request appends through the canonical fold.
+     * This is data planning, not input permission or a persistence barrier. */
+    previewRequestAppends(inputs) {
+        const preview = previewSessionRequestAppends(this.log, this.requestPreviewProjections, inputs);
+        this.requestPreviews.set(preview, { next: 0 });
+        return preview;
+    }
+    /** Current canonical request boundary, preserving exact seq/message links.
+     * It borrows frozen event data and invokes no append observers or providers. */
+    currentRequestBoundary() {
+        if (!this.log.length)
+            throw Error('SESSION_REQUEST_PREVIEW_BOUNDARY_EMPTY');
+        const surfaceNodes = [...this.surface.nodes], messageNodes = [];
+        for (const seq of surfaceNodes) {
+            const event = this.log[seq];
+            if (!event)
+                throw Error('SESSION_REQUEST_PREVIEW_SURFACE');
+            const message = this.deriveEventMessage(event);
+            if (message)
+                messageNodes.push({ seq, message });
+        }
+        if (messageNodes.length > 4096)
+            throw Error('SESSION_REQUEST_PREVIEW_MESSAGE_BUDGET');
+        // Session derivation already owns deeply frozen Message objects. Freeze
+        // only this boundary's new containers instead of walking history again.
+        return Object.freeze({ boundarySeq: SessionSeq(this.log.length - 1), surfaceNodes: Object.freeze(surfaceNodes),
+            contentGeneration: this.surface.contentGeneration, messages: Object.freeze(messageNodes.map(row => row.message)),
+            messageNodes: Object.freeze(messageNodes.map(row => Object.freeze(row))) });
+    }
+    /** Commit the next exact event of this Session's hot preview. Each call
+     * uses the ordinary append publication boundary; a stale prefix cannot be
+     * repaired by renumbering events or recreating message IDs. */
+    appendRequestPreviewEvent(preview) {
+        const state = this.requestPreviews.get(preview), event = state && preview.events[state.next];
+        if (!state || !event || this.log.length !== event.seq) {
+            this.requestPreviews.delete(preview);
+            throw Error('SESSION_REQUEST_PREVIEW_STALE');
+        }
+        // Consume before publishing: a reentrant caller cannot commit this token
+        // twice even if an observer changes another piece of request ownership.
+        state.next++;
+        try {
+            this.publishAppend(event);
+            return event;
+        }
+        catch (error) {
+            this.requestPreviews.delete(preview);
+            throw error;
+        }
+        finally {
+            if (state.next === preview.events.length)
+                this.requestPreviews.delete(preview);
+        }
+    }
     /**
      * Append one typed event to the log and synchronously notify observers via
      * the store-owned, module-private publication hooks. The hot path never blocks
@@ -601,7 +660,17 @@ export class Session {
             data: dataSnapshot,
             ...surfaceMetadataSnapshot,
         });
-        validateSessionEventData(event, `session event "${type}" at seq ${event.seq}`);
+        this.publishAppend(event);
+        return event;
+    }
+    /** One shared acceptance/publication path for ordinary and planned events. */
+    publishAppend(event) {
+        if (event.seq !== this.log.length)
+            throw Error('session append sequence changed');
+        const entry = attachments.get(this);
+        if (entry?.appending)
+            throw Error('session append cannot reenter while another append is being published');
+        validateSessionEventData(event, `session event "${event.type}" at seq ${event.seq}`);
         this.surfaceManager.validateNext(event);
         if (entry !== undefined)
             entry.appending = true;
@@ -616,7 +685,6 @@ export class Session {
             if (callbacks !== undefined && entry !== undefined) {
                 invokeContainedSessionObservers(entry.emitCtx, 'session/event', entry.id, callbackArgs, callbacks);
             }
-            return event;
         }
         finally {
             if (entry !== undefined) {
@@ -630,6 +698,7 @@ export class Session {
     headerFold;
     /** Log position (events consumed) the header fold has reached. */
     headerFoldSeq = 0;
+    headerBoundarySeq;
     /**
      * The {@link EpochHeader} in force after the log's last header event — the
      * header the NEXT request will be compared against — or undefined before
@@ -644,10 +713,20 @@ export class Session {
             // consumer mutating it in place (instead of building a replacement)
             // would desync every later comparison against the log, so mutation
             // throws instead.
-            this.headerFold = deepFreeze(foldRequestHeader(this.log.slice(this.headerFoldSeq), this.headerFold));
+            const delta = this.log.slice(this.headerFoldSeq);
+            this.headerFold = deepFreeze(foldRequestHeader(delta, this.headerFold));
+            for (const event of delta)
+                if (event.type === 'request/header')
+                    this.headerBoundarySeq = event.seq;
             this.headerFoldSeq = this.log.length;
         }
         return this.headerFold;
+    }
+    /** Data reference to the actual in-force header event; no flush proof. */
+    requestHeaderBoundary() {
+        const header = this.requestHeader();
+        return header !== undefined && this.headerBoundarySeq !== undefined
+            ? Object.freeze({ seq: this.headerBoundarySeq, header }) : undefined;
     }
     /** Cached fold of `request/context` events. */
     contextFold;

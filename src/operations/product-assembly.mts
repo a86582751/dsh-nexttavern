@@ -7,8 +7,11 @@ import {createRequire} from 'node:module'
 import {assembleOwnedDependency, regularPackageFiles} from './owned-dependency.mjs'
 import {contained as inside} from './public-transaction.mjs'
 import {materializeBundledLibraries} from './bundled-library-assembly.mjs'
+import {templateRuntimeRecipeV1,materializeTavernTemplateRuntimeDependenciesV1,
+  assertTavernTemplateRuntimePackageV1,type TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
 
 interface ProductRecipe {
+  templateRuntime?:TavernTemplateRuntimeAssetRecipeV1
   packageArtifact: string
   patchArtifact: string
   packages: {packageArtifact: string; assembly?: string; resources?: {artifact: string; path: string}[]}[]
@@ -307,6 +310,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
   const rows = plan.product.packages.filter(row => row.packageArtifact === options.packageArtifact)
   if (rows.length !== 1) throw Error('Product package must have exactly one registered recipe')
   const row = rows[0]!
+  const templateRecipe=templateRuntimeRecipeV1(plan),templateComponent=templateRecipe?.packageArtifact===row.packageArtifact
   const source = artifact(row.packageArtifact).source
   const pkg = json<Metadata>(inside(repo, source))
   const product = json<Metadata>(inside(repo, artifact(plan.product.packageArtifact).source))
@@ -348,9 +352,18 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     }
   }
   const ordinaryDependencies = Object.fromEntries(Object.entries(pkg.dependencies ?? {})
-    .filter(([name]) => !Object.hasOwn(ownedRootLibraries, name)))
+    .filter(([name]) => !Object.hasOwn(ownedRootLibraries, name)&&!templateComponent))
   const excludedVendoredFiles = vendorLibraries(output, pkg.name, ordinaryDependencies, options.libraryRoot,
     plan.product.bundleLibraries ?? {}, options.admitVendoredFile, plan.product.bundlePlatforms ?? [])
+  if(templateComponent) {
+    // Copy the exact complete locked closure before taking the component's
+    // inventory. Runtime admission cannot borrow an ancestor's WASM or FFI.
+    materializeTavernTemplateRuntimeDependenciesV1({repo,plan,packageRoot:output,
+      libraryRoot:options.libraryRoot??'',admit:options.admitVendoredFile??(()=>{
+        throw Error('Template component requires complete public vendor admission')
+      })})
+    assertTavernTemplateRuntimePackageV1({repo,plan,packageRoot:output})
+  }
   if (Object.keys(ownedRootLibraries).length) {
     // These packages move to protected file pins outside the product tree.
     // Their own bundle must retain the locked closure before its inventory is

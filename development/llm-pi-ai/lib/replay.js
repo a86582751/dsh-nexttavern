@@ -232,7 +232,23 @@ function replayedAssistant(message, source, rawState) {
  *   state falls back to provider-neutral conversion.
  * @returns a native pi-ai assistant message reconstructed from durable content.
  */
+export function toPiRequestMaterialAssistant(message) {
+    const source = message.source;
+    if (source.kind !== 'request-material' || source.schemaVersion !== 1
+        || source.encoding !== 'native-request-material-message-v1' || message.content.length !== 1
+        || message.content[0]?.type !== 'text' || typeof message.content[0].text !== 'string') {
+        throw new LlmError('invalid request-only assistant text', 'UNSUPPORTED_CONTENT');
+    }
+    return { role: 'assistant', content: [{ type: 'text', text: message.content[0].text }],
+        api: 'dsh-foreign', provider: 'dsh-request-material', model: 'dsh-request-material-v1',
+        usage: emptyPiUsage(), stopReason: 'stop', timestamp: 0 };
+}
+function isRequestMaterialAssistant(message) {
+    return message.source.kind === 'request-material';
+}
 export function toPiAssistant(message, onDegrade) {
+    if (isRequestMaterialAssistant(message))
+        return toPiRequestMaterialAssistant(message);
     const source = message.source;
     if (source.kind !== 'model' || source.replayState === undefined)
         return foreignAssistant(message);

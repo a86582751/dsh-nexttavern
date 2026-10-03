@@ -51,10 +51,13 @@ export interface TaskToolsDependencies {
   cardWorkflowKey(id: string): string
   isRoleplaySession(session: HostSession | null | undefined): boolean
   ensureBranch(session: HostSession): Promise<unknown>
+  ensureSourceActivationBranch?(session:HostSession):Promise<unknown>
   tavernTasks: TaskHost['tavernTasks']
   startExportJob(session: HostSession, kind: 'novel-export', agent?: HostAgent): Promise<{id: string}>
   activeCardWorkflow(session: HostSession): unknown
   characterRoster(session: HostSession): {id?: string; name?: unknown; content: unknown}[]
   contextWindowKey(id: string): string
   clusterLoreVisible(session: HostSession, record: TaskToolRecord): boolean
+  /** Raw structured personas cannot bypass their Native rendering owner. */
+  assertClusterSource?(session:HostSession):void
 }

@@ -166,11 +166,17 @@ export function registerBranchRoutes(deps) {
                             if (sourceSessionId !== source.id)
                                 throw new Error('原生分支来源不匹配');
                             reservedId = childSessionId;
-                            await prepareDerivedBasis?.(operation, { sourceSessionId, childSessionId, seedLength });
+                            const reservedOperation = { ...operation, anchor: { ...operation.anchor, expectedSeedLength: seedLength } }, reservation = { sourceSessionId, childSessionId, seedLength };
+                            const sourcePrepared = await deps.sourceInheritance?.prepareSourceInheritance(reservedOperation, reservation);
+                            await prepareDerivedBasis?.(reservedOperation, reservation);
+                            // Only a newly captured pair must still agree across the two
+                            // parent FIFO phases. Replay never refreshes a frozen package.
+                            if (sourcePrepared?.kind === 'prepared-data' && sourcePrepared.disposition === 'created')
+                                deps.sourceInheritance.assertPreparedParentCurrent(childSessionId);
                             await catalog.reserve({ sourceSessionId, childSessionId, operationId: operation.operationId,
                                 kind: operation.kind === 'opening-regenerate' ? 'regenerate' : operation.kind,
-                                sourceHash: recordSha256(operation.anchor) });
-                            await T.branch.put(operationKey, { ...operation, reservedChildSessionId: childSessionId, presentation: { schemaVersion: 1, kind: 'worldline', conversationId: catalog.rootOf(source.id), sourceSessionId, seedLength }, reservedAt: Date.now() });
+                                sourceHash: recordSha256(reservedOperation.anchor) });
+                            await T.branch.put(operationKey, { ...reservedOperation, reservedChildSessionId: childSessionId, presentation: { schemaVersion: 1, kind: 'worldline', conversationId: catalog.rootOf(source.id), sourceSessionId, seedLength }, reservedAt: Date.now() });
                             reservationCommitted = true;
                         };
                         let created;
@@ -381,9 +387,10 @@ export function registerBranchRoutes(deps) {
                             ordinal: registration.ordinal, registration: retainedRegistration,
                             state: 'generating', consumed: true,
                             generatingAt: Date.now() }));
-                        const generation = await agent.generateProgrammaticAssistant({ operationId,
-                            messageId: `opening-regenerate-${operationId}`,
-                            instruction: '请根据当前角色、世界设定与规则，直接创作一段全新的开场剧情正文。此轮没有玩家输入；不要假装玩家说过话，也不要解释任务。' });
+                        const instruction = '请根据当前角色、世界设定与规则，直接创作一段全新的开场剧情正文。此轮没有玩家输入；不要假装玩家说过话，也不要解释任务。';
+                        const messageId = `opening-regenerate-${operationId}`;
+                        const generation = await deps.generateProgramOpening?.({ sessionId: childId, operation, messageId, instruction })
+                            ?? await agent.generateProgrammaticAssistant({ operationId, messageId, instruction });
                         if (generation.kind === 'busy') {
                             operation = await updateOperation(key, current => ({ ...cloneBranchRecord(current),
                                 state: 'waiting-agent', requestAccepted: false }));

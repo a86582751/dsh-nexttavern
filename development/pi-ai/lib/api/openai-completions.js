@@ -15,6 +15,7 @@ import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copi
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.js";
 import { buildBaseOptions, clampThinkingBudgetToAnswerRoom, thinkingBudgetForLevel } from "./simple-options.js";
 import { transformMessages } from "./transform-messages.js";
+import { OrderedCompletionsInputError, serializeOrderedCompletionsV1, } from "./openai-ordered-input.js";
 /**
  * Check if conversation messages contain tool calls or tool results.
  * This is needed because Anthropic (via proxy) requires the tools param
@@ -105,6 +106,72 @@ function isOpenAIReasoningDetail(detail) {
             return false;
     }
 }
+function assertOrderedModelDomain(model, compat) {
+    function reject(path, reason) {
+        throw new OrderedCompletionsInputError(path, reason);
+    }
+    if (model.api !== "openai-completions" || model.reasoning !== false || model.provider === "github-copilot") {
+        reject("$/model", "ordered v1 requires an ordinary nonreasoning completions route");
+    }
+    const declared = model.compat;
+    if (declared?.supportsDeveloperRole !== false || declared.requiresAssistantAfterToolResult !== false
+        || declared.requiresThinkingAsText !== false || declared.requiresReasoningContentOnAssistantMessages !== false) {
+        reject("$/model/compat", "ordered v1 requires explicit role/bridge/thinking flags false");
+    }
+    if (compat.deferredToolsMode !== undefined || compat.cacheControlFormat !== undefined
+        || compat.supportsOpenAIGrammarTools || compat.zaiToolStream || compat.requiresToolResultName) {
+        reject("$/model/compat", "unsupported deferred/cache/grammar/tool dialect");
+    }
+    if (model.samplingParams !== undefined) {
+        reject("$/model/samplingParams", "ordered v1 disallows model body overrides");
+    }
+}
+/** Adapter preparation and dispatch share this exact effective SDK model
+ * predicate, including provider/baseUrl detection. It reads no credentials. */
+export function assertOrderedCompletionsModelV1(model) {
+    assertOrderedModelDomain(model, getCompat(model));
+}
+export function supportsOrderedCompletionsModelV1(model) {
+    try {
+        assertOrderedCompletionsModelV1(model);
+        return true;
+    }
+    catch (error) {
+        if (error instanceof OrderedCompletionsInputError)
+            return false;
+        throw error;
+    }
+}
+function assertOrderedDomain(model, options, compat) {
+    assertOrderedModelDomain(model, compat);
+    function reject(path, reason) {
+        throw new OrderedCompletionsInputError(path, reason);
+    }
+    if (!options?.apiKey || typeof options.apiKey !== "string" || options.maxRetries !== 0) {
+        reject("$/options", "explicit resolved apiKey and zero SDK retries are required");
+    }
+    if (options.onPayload !== undefined || options.samplingParams !== undefined
+        || options.reasoningEffort !== undefined || options.thinkingBudgets !== undefined
+        || (options.transport !== undefined && options.transport !== "sse")) {
+        reject("$/options", "ordered v1 disallows body overrides, reasoning and alternate transport");
+    }
+}
+function preparePiContextInput(model, context, compat) {
+    const grammarToolInputProperties = createGrammarToolInputProperties(context.tools, compat.supportsOpenAIGrammarTools);
+    return { kind: "pi-context", context, tools: context.tools,
+        messages: convertMessages(model, context, compat, { grammarToolInputProperties }),
+        hasToolHistory: hasToolHistory(context.messages), grammarToolInputProperties };
+}
+async function prepareOrderedInput(model, input, options, compat) {
+    assertOrderedDomain(model, options, compat);
+    const serialization = await serializeOrderedCompletionsV1(input);
+    if (serialization.hasImages && !model.input.includes("image")) {
+        throw new OrderedCompletionsInputError("$/messages", "prepared user images require actual image modality");
+    }
+    return { kind: "ordered-v1", serialization, messages: [...serialization.messages],
+        tools: serialization.tools, hasToolHistory: serialization.hasToolHistory,
+        grammarToolInputProperties: new Map() };
+}
 function parseOpenAIReasoningDetails(signature) {
     if (!signature)
         return undefined;
@@ -167,6 +234,14 @@ function resolveCacheRetention(cacheRetention, env) {
     return "short";
 }
 export const stream = (model, context, options) => {
+    return executeCompletions(model, { kind: "pi-context", context }, options);
+};
+/** Initial params come directly from the ordered serializer. Generic Pi
+ * Context/Message and all other provider protocols keep their existing shape. */
+export function streamOrderedCompletions(model, input, options) {
+    return executeCompletions(model, { kind: "ordered-v1", input }, options);
+}
+function executeCompletions(model, input, options) {
     const stream = new AssistantMessageEventStream();
     (async () => {
         const output = {
@@ -197,14 +272,30 @@ export const stream = (model, context, options) => {
         try {
             const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
             const compat = getCompat(model);
-            const grammarToolInputProperties = createGrammarToolInputProperties(context.tools, compat.supportsOpenAIGrammarTools);
+            const facts = input.kind === "pi-context"
+                ? preparePiContextInput(model, input.context, compat)
+                : await prepareOrderedInput(model, input.input, options, compat);
+            const grammarToolInputProperties = facts.grammarToolInputProperties;
             const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
             const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
-            const client = createClient(model, context, apiKey, options?.headers, options?.fetch, cacheSessionId, compat);
-            let params = buildParams(model, context, options, compat, cacheRetention, grammarToolInputProperties);
-            const nextParams = await options?.onPayload?.(params, model);
-            if (nextParams !== undefined) {
-                params = nextParams;
+            const client = createClient(model, facts, apiKey, options?.headers, options?.fetch, cacheSessionId, compat);
+            let params = buildParams(model, facts, options, compat, cacheRetention);
+            if (facts.kind === "pi-context") {
+                const nextParams = await options?.onPayload?.(params, model);
+                if (nextParams !== undefined) {
+                    params = nextParams;
+                }
+            }
+            else if (options?.onOrderedTrace) {
+                const serialized = facts.serialization;
+                const receipt = Object.freeze({ schemaVersion: 1,
+                    encoding: "nexttavern-ordered-chat-completions-trace-v1",
+                    inputSha256: serialized.inputSha256, wireSha256: serialized.wireSha256,
+                    traceSha256: serialized.traceSha256, trace: serialized.trace });
+                const returned = options.onOrderedTrace(receipt);
+                if (returned !== undefined) {
+                    throw new OrderedCompletionsInputError("$/options/onOrderedTrace", "trace observer must be synchronous and return void");
+                }
             }
             const requestOptions = {
                 ...(options?.signal ? { signal: options.signal } : {}),
@@ -539,7 +630,7 @@ export const stream = (model, context, options) => {
         }
     })();
     return stream;
-};
+}
 export const streamSimple = (model, context, options) => {
     getClientApiKey(model.provider, options?.apiKey, options?.headers);
     const base = {
@@ -554,9 +645,13 @@ export const streamSimple = (model, context, options) => {
         thinkingBudgets: options?.thinkingBudgets,
     });
 };
-function createClient(model, context, apiKey, optionsHeaders, fetch, sessionId, compat = getCompat(model)) {
+function createClient(model, input, apiKey, optionsHeaders, fetch, sessionId, compat = getCompat(model)) {
     const headers = { "User-Agent": getPiUserAgent(), ...model.headers };
     if (model.provider === "github-copilot") {
+        if (input.kind !== "pi-context") {
+            throw new OrderedCompletionsInputError("$/model/provider", "ordered Copilot headers are unsupported");
+        }
+        const context = input.context;
         const hasImages = hasCopilotVisionInput(context.messages);
         const copilotHeaders = buildCopilotDynamicHeaders({
             messages: context.messages,
@@ -588,8 +683,8 @@ function createClient(model, context, apiKey, optionsHeaders, fetch, sessionId, 
         defaultHeaders: headers,
     });
 }
-function buildParams(model, context, options, compat = getCompat(model), cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env), grammarToolInputProperties = createGrammarToolInputProperties(context.tools, compat.supportsOpenAIGrammarTools)) {
-    const messages = convertMessages(model, context, compat, { grammarToolInputProperties });
+function buildParams(model, input, options, compat = getCompat(model), cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env)) {
+    const messages = input.messages;
     const cacheControl = getCompatCacheControl(compat, cacheRetention);
     const params = {
         model: model.id,
@@ -618,15 +713,16 @@ function buildParams(model, context, options, compat = getCompat(model), cacheRe
     if (options?.temperature !== undefined) {
         params.temperature = options.temperature;
     }
-    const deferredToolNames = compat.deferredToolsMode === "kimi" ? getDeferredToolNames(context.messages) : new Set();
-    const activeTools = context.tools?.filter((tool) => !deferredToolNames.has(tool.name));
+    const deferredToolNames = input.kind === "pi-context" && compat.deferredToolsMode === "kimi"
+        ? getDeferredToolNames(input.context.messages) : new Set();
+    const activeTools = input.tools?.filter((tool) => !deferredToolNames.has(tool.name));
     if (activeTools && activeTools.length > 0) {
         params.tools = convertTools(activeTools, compat);
         if (compat.zaiToolStream) {
             params.tool_stream = true;
         }
     }
-    else if (hasToolHistory(context.messages)) {
+    else if (input.hasToolHistory) {
         // Anthropic (via LiteLLM/proxy) requires tools param when conversation has tool_calls/tool_results
         params.tools = [];
     }

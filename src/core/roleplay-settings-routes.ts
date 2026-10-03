@@ -3,7 +3,9 @@ import { selectedMainRoute, withTavernLock } from './tavern-tasks.js'
 import { clusterSettings } from './character-cluster.js'
 import type { ReasoningInfo, SettingsRouteBody, SettingsRoutesDependencies } from './roleplay-settings-routes-types.js'
 
-export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, memorySettingFields, memorySettingsPolicy, svc, narrativePresets}: SettingsRoutesDependencies) {
+export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, memorySettingFields, memorySettingsPolicy, svc, narrativePresets, mutateSource}: SettingsRoutesDependencies) {
+  const writeSource: NonNullable<SettingsRoutesDependencies['mutateSource']> =
+    mutateSource ?? (async (_session, work) => work())
   ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered',path: '/api/roleplay/presets', methods: ['GET', 'POST'], fetch: async request => {
     try {
       const body = request.method === 'POST' ? await request.json() as SettingsRouteBody : null
@@ -83,12 +85,15 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
           patch[field]=value||null
         }
         if(!Object.keys(patch).length)throw new Error('没有需要保存的字段')
-        await withTavernLock(T.branch,body.scope==='global'?'memory-settings-global':`panel-save:${session.id}`,async()=>{
+        const save = () => withTavernLock(T.branch,body.scope==='global'?'memory-settings-global':`panel-save:${session.id}`,async()=>{
           const policy=memorySettingsPolicy(session.id)
           if(body.expectedRevision!==policy[body.scope as 'global' | 'session'].revision)throw new Error('记忆设置已更新，请刷新后重试')
           if(body.scope==='session')await svc.setSettings(session.id,patch)
           else await T.branch.put('memory-settings-global',{schemaVersion:1,settings:{...policy.global.settings,...patch},updatedAt:Date.now()})
         })
+        // Session settings are part of Source; retain the existing panel CAS lock inside it.
+        if (body.scope === 'session') await writeSource(session, save,request.signal)
+        else await save()
       }
       return jsonResponse(200,{ok:true,...memorySettingsPolicy(session.id)})
     }catch(error){return jsonResponse(String((error as Error).message).includes('已更新')?409:400,{ok:false,error:String((error as Error).message)})}

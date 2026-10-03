@@ -407,6 +407,16 @@ export type SystemPromptUpdate = 'in-history'
  */
 export type ToolUpdate = 'in-history' | 'addition-only'
 
+/** Adapter promise for new request-only text at a selected logical boundary.
+ * Missing metadata is unsupported. This is independent of replacement of the
+ * whole system prompt and does not claim that the model obeys the text. */
+export interface RequestMaterialTextCapabilityV1 {
+  readonly schemaVersion:1
+  readonly user:'role-and-position'|'unsupported'
+  readonly assistant:'role-and-position'|'unsupported'
+  readonly systemAtDepth:'role-and-position'|'unsupported'
+}
+
 /** Exact-route model metadata resolved by its owning adapter. */
 export interface LlmResolvedModelInfo extends LlmModelInfo {
   /** Provider-owned context capacity when known. */
@@ -419,6 +429,8 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
   systemPromptUpdate?: SystemPromptUpdate
   /** Declared mid-conversation tool declaration handling; absent means every request declares the complete tool list. */
   toolUpdate?: ToolUpdate
+  /** Exact route serialization support for request-only text insertions. */
+  requestMaterialText?: RequestMaterialTextCapabilityV1
 }
 
 /**
@@ -493,7 +505,21 @@ export interface RequestUserInput {
 }
 
 /** A durable conversation message or a user input used only for one request. */
-export type RequestMessage = Message | RequestUserInput
+interface RequestMaterialTextBaseV1 {
+  readonly id:MessageId
+  readonly content:readonly [{readonly type:'text';readonly text:string}]
+  readonly source:{readonly kind:'request-material';readonly schemaVersion:1;
+    readonly encoding:'native-request-material-message-v1';readonly materialInputSha256:string;
+    readonly contributionRef:string;readonly sourceSha256:string;readonly renderedSha256:string}
+}
+/** Request-only identity: this is never a durable player input or assistant
+ * output. Separate arms preserve role narrowing in adapter conversion. */
+export type RequestMaterialMessageV1 =
+  | (RequestMaterialTextBaseV1 & {readonly role:'system'})
+  | (RequestMaterialTextBaseV1 & {readonly role:'user'})
+  | (RequestMaterialTextBaseV1 & {readonly role:'assistant'})
+
+export type RequestMessage = Message | RequestUserInput | RequestMaterialMessageV1
 
 /** Logged tool declarations and update identities since the last declaration reset. */
 export interface ToolHistory {

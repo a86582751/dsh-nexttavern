@@ -11,9 +11,18 @@ const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 function fail(code) { throw Error(code); }
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-function clone(input, maxBytes, maxDepth, maxNodes) {
-    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 16777216)
+const executionCloneBounds = Object.freeze({ bytes: 16_777_216,
+    nodes: MVU_SCHEMA_BOUNDS.evaluationNodes, depth: MVU_SCHEMA_BOUNDS.evaluationDepth });
+const descriptorCloneBounds = Object.freeze({ bytes: 67_108_864, nodes: 524_288, depth: 96 });
+function cloneBudget(maxBytes, recordBounds, maximum) {
+    const depth = recordBounds?.depth ?? 64, nodes = recordBounds?.nodes ?? 64000;
+    if (!Number.isSafeInteger(depth) || depth < 1 || depth > maximum.depth
+        || !Number.isSafeInteger(nodes) || nodes < 1 || nodes > maximum.nodes
+        || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > maximum.bytes)
         fail('SCHEMA_DATA_LIMIT');
+    return { depth, nodes };
+}
+function clone(input, maxBytes, maxDepth, maxNodes) {
     const ancestors = new Set();
     let nodes = 0, bytes = 0;
     const count = (value) => {
@@ -96,10 +105,14 @@ function clone(input, maxBytes, maxDepth, maxNodes) {
 /** Clones aliases independently. The generic signature retains the envelope's
  * declared type; callers must still validate its required fields and hashes. */
 export function cloneSchemaData(input, maxBytes, recordBounds) {
-    const depth = recordBounds?.depth ?? 64, nodes = recordBounds?.nodes ?? 64000;
-    if (!Number.isSafeInteger(depth) || depth < 1 || depth > MVU_SCHEMA_BOUNDS.evaluationDepth
-        || !Number.isSafeInteger(nodes) || nodes < 1 || nodes > MVU_SCHEMA_BOUNDS.evaluationNodes)
-        fail('SCHEMA_DATA_LIMIT');
+    const { depth, nodes } = cloneBudget(maxBytes, recordBounds, executionCloneBounds);
+    return clone(input, maxBytes, depth, nodes);
+}
+/** Persisted host descriptors aggregate multiple execution records. Their fixed
+ * ceiling does not enlarge execution envelopes; every repeated child occurrence
+ * is still traversed and charged by the same clone implementation. */
+export function cloneSchemaDescriptorData(input, maxBytes, recordBounds) {
+    const { depth, nodes } = cloneBudget(maxBytes, recordBounds, descriptorCloneBounds);
     return clone(input, maxBytes, depth, nodes);
 }
 export function cloneSchemaValues(input) {

@@ -12,6 +12,7 @@ import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type {
   GenerateOptions,
   RequestMessage,
+  RequestMaterialTextCapabilityV1,
   LlmConfigurableProvider,
   LlmDiscoveredModel,
   LlmFailure,
@@ -31,7 +32,7 @@ import { freezeMessage } from './message.js'
 import { resolveRetryPolicy } from './retry-policy.js'
 import type { ResolvedRetryPolicy } from './retry-policy.js'
 import type { ProviderRequestId } from './brand.js'
-import { callConfigEquals } from './call-config.js'
+import { callConfigEquals,assertAgentLoopRequestCurrent,forwardAgentLoopRequestGuard } from './call-config.js'
 import type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.js'
 import { HarnessError, INVALID_CREDENTIAL_CODE } from './error.js'
 import { normalizeLlmFailure } from './adapter-failure.js'
@@ -52,6 +53,7 @@ export * from './message.js'
 export * from './retry-policy.js'
 export { BlockAssembler } from './assembler.js'
 export { callConfigEquals, isAgentLoopRequest, markAgentLoopRequest } from './call-config.js'
+export {bindAgentLoopRequestGuard,assertAgentLoopRequestCurrent} from './call-config.js'
 export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.js'
 
 declare module '@deepseek-ai/cordis' {
@@ -179,6 +181,7 @@ export interface PreparedLlmCall {
   readonly systemPromptUpdate?: SystemPromptUpdate
   /** Exact model tool update mode captured with the adapter dispatch generation. */
   readonly toolUpdate?: ToolUpdate
+  readonly requestMaterialText?: RequestMaterialTextCapabilityV1
   /** Config fields materialized by the captured adapter rather than proposed by the caller. */
   readonly adapterDefaults: LlmCallConfigAdapterDefaults
   /**
@@ -802,6 +805,7 @@ export class LlmRuntime extends TypertRemoteService {
       )
     }
     const defaultMaxTokens = resolved.defaultMaxTokens
+    const requestMaterialText=this.detachedRequestMaterialText(resolved.requestMaterialText)
     if (defaultMaxTokens !== undefined
       && (!Number.isSafeInteger(defaultMaxTokens) || defaultMaxTokens <= 0)) {
       throw new LlmError(
@@ -819,6 +823,7 @@ export class LlmRuntime extends TypertRemoteService {
       ...defaultMaxTokens === undefined ? {} : { defaultMaxTokens },
       ...resolved.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: resolved.systemPromptUpdate },
       ...resolved.toolUpdate === undefined ? {} : { toolUpdate: resolved.toolUpdate },
+      ...requestMaterialText===undefined?{}:{requestMaterialText},
     }
     const reasoning = resolved.reasoning
     if (reasoning === undefined) return info
@@ -961,6 +966,7 @@ export class LlmRuntime extends TypertRemoteService {
         : { inputModalities: Object.freeze([...modelInfo.inputModalities]) },
       ...modelInfo.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: modelInfo.systemPromptUpdate },
       ...modelInfo.toolUpdate === undefined ? {} : { toolUpdate: modelInfo.toolUpdate },
+      ...modelInfo.requestMaterialText===undefined?{}:{requestMaterialText:deepFreeze({...modelInfo.requestMaterialText})},
       stream: (options: GenerateOptions): AsyncIterable<StreamChunk> => {
         if (dispatched) {
           throw new LlmError('a prepared LLM call can only be dispatched once', 'INVALID_PREPARED_CALL')
@@ -986,6 +992,27 @@ export class LlmRuntime extends TypertRemoteService {
     const registration = this.adapters.get(provider)
     if (!registration) throw new LlmError(`no adapter registered for provider "${provider}"`, 'NO_ADAPTER')
     return registration
+  }
+
+  /** Shape and detach the exact adapter generation's declared text support. */
+  private detachedRequestMaterialText(value:RequestMaterialTextCapabilityV1|undefined):RequestMaterialTextCapabilityV1|undefined {
+    if(value===undefined)return undefined
+    const fields=['schemaVersion','user','assistant','systemAtDepth']
+    const row:Record<string,unknown>={}
+    if(value===null||typeof value!=='object'||Array.isArray(value)
+      ||Object.keys(value).length!==fields.length||Object.keys(value).some(key=>!fields.includes(key))){
+      throw new LlmError('adapter returned invalid request material support','INVALID_MODEL_INFO')
+    }
+    for(const field of fields){
+      const descriptor=Object.getOwnPropertyDescriptor(value,field)
+      if(!descriptor||!Object.hasOwn(descriptor,'value'))throw new LlmError('adapter returned accessor request material support','INVALID_MODEL_INFO')
+      row[field]=descriptor.value
+    }
+    const mode=(item:unknown):item is 'role-and-position'|'unsupported'=>item==='role-and-position'||item==='unsupported'
+    if(row['schemaVersion']!==1||!mode(row['user'])||!mode(row['assistant'])||!mode(row['systemAtDepth'])){
+      throw new LlmError('adapter returned invalid request material support','INVALID_MODEL_INFO')
+    }
+    return {schemaVersion:1,user:row['user'],assistant:row['assistant'],systemAtDepth:row['systemAtDepth']}
   }
 
   /** Remove replay state whose historical route is owned by another adapter. */
@@ -1085,7 +1112,10 @@ export class LlmRuntime extends TypertRemoteService {
         }
         if (Object.isFrozen(resolvedOptions)) deepFreeze(projectedOptions)
       }
-      const stream = dispatch(this.forAdapter(projectedOptions, adapter))
+      const adapterOptions=this.forAdapter(projectedOptions,adapter)
+      forwardAgentLoopRequestGuard(options,adapterOptions)
+      assertAgentLoopRequestCurrent(adapterOptions)
+      const stream = dispatch(adapterOptions)
       iterator = stream[Symbol.asyncIterator]()
     } catch (error: unknown) {
       yield adapterFailureChunk(error, options.signal)

@@ -6,6 +6,7 @@ import type { createRoleplayService } from './roleplay-service.js'
 import type { registerRoleplayImports } from './roleplay-import.js'
 import type { HostAgent, HostSession } from './roleplay-task-host-types.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
+import type { CheckLegacyWorldbookWriteTargetV1 } from './roleplay-tavern-legacy-write-target-types.js'
 
 export interface PanelRouteBody extends Record<string, unknown> {
   sessionId?: string
@@ -29,6 +30,7 @@ type State = ReturnType<typeof createRoleplayState>
 type Status = ReturnType<typeof createRoleplayStatus>
 type Imports = ReturnType<typeof registerRoleplayImports>
 export interface PanelRoutesDependencies {
+  checkLegacyWorldbookWriteTarget?:CheckLegacyWorldbookWriteTargetV1
   ctx: {
     effect(work: () => unknown, label: string): unknown
     connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
@@ -69,7 +71,8 @@ export interface SettingArguments extends Record<string, unknown> {
   source_id?: string
   job_id?: string
 }
-export interface SettingToolDependencies extends Pick<PanelRoutesDependencies,'T'|'recordVersionsFor'|'svc'|'RULE_TEXT_FIELDS'|'withImportLock'> {
+export interface SettingToolDependencies extends Pick<PanelRoutesDependencies,
+  'T'|'recordVersionsFor'|'svc'|'RULE_TEXT_FIELDS'|'withImportLock'|'checkLegacyWorldbookWriteTarget'> {
   ctx: PanelRoutesDependencies['ctx'] & {
     tools: {register(tool: unknown): unknown}
     on(name:'agent/pre-step',handler:(payload:{agent?:HostAgent},next:()=>Promise<unknown>)=>Promise<unknown>): unknown

@@ -5,13 +5,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { deriveOwnedStateLoaderIdentityV4 } from './tavern-mvu-schema-program-v4.js';
 import { recordSha256 } from './roleplay-data.js';
 import { validateSchemaExecutorIdentityTuple } from './roleplay-mvu-schema-executor-types.js';
 const packageName = 'dsh-nexttavern-mvu-schema-runtime';
-const packageVersion = '0.3.0';
 const sameDirectory = (left, right) => left.protocol === 'file:'
     && fs.realpathSync(fileURLToPath(left)) === right;
-function productRoot(name) {
+function productRoot(name, packageVersion) {
     // Root lib/core and preset/lib/core are the two registered delivery layouts.
     // Standalone historical presets and maintenance build-tools are unsupported.
     for (const relative of ['../../', '../../../']) {
@@ -31,8 +31,9 @@ export function createRoleplayMvuSchemaAssetOwner() {
     let closed = false;
     const runtimes = new Map();
     async function load(version) {
-        const name = version === 2 ? packageName + '-v2' : packageName;
-        const root = productRoot(name), require = createRequire(path.join(root, 'package.json'));
+        const name = version === 1 ? packageName : packageName + '-v' + version;
+        const packageVersion = version === 4 ? '0.4.0' : '0.3.0';
+        const root = productRoot(name, packageVersion), require = createRequire(path.join(root, 'package.json'));
         const metadataPath = fs.realpathSync(require.resolve(name + '/package.json'));
         const owned = fs.realpathSync(path.join(root, 'node_modules', name));
         if (metadataPath !== path.join(owned, 'package.json'))
@@ -71,11 +72,23 @@ export function createRoleplayMvuSchemaAssetOwner() {
                 throw Error('SCHEMA_RUNTIME_DISPOSED');
             loaded = await module.createMvuSchemaRuntime({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed) });
         }
-        else {
+        else if (version === 2) {
             const module = await import(pathToFileURL(entry).href);
             if (closed)
                 throw Error('SCHEMA_RUNTIME_DISPOSED');
             loaded = await module.createMvuSchemaRuntimeV2({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed) });
+        }
+        else if (version === 3) {
+            const module = await import(pathToFileURL(entry).href);
+            if (closed)
+                throw Error('SCHEMA_RUNTIME_DISPOSED');
+            loaded = await module.createMvuSchemaRuntimeV3({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed) });
+        }
+        else {
+            const module = await import(pathToFileURL(entry).href);
+            if (closed)
+                throw Error('SCHEMA_RUNTIME_DISPOSED');
+            loaded = await module.createMvuSchemaRuntimeV4({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed) });
         }
         if (closed) {
             await loaded.dispose();
@@ -87,10 +100,53 @@ export function createRoleplayMvuSchemaAssetOwner() {
             await loaded.dispose();
             throw Error('SCHEMA_RUNTIME_IMPLEMENTATION_VERSION_CHANGED');
         }
+        if (version === 4) {
+            try {
+                if (!('stateLoader' in loaded)
+                    || recordSha256(loaded.stateLoader) !== recordSha256(deriveOwnedStateLoaderIdentityV4(loaded.bridge))) {
+                    throw Error('SCHEMA_RUNTIME_STATE_LOADER_CHANGED');
+                }
+            }
+            catch {
+                await loaded.dispose();
+                throw Error('SCHEMA_RUNTIME_STATE_LOADER_CHANGED');
+            }
+        }
         // Each guest ABI remains narrow. The private adapter checks the envelope
         // before selecting a runner; a union never enables implicit wire upgrade.
         const executor = { executorVersion: version, implementationKey: recordSha256(tuple),
-            compiler: loaded.compiler, libraries: loaded.libraries, bridge: loaded.bridge,
+            compiler: { identity: loaded.compiler.identity,
+                async compile(input, signal) {
+                    if (closed)
+                        throw Error('SCHEMA_RUNTIME_DISPOSED');
+                    if (version === 4 && input.schemaVersion === 2)
+                        return loaded.compiler.compile(input, signal);
+                    if (input.schemaVersion !== 1)
+                        return { kind: 'refused', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
+                    if (version === 1)
+                        return loaded.compiler.compile(input, signal);
+                    if (version === 2)
+                        return loaded.compiler.compile(input, signal);
+                    if (version === 3)
+                        return loaded.compiler.compile(input, signal);
+                    return { kind: 'refused', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
+                },
+                async verifyProgram(program, signal) {
+                    if (closed)
+                        throw Error('SCHEMA_RUNTIME_DISPOSED');
+                    if (version === 4 && program.schemaVersion === 2)
+                        return loaded.compiler.verifyProgram(program, signal);
+                    if (program.schemaVersion !== 1)
+                        return false;
+                    if (version === 1)
+                        return loaded.compiler.verifyProgram(program, signal);
+                    if (version === 2)
+                        return loaded.compiler.verifyProgram(program, signal);
+                    if (version === 3)
+                        return loaded.compiler.verifyProgram(program, signal);
+                    return false;
+                }, dispose: () => loaded.compiler.dispose() }, libraries: loaded.libraries, bridge: loaded.bridge,
+            ...(version === 4 ? { stateLoader: loaded.stateLoader } : {}),
             runner: { identity: loaded.runner.identity,
                 async evaluateTrace(program, input, signal) {
                     if (closed)
@@ -99,18 +155,26 @@ export function createRoleplayMvuSchemaAssetOwner() {
                         return { kind: 'unavailable', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
                     // The admitted provider verifies the full owned package before and
                     // after each call; the adapter only owns lifecycle and ABI selection.
-                    if (input.schemaVersion === 1 && version === 1)
+                    if (input.schemaVersion === 1 && version === 1 && program.schemaVersion === 1)
                         return loaded.runner.evaluateTrace(program, input, signal);
-                    if (input.schemaVersion === 2 && version === 2)
+                    if (input.schemaVersion === 2 && version === 2 && program.schemaVersion === 1)
+                        return loaded.runner.evaluateTrace(program, input, signal);
+                    if (input.schemaVersion === 3 && version === 3 && program.schemaVersion === 1)
+                        return loaded.runner.evaluateTrace(program, input, signal);
+                    if (input.schemaVersion === 4 && version === 4 && program.schemaVersion === 2)
                         return loaded.runner.evaluateTrace(program, input, signal);
                     return { kind: 'unavailable', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
                 },
                 async verifyTrace(program, evaluation, signal) {
                     if (closed)
                         throw Error('SCHEMA_RUNTIME_DISPOSED');
-                    if (evaluation.schemaVersion === 1 && version === 1)
+                    if (evaluation.schemaVersion === 1 && version === 1 && program.schemaVersion === 1)
                         return loaded.runner.verifyTrace(program, evaluation, signal);
-                    if (evaluation.schemaVersion === 2 && version === 2)
+                    if (evaluation.schemaVersion === 2 && version === 2 && program.schemaVersion === 1)
+                        return loaded.runner.verifyTrace(program, evaluation, signal);
+                    if (evaluation.schemaVersion === 3 && version === 3 && program.schemaVersion === 1)
+                        return loaded.runner.verifyTrace(program, evaluation, signal);
+                    if (evaluation.schemaVersion === 4 && version === 4 && program.schemaVersion === 2)
                         return loaded.runner.verifyTrace(program, evaluation, signal);
                     return false;
                 } }, dispose: () => loaded.dispose() };
@@ -136,8 +200,8 @@ export function createRoleplayMvuSchemaAssetOwner() {
         async get() {
             return (await admitted(1)).runtime;
         },
-        async getDefaultForNewRealm() {
-            return (await admitted(2)).executor;
+        async getDefaultForNewRealm(version = 3) {
+            return (await admitted(version)).executor;
         },
         async getHistoricalV1() {
             return (await admitted(1)).executor;
