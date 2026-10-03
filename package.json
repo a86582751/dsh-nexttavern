@@ -1,6 +1,6 @@
 {
   "name": "dsh-nexttavern",
-  "version": "0.2.9",
+  "version": "0.2.9-rc.2",
   "description": "一个面向 DeepSeek Harness 的长篇角色扮演插件，支持角色卡、世界线、长期记忆、混合检索和 SillyTavern 兼容。",
   "keywords": [
     "dsh-nexttavern",

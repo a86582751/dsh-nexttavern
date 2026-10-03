@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@deepseek-ai/dsh": "0.1.7-rc.2"
+    "@deepseek-ai/dsh": "0.1.7-rc.2",
+    "pnpm": "11.7.0"
   },
   "overrides": {
     "@deepseek-ai/dsh": "0.1.7-rc.2",
