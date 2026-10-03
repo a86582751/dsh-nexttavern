@@ -23,7 +23,7 @@ export const site = {
     issuesUrl: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose',
     licenseName: 'GPL-3.0-only',
     licenseUrl: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE',
-    releaseVersion: '0.2.9',
+    releaseVersion: '0.2.9-rc.2',
     developmentLine: '0.3 开发中，抱歉让大家久等了',
     harnessLine: 'DeepSeek Harness 0.1.7-rc.2',
     hero: {
@@ -50,7 +50,7 @@ export const site = {
         primary: { label: '快速开始', href: 'quickstart.html' },
         secondary: { label: '核心能力', href: 'capabilities.html' },
         facts: [
-            { label: '安装预发行', value: '0.2.9-rc.2' },
+            { label: '最新发行', value: '0.2.9-rc.2' },
             { label: '运行宿主', value: 'DeepSeek Harness' },
             { label: '许可证', value: 'GPL-3.0-only' }
         ]

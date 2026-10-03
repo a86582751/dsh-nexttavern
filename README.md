@@ -4,7 +4,7 @@
 
 **简体中文** · [English](README.en.md)
 
-> **便携安装修复预发行：[0.2.9-rc.2](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2)。** 若 Windows 一键安装提示找不到 pnpm，请下载本预发行安装器并使用新目录。它自带私有包管理器，支持中文和空格的可写路径；无需另装全局 pnpm。正式 npm latest 仍为 0.2.9。
+> **GitHub 最新发行（安装修复）：[0.2.9-rc.2](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2)。** 若 Windows 一键安装提示找不到 pnpm，请下载本版安装器并使用新目录。它自带私有包管理器，支持中文和空格的可写路径；无需另装全局 pnpm。正式 npm latest 仍为 0.2.9。
 
 > **0.2.9 — Distribution & Installation Fix。** 这是基于 0.2.8 的安装分发补丁：预置第三方 SDK 依赖，修复首次安装及私有组件重新链接时的构建脚本许可问题。正式来源为 [npm `dsh-nexttavern`](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9) 和 [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)，支持 Harness `0.1.7-rc.2`／web／Session V4。开发请读[重建指南](CONTRIBUTING.md)。
 
@@ -52,13 +52,13 @@ npm install -g @deepseek-ai/dsh@0.1.7-rc.2
 
 ### Windows
 
-希望由安装器准备便携运行时与快捷方式，可下载 [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe)。Windows on ARM 使用 [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe)。从 0.2.5 迁移时选择新的安装目录；完整步骤、未签名提示与验证范围见 [Windows 一键安装指南](INSTALL-WINDOWS.md)。
+希望由安装器准备便携运行时与快捷方式，可下载 [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup.exe)。Windows on ARM 使用 [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup-arm64.exe)。从 0.2.5 迁移时选择新的安装目录；完整步骤、未签名提示与验证范围见 [Windows 一键安装指南](INSTALL-WINDOWS.md)。
 
 两端安装器准备便携宿主后，也通过官方 `plugin add` 安装已校验的归档；不再向宿主重放旧兼容补丁。安装失败时保留未完成回执，重新运行可以恢复本安装器拥有的工作。
 
 ### Linux
 
-[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从 0.2.5 迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
+[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从 0.2.5 迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
 
 ### 安装与模型费用
 
@@ -372,21 +372,21 @@ flowchart TD
 
 **架构说完，下面是取用与维护这一版需要的材料。** 先看这一版发布了哪些文件。
 
-- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-nexttavern.tgz)，含统一插件、预构建 UI、源码、preset、参考卡、随包组件、CLI 和可选公网鉴权源包。
-- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-debug.tgz)。
-- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
+- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/dsh-nexttavern.tgz)，含统一插件、预构建 UI、源码、preset、参考卡、随包组件、CLI 和可选公网鉴权源包。
+- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/dsh-debug.tgz)。
+- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
 
 一键安装器：
 
-- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe)（Windows x64）
-- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe)（Windows on ARM）
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/nexttavern-setup.tgz)（安装器的 npm 归档）
+- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup.exe)（Windows x64）
+- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup-arm64.exe)（Windows on ARM）
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/nexttavern-setup.tgz)（安装器的 npm 归档）
 
 校验与来源：
 
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/provenance.json)
-- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)。npm 包名为 `dsh-nexttavern`，通过官方 `dsh plugin --profile web add dsh-nexttavern` 安装。
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/provenance.json)
+- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2)。npm 包名为 `dsh-nexttavern`，通过官方 `dsh plugin --profile web add dsh-nexttavern` 安装。
 
 ## 安装
 
@@ -405,7 +405,7 @@ dsh web --host 127.0.0.1 --port 3510
 
 浏览器中选择刚建的工作区，配置自己的模型供应商，新建会话时选“角色扮演模式”。后续启动仍须使用同一个 `DSH_HOME`，再运行最后一条命令。
 
-也可以从 [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9) 下载主包，与 `SHA256SUMS` 核对后，以本地归档替代 npm 包名：
+也可以从 [v0.2.9-rc.2 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2) 下载主包，与 `SHA256SUMS` 核对后，以本地归档替代 npm 包名：
 
 ```powershell
 dsh plugin --profile web add ./dsh-nexttavern.tgz

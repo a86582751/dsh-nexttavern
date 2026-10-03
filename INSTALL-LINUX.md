@@ -1,6 +1,6 @@
 # Linux 一键安装
 
-当前便携安装修复预发行是 **0.2.9-rc.2**，随包准备私有 pnpm，并为安装及后续启动传递正确 PATH。请使用新目录；本版不扩展跨版本原地升级范围。
+当前 GitHub 最新便携安装修复版是 **0.2.9-rc.2**，随包准备私有 pnpm，并为安装及后续启动传递正确 PATH。请使用新目录；本版不扩展跨版本原地升级范围。
 
 [返回首页](README.md) · [Windows 安装](INSTALL-WINDOWS.md) · [手动安装](README.md#安装) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.9-rc.2 — GitHub Latest & Issue #5 Closeout — 2026-10-03
+
+- 将已核验的 0.2.9-rc.2 设为 GitHub latest，首页模板、中英 README 与所有当前便携安装器／归档下载链接统一到该版本，避免下载旧安装器。npm latest 按用户选择保持 0.2.9。
+- Windows 缺少 pnpm 的安装问题已修复，#5 回复并按已解决关闭；#7 沿用此前说明与关闭结果。
+- 原发行 tag、资产、哈希与安装器保持不变；复用已通过的代码与资产检查，官网发布按本次 head 重新读回。
+
+English: 0.2.9-rc.2 is now the latest GitHub release. Current portable installer/archive links and the homepage point to it. npm latest remains 0.2.9. Issue #5 is resolved and closed; release asset bytes are unchanged.
+
 ## 0.2.9-rc.2 — Portable Package Manager Fix — 2026-10-03
 
 - 修复 Windows 全新便携安装在官方 `plugin add` 子进程中找不到 pnpm 的问题：随包锁定私有 pnpm，为安装及后续启动传递正确 PATH。缓存回执存在但私有命令丢失时，重试会补齐依赖。

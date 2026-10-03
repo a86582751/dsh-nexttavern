@@ -1052,7 +1052,7 @@ function landingPage() {
     '<div class="section">',
     '  <div class="notice">' + icon('branch'),
     '    <p><b>' + escapeHtml(site.developmentLine) + '。</b>代码持续同步到 main；' + escapeHtml(site.releaseVersion) +
-    ' 仍是当前正式发布，安装来源与下载版本请以对应指南为准。升级前请在旧环境导出角色卡或小说。</p>',
+    ' 是 GitHub 最新发行；便携安装器下载使用此版本，npm latest 仍为 0.2.9。升级前请在旧环境导出角色卡或小说。</p>',
     '  </div>',
     '</div>',
     '<section class="section">',
