@@ -1,6 +1,7 @@
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuNumericalSnapshot, MvuStateRoot} from './roleplay-mvu-state.js'
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryRoot} from './roleplay-mvu-schema-story-types.js'
+import type {MvuAcceptedDisplayUpdate} from './roleplay-mvu-display-facts.js'
 
 /** A display hint is not permission. The writer rechecks the active Native
  * owner, Source, root and every base hash under its own mutation boundary. */
@@ -9,9 +10,11 @@ export type MvuStateObservation = {
   sessionId: string
   observedNativeSeq: number
 } & (
-  | {kind: 'ready'; snapshot: MvuNumericalSnapshot; canEdit: boolean; editBlockCode?: string}
+  | {kind: 'ready'; snapshot: MvuNumericalSnapshot; canEdit: boolean; editBlockCode?: string;
+    displayUpdates?:readonly MvuAcceptedDisplayUpdate[]}
   | {kind:'schema-ready';values:MvuJsonObject;valuesSha256:string;sourceSha256:string;eventId:string;
-    snapshot:MvuSchemaNumericalSnapshotV2;canEdit:boolean;editBlockCode?:string}
+    snapshot:MvuSchemaNumericalSnapshotV2;canEdit:boolean;editBlockCode?:string;
+    displayUpdates?:readonly MvuAcceptedDisplayUpdate[]}
   | {kind: 'blocked' | 'unknown'; code: string; canEdit: false}
 )
 

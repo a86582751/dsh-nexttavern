@@ -1,4 +1,6 @@
 import { createReaderBeautyCache } from './reader-beauty.js';
+import type { ReaderBeautyTask } from './reader-beauty.js';
+import type { MvuAcceptedDisplayUpdate } from '../core/roleplay-mvu-display-facts.js';
 import { AUTHOR_FRAME_MAX_ROWS, createAuthorFrame, type AuthorFrameLayout, type AuthorFramePart } from './author-runtime.js';
 export { createAuthorRuntime } from './author-runtime.js';
 import type * as ReactAPI from 'react';
@@ -28,6 +30,13 @@ interface ReaderState extends StateReply {
     rules?: {beauty?: {regexRules?: ReaderRule[];css?: string;js?: string;};};
     surfaceNodes?: {seq?: number;}[];
     failedTurnRecoveryByTurn?: Record<string, unknown>;
+    // Reader consumes only these display fields; numerical snapshots and
+    // server execution contracts belong to the state producer.
+    numericalState?: {
+        sessionId: string;
+        kind: string;
+        displayUpdates?: readonly MvuAcceptedDisplayUpdate[];
+    } | null;
 }
 interface ChatSnapshot {order?: string[];nodes?: {get(key: string): ReaderNode | undefined;};}
 interface ReaderSessionSnapshot {loadingOlder?: boolean;hasMore?: boolean;}
@@ -346,11 +355,31 @@ React,
             ? [...committedParts.slice(0, AUTHOR_FRAME_MAX_ROWS - transientParts.length), ...transientParts]
             : parts;
 
+        const numerical = state?.sessionId === sessionId ? state.numericalState : undefined;
+        const displayUpdates = numerical?.sessionId === sessionId
+            && (numerical.kind === 'ready' || numerical.kind === 'schema-ready')
+            && Array.isArray(numerical.displayUpdates) ? numerical.displayUpdates : [];
+        const displayByMessage = new Map<string, MvuAcceptedDisplayUpdate | null>();
+        for (const update of displayUpdates) {
+            if (!update?.canonical) continue;
+            const key = JSON.stringify([update.canonical.seq, update.canonical.messageId]);
+            // Even equal-looking facts with different owners are ambiguous to
+            // this selected surface; omission leaves the original text visible.
+            displayByMessage.set(key, displayByMessage.has(key) ? null : update);
+        }
+        const taskFor = (part: ReaderPart): ReaderBeautyTask => {
+            if (part.kind !== 'narrator' || part.transient) return part.text;
+            const accepted = displayByMessage.get(JSON.stringify([part.seq, part.messageId]));
+            return {text: part.text, seq: part.seq, messageId: part.messageId,
+                ...(accepted ? {displayUpdate: accepted} : {})};
+        };
+        const visibleTasks = visibleParts.map(taskFor);
         const beautyScope = sessionId + '\0' + JSON.stringify(rules);
         const beautyCache = beautyCacheRef.current;
         beautyCache.selectScope(beautyScope);
         // Keep transient stream text out of regex work; it still gets immediate fallback rendering.
-        const beautyTasks = visibleParts.filter(part => part.kind === 'narrator' && !part.transient).map(part => part.text);
+        const beautyTasks = visibleTasks.filter((_, index) => visibleParts[index]!.kind === 'narrator'
+            && !visibleParts[index]!.transient);
         const beautyInput = JSON.stringify(beautyTasks);
         React.useEffect(
         () => beautyCache.run(beautyScope, beautyTasks, rules, () => refreshBeauty(n => n + 1)),
@@ -359,9 +388,10 @@ React,
         );
         const applyBeauty = beautyCache.htmlFor;
         const beautyFailed = beautyCache.failed(beautyTasks);
-        const renderedParts = visibleParts.map((part) => ({
+        const renderedParts = visibleParts.map((part, index) => ({
             ...part,
-            html: part.kind === 'narrator' ? applyBeauty(part.text) : '',
+            displayText: part.kind === 'narrator' ? beautyCache.textFor(visibleTasks[index]!) : part.text,
+            html: part.kind === 'narrator' ? applyBeauty(visibleTasks[index]!) : '',
         }));
         if (state !== null && selectedNodes.length === 0) {
             console.warn(
@@ -396,7 +426,7 @@ React,
         const framed = !!authorJs.trim() && frameFailure?.identity !== frameIdentity;
         const activeFrameLayout = frameLayout?.identity === frameIdentity ? frameLayout.value : null;
         const framePayload = JSON.stringify(renderedParts.map(part => ({
-            key: readerPartKey(part), kind: part.kind, text: part.text, html: part.html,
+            key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html,
         } satisfies AuthorFramePart)));
         React.useEffect(() => {
             if (!framed || !sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !frameRef.current) return;
@@ -600,7 +630,7 @@ React,
             frameFailure?.identity === frameIdentity ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' },
                 '隔离阅读视图不可用，已保留正文和原生操作；作者脚本未运行。' + frameFailure.reason) : null,
 
-            beautyFailed ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' }, '部分美化规则未能安全完成，已保留完整正文。修改规则后会重新匹配。') : null,
+            beautyFailed ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' }, '部分美化规则未能安全完成，已保留可读正文和原生操作。修改规则后会重新匹配。') : null,
 
             canLoadOlder || historyBusy || historyError || canLoadNewer || canLoadLatest
                 ? React.createElement(

@@ -5750,6 +5750,29 @@
       },
       "args": [],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:reader-mvu-display",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "jsdom"
+      ],
+      "inputs": [],
+      "args": [],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]
 }

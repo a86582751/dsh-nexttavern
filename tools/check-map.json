@@ -5523,6 +5523,14 @@
       "source": "lib/core/tavern-mvu-schema-import-policy.js"
     },
     {
+      "id": "roleplay-mvu-display-facts-typescript",
+      "source": "src/core/roleplay-mvu-display-facts.ts"
+    },
+    {
+      "id": "roleplay-mvu-display-facts-js",
+      "source": "lib/core/roleplay-mvu-display-facts.js"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -7937,7 +7945,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -8371,7 +8380,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -8482,7 +8492,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -8891,7 +8902,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -9013,7 +9025,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -9204,7 +9217,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -9440,7 +9454,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -9671,7 +9686,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -9888,7 +9904,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -10450,7 +10467,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -10602,7 +10620,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -12369,7 +12388,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -14689,7 +14709,8 @@
         "src/ui/card-upload-panel.ts",
         "lib/ui/card-upload-panel.js",
         "src/ui/card-upload-request.ts",
-        "lib/ui/card-upload-request.js"
+        "lib/ui/card-upload-request.js",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -16658,7 +16679,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -16873,7 +16895,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -17690,7 +17713,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -17811,7 +17835,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -17959,7 +17984,8 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -26913,7 +26939,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ],
       "typeContext": "default"
     },
@@ -27034,7 +27061,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ],
       "typeContext": "default"
     },
@@ -27549,7 +27577,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ],
       "typeContext": "default"
     },
@@ -27633,7 +27662,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ],
       "typeContext": "default"
     },
@@ -27718,7 +27748,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ],
       "typeContext": "default"
     },
@@ -27849,7 +27880,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ],
       "typeContext": "default"
     },
@@ -27935,7 +27967,8 @@
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ],
       "typeContext": "default"
     },
@@ -32079,7 +32112,8 @@
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
         "src/operations/bundled-library-assembly.mts",
         "src/operations/test-temp.mts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -32363,7 +32397,8 @@
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
         "src/operations/bundled-library-assembly.mts",
         "src/operations/test-temp.mts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -32651,7 +32686,8 @@
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
         "src/operations/bundled-library-assembly.mts",
         "src/operations/test-temp.mts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -32940,7 +32976,8 @@
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
         "src/operations/bundled-library-assembly.mts",
         "src/operations/test-temp.mts",
-        "src/core/tavern-mvu-schema-import-policy.ts"
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
     {
@@ -35461,6 +35498,21 @@
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
         "src/operations/bundled-library-assembly.mts",
         "src/operations/test-temp.mts"
+      ]
+    },
+    {
+      "id": "roleplay-mvu-display-facts-js-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-mvu-display-facts-js",
+      "entry": "src/core/roleplay-mvu-display-facts.ts",
+      "builder": "tools/build-modules.mjs",
+      "typeContext": "default",
+      "inputs": [
+        "src/core/roleplay-mvu-display-facts.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     }
   ],

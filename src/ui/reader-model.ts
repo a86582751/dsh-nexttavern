@@ -220,7 +220,9 @@ export function readerText(node: unknown): string {
       return blocks
         .filter(block => isRecord(block) && (block.kind === 'text' || block.type === 'text'))
         .map(block => String(isRecord(block) ? block.text ?? block.value ?? '' : ''))
-        .filter(Boolean).join('\n')
+        // Final Native blocks retain empty text in source order. Preserve its
+        // separators for canonical copy/edit and the accepted-body SHA binding.
+        .join('\n')
     }
   }
   return textFromNodeValue(node.data ?? node)
