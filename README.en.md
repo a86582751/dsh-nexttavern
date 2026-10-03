@@ -10,6 +10,8 @@
 
 Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, structured events and recovery mechanisms has proved harder than expected, and work is accelerating. This 0.2.9 patch fixes distribution, installation and third-party dependency compatibility; roleplay features continue from 0.2.8, and the broader compatibility work remains in development. Thank you for helping us improve it with your feedback.
 
+0.3 development update (2026-10-03): deterministic imports and selected MVU state and recovery paths have been verified. Work now focuses on opening selection and initialization, edit/branch/reopen behavior for each state protocol, and key player operations before advancing the dynamic templates and frontend that depend on those contracts. Full compatibility acceptance is still incomplete; these development results are not included in the official 0.2.9 package.
+
 **Let your characters think for themselves, and let the world unfold from your choices.**
 
 NextTavern is a long-form roleplay / Tavern plugin for DeepSeek Harness (DSH), with SillyTavern character-card compatibility, worldlines, long-term memory, and hybrid keyword + semantic retrieval. A character card, a sudden idea, one choice you refuse to compromise on — any of them can start a story. NextTavern brings the native agent loop to long-form roleplay: the agent looks things up on its own, keeps memory in order and reasons as individual characters, while you hold the direction.
