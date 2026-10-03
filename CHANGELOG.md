@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.9-rc.2 — Portable Package Manager Fix — 2026-10-03
+
+- 修复 Windows 全新便携安装在官方 `plugin add` 子进程中找不到 pnpm 的问题：随包锁定私有 pnpm，为安装及后续启动传递正确 PATH。缓存回执存在但私有命令丢失时，重试会补齐依赖。
+- 核对中文和空格路径的真实进程参数；请使用有写入权限的本机目录。Linux 安装／启动也使用同一私有包管理器。
+- 这是基于 0.2.9 的安装预发行版，角色扮演功能和宿主 `0.1.7-rc.2/web` 支持范围不变。新安装器请使用新目录；本版不扩展便携安装器的跨版本原地升级承诺。
+- 第三方 dshmarket 1.66.8 的皮肤开关持久化问题已在 [#7](https://github.com/a86582751/dsh-nexttavern/issues/7) 说明原因及绕法，本包不修改或替换玩家的市场。
+
+English:
+
+- Include a locked private pnpm and expose it to official plugin-install and later host/market child processes. Retry restores a missing command even when a cached dependency receipt exists.
+- Verify real process arguments with spaces and Chinese paths; use a writable local directory. Linux installation and startup use the same private package manager.
+- This installation prerelease keeps 0.2.9 roleplay behavior and Harness `0.1.7-rc.2/web` support. Use a fresh directory; no wider in-place installer upgrade is established. The third-party market issue remains upstream, with a workaround in #7.
+
 ## 0.2.9 — Distribution & Installation Fix — 2026-10-02
 
 基于 0.2.8 的安装分发补丁，角色扮演业务功能和兼容范围保持不变：Harness **0.1.7-rc.2**／**web**／Session V4，pi-ai **0.85.1**。0.3 的 MVU、EJS、RUBY 与更完整社区卡前端兼容继续开发。

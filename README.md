@@ -4,6 +4,8 @@
 
 **简体中文** · [English](README.en.md)
 
+> **便携安装修复预发行：[0.2.9-rc.2](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2)。** 若 Windows 一键安装提示找不到 pnpm，请下载本预发行安装器并使用新目录。它自带私有包管理器，支持中文和空格的可写路径；无需另装全局 pnpm。正式 npm latest 仍为 0.2.9。
+
 > **0.2.9 — Distribution & Installation Fix。** 这是基于 0.2.8 的安装分发补丁：预置第三方 SDK 依赖，修复首次安装及私有组件重新链接时的构建脚本许可问题。正式来源为 [npm `dsh-nexttavern`](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9) 和 [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)，支持 Harness `0.1.7-rc.2`／web／Session V4。开发请读[重建指南](CONTRIBUTING.md)。
 
 > **从 0.2.5 等旧宿主版本迁移，请使用新目录。** 先在旧环境导出角色卡或小说，再安装 0.2.9；旧会话不兼容，小说稿不保存完整会话状态。0.2.8 → 0.2.9 延续同一宿主与会话线，更新步骤见[更新、卸载与回滚](#更新卸载与回滚)。

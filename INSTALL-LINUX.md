@@ -1,5 +1,7 @@
 # Linux 一键安装
 
+当前便携安装修复预发行是 **0.2.9-rc.2**，随包准备私有 pnpm，并为安装及后续启动传递正确 PATH。请使用新目录；本版不扩展跨版本原地升级范围。
+
 [返回首页](README.md) · [Windows 安装](INSTALL-WINDOWS.md) · [手动安装](README.md#安装) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
 `NextTavern-Setup.sh` 是 0.2.9 的 Linux 便携运行时安装入口。它是一个自包含的 shell 脚本：不需要预装 Node.js，不需要 root，也不需要系统包管理器——脚本自己下载并校验一份便携的 Node.js 运行时，然后把工作区、桌面入口和启动／停止入口准备好。
@@ -116,9 +118,9 @@ sh NextTavern-Setup.sh --action stop
 
 ## 下载
 
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh)
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/nexttavern-setup.tgz)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup.sh)
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/nexttavern-setup.tgz)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2)
 
 下载后先校验再运行是个好习惯：
 

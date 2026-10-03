@@ -2,7 +2,9 @@
 
 [返回首页](README.md) · [Linux 安装](INSTALL-LINUX.md) · [手动安装](README.md#安装) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
-`NextTavern-Setup.exe` 是 0.2.9 的便携运行时安装入口：不用自己装运行时、不用自己配补丁，双击、选目录、等待，就能在自己的电脑上打开角色扮演工作台。
+`NextTavern-Setup.exe` 是便携运行时安装入口：不用自己装运行时、不用自己配补丁，双击、选目录、等待，就能在自己的电脑上打开角色扮演工作台。
+
+当前安装修复预发行是 **0.2.9-rc.2**，修复 0.2.8／0.2.9 在全新 Windows 中找不到 pnpm 的问题。请使用新目录，例如 `%LOCALAPPDATA%\NextTavern-0.2.9-rc.2`；中文和空格路径可用，目录须有写入权限，`Program Files` 通常需要管理员权限。无需单独安装全局 pnpm。
 
 ## 它替你做了什么，需要你做什么
 
@@ -106,8 +108,8 @@
 
 ## 下载
 
-- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe)
-- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)
+- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup.exe)
+- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup-arm64.exe)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2)
 
 已有 Node.js、需要固定端口或明确隔离新目录，请用首页的[官方插件安装步骤](README.md#安装)。无需沿用 alpha.3 的手工 preset 初始化和补丁命令。
