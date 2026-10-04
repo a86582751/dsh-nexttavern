@@ -40,6 +40,10 @@ function explanatorySuffix(suffix) {
         || suffix.startsWith('phasea-') || suffix.startsWith('phaseb-') || suffix.startsWith('phasec-');
 }
 function membershipChange(frame, table, key) {
+    // Exact consumers still watch their row. Namespace membership alone must
+    // not treat a producer's predeclared output as a new consumed input.
+    if (frame.outputRows.has(address(table, key)))
+        return false;
     const sid = sessionOf(key);
     if (!sid || !frame.namespaces.has(namespace(table, sid)))
         return false;
@@ -58,8 +62,14 @@ function membershipChange(frame, table, key) {
 export function createRoleplayInputStateOwner(deps) {
     let disposed = false;
     let capturing;
+    let capturingInputSession;
+    let capturingInputOutputRows;
     let readingActive = false;
     let readingPendingVariant;
+    let readingProgramFact;
+    let programFactFootprint;
+    let standaloneProgramAbsenceAudit = false;
+    let standaloneProgramAbsenceReentrant = false;
     const slots = new Map();
     const frames = new Set();
     const handles = new WeakMap();
@@ -69,6 +79,9 @@ export function createRoleplayInputStateOwner(deps) {
     const prefixReaders = new Map();
     const pendingVariantRows = new Map();
     const pendingVariantGroups = new Set();
+    const programFactRows = new Map();
+    const programFactNamespaces = new Map();
+    const programFactPrefixes = new Map();
     const sessionReaders = new Map();
     const metrics = { schemaCaptures: 0, sourceCaptures: 0, observationCaptures: 0, controlCaptures: 0, inputCaptures: 0, closingCaptures: 0,
         reusedReads: 0, checkpoints: 0, recordReads: 0, inventoryRows: 0, invalidations: 0 };
@@ -166,11 +179,156 @@ export function createRoleplayInputStateOwner(deps) {
         read.value = evaluatePendingVariant(read);
         return read.value;
     }
+    function removeProgramFactSubscriptions(read, footprint) {
+        for (const [index, keys] of [[programFactRows, footprint.rows],
+            [programFactNamespaces, footprint.namespaces], [programFactPrefixes, footprint.prefixes]]) {
+            for (const key of keys) {
+                const readers = index.get(key);
+                readers?.delete(read);
+                if (!readers?.size)
+                    index.delete(key);
+            }
+        }
+    }
+    function forgetProgramFact(read) {
+        read.active = false;
+        removeProgramFactSubscriptions(read, read);
+        read.rows.clear();
+        read.namespaces.clear();
+        read.prefixes.clear();
+    }
+    function programFactDependency(kind, key) {
+        const read = readingProgramFact, footprint = programFactFootprint;
+        if (!read || !footprint)
+            return;
+        footprint[kind].add(key);
+        const index = kind === 'rows' ? programFactRows : kind === 'namespaces' ? programFactNamespaces : programFactPrefixes;
+        // Subscribe during the initial audit so publications cannot disappear
+        // between reading an address and completing the capture.
+        subscribe(index, key, read);
+    }
+    function programFactError(kind, reason) {
+        return Error(`INPUT_STATE_PROGRAM_${kind === 'absence' ? 'ABSENCE' : 'OPENING'}_${reason}`);
+    }
+    function synchronousProgramFact(kind, value) {
+        if (value !== null && (typeof value === 'object' || typeof value === 'function') && 'then' in value) {
+            throw programFactError(kind, 'ASYNC_AUDIT');
+        }
+        return value;
+    }
+    function auditProgramFact(read, audit) {
+        if (readingProgramFact || standaloneProgramAbsenceAudit) {
+            if (readingProgramFact)
+                markDirty(readingProgramFact.frame);
+            markDirty(read.frame);
+            throw programFactError(read.kind, 'REENTRANT_AUDIT');
+        }
+        if (!nominalCurrent(read.frame) || !programFactOwnerCurrent(read)) {
+            markDirty(read.frame);
+            throw Error('INPUT_STATE_CAPTURE_CHANGED');
+        }
+        const outer = capturing, active = readingActive, variant = readingPendingVariant;
+        capturing = undefined;
+        readingActive = false;
+        readingPendingVariant = undefined;
+        readingProgramFact = read;
+        programFactFootprint = read;
+        try {
+            const data = synchronousProgramFact(read.kind, audit());
+            if (!nominalCurrent(read.frame) || !programFactOwnerCurrent(read)) {
+                throw programFactError(read.kind, 'AUDIT_CHANGED');
+            }
+            read.data = data;
+            return data;
+        }
+        catch (error) {
+            forgetProgramFact(read);
+            markDirty(read.frame);
+            throw error;
+        }
+        finally {
+            readingProgramFact = undefined;
+            programFactFootprint = undefined;
+            capturing = outer;
+            readingActive = active;
+            readingPendingVariant = variant;
+        }
+    }
+    /** DATA is audited once. Notifications revoke its captured inputs; exact
+     * outputs declared by the producer do not trigger another owner audit. */
+    function readProgramAbsenceNamespaceFacts(actualSession, initialAudit) {
+        return readProgramFacts('absence', actualSession, initialAudit);
+    }
+    /** Only the actual synchronous input capture may consume this DATA fact.
+     * Its initial audit belongs to the Program opening supplier; this read
+     * does not recreate Native admission or ready. */
+    function readProgramOpeningPreparationFacts(actualSession, initialAudit) {
+        return readProgramFacts('opening-preparation', actualSession, initialAudit);
+    }
+    function readProgramFacts(kind, actualSession, initialAudit) {
+        if (disposed)
+            throw Error('INPUT_STATE_OWNER_DISPOSED');
+        if (readingProgramFact || standaloneProgramAbsenceAudit) {
+            if (readingProgramFact)
+                markDirty(readingProgramFact.frame);
+            if (standaloneProgramAbsenceAudit)
+                standaloneProgramAbsenceReentrant = true;
+            throw programFactError(kind, 'REENTRANT_AUDIT');
+        }
+        const frame = capturing;
+        if (kind === 'opening-preparation' && (!frame || capturingInputSession !== actualSession
+            || frame.session !== actualSession)) {
+            if (frame)
+                markDirty(frame);
+            throw programFactError(kind, 'CAPTURE_REQUIRED');
+        }
+        if (deps.session(actualSession.id) !== actualSession) {
+            if (capturing)
+                markDirty(capturing);
+            throw programFactError(kind, 'SESSION_CHANGED');
+        }
+        if (!frame) {
+            standaloneProgramAbsenceAudit = true;
+            standaloneProgramAbsenceReentrant = false;
+            try {
+                const data = synchronousProgramFact(kind, initialAudit());
+                if (standaloneProgramAbsenceReentrant)
+                    throw programFactError(kind, 'REENTRANT_AUDIT');
+                return data;
+            }
+            finally {
+                standaloneProgramAbsenceAudit = false;
+                standaloneProgramAbsenceReentrant = false;
+            }
+        }
+        if (kind === 'absence') {
+            // One complete namespace audit belongs to this actual Frame/Session.
+            // New callback closures consume its DATA and original subscriptions;
+            // they cannot reinterpret a revoked capture or enroll another footprint.
+            const previous = [...frame.programFacts].find(read => read.kind === 'absence' && read.session === actualSession);
+            if (previous) {
+                if (!nominalCurrent(frame) || !programFactOwnerCurrent(previous)) {
+                    markDirty(frame);
+                    throw Error('INPUT_STATE_CAPTURE_CHANGED');
+                }
+                return previous.data;
+            }
+        }
+        const read = { kind, frame, session: actualSession, agent: deps.agent(actualSession),
+            scopeIdentity: deps.scopeIdentity?.(actualSession), outputRows: frame.outputRows, active: true,
+            rows: new Set(), namespaces: new Set(), prefixes: new Set() };
+        frame.programFacts.add(read);
+        dependSession(frame, actualSession.id);
+        return auditProgramFact(read, initialAudit);
+    }
     function forget(frame) {
         frames.delete(frame);
         for (const read of frame.pendingVariants)
             forgetPendingVariant(read);
         frame.pendingVariants.clear();
+        for (const read of frame.programFacts)
+            forgetProgramFact(read);
+        frame.programFacts.clear();
         for (const [index, keys] of [[rowReaders, frame.rows], [activeRowReaders, frame.activeRows],
             [namespaceReaders, frame.namespaces], [prefixReaders, frame.prefixes],
             [sessionReaders, frame.sessions]]) {
@@ -186,9 +344,52 @@ export function createRoleplayInputStateOwner(deps) {
         for (const parent of frame.parents)
             parent.children.delete(frame);
     }
-    function current(frame) {
+    function nominalCurrent(frame) {
         return !disposed && !frame.dirty && deps.session(frame.session.id) === frame.session
             && deps.agent(frame.session) === frame.agent && deps.scopeIdentity?.(frame.session) === frame.scopeIdentity;
+    }
+    function programFactOwnerCurrent(read) {
+        return read.active && deps.session(read.session.id) === read.session
+            && deps.agent(read.session) === read.agent && deps.scopeIdentity?.(read.session) === read.scopeIdentity;
+    }
+    function current(frame, visiting = new Set()) {
+        // Returning true during an audit would counterfeit a current owner. Even
+        // if the callback swallows the refusal, the original frame stays dirty.
+        if (readingProgramFact) {
+            markDirty(readingProgramFact.frame);
+            return false;
+        }
+        if (standaloneProgramAbsenceAudit) {
+            standaloneProgramAbsenceReentrant = true;
+            markDirty(frame);
+            return false;
+        }
+        if (!nominalCurrent(frame)) {
+            markDirty(frame);
+            return false;
+        }
+        if (visiting.has(frame)) {
+            markDirty(frame);
+            return false;
+        }
+        visiting.add(frame);
+        try {
+            for (const child of frame.children)
+                if (!current(child, visiting)) {
+                    markDirty(frame);
+                    return false;
+                }
+            for (const read of frame.programFacts) {
+                if (!programFactOwnerCurrent(read)) {
+                    markDirty(frame);
+                    return false;
+                }
+            }
+            return nominalCurrent(frame);
+        }
+        finally {
+            visiting.delete(frame);
+        }
     }
     function check(frame) {
         metrics.checkpoints++;
@@ -211,14 +412,16 @@ export function createRoleplayInputStateOwner(deps) {
         handles.set(result, frame);
         return result;
     }
-    function read(slot, id, key, compute, cache, identity) {
+    function read(slot, id, key, compute, cache, identity, sourceOutputs) {
         if (disposed)
             throw Error('INPUT_STATE_OWNER_DISPOSED');
         const session = deps.session(id);
         if (!session)
             throw Error('INPUT_STATE_SESSION_INACTIVE');
-        const slotKey = slot + '\0' + id + '\0' + key, previous = cache ? slots.get(slotKey) : undefined;
-        if (previous && previous.identity === identity && current(previous)) {
+        const slotKey = slot + '\0' + id + '\0' + key, previous = cache ? slots.get(slotKey) : undefined, declaredOutputs = sourceOutputs && new Set(sourceOutputs.map(row => address(row.table, row.key)));
+        if (previous && previous.identity === identity && (!declaredOutputs
+            || declaredOutputs.size === previous.outputRows.size && [...declaredOutputs].every(row => previous.outputRows.has(row)))
+            && current(previous)) {
             metrics.reusedReads++;
             connect(previous);
             return handle(previous, previous.data);
@@ -229,8 +432,9 @@ export function createRoleplayInputStateOwner(deps) {
             slots.delete(slotKey);
         }
         const frame = { slot, session, agent: deps.agent(session), dirty: false, rows: new Set(), activeRows: new Set(),
-            sourceMetadataRows: new Map(), pendingVariants: new Set(), namespaces: new Set(),
+            sourceMetadataRows: new Map(), pendingVariants: new Set(), programFacts: new Set(), namespaces: new Set(),
             prefixes: new Set(), sessions: new Set(), children: new Set(), parents: new Set(), identity,
+            outputRows: declaredOutputs ?? (capturingInputSession === session ? capturingInputOutputRows ?? new Set() : new Set()),
             scopeIdentity: deps.scopeIdentity?.(session) };
         frames.add(frame);
         dependSession(frame, id);
@@ -277,11 +481,17 @@ export function createRoleplayInputStateOwner(deps) {
         const methods = new Map();
         return new Proxy(actual, {
             get(target, property) {
-                if (property === 'get')
-                    return (key) => {
+                // Source captures compare installed reader identities. Reuse these
+                // facade functions, while reading the active capture at call time.
+                if (property === 'get') {
+                    if (methods.has(property))
+                        return methods.get(property);
+                    const trackedGet = (key) => {
                         metrics.recordReads++;
                         const value = target.get(key);
-                        if (readingPendingVariant && name === 'branch'
+                        if (readingProgramFact)
+                            programFactDependency('rows', address(name, key));
+                        else if (readingPendingVariant && name === 'branch'
                             && (key.startsWith('fork-group-') || key.includes('__fork-anchor-'))) {
                             pendingVariantRow(readingPendingVariant, name, key);
                         }
@@ -293,10 +503,25 @@ export function createRoleplayInputStateOwner(deps) {
                         }
                         return value;
                     };
-                if (property === 'entries' && target.entries)
-                    return function* (exactPrefix) {
-                        const frame = capturing, activeProjection = readingActive, variant = name === 'branch' ? readingPendingVariant : undefined;
-                        if (variant) {
+                    methods.set(property, trackedGet);
+                    return trackedGet;
+                }
+                if (property === 'entries' && target.entries) {
+                    if (methods.has(property))
+                        return methods.get(property);
+                    const trackedEntries = function* (exactPrefix) {
+                        const frame = capturing, activeProjection = readingActive, variant = name === 'branch' ? readingPendingVariant : undefined, audit = readingProgramFact;
+                        if (audit) {
+                            // Full subject membership has no explanatory-row exemption.
+                            // Additional prefixes and explicit foreign get addresses stay
+                            // subscribed, including missing rows later read with get.
+                            if (name === 'branch' || name === 'status') {
+                                programFactDependency('namespaces', namespace(name, audit.session.id));
+                            }
+                            if (exactPrefix !== undefined)
+                                programFactDependency('prefixes', address(name, exactPrefix));
+                        }
+                        else if (variant) {
                             // Pointer recovery and ancestor lookup can discover a new group
                             // before an anchor exists. Watch the complete navigation namespace.
                             pendingVariantGroups.add(variant);
@@ -326,7 +551,12 @@ export function createRoleplayInputStateOwner(deps) {
                             // Global fork groups are navigation, outside numerical/author
                             // namespaces. Consumers of a group's data use its exact get.
                             const suffix = frame ? key.slice(frame.session.id.length + 2) : '';
-                            if (variant && key.startsWith('fork-group-'))
+                            if (audit) {
+                                if (sessionOf(key) === audit.session.id || exactPrefix !== undefined && key.startsWith(exactPrefix)) {
+                                    programFactDependency('rows', address(name, key));
+                                }
+                            }
+                            else if (variant && key.startsWith('fork-group-'))
                                 pendingVariantRow(variant, name, key);
                             else if (!variant && frame && exactPrefix !== undefined && key.startsWith(exactPrefix))
                                 dependRow(frame, name, key, value);
@@ -342,6 +572,9 @@ export function createRoleplayInputStateOwner(deps) {
                             yield [key, value];
                         }
                     };
+                    methods.set(property, trackedEntries);
+                    return trackedEntries;
+                }
                 const value = Reflect.get(target, property, target);
                 if (typeof value !== 'function')
                     return value;
@@ -355,6 +588,27 @@ export function createRoleplayInputStateOwner(deps) {
         if (disposed || change.domain !== deps.domainName)
             return;
         const ref = address(change.table, change.key);
+        const audits = new Set(programFactRows.get(ref)), subject = sessionOf(change.key);
+        if (subject)
+            for (const read of programFactNamespaces.get(namespace(change.table, subject)) ?? [])
+                audits.add(read);
+        for (const [prefix, readers] of programFactPrefixes)
+            if (ref.startsWith(prefix)) {
+                for (const read of readers)
+                    audits.add(read);
+            }
+        // Audits are synchronous/read-only. Conservatively reject a publication
+        // during one, even before it has discovered that new dependency address.
+        if (readingProgramFact)
+            audits.add(readingProgramFact);
+        for (const read of audits)
+            if (read.active) {
+                // An audit is read-only even at its own declared output. After capture,
+                // only producer-declared exact addresses can be output publications;
+                // unknown namespace members and prior material are captured inputs.
+                if (read === readingProgramFact || !read.outputRows.has(ref))
+                    markDirty(read.frame);
+            }
         for (const [prefix, readers] of prefixReaders)
             if (ref.startsWith(prefix)) {
                 for (const frame of readers)
@@ -385,7 +639,7 @@ export function createRoleplayInputStateOwner(deps) {
         capturing = undefined;
         try {
             for (const read of variantReads) {
-                if (!current(read.frame))
+                if (!nominalCurrent(read.frame))
                     continue;
                 // Refresh the footprint even for false -> false: a new pointer may
                 // move the next real edit to a different group. Never revive a dirty read.
@@ -418,7 +672,7 @@ export function createRoleplayInputStateOwner(deps) {
         capturing = undefined;
         try {
             for (const frame of activeReaders) {
-                if (!current(frame))
+                if (!nominalCurrent(frame))
                     continue;
                 if (!active.has(frame.session)) {
                     try {
@@ -482,7 +736,22 @@ export function createRoleplayInputStateOwner(deps) {
     function captureInput(scope, compute) {
         scope.signal.throwIfAborted();
         scope.assertOwnerFactsCurrent();
-        const readout = read('input', scope.session.id, 'actual-input', compute, false);
+        const outputRows = new Set((scope.outputRows ?? []).map(row => address(row.table, row.key)));
+        const readout = read('input', scope.session.id, 'actual-input', () => {
+            // Dynamic scope follows the real compute call, including same-session
+            // Source children. Cached Source data cannot enroll a fresh opening fact.
+            const outer = capturingInputSession, outerOutputs = capturingInputOutputRows;
+            capturingInputSession = scope.session;
+            capturingInputOutputRows = outputRows;
+            capturing.outputRows = outputRows;
+            try {
+                return compute();
+            }
+            finally {
+                capturingInputSession = outer;
+                capturingInputOutputRows = outerOutputs;
+            }
+        }, false);
         const own = handles.get(readout);
         const assertCurrent = () => {
             scope.signal.throwIfAborted();
@@ -514,9 +783,10 @@ export function createRoleplayInputStateOwner(deps) {
     }
     return {
         table, domainChanged, nativeChanged, configurationChanged, schemaPublished, invalidateSession, releaseSession,
-        captureInput, captureClosing, readPendingVariantFacts,
+        captureInput, captureClosing, readPendingVariantFacts, readProgramAbsenceNamespaceFacts,
+        readProgramOpeningPreparationFacts,
         captureSchema: (id, compute) => read('schema', id, 'verified-history', compute, true),
-        captureSource: (id, kind, compute) => read('source', id, kind, compute, true),
+        captureSource: (id, kind, compute, outputs) => read('source', id, kind, compute, true, undefined, outputs),
         captureOriginal: (id, identity, compute) => read('source', id, 'schema-original', compute, true, identity),
         captureSourceFrame: (id, identity, compute) => read('source', id, 'schema-frame', compute, true, identity),
         captureObservation: (id, compute) => read('observation', id, 'input-observation', compute, true),

@@ -397,7 +397,10 @@ function captured(deps, sessionId) {
                 valuesSha256: recordSha256(openingContext.context) } } };
     const source = { ...body, sourceSha256: recordSha256(body) };
     cloneData(source, '/source');
-    return freeze({ schemaVersion: 1, kind: 'captured-data', source, contributionInput });
+    // Source already owns the complete admission above. Publish the same currency
+    // identity for consumers without cloning or validating this DATA again.
+    const currentIdentitySha256 = recordSha256(sourceCurrentIdentity(body));
+    return freeze({ schemaVersion: 1, kind: 'captured-data', source, currentIdentitySha256, contributionInput });
 }
 export function createRoleplayTavernLoreSourceV1(deps) {
     function capture(sessionId) {
@@ -424,7 +427,7 @@ export function createRoleplayTavernLoreSourceV1(deps) {
             // Rebuild from every actual table/reader, immutable decoder proof,
             // membership and binding. No cached digest or legacy-to-legacy exemption.
             const actual = captured(deps, saved.sessionId);
-            return same(tavernLoreSourceCurrentIdentityV1(saved), tavernLoreSourceCurrentIdentityV1(actual.source));
+            return recordSha256(sourceCurrentIdentity(body)) === actual.currentIdentitySha256;
         }
         catch {
             return false;
@@ -441,7 +444,7 @@ export function createRoleplayTavernLoreSourceV1(deps) {
             return { captured: result, assertCurrent: () => { if (!current(saved))
                     fail('DATA_INVALID', '/source'); } };
         }
-        const identity = tavernLoreSourceCurrentIdentityV1(saved), rows = identity.current.rows, expectedContext = { context: saved.current.openingContext.context,
+        const rows = saved.current.rows.map(row => tavernLoreSourceCurrentRowIdentityV1(sessionId, row)), expectedContext = { context: saved.current.openingContext.context,
             bindingSha256: saved.current.openingContext.bindingSha256 }, expectedCardsSha256 = recordSha256(saved.current.cards), expectedWorldbookSha256 = recordSha256(saved.current.worldbook), expectedContextSha256 = recordSha256(expectedContext);
         const assertCurrent = () => {
             const pointer = deps.readActivePointer(sessionId), record = deps.readImportRecord(saved.sourceRecordSessionId, saved.original.activePointer.importId);
@@ -490,8 +493,11 @@ export function tavernLoreSourceCurrentIdentityV1(input) {
     const source = cloneData(input, '/source/currentIdentity'), { sourceSha256, ...body } = source;
     if (recordSha256(body) !== sourceSha256)
         fail('DATA_INVALID', '/source/currentIdentity');
-    const rows = source.current.rows.map(row => tavernLoreSourceCurrentRowIdentityV1(source.sessionId, row));
-    return freeze({ ...body, current: { ...source.current, rows, materialSha256: recordSha256(rows) } });
+    return freeze(sourceCurrentIdentity(body));
+}
+function sourceCurrentIdentity(body) {
+    const rows = body.current.rows.map(row => tavernLoreSourceCurrentRowIdentityV1(body.sessionId, row));
+    return { ...body, current: { ...body.current, rows, materialSha256: recordSha256(rows) } };
 }
 /** The same complete-row projection is used by Source currency and the actual
  * fresh-basis metadata reader. It grants no row provenance or Source lease. */

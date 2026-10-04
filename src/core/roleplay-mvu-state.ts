@@ -204,7 +204,7 @@ export interface MvuStateDeps {
   /** UI only: the existing derived owner captures its actual frozen prefix,
    * including the original owners. Missing/stale data omits inherited hints. */
   captureInheritedDisplayUpdates?(sessionId:string,genesis:StateGenesis):{
-    updates:readonly MvuAcceptedDisplayUpdate[];current:()=>boolean
+    updates:readonly MvuAcceptedDisplayUpdate[]
   }|undefined
 }
 export type MvuNumericalAuthority = {kind: 'ready'; snapshot: MvuNumericalSnapshot}
@@ -638,13 +638,7 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
       if(!owner||!owner())fail('PROMPT_NUMERICAL_OWNER_UNAVAILABLE')
       const data=formatPromptFacts(inspect(sid))
       if(!owner())fail('PROMPT_NUMERICAL_OWNER_UNAVAILABLE')
-      return Object.freeze({kind:'ready' as const,data,current:()=>{
-        try {
-          if(!owner())return false
-          const latest=formatPromptFacts(inspect(sid))
-          return owner()&&same(latest,data)
-        }catch {return false}
-      }})
+      return Object.freeze({kind:'ready' as const,data})
     }catch(error){return Object.freeze({kind:'unavailable' as const,code:codeOf(error)})}
   }
   function readNumericalAuthority(sid: string): MvuNumericalAuthority {
@@ -668,7 +662,7 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
       const inherited=deps.captureInheritedDisplayUpdates?.(sid,actual.genesis)
       if(inherited) {
         const captured=formatMvuDisplayUpdates(inherited.updates)
-        if(inherited.current())updates.push(...captured)
+        updates.push(...captured)
       }
     }catch { /* Optional display data must not change numerical readiness. */ }
     return {kind:'ready',snapshot:state,displayUpdates:formatMvuDisplayUpdates(updates)}

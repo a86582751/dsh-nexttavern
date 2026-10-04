@@ -9,6 +9,7 @@ import type {TavernLoreEntryPlanV1,TavernLoreCurrentNativeOriginV1}
   from './tavern-lore-plan-types.mjs'
 import type {captureRoleplayTavernPromptSourceV1} from './roleplay-tavern-prompt-source.js'
 import type {TavernLoreEditsDataV1} from './roleplay-tavern-lore-edits-types.js'
+import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
 
 export type PromptProgramSourceCodeV1='PROGRAM_SOURCE_UNAVAILABLE'|'PROGRAM_IMPORT_UNPROVEN'
   |'PROGRAM_SOURCE_CHANGED'|'PROGRAM_CURRENT_ORIGIN_UNAVAILABLE'|'PROGRAM_COMPILATION_UNPROVEN'
@@ -21,6 +22,9 @@ export interface PromptProgramSourceDiagnosticV1 {
  * arbitrary text, compilation, Source packet, interpreter or permission flag. */
 type PromptProgramCoreCaptureDepsV1=Parameters<typeof captureRoleplayTavernPromptSourceV1>[0]
 export interface PromptProgramSourceDepsV1 extends PromptProgramCoreCaptureDepsV1 {
+  readonly edits:PromptProgramCoreCaptureDepsV1['edits']&{
+    readonly observeSourceData?:ReturnType<typeof createRoleplayTavernLoreEditsV1>['observeSourceData']
+  }
   readImportRecord(sourceRecordSessionId:string,importId:string):unknown
 }
 export interface PromptProgramTextV1 {
@@ -173,5 +177,7 @@ export interface PromptProgramSourceInventoryV1 {
   readonly inventorySha256:string
 }
 export type PromptProgramSourceCaptureV1={readonly kind:'captured-program-source';
-  readonly data:PromptProgramSourceInventoryV1;readonly assertCurrent:()=>void}
+  readonly data:PromptProgramSourceInventoryV1;readonly assertCurrent:()=>void;
+  /** Live owner/reader identity only; does not prove DATA currency or grant Source/Native authority. */
+  readonly assertOwnerFactsCurrent?:()=>void}
   |{readonly kind:'refused';readonly authority:'none';readonly diagnostics:readonly PromptProgramSourceDiagnosticV1[]}

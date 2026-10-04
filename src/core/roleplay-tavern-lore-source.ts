@@ -342,7 +342,10 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
         valuesSha256:recordSha256(openingContext.context)}}}
   const source={...body,sourceSha256:recordSha256(body)}
   cloneData(source,'/source')
-  return freeze({schemaVersion:1 as const,kind:'captured-data' as const,source,contributionInput})
+  // Source already owns the complete admission above. Publish the same currency
+  // identity for consumers without cloning or validating this DATA again.
+  const currentIdentitySha256=recordSha256(sourceCurrentIdentity(body))
+  return freeze({schemaVersion:1 as const,kind:'captured-data' as const,source,currentIdentitySha256,contributionInput})
 }
 
 export function createRoleplayTavernLoreSourceV1(deps:TavernLoreSourceDepsV1) {
@@ -364,7 +367,7 @@ export function createRoleplayTavernLoreSourceV1(deps:TavernLoreSourceDepsV1) {
       // Rebuild from every actual table/reader, immutable decoder proof,
       // membership and binding. No cached digest or legacy-to-legacy exemption.
       const actual=captured(deps,saved.sessionId)
-      return same(tavernLoreSourceCurrentIdentityV1(saved),tavernLoreSourceCurrentIdentityV1(actual.source))
+      return recordSha256(sourceCurrentIdentity(body))===actual.currentIdentitySha256
     }catch {return false}
   }
   function captureCurrent(sessionId:string) {
@@ -376,7 +379,7 @@ export function createRoleplayTavernLoreSourceV1(deps:TavernLoreSourceDepsV1) {
     if(saved.inheritance||saved.sourceRecordSessionId!==sessionId) {
       return {captured:result,assertCurrent:()=>{if(!current(saved))fail('DATA_INVALID','/source')}}
     }
-    const identity=tavernLoreSourceCurrentIdentityV1(saved),rows=identity.current.rows,
+    const rows=saved.current.rows.map(row=>tavernLoreSourceCurrentRowIdentityV1(sessionId,row)),
       expectedContext={context:saved.current.openingContext.context,
         bindingSha256:saved.current.openingContext.bindingSha256},
       expectedCardsSha256=recordSha256(saved.current.cards),expectedWorldbookSha256=recordSha256(saved.current.worldbook),
@@ -424,8 +427,11 @@ export function createRoleplayTavernLoreSourceV1(deps:TavernLoreSourceDepsV1) {
 export function tavernLoreSourceCurrentIdentityV1(input:TavernLoreSourceDataV1) {
   const source=cloneData(input,'/source/currentIdentity'),{sourceSha256,...body}=source
   if(recordSha256(body)!==sourceSha256)fail('DATA_INVALID','/source/currentIdentity')
-  const rows=source.current.rows.map(row=>tavernLoreSourceCurrentRowIdentityV1(source.sessionId,row))
-  return freeze({...body,current:{...source.current,rows,materialSha256:recordSha256(rows)}})
+  return freeze(sourceCurrentIdentity(body))
+}
+function sourceCurrentIdentity(body:Omit<TavernLoreSourceDataV1,'sourceSha256'>) {
+  const rows=body.current.rows.map(row=>tavernLoreSourceCurrentRowIdentityV1(body.sessionId,row))
+  return {...body,current:{...body.current,rows,materialSha256:recordSha256(rows)}}
 }
 /** The same complete-row projection is used by Source currency and the actual
  * fresh-basis metadata reader. It grants no row provenance or Source lease. */

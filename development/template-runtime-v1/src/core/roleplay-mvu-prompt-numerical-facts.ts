@@ -186,7 +186,7 @@ export interface MvuPromptInheritedNumericalFactsV1 {
   readonly inventory:MvuPromptInventoryV1
   readonly factsSha256:string
 }
-export type MvuPromptFactCaptureV1<T>={readonly kind:'ready';readonly data:T;readonly current:()=>boolean}
+export type MvuPromptFactCaptureV1<T>={readonly kind:'ready';readonly data:T}
   |{readonly kind:'unavailable';readonly code:string}
 export interface MvuPromptValidatedStoryInputV1 {
   readonly settlement:MvuStatePublisherSettlement

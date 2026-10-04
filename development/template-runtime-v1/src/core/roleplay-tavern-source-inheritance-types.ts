@@ -10,6 +10,7 @@ import type {TavernLoreEditIdentityV1,TavernLoreEditHeadV1,TavernLoreEditEventV1
 import type {LoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
 import type {PromptTemplateOnlyInheritedSourceInputV2} from './roleplay-prompt-template-only-types.js'
 import type {ProgramAbsenceOpeningClosureV1} from './roleplay-program-absence-inheritance-data.js'
+import type {ProgramAbsenceInventoryV1} from './roleplay-program-absence-inventory.js'
 
 export type TavernSourceStaticTableV1='cards'|'worldbook'|'rules'|'opening'|'status'|'branch'
 export interface TavernSourceInheritanceTableV1 {
@@ -348,7 +349,7 @@ export interface TavernSourceInheritanceDepsV1 {
   /** Actual child's complete namespace/Native cut and original Source joins.
    * Called within Source's closed read; must not recursively re-enter it. */
   readonly assertProgramAbsenceOpening?:(childSessionId:string,packet:TavernSourceFrozenProgramAbsenceOpeningV1,
-    cut:TavernSourceNativeCutV1,sourceRows:TavernSourceOwnedRowFactsV1)=>void
+    cut:TavernSourceNativeCutV1,sourceRows:TavernSourceOwnedRowFactsV1)=>TavernSourceProgramAbsenceObservationV1|void
   /** Called before the parent FIFO, never from an already-locked body. */
   readonly ensureParentBranch:(sessionId:string)=>Promise<void>
 }
@@ -360,6 +361,12 @@ export interface TavernSourceStaticTransactionV1 {
   readonly inheritance:TavernSourceInheritanceDescriptorV1
   readonly editBaseline:TavernSourceEditBaselineV1
   readonly materialBaseline:TavernSourceMaterialBaselineV1
+}
+/** DATA produced by the original Native/namespace reader in this closed read.
+ * It retains no Source frame, callback or dispatch permission. */
+export interface TavernSourceProgramAbsenceObservationV1 {
+  readonly closure:ProgramAbsenceOpeningClosureV1
+  readonly inventory?:ProgramAbsenceInventoryV1
 }
 /** Historical inspection/control data. Its Source binding does not prove an
  * original Native writer ACK or authorize any migration/recovery action. */
@@ -390,19 +397,25 @@ export interface TavernSourceOwnedRowFactsV1 {
    * These are not whole-row Native writer/publication provenance. */
   readonly associatedControlRecords?:readonly TavernSourceStaticRowV1[]
 }
+export interface TavernSourceCommittedLineageV1 {
+  readonly current:TavernSourceStaticTransactionV1
+  readonly ancestors:readonly TavernSourceStaticTransactionV1[]
+}
 export interface TavernSourceInheritanceOwnerV1 {
   prepareSourceInheritance(operation:ForkOperation,reservation:ForkReservation):Promise<TavernSourceInheritancePreparationV1>
   readPreparedFrozenSourceRef(childSessionId:string):TavernSourceFrozenRefV1
   readPreparedSourceInheritance(childSessionId:string):TavernSourcePreparedV1
   readCommittedStaticSourceInheritance(childSessionId:string):TavernSourceStaticTransactionV1
-  readCommittedSourceLineage(childSessionId:string):{readonly current:TavernSourceStaticTransactionV1;
-    readonly ancestors:readonly TavernSourceStaticTransactionV1[]}
+  readCommittedSourceLineage(childSessionId:string,consume?:(lineage:TavernSourceCommittedLineageV1,
+    sourceRows:TavernSourceOwnedRowFactsV1,opening:TavernSourceProgramAbsenceObservationV1|undefined)=>void)
+    :TavernSourceCommittedLineageV1
   /** Dependency-only historical read. Optional subject is an actual caller
    * context, never a stored packet flag or mutable ancestor authorization. */
   readFrozenParent(committedRef:TavernSourceInheritanceRefV1,subjectSessionId?:string):TavernSourceNumericalCaptureV1
   assertOwnedRowFactsCurrent(sourceRows:TavernSourceOwnedRowFactsV1):void
   /** Synchronous consumer only; frames expire before this method returns. */
-  withOwnedRowFacts<T>(childSessionId:string,consume:(sourceRows:TavernSourceOwnedRowFactsV1)=>T):T
+  withOwnedRowFacts<T>(childSessionId:string,consume:(sourceRows:TavernSourceOwnedRowFactsV1,
+    transaction:TavernSourceStaticTransactionV1,opening:TavernSourceProgramAbsenceObservationV1|undefined)=>T):T
   assertPreparedParentCurrent(childSessionId:string):void
   applyPreparedSourceInheritance(childSessionId:string):Promise<TavernSourceInheritanceReadyBindingV1|null>
   publishSourceInheritanceReady(childSessionId:string,metadata:Readonly<Record<string,unknown>>):Promise<void>

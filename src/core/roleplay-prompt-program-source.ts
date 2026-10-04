@@ -3,8 +3,8 @@
 import {recordSha256,sha256} from './roleplay-data.js'
 import {decodeTavernCard} from './tavern-card.js'
 import {assertImportRecordIntegrity,projectStructuredImport,spanText} from './roleplay-import-record.js'
-import {captureRoleplayTavernPromptSourceV1} from './roleplay-tavern-prompt-source.js'
-import {tavernLoreSourceCurrentIdentityV1} from './roleplay-tavern-lore-source.js'
+import {captureRoleplayTavernPromptSourceV1,captureRoleplayTavernPromptSourceDataV1}
+  from './roleplay-tavern-prompt-source.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {validateTavernLoreCompilationV1,resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
 import {mapPromptProgramAuthorOriginsV1} from './roleplay-prompt-template-only-origins.js'
@@ -210,13 +210,29 @@ export function validatePromptProgramSourceInventoryV1(input:unknown):PromptProg
   }
 }
 
+/** The immutable import origin is shared by current author inventory and
+ * completed-opening history. Current author/editor bytes are a separate fact. */
+export function promptProgramSourceImportTupleV1(source:TavernLoreSourceDataV1,record:ImportRecord)
+  :PromptProgramImportTupleV1 {
+  const original=source.original
+  return {ownerSessionId:source.sessionId,sourceRecordSessionId:source.sourceRecordSessionId,
+    importId:record.importId,rawSha256:original.rawSha256,normalizedSha256:original.normalizedSha256,
+    documentSha256:original.documentSha256,dataSha256:original.dataSha256,normalizer:source.normalizer,
+    format:original.decodedFormat,coverageSha256:original.coverageSha256,transactionId:original.transactionId,
+    activatedAt:record.activatedAt??null,activationSha256:recordSha256(record.activation),
+    activePointer:original.activePointer,activePointerRef:original.activePointerRef,importRecordRef:original.importRecordRef,
+    originalActivation:record.activation!,sourceInheritance:source.inheritance??null}
+}
+
 export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDepsV1) {
   let closed=false
   type LiveCapture={readonly source:TavernLoreSourceDataV1;readonly wholeSha256:string;
-    readonly inventorySha256:string;assertCurrent():void}
+    readonly inventorySha256:string;assertCurrent():void;assertOwnerFactsCurrent():void}
   let captures=new WeakMap<PromptProgramSourceInventoryV1,LiveCapture>()
   function read(sessionId:string,includeCardStyle:boolean,assertOwnerCurrent:()=>void,
-    saveCapture?:(data:PromptProgramSourceInventoryV1,live:LiveCapture)=>void):PromptProgramSourceInventoryV1 {
+    saveCapture?:(data:PromptProgramSourceInventoryV1,live:LiveCapture)=>void,
+    saveData?:(data:PromptProgramSourceInventoryV1,source:TavernLoreSourceDataV1,
+      record:ImportRecord,decoded:ReturnType<typeof decodeTavernCard>)=>void):PromptProgramSourceInventoryV1 {
     if(closed)fail('PROGRAM_SOURCE_CHANGED','/owner/disposed')
     const tables=deps.tables,sourceOwner=deps.source,editOwner=deps.edits,importReader=deps.readImportRecord,
       tableOwners=[tables.cards,tables.worldbook,tables.rules,tables.status],
@@ -235,7 +251,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       }
     }
     assertOwnerCurrent()
-    const captured=captureRoleplayTavernPromptSourceV1(deps,sessionId,includeCardStyle,assertOwnerCurrent)
+    if(saveData&&!deps.edits.observeSourceData)fail('PROGRAM_SOURCE_UNAVAILABLE','/owner/data-reader')
+    const captured=saveData?captureRoleplayTavernPromptSourceDataV1({source:deps.source,
+      edits:{observeSourceData:deps.edits.observeSourceData!}},sessionId,includeCardStyle)
+      :captureRoleplayTavernPromptSourceV1(deps,sessionId,includeCardStyle,assertOwnerCurrent)
     if(captured.kind!=='captured-data')fail('PROGRAM_SOURCE_UNAVAILABLE','/source/'+captured.reason)
     const {source}=captured
     const supplied=deps.readImportRecord(source.sourceRecordSessionId,source.original.activePointer.importId)
@@ -256,7 +275,7 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       ||!same(plan.rawBook,source.original.primary.value)||plan.entries.length!==source.original.primary.entries.length) {
       fail('PROGRAM_COMPILATION_UNPROVEN','/compilation')
     }
-    const sourceIdentity=tavernLoreSourceCurrentIdentityV1(source),sourceIdentitySha256=recordSha256(sourceIdentity)
+    const sourceIdentitySha256=captured.currentIdentitySha256
     const authorFields=mapping.fields.map(field=>{
       const {rawText,normalizedText,...origin}=field
       return {...origin,raw:rawText===null?null:textInventory(rawText,field.originalPointer),
@@ -329,14 +348,7 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
         ?[`/entries/${index}/fields/content`]:[]))
       deniedLeaves(overlay,{domain:'current-overlay',row:null,pointer:'',authorized},unauthorized)
     }
-    const original=source.original
-    const importTuple:PromptProgramImportTupleV1={ownerSessionId:sessionId,sourceRecordSessionId:source.sourceRecordSessionId,
-      importId:record.importId,rawSha256:original.rawSha256,normalizedSha256:original.normalizedSha256,
-      documentSha256:original.documentSha256,dataSha256:original.dataSha256,normalizer:source.normalizer,
-      format:original.decodedFormat,coverageSha256:original.coverageSha256,transactionId:original.transactionId,
-      activatedAt:record.activatedAt??null,activationSha256:recordSha256(record.activation),
-      activePointer:original.activePointer,activePointerRef:original.activePointerRef,importRecordRef:original.importRecordRef,
-      originalActivation:record.activation,sourceInheritance:source.inheritance??null}
+    const importTuple=promptProgramSourceImportTupleV1(source,record)
     const body={schemaVersion:1 as const,encoding:'native-author-prompt-program-source-inventory-v1' as const,
       authority:'consumer-data-only' as const,policySha256:PROMPT_PROGRAM_SOURCE_POLICY_SHA256,sessionId,includeCardStyle,
       importTuple,sourceCurrentIdentitySha256:sourceIdentitySha256,authorFields,authorGroups,
@@ -354,23 +366,36 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       audit:{wholeSourceSha256:source.sourceSha256,currentRowsSha256:recordSha256(source.current.rows.map(row=>row.ref))}}
     const bound={...body,bindingSha256:recordSha256(bindingBody(body))}
     assertOwnerCurrent()
-    captured.assertCurrent()
+    const data=validatePromptProgramSourceInventoryV1({...bound,inventorySha256:recordSha256(bound)})
+    if(saveData) {
+      // InputState owns the complete synchronous read footprint. This API
+      // returns DATA only; it cannot create an after-await currency callback.
+      saveData(data,source,record,decoded)
+      return data
+    }
+    if('assertCurrent' in captured&&typeof captured.assertCurrent==='function')captured.assertCurrent()
     if(!same(deps.readImportRecord(source.sourceRecordSessionId,record.importId),record))fail('PROGRAM_SOURCE_CHANGED','/importRecord')
-    const data=validatePromptProgramSourceInventoryV1({...bound,inventorySha256:recordSha256(bound)}),
-      importRecordSha256=source.original.importRecordRef.sha256
+    const importRecordSha256=source.original.importRecordRef.sha256
+    // This closure stays with the exact producer-created capture. The caller
+    // owns DATA invalidation; this check only brackets its actual owner and the
+    // installed reader identities, without rebuilding Source text or hashes.
+    const assertOwnerFactsCurrent=()=>{
+      assertReaderOwners();assertOwnerCurrent();assertReaderOwners()
+    }
     const assertCurrent=()=>{
       assertReaderOwners();assertOwnerCurrent()
       // The producer's closure re-reads complete current rows, membership,
       // bindings and the edit namespace. Frozen ancestry keeps its full path.
       // Only the already validated deterministic text/compile result is reused.
-      captured.assertCurrent()
+      if('assertCurrent' in captured&&typeof captured.assertCurrent==='function')captured.assertCurrent()
       if(recordSha256(deps.readImportRecord(source.sourceRecordSessionId,record.importId))!==importRecordSha256) {
         fail('PROGRAM_SOURCE_CHANGED','/importRecord')
       }
       assertReaderOwners();assertOwnerCurrent()
     }
     assertCurrent()
-    saveCapture?.(data,{source,wholeSha256:recordSha256(data),inventorySha256:data.inventorySha256,assertCurrent})
+    saveCapture?.(data,{source,wholeSha256:recordSha256(data),inventorySha256:data.inventorySha256,
+      assertCurrent,assertOwnerFactsCurrent})
     return data
   }
   function capture(sessionId:string,includeCardStyle:boolean,assertOwnerCurrent:()=>void):PromptProgramSourceCaptureV1 {
@@ -378,7 +403,8 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       const data=read(sessionId,includeCardStyle,assertOwnerCurrent,(owned,currency)=>captures.set(owned,currency)),
         live=captures.get(data)
       if(!live)fail('PROGRAM_SOURCE_UNAVAILABLE','/capture')
-      return {kind:'captured-program-source',data,assertCurrent:live.assertCurrent}
+      return {kind:'captured-program-source',data,assertCurrent:live.assertCurrent,
+        assertOwnerFactsCurrent:live.assertOwnerFactsCurrent}
     }catch(error) {
       const diagnostic=error instanceof ProgramSourceFailure?{code:error.code,pointer:error.pointer}
         :error instanceof PromptTemplateOnlyRefusalV1?{code:'PROGRAM_CURRENT_ORIGIN_UNAVAILABLE' as const,pointer:error.pointer}
@@ -401,6 +427,14 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     if(!live)fail('PROGRAM_SOURCE_UNAVAILABLE','/capture')
     return {...captured,source:live.source}
   }
+  function captureDataWithCurrentSource(sessionId:string,includeCardStyle:boolean,assertOwnerCurrent:()=>void) {
+    let result:{kind:'captured-program-source';data:PromptProgramSourceInventoryV1;source:TavernLoreSourceDataV1;
+      record:ImportRecord;decoded:ReturnType<typeof decodeTavernCard>}|undefined
+    read(sessionId,includeCardStyle,assertOwnerCurrent,undefined,(data,source,record,decoded)=>{
+      result={kind:'captured-program-source',data,source,record,decoded}
+    })
+    return result!
+  }
   function currentCaptured(input:unknown,assertActualOwnerCurrent:()=>void):boolean {
     try {
       assertActualOwnerCurrent()
@@ -417,5 +451,5 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     }catch{return false}
   }
   function dispose():void {closed=true;captures=new WeakMap()}
-  return {capture,current,captureWithCurrentSource,currentCaptured,dispose}
+  return {capture,current,captureWithCurrentSource,captureDataWithCurrentSource,currentCaptured,dispose}
 }

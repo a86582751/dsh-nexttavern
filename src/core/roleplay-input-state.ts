@@ -18,7 +18,8 @@ function sourceMetadataSha256(value:unknown):string {
 }
 
 type Slot='schema'|'source'|'observation'|'control'|'input'|'closing'
-export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'
+export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'
+  |`program-opening:${number}:${boolean}`
 export interface RoleplayInputStateSession {readonly id:string}
 export interface RoleplayInputStateRead<T> {
   readonly data:T
@@ -28,6 +29,9 @@ export interface RoleplayInputStateRead<T> {
 export interface RoleplayInputStateScope {
   readonly session:RoleplayInputStateSession
   readonly signal:AbortSignal
+  /** Producer-declared outputs of this actual capture; these are DATA roles,
+   * not permission to create or resume a Native transaction. */
+  readonly outputRows?:readonly {readonly table:string;readonly key:string}[]
   /** Original input/step/stop identity, without rebuilding Source/history. */
   assertOwnerFactsCurrent():void
 }
@@ -42,6 +46,21 @@ interface PendingVariantRead {
   value:PendingVariantFact
   rows:Set<string>
 }
+interface ProgramFactFootprint {
+  rows:Set<string>
+  namespaces:Set<string>
+  prefixes:Set<string>
+}
+interface ProgramFactRead extends ProgramFactFootprint {
+  kind:'absence'|'opening-preparation'
+  frame:Frame
+  session:RoleplayInputStateSession
+  agent:object|undefined
+  scopeIdentity:string|undefined
+  outputRows:ReadonlySet<string>
+  active:boolean
+  data?:unknown
+}
 interface Frame {
   slot:Slot
   session:RoleplayInputStateSession
@@ -51,6 +70,7 @@ interface Frame {
   activeRows:Set<string>
   sourceMetadataRows:Map<string,string>
   pendingVariants:Set<PendingVariantRead>
+  programFacts:Set<ProgramFactRead>
   namespaces:Set<string>
   prefixes:Set<string>
   sessions:Set<string>
@@ -58,6 +78,7 @@ interface Frame {
   parents:Set<Frame>
   identity?:string
   scopeIdentity?:string
+  outputRows:ReadonlySet<string>
   data?:unknown
 }
 const address=(table:string,key:string)=>table+'\0'+key
@@ -88,6 +109,9 @@ function explanatorySuffix(suffix:string):boolean {
     ||suffix.startsWith('phasea-')||suffix.startsWith('phaseb-')||suffix.startsWith('phasec-')
 }
 function membershipChange(frame:Frame,table:string,key:string):boolean {
+  // Exact consumers still watch their row. Namespace membership alone must
+  // not treat a producer's predeclared output as a new consumed input.
+  if(frame.outputRows.has(address(table,key)))return false
   const sid=sessionOf(key)
   if(!sid||!frame.namespaces.has(namespace(table,sid)))return false
   const suffix=key.slice(sid.length+2)
@@ -110,8 +134,14 @@ export function createRoleplayInputStateOwner(deps:{
 }) {
   let disposed=false
   let capturing:Frame|undefined
+  let capturingInputSession:RoleplayInputStateSession|undefined
+  let capturingInputOutputRows:ReadonlySet<string>|undefined
   let readingActive=false
   let readingPendingVariant:PendingVariantRead|undefined
+  let readingProgramFact:ProgramFactRead|undefined
+  let programFactFootprint:ProgramFactFootprint|undefined
+  let standaloneProgramAbsenceAudit=false
+  let standaloneProgramAbsenceReentrant=false
   const slots=new Map<string,Frame>()
   const frames=new Set<Frame>()
   const handles=new WeakMap<object,Frame>()
@@ -121,6 +151,9 @@ export function createRoleplayInputStateOwner(deps:{
   const prefixReaders=new Map<string,Set<Frame>>()
   const pendingVariantRows=new Map<string,Set<PendingVariantRead>>()
   const pendingVariantGroups=new Set<PendingVariantRead>()
+  const programFactRows=new Map<string,Set<ProgramFactRead>>()
+  const programFactNamespaces=new Map<string,Set<ProgramFactRead>>()
+  const programFactPrefixes=new Map<string,Set<ProgramFactRead>>()
   const sessionReaders=new Map<string,Set<Frame>>()
   const metrics={schemaCaptures:0,sourceCaptures:0,observationCaptures:0,controlCaptures:0,inputCaptures:0,closingCaptures:0,
     reusedReads:0,checkpoints:0,recordReads:0,inventoryRows:0,invalidations:0}
@@ -197,10 +230,128 @@ export function createRoleplayInputStateOwner(deps:{
     read.value=evaluatePendingVariant(read)
     return read.value
   }
+  function removeProgramFactSubscriptions(read:ProgramFactRead,footprint:ProgramFactFootprint):void {
+    for(const [index,keys] of [[programFactRows,footprint.rows],
+      [programFactNamespaces,footprint.namespaces],[programFactPrefixes,footprint.prefixes]] as const) {
+      for(const key of keys) {
+        const readers=index.get(key)
+        readers?.delete(read)
+        if(!readers?.size)index.delete(key)
+      }
+    }
+  }
+  function forgetProgramFact(read:ProgramFactRead):void {
+    read.active=false
+    removeProgramFactSubscriptions(read,read)
+    read.rows.clear();read.namespaces.clear();read.prefixes.clear()
+  }
+  function programFactDependency(kind:keyof ProgramFactFootprint,key:string):void {
+    const read=readingProgramFact,footprint=programFactFootprint
+    if(!read||!footprint)return
+    footprint[kind].add(key)
+    const index=kind==='rows'?programFactRows:kind==='namespaces'?programFactNamespaces:programFactPrefixes
+    // Subscribe during the initial audit so publications cannot disappear
+    // between reading an address and completing the capture.
+    subscribe(index,key,read)
+  }
+  function programFactError(kind:ProgramFactRead['kind'],reason:string):Error {
+    return Error(`INPUT_STATE_PROGRAM_${kind==='absence'?'ABSENCE':'OPENING'}_${reason}`)
+  }
+  function synchronousProgramFact<T>(kind:ProgramFactRead['kind'],value:T):T {
+    if(value!==null&&(typeof value==='object'||typeof value==='function')&&'then' in value) {
+      throw programFactError(kind,'ASYNC_AUDIT')
+    }
+    return value
+  }
+  function auditProgramFact<T>(read:ProgramFactRead,audit:()=>T):T {
+    if(readingProgramFact||standaloneProgramAbsenceAudit) {
+      if(readingProgramFact)markDirty(readingProgramFact.frame)
+      markDirty(read.frame);throw programFactError(read.kind,'REENTRANT_AUDIT')
+    }
+    if(!nominalCurrent(read.frame)||!programFactOwnerCurrent(read)) {
+      markDirty(read.frame);throw Error('INPUT_STATE_CAPTURE_CHANGED')
+    }
+    const outer=capturing,active=readingActive,variant=readingPendingVariant
+    capturing=undefined;readingActive=false;readingPendingVariant=undefined
+    readingProgramFact=read;programFactFootprint=read
+    try {
+      const data=synchronousProgramFact(read.kind,audit())
+      if(!nominalCurrent(read.frame)||!programFactOwnerCurrent(read)) {
+        throw programFactError(read.kind,'AUDIT_CHANGED')
+      }
+      read.data=data
+      return data
+    }catch(error) {
+      forgetProgramFact(read);markDirty(read.frame)
+      throw error
+    }finally {
+      readingProgramFact=undefined;programFactFootprint=undefined
+      capturing=outer;readingActive=active;readingPendingVariant=variant
+    }
+  }
+  /** DATA is audited once. Notifications revoke its captured inputs; exact
+   * outputs declared by the producer do not trigger another owner audit. */
+  function readProgramAbsenceNamespaceFacts<T>(actualSession:RoleplayInputStateSession,
+    initialAudit:()=>T):T {
+    return readProgramFacts('absence',actualSession,initialAudit)
+  }
+  /** Only the actual synchronous input capture may consume this DATA fact.
+   * Its initial audit belongs to the Program opening supplier; this read
+   * does not recreate Native admission or ready. */
+  function readProgramOpeningPreparationFacts<T>(actualSession:RoleplayInputStateSession,
+    initialAudit:()=>T):T {
+    return readProgramFacts('opening-preparation',actualSession,initialAudit)
+  }
+  function readProgramFacts<T>(kind:ProgramFactRead['kind'],actualSession:RoleplayInputStateSession,
+    initialAudit:()=>T):T {
+    if(disposed)throw Error('INPUT_STATE_OWNER_DISPOSED')
+    if(readingProgramFact||standaloneProgramAbsenceAudit) {
+      if(readingProgramFact)markDirty(readingProgramFact.frame)
+      if(standaloneProgramAbsenceAudit)standaloneProgramAbsenceReentrant=true
+      throw programFactError(kind,'REENTRANT_AUDIT')
+    }
+    const frame=capturing
+    if(kind==='opening-preparation'&&(!frame||capturingInputSession!==actualSession
+      ||frame.session!==actualSession)) {
+      if(frame)markDirty(frame)
+      throw programFactError(kind,'CAPTURE_REQUIRED')
+    }
+    if(deps.session(actualSession.id)!==actualSession) {
+      if(capturing)markDirty(capturing)
+      throw programFactError(kind,'SESSION_CHANGED')
+    }
+    if(!frame) {
+      standaloneProgramAbsenceAudit=true;standaloneProgramAbsenceReentrant=false
+      try {
+        const data=synchronousProgramFact(kind,initialAudit())
+        if(standaloneProgramAbsenceReentrant)throw programFactError(kind,'REENTRANT_AUDIT')
+        return data
+      }finally {standaloneProgramAbsenceAudit=false;standaloneProgramAbsenceReentrant=false}
+    }
+    if(kind==='absence') {
+      // One complete namespace audit belongs to this actual Frame/Session.
+      // New callback closures consume its DATA and original subscriptions;
+      // they cannot reinterpret a revoked capture or enroll another footprint.
+      const previous=[...frame.programFacts].find(read=>read.kind==='absence'&&read.session===actualSession)
+      if(previous) {
+        if(!nominalCurrent(frame)||!programFactOwnerCurrent(previous)) {
+          markDirty(frame);throw Error('INPUT_STATE_CAPTURE_CHANGED')
+        }
+        return previous.data as T
+      }
+    }
+    const read:ProgramFactRead={kind,frame,session:actualSession,agent:deps.agent(actualSession),
+      scopeIdentity:deps.scopeIdentity?.(actualSession),outputRows:frame.outputRows,active:true,
+      rows:new Set(),namespaces:new Set(),prefixes:new Set()}
+    frame.programFacts.add(read);dependSession(frame,actualSession.id)
+    return auditProgramFact(read,initialAudit)
+  }
   function forget(frame:Frame):void {
     frames.delete(frame)
     for(const read of frame.pendingVariants)forgetPendingVariant(read)
     frame.pendingVariants.clear()
+    for(const read of frame.programFacts)forgetProgramFact(read)
+    frame.programFacts.clear()
     for(const [index,keys] of [[rowReaders,frame.rows],[activeRowReaders,frame.activeRows],
       [namespaceReaders,frame.namespaces],[prefixReaders,frame.prefixes],
       [sessionReaders,frame.sessions]] as const) {
@@ -213,9 +364,31 @@ export function createRoleplayInputStateOwner(deps:{
     for(const child of frame.children)child.parents.delete(frame)
     for(const parent of frame.parents)parent.children.delete(frame)
   }
-  function current(frame:Frame):boolean {
+  function nominalCurrent(frame:Frame):boolean {
     return !disposed&&!frame.dirty&&deps.session(frame.session.id)===frame.session
       &&deps.agent(frame.session)===frame.agent&&deps.scopeIdentity?.(frame.session)===frame.scopeIdentity
+  }
+  function programFactOwnerCurrent(read:ProgramFactRead):boolean {
+    return read.active&&deps.session(read.session.id)===read.session
+      &&deps.agent(read.session)===read.agent&&deps.scopeIdentity?.(read.session)===read.scopeIdentity
+  }
+  function current(frame:Frame,visiting=new Set<Frame>()):boolean {
+    // Returning true during an audit would counterfeit a current owner. Even
+    // if the callback swallows the refusal, the original frame stays dirty.
+    if(readingProgramFact) {markDirty(readingProgramFact.frame);return false}
+    if(standaloneProgramAbsenceAudit) {
+      standaloneProgramAbsenceReentrant=true;markDirty(frame);return false
+    }
+    if(!nominalCurrent(frame)) {markDirty(frame);return false}
+    if(visiting.has(frame)) {markDirty(frame);return false}
+    visiting.add(frame)
+    try {
+      for(const child of frame.children)if(!current(child,visiting)) {markDirty(frame);return false}
+      for(const read of frame.programFacts) {
+        if(!programFactOwnerCurrent(read)) {markDirty(frame);return false}
+      }
+      return nominalCurrent(frame)
+    }finally {visiting.delete(frame)}
   }
   function check(frame:Frame):void {
     metrics.checkpoints++
@@ -235,20 +408,25 @@ export function createRoleplayInputStateOwner(deps:{
     handles.set(result,frame)
     return result
   }
-  function read<T>(slot:Slot,id:string,key:string,compute:()=>T,cache:boolean,identity?:string)
+  function read<T>(slot:Slot,id:string,key:string,compute:()=>T,cache:boolean,identity?:string,
+    sourceOutputs?:RoleplayInputStateScope['outputRows'])
     :RoleplayInputStateRead<T> {
     if(disposed)throw Error('INPUT_STATE_OWNER_DISPOSED')
     const session=deps.session(id)
     if(!session)throw Error('INPUT_STATE_SESSION_INACTIVE')
-    const slotKey=slot+'\0'+id+'\0'+key,previous=cache?slots.get(slotKey):undefined
-    if(previous&&previous.identity===identity&&current(previous)) {
+    const slotKey=slot+'\0'+id+'\0'+key,previous=cache?slots.get(slotKey):undefined,
+      declaredOutputs=sourceOutputs&&new Set(sourceOutputs.map(row=>address(row.table,row.key)))
+    if(previous&&previous.identity===identity&&(!declaredOutputs
+      ||declaredOutputs.size===previous.outputRows.size&&[...declaredOutputs].every(row=>previous.outputRows.has(row)))
+      &&current(previous)) {
       metrics.reusedReads++;connect(previous)
       return handle(previous,previous.data as T)
     }
     if(previous){markDirty(previous);forget(previous);slots.delete(slotKey)}
     const frame:Frame={slot,session,agent:deps.agent(session),dirty:false,rows:new Set(),activeRows:new Set(),
-      sourceMetadataRows:new Map(),pendingVariants:new Set(),namespaces:new Set(),
+      sourceMetadataRows:new Map(),pendingVariants:new Set(),programFacts:new Set(),namespaces:new Set(),
       prefixes:new Set(),sessions:new Set(),children:new Set(),parents:new Set(),identity,
+      outputRows:declaredOutputs??(capturingInputSession===session?capturingInputOutputRows??new Set():new Set()),
       scopeIdentity:deps.scopeIdentity?.(session)}
     frames.add(frame);dependSession(frame,id)
     const outer=capturing
@@ -278,60 +456,85 @@ export function createRoleplayInputStateOwner(deps:{
     const methods=new Map<PropertyKey,unknown>()
     return new Proxy(actual,{
       get(target,property) {
-        if(property==='get')return (key:string)=>{
-          metrics.recordReads++
-          const value=target.get(key)
-          if(readingPendingVariant&&name==='branch'
-            &&(key.startsWith('fork-group-')||key.includes('__fork-anchor-'))) {
-            pendingVariantRow(readingPendingVariant,name,key)
-          }else if(capturing) {
-            if(readingActive)dependActiveRow(capturing,name,key)
-            else dependRow(capturing,name,key,value)
+        // Source captures compare installed reader identities. Reuse these
+        // facade functions, while reading the active capture at call time.
+        if(property==='get') {
+          if(methods.has(property))return methods.get(property)
+          const trackedGet=(key:string)=>{
+            metrics.recordReads++
+            const value=target.get(key)
+            if(readingProgramFact)programFactDependency('rows',address(name,key))
+            else if(readingPendingVariant&&name==='branch'
+              &&(key.startsWith('fork-group-')||key.includes('__fork-anchor-'))) {
+              pendingVariantRow(readingPendingVariant,name,key)
+            }else if(capturing) {
+              if(readingActive)dependActiveRow(capturing,name,key)
+              else dependRow(capturing,name,key,value)
+            }
+            return value
           }
-          return value
+          methods.set(property,trackedGet)
+          return trackedGet
         }
-        if(property==='entries'&&target.entries)return function*(exactPrefix?:string) {
-          const frame=capturing,activeProjection=readingActive,
-            variant= name==='branch'?readingPendingVariant:undefined
-          if(variant) {
-            // Pointer recovery and ancestor lookup can discover a new group
-            // before an anchor exists. Watch the complete navigation namespace.
-            pendingVariantGroups.add(variant)
-          }else if(frame) {
-            // The active-branch projection enumerates the Domain only to find
-            // fork tombstones. Its iterator must not make staged numerical
-            // work a dependency of frozen author data or a maintenance lease.
-            if(exactPrefix!==undefined) {
-              // Identity-addressed journals declare their complete namespace,
-              // including an absent head and newly appended pending intents.
-              const ref=address(name,exactPrefix)
-              frame.prefixes.add(ref);subscribe(prefixReaders,ref,frame)
-            }else {
-              const ref=namespace(activeProjection?'active-'+name:name,frame.session.id)
-              frame.namespaces.add(ref);subscribe(namespaceReaders,ref,frame)
+        if(property==='entries'&&target.entries) {
+          if(methods.has(property))return methods.get(property)
+          const trackedEntries=function*(exactPrefix?:string) {
+            const frame=capturing,activeProjection=readingActive,
+              variant=name==='branch'?readingPendingVariant:undefined,audit=readingProgramFact
+            if(audit) {
+              // Full subject membership has no explanatory-row exemption.
+              // Additional prefixes and explicit foreign get addresses stay
+              // subscribed, including missing rows later read with get.
+              if(name==='branch'||name==='status') {
+                programFactDependency('namespaces',namespace(name,audit.session.id))
+              }
+              if(exactPrefix!==undefined)programFactDependency('prefixes',address(name,exactPrefix))
+            }else if(variant) {
+              // Pointer recovery and ancestor lookup can discover a new group
+              // before an anchor exists. Watch the complete navigation namespace.
+              pendingVariantGroups.add(variant)
+            }else if(frame) {
+              // The active-branch projection enumerates the Domain only to find
+              // fork tombstones. Its iterator must not make staged numerical
+              // work a dependency of frozen author data or a maintenance lease.
+              if(exactPrefix!==undefined) {
+                // Identity-addressed journals declare their complete namespace,
+                // including an absent head and newly appended pending intents.
+                const ref=address(name,exactPrefix)
+                frame.prefixes.add(ref);subscribe(prefixReaders,ref,frame)
+              }else {
+                const ref=namespace(activeProjection?'active-'+name:name,frame.session.id)
+                frame.namespaces.add(ref);subscribe(namespaceReaders,ref,frame)
+              }
+            }
+            for(const [key,value] of target.entries!()) {
+              metrics.inventoryRows++
+              // A table-wide iterator may also include other worldlines. The
+              // actual parser still sees them; only this subject's membership
+              // and exact records it consumes belong to the capture's lifetime.
+              // Global fork groups are navigation, outside numerical/author
+              // namespaces. Consumers of a group's data use its exact get.
+              const suffix=frame?key.slice(frame.session.id.length+2):''
+              if(audit) {
+                if(sessionOf(key)===audit.session.id||exactPrefix!==undefined&&key.startsWith(exactPrefix)) {
+                  programFactDependency('rows',address(name,key))
+                }
+              }else if(variant&&key.startsWith('fork-group-'))pendingVariantRow(variant,name,key)
+              else if(!variant&&frame&&exactPrefix!==undefined&&key.startsWith(exactPrefix))dependRow(frame,name,key,value)
+              else if(!variant&&frame&&exactPrefix===undefined&&!activeProjection&&sessionOf(key)===frame.session.id
+                &&!(name==='branch'&&explanatorySuffix(suffix))
+                &&!(name==='status'&&(suffix==='panel'||/^turn-[0-9]+-[0-9]+$/.test(suffix)))) {
+                dependRow(frame,name,key)
+              }
+              if(frame&&activeProjection&&name==='branch'&&key.startsWith('fork-group-')
+                &&forkSubjects(value).includes(frame.session.id)) {
+                dependActiveRow(frame,name,key)
+              }
+              yield [key,value] as [string,unknown]
             }
           }
-          for(const [key,value] of target.entries!()) {
-            metrics.inventoryRows++
-            // A table-wide iterator may also include other worldlines. The
-            // actual parser still sees them; only this subject's membership
-            // and exact records it consumes belong to the capture's lifetime.
-            // Global fork groups are navigation, outside numerical/author
-            // namespaces. Consumers of a group's data use its exact get.
-            const suffix=frame?key.slice(frame.session.id.length+2):''
-            if(variant&&key.startsWith('fork-group-'))pendingVariantRow(variant,name,key)
-            else if(!variant&&frame&&exactPrefix!==undefined&&key.startsWith(exactPrefix))dependRow(frame,name,key,value)
-            else if(!variant&&frame&&exactPrefix===undefined&&!activeProjection&&sessionOf(key)===frame.session.id
-              &&!(name==='branch'&&explanatorySuffix(suffix))
-              &&!(name==='status'&&(suffix==='panel'||/^turn-[0-9]+-[0-9]+$/.test(suffix)))) {
-              dependRow(frame,name,key)
-            }
-            if(frame&&activeProjection&&name==='branch'&&key.startsWith('fork-group-')
-              &&forkSubjects(value).includes(frame.session.id)) {
-              dependActiveRow(frame,name,key)
-            }
-            yield [key,value] as [string,unknown]
-          }
+          methods.set(property,trackedEntries)
+          return trackedEntries
         }
         const value=Reflect.get(target,property,target)
         if(typeof value!=='function')return value
@@ -343,6 +546,20 @@ export function createRoleplayInputStateOwner(deps:{
   function domainChanged(change:DomainChanged):void {
     if(disposed||change.domain!==deps.domainName)return
     const ref=address(change.table,change.key)
+    const audits=new Set(programFactRows.get(ref)),subject=sessionOf(change.key)
+    if(subject)for(const read of programFactNamespaces.get(namespace(change.table,subject))??[])audits.add(read)
+    for(const [prefix,readers] of programFactPrefixes)if(ref.startsWith(prefix)) {
+      for(const read of readers)audits.add(read)
+    }
+    // Audits are synchronous/read-only. Conservatively reject a publication
+    // during one, even before it has discovered that new dependency address.
+    if(readingProgramFact)audits.add(readingProgramFact)
+    for(const read of audits)if(read.active) {
+      // An audit is read-only even at its own declared output. After capture,
+      // only producer-declared exact addresses can be output publications;
+      // unknown namespace members and prior material are captured inputs.
+      if(read===readingProgramFact||!read.outputRows.has(ref))markDirty(read.frame)
+    }
     for(const [prefix,readers] of prefixReaders)if(ref.startsWith(prefix)) {
       for(const frame of readers)markDirty(frame)
     }
@@ -367,7 +584,7 @@ export function createRoleplayInputStateOwner(deps:{
     capturing=undefined
     try {
       for(const read of variantReads) {
-        if(!current(read.frame))continue
+        if(!nominalCurrent(read.frame))continue
         // Refresh the footprint even for false -> false: a new pointer may
         // move the next real edit to a different group. Never revive a dirty read.
         forgetPendingVariant(read)
@@ -390,7 +607,7 @@ export function createRoleplayInputStateOwner(deps:{
     capturing=undefined
     try {
       for(const frame of activeReaders) {
-        if(!current(frame))continue
+        if(!nominalCurrent(frame))continue
         if(!active.has(frame.session)) {
           try {active.set(frame.session,deps.active(frame.session))}
           catch {active.set(frame.session,false)}
@@ -428,7 +645,16 @@ export function createRoleplayInputStateOwner(deps:{
   }
   function captureInput<T>(scope:RoleplayInputStateScope,compute:()=>T):RoleplayInputStateRead<T>&{release():void} {
     scope.signal.throwIfAborted();scope.assertOwnerFactsCurrent()
-    const readout=read('input',scope.session.id,'actual-input',compute,false)
+    const outputRows=new Set((scope.outputRows??[]).map(row=>address(row.table,row.key)))
+    const readout=read('input',scope.session.id,'actual-input',()=>{
+      // Dynamic scope follows the real compute call, including same-session
+      // Source children. Cached Source data cannot enroll a fresh opening fact.
+      const outer=capturingInputSession,outerOutputs=capturingInputOutputRows
+      capturingInputSession=scope.session;capturingInputOutputRows=outputRows
+      capturing!.outputRows=outputRows
+      try{return compute()}
+      finally{capturingInputSession=outer;capturingInputOutputRows=outerOutputs}
+    },false)
     const own=handles.get(readout)
     const assertCurrent=()=>{
       scope.signal.throwIfAborted();scope.assertOwnerFactsCurrent();readout.assertCurrent()
@@ -446,9 +672,11 @@ export function createRoleplayInputStateOwner(deps:{
   }
   return {
     table,domainChanged,nativeChanged,configurationChanged,schemaPublished,invalidateSession,releaseSession,
-    captureInput,captureClosing,readPendingVariantFacts,
+    captureInput,captureClosing,readPendingVariantFacts,readProgramAbsenceNamespaceFacts,
+    readProgramOpeningPreparationFacts,
     captureSchema:<T>(id:string,compute:()=>T)=>read('schema',id,'verified-history',compute,true),
-    captureSource:<T>(id:string,kind:RoleplaySourceRead,compute:()=>T)=>read('source',id,kind,compute,true),
+    captureSource:<T>(id:string,kind:RoleplaySourceRead,compute:()=>T,
+      outputs?:RoleplayInputStateScope['outputRows'])=>read('source',id,kind,compute,true,undefined,outputs),
     captureOriginal:<T>(id:string,identity:string,compute:()=>T)=>read('source',id,'schema-original',compute,true,identity),
     captureSourceFrame:<T>(id:string,identity:string,compute:()=>T)=>read('source',id,'schema-frame',compute,true,identity),
     captureObservation:<T>(id:string,compute:()=>T)=>read('observation',id,'input-observation',compute,true),

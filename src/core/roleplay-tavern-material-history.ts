@@ -45,8 +45,13 @@ interface MaterialReadBudgetV1 {
   rows:Map<string,TavernBoundCoreMaterialRowV1>
   inputs:Map<string,{readonly sha256:string;readonly value:unknown}>
   invocations:Map<number,ReturnType<typeof validateNativeOpeningInvocationV1>>
+  openingInputs:Map<string,OpeningInputPairV1>
 }
-const budgetV1=():MaterialReadBudgetV1=>({bytes:0,rows:new Map(),inputs:new Map(),invocations:new Map()})
+interface OpeningInputPairV1 {
+  readonly seed:ReturnType<typeof validateProgramOpeningSeedV1>
+  readonly input:ReturnType<typeof validateProgramOpeningInputV1>
+}
+const budgetV1=():MaterialReadBudgetV1=>({bytes:0,rows:new Map(),inputs:new Map(),invocations:new Map(),openingInputs:new Map()})
 const sameNative=(left:unknown,right:unknown)=>nativeInputSha256(left)===nativeInputSha256(right)
 const positive=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0
 const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
@@ -167,8 +172,19 @@ function verifyOpeningRows(deps:Pick<TavernMaterialHistoryDependenciesV1,'table'
   const keys=roleplayOpeningMaterialKeysV1(snapshot.sessionId,snapshot.seedRef,snapshot.turn,snapshot.step)
   if(event.data.snapshot.key!==keys.snapshot||event.data.plan.key!==keys.plan)
     fail('INPUT_MATERIAL_HISTORY_OPENING_KEY_CHANGED')
-  const seed=validateProgramOpeningSeedV1(readOpeningInput(deps,snapshot.seedRef,budget)),
-    input=validateProgramOpeningInputV1(readOpeningInput(deps,snapshot.inputRef,budget),seed)
+  const rawSeed=readOpeningInput(deps,snapshot.seedRef,budget),
+    pairKey=JSON.stringify([snapshot.seedRef.key,snapshot.seedRef.sha256,snapshot.inputRef.key,snapshot.inputRef.sha256])
+  let pair=budget.openingInputs.get(pairKey)
+  if(!pair) {
+    const seed=validateProgramOpeningSeedV1(rawSeed),
+      input=validateProgramOpeningInputV1(readOpeningInput(deps,snapshot.inputRef,budget),seed)
+    pair={seed,input};budget.openingInputs.set(pairKey,pair)
+  }else {
+    // Every publication still reads both exact references. Only their pure
+    // parsing is shared within this budget, never Native/current checks.
+    readOpeningInput(deps,snapshot.inputRef,budget)
+  }
+  const {seed,input}=pair
   if(seed.production!=='generated-opening'||seed.sessionId!==snapshot.sessionId
     ||snapshot.inputRef.key!==programOpeningInputKeyV1(seed.sessionId,seed.operationId)
     ||seed.operationId!==snapshot.identity.operationId||seed.requestedMessageId!==snapshot.identity.messageId

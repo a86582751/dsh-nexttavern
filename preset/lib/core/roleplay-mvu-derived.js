@@ -676,14 +676,7 @@ export function createRoleplayMvuDerived(deps) {
             if (!session)
                 fail('PROMPT_NUMERICAL_SESSION_UNAVAILABLE');
             const data = promptInheritedData(sid, session);
-            return Object.freeze({ kind: 'ready', data, current: () => {
-                    try {
-                        return deps.session(sid) === session && same(promptInheritedData(sid, session), data);
-                    }
-                    catch {
-                        return false;
-                    }
-                } });
+            return Object.freeze({ kind: 'ready', data });
         }
         catch (error) {
             return { kind: 'unavailable', code: error instanceof MvuPromptFactsRefusal ? error.code :

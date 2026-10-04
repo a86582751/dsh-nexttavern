@@ -97,6 +97,7 @@ export interface TavernLoreSourceDiagnosticV1 {
 }
 export type TavernLoreSourceCaptureV1 =
   | {readonly schemaVersion: 1; readonly kind: 'captured-data'; readonly source: TavernLoreSourceDataV1;
+      readonly currentIdentitySha256: string;
       readonly contributionInput: TavernLoreContributionInputV1}
   | {readonly schemaVersion: 1; readonly kind: 'outside-declared-domain';
       readonly code: TavernLoreSourceOutsideCodeV1; readonly pointer: string;

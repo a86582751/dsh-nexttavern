@@ -720,10 +720,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
       const session=deps.session(sid)
       if(!session)fail('PROMPT_NUMERICAL_SESSION_UNAVAILABLE')
       const data=promptInheritedData(sid,session)
-      return Object.freeze({kind:'ready' as const,data,current:()=>{
-        try {return deps.session(sid)===session&&same(promptInheritedData(sid,session),data)}
-        catch {return false}
-      }})
+      return Object.freeze({kind:'ready' as const,data})
     }catch(error) {
       return {kind:'unavailable',code:error instanceof MvuPromptFactsRefusal?error.code:
         error instanceof Error&&/^(PROMPT_NUMERICAL|DERIVED|PREFIX|NUMERICAL|LEDGER|STATE|WORK|TERMINAL|SOURCE|MVU_PLAYER|PREPARATION|PHASE_BC)_[A-Z_]+$/.test(error.message)

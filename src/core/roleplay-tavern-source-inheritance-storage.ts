@@ -350,18 +350,50 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
   /** Internal Source-owner consumer only. Its factory supplies its own final
    * frozen collected rows; no caller matcher/checked flag can assert a match.
    * Closure-local plans retain expected data only and do not outlive the frame. */
-  function createReadonlyRowComparisonV1(expectedRows:readonly TavernSourceStaticRowV1[]) {
-    const ownedRows=new WeakSet<object>(expectedRows),plans=new WeakMap<object,SourceReadonlyRowPlanV1|null>()
+  function createReadonlyRowComparisonV1(expectedRows:readonly TavernSourceStaticRowV1[],
+    validatedRows:readonly TavernSourceStaticRowV1[]=[]) {
+    const ownedRows=new WeakSet<object>(expectedRows),validated=new WeakSet<object>(validatedRows),
+      plans=new WeakMap<object,SourceReadonlyRowPlanV1|null>(),nativePlans=new WeakMap<object,NativeDecodePlanV1|null>()
+    let nativePlanAddresses=0,nativePlanBytes=0,nativePlanNodes=0
     return (expected:TavernSourceStaticRowV1):boolean=>{
       const {table,key}=expected,raw=tables[table].get(key)
       // Actual I/O precedes optional lazy compilation. An unsupported plan or
       // failed probe cannot replace the old diagnosis or wash this first raw.
+      let equal=false
       if(ownedRows.has(expected)) {
         let plan=plans.get(expected)
         if(plan===undefined){plan=compileReadonlyRowV1(expected)??null;plans.set(expected,plan)}
-        if(plan&&(plan.exists?matchesReadonlyRowValueV1(raw,plan.value):raw===undefined))return true
+        equal=!!plan&&(plan.exists?matchesReadonlyRowValueV1(raw,plan.value):raw===undefined)
       }
-      return inheritanceSameV1(rowFromRawV1(table,key,raw),expected)
+      if(!equal&&!inheritanceSameV1(rowFromRawV1(table,key,raw),expected))return false
+      if(table!=='branch'||!expected.exists||!validated.has(expected))return true
+      try {
+        // Preserve the separate actual read. Only a complete strict match to
+        // this factory's collected, already parsed value can skip pure decode.
+        // Native's matcher rejects aliases and normalized -0/undefined spellings;
+        // the ordinary readonly comparison alone cannot establish that match.
+        const second=tables.branch.get(key)
+        if(ownedRows.has(expected)) {
+          let plan=nativePlans.get(expected)
+          if(plan===undefined) {
+            const compiled=nativePlanAddresses<NATIVE_DECODE_CACHE_V1.addresses
+              ?compileNativeDecodeV1(expected.value):undefined
+            // These frame-local plans share the Native cache's retention
+            // ceilings. Exhaustion only disables reuse; the same second raw
+            // still goes through the original parser and admission limits.
+            plan=compiled&&nativePlanBytes+compiled.bytes<=NATIVE_DECODE_CACHE_V1.bytes
+              &&nativePlanNodes+compiled.nodes<=NATIVE_DECODE_CACHE_V1.nodes?compiled.plan:null
+            if(plan&&compiled) {
+              nativePlanAddresses++;nativePlanBytes+=compiled.bytes;nativePlanNodes+=compiled.nodes
+            }
+            nativePlans.set(expected,plan)
+          }
+          if(plan&&nativeDecodeMatchV1(second,plan))return true
+        }
+        // Decode this same observed raw on every miss. A later good get must
+        // never wash away a malformed or changed second result.
+        return inheritanceDataSha256V1(readCurrentKey(key,second))===expected.sha256
+      }catch(error) {clearNativeDecoded();throw error}
     }
   }
   function inventory(sid:string):readonly TavernSourceStaticRowV1[] {
@@ -389,14 +421,13 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
     return inheritanceDataV1(result)
   }
   function readKey(key:string,budget?:TavernSourceReadBudgetV1):unknown {
-    try {return readCurrentKey(key,budget)}catch(error) {
+    try {return readCurrentKey(key,tables.branch.get(key),budget)}catch(error) {
       // Includes failed actual get, parser, key join and caller-owned charge.
       clearNativeDecoded()
       throw error
     }
   }
-  function readCurrentKey(key:string,budget?:TavernSourceReadBudgetV1):unknown {
-    const raw=tables.branch.get(key)
+  function readCurrentKey(key:string,raw:unknown,budget?:TavernSourceReadBudgetV1):unknown {
     // Route by own DATA descriptors only, with Proxy refusal before reflection.
     // This does not admit the row: a first Native decode runs sealed()'s
     // original complete bounded copy, then checks the original Native spelling.

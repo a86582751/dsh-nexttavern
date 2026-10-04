@@ -111,9 +111,15 @@ export function captureRoleplayTavernLegacyReadV1(deps:Dependencies,sessionId:st
   // Imported author instructions only enter the admitted Native story material.
   // Background tasks use their frozen story and their own declared task inputs.
   const tables:AuthorTables={cards:table([]),rules:table([]),worldbook:table(rows)}
-  const {source,edits,compilation}=captured
-  const body={schemaVersion:1,encoding:'native-owned-legacy-source-read-policy-v1',sessionId,
-    sourceSha256:source.sourceSha256,editsSha256:recordSha256(edits),planSha256:compilation.plan.planSha256,
+  const {source,currentIdentitySha256,edits,compilation}=captured
+  // Audit snapshots retain complete Native counters. Dependency currency uses
+  // the Source owner's admitted identity and the published edit/overlay inputs,
+  // so a normal completion cannot retire its own background task.
+  const body={schemaVersion:2,encoding:'native-owned-legacy-source-read-policy-v2',sessionId,
+    currentIdentitySha256,
+    edits:{identitySha256:edits.identitySha256,revision:edits.revision,headRef:edits.headRef,
+      journalSha256:edits.journalSha256,...(edits.inheritance?{inheritance:edits.inheritance}:{})},
+    compiler:compilation.plan.compiler,currentNativeOverlaySha256:compilation.plan.currentNativeOverlaySha256,
     policy:'native-ST-entries-and-author-fields-excluded-from-passive-and-background-readers',
     supplementalWorldbookSha256:recordSha256(rows)}
   const sourceProjectionSha256=recordSha256(body)

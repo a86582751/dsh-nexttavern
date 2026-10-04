@@ -50,7 +50,7 @@ function sourceAuthorTables(source:TavernLoreSourceDataV1):AuthorTables&{status:
 }
 function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edited:TavernLoreEditsDataV1,
   sessionId:string,includeCardStyle:boolean,tables:AuthorTables&{status:AuthorTable}) {
-  const {source,contributionInput}=captured
+  const {source,currentIdentitySha256,contributionInput}=captured
   if(!same(source,edited.source))fail('INPUT_MATERIAL_EDIT_SOURCE_CHANGED')
   const legacy=produceRoleplayTavernCurrentLegacyOverlayV1(contributionInput),first=legacy.contributions,
     linkedRows=new Set(legacy.linkedRowKeys),overlay=composeRoleplayTavernCurrentOverlayV1(legacy.overlay,edited.overlay)
@@ -83,7 +83,7 @@ function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edi
     worldbookMembershipSha256:contributions.worldbookMembershipSha256,
     suppressAlwaysOn:contributions.directAlwaysOn.map(item=>({key:item.ref.key,sha256:item.ref.sha256})),
     splitExamples:true,nativeLoreReadPolicy:'automatic'})
-  return {kind:'captured-data' as const,source,edits:edited,compilation,contributions,original,residual,
+  return {kind:'captured-data' as const,source,currentIdentitySha256,edits:edited,compilation,contributions,original,residual,
     cardData:freeze(contributionInput.rawDecoded.data)}
 }
 
