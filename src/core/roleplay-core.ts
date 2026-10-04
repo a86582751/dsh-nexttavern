@@ -227,6 +227,10 @@ const DEFAULT_CONFIG = {
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
+  // First model output deadline per request.  Framework overhead (system
+  // prompt, tool definitions, maintenance instructions) can dwarf the story
+  // window, so slow local models may need minutes before the first token.
+  firstResponseTimeoutMs: 90000,
   // Legacy/manual Phase-B work has a separate bound from foreground projection.
   phaseBTimeoutMs: 90000,
   statusRetryMs: 2000,
@@ -1314,6 +1318,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   // ── 阶段 A：程序组装当前分支笔记与窗口；主代理按需查资料 ──────────────────
 
   const { preparationRecordKey, taskInstruction } = registerRoleplayLoop({
+    firstResponseTimeoutMs: cfg.firstResponseTimeoutMs,
     rowFacts:phaseARowFacts,
     inputBinding:agent => inputBindings.get(agent),
     programOpeningOwner:(agent,turn)=>programOpening?.ownsAgent(agent,turn)===true,
