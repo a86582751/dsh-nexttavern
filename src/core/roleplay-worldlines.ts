@@ -11,6 +11,7 @@ import type {
   WorldlineDependencies,
   ReadBranchSession,
   BranchSession,
+  BranchRecord,
   StoryEvent,
   ForkAnchor,
   ForkGroup,
@@ -900,6 +901,28 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     })
   }
 
+  function pendingOpeningCompletion(session: ReadBranchSession,
+    pending: Pick<BranchRecord, 'ordinal' | 'operationId'>, group: ForkGroup | null) {
+    if (!group?.anchor?.openingOnly) return null
+    const member = group.members.find(item => item.sessionId === session.id
+      && Number(item.ordinal) === Number(pending.ordinal) && item.operationId === pending.operationId)
+    if (!member?.operationId || member.deleted || member.failed) return null
+    const messageId = `opening-regenerate-${member.operationId}`
+    const candidate = eventsOf(session).find(event => event.type === 'assistant/message'
+      && assistantMessageId(event) === messageId && event.data?.message?.source?.kind === 'model')
+    if (!candidate) return null
+    const seq = Number(candidate.seq), turn = Number(candidate.data?.turn)
+    const completed = eventsOf(session).some(event => event.type === 'turn/end'
+      && Number(event.data?.turn) === turn && event.data?.reason?.kind === 'completed')
+    if (!completed) return null
+    const proof = deps.readProgramOpeningSettlement?.(session, member.operationId, messageId)
+    // A recognized program opening may have a completed Native turn while its
+    // domain closure/ACK is still pending. It must never fall back to legacy.
+    if (proof === null || proof !== undefined
+      && (proof.messageId !== messageId || proof.seq !== seq || proof.turn !== turn)) return null
+    return {messageId, seq, turn, programOpening: proof !== undefined}
+  }
+
   async function reconcileNativeFork(session: ReadBranchSession, completedAssistant: StoryEvent | null = null) {
     const prefix = `${session.id}__fork-pending-`
     const pendingEntries = [...T.branch.entries()].filter(([key, value]) => key.startsWith(prefix) && value)
@@ -908,27 +931,37 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       const requestId = String(pending?.requestId ?? '')
       const openingGroup = hydrateForkGroup(T.branch.get(forkGroupKey(pending.groupId)))
       if (openingGroup?.anchor?.openingOnly) {
-        const member = openingGroup.members.find(item => item.sessionId === session.id
-          && Number(item.ordinal) === Number(pending.ordinal) && item.operationId === pending.operationId)
-        const exactId = member?.operationId ? `opening-regenerate-${member.operationId}` : ''
-        const candidate = exactId ? eventsOf(session).find(event => event.type === 'assistant/message'
-          && assistantMessageId(event) === exactId && event.data?.message?.source?.kind === 'model') : null
-        const completed = candidate && eventsOf(session).some(event => event.type === 'turn/end'
-          && Number(event.data?.turn) === Number(candidate.data?.turn) && event.data?.reason?.kind === 'completed')
-        if (candidate && completed && member) {
+        const pendingIdentity = {groupId: pending.groupId, ordinal: pending.ordinal, operationId: pending.operationId}
+        const completion = pendingOpeningCompletion(session, pendingIdentity, openingGroup)
+        if (completion) {
           try { await flushEdits(session as BranchSession) } catch { continue }
-          await withForkMutationLock(forkGroupLockKey(pending.groupId), async () => {
-            const group = hydrateForkGroup(T.branch.get(forkGroupKey(pending.groupId)))
+          await withForkMutationLock(forkGroupLockKey(pendingIdentity.groupId), async () => {
+            // Flush and lock admission both await other owners. Re-read their
+            // actual records and completed output rather than settling a stale
+            // early Native event before Core has closed its domain.
+            const livePending = T.branch.get(pendingKey)
+            if (!livePending || livePending.groupId !== pendingIdentity.groupId
+              || livePending.ordinal !== pendingIdentity.ordinal || livePending.operationId !== pendingIdentity.operationId) return
+            const group = hydrateForkGroup(T.branch.get(forkGroupKey(livePending.groupId)))
+            const current = pendingOpeningCompletion(session, livePending, group)
             const live = group?.members.find(item => item.sessionId === session.id
-              && Number(item.ordinal) === Number(pending.ordinal) && item.operationId === pending.operationId)
-            if (!group || !live) return
-            live.assistantMessageId = exactId
-            live.assistantSeq = Number(candidate.seq)
-            live.pending = false
-            live.completedAt = Date.now()
-            group.updatedAt = Date.now()
-            await T.branch.put(forkGroupKey(group.groupId), group)
-            await T.branch.put(forkAnchorKey(session.id, exactId), {groupId: group.groupId})
+              && Number(item.ordinal) === Number(livePending.ordinal) && item.operationId === livePending.operationId)
+            if (!group || !live || !current || current.messageId !== completion.messageId
+              || current.seq !== completion.seq || current.turn !== completion.turn
+              || current.programOpening !== completion.programOpening) return
+            if ((live.assistantMessageId && live.assistantMessageId !== current.messageId)
+              || (live.assistantSeq !== null && live.assistantSeq !== undefined && live.assistantSeq !== current.seq)) return
+            if (live.pending) {
+              live.assistantMessageId = current.messageId
+              live.assistantSeq = current.seq
+              live.pending = false
+              live.completedAt = Date.now()
+              group.updatedAt = Date.now()
+              await T.branch.put(forkGroupKey(group.groupId), group)
+            } else if (live.assistantMessageId !== current.messageId || live.assistantSeq !== current.seq) return
+            // group.put can survive an anchor/cleanup failure. Only the same
+            // proven output may replay the tail; never replace another result.
+            await T.branch.put(forkAnchorKey(session.id, current.messageId), {groupId: group.groupId})
             await T.branch.delete(pendingKey)
           })
         }
@@ -1101,6 +1134,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
 
   const {
     nativePlayerGroupsFor,
+    readOwnedEditCompletionRows,
     replaceAssistantText,
     reconcileCanonicalPlayerVariants,
     userForkContext,
@@ -1121,6 +1155,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     failPendingNativeFork,
     nativeBranchGroupsFor,
     nativePlayerGroupsFor,
+    readOwnedEditCompletionRows,
     assistantMessageId,
     userForkContext,
     locatePlayerRecoveryTarget,

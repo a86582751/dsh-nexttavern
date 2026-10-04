@@ -87,6 +87,23 @@ export function createRoleplayStatus(deps: StatusDependencies) {
         }
     };
     const statusTaskKey = (session: StatusSession, event: StatusEvent) => keyOf(session.id, `turn-${Number(event.data!.turn)}-${Number(event.seq)}`);
+    function readPendingOutputRows(sessionId: string): readonly {readonly table: 'status'; readonly key: string}[] {
+        if (statusDisposed)
+            return [];
+        const prefix = keyOf(sessionId, ''), keys = new Set<string>();
+        // These private queues contain only exact keys created by statusTaskKey.
+        // The prefix selects their original Session; it never classifies durable
+        // rows or grants authority to other addresses with a matching shape.
+        for (const pending of [statusJobs, statusRetryTimers]) {
+            for (const key of pending.keys()) {
+                if (key.startsWith(prefix))
+                    keys.add(key);
+            }
+        }
+        if (keys.size)
+            keys.add(keyOf(sessionId, 'panel'));
+        return [...keys].sort().map(key => ({table: 'status' as const, key}));
+    }
     const statusSource = (session: StatusSession, event: StatusEvent | null | undefined): StatusSource | null => {
         if (!storyBranchIsActive(session))
             return null;
@@ -736,6 +753,7 @@ export function createRoleplayStatus(deps: StatusDependencies) {
         return next;
     };
     return {
+        readPendingOutputRows,
         readOwnedStatusControlFacts,
         statusFixedContext,
         runStatusObligation,

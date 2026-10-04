@@ -189,6 +189,8 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
             const key = left.value, value = right.value;
             if (!key.startsWith(nativePrefix))
                 continue;
+            if (deps.ownedRowKeys?.has(key))
+                continue;
             if (values.has(key) || values.size >= 8192)
                 fail('INPUT_COLD_TABLE_INVALID');
             const detached = copyData(value, budget);

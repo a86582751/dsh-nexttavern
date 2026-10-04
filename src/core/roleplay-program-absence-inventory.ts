@@ -4,10 +4,7 @@ import {recordSha256} from './roleplay-data.js'
 import {types} from 'node:util'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {assertImportRecordIntegrity} from './roleplay-import-record.js'
-import {matchesProgramOpeningNamespaceDataV1} from './roleplay-program-opening-row-facts.js'
-import {programOpeningDataSha256V1} from './roleplay-program-opening-records.js'
 import type {ImportRecord} from './roleplay-import-types.js'
-import type {ProgramOpeningStaticNamespaceRowV1} from './roleplay-program-opening-row-facts.js'
 
 export type ProgramAbsenceRowFamilyV1='source'|'source-control'|'program-opening'|'input'|'phase-a'
   |'native-material'|'status-control'|'branch-control'
@@ -34,12 +31,10 @@ interface TableV1 {get(key:string):unknown;entries():Iterable<[string,unknown]>}
 export interface ProgramAbsenceInventoryDepsV1 {
   readonly tables:Record<'branch'|'status',TableV1>
   readonly session:(id:string)=>ActualSessionV1|undefined
-  /** Synchronous original-owner row facts. In a Source callback, callers pass
-   * that Source owner's validated assertion frame instead of reentering it. */
+  /** Original record owners already joined these facts to their actual rows.
+   * InputState collects them synchronously, then watches their Domain changes.
+   * In a Source callback, callers use its acquired frame without reentering it. */
   readonly ownedRows:(session:ActualSessionV1)=>readonly ProgramAbsenceOwnedRowFactV1[]
-  /** Fixed original-factory lookup, not caller facts or a capture argument. */
-  readonly activeStaticNamespaceRow?:(session:ActualSessionV1,table:'branch'|'status',key:string)
-    =>ProgramOpeningStaticNamespaceRowV1|undefined
 }
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value)
 const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
@@ -105,7 +100,7 @@ function ordinaryMetadata(suffix:string,value:Record<string,unknown>):void {
  * a familiar prefix/schema or carrying a self-consistent checksum never grants
  * an exemption from the absence scan. */
 function managed(suffix:string):boolean {
-  return /^(?:tavern-source-|tavern-prompt-v1-|program-opening-|native-input-v2-|opening-choice-)/.test(suffix)
+  return /^(?:tavern-source-|tavern-prompt-v1-|program-opening-|native-input-v2-|opening-choice-|edit-applied-)/.test(suffix)
     ||/^(?:phaseb-|task-steering-|maintenance-timing-)/.test(suffix)
     ||/^(?:task-(?:snapshot-|input-snapshot-|preparation(?:$|-))|context-window(?:$|-))/.test(suffix)
 }
@@ -122,7 +117,9 @@ function assertFamily(table:'branch'|'status',suffix:string,family:ProgramAbsenc
       :family==='input'?/^native-input-v2-/.test(suffix)
         :family==='phase-a'?/^(?:task-(?:snapshot-|input-snapshot-|preparation$)|context-window$)/.test(suffix)
           :family==='native-material'?/^(?:tavern-prompt-v1-|program-opening-material-)/.test(suffix)
-            :family==='branch-control'?/^(?:(?:phaseb|task-steering|maintenance-timing)-[1-9][0-9]*|task-preparation|context-window)$/.test(suffix)
+            :family==='branch-control'?
+              /^(?:(?:phaseb|task-steering|maintenance-timing)-[1-9][0-9]*|task-preparation|context-window)$/.test(suffix)
+                ||/^edit-applied-(?:assistant|user)-(?:0|[1-9][0-9]*)$/.test(suffix)
               :false
   if(!matches)fail('PROGRAM_ABSENCE_OWNER_ROW_ADDRESS_INVALID')
 }
@@ -142,7 +139,7 @@ export function createRoleplayProgramAbsenceInventoryV1(deps:ProgramAbsenceInven
     for(const fact of suppliedFacts??deps.ownedRows(session)) {
       const address=fact.table+':'+fact.key
       if(!['branch','status'].includes(fact.table)||!fact.key.startsWith(prefix)||!hash(fact.sha256)
-        ||!object(fact.value)||programOpeningDataSha256V1(fact.value)!==fact.sha256)fail('PROGRAM_ABSENCE_OWNER_ROW_INVALID')
+        ||!object(fact.value))fail('PROGRAM_ABSENCE_OWNER_ROW_INVALID')
       assertFamily(fact.table,fact.key.slice(prefix.length),fact.family)
       const previous=facts.get(address)
       if(previous&&(previous.sha256!==fact.sha256||previous.family!==fact.family)) {
@@ -155,35 +152,25 @@ export function createRoleplayProgramAbsenceInventoryV1(deps:ProgramAbsenceInven
       const address=table+':'+key
       if(seen.has(address)||seen.size>=16_384)fail('PROGRAM_ABSENCE_INVENTORY_BUDGET_OR_DUPLICATE')
       seen.add(address)
-      const observation=deps.activeStaticNamespaceRow?.(session,table,key),charge=observation?.cloneBudget,
-        borrowed=observation&&charge&&budget.bytes+charge.bytes<=16_777_216
-          &&budget.nodes+charge.nodes<=131072&&charge.maxDepth<=66
-          &&(matchesProgramOpeningNamespaceDataV1(raw,observation)
-            ??sameRowData(raw,observation.value))?observation:undefined
-      // Charge every namespace capture. Overflow or divergent raw data takes
-      // the original traversal, preserving its exact failure priority/counts.
-      if(borrowed) {budget.bytes+=borrowed.cloneBudget.bytes;budget.nodes+=borrowed.cloneBudget.nodes}
-      const value=borrowed?.value??cloneRoleplayTavernLoreDataV1(raw,16_777_216,{nodes:131072,depth:66},budget)
-      // Borrowing already compared this same detached value with the raw row;
-      // otherwise retain the original post-clone spelling comparison.
-      if(!object(value)||!borrowed&&!sameRowData(raw,value))fail('PROGRAM_ABSENCE_ROW_INVALID')
-      const sha256=borrowed?.sha256??recordSha256(value),suffix=key.slice(prefix.length),fact=facts.get(address)
-      const got=deps.tables[table].get(key)
-      // This fresh descriptor comparison proves the same persistent hash data.
-      // No await or callback separates it from the following classification.
-      const unchanged=borrowed
-        ?matchesProgramOpeningNamespaceDataV1(got,borrowed)??sameRowData(got,value)
-        :sameRowData(got,value)
-      if(!unchanged)fail('PROGRAM_ABSENCE_ROW_CHANGED')
+      const suffix=key.slice(prefix.length),fact=facts.get(address)
       if(/^(?:mvu|state|stat_data|statData|variables|schema|opaqueState)(?:[-_]|$)/i.test(suffix)) {
         fail('PROGRAM_ABSENCE_NUMERICAL_STATE_PRESENT')
       }
-      let classification:ProgramAbsenceInventoryV1['rows'][number]['classification']='ordinary-nonnumerical'
       if(fact) {
-        if(fact.sha256!==sha256)fail('PROGRAM_ABSENCE_OWNER_ROW_CHANGED')
+        // The original producer supplied exact current bytes and their digest.
+        // This inventory owns membership/classification only; cloning, hashing
+        // or spelling-checking that DATA again adds no publication evidence and
+        // incorrectly charges retained Native material to a second read budget.
         if(fact.family==='phase-a')absencePhaseData(fact.value)
-        classification=fact.family
-      }else if(table==='status') {
+        rows.push({table,key,sha256:fact.sha256,classification:fact.family})
+        continue
+      }
+      const value=cloneRoleplayTavernLoreDataV1(raw,16_777_216,{nodes:131072,depth:66},budget)
+      if(!object(value)||!sameRowData(raw,value))fail('PROGRAM_ABSENCE_ROW_INVALID')
+      const sha256=recordSha256(value)
+      if(!sameRowData(deps.tables[table].get(key),value))fail('PROGRAM_ABSENCE_ROW_CHANGED')
+      let classification:ProgramAbsenceInventoryV1['rows'][number]['classification']='ordinary-nonnumerical'
+      if(table==='status') {
         if(suffix!=='spec')fail('PROGRAM_ABSENCE_MANAGED_ROW_UNPROVEN')
         noOpaque(value)
       }else if(['meta','settings','import-active'].includes(suffix)) {

@@ -325,11 +325,12 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   const terminalOwners=new Map<string,ReturnType<typeof createRoleplayInputCompletion>>()
   // Weak keys preserve actual Session identity across this binder's disposal.
   // Values contain detached data only; no Agent, Work closure or live checker.
-  type OwnedRows={sessionId:string;rows:Map<string,OwnedNonNumericalInputBranchRowFactV1>}
+  type OwnedRows={sessionId:string;rows:Map<string,OwnedNonNumericalInputBranchRowFactV1>;
+    writtenPreimages:Map<string,OwnedNonNumericalInputBranchRowFactV1>}
   let ownedRows=new WeakMap<object,OwnedRows>(),ownedRowsDisposed=false
   const rowsFor=(session:Session):OwnedRows=>{
     let found=ownedRows.get(session)
-    if(!found){found={sessionId:session.id,rows:new Map()};ownedRows.set(session,found)}
+    if(!found){found={sessionId:session.id,rows:new Map(),writtenPreimages:new Map()};ownedRows.set(session,found)}
     if(found.sessionId!==session.id)fail('INPUT_OWNED_ROW_SESSION_CHANGED')
     return found
   }
@@ -337,19 +338,27 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     const actual=table.get(row.key)
     return actual!==undefined&&actual!==null&&sameOwnedRowData(actual,row.value)&&recordSha256(actual)===row.sha256
   }
+  const registerPendingRow=(session:Session,row:OwnedNonNumericalInputBranchRowFactV1):void=>{
+    const known=rowsFor(session),previous=known.rows.get(row.key)
+    // An awaited put can still expose the previous confirmed bytes. Preserve
+    // that DATA provenance until this exact pending write is confirmed.
+    if(previous?.phase==='written')known.writtenPreimages.set(row.key,previous)
+    known.rows.set(row.key,row)
+  }
   const registerWriting=(session:Session,key:string,value:Record<string,unknown>,
     kind:OwnedNonNumericalInputBranchRowFactV1['kind']):OwnedNonNumericalInputBranchRowFactV1|undefined=>{
     if(ownedRowsDisposed)return
     const detached=freezeOwnedRowData(clone(value)),row=Object.freeze({key,value:detached,
       sha256:recordSha256(detached),kind,phase:'writing' as const})
-    rowsFor(session).rows.set(key,row)
+    registerPendingRow(session,row)
     return row
   }
   const registerWritten=(session:Session,row:OwnedNonNumericalInputBranchRowFactV1|undefined):void=>{
     if(ownedRowsDisposed||!row||!actualOwnedRow(row))return
-    const rows=rowsFor(session).rows,previous=rows.get(row.key)
+    const known=rowsFor(session),rows=known.rows,previous=rows.get(row.key)
     if(previous!==row)return
     rows.set(row.key,Object.freeze({...row,phase:'written' as const}))
+    known.writtenPreimages.delete(row.key)
   }
   // A single writer orders this owner's records. It never invokes Source work
   // or waits Agent idle while holding this chain.
@@ -626,7 +635,6 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       const identityCode=stepIdentityCurrency(step)
       return identityCode??baseCheck(steps.get(step)!.work)
     }
-    const stepFactsCurrency=(step:RoleplayInputStep)=>stepCurrencyUsing(step,baseFactsCurrency)
     const stepCurrency=(step:RoleplayInputStep)=>stepCurrencyUsing(step,baseCurrency)
     const terminalStored=(scope:InputCompletionScope):string|undefined=>{
       const mutation=mutationCode(agent.session)
@@ -806,14 +814,16 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           }
           // The original material writer has just checked this exact put's
           // readback. Registering its immutable DTO is not a second hash gate.
-          rowsFor(actualSession).rows.set(row.key,Object.freeze({...previous,phase:'written' as const}))
+          const known=rowsFor(actualSession)
+          known.rows.set(row.key,Object.freeze({...previous,phase:'written' as const}))
+          known.writtenPreimages.delete(row.key)
           return
         }
         const original=materialOriginal(input)
         original.assertIdentity()
         if(scope.stepToken!==original.token||!equal(scope.currency,original.currency))fail('INPUT_OWNED_ROW_STEP_CHANGED')
         if(!knownNonNumericalWork(original.work))return
-        rowsFor(actualSession).rows.set(row.key,Object.freeze({key:row.key,value:row.value,
+        registerPendingRow(actualSession,Object.freeze({key:row.key,value:row.value,
           sha256:row.sha256,kind:row.kind,phase:'writing' as const}))
       },
       scope(input):RoleplayInputMaterialScopeV1 {
@@ -824,14 +834,15 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
           assertIdentity()
         }
         const assertOwnerFactsCurrent=()=>{
-          const code=stepFactsCurrency(token)
+          const code=mutationCode(actualSession)
           if(code)fail(code)
           assertIdentity()
         }
-        assertCurrent()
+        assertOwnerFactsCurrent()
         return {session:agent.session as NativeSession,stepToken:token,currency:clone(currency),
           preparation:clone(work.preparation),originalInputRefs:clone(work.refs),turn,step,
-          signal:entry.signal,assertCurrent,assertOwnerFactsCurrent}
+          signal:entry.signal,assertCurrent,assertOwnerFactsCurrent,
+          outputRows:[{table:'branch',key:workKey(sid,work.refs)},{table:'branch',key:currentKey(sid)}]}
       },
     }):undefined
     const hook: NativeInputAdmissionHookV2 = {
@@ -1289,8 +1300,12 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       for(const row of known.rows.values()) {
         const actual=table.get(row.key)
         if(actual===undefined||actual===null)continue
-        if(!sameOwnedRowData(actual,row.value)||recordSha256(actual)!==row.sha256)fail('INPUT_OWNED_ROW_CHANGED')
-        result.push(row)
+        if(sameOwnedRowData(actual,row.value)&&recordSha256(actual)===row.sha256) {result.push(row);continue}
+        const previous=row.phase==='writing'?known.writtenPreimages.get(row.key):undefined
+        if(!previous||!sameOwnedRowData(actual,previous.value)||recordSha256(actual)!==previous.sha256) {
+          fail('INPUT_OWNED_ROW_CHANGED')
+        }
+        result.push(previous)
       }
       return Object.freeze(result)
     },
@@ -1303,6 +1318,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       if(!actual||(actual as object)!==(session as object))fail('INPUT_COLD_SESSION_INVALID')
       return readColdNonNumericalInputBranchRowFactsV1(actual,{table,namespace:ROLEPLAY_INPUT_NAMESPACE,
         prefix,workKey,currentKey,digest,isWork,
+        ownedRowKeys:new Set(ownedRows.get(actual)?.rows.keys()??[]),
         currencyOfStored:value=>currencyOfStored(value as Work),
         nonNumericalSource:value=>nonNumericalSource(value as InputSourceObservation),
         sessionForRowFacts,readColdMaterialHistory,

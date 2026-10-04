@@ -91,6 +91,26 @@ const integer=(value:unknown):value is number=>typeof value==='number'&&Number.i
 const sourceOf=(event:StoryEvent)=>event.data?.message?.source as Record<string,unknown>|undefined
 const programmaticOf=(event:StoryEvent)=>event.data?.['programmatic'] as Record<string,unknown>|undefined
 
+/** Original audit bytes only. Carrier identity, Source and current projections
+ * belong to the export composition; this entry exposes no current gate. */
+export interface ProgramCardCopyOriginalAuditInputV1 {
+  readonly identity:ProgramCardCopyNativeIdentityV1
+  readonly acknowledgedTurn:number
+  readonly observation:{readonly events:readonly StoryEvent[];readonly inheritedEventCount:number}
+}
+export function verifyProgrammaticCardCopyOriginalAuditSpanV1(input:ProgramCardCopyOriginalAuditInputV1)
+  :ProgramCardCopyNativeSpanReadV1 {
+  try {
+    const {identity,observation,acknowledgedTurn}=input,events=observation.events,
+      boundary=observation.inheritedEventCount
+    if(!integer(acknowledgedTurn)||!integer(boundary)||boundary>events.length
+      ||events.some((event,index)=>event.seq!==index)
+      ||typeof identity.renderedText!=='string'||Buffer.byteLength(identity.renderedText,'utf8')>65_536
+      ||sha256(identity.renderedText)!==identity.renderedSha256)return unknown('PROGRAM_COPY_AUDIT_INVALID')
+    return verifyCopySpanFromOriginV1(input,events,boundary,'original-audit')
+  }catch{return unknown('PROGRAM_COPY_AUDIT_INVALID')}
+}
+
 /** Shared old/new exact card-copy span. The old strict intent reader remains
  * the authority for its row, Source and acknowledgement preconditions. Facts
  * intentionally omit flushed; only the actual caller owns that assertion. */
@@ -108,11 +128,12 @@ export function verifyProgrammaticCardCopySpanV1(input:ProgramCardCopyNativeRead
 }
 /** Only the named mode-specific gates call this private fold. The original
  * opening boundary is explicit; the actual carrier object is never renamed. */
-function verifyCopySpanFromOriginV1(input:ProgramCardCopyNativeReadInputV1|ProgramInheritedCardCopyPublicationReadInputV1,
-  events:readonly StoryEvent[],boundary:number,mode:'current-visible'|'retained-publication'='current-visible')
+function verifyCopySpanFromOriginV1(input:ProgramCardCopyNativeReadInputV1|ProgramInheritedCardCopyPublicationReadInputV1
+  |ProgramCardCopyOriginalAuditInputV1,events:readonly StoryEvent[],boundary:number,
+  mode:'current-visible'|'retained-publication'|'original-audit'='current-visible')
   :ProgramCardCopyNativeSpanReadV1 {
   try {
-    const {identity,observation,acknowledgedTurn,messageEdits}=input
+    const {identity,acknowledgedTurn}=input
     const starts=events.filter(event=>event.type==='turn/start'),candidates=starts.filter(event=>
       programmaticOf(event)?.['operationId']===identity.operationId
       ||programmaticOf(event)?.['messageId']===identity.requestedMessageId),start=candidates[0],
@@ -143,13 +164,17 @@ function verifyCopySpanFromOriginV1(input:ProgramCardCopyNativeReadInputV1|Progr
       ||span.some(event=>!['turn/start','step/start','system/message','assistant/message','step/end','turn/end'].includes(event.type))) {
       return unknown('PROGRAM_COPY_SPAN_UNPROVEN')
     }
-    const nodes=observation.surfaceNodes,currentObservation=observation as ProgramCardCopyNativeObservationV1
-    if(!Array.isArray(nodes)||nodes.filter(seq=>seq===assistant.seq).length!==1
-      ||messageEdits.latest(events,assistant.seq)!==null
-      ||mode==='current-visible'&&(typeof currentObservation.deletedMessageIds==='function'
-        ?currentObservation.deletedMessageIds():currentObservation.deletedMessageIds).includes(identity.requestedMessageId)
-      ||observation.deriveEventMessage&&!same(observation.deriveEventMessage(assistant),message)) {
-      return unknown('PROGRAM_COPY_ORIGINAL_VERSION_CHANGED')
+    if(mode!=='original-audit') {
+      const current=input as ProgramCardCopyNativeReadInputV1|ProgramInheritedCardCopyPublicationReadInputV1,
+        observation=current.observation,nodes=observation.surfaceNodes,
+        currentObservation=observation as ProgramCardCopyNativeObservationV1
+      if(!Array.isArray(nodes)||nodes.filter(seq=>seq===assistant.seq).length!==1
+        ||current.messageEdits.latest(events,assistant.seq)!==null
+        ||mode==='current-visible'&&(typeof currentObservation.deletedMessageIds==='function'
+          ?currentObservation.deletedMessageIds():currentObservation.deletedMessageIds).includes(identity.requestedMessageId)
+        ||observation.deriveEventMessage&&!same(observation.deriveEventMessage(assistant),message)) {
+        return unknown('PROGRAM_COPY_ORIGINAL_VERSION_CHANGED')
+      }
     }
     return {kind:'matched',facts:{sessionId:identity.sessionId,operationId:identity.operationId,
       messageId:identity.requestedMessageId,renderedSha256:identity.renderedSha256,turn:acknowledgedTurn,

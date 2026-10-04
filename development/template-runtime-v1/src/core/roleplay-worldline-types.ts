@@ -173,6 +173,12 @@ export interface WorldlineDependencies {
     operationId:string;messageId:string;seq:number;turn:number;
     renderedText:string;renderedSha256:string
   } | undefined
+  /** Core joins current Source, Native/domain closure and the exact closing
+   * ACK before fork navigation can settle its requested output. Undefined is
+   * legacy; null recognizes the new protocol but denies completion. */
+  readProgramOpeningSettlement?(session:ReadBranchSession,operationId:string,messageId:string):{
+    messageId:string;seq:number;turn:number
+  } | null | undefined
   resolveRoleplaySession(id: string): Promise<BranchSession | null | undefined>
   isRoleplaySession(session: BranchSession): boolean
   ensureState(id: string): { branchReady: boolean }

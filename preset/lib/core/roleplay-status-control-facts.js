@@ -8,6 +8,9 @@ import { recordSha256, sha256 } from './roleplay-data.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+// The status producer hashes an absent spec as this exact persisted marker.
+// Only that unbound spec version admits it; Native/source hashes remain SHAs.
+const specHash = (value) => value === 'missing' || hash(value);
 const id = (value) => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value);
 const integer = (value, min = 0) => typeof value === 'number' && Number.isSafeInteger(value)
     && value >= min && !Object.is(value, -0);
@@ -128,7 +131,7 @@ function provenance(raw) {
     exact(raw, ['triggerId', 'sourceSeqs', 'sourceHash', 'specHash', 'fixedContextHash', 'storyContextHash', 'historyHash',
         'previousStatusSource', 'inputKind', 'templateKind', 'toolInputSeq'], ['taskId', 'generation', 'actualRoute', 'execution']);
     for (const key of ['triggerId', 'sourceHash', 'specHash', 'fixedContextHash', 'storyContextHash', 'historyHash']) {
-        if (!hash(raw[key]))
+        if (!(key === 'specHash' ? specHash(raw[key]) : hash(raw[key])))
             fail('STATUS_CONTROL_PROVENANCE_INVALID');
     }
     if (!Array.isArray(raw['sourceSeqs']) || raw['sourceSeqs'].length !== 2 || !raw['sourceSeqs'].every(value => integer(value))
@@ -180,9 +183,10 @@ function obligation(raw, sid) {
     if (['running', 'completed', 'waiting-main'].includes(String(raw['state'])) && completeBasis.some(key => !Object.hasOwn(raw, key))) {
         fail('STATUS_CONTROL_OBLIGATION_INVALID');
     }
-    for (const key of ['specHash', 'fixedContextHash', 'storyContextHash'])
-        if (Object.hasOwn(raw, key) && !hash(raw[key]))
+    for (const key of ['specHash', 'fixedContextHash', 'storyContextHash']) {
+        if (Object.hasOwn(raw, key) && !(key === 'specHash' ? specHash(raw[key]) : hash(raw[key])))
             fail();
+    }
     if (Object.hasOwn(raw, 'inputBasis'))
         basis(raw['inputBasis']);
     if (Object.hasOwn(raw, 'selection'))

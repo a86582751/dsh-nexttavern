@@ -9,6 +9,20 @@ const integer = (value) => typeof value === 'number' && Number.isSafeInteger(val
     && value >= 0 && !Object.is(value, -0);
 const sourceOf = (event) => event.data?.message?.source;
 const programmaticOf = (event) => event.data?.['programmatic'];
+export function verifyProgrammaticCardCopyOriginalAuditSpanV1(input) {
+    try {
+        const { identity, observation, acknowledgedTurn } = input, events = observation.events, boundary = observation.inheritedEventCount;
+        if (!integer(acknowledgedTurn) || !integer(boundary) || boundary > events.length
+            || events.some((event, index) => event.seq !== index)
+            || typeof identity.renderedText !== 'string' || Buffer.byteLength(identity.renderedText, 'utf8') > 65_536
+            || sha256(identity.renderedText) !== identity.renderedSha256)
+            return unknown('PROGRAM_COPY_AUDIT_INVALID');
+        return verifyCopySpanFromOriginV1(input, events, boundary, 'original-audit');
+    }
+    catch {
+        return unknown('PROGRAM_COPY_AUDIT_INVALID');
+    }
+}
 /** Shared old/new exact card-copy span. The old strict intent reader remains
  * the authority for its row, Source and acknowledgement preconditions. Facts
  * intentionally omit flushed; only the actual caller owns that assertion. */
@@ -31,7 +45,7 @@ export function verifyProgrammaticCardCopySpanV1(input) {
  * opening boundary is explicit; the actual carrier object is never renamed. */
 function verifyCopySpanFromOriginV1(input, events, boundary, mode = 'current-visible') {
     try {
-        const { identity, observation, acknowledgedTurn, messageEdits } = input;
+        const { identity, acknowledgedTurn } = input;
         const starts = events.filter(event => event.type === 'turn/start'), candidates = starts.filter(event => programmaticOf(event)?.['operationId'] === identity.operationId
             || programmaticOf(event)?.['messageId'] === identity.requestedMessageId), start = candidates[0], expectedMarker = { schemaVersion: 1, operationId: identity.operationId, messageId: identity.requestedMessageId,
             producer: 'dsh-nexttavern', origin: `card-opening:${identity.importId}`, textSha256: identity.renderedSha256 };
@@ -60,13 +74,15 @@ function verifyCopySpanFromOriginV1(input, events, boundary, mode = 'current-vis
             || span.some(event => !['turn/start', 'step/start', 'system/message', 'assistant/message', 'step/end', 'turn/end'].includes(event.type))) {
             return unknown('PROGRAM_COPY_SPAN_UNPROVEN');
         }
-        const nodes = observation.surfaceNodes, currentObservation = observation;
-        if (!Array.isArray(nodes) || nodes.filter(seq => seq === assistant.seq).length !== 1
-            || messageEdits.latest(events, assistant.seq) !== null
-            || mode === 'current-visible' && (typeof currentObservation.deletedMessageIds === 'function'
-                ? currentObservation.deletedMessageIds() : currentObservation.deletedMessageIds).includes(identity.requestedMessageId)
-            || observation.deriveEventMessage && !same(observation.deriveEventMessage(assistant), message)) {
-            return unknown('PROGRAM_COPY_ORIGINAL_VERSION_CHANGED');
+        if (mode !== 'original-audit') {
+            const current = input, observation = current.observation, nodes = observation.surfaceNodes, currentObservation = observation;
+            if (!Array.isArray(nodes) || nodes.filter(seq => seq === assistant.seq).length !== 1
+                || current.messageEdits.latest(events, assistant.seq) !== null
+                || mode === 'current-visible' && (typeof currentObservation.deletedMessageIds === 'function'
+                    ? currentObservation.deletedMessageIds() : currentObservation.deletedMessageIds).includes(identity.requestedMessageId)
+                || observation.deriveEventMessage && !same(observation.deriveEventMessage(assistant), message)) {
+                return unknown('PROGRAM_COPY_ORIGINAL_VERSION_CHANGED');
+            }
         }
         return { kind: 'matched', facts: { sessionId: identity.sessionId, operationId: identity.operationId,
                 messageId: identity.requestedMessageId, renderedSha256: identity.renderedSha256, turn: acknowledgedTurn,

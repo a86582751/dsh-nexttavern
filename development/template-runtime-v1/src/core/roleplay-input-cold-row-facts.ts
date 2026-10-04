@@ -43,6 +43,9 @@ export interface ColdInputRowFactsDependenciesV1 {
   readonly nonNumericalSource:(value:Row)=>boolean
   readonly sessionForRowFacts:(sid:string)=>Session|undefined
   readonly readColdMaterialHistory:(session:Session)=>ColdInputMaterialHistoryV1
+  /** The actual process's writer owns these rows. Historical association
+   * cannot reinterpret a new work that has not claimed a Native turn yet. */
+  readonly ownedRowKeys?:ReadonlySet<string>
   readonly assertNotDisposed:()=>void
 }
 function fail(code:string):never {throw Error(code)}
@@ -195,6 +198,7 @@ export function readColdNonNumericalInputBranchRowFactsV1(session:Session,deps:C
         ||typeof left.value!=='string')fail('INPUT_COLD_TABLE_INVALID')
       const key=left.value as string,value=right.value
       if(!key.startsWith(nativePrefix))continue
+      if(deps.ownedRowKeys?.has(key))continue
       if(values.has(key)||values.size>=8192)fail('INPUT_COLD_TABLE_INVALID')
       const detached=copyData(value,budget)
       if(!row(detached))fail('INPUT_COLD_ROW_SCHEMA_INVALID')

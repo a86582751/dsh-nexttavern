@@ -1,7 +1,8 @@
 import { keyOf, sha256, recordSha256 } from './roleplay-data.js'
 import { eventsOf, surfaceEvents, surfaceEntries } from './roleplay-context.js'
 import { createCharacterCluster } from './character-cluster.js'
-import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePending, taskPhaseMessage } from './tavern-tasks.js'
+import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePending, taskPhaseMessage, taskHash }
+  from './tavern-tasks.js'
 import type { ModelRoute } from './tavern-model-policy.js'
 import type {StoredTask} from './tavern-task-types.js'
 import type { HostSession, HostAgent, HostSource, NativeTaskInput, TaskHostDependencies } from './roleplay-task-host-types.js'
@@ -111,13 +112,22 @@ export function createRoleplayTaskHost({
     }
     assertIdleRecovery()
     kind=kind??(system===STATUS_SYSTEM?'status':system===DECISION_SYSTEM?'decision':system===ORGANIZE_WORKER_SYSTEM?'novel-export':'memory')
-    const preparation=T.branch.get(keyOf(session.id,'task-preparation'))
-    const currency=inputCurrency?.(session)
-    const source={...(providedSource??{events:taskStory(session).map(e=>({seq:e.seq,hash:sha256(e.text)})),...(kind==='status'?{fixedHash:recordSha256(statusFixedContext(session))}:{}),
-      ...(!background&&preparation?.sessionId===session.id&&preparation.status==='preparing'?{preparationId:preparation.id}:{})}
-      ),...(currency?{inputPreparation:currency}:{})}
     // Nonces protect prompt boundaries, but are not a changing task input.
     const requestKey={system,user:String(user).replace(/(<\/?rp-content:)[0-9a-f]{36}(>)/g,'$1NONCE$2'),generationKey}
+    // A Status obligation can resume after the next input has replaced hot
+    // Work. Reuse its completed task's original association; request still
+    // checks the real historical result and publication contracts below.
+    const completed=kind==='status'&&!providedSource?tavernTasks.list(session)
+      .filter(job=>job.kind===kind&&job.status==='completed'
+        &&taskHash({sessionId:session.id,kind,source:job.source,input:requestKey})===job.id)
+      .sort((a,b)=>Number(a.createdAt??0)-Number(b.createdAt??0)||a.id.localeCompare(b.id))[0]:undefined
+    const source=completed?completed.source:(()=>{
+      const preparation=T.branch.get(keyOf(session.id,'task-preparation')),currency=inputCurrency?.(session)
+      return {...(providedSource??{events:taskStory(session).map(e=>({seq:e.seq,hash:sha256(e.text)})),
+        ...(kind==='status'?{fixedHash:recordSha256(statusFixedContext(session))}:{}),
+        ...(!background&&preparation?.sessionId===session.id&&preparation.status==='preparing'
+          ?{preparationId:preparation.id}:{})}),...(currency?{inputPreparation:currency}:{})}
+    })()
     try {return await tavernTasks.request({session,agent:main,kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,tools:allowedTools,onResult,onAdmission,
       validate:validate??(value=>{
         if(format==='text'){if(typeof value!=='string'||!value.trim())throw new Error('任务文本为空');return value}

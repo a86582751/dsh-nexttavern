@@ -12,6 +12,7 @@ import type {
   PlayerTarget,
   SurfaceEntry,
   ReplacementResult,
+  BranchRecord,
 } from './roleplay-worldline-types.js'
 import { projectStoryEvent } from './roleplay-message-view.js'
 
@@ -165,12 +166,28 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     return [...surfaceEvents(session)].reverse().find(predicate) ?? null
   }
 
-  function editEffectsCommitted(session: ReadBranchSession, edit: StoryEvent) {
-    const receipt = cloneBranchRecord(T.branch.get(editInvalidationKey(session.id,
-      String(edit.data?.role), Number(edit.data?.targetSeq))))
+  function editEffectsCommitted(session: ReadBranchSession, edit: StoryEvent,
+    receipt=cloneBranchRecord(T.branch.get(editInvalidationKey(session.id,
+      String(edit.data?.role), Number(edit.data?.targetSeq))))) {
     return receipt?.schemaVersion === 1 && receipt.state === 'committed' &&
       receipt.role === edit.data?.role && receipt.targetSeq === edit.data?.targetSeq &&
       receipt.editSeq === edit.seq && receipt.textSha256 === sha256(edit.data?.text)
+  }
+
+  /** The same edit owner supplies its actual completion rows to the initial
+   * absence audit. A lifecycle state is not a numerical state publication. */
+  function readOwnedEditCompletionRows(session: ReadBranchSession) {
+    const events=eventsOf(session),rows:{key:string;value:Readonly<Record<string,unknown>>}[]=[]
+    for(const edit of messageEdits.current(session,events)) {
+      const key=editInvalidationKey(session.id,String(edit.data?.role),Number(edit.data?.targetSeq)),
+        value=cloneBranchRecord(T.branch.get(key)) as (BranchRecord&Record<string,unknown>)|undefined,
+        fields=['schemaVersion','state','role','targetSeq','editSeq','textSha256','committedAt']
+      if(!value||Object.keys(value).length!==fields.length||fields.some(field=>!Object.hasOwn(value,field))
+        ||!Number.isSafeInteger(value.committedAt)||Number(value.committedAt)<0
+        ||!editEffectsCommitted(session,edit,value))continue
+      rows.push({key,value})
+    }
+    return rows
   }
 
   /** Caller holds the fork lock. Receipts distinguish a durable edit from completed derived effects. */
@@ -584,6 +601,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
 
   return {
     nativePlayerGroupsFor,
+    readOwnedEditCompletionRows,
     replaceAssistantText,
     reconcileCanonicalPlayerVariants,
     userForkContext,

@@ -8,7 +8,7 @@ import {recordSha256,keyOf} from './roleplay-data.js'
 import {createRoleplayPromptOpeningSourceV1} from './roleplay-prompt-opening-source.js'
 import type {PromptOpeningSourceDepsV1} from './roleplay-prompt-opening-source-types.js'
 import {createRoleplayProgramOpeningBasisV1} from './roleplay-program-opening-basis.js'
-import type {ProgramOpeningOwnedBranchRowV1} from './roleplay-program-opening-basis.js'
+import type {ProgramOpeningOwnedBranchRowV1,ProgramOpeningPhaseBControlDataV1} from './roleplay-program-opening-basis.js'
 import {createRoleplayProgramOpeningV1} from './roleplay-program-opening.js'
 import type {ProgramOpeningDependenciesV1} from './roleplay-program-opening.js'
 import {tavernLoreSourceCurrentRowIdentityV1} from './roleplay-tavern-lore-source.js'
@@ -31,11 +31,11 @@ interface Dependencies extends Omit<ProgramOpeningDependenciesV1,'branch'|'statu
   |'readNativeFacts'|'readHistoricalOwnedRows'> {
   readonly tables:CoreTables
   readonly sourceReaders:PromptOpeningSourceDepsV1
-  readonly branchReady:(sid:string)=>boolean
   readonly projections:()=>Parameters<typeof readProgramGeneratedNativeV1>[0]['projections']
   readonly messageEdits:WorldlineMessageEdits
   readonly deletedMessageIds:(session:ReadBranchSession)=>readonly string[]
   readonly phaseSnapshot:(session:Session,turn:number)=>CompletionSnapshot|undefined
+  readonly readPhaseBControlData:(actualSession:ReadBranchSession)=>ProgramOpeningPhaseBControlDataV1
 }
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
@@ -106,13 +106,7 @@ export function createRoleplayProgramOpeningCoreV1(deps:Dependencies) {
     }
     const rows=[row,preparation],window=deps.tables.branch.get(keyOf(session.id,'context-window'))
     if(window!==undefined&&window!==null)rows.push(exactRow(keyOf(session.id,'context-window')))
-    const hashes=rows.map(item=>({key:item.key,sha256:recordSha256(item.value)}))
-    const assertCurrent=()=>{
-      deps.assertSessionCurrent(session)
-      if(deps.phaseSnapshot(session,turn)!==snapshot)fail('PROGRAM_OPENING_ACTUAL_PHASE_A_CHANGED')
-      for(const ref of hashes)exactRow(ref.key,ref.sha256)
-    }
-    return {snapshot,snapshotRef:{key,sha256:recordSha256(row.value)},ownedRows:rows,assertCurrent}
+    return {snapshot,snapshotRef:{key,sha256:recordSha256(row.value)},ownedRows:rows}
   }
   function readHistoricalOwnedRows(context:ProgramOpeningRecordContextV1,facts:ProgramOpeningNativeFactsV1) {
     if(facts.production!=='generated-opening')return []
@@ -144,10 +138,13 @@ export function createRoleplayProgramOpeningCoreV1(deps:Dependencies) {
     return [...rows.values()]
   }
   const basis=createRoleplayProgramOpeningBasisV1({tables:deps.tables,
+    readPhaseBControlData:deps.readPhaseBControlData,
     session:sid=>deps.session(sid) as unknown as ReadBranchSession|undefined,
-    branchReady:deps.branchReady,assertSourceCurrent:proof=>{
+    assertSourceCurrent:proof=>{
       const session=deps.session(proof.source.sessionId)
       if(!session||!flow.sourceCurrent(proof))fail('PROGRAM_OPENING_SOURCE_CHANGED')
+    },assertHistoricalSourceCurrent:proof=>{
+      if(!flow.historicalSourceCurrent(proof))fail('PROGRAM_OPENING_SOURCE_CHANGED')
     },readMetaCurrentIdentitySha256:sid=>{
       const key=keyOf(sid,'meta'),value=deps.tables.branch.get(key)
       if(!object(value))fail('PROGRAM_OPENING_META_IDENTITY_INVALID')

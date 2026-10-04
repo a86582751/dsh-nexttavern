@@ -156,14 +156,14 @@ function readProgramGeneratedNativeFactsV1(input:Omit<ProgramGeneratedNativeObse
     return readGeneratedProjectionFactsV1(input,inspected)
   }catch{return unknown('PROGRAM_GENERATED_FACTS_INVALID')}
 }
-/** Own and inherited facts use identical full-carrier original-output checks.
- * Their separate public gates decide which historical prefix may be rebuilt. */
+/** Original bytes establish the receipt. An inherited current carrier may
+ * project a later edit while retaining that exact historical publication. */
 function readGeneratedProjectionFactsV1(input:Omit<ProgramGeneratedNativeObservationReadInputV1,'assertCurrent'>
   |ProgramInheritedGeneratedPublicationReadInputV1,
   inspected:Extract<NativeOpeningGenerationInspectionV1,{kind:'complete'}>,
-  mode:'current-visible'|'retained-publication'='current-visible'):ProgramGeneratedNativeReadV1 {
+  mode:'current-visible'|'current-carrier-original'|'retained-publication'='current-visible'):ProgramGeneratedNativeReadV1 {
   const {observation,identity,messageEdits}=input,
-    deletedMessageIds=mode==='current-visible'
+    deletedMessageIds=mode!=='retained-publication'
       ?(input as Omit<ProgramGeneratedNativeObservationReadInputV1,'assertCurrent'>).deletedMessageIds:undefined,
     events=observation.events
     if(!inspected.receiptEvent)return unknown('PROGRAM_GENERATED_RECEIPT_NOT_PUBLISHED')
@@ -182,9 +182,9 @@ function readGeneratedProjectionFactsV1(input:Omit<ProgramGeneratedNativeObserva
         ||nativeInputSha256(event.data.message)!==output.messageSha256
         ||events.filter(candidate=>messageIdOf(candidate)===output.messageId).length!==1
         ||nodes.filter(seq=>Number(seq)===output.eventRef.seq).length!==1
-        ||mode==='current-visible'&&deletedMessageIds!.includes(output.messageId)
-        ||messageEdits.latest(coreEvents,output.eventRef.seq)!==null
-        ||nativeInputSha256(observation.deriveEventMessage(event))!==output.messageSha256) {
+        ||mode!=='retained-publication'&&deletedMessageIds!.includes(output.messageId)
+        ||mode!=='current-carrier-original'&&(messageEdits.latest(coreEvents,output.eventRef.seq)!==null
+          ||nativeInputSha256(observation.deriveEventMessage(event))!==output.messageSha256)) {
         return unknown('PROGRAM_GENERATED_ORIGINAL_OUTPUT_CHANGED')
       }
       const text=event.data.message.content.filter(block=>block.type==='text').map(block=>block.text).join('')
@@ -242,7 +242,7 @@ function inheritedGeneratedFactsV1(input:ProgramInheritedGeneratedNativeObservat
       prefixSha256:nativeInputSha256(prefix)}},identity,projections)
   if(inspected.kind!=='complete')return inspected.kind==='absent'
     ?unknown('PROGRAM_GENERATED_INHERITED_OPENING_MISSING'):inspected
-  return inheritedGeneratedCarrierWindowFactsV1(input,inspected,'current-visible',events,identity)
+  return inheritedGeneratedCarrierWindowFactsV1(input,inspected,'current-carrier-original',events,identity)
 }
 /** The retained gate supplies exactly the preserved prefix; the existing
  * current gate supplies all carrier bytes. Duplicate/edit/derive rules are
@@ -250,7 +250,7 @@ function inheritedGeneratedFactsV1(input:ProgramInheritedGeneratedNativeObservat
 function inheritedGeneratedCarrierWindowFactsV1(input:ProgramInheritedGeneratedNativeObservationReadInputV1
   |ProgramInheritedGeneratedPublicationReadInputV1,
   inspected:Extract<NativeOpeningGenerationInspectionV1,{kind:'complete'}>,
-  mode:'current-visible'|'retained-publication',events:readonly SessionEvent[],identity:NativeOpeningIdentityV1)
+  mode:'current-visible'|'current-carrier-original'|'retained-publication',events:readonly SessionEvent[],identity:NativeOpeningIdentityV1)
   :ProgramGeneratedNativeReadV1 {
   if(!inspected.receiptEvent||!inspected.closingAck)return unknown('PROGRAM_GENERATED_INHERITED_CLOSURE_UNCONFIRMED')
   const invocationRef=inspected.receipt.invocationRef,receiptEvent=inspected.receiptEvent,ack=inspected.closingAck,

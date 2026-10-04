@@ -18,9 +18,12 @@ interface Ref {readonly key:string;readonly sha256:string}
 interface Table {get(key:string):unknown}
 export interface ProgramAbsenceMutableControlMaterialReadV1 {
   readonly publications:readonly Publication[]
-  /** Actual material-facts capture guard, including the whole current
-   * namespace frame. A Source guard or no-op is not this interface's owner. */
+  /** Actual material-facts capture guard, including all consumed immutable
+   * dependencies. A Source guard or no-op is not this interface's owner. */
   assertCurrent():void
+  /** Original producer/reader identity only. Older suppliers retain their
+   * complete guard as the fallback; this never proves current row bytes. */
+  assertOwnerFactsCurrent?():void
 }
 export interface ProgramAbsenceMutableControlFactV1 {
   readonly table:'branch'
@@ -62,12 +65,13 @@ function sameData(actual:unknown,expected:unknown):boolean {
     ||types.isProxy(actual)||types.isProxy(expected)||Array.isArray(actual)!==Array.isArray(expected))return false
   if(Array.isArray(actual)?Object.getPrototypeOf(actual)!==Array.prototype
     :![Object.prototype,null].includes(Object.getPrototypeOf(actual)))return false
-  const a=Object.getOwnPropertyDescriptors(actual),b=Object.getOwnPropertyDescriptors(expected),
-    left=Reflect.ownKeys(actual),right=Reflect.ownKeys(expected)
-  return left.length===right.length&&left.every(key=>typeof key==='string'&&right.includes(key))&&right.every(key=>{
+  const left=Reflect.ownKeys(actual),right=Reflect.ownKeys(expected)
+  if(left.length!==right.length||left.some(key=>typeof key!=='string'))return false
+  const a=Object.getOwnPropertyDescriptors(actual),b=Object.getOwnPropertyDescriptors(expected)
+  return right.every(key=>{
     if(typeof key!=='string')return false
     const x=a[key],y=b[key]
-    return !!x&&!!y&&Object.hasOwn(x,'value')&&Object.hasOwn(y,'value')&&x.enumerable===y.enumerable
+    return Object.hasOwn(a,key)&&!!x&&!!y&&Object.hasOwn(x,'value')&&Object.hasOwn(y,'value')&&x.enumerable===y.enumerable
       &&sameData(x.value,y.value)
   })
 }
@@ -128,10 +132,22 @@ export function createRoleplayProgramAbsenceMutableControlsV1(deps:ProgramAbsenc
       return {nodes:[...actual.nodes],contentGeneration:actual.contentGeneration}
     }
     const surfaceSha256=nativeInputSha256(surfaceData()),material=readMaterialHistory(session),
-      materialAssert=material.assertCurrent,publications=material.publications,
+      materialAssert=material.assertCurrent,materialOwnerFacts=material.assertOwnerFactsCurrent,
+      materialOwnerAssert=materialOwnerFacts===undefined?materialAssert:materialOwnerFacts,publications=material.publications,
       rows=new Map<string,{exists:boolean;value:unknown;sha256?:string}>()
-    if(!Array.isArray(publications)||typeof materialAssert!=='function')fail()
-    materialAssert.call(material)
+    if(!Array.isArray(publications)||typeof materialAssert!=='function'||typeof materialOwnerAssert!=='function')fail()
+    function assertMaterialBindingsCurrent():void {
+      if(material.assertCurrent!==materialAssert||material.assertOwnerFactsCurrent!==materialOwnerFacts
+        ||material.publications!==publications)fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_NATIVE_CHANGED')
+    }
+    function assertMaterialOwnerFactsCurrent():void {
+      assertIdentity()
+      assertMaterialBindingsCurrent()
+      materialOwnerAssert.call(material)
+      assertMaterialBindingsCurrent()
+      assertIdentity()
+    }
+    assertMaterialOwnerFactsCurrent()
     function read(key:string):unknown {
       const pinned=rows.get(key)
       if(pinned)return pinned.value
@@ -259,25 +275,31 @@ export function createRoleplayProgramAbsenceMutableControlsV1(deps:ProgramAbsenc
             'tailSeqs(order-selection-not-whole-writer-ack)']})
       }
     }
-    const assertCurrent=()=>{
-      assertIdentity()
-      materialAssert.call(material)
+    const assertNativeFrame=()=>{
       const actualEvents=readEvents(session),actualProjections=projections()
-      if(material.assertCurrent!==materialAssert||material.publications!==publications
-        ||Number(session.seq)!==cursor||session.inheritedEventCount!==inherited
+      if(Number(session.seq)!==cursor||session.inheritedEventCount!==inherited
         ||nativeInputSha256(session.header)!==headerSha256||nativeInputSha256(surfaceData())!==surfaceSha256
         ||actualEvents.length!==events.length||nativeInputSha256(actualEvents)!==historySha256
         ||actualProjections.length!==pins.length||actualProjections.some((definition,index)=>{
           const pin=projectionPin(definition),expected=pins[index]!
           return pin.definition!==expected.definition||pin.type!==expected.type||pin.project!==expected.project
         }))fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_NATIVE_CHANGED')
+    }
+    const assertCurrent=()=>{
+      assertMaterialOwnerFactsCurrent()
+      assertNativeFrame()
       for(const [key,row] of rows) {
         const raw=get.call(branch,key)
         if(row.exists?(raw===undefined||!sameData(raw,row.value)||recordSha256(raw)!==row.sha256):raw!==undefined) {
           fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_ROW_CHANGED')
         }
       }
+      // Exact mutable reads and the material namespace can run callbacks.
+      // One full producer check follows them; surface/derive pins are ours.
       materialAssert.call(material)
+      assertMaterialOwnerFactsCurrent()
+      assertNativeFrame()
+      assertMaterialBindingsCurrent()
       assertIdentity()
     }
     assertCurrent()

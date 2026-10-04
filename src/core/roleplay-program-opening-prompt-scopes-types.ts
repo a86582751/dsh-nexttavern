@@ -9,6 +9,15 @@ import type {TavernSourceInheritanceDescriptorV1,TavernSourceNativeCutV1}
   from './roleplay-tavern-source-inheritance-types.js'
 import type {ProgramAbsenceInventoryV1} from './roleplay-program-absence-inventory.js'
 
+/** Current author/editor DATA supplied by the actual InputState capture. */
+export interface TavernOpeningPreparationSourceDataV1 {
+  readonly sourceCurrentIdentitySha256:string
+  readonly includeCardStyle:boolean
+  readonly editorRevision:number
+  readonly editorHeadSha256:string|null
+  readonly currentNativeOverlaySha256:string|null
+}
+
 export interface TavernPendingOpeningPromptScopeDataV1 {
   readonly schemaVersion:1
   readonly encoding:'native-program-opening-prompt-scope-read-data-v1'
@@ -34,7 +43,7 @@ export interface TavernPendingOpeningPromptScopeDataV1 {
 }
 export interface TavernActualPendingOpeningPromptScopesV1 {
   readonly data:TavernPendingOpeningPromptScopeDataV1
-  /** Actual Root Source/basis/immutable rows/Native phase and selected cut. */
+  /** Supplier owner only. The outer InputState owns DATA invalidation. */
   current():boolean
 }
 
@@ -54,13 +63,8 @@ export interface TavernProgramAbsencePromptScopeDataV1 {
 }
 export interface TavernActualProgramAbsencePromptScopesV1 {
   readonly data:TavernProgramAbsencePromptScopeDataV1
-  /** Actual original rows, Source, Native span, edits/deletes and selected cut. */
+  /** Supplier owner only. The outer InputState owns DATA invalidation. */
   current():boolean
-  /** Internal synchronous composition only. Full Source/namespace gates stay
-   * with current(); JSON data cannot recreate this actual owner closure. */
-  assertOwnerFactsCurrent?():void
-  /** Fresh own namespace gate retained by the full Prompt composite. */
-  assertNamespaceCurrent?():void
 }
 
 /** Original schema7 data retained by a real child Source archive. The carrier
@@ -92,17 +96,13 @@ export interface TavernProgramInheritedAbsencePromptScopeDataV1 {
     readonly inheritedEventCount:number
     readonly cut:TavernSourceNativeCutV1
   }
-  /** This capture's audit. Current re-proves absence after legitimate writer
-   * rows change; their membership is not part of the stable input Source ref. */
+  /** This capture's audit. Writer membership is not stable Source identity. */
   readonly inventory:ProgramAbsenceInventoryV1
   readonly stableDomainSha256:string
   readonly factsSha256:string
 }
 export interface TavernActualProgramInheritedAbsencePromptScopesV1 {
   readonly data:TavernProgramInheritedAbsencePromptScopeDataV1
-  /** The actual child Source/archive/prefix, current namespace and Native
-   * output versions are re-read independently of the inert facts hashes. */
+  /** Supplier owner only. The outer InputState owns DATA invalidation. */
   current():boolean
-  /** Re-reads this child archive and complete current Native carrier. */
-  assertOwnerFactsCurrent?():void
 }

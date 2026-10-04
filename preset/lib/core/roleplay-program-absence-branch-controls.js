@@ -38,9 +38,12 @@ function sameData(actual, expected) {
     if (Array.isArray(actual) ? Object.getPrototypeOf(actual) !== Array.prototype
         : ![Object.prototype, null].includes(Object.getPrototypeOf(actual)))
         return false;
-    const a = Object.getOwnPropertyDescriptors(actual), b = Object.getOwnPropertyDescriptors(expected), left = Reflect.ownKeys(actual), right = Reflect.ownKeys(expected);
-    return left.length === right.length && left.every(key => typeof key === 'string' && right.includes(key)) && right.every(key => {
-        if (typeof key !== 'string')
+    const left = Reflect.ownKeys(actual), right = Reflect.ownKeys(expected);
+    if (left.length !== right.length || left.some(key => typeof key !== 'string'))
+        return false;
+    const a = Object.getOwnPropertyDescriptors(actual), b = Object.getOwnPropertyDescriptors(expected);
+    return right.every(key => {
+        if (typeof key !== 'string' || !Object.hasOwn(a, key))
             return false;
         const x = a[key], y = b[key];
         return !!x && !!y && Object.hasOwn(x, 'value') && Object.hasOwn(y, 'value') && x.enumerable === y.enumerable
@@ -52,6 +55,25 @@ function strictData(raw, budget) {
     if (!sameData(raw, detached))
         fail('PROGRAM_ABSENCE_BRANCH_CONTROL_ROW_SPELLING_INVALID');
     return freeze(detached);
+}
+function namespaceEntry(entry) {
+    if (!entry || typeof entry !== 'object' || types.isProxy(entry) || !Array.isArray(entry)) {
+        fail('PROGRAM_ABSENCE_BRANCH_CONTROL_TABLE_INVALID');
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(entry), length = Object.getOwnPropertyDescriptor(entry, 'length'), keyValue = descriptors['0'], rawValue = descriptors['1'];
+    if (Reflect.ownKeys(entry).length !== 3 || !length || !Object.hasOwn(length, 'value') || length.value !== 2
+        || !keyValue || !rawValue || !Object.hasOwn(keyValue, 'value') || !Object.hasOwn(rawValue, 'value')
+        || !keyValue.enumerable || !rawValue.enumerable || typeof keyValue.value !== 'string') {
+        fail('PROGRAM_ABSENCE_BRANCH_CONTROL_TABLE_INVALID');
+    }
+    return { key: keyValue.value, raw: rawValue.value };
+}
+function controlCandidate(table, key, sessionId) {
+    if (table !== 'branch' || !key.startsWith(sessionId + '__'))
+        return false;
+    const suffix = key.slice(sessionId.length + 2);
+    return suffix === 'task-preparation' || suffix === 'context-window' || suffix.startsWith('phaseb-')
+        || suffix.startsWith('task-steering-') || suffix.startsWith('maintenance-timing-');
 }
 function projectionPin(definition) {
     if (!object(definition) || types.isProxy(definition)
@@ -130,8 +152,9 @@ function timing(value, sid, turn) {
     return value;
 }
 /** Root supplies original actual lookup/history/projection functions once.
- * A capture checks the entire present namespace, even though only three exact
- * control families receive facts. Other rows never acquire a fallback grant. */
+ * Key enumeration finds all control candidates, including prefix aliases.
+ * Only those dependencies receive strict DATA/current checks; the separate
+ * final absence Inventory checks all other actual branch/status bodies. */
 export function createRoleplayProgramAbsenceBranchControlsV1(deps) {
     const tables = deps.tables, lookup = deps.session, readEvents = deps.events, readProjections = deps.projections, tableObjects = { branch: tables.branch, status: tables.status }, methods = { branch: { get: tables.branch.get, entries: tables.branch.entries }, status: { get: tables.status.get, entries: tables.status.entries } };
     function capture(session) {
@@ -158,27 +181,52 @@ export function createRoleplayProgramAbsenceBranchControlsV1(deps) {
             const rows = new Map(), budget = { bytes: 0, nodes: 0 };
             for (const table of ['branch', 'status'])
                 for (const entry of methods[table].entries.call(tableObjects[table])) {
-                    if (!entry || typeof entry !== 'object' || types.isProxy(entry) || !Array.isArray(entry))
-                        fail('PROGRAM_ABSENCE_BRANCH_CONTROL_TABLE_INVALID');
-                    const descriptors = Object.getOwnPropertyDescriptors(entry), length = Object.getOwnPropertyDescriptor(entry, 'length'), keyValue = descriptors['0'], rawValue = descriptors['1'];
-                    if (Reflect.ownKeys(entry).length !== 3 || !length || !Object.hasOwn(length, 'value') || length.value !== 2
-                        || !keyValue || !rawValue || !Object.hasOwn(keyValue, 'value') || !Object.hasOwn(rawValue, 'value')
-                        || !keyValue.enumerable || !rawValue.enumerable || typeof keyValue.value !== 'string')
-                        fail('PROGRAM_ABSENCE_BRANCH_CONTROL_TABLE_INVALID');
-                    const key = keyValue.value;
-                    if (!key.startsWith(sid + '__'))
+                    const { key, raw } = namespaceEntry(entry);
+                    if (!controlCandidate(table, key, sid))
                         continue;
                     const address = table + ':' + key;
                     if (rows.has(address) || rows.size >= 16_384)
                         fail('PROGRAM_ABSENCE_BRANCH_CONTROL_NAMESPACE_BUDGET_OR_DUPLICATE');
-                    const value = strictData(rawValue.value, budget), actual = methods[table].get.call(tableObjects[table], key);
-                    if (!sameData(actual, value) || recordSha256(actual) !== recordSha256(value))
+                    const value = strictData(raw, budget), actual = methods[table].get.call(tableObjects[table], key);
+                    // Complete descriptor/data equality proves the same canonical SHA.
+                    // Hash only the accepted bounded, detached spelling saved below.
+                    if (!sameData(actual, value))
                         fail('PROGRAM_ABSENCE_BRANCH_CONTROL_NAMESPACE_CHANGED');
                     rows.set(address, { table, key, value, sha256: recordSha256(value) });
                 }
             return rows;
         };
         const namespaceRows = namespace();
+        function changedNamespace() {
+            // Preserve the original strict spelling/budget diagnostics on failure.
+            // A callback may restore the row during this diagnostic scan; it cannot
+            // rescue the original comparison which already observed a mismatch.
+            namespace();
+            return fail('PROGRAM_ABSENCE_BRANCH_CONTROL_NAMESPACE_CHANGED');
+        }
+        function assertNamespaceCurrent() {
+            const seen = new Set();
+            for (const table of ['branch', 'status'])
+                for (const entry of methods[table].entries.call(tableObjects[table])) {
+                    // Validate every supplied tuple before foreign/candidate filtering.
+                    // Unrelated body bytes belong to the final absence Inventory.
+                    const { key, raw } = namespaceEntry(entry);
+                    if (!controlCandidate(table, key, sid))
+                        continue;
+                    const address = table + ':' + key;
+                    if (seen.has(address) || seen.size >= 16_384)
+                        fail('PROGRAM_ABSENCE_BRANCH_CONTROL_NAMESPACE_BUDGET_OR_DUPLICATE');
+                    seen.add(address);
+                    const expected = namespaceRows.get(address);
+                    if (!expected || !sameData(raw, expected.value))
+                        changedNamespace();
+                    const actual = methods[table].get.call(tableObjects[table], key);
+                    if (!sameData(actual, expected.value))
+                        changedNamespace();
+                }
+            if (seen.size !== namespaceRows.size)
+                fail('PROGRAM_ABSENCE_BRANCH_CONTROL_NAMESPACE_CHANGED');
+        }
         const assertNativeFrame = () => {
             assertIdentity();
             const actualEvents = readEvents(session), actualProjections = projectionList(readProjections());
@@ -194,12 +242,7 @@ export function createRoleplayProgramAbsenceBranchControlsV1(deps) {
         };
         const assertCurrent = () => {
             assertNativeFrame();
-            const actual = namespace();
-            if (actual.size !== namespaceRows.size || [...namespaceRows].some(([address, row]) => {
-                const now = actual.get(address);
-                return !now || now.sha256 !== row.sha256 || !sameData(now.value, row.value);
-            }))
-                fail('PROGRAM_ABSENCE_BRANCH_CONTROL_NAMESPACE_CHANGED');
+            assertNamespaceCurrent();
             // Namespace reads may have synchronous callbacks. Observe actual Native
             // and owner identities again after the last table operation.
             assertNativeFrame();
