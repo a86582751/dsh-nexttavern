@@ -2,7 +2,6 @@ import type { ContextEvent, ContextMessage, ContextSession } from './roleplay-co
 import type { StorySurfaceReplacement } from './roleplay-message-view.js'
 import type { TaskAgent } from './tavern-task-types.js'
 import type { StatusRecord } from './roleplay-status-types.js'
-import type { ForkLookup } from './roleplay-worldline-types.js'
 import type { DirectorNotes } from '../memory/memory-history.js'
 import type { MemoryRecordProjection } from '../memory/memory-provenance.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
@@ -137,8 +136,6 @@ export interface PreparationDependencies {
   }
   assertStoryBranchActive(session: PreparationSession): void
   ensureBranch(session: PreparationSession): Promise<unknown>
-  reconcileCanonicalPlayerVariants(session: PreparationSession, index: ForkLookup): Promise<unknown>
-  buildForkLookupIndex(session: PreparationSession): ForkLookup
   userValues(branchId: string): { name: string; gender: string }
   selectedStatusRecord(session: PreparationSession): StatusRecord | null | undefined
 }

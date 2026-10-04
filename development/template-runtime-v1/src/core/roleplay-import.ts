@@ -226,6 +226,10 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
       },
       collect: async (session) => {
         await ensureBranch(session);
+        const selectedOpening = deps.readNativeOpeningExport?.(session);
+        if (selectedOpening?.kind === 'blocked') {
+          throw new Error(`选定开场的 Native 来源或正文尚不能确认（${selectedOpening.code}）；请恢复当前开场后重试导出`);
+        }
         const prefix = `${session.id}__`, material: ExportMaterial[] = [];
         for (const [tableName, table, field] of [['cards', T.cards, 'content'], ['worldbook', T.worldbook, 'content']] as const) {
           for (const [key, record] of [...table.entries()].sort(([a], [b]) => a.localeCompare(b, 'en'))) {
@@ -249,6 +253,9 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               });
           }
         }
+        if (selectedOpening?.kind === 'ready') {
+          material.push({label:'选定 Native 开场正文',text:selectedOpening.text,source:selectedOpening.source});
+        }
         for (const [tableName, table, id] of [['rules', T.rules, 'spec'], ['status', T.status, 'spec'], ['opening', T.opening, 'scene']] as const) {
           const record = table.get(keyOf(session.id, id)) as RulesRecord | undefined;
           if (!record)
@@ -260,7 +267,11 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               ...record
             };
           for (const field of (tableName === 'rules' ? RULE_TEXT_FIELDS : ['text'])) {
-            if (record[field])
+            // The scene still supplies catalog metadata. Its default prose is
+            // superseded only by a proved current Native opening, even if an
+            // edit made that selected text empty. Pending/deleted reads above
+            // refuse export instead of silently reviving the default scene.
+            if (record[field] && !(tableName === 'opening' && selectedOpening?.kind === 'ready'))
               material.push({
                 label: `${tableName}: ${field}`, text: String(record[field]), source
               });
@@ -280,7 +291,9 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
           }
           material.push(
             {
-              label: `${tableName} 属性与来源`, text: '```json\n' + stableJson(metadata) + '\n```', source
+              label: tableName === 'opening' && selectedOpening?.kind === 'ready'
+                ? 'opening 默认目录属性与来源（所选正文另列）' : `${tableName} 属性与来源`,
+              text: '```json\n' + stableJson(metadata) + '\n```', source
             });
         }
         const pointer = T.branch.get(importActiveKey(session.id)) as ImportPointer | undefined;

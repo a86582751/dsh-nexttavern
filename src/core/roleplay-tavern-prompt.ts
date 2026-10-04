@@ -11,7 +11,8 @@ import {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-
 import {captureRoleplayTavernPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
 import type {TavernActualSchemaPromptScopesV1,TavernActualNonnumericalPromptScopesV1,
   TavernActualNumericalPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
-import type {TavernActualPendingOpeningPromptScopesV1} from './roleplay-program-opening-prompt-scopes-types.js'
+import type {TavernActualPendingOpeningPromptScopesV1,TavernOpeningPreparationSourceDataV1}
+  from './roleplay-program-opening-prompt-scopes-types.js'
 import {captureRoleplayTavernTimedHistoryV2} from './roleplay-tavern-lore-timed-lineage.js'
 import {captureTavernCanonicalChatClockV1} from './roleplay-tavern-chat-clock.js'
 import {captureRoleplayTavernMaterialHistoryV1} from './roleplay-tavern-material-history.js'
@@ -61,7 +62,7 @@ export const TAVERN_NATIVE_PROMPT_POLICY_V1=Object.freeze({schemaVersion:1,
   requests:{normal:0,retry:0,fallback:0}})
 
 type SourceDependencies=Parameters<typeof captureRoleplayTavernPromptSourceDataV1>[0]
-type ActualMaterialScope=Pick<RoleplayInputMaterialScopeV1,'session'|'turn'|'step'|'signal'|'assertCurrent'>
+type ActualMaterialScope=Pick<RoleplayInputMaterialScopeV1,'session'|'turn'|'step'|'signal'>
 type ActualNativePreparation=NativeRequestMaterialPrepareInputV1|NativeOpeningMaterialPrepareInputV1
 export interface TavernOpeningPreparationReadV1 {
   readonly snapshot:Pick<PreparationSnapshot,'branchId'|'turnId'|'contextMessageRefs'>
@@ -74,6 +75,8 @@ export interface TavernOpeningPreparationReadV1 {
 }
 interface Dependencies extends SourceDependencies {
   readonly inputState:RoleplayInputStateOwner
+  /** Exact pending publications supplied by their actual producer. */
+  readonly pendingOutputRows:(sessionId:string)=>readonly {readonly table:string;readonly key:string}[]
   readonly branch:{get(key:string):unknown}
   withSourceLock<T>(sessionId:string,work:()=>Promise<T>,signal:AbortSignal):Promise<T>
   includeCardStyle(sessionId:string):boolean
@@ -85,7 +88,7 @@ interface Dependencies extends SourceDependencies {
   storyRows(scope:ActualMaterialScope,selected:NativeMaterialSelectedBaseV1)
     :readonly NativeMaterialSelectedBaseV1['messages'][number][]
   schemaScopes(sessionId:string):TavernActualSchemaPromptScopesV1|undefined
-  plainScopes(sessionId:string):TavernActualNonnumericalPromptScopesV1|undefined
+  plainScopes(sessionId:string,currentSourceIdentitySha256:string):TavernActualNonnumericalPromptScopesV1|undefined
   numericalScopes(sessionId:string):TavernActualNumericalPromptScopesV1|undefined
   /** Reads inherited timing once while the input owner records its actual
    * dependencies. Later checkpoints use that captured dependency baseline. */
@@ -96,7 +99,8 @@ interface Dependencies extends SourceDependencies {
       assertCurrent():void}|undefined
   /** Actual no-player Native invocation, immutable inputs and genuine Phase A
    * context refs. This supplier never constructs an Input v2 Work/currency. */
-  openingPreparation?(native:NativeOpeningMaterialPrepareInputV1,scope:RoleplayOpeningMaterialScopeV1):TavernOpeningPreparationReadV1
+  openingPreparation?(native:NativeOpeningMaterialPrepareInputV1,scope:RoleplayOpeningMaterialScopeV1,
+    source:TavernOpeningPreparationSourceDataV1):TavernOpeningPreparationReadV1
 }
 function fail(code:string):never {throw Error(code)}
 function freeze<T>(value:T):T {
@@ -126,16 +130,14 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
 } {
   const prepare=(native:ActualNativePreparation,invocation:MaterialInvocation)=>{
     const scope=invocation.scope
-    const assertOwnerFactsCurrent=invocation.kind==='player'
-      ?invocation.scope.assertOwnerFactsCurrent.bind(invocation.scope)
-      :invocation.scope.assertCurrent.bind(invocation.scope)
+    const assertOwnerFactsCurrent=scope.assertOwnerFactsCurrent.bind(scope)
     return deps.withSourceLock(scope.session.id,async()=>{
       // Synchronous capture records the real read footprint once. Inner DATA
       // suppliers need cancellation, not another read of the input owner's
       // Work/current outputs, which Native legitimately updates after capture.
       const assertSignal=()=>scope.signal.throwIfAborted()
       const inputCapture=deps.inputState.captureInput({session:scope.session,signal:scope.signal,
-        assertOwnerFactsCurrent},()=>{
+        assertOwnerFactsCurrent,outputRows:[...scope.outputRows??[],...deps.pendingOutputRows(scope.session.id)]},()=>{
         const author=deps.inputState.captureSource(scope.session.id,'tavern-author',()=>{
           const includeCardStyle=deps.includeCardStyle(scope.session.id),
             authorPolicy=cloneRoleplayTavernLoreDataV1(deps.authorPolicy(scope.session.id),262_144),
@@ -146,16 +148,26 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         }).data
         if(author.kind==='outside-declared-domain')return author
         const opening=invocation.kind==='program-opening'
-          ?deps.openingPreparation?.(invocation.native,invocation.scope):undefined
+          ?deps.openingPreparation?.(invocation.native,invocation.scope,{
+            sourceCurrentIdentitySha256:author.captured.currentIdentitySha256,includeCardStyle:author.includeCardStyle,
+            editorRevision:author.captured.edits.revision,editorHeadSha256:author.captured.edits.headRef?.sha256??null,
+            currentNativeOverlaySha256:author.captured.compilation.plan.currentNativeOverlaySha256??null}):undefined
         if(invocation.kind==='program-opening'&&!opening)fail('OPENING_MATERIAL_ACTUAL_PREPARATION_REQUIRED')
         const player=invocation.kind==='player'?invocation.scope:undefined,
           playerSnapshot=player?phaseASnapshot(deps,player):undefined,snapshot=playerSnapshot??opening!.snapshot,
           {source,compilation}=author.captured,storyRows=deps.storyRows(scope,native.selected),
           storyIds=new Set(storyRows.map(row=>row.id)),initialSelectedSha256=nativeInputSha256(native.selected)
         if(storyIds.size!==storyRows.length)fail('INPUT_MATERIAL_STORY_SELECTION_DUPLICATE')
-        const scopeData=captureRoleplayTavernPromptScopesV1({source,selected:native.selected,
-          ...opening?{opening:opening.scopes}:{schema:deps.schemaScopes(scope.session.id),
-            plain:deps.plainScopes(scope.session.id),numerical:deps.numericalScopes(scope.session.id)},
+        // Phase A already chose the actual numerical domain. Reading every
+        // alternative would repeat complete opening and inheritance audits.
+        let domain:Pick<Parameters<typeof captureRoleplayTavernPromptScopesV1>[0],'opening'|'schema'|'plain'|'numerical'>
+        if(opening)domain={opening:opening.scopes}
+        else if(playerSnapshot?.numericalState?.schemaVersion===2)domain={schema:deps.schemaScopes(scope.session.id)}
+        else if(playerSnapshot?.numericalState)domain={numerical:deps.numericalScopes(scope.session.id)}
+        else domain={plain:deps.plainScopes(scope.session.id,author.captured.currentIdentitySha256)}
+        const scopeData=captureRoleplayTavernPromptScopesV1({source,
+          currentIdentitySha256:author.captured.currentIdentitySha256,selected:native.selected,
+          ...domain,
           isStoryMessage:row=>storyIds.has(row.id),assertOwnerCurrent:assertSignal})
         const materialHistory=captureRoleplayTavernMaterialHistoryV1({sessionId:scope.session.id,table:deps.branch,
           events:()=>scope.session.snapshotEvents(),projections:deps.projections,assertOwnerCurrent:assertSignal})

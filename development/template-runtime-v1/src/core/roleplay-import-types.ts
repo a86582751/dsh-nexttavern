@@ -3,6 +3,7 @@ import type {ChatCardSelector, ChatCardSourceResult} from './roleplay-chat-card-
 import type { TavernCapabilityReport, TavernExtensionInventory, TavernExtensionInventoryV3,
   TavernFieldCoverage } from './tavern-card.js'
 import type { CardAssignment } from './tavern-card.js'
+import type {NativeCardOpeningExportReadV1} from './roleplay-card-export-opening.js'
 
 export interface SourceSpan { startLine: number; endLine: number }
 export interface ImportAssignment extends SourceSpanMetadata {
@@ -172,6 +173,8 @@ export interface ImportInputTransition {
 export interface ImportResource { id?: string; resourceId?: string; name?: string }
 export interface CardImportDependencies {
   inputTransition?: ImportInputTransition
+  /** Read-only Native prose and provenance; never a story execution grant. */
+  readNativeOpeningExport?(session:ImportSession):NativeCardOpeningExportReadV1
   /** Core resolves only actual own visible native files; the model supplies no ref/path proof. */
   resolveChatCardSource?(session: ImportSession, exec: ImportExec, selector: ChatCardSelector): Promise<ChatCardSourceResult>
   beforeWrite?(exec:ImportExec):Promise<void>

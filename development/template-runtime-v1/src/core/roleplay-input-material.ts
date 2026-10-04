@@ -23,6 +23,7 @@ export interface RoleplayInputMaterialScopeV1 {
   readonly turn:number
   readonly step:number
   readonly signal:AbortSignal
+  readonly outputRows?:readonly {readonly table:string;readonly key:string}[]
   /** Checks the original binder's live Work, exact opaque step and Native
    * admission. No caller-supplied hash or flag can establish those facts. */
   assertCurrent():void
@@ -99,9 +100,8 @@ function freeze<T>(value:T):T {
  * scope callback refuses before revealing a reconstructed or foreign step. */
 export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDependenciesV1,owner:{
   table:InputPreparationTable
-  /** Synchronously proves the original binder's full Source, exact live step
-   * and Native admission, then returns only its internal scope DTO without an
-   * await, writer or callback. Use it immediately; after any await assert again. */
+  /** Proves the original binder's live step and Native admission. InputState
+   * separately owns captured Source and input DATA. */
   scope(input:RoleplayInputMaterialScopeInputV1):RoleplayInputMaterialScopeV1
   enqueue<T>(operation:()=>Promise<T>):Promise<T>
   /** Writer-only explanatory registration. This callback uses the binder's
@@ -153,6 +153,8 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
           return {kind:'prepared'}
         }
         clearReady()
+        const prefix=keyOf(original.session.id,
+          `tavern-prompt-v1-${original.currency.preparationId}-${original.currency.attemptGeneration}-${original.step}`)
         const signal=AbortSignal.any([original.signal,disposal.signal,controller.signal])
         const assertBudgetAndSignal=()=>{
           signal.throwIfAborted()
@@ -160,7 +162,9 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
             controller.abort(Error('INPUT_MATERIAL_PREPARATION_DEADLINE'));signal.throwIfAborted()
           }
         }
-        const scope:RoleplayInputMaterialScopeV1={...original,signal,assertCurrent(){
+        const scope:RoleplayInputMaterialScopeV1={...original,signal,
+          outputRows:[...original.outputRows??[],{table:'branch',key:prefix+'-snapshot'},{table:'branch',key:prefix+'-plan'}],
+          assertCurrent(){
           assertBudgetAndSignal()
           // The scope proves the live input binder. Package byte verification
           // belongs to the outer material checkpoint, not every scope read.
@@ -180,7 +184,7 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
         }
         const checks={assertCurrent:data.assertCurrent.bind(data),assertSelected:data.assertSelected.bind(data),
           release:data.release.bind(data)}
-        checks.assertCurrent();checks.assertSelected(input.selected,true)
+        checks.assertSelected(input.selected,true)
         // The recorded plan and the live transform must use the same detached,
         // frozen values. A producer's later array mutation cannot alter wire
         // content while the persisted explanatory record remains unchanged.
@@ -198,7 +202,6 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
         const plan=freeze(cloneRoleplayTavernLoreDataV1({...basis,kind:'plan',payload:{promptPlan:data.plan,
           nativeTransform:material,nativeTransformSha256:materialSha256}},4_194_304,
           {nodes:131072,depth:66}) as unknown as MaterialRecordV1)
-        const prefix=keyOf(scope.session.id,`tavern-prompt-v1-${scope.currency.preparationId}-${scope.currency.attemptGeneration}-${scope.step}`)
         const refs={snapshot:{key:prefix+'-snapshot',sha256:recordSha256(snapshot)},
           plan:{key:prefix+'-plan',sha256:recordSha256(plan)}}
         const records:{snapshot?:unknown;plan?:unknown}={}
@@ -222,7 +225,6 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
             checks.assertCurrent()
           }
         })
-        checks.assertCurrent()
         const row:Ready={token:scope.stepToken,scope,initial:input,checks,material,materialSha256,...refs,
           records:{snapshot:records.snapshot,plan:records.plan},
           captureSha256:recordSha256({schemaVersion:1,encoding:'core-input-material-capture-v1',
@@ -270,11 +272,13 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
         if(input.materialRef) {
           const previous=row.transformed.materialRef
           if(previous&&nativeInputSha256(previous)!==nativeInputSha256(input.materialRef))fail('INPUT_MATERIAL_NATIVE_REF_CHANGED')
-          const event=scope.session.snapshotEvents().find(item=>Number(item.seq)===input.materialRef!.seq)
-          if(event?.type!=='request/material'||nativeInputSha256(event)!==input.materialRef.sha256
-            ||event.data.turn!==scope.turn||event.data.step!==scope.step
-            ||nativeInputSha256(event.data.snapshot)!==nativeInputSha256(row.snapshot)
-            ||nativeInputSha256(event.data.plan)!==nativeInputSha256(row.plan))fail('INPUT_MATERIAL_NATIVE_RECORD_UNPROVEN')
+          if(!previous) {
+            const event=scope.session.snapshotEvents().find(item=>Number(item.seq)===input.materialRef!.seq)
+            if(event?.type!=='request/material'||nativeInputSha256(event)!==input.materialRef.sha256
+              ||event.data.turn!==scope.turn||event.data.step!==scope.step
+              ||nativeInputSha256(event.data.snapshot)!==nativeInputSha256(row.snapshot)
+              ||nativeInputSha256(event.data.plan)!==nativeInputSha256(row.plan))fail('INPUT_MATERIAL_NATIVE_RECORD_UNPROVEN')
+          }
           row.transformed.materialRef=input.materialRef
         }else if(row.transformed.materialRef)fail('INPUT_MATERIAL_NATIVE_REF_MISSING')
         return {kind:'allow'}

@@ -82,7 +82,9 @@ function macroSnapshot(x:unknown):asserts x is TavernPromptMacroSnapshotV1 {
   if(x.schemaVersion!==1||!member(x.engine,['legacy','experimental'])
     ||x.authority!=='consumer-data-only'||!hash(x.sourceSnapshotSha256))fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
   validateNames(x.names);binding(x.input)
-  if(x.input.key!=='input'||x.input.value===null)fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
+  // A Native generated opening has no player input. The binding/read checks
+  // above retain that explicit negative fact, including its null hashes.
+  if(x.input.key!=='input')fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
   for(const key of ['instruct','dynamic','registered','localVariables','globalVariables','outlets','post'])bindings(x[key])
   if(x.card!==null) {
     bindings(x.card)

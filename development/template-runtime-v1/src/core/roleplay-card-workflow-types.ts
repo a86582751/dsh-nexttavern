@@ -35,6 +35,8 @@ export interface CardWorkflowDependencies {
   storyBranchIsActive(session: CardWorkflowSession): boolean
   modelPolicy: {resolve(session: CardWorkflowSession, kind: string, agent?: CardWorkflowAgent): TaskSelection | PromiseLike<TaskSelection>}
   statusFixedContext(session: CardWorkflowSession): unknown
+  /** Startup DATA fingerprint only; final export/source and Actor checks remain with their owners. */
+  captureExportStartSource?(session: CardWorkflowSession): {sha256: string; assertCurrent(): void}
   nativeTask(options: {
     session: CardWorkflowSession; agent?: CardWorkflowAgent; kind: string; format: string; selection: TaskSelection;
     source: {workflowId: string; workflowType: string; generation: string; events: {seq: number; hash: string}[]}; signal?: AbortSignal;

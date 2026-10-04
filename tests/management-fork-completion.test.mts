@@ -1,19 +1,24 @@
-import {registerSettingTool,savePanelSetting} from '../lib/core/roleplay-panel-routes.js'
-import {createTavernTasks} from '../lib/core/tavern-tasks.js'
-import {createRoleplayService} from '../lib/core/roleplay-service.js'
-import {recordSha256} from '../lib/core/roleplay-data.js'
-import {importActiveKey} from '../lib/core/roleplay-import.js'
-import {isSettingManagementCall} from '../lib/core/tavern-task-context.js'
-import {createConversationCatalog} from '../lib/core/tavern-conversations.js'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
+import {installMvuNativeDataTestDependencies} from './mvu-native-data-test-dependencies-fixture.mts'
 import type {SettingToolDependencies,SettingArguments} from '../lib/core/roleplay-panel-routes-types.js'
 import assert from 'node:assert/strict'
-import { createRoleplayCompletion } from '../lib/core/roleplay-completion.js'
-import { canonicalAssistantForTurn, surfaceEntries, surfaceEvents, eventsOf, isCompletedTurnEnd } from '../lib/core/roleplay-context.js'
-import { createRoleplayWorldlines } from '../lib/core/roleplay-worldlines.js'
-import { sha256, textOf } from '../lib/core/roleplay-data.js'
 import type { WorldlineDependencies } from '../lib/core/roleplay-worldline-types.js'
 import type { CompletionDependencies, CompletionState } from '../lib/core/roleplay-completion-types.js'
 import type { ContextEvent, ContextSession } from '../lib/core/roleplay-context.js'
+
+const removeNativeDependencies=await installMvuNativeDataTestDependencies(),
+  removeDependencies=installSchemaTestDependencies()
+try {
+const [{registerSettingTool,savePanelSetting},{createTavernTasks},{createRoleplayService},
+  {recordSha256,sha256,textOf},{importActiveKey},{isSettingManagementCall},{createConversationCatalog},
+  {createRoleplayCompletion},{canonicalAssistantForTurn,surfaceEntries,surfaceEvents,eventsOf,isCompletedTurnEnd},
+  {createRoleplayWorldlines}]=await Promise.all([
+  import('../lib/core/roleplay-panel-routes.js'),import('../lib/core/tavern-tasks.js'),
+  import('../lib/core/roleplay-service.js'),import('../lib/core/roleplay-data.js'),
+  import('../lib/core/roleplay-import.js'),import('../lib/core/tavern-task-context.js'),
+  import('../lib/core/tavern-conversations.js'),import('../lib/core/roleplay-completion.js'),
+  import('../lib/core/roleplay-context.js'),import('../lib/core/roleplay-worldlines.js'),
+])
 
 const flush=()=>new Promise(resolve=>setImmediate(resolve))
 function fixture({via='event',tool='rp_source_search',invalid='',retry=false}={}) {
@@ -92,7 +97,130 @@ for(const invalid of ['', 'internal', 'tool', 'hidden', 'wrong-request']) {
   }
   assert.equal(canonicalAssistantForTurn(h.session,1),null)
 }
-console.log('management-fork-completion=ok (event/idle, story isolation, invalid replies, retry)')
+// Exercise the real opening ledger with a completed Native turn while Core's
+// domain/ACK settlement is independently pending. The proof reader's grammar
+// belongs to Core; these assertions cover fork publication and recovery.
+type ProgramOpeningSettlement=ReturnType<NonNullable<WorldlineDependencies['readProgramOpeningSettlement']>>
+function openingForkFixture(protocol:'program'|'legacy'|'undefined'='program') {
+  const operationId='opening-operation',messageId=`opening-regenerate-${operationId}`,groupId='opening-group'
+  const events:ContextEvent[]=[
+    {seq:0,type:'turn/start',data:{turn:1}},
+    {seq:1,type:'assistant/message',data:{turn:1,message:{id:messageId,source:{kind:'model'},
+      content:[{type:'text',text:'A generated opening.'}]}}},
+    {seq:2,type:'turn/end',data:{turn:1,reason:{kind:'completed'}}},
+  ]
+  const session:ContextSession={id:'opening-child',events,surface:{nodes:[1]}}
+  const records=new Map<string,any>(),writes:{key:string;kind:'put'|'delete'}[]=[]
+  const controls={proof:null as ProgramOpeningSettlement,onFlush:async()=>{},
+    failTail:null as 'anchor'|'delete'|null}
+  const branch={get:(key:string)=>records.get(key),entries:()=>records.entries(),
+    put:async(key:string,value:unknown)=>{
+      if(controls.failTail==='anchor'&&key.includes('__fork-anchor-')) {
+        controls.failTail=null;throw Error('opening anchor write unavailable')
+      }
+      records.set(key,structuredClone(value));writes.push({key,kind:'put'})
+    },delete:async(key:string)=>{
+      if(controls.failTail==='delete') {controls.failTail=null;throw Error('opening pending cleanup unavailable')}
+      records.delete(key);writes.push({key,kind:'delete'})
+    }}
+  const deps={ctx:{},T:{branch},safeId:String,keyOf:(id:string,key:string)=>`${id}__${key}`,
+    sha256,textOf,eventsOf,surfaceEvents,isCompletedTurnEnd,cloneBranchRecord:structuredClone,canonicalAssistantForTurn,
+    flushEdits:async()=>{await controls.onFlush()},
+    ...protocol==='legacy'?{}:{readProgramOpeningSettlement:(owner:ContextSession,operation:string,message:string)=>{
+      assert.equal(owner,session);assert.equal(operation,operationId);assert.equal(message,messageId)
+      return protocol==='undefined'?undefined:controls.proof
+    }},
+  } as unknown as WorldlineDependencies
+  const reopen=()=>createRoleplayWorldlines(deps),api=reopen(),groupKey=api.forkGroupKey(groupId)
+  const pendingKey=api.forkPendingKey(session.id,groupId)
+  const anchors=()=>[...records.entries()].filter(([key])=>key.startsWith(session.id+'__fork-anchor-'))
+    .map(([,value])=>value)
+  records.set(groupKey,{groupId,rootSessionId:'root',anchor:{sourceSessionId:'root',sourceAssistantMessageId:'old',
+    openingOnly:true},members:[{sessionId:session.id,ordinal:2,operationId,pending:true,deleted:false,
+    kind:'opening-regenerate',createdAt:1}]})
+  records.set(pendingKey,{groupId,ordinal:2,operationId})
+  const proof={messageId,seq:1,turn:1}
+  const member=()=>records.get(groupKey).members[0]
+  const groupWrites=()=>writes.filter(row=>row.key===groupKey).length
+  return {api,reopen,session,events,records,controls,groupKey,pendingKey,anchors,proof,member,groupWrites,writes}
+}
+{
+  const h=openingForkFixture()
+  await h.api.reconcileNativeFork(h.session)
+  assert.equal(h.member().pending,true,'a completed turn cannot publish a recognized, unclosed program opening')
+  assert.equal(h.groupWrites(),0);assert.equal(h.anchors().length,0);assert.equal(h.records.has(h.pendingKey),true)
+  h.controls.proof=h.proof
+  await h.api.reconcileNativeFork(h.session)
+  assert.equal(h.member().pending,false);assert.equal(h.member().assistantMessageId,h.proof.messageId)
+  assert.equal(h.member().assistantSeq,h.proof.seq);assert.equal(h.records.has(h.pendingKey),false)
+  assert.equal(h.anchors().length,1);assert.equal(h.anchors()[0].groupId,h.records.get(h.groupKey).groupId)
+  await h.reopen().reconcileNativeFork(h.session)
+  assert.equal(h.groupWrites(),1,'completed navigation is idempotent after reopening')
+}
+for(const protocol of ['legacy','undefined'] as const) {
+  const h=openingForkFixture(protocol)
+  await h.api.reconcileNativeFork(h.session)
+  assert.equal(h.member().pending,false,`${protocol}: completed legacy opening retains its existing contract`)
+  assert.equal(h.member().assistantMessageId,h.proof.messageId);assert.equal(h.records.has(h.pendingKey),false)
+}
+for(const change of ['proof-null','proof-undefined','proof-message','proof-seq','proof-turn',
+  'member-deleted','member-removed','member-failed','pending-operation','pending-ordinal','pending-deleted',
+  'pending-group','candidate-seq','turn-failed']) {
+  const h=openingForkFixture();h.controls.proof=h.proof
+  h.controls.onFlush=async()=>{
+    if(change==='proof-null')h.controls.proof=null
+    if(change==='proof-undefined')h.controls.proof=undefined
+    if(change==='proof-message')h.controls.proof={...h.proof,messageId:'another-output'}
+    if(change==='proof-seq')h.controls.proof={...h.proof,seq:3}
+    if(change==='proof-turn')h.controls.proof={...h.proof,turn:2}
+    if(change==='member-deleted')h.member().deleted=true
+    if(change==='member-removed')h.records.get(h.groupKey).members=[]
+    if(change==='member-failed')h.member().failed=true
+    if(change==='pending-operation')h.records.get(h.pendingKey).operationId='another-operation'
+    if(change==='pending-ordinal') {h.records.get(h.pendingKey).ordinal=3;h.member().ordinal=3}
+    if(change==='pending-deleted')h.records.delete(h.pendingKey)
+    if(change==='pending-group') {
+      const redirected={...structuredClone(h.records.get(h.groupKey)),groupId:'another-valid-opening-group'}
+      h.records.set(h.api.forkGroupKey(redirected.groupId),redirected)
+      h.records.get(h.pendingKey).groupId=redirected.groupId
+    }
+    if(change==='candidate-seq')h.events[1]!.seq=3
+    if(change==='turn-failed')h.events[2]!.data!.reason={kind:'error'}
+  }
+  await h.api.reconcileNativeFork(h.session)
+  assert.equal(h.groupWrites(),0,`${change}: an awaited flush cannot authorize stale navigation`)
+  assert.equal(h.writes.length,0,`${change}: neither the original nor a redirected group can publish stale output`)
+  assert.equal(h.anchors().length,0);assert.equal(h.records.has(h.pendingKey),change!=='pending-deleted')
+}
+{
+  const h=openingForkFixture();h.controls.proof=h.proof
+  let admitLock!:()=>void,releaseLock!:()=>void,flushed!:()=>void
+  const admitted=new Promise<void>(resolve=>{admitLock=resolve}),gate=new Promise<void>(resolve=>{releaseLock=resolve})
+  const afterFlush=new Promise<void>(resolve=>{flushed=resolve})
+  const held=h.api.withForkMutationLock(h.api.forkAnchorLockKey(h.records.get(h.groupKey).anchor),async()=>{
+    admitLock();await gate
+  })
+  await admitted
+  h.controls.onFlush=async()=>{flushed()}
+  const running=h.api.reconcileNativeFork(h.session)
+  await afterFlush;h.controls.proof=null;releaseLock();await held;await running
+  assert.equal(h.groupWrites(),0,'lock waiting cannot preserve a proof that its owner has revoked')
+  assert.equal(h.anchors().length,0);assert.equal(h.records.has(h.pendingKey),true)
+}
+for(const failedTail of ['anchor','delete'] as const)for(const conflict of ['none','message','seq']) {
+  const h=openingForkFixture();h.controls.proof=h.proof;h.controls.failTail=failedTail
+  await assert.rejects(h.api.reconcileNativeFork(h.session),/opening (anchor write|pending cleanup) unavailable/)
+  assert.equal(h.member().pending,false);assert.equal(h.groupWrites(),1);assert.equal(h.records.has(h.pendingKey),true)
+  if(conflict==='message')h.member().assistantMessageId='another-completed-output'
+  if(conflict==='seq')h.member().assistantSeq=3
+  await h.reopen().reconcileNativeFork(h.session)
+  assert.equal(h.groupWrites(),1,'tail recovery must preserve the committed group')
+  assert.equal(h.records.has(h.pendingKey),conflict!=='none','only the same proven output can finish the tail')
+  assert.equal(h.member().assistantMessageId,conflict==='message'?'another-completed-output':h.proof.messageId)
+  assert.equal(h.member().assistantSeq,conflict==='seq'?3:h.proof.seq)
+  if(conflict==='none')assert.equal(h.anchors()[0].groupId,h.records.get(h.groupKey).groupId)
+}
+console.log('management-fork-completion=ok (event/idle, story isolation, invalid replies, retry, opening closure and tail recovery)')
 
 // Bounded author-setting edits and their background job lifecycle.
 {
@@ -248,3 +376,4 @@ assert.ok((await call({action:'jobs'})).jobs.some((j:any)=>j.id===first.jobId))
 console.log('setting-repair=ok (shared panel CAS; single target patch; branch isolation; background admission; actual child evidence; player race; schema/restart receipts; no story blocking)')
 
 }
+}finally {removeDependencies();removeNativeDependencies()}

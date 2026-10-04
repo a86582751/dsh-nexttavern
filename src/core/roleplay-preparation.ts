@@ -29,7 +29,7 @@ export function inputSnapshotReferenceCurrent(table:{get(key:string):unknown},se
 }
 
 export function createRoleplayPreparation(deps: PreparationDependencies) {
-  const { T, ctx, assertStoryBranchActive, cfg, svc, ensureBranch, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userValues, selectedStatusRecord } = deps
+  const { T, ctx, assertStoryBranchActive, cfg, svc, ensureBranch, userValues, selectedStatusRecord } = deps
   function numericalStateFor(sessionId: string, payload: PreparationPayload): RoleplayNumericalSnapshot | undefined {
     const input = payload.inputPreparation
     const headRef=input?.source.kind==='story'?input.source.headRef:undefined
@@ -253,8 +253,6 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     const phaseAStartedAt = Date.now()
     const branchId = session.id
     await ensureBranch(session)
-    payload.assertInputCurrent?.()
-    await reconcileCanonicalPlayerVariants(session, buildForkLookupIndex(session))
     payload.assertInputCurrent?.()
     // Read only committed branch state. Background notes need not finish on
     // ordinary turns; eviction below is the sole strict notes-save barrier.

@@ -44,7 +44,7 @@ export function createFirstResponseWatchdog(timeoutMs = 90000) {
             clear(id); },
     };
 }
-export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRoleplaySession, characterCluster, activeCardWorkflow, taskAgents, ensureState, clusterPhase, withDecisionMutationLock, normalizeDecisionRecord, resumeStatusMaintenance, resumeMemoryWork, resumeCardWorkflows, resumeNovelExports, withImportLock, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation, publishTurnDecision, runPhaseBC, adaptationScope, importPromptCheckpoint, authorContext, inputBinding, inputSnapshotCurrent, programOpeningOwner, rowFacts, }) {
+export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRoleplaySession, characterCluster, activeCardWorkflow, taskAgents, ensureState, clusterPhase, withDecisionMutationLock, normalizeDecisionRecord, resumeStatusMaintenance, resumeMemoryWork, resumeCardWorkflows, resumeNovelExports, withImportLock, buildPhaseA, reconcileCanonicalPlayerVariants, buildForkLookupIndex, characterRoster, storyWindowSettings, runStatusObligation, publishTurnDecision, runPhaseBC, adaptationScope, importPromptCheckpoint, authorContext, inputBinding, inputSnapshotCurrent, programOpeningOwner, rowFacts, }) {
     const preparationRecordKey = (sid) => keyOf(sid, 'task-preparation');
     const handledImportPrompts = new Map();
     const firstResponse = createFirstResponseWatchdog();
@@ -296,9 +296,14 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
         // A deferred stage returns immediately; the main loop is never awaited by
         // its own pre-step handler. The original player message is appended once,
         // only when preparation has committed successfully.
-        return withImportLock(session.id, '__phase-a__', async () => {
-            let decision;
-            try {
+        try {
+            // Edit recovery takes the fork lock before Source FIFO. It must finish
+            // before Phase A takes that FIFO; otherwise its numerical persistence
+            // waits behind the Phase A operation that is awaiting this same recovery.
+            await reconcileCanonicalPlayerVariants(session, buildForkLookupIndex(session));
+            assertInput();
+            return await withImportLock(session.id, '__phase-a__', async () => {
+                let decision;
                 decision = await next();
                 if (decision?.kind !== 'enter')
                     return decision;
@@ -346,18 +351,18 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
                             ...hidden.map(message => textOf(message.content))] };
                 }
                 return { ...decision, messages: [restore, ...hidden, ...originalMessages, ...remaining] };
+            });
+        }
+        catch (error) {
+            st.lastPreparedTurn = -1;
+            if (isInlinePending(error) && !programmaticOpening) {
+                if (input && inputStep)
+                    await input.prepare(inputStep);
+                return { kind: 'enter', messages: inlineTaskMessages(session, 'prepare', tavernTasks.pending(session), { resident: residentContext(session) }) };
             }
-            catch (error) {
-                st.lastPreparedTurn = -1;
-                if (isInlinePending(error) && !programmaticOpening) {
-                    if (input && inputStep)
-                        await input.prepare(inputStep);
-                    return { kind: 'enter', messages: inlineTaskMessages(session, 'prepare', tavernTasks.pending(session), { resident: residentContext(session) }) };
-                }
-                // Fail closed: a missing prerequisite cannot admit unprepared prose.
-                throw error;
-            }
-        });
+            // Fail closed: a missing prerequisite cannot admit unprepared prose.
+            throw error;
+        }
     });
     ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
         const session = agent?.session;

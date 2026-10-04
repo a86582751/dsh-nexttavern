@@ -13,8 +13,10 @@ import type {TavernSourceInheritanceOwnerV1,TavernSourceInheritanceDescriptorV1,
   from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreBookAbsenceProofV1} from './tavern-lore-plan-types.mjs'
+import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
 
 export interface PromptOpeningSourceDepsV1 extends PromptProgramSourceDepsV1 {
+  readonly inputState?:Pick<RoleplayInputStateOwner,'captureSource'>
   readonly session:(sessionId:string)=>ReadBranchSession|undefined
   readonly readOpeningContext:(sessionId:string)=>{readonly context:TavernOpeningContext;readonly bindingSha256:string}
   /** Existing actual closed Source owner, required for a fresh copied child.
@@ -148,5 +150,7 @@ export interface PromptOpeningSourceProofV1 {
   readonly proofSha256:string
 }
 export type PromptOpeningSourceCaptureV1={readonly kind:'captured-opening-source';
-  readonly proof:PromptOpeningSourceProofV1;readonly assertCurrent:()=>void}
+  readonly proof:PromptOpeningSourceProofV1;readonly assertCurrent:()=>void;
+  /** Live owner/reader identity only; does not prove DATA currency or grant Source/Native authority. */
+  readonly assertOwnerFactsCurrent?:()=>void}
   |{readonly kind:'refused';readonly authority:'none';readonly diagnostics:readonly PromptOpeningSourceDiagnosticV1[]}

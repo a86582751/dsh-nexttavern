@@ -2,7 +2,6 @@
  * Empty-before-publication is an explicit adapter policy, never a claim that
  * ST persisted variables_initialized or that a copied frame grants permission. */
 import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
-import {types} from 'node:util'
 import type {NativeMaterialSelectedBaseV1} from '@deepseek-ai/dsh-agent-loop'
 import {recordSha256,sha256,textOf} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
@@ -16,16 +15,6 @@ import type {TavernPromptVariableRefV1,TavernPromptVariableObjectFactV1,TavernPr
 import type {MvuPromptLocalNumericalFactsV1,MvuPromptLocalNumericalFactsV2,MvuPromptInheritedNumericalFactsV1,
   MvuPromptInheritedNumericalFactsV2,MvuPromptProgramOpeningPublicationV1}
   from './roleplay-mvu-prompt-numerical-facts.js'
-import {validateMvuPromptProgramOpeningPublicationV1} from './roleplay-mvu-prompt-numerical-facts.js'
-import {prepareProgramMvuOpeningPlanV3,validateProgramMvuGenesisFactsV1} from './roleplay-program-genesis-data.js'
-import {programOpeningInputKeyV1,programOpeningSeedKeyV1,validateProgramOpeningInputV1,
-  validateProgramOpeningSeedV1,programOpeningDomainKeyV1,validateProgramOpeningAbsentDomainV1}
-  from './roleplay-program-opening-records.js'
-import {tavernLoreSourceCurrentIdentityV1} from './roleplay-tavern-lore-source.js'
-import {validateTavernSourceInheritanceDescriptorV1,validateInheritanceCutV1,
-  tavernSourceProgramAbsenceOpeningKeyV1} from './roleplay-tavern-source-inheritance-data.js'
-import {openingIntentKey} from './roleplay-opening-selection.js'
-import {programInheritedAbsenceDomainSha256V1} from './roleplay-program-inherited-absence.js'
 import type {TavernActualPendingOpeningPromptScopesV1,TavernPendingOpeningPromptScopeDataV1,
   TavernActualProgramAbsencePromptScopesV1,TavernProgramAbsencePromptScopeDataV1,
   TavernActualProgramInheritedAbsencePromptScopesV1,TavernProgramInheritedAbsencePromptScopeDataV1}
@@ -103,7 +92,6 @@ export type TavernActualNonnumericalPromptScopesV1=TavernActualPlainPromptScopes
 export interface TavernActualNumericalPromptScopesV1 {
   readonly data:{readonly local:MvuPromptLocalNumericalFactsV1|MvuPromptLocalNumericalFactsV2;
     readonly inherited:MvuPromptInheritedNumericalFactsV1|MvuPromptInheritedNumericalFactsV2|null}
-  current():boolean
 }
 function fail(code:string):never {throw Error(code)}
 const freeze=<T>(value:T):T=>{
@@ -122,200 +110,50 @@ function factBinding(scope:TavernPromptVariableScopeFactV1):TavernTemplateScopeB
     values,valuesSha256:recordSha256(values)}
 }
 
-function exactScopeData(value:unknown,keys:readonly string[]):asserts value is Record<string,unknown> {
-  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==keys.length
-    ||keys.some(key=>!Object.hasOwn(value,key)))fail('INPUT_MATERIAL_OPENING_SCOPE_RECORD_INVALID')
-}
-const scopeHash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
-/** Pure data joins run between the enclosing full supplier gates. They have
- * no awaits, storage writes or callback authority of their own. */
-function programAbsenceData(originalData:unknown,source:TavernLoreSourceDataV1)
+/** The actual Core suppliers already audited and froze these packets inside
+ * InputState. This adapter only joins that DATA to the captured Source. */
+function programAbsenceData(data:TavernProgramAbsencePromptScopeDataV1,source:TavernLoreSourceDataV1,
+  currentIdentitySha256:string)
   :TavernProgramAbsencePromptScopeDataV1 {
-  const data=cloneRoleplayTavernLoreDataV1(originalData,8_388_608)
-  exactScopeData(data,['schemaVersion','encoding','authority','sessionId','numericalSourceSha256',
-    'seed','input','absenceDomain','domainRef','factsSha256'])
-  const {factsSha256,...body}=data,seed=validateProgramOpeningSeedV1(data['seed']),
-    packet=validateProgramOpeningInputV1(data['input'],seed),
-    // The descriptor copier above established safe original property access.
-    // Keep Native's stronger raw receipt validation before JSON normalization.
-    domain=validateProgramOpeningAbsentDomainV1((originalData as {absenceDomain:unknown}).absenceDomain,{seed,input:packet}),
-    proof=packet.source,original=proof.source,tuple=proof.program.importTuple
-  exactScopeData(data['domainRef'],['key','sha256'])
-  if(data['schemaVersion']!==1||data['encoding']!=='native-program-opening-absence-scope-read-data-v1'
-    ||data['authority']!=='consumer-data-only'||!scopeHash(factsSha256)||factsSha256!==recordSha256(body)
-    ||data['sessionId']!==source.sessionId||seed.sessionId!==source.sessionId||packet.initialization!=='absent'
-    ||data['numericalSourceSha256']!==packet.numericalSourceSha256
-    ||data['domainRef']['key']!==programOpeningDomainKeyV1(seed.sessionId,seed.operationId)
-    ||data['domainRef']['sha256']!==recordSha256(domain)
-    ||original.sessionId!==source.sessionId||original.sourceRecordSessionId!==source.sourceRecordSessionId
+  const proof=data.input.source,original=proof.source,tuple=proof.program.importTuple
+  if(data.sessionId!==source.sessionId||original.sessionId!==source.sessionId
+    ||original.sourceRecordSessionId!==source.sourceRecordSessionId
     ||original.importId!==source.original.activePointer.importId||original.rawSha256!==source.original.rawSha256
     ||original.normalizedSha256!==source.original.normalizedSha256||original.transactionId!==source.original.transactionId
     ||original.coverageSha256!==source.original.coverageSha256
-    ||recordSha256(original.pointer)!==recordSha256(source.original.activePointer)
     ||tuple.ownerSessionId!==source.sessionId||tuple.sourceRecordSessionId!==source.sourceRecordSessionId
-    ||tuple.importId!==source.original.activePointer.importId||tuple.rawSha256!==source.original.rawSha256
-    ||tuple.normalizedSha256!==source.original.normalizedSha256||tuple.transactionId!==source.original.transactionId
-    ||tuple.coverageSha256!==source.original.coverageSha256||tuple.normalizer!==source.normalizer
-    ||tuple.format!==source.original.decodedFormat
-    ||recordSha256(tuple.sourceInheritance)!==recordSha256(source.inheritance??null)
-    ||recordSha256(tuple.activePointer)!==recordSha256(source.original.activePointer)
-    ||recordSha256(tuple.activePointerRef)!==recordSha256(source.original.activePointerRef)
-    ||recordSha256(tuple.importRecordRef)!==recordSha256(source.original.importRecordRef)
+    ||tuple.normalizer!==source.normalizer||tuple.format!==source.original.decodedFormat
+    ||tuple.importRecordRef.sha256!==source.original.importRecordRef.sha256
     ||tuple.documentSha256!==source.original.documentSha256||tuple.dataSha256!==source.original.dataSha256
-    ||proof.program.sourceCurrentIdentitySha256!==recordSha256(tavernLoreSourceCurrentIdentityV1(source))) {
+    ||proof.program.sourceCurrentIdentitySha256!==currentIdentitySha256) {
     fail('INPUT_MATERIAL_PROGRAM_ABSENCE_SCOPE_SOURCE_MISMATCH')
   }
-  return freeze(data as unknown as TavernProgramAbsencePromptScopeDataV1)
+  return data
 }
-/** Inspect own descriptors before passing original Native packets to their
- * validators. No raw getter runs, and receipt grammar precedes our JSON copy. */
-function programInheritedAbsenceRawFields(value:unknown):Record<string,unknown> {
-  if(!value||typeof value!=='object'||Array.isArray(value)||types.isProxy(value)
-    ||![Object.prototype,null].includes(Object.getPrototypeOf(value))) {
-    fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_DATA_INVALID')
-  }
-  const descriptors=Object.getOwnPropertyDescriptors(value),fields:Record<string,unknown>={}
-  for(const key of Reflect.ownKeys(value)) {
-    if(typeof key!=='string'||!descriptors[key]?.enumerable||!Object.hasOwn(descriptors[key]!,'value')) {
-      fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_DATA_INVALID')
-    }
-    Object.defineProperty(fields,key,{value:descriptors[key]!.value,enumerable:true})
-  }
-  return fields
-}
-function validateProgramInheritedAbsenceInventory(data:TavernProgramInheritedAbsencePromptScopeDataV1):void {
-  const inventory=data.inventory
-  exactScopeData(inventory,['schemaVersion','encoding','authority','sessionId','rows','inventorySha256'])
-  const {inventorySha256,...body}=inventory
-  if(inventory.schemaVersion!==1||inventory.encoding!=='native-program-absence-inventory-v1'
-    ||inventory.authority!=='consumer-data-only'||inventory.sessionId!==data.sessionId
-    ||!scopeHash(inventorySha256)||recordSha256(body)!==inventorySha256
-    ||!Array.isArray(inventory.rows)||inventory.rows.length>16_384) {
-    fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_INVENTORY_INVALID')
-  }
-  const seen=new Set<string>()
-  let previous:string|undefined
-  for(const row of inventory.rows) {
-    exactScopeData(row,['table','key','sha256','classification'])
-    const address=row.table+':'+row.key
-    if(typeof row.table!=='string'||!['branch','status'].includes(row.table)||typeof row.key!=='string'
-      ||!row.key.startsWith(data.sessionId+'__')||row.key.length>512||!scopeHash(row.sha256)
-      ||typeof row.classification!=='string'
-      ||!['source','source-control','program-opening','input','phase-a','native-material','status-control','branch-control',
-        'import-archive','ordinary-nonnumerical']
-        .includes(row.classification)||seen.has(address)||previous!==undefined&&previous>=address
-      ||row.table==='status'&&(row.classification==='status-control'
-        ?!(row.key===data.sessionId+'__panel'||/^turn-([1-9][0-9]*)-(0|[1-9][0-9]*)$/.test(row.key.slice(data.sessionId.length+2)))
-        :row.key!==data.sessionId+'__spec'||row.classification!=='ordinary-nonnumerical')) {
-      fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_INVENTORY_INVALID')
-    }
-    seen.add(address);previous=address
-  }
-}
-/** Private actual supplier proves membership/currency; these pure checks join
- * its original immutable packets to this child's closed Source and audit. */
-function programInheritedAbsenceData(originalData:unknown,
-  source:TavernLoreSourceDataV1):TavernProgramInheritedAbsencePromptScopeDataV1 {
-  const raw=programInheritedAbsenceRawFields(originalData),
-    rawChild=programInheritedAbsenceRawFields(raw['actualChildCut']),
-    rawInheritance=programInheritedAbsenceRawFields(raw['sourceInheritance']),
-    rawCuts=[programInheritedAbsenceRawFields(rawChild['cut']),programInheritedAbsenceRawFields(rawInheritance['nativeCut'])]
-  for(const value of [rawChild['inheritedEventCount'],...rawCuts.flatMap(cut=>[cut['seedLength'],cut['parentInheritedEventCount']])]) {
-    if(typeof value!=='number'||!Number.isSafeInteger(value)||value<0||Object.is(value,-0)) {
-      fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_NATIVE_CUT_MISMATCH')
-    }
-  }
-  const seed=validateProgramOpeningSeedV1(raw['seed']),
-    packet=validateProgramOpeningInputV1(raw['input'],seed),
-    domain=validateProgramOpeningAbsentDomainV1(raw['absenceDomain'],{seed,input:packet}),
-    detached=cloneRoleplayTavernLoreDataV1(originalData,8_388_608)
-  exactScopeData(detached,['schemaVersion','encoding','authority','sessionId','numericalSourceSha256','sourceInheritance',
-    'currentSourceIdentitySha256','seed','input','absenceDomain','originalOpening','actualChildCut','inventory',
-    'stableDomainSha256','factsSha256'])
-  const data=detached as unknown as TavernProgramInheritedAbsencePromptScopeDataV1,
-    {factsSha256,...body}=data,original=data.originalOpening,child=data.actualChildCut,
-    inherited=validateTavernSourceInheritanceDescriptorV1(data.sourceInheritance),binding=inherited.originalBinding,
-    proof=packet.source,tuple=proof.program.importTuple,openingSource=proof.source
-  exactScopeData(original,['ownerSessionId','closureSha256','archiveRef','seedRef','inputRef','intentRef','domainRef'])
-  exactScopeData(child,['sessionId','parentSessionId','inheritedEventCount','cut'])
-  validateInheritanceCutV1(child.cut)
-  for(const reference of [original.archiveRef,original.seedRef,original.inputRef,original.intentRef,original.domainRef]) {
-    exactScopeData(reference,['key','sha256'])
-    if(typeof reference.key!=='string'||!/^[a-zA-Z0-9_-]{1,512}$/.test(reference.key)||!scopeHash(reference.sha256)) {
-      fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_REFERENCE_INVALID')
-    }
-  }
-  if(data.schemaVersion!==1||data.encoding!=='native-program-inherited-absence-scope-read-data-v1'
-    ||data.authority!=='consumer-data-only'||!scopeHash(factsSha256)||factsSha256!==recordSha256(body)
-    ||data.sessionId!==source.sessionId||original.ownerSessionId!==seed.sessionId||seed.sessionId===source.sessionId
-    ||packet.sessionId!==seed.sessionId||domain.sessionId!==seed.sessionId||packet.initialization!=='absent'
-    ||recordSha256(data.seed)!==recordSha256(seed)||recordSha256(data.input)!==recordSha256(packet)
-    ||recordSha256(data.absenceDomain)!==recordSha256(domain)
-    ||!scopeHash(data.numericalSourceSha256)||!scopeHash(original.closureSha256)
-    ||original.archiveRef.key!==tavernSourceProgramAbsenceOpeningKeyV1(source.sessionId)
-    ||original.seedRef.key!==programOpeningSeedKeyV1(seed.sessionId,seed.operationId)
-    ||original.seedRef.sha256!==recordSha256(seed)||recordSha256(original.seedRef)!==recordSha256(packet.seedRef)
-    ||original.inputRef.key!==programOpeningInputKeyV1(seed.sessionId,seed.operationId)
-    ||original.inputRef.sha256!==recordSha256(packet)||recordSha256(original.inputRef)!==recordSha256(domain.inputRef)
-    ||original.intentRef.key!==openingIntentKey(seed.sessionId,seed.source.importId)
-    ||original.domainRef.key!==programOpeningDomainKeyV1(seed.sessionId,seed.operationId)
-    ||original.domainRef.sha256!==recordSha256(domain)||recordSha256(original.seedRef)!==recordSha256(domain.seedRef)
-    ||!source.inheritance||recordSha256(inherited)!==recordSha256(source.inheritance)
-    ||inherited.childSessionId!==source.sessionId||child.sessionId!==source.sessionId
-    ||child.parentSessionId!==inherited.parentSessionId||child.cut.kind!=='native-fork'||child.cut.seedLength<1
-    ||!Number.isSafeInteger(child.inheritedEventCount)||Object.is(child.inheritedEventCount,-0)
-    ||child.inheritedEventCount!==child.cut.seedLength||recordSha256(child.cut)!==recordSha256(inherited.nativeCut)
-    ||!scopeHash(data.currentSourceIdentitySha256)
-    ||data.currentSourceIdentitySha256!==recordSha256(tavernLoreSourceCurrentIdentityV1(source))
-    ||!scopeHash(data.stableDomainSha256)||data.stableDomainSha256!==programInheritedAbsenceDomainSha256V1(data)) {
-    fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_SOURCE_MISMATCH')
-  }
-  // The original owner may itself be a fresh copied child. Its historical
-  // pointer stays original; the actual child's current pointer stays child.
-  if(tuple.ownerSessionId!==seed.sessionId||openingSource.sessionId!==seed.sessionId
-    ||openingSource.sourceRecordSessionId!==source.sourceRecordSessionId
-    ||tuple.sourceRecordSessionId!==source.sourceRecordSessionId||binding.sourceRecordSessionId!==source.sourceRecordSessionId
-    ||tuple.importId!==binding.importId||tuple.rawSha256!==binding.rawSha256
-    ||tuple.normalizedSha256!==binding.normalizedSha256||tuple.coverageSha256!==binding.coverageSha256
-    ||tuple.transactionId!==binding.transactionId||tuple.normalizer!==binding.normalizer
-    ||tuple.documentSha256!==binding.documentSha256||tuple.dataSha256!==binding.dataSha256
-    ||tuple.activationSha256!==binding.activationSha256||recordSha256(tuple.originalActivation)!==tuple.activationSha256
-    ||tuple.activatedAt!==null&&(!Number.isSafeInteger(tuple.activatedAt)||tuple.activatedAt<0||Object.is(tuple.activatedAt,-0))
-    ||tuple.format!==source.original.decodedFormat||tuple.normalizer!==source.normalizer
+function programInheritedAbsenceData(data:TavernProgramInheritedAbsencePromptScopeDataV1,
+  source:TavernLoreSourceDataV1,currentIdentitySha256:string):TavernProgramInheritedAbsencePromptScopeDataV1 {
+  const tuple=data.input.source.program.importTuple
+  if(data.sessionId!==source.sessionId||!source.inheritance
+    ||data.sourceInheritance.childSessionId!==source.sessionId
+    ||data.sourceInheritance.parentSessionId!==source.inheritance.parentSessionId
+    ||data.currentSourceIdentitySha256!==currentIdentitySha256
+    ||tuple.sourceRecordSessionId!==source.sourceRecordSessionId
     ||tuple.importId!==source.original.activePointer.importId||tuple.rawSha256!==source.original.rawSha256
     ||tuple.normalizedSha256!==source.original.normalizedSha256||tuple.coverageSha256!==source.original.coverageSha256
-    ||tuple.transactionId!==source.original.transactionId||tuple.documentSha256!==source.original.documentSha256
+    ||tuple.transactionId!==source.original.transactionId||tuple.format!==source.original.decodedFormat
+    ||tuple.normalizer!==source.normalizer||tuple.documentSha256!==source.original.documentSha256
     ||tuple.dataSha256!==source.original.dataSha256
-    ||recordSha256(tuple.importRecordRef)!==recordSha256(source.original.importRecordRef)
-    ||tuple.importRecordRef.key!==binding.importRecordRef.key||tuple.importRecordRef.sha256!==binding.importRecordRef.sha256
-    ||recordSha256(tuple.activePointer)!==recordSha256(openingSource.pointer)
-    ||tuple.activePointer.importId!==binding.importId
-    ||(tuple.activePointer.sourceRecordSessionId??seed.sessionId)!==binding.sourceRecordSessionId
-    ||tuple.activePointer.normalizedSha256!==binding.normalizedSha256
-    ||tuple.activePointer.coverageSha256!==binding.coverageSha256||tuple.activePointer.transactionId!==binding.transactionId
-    ||(tuple.activePointer.activatedAt??null)!==(binding.originalPointer.activatedAt??null)
-    ||tuple.activePointerRef.table!=='branch'||tuple.activePointerRef.exists!==true
-    ||tuple.activePointerRef.key!==`${seed.sessionId}__import-active`
-    ||tuple.activePointerRef.sha256!==recordSha256(tuple.activePointer)
-    ||openingSource.importId!==binding.importId||openingSource.rawSha256!==binding.rawSha256
-    ||openingSource.normalizedSha256!==binding.normalizedSha256||openingSource.coverageSha256!==binding.coverageSha256
-    ||openingSource.transactionId!==binding.transactionId) {
-    fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_IMPORT_MISMATCH')
+    ||tuple.importRecordRef.sha256!==source.original.importRecordRef.sha256) {
+    fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_SOURCE_MISMATCH')
   }
-  const native=domain.nativeFacts
-  if(native.production==='selected-card-copy'?native.receipt.turnEndSeq>=child.cut.seedLength
-    :native.receipt.turnEndRef.seq>=child.cut.seedLength
-      ||native.receipt.outputs.some(output=>output.eventRef.seq>=child.cut.seedLength)) {
-    fail('INPUT_MATERIAL_PROGRAM_INHERITED_ABSENCE_NATIVE_CUT_MISMATCH')
-  }
-  validateProgramInheritedAbsenceInventory(data)
-  return freeze(data)
+  return data
 }
 /** A real selected cut may omit older opening outputs. Match every visible
  * id/seq/operation overlap strictly; absence from this cut proves no deletion.
  * Root's current closure separately reads the original Native span/edits. */
 function programAbsenceMessageJoins(data:Pick<TavernProgramAbsencePromptScopeDataV1,'seed'|'input'|'absenceDomain'>,
-  selected:NativeMaterialSelectedBaseV1):ReadonlyMap<NativeMaterialSelectedBaseV1['messages'][number],unknown> {
+  selected:NativeMaterialSelectedBaseV1,inherited=false)
+  :ReadonlyMap<NativeMaterialSelectedBaseV1['messages'][number],unknown> {
   const native=data.absenceDomain.nativeFacts,seen=new Set<string>(),
     joined=new Map<NativeMaterialSelectedBaseV1['messages'][number],unknown>()
   for(const row of selected.messages) {
@@ -344,11 +182,13 @@ function programAbsenceMessageJoins(data:Pick<TavernProgramAbsencePromptScopeDat
       const output=matches[0]!,text=row.message.content.filter(block=>block.type==='text').map(block=>block.text).join('')
       if(seen.has(output.messageId)||row.id!==output.messageId||String(row.message.id)!==row.id
         ||row.role!=='assistant'||row.message.role!=='assistant'||row.origin!=='surface'||row.eventSeq!==output.eventRef.seq
-        ||row.message.source.kind!=='model'||row.messageSha256!==output.messageSha256
-        ||nativeInputSha256(row.message)!==output.messageSha256||sha256(text)!==output.textSha256) {
+        ||row.message.source.kind!=='model'
+        ||!inherited&&(row.messageSha256!==output.messageSha256||sha256(text)!==output.textSha256)) {
         fail('INPUT_MATERIAL_PROGRAM_ABSENCE_GENERATED_MESSAGE_MISMATCH')
       }
       seen.add(output.messageId)
+      // A child may project a lawful edit. The Native receipt remains the
+      // original publication; the selected messageRef records current bytes.
       joined.set(row,{production:native.production,messageId:output.messageId,eventRef:output.eventRef,
         messageSha256:output.messageSha256,textEncoding:output.textEncoding,textSha256:output.textSha256,
         terminal:output.messageId===native.receipt.terminalOutput.messageId,nativeFactsSha256:native.factsSha256})
@@ -356,67 +196,18 @@ function programAbsenceMessageJoins(data:Pick<TavernProgramAbsencePromptScopeDat
   }
   return joined
 }
-function validateProgramInheritedScopeFacts(data:MvuPromptInheritedNumericalFactsV2,
+function joinProgramInheritedNumericalSource(data:MvuPromptInheritedNumericalFactsV2,
   local:MvuPromptLocalNumericalFactsV1,source:TavernLoreSourceDataV1):void {
-  const {factsSha256,...body}=data,{factsSha256:localSha,...localBody}=local,root=local.currentSnapshot.root,
-    original=data.originalImport,tuple=source.original
-  if(data.schemaVersion!==2||data.encoding!=='native-program-json-prompt-inherited-facts-v2'
-    ||data.authority!=='consumer-data-only'||recordSha256(body)!==factsSha256||!data.programOpeningPublications.length
-    ||local.schemaVersion!==1||local.encoding!=='native-json-prompt-numerical-facts-v1'
-    ||local.authority!=='consumer-data-only'||recordSha256(localBody)!==localSha
-    ||local.sourceIdentity.kind!=='derived-basis'||!('derivedEvent' in local.genesis)
-    ||data.childSessionId!==source.sessionId||data.numericalSourceSha256!==local.numericalSourceSha256
+  const original=data.originalImport,tuple=source.original
+  // The numerical producers own replay and its frozen DATA. This consumer
+  // joins that result to today's independently captured author Source.
+  if(data.childSessionId!==source.sessionId||data.numericalSourceSha256!==local.numericalSourceSha256
     ||data.source.childSessionId!==source.sessionId||data.source.childSourceSha256!==local.numericalSourceSha256
-    ||data.genesis.sessionId!==source.sessionId||data.genesis.sourceSha256!==local.numericalSourceSha256
-    ||recordSha256(data.genesis)!==recordSha256(local.genesis)
-    ||data.genesis.derivedEvent.basisSha256!==local.sourceIdentity.basisSha256
-    ||data.genesis.derivedEvent.eventSha256!==local.sourceIdentity.derivedEventSha256
-    ||local.currentSnapshot.sessionId!==source.sessionId||local.currentSnapshot.sourceSha256!==local.numericalSourceSha256
-    ||!('encoding' in root)||root.encoding!=='native-mvu-derived-state-root-v1'
-    ||root.derivedEventId!==data.genesis.derivedEvent.eventId
-    ||root.derivedEventSha256!==data.genesis.derivedEvent.eventSha256
-    ||root.derivedHeadSha256!==recordSha256(data.genesis.derivedHead)||root.basisSha256!==data.genesis.derivedEvent.basisSha256
     ||original.ownerSessionId!==source.sourceRecordSessionId||original.importId!==tuple.activePointer.importId
     ||original.rawSha256!==tuple.rawSha256||original.normalizedSha256!==tuple.normalizedSha256
     ||original.transactionId!==tuple.transactionId||original.coverageSha256!==tuple.coverageSha256
-    ||original.recordSha256!==tuple.importRecordRef.sha256
-    ||recordSha256(data.inventory.rows)!==data.inventory.membershipSha256) {
+    ||original.recordSha256!==tuple.importRecordRef.sha256) {
     fail('INPUT_MATERIAL_PROGRAM_INHERITED_NUMERICAL_SOURCE_MISMATCH')
-  }
-  const known=new Set<string>()
-  for(const raw of data.programOpeningPublications) {
-    const publication=validateMvuPromptProgramOpeningPublicationV1(raw),archive=publication.archiveProvenance,
-      imported=publication.source.program.importTuple,
-      key=`${publication.ownerSessionId}:${publication.canonical.seq}:${publication.canonical.versionSha256}`,
-      layer=data.layers.find(row=>row.prepared.table===archive.table&&row.prepared.key===archive.key
-        &&row.prepared.recordSha256===archive.recordSha256)
-    if(known.has(key)||!layer||layer.parentSessionId!==publication.ownerSessionId
-      ||publication.canonical.seq>=layer.inheritedPrefixLength
-      ||imported.sourceRecordSessionId!==original.ownerSessionId||imported.importId!==original.importId
-      ||imported.rawSha256!==original.rawSha256||imported.normalizedSha256!==original.normalizedSha256
-      ||imported.transactionId!==original.transactionId||imported.coverageSha256!==original.coverageSha256
-      ||imported.importRecordRef.sha256!==original.recordSha256
-      ||recordSha256(imported.originalActivation)!==original.activationSha256
-      ||!data.snapshots.some(snapshot=>recordSha256(snapshot)===recordSha256(publication.snapshot))
-      ||data.openingPublications.some(row=>row.ownerSessionId===publication.ownerSessionId
-        &&row.canonical.seq===publication.canonical.seq&&row.canonical.versionSha256===publication.canonical.versionSha256)
-      ||data.storyPublications.some(row=>row.ownerSessionId===publication.ownerSessionId
-        &&row.canonical.seq===publication.canonical.seq&&row.canonical.versionSha256===publication.canonical.versionSha256)) {
-      fail('INPUT_MATERIAL_PROGRAM_INHERITED_NUMERICAL_PUBLICATION_MISMATCH')
-    }
-    known.add(key)
-    for(const reference of [archive,...Object.values(publication.originalPacketRefs)]) {
-      if(!data.inventory.rows.some(row=>recordSha256(row)===recordSha256(reference))) {
-        fail('INPUT_MATERIAL_PROGRAM_INHERITED_NUMERICAL_REFERENCE_MISSING')
-      }
-    }
-  }
-  for(const snapshot of [...local.snapshots,...data.snapshots,local.currentSnapshot]) {
-    const {stateSnapshotSha256,...snapshotBody}=snapshot
-    if(recordSha256(snapshotBody)!==stateSnapshotSha256||recordSha256(snapshot.values)!==snapshot.valuesSha256
-      ||recordSha256(snapshot.currentHead)!==snapshot.headSha256) {
-      fail('INPUT_MATERIAL_PROGRAM_INHERITED_NUMERICAL_SNAPSHOT_MISMATCH')
-    }
   }
 }
 /** All related visible outputs are checked, even those outside the story
@@ -465,116 +256,29 @@ function programInheritedMessageJoins(programs:readonly MvuPromptProgramOpeningP
   }
   return joined
 }
-/** Data validation supplements the private owner's current closure; it does
- * not prove that a claimed row exists or mint an opening dispatch permission. */
+/** InputState's actual opening supplier owns seed/input/basis/plan auditing.
+ * Consumption joins the captured Source and exact selected cut once. */
 function pendingOpeningData(input:TavernActualPendingOpeningPromptScopesV1,
-  source:TavernLoreSourceDataV1,selected:NativeMaterialSelectedBaseV1):TavernPendingOpeningPromptScopeDataV1 {
+  source:TavernLoreSourceDataV1,selected:NativeMaterialSelectedBaseV1,
+  currentIdentitySha256:string):TavernPendingOpeningPromptScopeDataV1 {
   if(!input.current())fail('INPUT_MATERIAL_OPENING_SCOPES_CHANGED')
-  const data=cloneRoleplayTavernLoreDataV1(input.data,8_388_608),{scopeDataSha256,...body}=data,
-    seed=validateProgramOpeningSeedV1(data.seed),packet=validateProgramOpeningInputV1(data.input,seed),
-    proof=packet.source,basis=packet.basis,owned=data.nativeOwner,identity=owned.identity,
-    imported=proof.program.importTuple,original=proof.source
-  exactScopeData(data,['schemaVersion','encoding','authority','sessionId','numericalSourceSha256',
-    'sourceProofSha256','basisSha256','seed','input','seedRef','inputRef','nativeOwner',
-    'selectedBaseSha256','inputBindingSha256','initialization','scopeDataSha256'])
-  exactScopeData(data.seedRef,['key','sha256']);exactScopeData(data.inputRef,['key','sha256'])
-  exactScopeData(owned,['kind','identity','invocationRef'])
-  exactScopeData(identity,['kind','sessionId','operationId','messageId','instruction','instructionSha256','intentRef'])
-  exactScopeData(identity.intentRef,['key','sha256']);exactScopeData(owned.invocationRef,['seq','sha256'])
-  if(data.schemaVersion!==1||data.encoding!=='native-program-opening-prompt-scope-read-data-v1'
-    ||data.authority!=='consumer-data-only'||recordSha256(body)!==scopeDataSha256
-    ||data.sessionId!==source.sessionId||packet.sessionId!==source.sessionId
-    ||data.sourceProofSha256!==proof.proofSha256||data.basisSha256!==basis.basisSha256
-    ||data.numericalSourceSha256!==packet.numericalSourceSha256||data.inputBindingSha256!==packet.inputSha256
-    ||data.seedRef.key!==programOpeningSeedKeyV1(seed.sessionId,seed.operationId)
-    ||data.seedRef.sha256!==recordSha256(seed)||recordSha256(packet.seedRef)!==recordSha256(data.seedRef)
-    ||data.inputRef.key!==programOpeningInputKeyV1(seed.sessionId,seed.operationId)
-    ||data.inputRef.sha256!==recordSha256(packet)||data.selectedBaseSha256!==selected.sha256
-    ||owned.kind!=='programmatic-opening'||identity.kind!=='programmatic-opening'
-    ||seed.production!=='generated-opening'||identity.sessionId!==seed.sessionId
-    ||identity.operationId!==seed.operationId||identity.messageId!==seed.requestedMessageId
-    ||identity.instruction!==packet.instruction||identity.instructionSha256!==seed.instructionSha256
-    ||recordSha256(identity.intentRef)!==recordSha256(data.seedRef)
-    ||!Number.isSafeInteger(owned.invocationRef.seq)||owned.invocationRef.seq!==basis.native.eventCount
-    ||!scopeHash(owned.invocationRef.sha256)
+  const data=input.data,proof=data.input.source,original=proof.source,imported=proof.program.importTuple
+  if(data.sessionId!==source.sessionId||data.selectedBaseSha256!==selected.sha256
     ||original.sessionId!==source.sessionId||original.sourceRecordSessionId!==source.sourceRecordSessionId
     ||original.importId!==source.original.activePointer.importId||original.rawSha256!==source.original.rawSha256
     ||original.normalizedSha256!==source.original.normalizedSha256
     ||original.coverageSha256!==source.original.coverageSha256||original.transactionId!==source.original.transactionId
-    ||recordSha256(original.pointer)!==recordSha256(source.original.activePointer)
     ||imported.ownerSessionId!==source.sessionId||imported.sourceRecordSessionId!==source.sourceRecordSessionId
     ||imported.importRecordRef.sha256!==source.original.importRecordRef.sha256
     ||imported.documentSha256!==source.original.documentSha256||imported.dataSha256!==source.original.dataSha256
-    ||proof.program.sourceCurrentIdentitySha256!==recordSha256(tavernLoreSourceCurrentIdentityV1(source))) {
+    ||proof.program.sourceCurrentIdentitySha256!==currentIdentitySha256) {
     fail('INPUT_MATERIAL_OPENING_SCOPE_SOURCE_MISMATCH')
-  }
-  // Absent inputs have no numerical plan. Check the complete inert basis
-  // grammar for both branches rather than making an empty numeric snapshot.
-  exactScopeData(basis,['schemaVersion','encoding','authority','sessionId','ownerSessionId','origin','operationId',
-    'requestedMessageId','sourceBindingSha256','sourceRelation','branch','native','numerical','basisSha256'])
-  exactScopeData(basis.branch,['metaKey','metaCurrentIdentitySha256','parentSessionId','inheritedEventCount','ready'])
-  exactScopeData(basis.native,['observedThroughSeq','eventCount','historySha256'])
-  exactScopeData(basis.numerical,['statusRows','branchRows','membershipSha256','ownedInitializationCount','opaqueStateCount'])
-  if(basis.schemaVersion!==1||basis.encoding!=='native-program-opening-fresh-basis-proof-v1'
-    ||basis.authority!=='consumer-data-only'||basis.ownerSessionId!==source.sessionId
-    ||basis.branch.metaKey!==`${source.sessionId}__meta`||!scopeHash(basis.branch.metaCurrentIdentitySha256)
-    ||basis.branch.parentSessionId!==null||basis.branch.inheritedEventCount!==0||basis.branch.ready!==true
-    ||!Number.isSafeInteger(basis.native.eventCount)||basis.native.eventCount<0
-    ||basis.native.observedThroughSeq!==basis.native.eventCount-1||!scopeHash(basis.native.historySha256)
-    ||basis.numerical.ownedInitializationCount!==0||basis.numerical.opaqueStateCount!==0
-    ||!Array.isArray(basis.numerical.statusRows)||!Array.isArray(basis.numerical.branchRows)
-    ||recordSha256({statusRows:basis.numerical.statusRows,branchRows:basis.numerical.branchRows})
-      !==basis.numerical.membershipSha256)fail('INPUT_MATERIAL_OPENING_SCOPE_BASIS_INVALID')
-  const seen=new Set<string>()
-  for(const [table,rows] of [['status',basis.numerical.statusRows],['branch',basis.numerical.branchRows]] as const) {
-    for(const row of rows) {
-      exactScopeData(row,['table','key','exists','sha256','value'])
-      const key=table+':'+row.key
-      if(row.table!==table||typeof row.key!=='string'||!row.key.startsWith(source.sessionId+'__')
-        ||row.key.length>512||typeof row.exists!=='boolean'||seen.has(key)
-        ||(row.exists?(!row.value||typeof row.value!=='object'||Array.isArray(row.value)
-          ||!scopeHash(row.sha256)||recordSha256(row.value)!==row.sha256):row.value!==null||row.sha256!=='missing')) {
-        fail('INPUT_MATERIAL_OPENING_SCOPE_BASIS_INVALID')
-      }
-      seen.add(key)
-    }
-  }
-  if(basis.sourceRelation.kind==='own-root') {
-    exactScopeData(basis.sourceRelation,['kind','inheritance'])
-    if(basis.origin!=='own-root'||basis.sourceRelation.inheritance!==null
-      ||proof.sourceRelation.kind!=='own-root-source')fail('INPUT_MATERIAL_OPENING_SCOPE_BASIS_INVALID')
-  }else {
-    exactScopeData(basis.sourceRelation,['kind','inheritance','setup','setupSha256'])
-    if(basis.origin!=='fresh-scene'||basis.sourceRelation.kind!=='reserved-fresh-child'
-      ||proof.sourceRelation.kind!=='committed-fresh-cut0-source'
-      ||recordSha256(basis.sourceRelation.inheritance)!==recordSha256(proof.sourceRelation.inheritance)
-      ||recordSha256(basis.sourceRelation.setup)!==recordSha256(proof.sourceRelation.setup)
-      ||!scopeHash(basis.sourceRelation.setupSha256)
-      ||recordSha256(basis.sourceRelation.setup)!==basis.sourceRelation.setupSha256) {
-      fail('INPUT_MATERIAL_OPENING_SCOPE_BASIS_INVALID')
-    }
-  }
-  const preview=data.initialization
-  if(packet.initialization==='absent') {
-    exactScopeData(preview,['kind','markerCount','inventorySha256','initialized'])
-    if(preview.kind!=='absent'||preview.markerCount!==0||preview.initialized!==false
-      ||preview.inventorySha256!==basis.numerical.membershipSha256)fail('INPUT_MATERIAL_OPENING_SCOPE_INIT_INVALID')
-  }else {
-    exactScopeData(preview,['kind','planSha256','initialValues','initialValuesSha256','initialized'])
-    const plan=prepareProgramMvuOpeningPlanV3({identity:{sessionId:seed.sessionId,operationId:seed.operationId,
-      requestedMessageId:seed.requestedMessageId,production:seed.production,instructionSha256:seed.instructionSha256,
-      intentRef:data.seedRef,inputRef:data.inputRef},sourceSha256:packet.numericalSourceSha256,source:proof,basis})
-    if(preview.kind!=='pending-raw-init-data'||preview.initialized!==false||preview.planSha256!==plan.planSha256
-      ||preview.initialValuesSha256!==plan.initialValuesSha256
-      ||recordSha256(preview.initialValues)!==plan.initialValuesSha256)fail('INPUT_MATERIAL_OPENING_SCOPE_INIT_INVALID')
   }
   if(selected.messages.some(row=>row.role==='user'&&row.origin==='pending-decision'
     &&row.message.source?.kind==='user'))fail('INPUT_MATERIAL_OPENING_SCOPE_PLAYER_INPUT_PRESENT')
-  if(!input.current())fail('INPUT_MATERIAL_OPENING_SCOPES_CHANGED')
-  return freeze(data)
+  return data
 }
-
-export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSourceDataV1;
+export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSourceDataV1;currentIdentitySha256:string;
   selected:NativeMaterialSelectedBaseV1;schema?:TavernActualSchemaPromptScopesV1;
   plain?:TavernActualNonnumericalPromptScopesV1;numerical?:TavernActualNumericalPromptScopesV1;
   opening?:TavernActualPendingOpeningPromptScopesV1;
@@ -596,7 +300,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     opening:TavernPendingOpeningPromptScopeDataV1|undefined,
     stateSnapshotSha256=recordSha256({schemaVersion:1,encoding:'prompt-numerical-scope-unavailable-v1',source:source.sourceSha256})
   if(input.opening) {
-    opening=pendingOpeningData(input.opening,source,selected)
+    opening=pendingOpeningData(input.opening,source,selected,input.currentIdentitySha256)
     stateSnapshotSha256=opening.scopeDataSha256
     evidence.push(opening)
   }else if(input.schema) {
@@ -609,58 +313,30 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     stateSnapshotSha256=input.schema.data.basis.numericalSnapshotSha256
     evidence.push(cloneRoleplayTavernLoreDataV1(input.schema.data,8_388_608))
   }else if(input.numerical) {
-    if(!input.numerical.current())fail('INPUT_MATERIAL_NUMERICAL_SCOPES_CHANGED')
-    numerical=input.numerical.data.local.schemaVersion===2||input.numerical.data.inherited?.schemaVersion===2
-      ?freeze(cloneRoleplayTavernLoreDataV1(input.numerical.data,8_388_608)):input.numerical.data
+    // The numerical producer has already replayed and frozen these facts.
+    // InputState owns their subscriptions and all later invalidation.
+    numerical=input.numerical.data
     const {local,inherited}=numerical
     if(local.sessionId!==source.sessionId)fail('INPUT_MATERIAL_NUMERICAL_SCOPE_SOURCE_MISMATCH')
     const tuple={sourceRecordSessionId:source.sourceRecordSessionId,importId:source.original.activePointer.importId,
       rawSha256:source.original.rawSha256,normalizedSha256:source.original.normalizedSha256,
       transactionId:source.original.transactionId,coverageSha256:source.original.coverageSha256}
     if(local.schemaVersion===2) {
-      const identity=local.sourceIdentity,{factsSha256,...body}=local,
-        actual=validateProgramMvuGenesisFactsV1(local.genesis.programEvent,local.genesis.programHead),
-        event=actual.programEvent,plan=event.plan,original=identity.original,
-        imported=plan.source.program.importTuple,
-        initial=local.snapshots.find(row=>row.stateSnapshotSha256===local.genesisSnapshotSha256),
-        root=local.currentSnapshot.root
-      if(local.encoding!=='native-program-json-prompt-numerical-facts-v2'||local.authority!=='consumer-data-only'
-        ||recordSha256(body)!==factsSha256||identity.kind!=='program-opening'||inherited!==null
-        ||actual.sessionId!==source.sessionId||actual.sourceSha256!==local.numericalSourceSha256
-        ||recordSha256(actual)!==recordSha256(local.genesis)||identity.planSha256!==plan.planSha256
-        ||identity.sourceProofSha256!==plan.source.proofSha256||identity.basisSha256!==plan.basis.basisSha256
-        ||recordSha256(original)!==recordSha256(plan.source.source)||original.sessionId!==source.sessionId
-        ||recordSha256(original.pointer)!==recordSha256(source.original.activePointer)
+      const identity=local.sourceIdentity,original=identity.original,
+        imported=local.genesis.programEvent.plan.source.program.importTuple
+      if(original.sessionId!==source.sessionId
         ||Object.entries(tuple).some(([key,value])=>original[key as keyof typeof original]!==value)
         ||imported.ownerSessionId!==source.sessionId||imported.sourceRecordSessionId!==source.sourceRecordSessionId
         ||imported.importRecordRef.sha256!==source.original.importRecordRef.sha256
-        ||imported.documentSha256!==source.original.documentSha256||imported.dataSha256!==source.original.dataSha256
-        ||local.currentSnapshot.sessionId!==source.sessionId
-        ||local.currentSnapshot.sourceSha256!==local.numericalSourceSha256||!('encoding' in root)
-        ||root.encoding!=='native-program-mvu-state-root-v1'||root.programEventId!==event.eventId
-        ||root.programEventSha256!==event.eventSha256||root.programHeadSha256!==recordSha256(actual.programHead)
-        ||root.planSha256!==plan.planSha256||!initial||initial.revision!==1
-        ||initial.sessionId!==source.sessionId||initial.sourceSha256!==local.numericalSourceSha256
-        ||recordSha256(initial.currentHead)!==recordSha256(actual.programHead)
-        ||initial.valuesSha256!==event.valuesSha256||recordSha256(initial.values)!==recordSha256(event.finalValues)
-        ||recordSha256(initial.root)!==recordSha256(root)) {
+        ||imported.documentSha256!==source.original.documentSha256||imported.dataSha256!==source.original.dataSha256) {
         fail('INPUT_MATERIAL_PROGRAM_NUMERICAL_SCOPE_SOURCE_MISMATCH')
-      }
-      const native=event.native,message=native.production==='selected-card-copy'
-        ?{ownerSessionId:actual.sessionId,seq:native.receipt.assistantSeq,messageId:native.receipt.messageId,
-          nativeEventRecordSha256:native.receipt.messageVersion.eventSha256,renderedTextSha256:native.receipt.renderedSha256}
-        :{ownerSessionId:actual.sessionId,seq:native.receipt.terminalOutput.eventRef.seq,
-          messageId:native.receipt.terminalOutput.messageId,nativeEventRecordSha256:native.receipt.terminalOutput.eventRef.sha256,
-          renderedTextSha256:native.receipt.terminalOutput.textSha256}
-      if(recordSha256(local.genesisMessageRef)!==recordSha256(message)) {
-        fail('INPUT_MATERIAL_PROGRAM_NUMERICAL_OPENING_MESSAGE_MISMATCH')
       }
       evidence.push({schemaVersion:2,encoding:'native-program-json-prompt-numerical-fact-read-v2',
         authority:'consumer-data-only',local,inherited:null,join:{tuple,loreSourceSha256:source.sourceSha256,
           numericalSourceSha256:local.numericalSourceSha256,sourceProofSha256:identity.sourceProofSha256,
           basisSha256:identity.basisSha256,planSha256:identity.planSha256}})
     }else if(inherited?.schemaVersion===2) {
-      validateProgramInheritedScopeFacts(inherited,local,source)
+      joinProgramInheritedNumericalSource(inherited,local,source)
       evidence.push({schemaVersion:2,encoding:'native-program-json-prompt-inherited-fact-read-v2',
         authority:'consumer-data-only',local,inherited,join:{tuple,loreSourceSha256:source.sourceSha256,
           numericalSourceSha256:local.numericalSourceSha256,
@@ -692,11 +368,11 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     if(!input.plain.current()||input.plain.data.sessionId!==source.sessionId)fail('INPUT_MATERIAL_PLAIN_SCOPES_CHANGED')
     if(input.plain.data.encoding==='native-program-inherited-absence-scope-read-data-v1') {
       // This discriminator never enters old own/plain/numerical validators.
-      programInheritedAbsence=programInheritedAbsenceData(input.plain.data,source)
+      programInheritedAbsence=programInheritedAbsenceData(input.plain.data,source,input.currentIdentitySha256)
       stateSnapshotSha256=programInheritedAbsence.stableDomainSha256
       evidence.push(programInheritedAbsence)
     }else if(input.plain.data.encoding==='native-program-opening-absence-scope-read-data-v1') {
-      programAbsence=programAbsenceData(input.plain.data,source)
+      programAbsence=programAbsenceData(input.plain.data,source,input.currentIdentitySha256)
       // This is readonly scope data identity, never an MVU snapshot/head.
       stateSnapshotSha256=programAbsence.factsSha256
       evidence.push(programAbsence)
@@ -718,7 +394,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     numerical?.inherited?.schemaVersion===2?TAVERN_PROGRAM_INHERITED_SCOPE_ADAPTER_POLICY_V1:
     opening||numerical?.local.schemaVersion===2?TAVERN_PROGRAM_SCOPE_ADAPTER_POLICY_V1:TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1,
     absenceJoins=programAbsence?programAbsenceMessageJoins(programAbsence,selected)
-      :programInheritedAbsence?programAbsenceMessageJoins(programInheritedAbsence,selected):undefined,
+      :programInheritedAbsence?programAbsenceMessageJoins(programInheritedAbsence,selected,true):undefined,
     inheritedProgramJoins=numerical?.inherited?.schemaVersion===2
       ?programInheritedMessageJoins(numerical.inherited.programOpeningPublications,selected):undefined
   const settledAbsenceRef=(scope:string,messageRef?:TavernPromptVariableRefV1,nativeMessageJoin?:unknown)=>{
@@ -961,12 +637,9 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   else missing('message','no actual selected message-variable fact')
   const bindings=scopes.filter(row=>row.scope!=='cache').map(factBinding)
     .filter((value):value is TavernTemplateScopeBindingV1=>value!==null)
-  const current=()=>{input.assertOwnerCurrent()
-    if(input.schema&&!input.schema.current()||input.plain&&!input.plain.current()
-      ||input.numerical&&!input.numerical.current()||input.opening&&!input.opening.current())fail('INPUT_MATERIAL_SCOPES_CHANGED')}
-  // Confirm the suppliers once while the synchronous capture is still owned.
-  // The returned value is DATA; its parent InputState frame owns later checks.
-  current()
+  // Each supplier was consumed synchronously above. The parent InputState
+  // completes the capture and owns later DATA checks.
+  input.assertOwnerCurrent()
   return {scopes:freeze(scopes),bindings:freeze(bindings),history:freeze(history),stateSnapshotSha256,
     evidence:freeze({schemaVersion:1,encoding:'native-prompt-variable-scope-capture-v1',authority:'consumer-data-only',
       policy,sourceSha256:source.sourceSha256,selectedBaseSha256:selected.sha256,evidence})}

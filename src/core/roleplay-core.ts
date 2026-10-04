@@ -65,6 +65,7 @@ export {
 import { resolve } from 'node:path'
 
 import { registerRoleplayImports, importActiveKey, activeOpeningSource } from './roleplay-import.js'
+import {readNativeCardOpeningExportV1} from './roleplay-card-export-opening.js'
 import { provenImportPreludeAssistants } from './tavern-task-retirement.js'
 import { internalTaskSeqs } from './tavern-tasks.js'
 
@@ -109,7 +110,7 @@ import {prepareInputManagementReceipt,verifyInputManagementReceipt} from './role
 import {createRoleplayInputPreparation} from './roleplay-input-preparation.js'
 import {createRoleplayInputStateOwner} from './roleplay-input-state.js'
 import {onUserInfoChanged} from './roleplay-userinfo.js'
-import {createRoleplayTavernLoreSourceV1,tavernLoreSourceCurrentIdentityV1} from './roleplay-tavern-lore-source.js'
+import {createRoleplayTavernLoreSourceV1} from './roleplay-tavern-lore-source.js'
 import {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
 import {readJournal as readTavernLoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
 import {createRoleplayTavernSourceInheritanceV1} from './roleplay-tavern-source-inheritance.js'
@@ -133,12 +134,13 @@ import {createRoleplayProgramInheritedAbsenceReaderV1,programInheritedAbsenceDom
   from './roleplay-program-inherited-absence.js'
 import {tavernSourceProgramAbsenceOpeningKeyV1,tavernSourcePreparedKeyV1}
   from './roleplay-tavern-source-inheritance-data.js'
-import type {TavernSourceFrozenProgramAbsenceOpeningV1,TavernSourceOwnedRowFactsV1}
+import type {TavernSourceFrozenProgramAbsenceOpeningV1,TavernSourceOwnedRowFactsV1,TavernSourceCommittedLineageV1}
   from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernProgramInheritedAbsencePromptScopeDataV1}
   from './roleplay-program-opening-prompt-scopes-types.js'
 import {createProgramOpeningAtCutReaderV1} from './roleplay-program-opening-history.js'
-import {programOpeningDomainKeyV1,programOpeningInputKeyV1,programOpeningRefV1,programOpeningRecordDataV1}
+import {programOpeningDomainKeyV1,programOpeningInputKeyV1,programOpeningSeedKeyV1,
+  programOpeningRefV1,programOpeningRecordDataV1}
   from './roleplay-program-opening-records.js'
 import {captureRoleplayTavernLegacyReadV1,classifyRoleplayTavernLegacyWriteTargetV1,
   classifyRoleplayTavernLegacyWriteTargetsV1} from './roleplay-tavern-legacy-reading.js'
@@ -478,15 +480,16 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     branch:T.branch,...programAbsenceNativeReaders,
     readMaterialHistory:session=>programAbsenceMaterialFacts.capture(session)})
   const programAbsenceInventory=createRoleplayProgramAbsenceInventoryV1({tables:T,
-    session:id=>ctx.sessions.get(id),ownedRows:session=>programAbsenceOwnedRows(session),
-    activeStaticNamespaceRow:(session,table,key)=>programOpening?.activeStaticNamespaceRow(session,table,key)})
+    session:id=>ctx.sessions.get(id),ownedRows:session=>programAbsenceOwnedRows(session)})
   function programAbsenceOwnedRows(session:{readonly id:string},sourceRows?:TavernSourceOwnedRowFactsV1)
     :readonly ProgramAbsenceOwnedRowFactV1[] {
     const actual=ctx.sessions.get(session.id)
     if(sourceReadOwnerClosed||actual!==session)throw Error('PROGRAM_ABSENCE_SESSION_CHANGED')
     const rows:ProgramAbsenceOwnedRowFactV1[]=[]
     if(sourceRows) {
-      tavernSourceInheritance.assertOwnedRowFactsCurrent(sourceRows)
+      // Every supplied frame is consumed synchronously inside its Source
+      // wrapper. Entry/exit (and the inherited reader) check actual currency;
+      // this DATA merge must not repeat that complete read between them.
       if(sourceRows.recordSessionId!==session.id)throw Error('PROGRAM_ABSENCE_SOURCE_ROW_OWNER_CHANGED')
       for(const row of sourceRows.validatedRecords)if((row.table==='branch'||row.table==='status')
         &&row.exists&&row.value&&row.key.startsWith(session.id+'__')) {
@@ -507,10 +510,16 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     for(const row of programOpening?.readOwnedAbsenceRecordRows(session.id)??[]) {
       rows.push({table:'branch',...row,family:'program-opening'})
     }
+    for(const row of readOwnedEditCompletionRows(actual)) {
+      rows.push({table:'branch',...row,sha256:recordSha256(row.value),family:'branch-control'})
+    }
     const known=new Set(rows.map(row=>row.table+':'+row.key)),prefix=session.id+'__',
       missing=[...T.branch.entries()].map(([key])=>key).filter(key=>key.startsWith(prefix)&&!known.has('branch:'+key))
     // Hot owner and exact immutable rows explain more than later mutable
     // controls. Keep the strongest existing fact at each actual address.
+    // Each cold capture confirms its actual frame before returning frozen
+    // DATA. This synchronous merge invokes no reader; the inventory below
+    // still compares the collected facts with the actual namespace.
     const appendMissing=(facts:readonly ProgramAbsenceOwnedRowFactV1[])=>{
       for(const row of facts) {
         const address=row.table+':'+row.key
@@ -522,7 +531,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     if(missing.some(key=>materialOrPhaseAddress.test(key.slice(prefix.length)))) {
       const cold=programAbsenceMaterialFacts.capture(actual as unknown as NativeSession)
       appendMissing(cold.rows)
-      cold.assertCurrent()
     }
     if(missing.some(key=>key.startsWith(prefix+'native-input-v2-'))) {
       appendMissing(inputOwner?.readColdNonNumericalBranchRowFacts(actual)??[])
@@ -531,12 +539,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       &&!known.has('branch:'+prefix+suffix))) {
       const mutable=programAbsenceMutableControls.capture(actual as unknown as NativeSession)
       appendMissing(mutable.rows)
-      mutable.assertCurrent()
     }
     if(missing.some(key=>/^(?:phaseb-|task-steering-|maintenance-timing-)/.test(key.slice(prefix.length)))) {
       const controls=programAbsenceBranchControls.capture(actual as unknown as NativeSession)
       appendMissing(controls.rows)
-      controls.assertCurrent()
     }
     if([...T.status.entries()].some(([key])=>key.startsWith(prefix)&&key!==prefix+'spec')) {
       const statusFacts=readOwnedStatusControlFacts(actual)
@@ -546,11 +552,15 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return rows
   }
   function captureProgramAbsenceNamespace(session:{readonly id:string},sourceRows?:TavernSourceOwnedRowFactsV1) {
-    if(sourceRows)return programAbsenceInventory.capture(session,programAbsenceOwnedRows(session,sourceRows))
+    const actual=ctx.sessions.get(session.id)
+    if(sourceReadOwnerClosed||actual!==session||!actual)throw Error('PROGRAM_ABSENCE_SESSION_CHANGED')
+    const audit=(frame?:TavernSourceOwnedRowFactsV1)=>inputState.readProgramAbsenceNamespaceFacts(actual,
+      ()=>programAbsenceInventory.capture(actual,frame?programAbsenceOwnedRows(actual,frame):undefined))
+    if(sourceRows)return audit(sourceRows)
+    // Acquire Source before entering the read-only namespace audit. Source's
+    // own archive callback uses the same audit with its already acquired frame.
     const hasSourceRecords=[...T.branch.entries()].some(([key])=>key.startsWith(session.id+'__tavern-source-'))
-    if(hasSourceRecords)return tavernSourceInheritance.withOwnedRowFacts(session.id,
-      frame=>programAbsenceInventory.capture(session,programAbsenceOwnedRows(session,frame)))
-    return programAbsenceInventory.capture(session)
+    return hasSourceRecords?tavernSourceInheritance.withOwnedRowFacts(session.id,audit):audit()
   }
   function actualInputSourceCapture(id:string):import('./roleplay-input-source-data.js').RoleplayInputSourceCaptureV1 {
     const pointer=T.branch.get(importActiveKey(id)) as Record<string,unknown>|undefined,
@@ -642,22 +652,17 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     if(!session)throw Error('PROGRAM_ABSENCE_OPENING_SESSION_MISSING')
     const own=programOpening?.captureCompletedAbsenceClosure(parent)
     if(own) {
-      own.assertCurrent()
       captureProgramAbsenceNamespace(session)
-      own.assertCurrent()
       return own.closure
     }
     if(T.branch.get(tavernSourcePreparedKeyV1(parent))===undefined)return undefined
-    const transaction=tavernSourceInheritance.readCommittedStaticSourceInheritance(parent),
-      packet=transaction.prepared.frozenProgramAbsenceOpeningV1
-    if(!packet||packet.kind==='not-inherited')return undefined
-    const found=tavernSourceInheritance.withOwnedRowFacts(parent,frame=>{
-      const actual=inheritedProgramAbsence.read(parent,packet,transaction.prepared.nativeCut,
-        ()=>tavernSourceInheritance.assertOwnedRowFactsCurrent(frame))
-      captureProgramAbsenceNamespace(session,frame)
-      return actual
+    const found=tavernSourceInheritance.withOwnedRowFacts(parent,(_frame,transaction,opening)=>{
+      const packet=transaction.prepared.frozenProgramAbsenceOpeningV1
+      if(!packet||packet.kind==='not-inherited')return undefined
+      if(!opening?.inventory)throw Error('PROGRAM_INHERITED_ABSENCE_OBSERVATION_MISSING')
+      return opening
     })
-    if(found.kind!=='program-absence')return undefined
+    if(!found)return undefined
     // Source owns the new fork's cut check. The closure remains the original
     // owner's data, including its original completed intent and Native ACK.
     const native=found.closure.data.absenceDomain.nativeFacts,
@@ -668,20 +673,21 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return found.closure
   }
   function assertProgramAbsenceOpening(id:string,packet:TavernSourceFrozenProgramAbsenceOpeningV1,
-    cut:TavernSourceNativeCutV1,sourceRows:TavernSourceOwnedRowFactsV1):void {
+    cut:TavernSourceNativeCutV1,sourceRows:TavernSourceOwnedRowFactsV1) {
     const assertCurrent=()=>tavernSourceInheritance.assertOwnedRowFactsCurrent(sourceRows)
-    assertCurrent()
     // A zero cut carries only the copied Source recipe. It does not assert a
     // child absence domain while that child's own opening is being prepared.
     if(packet.kind==='not-inherited')return
-    inheritedProgramAbsence.read(id,packet,cut,assertCurrent,
+    const native=inheritedProgramAbsence.read(id,packet,cut,assertCurrent,
       sourceRows.purpose==='lineage-dependency'?'retained-publication':'current-carrier')
+    if(native.kind!=='program-absence')return
+    let inventory:ReturnType<typeof captureProgramAbsenceNamespace>|undefined
     if(sourceRows.purpose==='subject') {
       const session=ctx.sessions.get(id)
       if(!session)throw Error('PROGRAM_ABSENCE_SESSION_CHANGED')
-      captureProgramAbsenceNamespace(session,sourceRows)
+      inventory=captureProgramAbsenceNamespace(session,sourceRows)
     }
-    assertCurrent()
+    return {closure:native.closure,inventory}
   }
   function captureNonNumericalOpening(parent:string,cut:TavernSourceNativeCutV1)
     :TavernSourceFrozenNonNumericalOpeningCaptureV1|undefined {
@@ -935,6 +941,37 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   }
   // The workflow host is registered before import tools; only the ready hook
   // invokes this driver, after the importer installs it below.
+  function captureCardExportStartSource(session:ContextSession) {
+    const actual=ctx.sessions.get(session.id),prefix=session.id+'__'
+    if(sourceReadOwnerClosed||!actual||(actual as unknown)!==session||!actual.header
+      ||!isRoleplaySession(actual)||!storyBranchIsActive(actual))throw Error('CARD_EXPORT_START_SESSION_CHANGED')
+    const scope=()=>{
+      const selected=ctx.get('tavernConversations')?.selectionOf(session.id)
+      return recordSha256({cwd:actual.header?.cwd,headerId:actual.header?.id,
+        parentSession:actual.header?.parentSession??null,root:selected?.root??session.id,
+        activeSessionId:selected?.activeSessionId??session.id,revision:selected?.revision??null,
+        importPointerSha256:recordSha256(T.branch.get(importActiveKey(session.id))??null)})
+    }
+    const rows=()=>{
+      const collect=(table:{entries():Iterable<[string,unknown]>})=>[...table.entries()]
+        .filter(([key,value])=>key.startsWith(prefix)&&value!==undefined)
+        .sort(([left],[right])=>left.localeCompare(right,'en'))
+        .map(([key,value])=>({key,record:cloneRecord(value)}))
+      return {schemaVersion:1,encoding:'card-export-management-start-source-data-v1',sessionId:session.id,
+        cards:collect(T.cards),worldbook:collect(T.worldbook),rules:collect(T.rules)}
+    }
+    const sourceScope=scope(),sha256=recordSha256(rows())
+    const assertCurrent=()=>{
+      if(sourceReadOwnerClosed||ctx.sessions.get(session.id)!==actual||!actual.header
+        ||!isRoleplaySession(actual)||!storyBranchIsActive(actual)||scope()!==sourceScope)
+        throw Error('CARD_EXPORT_START_SESSION_CHANGED')
+      if(recordSha256(rows())!==sha256)throw Error('CARD_EXPORT_START_AUTHOR_DATA_CHANGED')
+    }
+    // This startup marker hashes current edited DATA. Final export collection
+    // still owns full material coverage and selected Native opening provenance.
+    assertCurrent()
+    return {sha256,assertCurrent}
+  }
   let structuredImportDriver: ReturnType<typeof registerRoleplayImports>['driveStructuredImport'] | undefined
   const {
     cardWorkflowKey,
@@ -949,6 +986,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     storyBranchIsActive: (...args) => storyBranchIsActive(...args),
     modelPolicy,
     statusFixedContext: (...args) => statusFixedContext(...args),
+    captureExportStartSource:session=>captureCardExportStartSource(session),
     nativeTask,
     driveStructuredImport: (...args) => {
       if (!structuredImportDriver) throw new Error('结构化导入执行器尚未注册')
@@ -1002,8 +1040,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       settings: (...args) => svc.settings(...args),
     },
     ensureBranch,
-    reconcileCanonicalPlayerVariants: (...args) => reconcileCanonicalPlayerVariants(...args),
-    buildForkLookupIndex: (...args) => buildForkLookupIndex(...args),
     userValues: (...args) => userValues(...args),
     selectedStatusRecord: (...args) => selectedStatusRecord(...args),
     readNumericalState:sessionId=>{
@@ -1027,6 +1063,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   // all see one stable shape without rewriting historical records in place.
   const {
     readOwnedStatusControlFacts,
+    readPendingOutputRows:readPendingStatusOutputRows,
     statusFixedContext,
     runStatusObligation,
     textAlias,
@@ -1178,6 +1215,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     requestUserEvent,
     forkPendingKey,
     replaceAssistantText,
+    readOwnedEditCompletionRows,
     replaceUserText
   } = createRoleplayWorldlines({
     sourceInheritance:tavernSourceInheritance,
@@ -1221,13 +1259,33 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     normalizeDecisionRecord,
     cloneRecord,
     readOpeningIntent:source => openingSelection.readIntent(source),
+    readProgramOpeningSettlement:(session,operationId,messageId)=>{
+      if(ctx.sessions.get(session.id)!==(session as unknown))throw Error('PROGRAM_OPENING_SESSION_CHANGED')
+      const found=programOpening?.verified(session.id)
+      if(!found||found.kind==='outside-domain') {
+        // Missing completion is legacy only when neither the immutable seed
+        // nor local Native protocol facts identifies a program opening.
+        const seed=T.branch.get(programOpeningSeedKeyV1(session.id,operationId)),
+          local=eventsOf(session).slice(Number(session.inheritedEventCount)||0)
+        if(seed===undefined&&!local.some(event=>event.type==='opening/invocation'
+          ||event.type==='opening/generated-receipt'||event.type==='opening/closing-ack'))return undefined
+      }
+      if(!found||found.kind!=='ready'||found.intent.status!=='completed'
+        ||found.context.seed.operationId!==operationId||found.context.seed.requestedMessageId!==messageId
+        ||found.intent.nativeReceipt?.production!=='generated-opening')return null
+      // verified joins the current Source/domain receipt to the exact Native
+      // ACK. Navigation must wait for that join; requested output can precede
+      // the terminal output when Native used more than one model step.
+      const native=found.intent.nativeReceipt.receipt,requested=native.requestedOutput
+      return {messageId:requested.messageId,seq:requested.eventRef.seq,turn:native.turn}
+    },
     readProgramOpeningTarget:(session,event)=>{
       if(ctx.sessions.get(session.id)!==(session as unknown))throw Error('PROGRAM_OPENING_SESSION_CHANGED')
       const found=programOpening?.verified(session.id)
       if(!found||found.kind!=='ready'||found.intent.status!=='completed'||!found.intent.nativeReceipt)return
       const {seed,input}=found.context,native=found.intent.nativeReceipt,
-        seq=native.production==='selected-card-copy'?native.receipt.assistantSeq:native.receipt.terminalOutput.eventRef.seq,
-        messageId=native.production==='selected-card-copy'?native.receipt.messageId:native.receipt.terminalOutput.messageId
+        seq=native.production==='selected-card-copy'?native.receipt.assistantSeq:native.receipt.requestedOutput.eventRef.seq,
+        messageId=native.production==='selected-card-copy'?native.receipt.messageId:native.receipt.requestedOutput.messageId
       if(Number(event.seq)!==seq||Number(event.data?.turn)!==native.receipt.turn
         ||String(event.data?.message?.id??event.data?.messageId??'')!==messageId)throw Error('PROGRAM_OPENING_NATIVE_CHANGED')
       // The verified seed retains the complete Source proof. Worldline targets
@@ -1358,6 +1416,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     resumeStatusMaintenance,
     resumeMemoryWork,
     resumeCardWorkflows,
+    reconcileCanonicalPlayerVariants,
+    buildForkLookupIndex,
     resumeNovelExports, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation,
     withImportLock: (...args) => withImportLock(...args),
     publishTurnDecision: (...args) => publishTurnDecision(...args),
@@ -1745,6 +1805,102 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     ensureState,
     simpleTool,
     sessionOf: workspaceImportSessionOf,
+    readNativeOpeningExport:session=>{
+      const actual=ctx.sessions.get(session.id),none={kind:'none' as const};
+      if(sourceReadOwnerClosed||!actual||(actual as unknown)!==session
+        ||!actual.header||!isRoleplaySession(actual)||!storyBranchIsActive(actual)) {
+        return {kind:'blocked',code:'CARD_EXPORT_OPENING_SESSION_CHANGED'};
+      }
+      const header=actual.header;
+      const active=activeOpeningSource(T.branch,session.id);
+      if(!active) {
+        const pointer=T.branch.get(importActiveKey(session.id)) as
+          {importId?:unknown;sourceRecordSessionId?:unknown}|undefined;
+        const record=typeof pointer?.importId==='string'?T.branch.get(keyOf(
+          typeof pointer.sourceRecordSessionId==='string'?pointer.sourceRecordSessionId:session.id,
+          `import-${pointer.importId}`)) as ImportRecord|undefined:undefined;
+        return record?.sourceEnvelope?{kind:'blocked',code:'CARD_EXPORT_OPENING_ACTIVE_SOURCE_INVALID'}:none;
+      }
+      const original=T.branch.get(importRecordKey(active.sourceRecordSessionId,active.importId)) as ImportRecord;
+      // MD keeps its established authoring/export workflow. A structured card
+      // uses its current Source owner, including frozen inherited records.
+      if(!original?.sourceEnvelope)return none;
+      const ownIntent=T.branch.get(openingIntentKey(session.id,active.importId)),
+        hasNativeWork=eventsOf(actual).some(event=>{
+          const messageSource=event.data?.message?.source as {origin?:unknown}|undefined,
+            marker=event.data?.['programmatic'] as {origin?:unknown}|undefined;
+          if(messageSource?.origin===`card-opening:${active.importId}`
+            ||marker?.origin===`card-opening:${active.importId}`)return true;
+          if(event.type!=='opening/invocation')return false;
+          const identity=event.data?.['identity'] as {intentRef?:{key?:unknown}}|undefined;
+          if(typeof identity?.intentRef?.key!=='string')return true;
+          const seed=T.branch.get(identity.intentRef.key) as {source?:{importId?:unknown}}|undefined;
+          return !seed?.source||seed.source.importId===active.importId;
+        });
+      // An unselected catalog has no Native prose to replace. Keep the old
+      // default-field export without demanding a runtime opening owner; a
+      // retained marker or intent instead enters the full factual read below.
+      if(ownIntent===undefined&&!hasNativeWork)return none;
+      try {
+        // Source and Native composition consume one synchronous lineage read.
+        // Its owner supplies the already closed transaction to Source capture.
+        const readOpening=(lineage?:TavernSourceCommittedLineageV1)=>{
+          const captured=tavernSource.capture(session.id);
+          if(captured.kind!=='captured-data')throw Error('CARD_EXPORT_OPENING_SOURCE_UNPROVEN');
+          const sourceData=captured.source,originalSource=sourceData.original,
+            source={sessionId:session.id,importId:active.importId,sourceRecordSessionId:sourceData.sourceRecordSessionId,
+              rawSha256:originalSource.rawSha256,normalizedSha256:originalSource.normalizedSha256,
+              transactionId:originalSource.transactionId,coverageSha256:originalSource.coverageSha256,
+              pointer:originalSource.activePointer},inheritedEventCount=Number(actual.inheritedEventCount??0);
+          let inherited:Parameters<typeof readNativeCardOpeningExportV1>[0]['inherited'];
+          if(sourceData.inheritance&&inheritedEventCount>0) {
+            if(!lineage)throw Error('CARD_EXPORT_OPENING_INHERITED_CUT_CHANGED');
+            const current=lineage.current,cut=current.prepared.nativeCut,
+              origins=new Map<string,number>(),refs=new Map<string,string>();
+            if(cut.kind!=='native-fork'||cut.seedLength!==inheritedEventCount)
+              throw Error('CARD_EXPORT_OPENING_INHERITED_CUT_CHANGED');
+            for(const transaction of [current,...lineage.ancestors]) {
+              const prepared=transaction.prepared,descriptor=transaction.inheritance,
+                prior=origins.get(prepared.parentSessionId);
+              // A fresh zero cut keeps Source provenance, but carries none of
+              // that parent's Native opening. Later descendants must stop at
+              // this boundary instead of admitting an old parent selection.
+              if(prepared.nativeCut.kind==='reserved-fresh-branch')break;
+              if(prior!==undefined&&prior!==prepared.nativeCut.parentInheritedEventCount)
+                throw Error('CARD_EXPORT_OPENING_ORIGIN_CONFLICT');
+              origins.set(prepared.parentSessionId,prepared.nativeCut.parentInheritedEventCount);
+              for(const ref of [descriptor.preparedRef,descriptor.applyIntentRef,descriptor.commitRef,
+                descriptor.readyRef,descriptor.originalBinding.importRecordRef]) {
+                const previous=refs.get(ref.key);
+                if(previous!==undefined&&previous!==ref.sha256)throw Error('CARD_EXPORT_OPENING_SOURCE_REF_CONFLICT');
+                refs.set(ref.key,ref.sha256);
+              }
+            }
+            inherited={origins:[...origins].map(([sessionId,inheritedEventCount])=>({sessionId,inheritedEventCount})),
+              cut:{seedLength:cut.seedLength,prefixEncoding:cut.prefixEncoding,prefixSha256:cut.prefixSha256},
+              inheritanceRefs:[...refs].map(([key,sha256])=>({key,sha256}))};
+          }
+          const events=eventsOf(actual),nodes=[...(actual.surface?.nodes??[])];
+          return readNativeCardOpeningExportV1({source,branch:T.branch,
+              importRecordRef:{key:originalSource.importRecordRef.key,sha256:originalSource.importRecordRef.sha256},
+              observation:{id:session.id,header,inheritedEventCount,
+                events:events as unknown as readonly import('@deepseek-ai/dsh-session').SessionEvent[],
+                surfaceNodes:nodes,deriveEventMessage:event=>{
+                  if(!actual.deriveEventMessage)throw Error('CARD_EXPORT_OPENING_PROJECTION_UNAVAILABLE');
+                  return actual.deriveEventMessage(event as unknown as Parameters<NonNullable<typeof actual.deriveEventMessage>>[0]);
+                }},projections:ctx.sessions.messageProjections,
+              deletedMessageIds:deletedBranchMessageIdsFor(actual),...inherited?{inherited}:{}});
+        };
+        if(T.branch.get(tavernSourcePreparedKeyV1(session.id))===undefined)return readOpening();
+        let result!:ReturnType<typeof readOpening>;
+        tavernSourceInheritance.readCommittedSourceLineage(session.id,lineage=>{result=readOpening(lineage)});
+        return result;
+      }catch(error) {
+        const code=error instanceof Error&&/^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
+          ?error.message:'CARD_EXPORT_OPENING_READ_FAILED';
+        return {kind:'blocked',code};
+      }
+    },
     resolveChatCardSource:(session,exec,selector) => chatCardSources.resolve(session,exec,selector),
     RULE_IMPORT_FIELDS,
     archiveImported
@@ -1840,7 +1996,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
     readNumericalAuthority:id=>mvuState.readNumericalAuthority(id),
     readProgramOpeningObservation:(id,sourceSha256)=>{
-      const found=programOpening?.verified(id)
+      const candidate=programOpening?.read(id),found=candidate?.kind==='ready'&&candidate.context.planRecord
+        ?candidate:programOpening?.verified(id)
       if(!found||found.kind==='outside-domain') {
         try {
           const inherited=readProgramInheritedAbsenceScopes(id)
@@ -2073,10 +2230,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         const update=acceptedMvuDisplayUpdate(publication.ownerSessionId,publication.canonical,protocol)
         if(update)updates.push(update)
       }
-      // The existing producer closes Source, cut, canonical versions, ledger
-      // and original terminal evidence. Its current check stays the sole
-      // inherited proof; a table-shaped hint cannot replace that authority.
-      return {updates:formatMvuDisplayUpdates(updates),current:captured.current}
+      // The derived owner has closed Source, cut, versions and terminal facts
+      // in this synchronous read. Formatting reuses that complete result.
+      return {updates:formatMvuDisplayUpdates(updates)}
     },
     withSourceLock:(id,work)=>withImportLock(id,'mvu-state',work),
     readEditInvalidation:mvuEdits.readInvalidation,
@@ -2236,6 +2392,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     history:schemaStory})
   const completion=createRoleplayMvuStoryCompletion(completionDeps)
   const tavernMaterial=createRoleplayTavernPromptMaterialV1({branch:T.branch,inputState,
+    pendingOutputRows:readPendingStatusOutputRows,
     source:tavernSource,edits:tavernLoreEdits,
     withSourceLock:(id,work,signal)=>withImportLock(id,'tavern-prompt-material',work,signal),
     includeCardStyle:id=>narrativePresets.policy(id).effective.mode!=='system',
@@ -2274,11 +2431,12 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       return {sourceLineage:lineage,inheritedHistory,assertCurrent}
     },
     schemaScopes:mvuOpening.captureSchemaPromptScopes,
-    openingPreparation:(native,scope)=>{
+    openingPreparation:(native,scope,source)=>{
       if(!programOpening)throw Error('PROGRAM_OPENING_OWNER_UNAVAILABLE')
-      return programOpening.openingPreparation(native,scope)
+      return programOpening.openingPreparation(native,scope,source)
     },
-    plainScopes:id=>readProgramAbsenceScopes(id)??readProgramInheritedAbsenceScopes(id)
+    plainScopes:(id,currentSourceIdentitySha256)=>readProgramAbsenceScopes(id)
+      ??readProgramInheritedAbsenceScopes(id,currentSourceIdentitySha256)
       ??mvuOpening.captureInheritedPromptScopeFacts(id)
       ??mvuOpening.capturePromptTemplateOnlyScopeFacts(id)??mvuOpening.capturePlainPromptScopeFacts(id),
     numericalScopes:id=>{
@@ -2287,8 +2445,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       if(local.kind!=='ready')return undefined
       const inherited=mvuDerived.required(id)?mvuDerived.capturePromptInheritedFacts(id):undefined
       if(inherited&&inherited.kind!=='ready')return undefined
-      return {data:{local:local.data,inherited:inherited?.data??null},
-        current:()=>local.current()&&(inherited?.current()??true)}
+      return {data:{local:local.data,inherited:inherited?.data??null}}
     },
     storyRows:(scope,selected)=>{
       const kept=new Set(retainRoleplayWindowContinuity(scope.session as unknown as ContextSession,
@@ -2296,16 +2453,17 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       return selected.messages.filter(row=>kept.has(row.message as unknown as ContextMessage))
     }})
   programOpening=createRoleplayProgramOpeningCoreV1({tables:T,
-    sourceReaders:{tables:T,source:tavernSource,edits:tavernLoreEdits,
+    sourceReaders:{tables:T,source:tavernSource,edits:tavernLoreEdits,inputState,
       readImportRecord:(sid,id)=>T.branch.get(importRecordKey(sid,id)),
       session:id=>ctx.sessions.get(id),readOpeningContext:openingContextBinding,
       sourceInheritance:tavernSourceInheritance},
-    branchReady:id=>ensureState(id).branchReady,
     session:id=>ctx.sessions.get(id) as unknown as NativeSession|undefined,
     assertSessionCurrent:session=>{
       const actual=ctx.sessions.get(session.id)
+      // Cold reads precede this process's lazy branch initialization. The
+      // persisted Source/relation reader owns readiness of the saved branch.
       if(!actual||(actual as unknown)!==session||!isRoleplaySession(actual)
-        ||!storyBranchIsActive(actual)||!ensureState(session.id).branchReady)
+        ||!storyBranchIsActive(actual))
         throw Error('PROGRAM_OPENING_SESSION_CHANGED')
     },resolveAgent:async id=>{
       const found=await ctx.sessionController.resolveAgent(id)
@@ -2314,11 +2472,16 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       &&(ctx.sessions.get(agent.session.id) as unknown)===agent.session,
     includeCardStyle:id=>narrativePresets.policy(id).effective.mode!=='system',
     readNumericalSourceSha256:mvuOpening.readSourceSha256,importActiveKey,
+    readPreparationFacts:(session,audit)=>inputState.readProgramOpeningPreparationFacts(session,audit),
     withSourceLock:(id,work)=>withImportLock(id,'program-opening',work),
     material:()=>tavernMaterial,
     projections:()=>ctx.sessions.messageProjections,messageEdits:ctx.nexttavernMessageEdits,
     deletedMessageIds:deletedBranchMessageIdsFor,
     phaseSnapshot:(session,turn)=>ensureState(session.id).snapshots.get(turn),
+    readPhaseBControlData:session=>{
+      const actual=programAbsenceBranchControls.capture(session as unknown as NativeSession)
+      return {rows:actual.rows.filter(row=>row.kind==='phase-b'),assertCurrent:actual.assertCurrent}
+    },
     lookupCopy:async context=>{
       const found=await ctx.sessionController.resolveAgent(context.seed.sessionId),agent=found?.agent,
         owned=ctx.get('agentLoop')?.getInputAdmissionAgent(agent),sdk=owned as typeof owned&{
@@ -2336,8 +2499,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },verifyTemplateIntegrity:()=>{if(!tavernTemplate.current())throw Error('PROMPT_TEMPLATE_RUNTIME_REQUIRED')},
     loadTemplate:signal=>tavernTemplate.load(signal)})
   function readProgramAbsenceScopes(id:string) {
-    const found=programOpening?.captureCompletedAbsenceOwnerFacts(id)
-    if(!found||found.intent.status!=='completed'||found.context.planRecord||!found.context.absenceDomain)return
+    const found=programOpening?.verified(id)
+    if(found?.kind!=='ready'||found.intent.status!=='completed'||found.context.planRecord||!found.context.absenceDomain)return
     const session=ctx.sessions.get(id)
     if(!session||sourceReadOwnerClosed)throw Error('PROGRAM_ABSENCE_SESSION_CHANGED')
     // Namespace audit is current consumer evidence. Mutable control rows do
@@ -2349,95 +2512,42 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       input:found.context.input,absenceDomain:domain,
       domainRef:{key:programOpeningDomainKeyV1(id,found.context.seed.operationId),sha256:recordSha256(domain)}}
     const data=programOpeningRecordDataV1({...body,factsSha256:recordSha256(body)})
-    const inputSha256=programOpeningRefV1(programOpeningInputKeyV1(id,found.context.seed.operationId),
-      found.context.input).sha256,domainSha256=body.domainRef.sha256
-    const assertOwnerFactsCurrent=()=>{
-      if(sourceReadOwnerClosed||ctx.sessions.get(id)!==session)throw Error('PROGRAM_ABSENCE_SESSION_CHANGED')
-      found.assertOwnerFactsCurrent()
-    }
-    const assertNamespaceCurrent=()=>{
-      if(sourceReadOwnerClosed||ctx.sessions.get(id)!==session||!isRoleplaySession(session)
-        ||!storyBranchIsActive(session)||!ensureState(id).branchReady)throw Error('PROGRAM_ABSENCE_SESSION_CHANGED')
-      captureProgramAbsenceNamespace(session)
-    }
-    return {data,assertOwnerFactsCurrent,assertNamespaceCurrent,current:()=>{
-      try {
-        if(sourceReadOwnerClosed||ctx.sessions.get(id)!==session)return false
-        const current=programOpening?.verified(id)
-        if(current?.kind!=='ready'||current.intent.status!=='completed'
-          ||programOpeningRefV1(programOpeningInputKeyV1(id,current.context.seed.operationId),
-            current.context.input).sha256!==inputSha256
-          ||recordSha256(current.context.absenceDomain)!==domainSha256)return false
-        captureProgramAbsenceNamespace(session)
-        return true
-      }catch{return false}
-    }}
+    // The supplier just read complete DATA synchronously. InputState owns its
+    // dependency lifetime; consumers only need this nominal owner check.
+    return {data,current:()=>!sourceReadOwnerClosed&&ctx.sessions.get(id)===session}
   }
-  function readProgramInheritedAbsenceScopes(id:string) {
+  function readProgramInheritedAbsenceScopes(id:string,currentSourceIdentitySha256?:string) {
     if(T.branch.get(tavernSourcePreparedKeyV1(id))===undefined)return
-    const transaction=tavernSourceInheritance.readCommittedStaticSourceInheritance(id),
-      packet=transaction.prepared.frozenProgramAbsenceOpeningV1,session=ctx.sessions.get(id)
-    if(!packet||packet.kind==='not-inherited')return
-    if(!session||typeof session.inheritedEventCount!=='number'||packet.record.childSessionId!==id) {
-      throw Error('PROGRAM_INHERITED_ABSENCE_CARRIER_MISMATCH')
-    }
-    const captured=tavernSource.capture(id)
-    if(captured.kind!=='captured-data')throw Error('PROGRAM_INHERITED_ABSENCE_SOURCE_CHANGED')
-    const observed=tavernSourceInheritance.withOwnedRowFacts(id,frame=>{
-      const native=inheritedProgramAbsence.read(id,packet,transaction.prepared.nativeCut,
-        ()=>tavernSourceInheritance.assertOwnedRowFactsCurrent(frame)),
-        inventory=captureProgramAbsenceNamespace(session,frame)
-      return {native,inventory}
-    })
-    if(observed.native.kind!=='program-absence')return
-    const closure=observed.native.closure,{seed,input,absenceDomain,refs}=closure.data,
-      body={schemaVersion:1 as const,encoding:'native-program-inherited-absence-scope-read-data-v1' as const,
-        authority:'consumer-data-only' as const,sessionId:id,
-        numericalSourceSha256:roleplayInputSourceSha256V1(actualInputSourceCapture(id)),
-        sourceInheritance:transaction.inheritance,
-        currentSourceIdentitySha256:recordSha256(tavernLoreSourceCurrentIdentityV1(captured.source)),
-        seed,input,absenceDomain,originalOpening:{ownerSessionId:closure.ownerSessionId,
-          closureSha256:closure.closureSha256,archiveRef:packet.recordRef,seedRef:refs.seed,inputRef:refs.input,
-          intentRef:refs.intent,domainRef:refs.absenceDomain},
-        actualChildCut:{sessionId:id,parentSessionId:transaction.prepared.parentSessionId,
-          inheritedEventCount:session.inheritedEventCount,cut:transaction.prepared.nativeCut},inventory:observed.inventory},
-      stable={...body,stableDomainSha256:programInheritedAbsenceDomainSha256V1(body)},
-      data=programOpeningRecordDataV1({...stable,factsSha256:recordSha256(stable)}) as TavernProgramInheritedAbsencePromptScopeDataV1,
-      immutableRefs=[packet.recordRef,refs.seed,refs.input,refs.absenceDomain,
-        ...closure.data.materialRows.map(row=>row.ref)],
-      // Core's structural Session type omits host methods. This is the same
-      // actual object; observing one method adds no Session/Native capability.
-      sessionMethods=session as typeof session&{readonly snapshotEvents?:unknown},
-      headerSha256=recordSha256(session.header),snapshotEvents=sessionMethods.snapshotEvents,
-      assertArchiveFactsCurrent=()=>{
-        if(sourceReadOwnerClosed||ctx.sessions.get(id)!==session||session.id!==id
-          ||!isRoleplaySession(session)||!storyBranchIsActive(session)||!ensureState(id).branchReady
-          ||typeof snapshotEvents!=='function'||sessionMethods.snapshotEvents!==snapshotEvents
-          ||recordSha256(session.header)!==headerSha256
-          ||session.inheritedEventCount!==data.actualChildCut.inheritedEventCount) {
-          throw Error('PROGRAM_INHERITED_ABSENCE_FACT_SESSION_CHANGED')
-        }
-        // The child archive contains the original intent's frozen version.
-        // Today's ancestor mutable intent is deliberately not an immutable ref.
-        for(const ref of immutableRefs)if(recordSha256(T.branch.get(ref.key))!==ref.sha256)
-          throw Error('PROGRAM_INHERITED_ABSENCE_FACT_REFERENCE_CHANGED')
-      },
-      ownerFacts=inheritedProgramAbsence.captureCurrentCarrierOwnerFacts(observed.native,assertArchiveFactsCurrent)
-    if(packet.recordRef.key!==tavernSourceProgramAbsenceOpeningKeyV1(id)) {
-      throw Error('PROGRAM_INHERITED_ABSENCE_ARCHIVE_KEY_CHANGED')
-    }
-    const current=()=>{
-      try {
-        if(sourceReadOwnerClosed||ctx.sessions.get(id)!==session||!tavernSource.current(captured.source)
-          ||roleplayInputSourceSha256V1(actualInputSourceCapture(id))!==data.numericalSourceSha256)return false
-        // The Source owner's current read already performs the subject's full
-        // Native/namespace check. Immutable Original rows remain provenance;
-        // the original mutable intent is the version archived in this child.
-        return immutableRefs.every(ref=>recordSha256(T.branch.get(ref.key))===ref.sha256)
-      }catch{return false}
-    }
-    if(!current())throw Error('PROGRAM_INHERITED_ABSENCE_SOURCE_CHANGED')
-    return {data,current,assertOwnerFactsCurrent:ownerFacts.assertOwnerFactsCurrent}
+    return tavernSourceInheritance.withOwnedRowFacts(id,(_frame,transaction,observed)=>{
+      const packet=transaction.prepared.frozenProgramAbsenceOpeningV1,session=ctx.sessions.get(id)
+      if(!packet||packet.kind==='not-inherited')return
+      if(!session||typeof session.inheritedEventCount!=='number'||packet.record.childSessionId!==id) {
+        throw Error('PROGRAM_INHERITED_ABSENCE_CARRIER_MISMATCH')
+      }
+      if(currentSourceIdentitySha256===undefined) {
+        const captured=tavernSource.capture(id)
+        if(captured.kind!=='captured-data')throw Error('PROGRAM_INHERITED_ABSENCE_SOURCE_CHANGED')
+        currentSourceIdentitySha256=captured.currentIdentitySha256
+      }
+      if(!observed?.inventory)throw Error('PROGRAM_INHERITED_ABSENCE_OBSERVATION_MISSING')
+      const closure=observed.closure,{seed,input,absenceDomain,refs}=closure.data,
+        body={schemaVersion:1 as const,encoding:'native-program-inherited-absence-scope-read-data-v1' as const,
+          authority:'consumer-data-only' as const,sessionId:id,
+          numericalSourceSha256:roleplayInputSourceSha256V1(actualInputSourceCapture(id)),
+          sourceInheritance:transaction.inheritance,
+          currentSourceIdentitySha256,
+          seed,input,absenceDomain,originalOpening:{ownerSessionId:closure.ownerSessionId,
+            closureSha256:closure.closureSha256,archiveRef:packet.recordRef,seedRef:refs.seed,inputRef:refs.input,
+            intentRef:refs.intent,domainRef:refs.absenceDomain},
+          actualChildCut:{sessionId:id,parentSessionId:transaction.prepared.parentSessionId,
+            inheritedEventCount:session.inheritedEventCount,cut:transaction.prepared.nativeCut},inventory:observed.inventory},
+        stable={...body,stableDomainSha256:programInheritedAbsenceDomainSha256V1(body)},
+        data=programOpeningRecordDataV1({...stable,factsSha256:recordSha256(stable)}) as TavernProgramInheritedAbsencePromptScopeDataV1
+      if(packet.recordRef.key!==tavernSourceProgramAbsenceOpeningKeyV1(id)) {
+        throw Error('PROGRAM_INHERITED_ABSENCE_ARCHIVE_KEY_CHANGED')
+      }
+      return {data,current:()=>!sourceReadOwnerClosed&&ctx.sessions.get(id)===session}
+      })
   }
   ctx.effect(()=>()=>programOpening?.dispose(),'roleplay: program opening owner lifetime')
   inputOwner = createRoleplayInputPreparation({table:T.branch,completion,

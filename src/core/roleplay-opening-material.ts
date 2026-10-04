@@ -1,6 +1,6 @@
 /** One private no-player opening material owner. Persistent data explains a
  * request; only actual Native registration/phase and Root callbacks permit it. */
-import {nativeInputSha256,validateNativeOpeningInvocationV1} from '@deepseek-ai/dsh-agent-loop'
+import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
 import type {NativeOpeningIdentityV1,NativeOpeningOwnerIdentityV1,NativeOpeningMaterialOwnerV1,
   NativeOpeningMaterialPrepareInputV1,NativeOpeningMaterialInputV1,NativeOpeningMaterialCheckV1,
   NativeOpeningClosingInputV1,NativeOpeningClosingAcknowledgementV1,NativeRequestMaterialPrepareDecisionV1,
@@ -21,7 +21,9 @@ export interface RoleplayOpeningMaterialScopeV1 {
   /** One monotonic async preparation/write budget, inherited by inner work.
    * It ceases to constrain provider retries/closing after preparation settles. */
   readonly deadlineAt:number
-  assertCurrent():void
+  readonly outputRows:readonly {readonly table:string;readonly key:string}[]
+  /** Live owner/step/budget only; InputState owns captured DATA currency. */
+  assertOwnerFactsCurrent():void
 }
 export interface RoleplayOpeningMaterialDependenciesV1 {
   readonly sectionNames:readonly string[]
@@ -58,9 +60,8 @@ export interface RoleplayOpeningMaterialOwnerContextV1 {
   readonly table:{get(key:string):unknown;put(key:string,value:Record<string,unknown>):Promise<unknown>}
   /** Actual owner FIFO. Do not call stop/dispose from its own queued action. */
   enqueue<T>(operation:()=>Promise<T>):Promise<T>
-  /** Actual factory/Agent/Session, immutable seed/input, Source and basis checks
-   * appropriate to this Native phase. Byte equality cannot supply this callback. */
-  assertCurrent(input:RoleplayOpeningMaterialCurrentInputV1):void
+  /** Actual factory/Agent/Session identity. InputState owns the DATA audit. */
+  assertOwnerFactsCurrent(input:RoleplayOpeningMaterialCurrentInputV1):void
   /** Native already checks original registration/phase on each side. Root
    * separately guards Source/intent/basis, including cold closing facts. */
   check(input:NativeOpeningMaterialCheckV1):{readonly kind:'allow'}|{readonly kind:'blocked';readonly code:string}
@@ -123,14 +124,14 @@ export function roleplayOpeningMaterialKeysV1(sessionId:string,seedRef:RoleplayO
  * record, selected clone, readiness flag or lookup creates this hot owner. */
 export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMaterialDependenciesV1,
   owner:RoleplayOpeningMaterialOwnerContextV1) {
-  if(typeof deps.prepareOpening!=='function'||typeof owner.assertCurrent!=='function'||typeof owner.check!=='function'
+  if(typeof deps.prepareOpening!=='function'||typeof owner.assertOwnerFactsCurrent!=='function'||typeof owner.check!=='function'
     ||typeof owner.closing!=='function'||typeof owner.enqueue!=='function'
     ||typeof owner.table.get!=='function'||typeof owner.table.put!=='function') {
     fail('OPENING_MATERIAL_OWNER_CALLBACK_REQUIRED')
   }
   const session=owner.session,identity=data(owner.identity),seedRef=data(owner.seedRef),inputRef=data(owner.inputRef),
     get=owner.table.get.bind(owner.table),put=owner.table.put.bind(owner.table),enqueue=owner.enqueue.bind(owner),
-    assertOwner=owner.assertCurrent.bind(owner),checkOwner=owner.check.bind(owner),closeOwner=owner.closing.bind(owner),
+    assertOwnerFacts=owner.assertOwnerFactsCurrent.bind(owner),checkOwner=owner.check.bind(owner),closeOwner=owner.closing.bind(owner),
     prepareOpening=deps.prepareOpening.bind(deps),sectionNames=data([...deps.sectionNames],65_536)
   ref(seedRef);ref(inputRef)
   if(!id(String(session.id),64)||identity.kind!=='programmatic-opening'||identity.sessionId!==String(session.id)
@@ -140,7 +141,6 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
   const disposal=new AbortController(),controllers=new Set<AbortController>(),operations=new Set<Promise<unknown>>(),
     ready=new Map<string,ReadyV1>(),registeredRows=new Map<string,RoleplayOpeningMaterialOwnedRowV1>()
   let active:ActiveStepV1|undefined,revoked=false
-  let inputRecords:{seed:unknown;input:unknown}|undefined
   function clearReady():void {
     for(const row of ready.values())row.checks.release()
     ready.clear()
@@ -148,48 +148,12 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
   function alive():void {
     if(revoked||disposal.signal.aborted)fail('OPENING_MATERIAL_OWNER_REVOKED')
   }
-  function inputsCurrent():void {
-    const rawSeed=get(seedRef.key),rawInput=get(inputRef.key)
-    if(inputRecords) {
-      if(rawSeed!==inputRecords.seed||rawInput!==inputRecords.input)fail('OPENING_MATERIAL_INPUT_RECORD_CHANGED')
-      return
-    }
-    if(recordSha256(rawSeed)!==seedRef.sha256||recordSha256(rawInput)!==inputRef.sha256) {
-      fail('OPENING_MATERIAL_INPUT_RECORD_CHANGED')
-    }
-    const seed=rawSeed as Record<string,unknown>,packet=rawInput as Record<string,unknown>,
-      {seedSha256,...seedBody}=seed,{inputSha256,...inputBody}=packet
-    if(seed['schemaVersion']!==1||seed['encoding']!=='native-program-opening-intent-seed-v1'
-      ||seed['authority']!=='consumer-data-only'||seed['sessionId']!==identity.sessionId
-      ||seed['production']!=='generated-opening'||seed['operationId']!==identity.operationId
-      ||seed['requestedMessageId']!==identity.messageId||seed['instructionSha256']!==identity.instructionSha256
-      ||recordSha256(seedBody)!==seedSha256||packet['schemaVersion']!==1
-      ||packet['encoding']!=='native-program-opening-input-packet-v1'||packet['authority']!=='consumer-data-only'
-      ||packet['sessionId']!==identity.sessionId||!same(packet['seedRef'],seedRef)
-      ||packet['instruction']!==identity.instruction||recordSha256(inputBody)!==inputSha256) {
-      fail('OPENING_MATERIAL_INPUT_IDENTITY_UNPROVEN')
-    }
-    inputRecords={seed:rawSeed,input:rawInput}
-  }
-  function rootCurrent(input:RoleplayOpeningMaterialCurrentInputV1):void {
-    alive();inputsCurrent();assertOwner(input)
-  }
-  function nativeOwner(actual:NativeOpeningOwnerIdentityV1,turn?:number):void {
-    if(actual.kind!=='programmatic-opening'||!same(actual.identity,identity))fail('OPENING_MATERIAL_NATIVE_OWNER_CHANGED')
-    const events=session.snapshotEvents(),event=events[actual.invocationRef.seq]
-    if(event?.type!=='opening/invocation'||nativeInputSha256(event)!==actual.invocationRef.sha256) {
-      fail('OPENING_MATERIAL_INVOCATION_UNPROVEN')
-    }
-    const invocation=validateNativeOpeningInvocationV1(event.data)
-    if(!same(invocation.identity,identity)||turn!==undefined&&invocation.expectedTurn!==turn) {
-      fail('OPENING_MATERIAL_INVOCATION_CHANGED')
-    }
-  }
   function prepareIdentity(input:NativeOpeningMaterialPrepareInputV1|NativeOpeningMaterialInputV1):void {
     if(input.schemaVersion!==1||!positive(input.turn)||!positive(input.step)
       ||input.noPlayer.kind!=='no-player'||input.noPlayer.selectedUserMessageIds.length
       ||input.selected.messages.some(message=>message.origin==='pending-decision'))fail('OPENING_MATERIAL_NO_PLAYER_REQUIRED')
-    input.signal.throwIfAborted();rootCurrent(input);nativeOwner(input.owner,input.turn)
+    input.signal.throwIfAborted()
+    alive();assertOwnerFacts(input)
   }
   function samePreparation(input:NativeOpeningMaterialPrepareInputV1,initial:NativeOpeningMaterialPrepareInputV1):void {
     if(input.turn!==initial.turn||input.step!==initial.step||input.signal!==initial.signal
@@ -257,27 +221,31 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
       const signal=AbortSignal.any([input.signal,disposal.signal,controller.signal]),
         timer=setTimeout(()=>controller.abort(Error('OPENING_MATERIAL_PREPARATION_DEADLINE')),
           Math.max(0,deadlineAt-performance.now()))
-      const scope:RoleplayOpeningMaterialScopeV1=Object.freeze({session,owner:input.owner,
-        turn:input.turn,step:input.step,signal,deadlineAt,assertCurrent(){
+      const assertScopeCurrent=()=>{
           signal.throwIfAborted()
           if(preparing&&performance.now()>=deadlineAt) {
             controller.abort(Error('OPENING_MATERIAL_PREPARATION_DEADLINE'));signal.throwIfAborted()
           }
           if(active!==step)fail('OPENING_MATERIAL_STEP_REPLACED')
-          rootCurrent(input);nativeOwner(input.owner,input.turn)
-        }})
+          alive();assertOwnerFacts(input)
+      }
+      const scope:RoleplayOpeningMaterialScopeV1=Object.freeze({session,owner:input.owner,
+        turn:input.turn,step:input.step,signal,deadlineAt,
+        outputRows:Object.freeze([keys.snapshot,keys.plan].map(key=>Object.freeze({table:'branch',key}))),
+        assertOwnerFactsCurrent:assertScopeCurrent})
       const operation=(async():Promise<NativeRequestMaterialPrepareDecisionV1>=>{
         let releaseBuild:(()=>void)|undefined
         try {
-          scope.assertCurrent()
           const built=await prepareOpening(input,scope)
-          if(built.kind==='prepared-data')releaseBuild=built.release.bind(built)
-          scope.assertCurrent()
+          if(built.kind==='prepared-data') {
+            releaseBuild=built.release.bind(built)
+          }
+          scope.assertOwnerFactsCurrent()
           if(built.kind==='refused')return {kind:'blocked',code:built.code}
           if(built.kind!=='prepared-data')return {kind:'blocked',code:'OPENING_MATERIAL_OUTSIDE_DECLARED_DOMAIN'}
           const checks={assertCurrent:built.assertCurrent.bind(built),assertSelected:built.assertSelected.bind(built),
             release:built.release.bind(built)}
-          checks.assertCurrent();checks.assertSelected(input.selected,true)
+          checks.assertSelected(input.selected,true)
           const material=data({requiredSections:built.requiredSections,sections:built.sections,insertions:built.insertions,
             ...built.anchoredInsertions?{anchoredInsertions:built.anchoredInsertions}:{}},4_194_304),
             materialSha256=nativeInputSha256(material),basis={schemaVersion:1 as const,
@@ -298,7 +266,6 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
               checks.assertCurrent()
             }
           })
-          checks.assertCurrent()
           const row:ReadyV1={initial:input,scope,checks,material,materialSha256,
             records:{snapshot:records.snapshot,plan:records.plan},
             snapshot:{key:snapshotRow.key,sha256:snapshotRow.sha256},plan:{key:planRow.key,sha256:planRow.sha256},
@@ -350,7 +317,7 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
     },
     check(input) {
       try {
-        rootCurrent(input)
+        alive()
         const actual=checkOwner(input)
         if(actual.kind!=='allow')return actual
         if('identity' in input) {
@@ -358,7 +325,6 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
           input.signal.throwIfAborted()
           return {kind:'allow'}
         }
-        nativeOwner(input.owner)
         const step=active,row=step&&ready.get(step.key)
         if(!row||!same(input.owner,row.initial.owner))fail('OPENING_MATERIAL_PREPARATION_MISSING')
         if(input.phase==='prepared-precheckpoint') {
@@ -371,14 +337,18 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
         const transformed=row.transformed
         if(!transformed||nativeInputSha256(input.decision)!==transformed.decisionSha256)fail('OPENING_MATERIAL_PLAN_CHANGED')
         current(row,()=>row.checks.assertSelected(input.selected,transformed.firstAttempt))
-        if(input.phase==='committed-predispatch'&&!input.materialRef)fail('OPENING_MATERIAL_NATIVE_REF_MISSING')
+        // Native first checks the committed checkpoint before appending its
+        // material event, then repeats this phase with the exact event ref.
+        // Once observed, that ref is mandatory for every later check below.
         if(input.materialRef) {
           if(transformed.materialRef&&!same(transformed.materialRef,input.materialRef))fail('OPENING_MATERIAL_NATIVE_REF_CHANGED')
-          const event=session.snapshotEvents()[input.materialRef.seq]
-          if(event?.type!=='request/material'||nativeInputSha256(event)!==input.materialRef.sha256
-            ||event.data.turn!==row.scope.turn||event.data.step!==row.scope.step
-            ||!same(event.data.snapshot,row.snapshot)||!same(event.data.plan,row.plan)) {
-            fail('OPENING_MATERIAL_NATIVE_RECORD_UNPROVEN')
+          if(!transformed.materialRef) {
+            const event=session.snapshotEvents()[input.materialRef.seq]
+            if(event?.type!=='request/material'||nativeInputSha256(event)!==input.materialRef.sha256
+              ||event.data.turn!==row.scope.turn||event.data.step!==row.scope.step
+              ||!same(event.data.snapshot,row.snapshot)||!same(event.data.plan,row.plan)) {
+              fail('OPENING_MATERIAL_NATIVE_RECORD_UNPROVEN')
+            }
           }
           transformed.materialRef=input.materialRef
         }else if(transformed.materialRef)fail('OPENING_MATERIAL_NATIVE_REF_MISSING')
@@ -389,15 +359,9 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
       const signal=AbortSignal.any([input.signal,disposal.signal])
       const operation=(async():Promise<NativeOpeningClosingAcknowledgementV1>=>{
         try {
-          signal.throwIfAborted();rootCurrent(input);nativeOwner(input.owner,input.receipt.turn)
+          signal.throwIfAborted();alive();assertOwnerFacts(input)
           if(!same(input.owner.identity,identity)||!same(input.receipt.identity,identity)) {
             fail('OPENING_MATERIAL_CLOSING_IDENTITY_CHANGED')
-          }
-          const receiptEvent=session.snapshotEvents()[input.generatedReceiptRef.seq]
-          if(receiptEvent?.type!=='opening/generated-receipt'
-            ||nativeInputSha256(receiptEvent)!==input.generatedReceiptRef.sha256
-            ||!same(receiptEvent.data,input.receipt)||!same(input.receipt.invocationRef,input.owner.invocationRef)) {
-            fail('OPENING_MATERIAL_CLOSING_RECEIPT_UNPROVEN')
           }
           // Closing may await Domain/Source writes. It is deliberately outside
           // material enqueue and never waits for its own Native driver to idle.

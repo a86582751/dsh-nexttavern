@@ -5,8 +5,7 @@ import {decodeTavernCard,compileTavernOpeningCandidates} from './tavern-card.js'
 import {assertImportRecordIntegrity,projectStructuredImport} from './roleplay-import-record.js'
 import {compileSchemaMvuInitData,selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
 import {isNativeMvuYamlSourcePolicy} from './roleplay-mvu-source-policy.js'
-import {tavernLoreSourceCurrentIdentityV1} from './roleplay-tavern-lore-source.js'
-import {createRoleplayPromptProgramSourceV1,validatePromptProgramSourceInventoryV1}
+import {createRoleplayPromptProgramSourceV1,validatePromptProgramSourceInventoryV1,promptProgramSourceImportTupleV1}
   from './roleplay-prompt-program-source.js'
 import {PROMPT_OPENING_SOURCE_POLICY_SHA256,PromptOpeningSourceFailureV1,openingSourceFail,
   clonePromptOpeningSourceDataV1,freezePromptOpeningSourceDataV1,openingSourceObject,
@@ -225,7 +224,8 @@ export function validatePromptOpeningSourceProofV1(input:unknown):PromptOpeningS
 export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDepsV1) {
   const programs=createRoleplayPromptProgramSourceV1(deps)
   let closed=false
-  type LiveCapture={readonly wholeSha256:string;readonly proofSha256:string;assertCurrent():void}
+  type LiveCapture={readonly wholeSha256:string;readonly proofSha256:string;
+    assertCurrent():void;assertOwnerFactsCurrent():void}
   let captures=new WeakMap<PromptOpeningSourceProofV1,LiveCapture>()
   function readRelation(source:TavernLoreSourceDataV1):PromptOpeningSourceRelationV1 {
     const sid=source.sessionId,session=deps.session(sid),header=session?.header,
@@ -285,26 +285,29 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
     }
     const sessionReader=deps.session,contextReader=deps.readOpeningContext,inheritanceOwner=deps.sourceInheritance,
       inheritanceReader=inheritanceOwner?.readCommittedStaticSourceInheritance,actualSession=deps.session(sid)
-    const supplied=programs.captureWithCurrentSource(sid,style,assertOwnerCurrent)
+    const supplied=deps.inputState?programs.captureDataWithCurrentSource(sid,style,assertOwnerCurrent)
+      :programs.captureWithCurrentSource(sid,style,assertOwnerCurrent)
     if(supplied.kind!=='captured-program-source')openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE','/program')
     const source=supplied.source,program=supplied.data,tuple=program.importTuple
-    if(program.audit.wholeSourceSha256!==source.sourceSha256
-      ||program.sourceCurrentIdentitySha256!==recordSha256(tavernLoreSourceCurrentIdentityV1(source))) {
+    if(program.audit.wholeSourceSha256!==source.sourceSha256) {
       openingSourceFail('OPENING_SOURCE_CHANGED','/source/program')
     }
-    const record=clonePromptOpeningSourceDataV1(deps.readImportRecord(source.sourceRecordSessionId,tuple.importId)) as ImportRecord
-    assertImportRecordIntegrity(record)
+    const suppliedData='record' in supplied?supplied:undefined,
+      record=suppliedData?.record??clonePromptOpeningSourceDataV1(
+        deps.readImportRecord(source.sourceRecordSessionId,tuple.importId)) as ImportRecord
+    if(!suppliedData)assertImportRecordIntegrity(record)
     if(!record.sourceEnvelope||!record.activation||record.status!=='active'||record.sessionId!==source.sourceRecordSessionId
       ||record.importId!==tuple.importId||recordSha256(record)!==tuple.importRecordRef.sha256
       ||record.rawSha256!==tuple.rawSha256||record.normalizedSha256!==tuple.normalizedSha256
       ||recordSha256(record.activation)!==tuple.activationSha256)openingSourceFail('OPENING_SOURCE_IMPORT_UNPROVEN','/importRecord')
-    const decoded=decodeTavernCard(Buffer.from(record.sourceEnvelope.base64,'base64'),record.sourceEnvelope.extension)
-    if(decoded.data!==decoded.document.data||decoded.format!==tuple.format
+    const decoded=suppliedData?.decoded??decodeTavernCard(Buffer.from(record.sourceEnvelope.base64,'base64'),record.sourceEnvelope.extension)
+    if(!suppliedData&&(decoded.data!==decoded.document.data||decoded.format!==tuple.format
       ||recordSha256(decoded.document)!==tuple.documentSha256||recordSha256(decoded.data)!==tuple.dataSha256
-      ||projectStructuredImport(record,decoded).text!==record.normalizedSource) {
+      ||projectStructuredImport(record,decoded).text!==record.normalizedSource)) {
       openingSourceFail('OPENING_SOURCE_IMPORT_UNPROVEN','/decoded')
     }
-    const context=clonePromptOpeningSourceDataV1(deps.readOpeningContext(sid))
+    const context=suppliedData?{context:source.current.openingContext.context,
+      bindingSha256:source.current.openingContext.bindingSha256}:clonePromptOpeningSourceDataV1(deps.readOpeningContext(sid))
     if(!same(context.context,source.current.openingContext.context)
       ||context.bindingSha256!==source.current.openingContext.bindingSha256
       ||recordSha256(context.context)!==source.current.openingContext.valuesSha256)openingSourceFail('OPENING_SOURCE_CHANGED','/context')
@@ -328,7 +331,9 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
         schemaExecution:'none' as const,native:'not-authorized' as const,protectedRenderer:'not-authorized' as const,
         publish:'not-authorized' as const}}
     const bound={...body,bindingSha256:recordSha256(bindingBody(body))}
-    const proof=validatePromptOpeningSourceProofV1({...bound,proofSha256:recordSha256(bound)}),
+    const proof=validatePromptOpeningSourceProofV1({...bound,proofSha256:recordSha256(bound)})
+    if(deps.inputState)return proof
+    const
       importRecordSha256=tuple.importRecordRef.sha256,contextSha256=recordSha256(context),
       relationSha256=recordSha256(relationBinding(sourceRelation,program.sourceCurrentIdentitySha256))
     const assertReaderOwners=()=>{
@@ -339,12 +344,23 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
         openingSourceFail('OPENING_SOURCE_CHANGED','/owner/readers')
       }
     }
+    // Opening also pins the actual Session/relation readers. Older supplied
+    // captures retain their full currency guard instead of gaining a cheaper
+    // owner contract from detached proof data or an unregistered reader.
+    const assertOwnerFactsCurrent=()=>{
+      assertReaderOwners();assertOwnerCurrent()
+      if('assertCurrent' in supplied) {
+        if(supplied.assertOwnerFactsCurrent)supplied.assertOwnerFactsCurrent()
+        else supplied.assertCurrent()
+      }
+      assertReaderOwners();assertOwnerCurrent();assertReaderOwners()
+    }
     const assertCurrent=()=>{
       assertReaderOwners();assertOwnerCurrent()
       // Same producer-owned Source/edit footprint as the program inventory.
       // Decode, catalog and raw calculator are pure results from that complete
       // first validation; the actual Session/setup reader remains live.
-      supplied.assertCurrent()
+      if('assertCurrent' in supplied)supplied.assertCurrent()
       if(recordSha256(deps.readImportRecord(source.sourceRecordSessionId,tuple.importId))!==importRecordSha256
         ||recordSha256(clonePromptOpeningSourceDataV1(deps.readOpeningContext(sid)))!==contextSha256
         ||recordSha256(relationBinding(readRelation(source),program.sourceCurrentIdentitySha256))!==relationSha256) {
@@ -353,16 +369,30 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
       assertReaderOwners();assertOwnerCurrent()
     }
     assertCurrent()
-    saveCapture?.(proof,{wholeSha256:recordSha256(proof),proofSha256:proof.proofSha256,assertCurrent})
+    saveCapture?.(proof,{wholeSha256:recordSha256(proof),proofSha256:proof.proofSha256,
+      assertCurrent,assertOwnerFactsCurrent})
     return proof
   }
   function capture(sessionId:string,selectedIndex:number,includeCardStyle:boolean,
-    assertOwnerCurrent:()=>void):PromptOpeningSourceCaptureV1 {
+    assertOwnerCurrent:()=>void,
+    outputs?:Parameters<NonNullable<PromptOpeningSourceDepsV1['inputState']>['captureSource']>[3])
+    :PromptOpeningSourceCaptureV1 {
     try {
+      if(deps.inputState) {
+        const owned=deps.inputState.captureSource(sessionId,`program-opening:${selectedIndex}:${includeCardStyle}`,
+          ()=>read(sessionId,selectedIndex,includeCardStyle,assertOwnerCurrent),outputs)
+        const assertOwnerFactsCurrent=()=>{
+          if(closed)openingSourceFail('OPENING_SOURCE_CHANGED','/owner/disposed')
+          assertOwnerCurrent()
+        }
+        return {kind:'captured-opening-source',proof:owned.data,assertOwnerFactsCurrent,
+          assertCurrent:()=>{assertOwnerFactsCurrent();owned.assertCurrent()}}
+      }
       const proof=read(sessionId,selectedIndex,includeCardStyle,assertOwnerCurrent,(owned,currency)=>captures.set(owned,currency)),
         live=captures.get(proof)
       if(!live)openingSourceFail('OPENING_SOURCE_UNAVAILABLE','/capture')
-      return {kind:'captured-opening-source',proof,assertCurrent:live.assertCurrent}
+      return {kind:'captured-opening-source',proof,assertCurrent:live.assertCurrent,
+        assertOwnerFactsCurrent:live.assertOwnerFactsCurrent}
     }catch(error) {
       const diagnostic=error instanceof PromptOpeningSourceFailureV1
         ?{code:error.code,pointer:error.pointer,...(error.calculatorCode?{calculatorCode:error.calculatorCode}:{})}
@@ -373,8 +403,37 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
   function current(input:unknown,assertOwnerCurrent:()=>void):boolean {
     try {
       const proof=validatePromptOpeningSourceProofV1(input)
+      if(deps.inputState) {
+        const actual=capture(proof.source.sessionId,proof.selected.index,proof.program.includeCardStyle,assertOwnerCurrent)
+        return actual.kind==='captured-opening-source'&&actual.proof.bindingSha256===proof.bindingSha256
+      }
       return read(proof.source.sessionId,proof.selected.index,proof.program.includeCardStyle,assertOwnerCurrent)
         .bindingSha256===proof.bindingSha256
+    }catch{return false}
+  }
+  /** A completed opening keeps its original archive and Native relation.
+   * Today's editable author groups are captured independently for the input. */
+  function historicalCurrent(input:unknown,assertOwnerCurrent:()=>void):boolean {
+    try {
+      if(closed)return false
+      assertOwnerCurrent()
+      const proof=validatePromptOpeningSourceProofV1(input),sid=proof.source.sessionId
+      const relationOrigin=(relation:PromptOpeningSourceRelationV1)=>{
+        const {sha256:_auditHash,...branchMetaRef}=relation.branchMetaRef
+        // Basis owns current complete metadata equality; this relation pins
+        // its address and the actual Native/inheritance/setup provenance.
+        return {...relation,branchMetaRef}
+      }
+      const readOrigin=()=>{
+        const captured=deps.source.capture(sid)
+        if(captured.kind!=='captured-data')openingSourceFail('OPENING_SOURCE_IMPORT_UNPROVEN','/origin')
+        const source=captured.source
+        return {tuple:promptProgramSourceImportTupleV1(source,captured.contributionInput.activeImport),
+          relation:relationOrigin(readRelation(source))}
+      }
+      const actual=deps.inputState?deps.inputState.captureSource(sid,'program-origin',readOrigin).data:readOrigin()
+      assertOwnerCurrent()
+      return same(actual.tuple,proof.program.importTuple)&&same(actual.relation,relationOrigin(proof.sourceRelation))
     }catch{return false}
   }
   function currentCaptured(input:unknown,assertActualOwnerCurrent:()=>void):boolean {
@@ -389,5 +448,5 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
     }catch{return false}
   }
   function dispose():void {closed=true;captures=new WeakMap();programs.dispose()}
-  return {capture,current,currentCaptured,dispose}
+  return {capture,current,currentCaptured,historicalCurrent,dispose}
 }

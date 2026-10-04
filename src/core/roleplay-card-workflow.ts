@@ -13,6 +13,13 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
   // Keep one in-process driver per generation; a restart still resumes from storage.
   const running=new Map<string,Promise<void>>()
   const starting=new Map<string,Promise<void>>()
+  // Failed terminal publication keeps its queued storage anchor. This local
+  // fence prevents dispatch of only that generation; it is not restart proof.
+  const failedStartGenerations=new Set<string>()
+  const generationKey=(job:CardWorkflowJob)=>`${job.id}:${job.generation}`
+  const assertStartPublished=(job:CardWorkflowJob)=>{
+    if(failedStartGenerations.has(generationKey(job)))throw Error('CARD_EXPORT_START_FAILURE_UNPUBLISHED')
+  }
   const withToolCallIdentity=(job:CardWorkflowJob,toolCallId?:string):string[]|undefined=>{
     if(!toolCallId)return job.toolCallIds
     if(job.toolCallIds?.includes(toolCallId))return job.toolCallIds
@@ -37,6 +44,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     if(!record?.workflowId)return
     const job=T.branch.get(cardWorkflowKey(record.workflowId)) as CardWorkflowJob | undefined
     if(!job||job.sessionId!==session.id||['cancelled','stale','failed'].includes(job.status)||record.workflowGeneration!==job.generation||!storyBranchIsActive(session))throw new Error('角色卡任务授权已取消或来源已失效')
+    assertStartPublished(job)
     if(job.kind==='card-import'&&record.rawSha256!==job.source.sha256)throw new Error('角色卡任务来源哈希不匹配')
   }
   async function beginCardWorkflow(session: CardWorkflowSession,kind: string,sourceFile: unknown,
@@ -48,7 +56,14 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     if(toolCallId!==undefined&&(typeof toolCallId!=='string'||kind!=='card-import'
       ||toolCallId.length<1||toolCallId.length>256))throw new Error('角色卡工具调用身份无效')
     const source=kind==='card-import'?readCardSource(session.header.cwd,sourceFile):null
-    const sourceHash=source?sha256(source.bytes):recordSha256(statusFixedContext(session))
+    const exportSource=kind==='card-export'&&deps.captureExportStartSource
+      ?deps.captureExportStartSource(session):undefined
+    if(kind==='card-export'&&deps.captureExportStartSource) {
+      if(!exportSource||typeof exportSource.sha256!=='string'||!/^[a-f0-9]{64}$/.test(exportSource.sha256)
+        ||typeof exportSource.assertCurrent!=='function')throw new Error('角色卡导出启动来源无效')
+      exportSource.assertCurrent()
+    }
+    const sourceHash=source?sha256(source.bytes):exportSource?.sha256??recordSha256(statusFixedContext(session))
     if(clientRequestId||toolCallId){
       const jobs=cardWorkflows(session)
       const byRequest=clientRequestId?jobs.filter(job=>job.clientRequestId===clientRequestId):[]
@@ -90,6 +105,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     }
     const deterministic = kind === 'card-import' && source !== null && ['.png', '.json'].includes(source.extension)
     const selection=deterministic?undefined:await modelPolicy.resolve(session,kind,agent)
+    exportSource?.assertCurrent()
     const id=randomUUID()
     const job={schemaVersion:1,id,kind,sessionId:session.id,branchId:session.id,generation:randomUUID(),
       ...(selection?{selection,actualRoute:selection.actualRoute}:{}),execution:deterministic?'deterministic':selection!.execution,
@@ -97,14 +113,35 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
       ...(clientRequestId?{clientRequestId}:{}),
       ...(toolCallId?{toolCallIds:[toolCallId]}:{}),
       source:{sourceFile:source?.sourcePath??null,sha256:sourceHash}}
+    exportSource?.assertCurrent()
     await T.branch.put(cardWorkflowKey(id),job)
+    try {exportSource?.assertCurrent()}catch(error) {
+      // An awaited write may commit after startup DATA/scope changes. Retain
+      // that exact job as a terminal anchor before any driver can see it ready.
+      const live=T.branch.get(cardWorkflowKey(id)) as CardWorkflowJob | undefined
+      if(live?.generation===job.generation&&live.status==='queued') {
+        try {
+          await T.branch.put(cardWorkflowKey(id),{...live,status:'stale',updatedAt:Date.now(),
+            error:error instanceof Error?error.message:String(error)})
+        }catch(writeError) {
+          failedStartGenerations.add(generationKey(live))
+          throw writeError
+        }
+      }
+      throw error
+    }
     return job
     })
   }
   async function resumeCardWorkflows(session: ContextSession,agent?: CardWorkflowAgent,signal?: AbortSignal) {
+    // A visible queued row is not dispatchable until its starter's post-write
+    // scope check settles and publishes any necessary terminal failure anchor.
+    const start=starting.get(session.id)
+    if(start)await start
     const job=activeCardWorkflow(session)
     if(!job)return
-    const runKey=`${job.id}:${job.generation}`
+    assertStartPublished(job)
+    const runKey=generationKey(job)
     const existing=running.get(runKey)
     if(existing)return existing
     const work=runCardWorkflow(session,job,agent,signal)
@@ -162,6 +199,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     if(!record.workflowId)return
     const job=T.branch.get(cardWorkflowKey(record.workflowId)) as CardWorkflowJob | undefined
     if(!job||job.sessionId!==session.id||['cancelled','stale','failed'].includes(job.status))throw new Error('角色卡任务已失效')
+    assertStartPublished(job)
     if(job.kind==='card-import'?(!record.importId||record.status!=='active'||record.rawSha256!==job.source.sha256):!record.exportId)throw new Error('角色卡任务与完成结果不匹配')
     if(!result.resourceId){await T.branch.put(cardWorkflowKey(job.id),{...job,status:'failed',error:'设定已保存，资源入库待重试'});return}
     for(const task of tavernTasks.pending(session).filter(t=>(t.source as {workflowId?: string} | undefined)?.workflowId===job.id)) {

@@ -9,6 +9,7 @@ import type { PreparationTable } from './roleplay-preparation-types.js'
 import type { createRoleplayStatus } from './roleplay-status.js'
 import type {RoleplayInputBinding,InputPreparationCurrency} from './roleplay-input-preparation.js'
 import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js'
+import type {ForkLookup} from './roleplay-worldline-types.js'
 
 export interface LoopSession extends HostSession {
   append(type: string, data: TaskMessage, options: {
@@ -92,6 +93,8 @@ export interface LoopDependencies {
   resumeCardWorkflows(session: LoopSession, agent: LoopAgent, signal?: AbortSignal): Promise<unknown>
   resumeNovelExports(session: LoopSession, agent: LoopAgent, signal?: AbortSignal): Promise<unknown>
   withImportLock<T>(id: string, key: string, work: () => Promise<T>): Promise<T>
+  reconcileCanonicalPlayerVariants(session:LoopSession,index:ForkLookup):Promise<unknown>
+  buildForkLookupIndex(session:LoopSession):ForkLookup
   buildPhaseA(session: LoopSession, payload: LoopPayload, state: LoopState): Promise<readonly ContextMessage[]>
   storyWindowSettings(session: LoopSession): {tail: number}
   runStatusObligation: ReturnType<typeof createRoleplayStatus>['runStatusObligation']
