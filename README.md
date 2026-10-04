@@ -262,6 +262,22 @@ flowchart TD
 
 </details>
 
+**本地模型（LM Studio／Ollama 等 OpenAI 兼容端点）也能承载对话**，但本地推理的延迟与显存更紧张，建议一次调好这几项：
+
+- **上下文预算**：一个角色扮演轮次的提示词由系统提示、工具定义、后台维护指令与窗口正文共同组成；工具全量注册、维护指令累积时，框架开销可达数万 tokens，而窗口设置只统计故事正文，不会因为框架开销自动缩减。请把本地模型的上下文开到 **96k 或更大**，并让模型元数据里的 `contextWindow` 与之一致。
+- **首响应预算**：默认 90 秒内必须看到第一段输出（正文／推理／工具调用），否则本轮会主动停止等待、可重试。慢模型可在 profile 的插件配置里放宽：
+
+  ```yaml
+  - id: nexttavern
+    name: dsh-nexttavern
+    config:
+      firstResponseTimeoutMs: 600000
+  ```
+
+- **后台任务超时**：`sceneWorkerTimeoutMs`、`memoryWorkerTimeoutMs`、`phaseATimeoutMs`、`phaseBTimeoutMs`、`statusWorkerTimeoutMs`、`decisionWorkerTimeoutMs` 与 `workerMaxTokens` 同样可在该 `config` 下覆盖（默认 45–90 秒）。
+- **推理开关**：许多本地模型只有「思考开／关」两档；关闭思考时，部分模型会把写作计划直接写进正文，建议保持开启。
+- **显存**：同时加载对话模型与嵌入模型时留意余量；单卡建议单并行。
+
 ## 状态栏与决策卡
 
 **行动建议只出现在独立决策卡里**，不再重复塞进状态栏或正文尾部。旧卡片里遗留的行动区域会被隐藏，但原卡本身一个字都不改。

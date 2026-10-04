@@ -18,7 +18,9 @@ import type {ContextMessage} from './roleplay-context.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 
 /** Bound silence at the native request boundary without changing adapter
- * options, retrying a paid call or discarding queued player input. */
+ * options, retrying a paid call or discarding queued player input.
+ * The default keeps the historical 90-second bound; slow (e.g. local) models
+ * widen it through the `firstResponseTimeoutMs` profile config. */
 export function createFirstResponseWatchdog(timeoutMs=90000) {
   type Pending={turn:number;step:number;signal:AbortSignal;timer:ReturnType<typeof setTimeout>;abort:()=>void}
   const pending=new Map<string,Pending>()
@@ -47,10 +49,11 @@ export function registerRoleplayLoop({
   withDecisionMutationLock,normalizeDecisionRecord,resumeStatusMaintenance,resumeMemoryWork,resumeCardWorkflows,resumeNovelExports,
   withImportLock,buildPhaseA,characterRoster,storyWindowSettings,runStatusObligation,publishTurnDecision,runPhaseBC,
   adaptationScope,importPromptCheckpoint,authorContext,inputBinding,inputSnapshotCurrent,programOpeningOwner,rowFacts,
+  firstResponseTimeoutMs,
 }:LoopDependencies) {
   const preparationRecordKey = (sid: string) => keyOf(sid,'task-preparation')
   const handledImportPrompts=new Map<string,string>()
-  const firstResponse=createFirstResponseWatchdog()
+  const firstResponse=createFirstResponseWatchdog(firstResponseTimeoutMs)
   ctx.effect(()=>()=>firstResponse.dispose(),'roleplay: first model output deadline')
   ctx.on('agent/request',async(payload,next)=>{
     const config=await next(),agent=payload.agent
