@@ -34,7 +34,7 @@ node site/build.mjs --check
 
 ## 页面从哪里来
 
-页面正文全部取自仓库里既有的公开文档：`README.md`、`INSTALL-WINDOWS.md`、`INSTALL-LINUX.md`、`PUBLIC-ACCESS.md`、`ARCHITECTURE.md`、`SCREENSHOTS.md`、`CHANGELOG.md`、`CONTRIBUTING.md`。`site.config.mjs` 只声明分章方式与导航标题；章节标题写错或消失时构建会直接失败，避免站点与文档悄悄脱节。
+页面正文全部取自仓库里既有的公开文档：`README.md`、`INSTALL-WINDOWS.md`、`INSTALL-LINUX.md`、`PUBLIC-ACCESS.md`、`ARCHITECTURE.md`、`SCREENSHOTS.md`、`CHANGELOG.md`、`DEVELOPMENT-0.3.md`、`CONTRIBUTING.md`。`site.config.mjs` 只声明分章方式与导航标题；章节标题写错或消失时构建会直接失败，避免站点与文档悄悄脱节。
 
 ## 发布
 

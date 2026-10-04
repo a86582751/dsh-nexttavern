@@ -12,15 +12,13 @@
 
 抱歉让大家久等了。0.3 希望兼容更广泛的 SillyTavern 社区卡，包括 MVU 变量、EJS、RUBY 与前端美化；要让它们接入自有状态、结构化事件和恢复机制，难度比预期更大，我们正在加速推进。这次 0.2.9 先把安装分发和第三方依赖兼容的坑补上，角色扮演功能继续沿用 0.2.8，上述更广泛的兼容仍在开发。感谢大家继续反馈、陪我们把它打磨好。
 
-0
-
 **让角色独立推演，让世界随你的选择展开。**
 
 一张角色卡，一个突然冒出的念头，一次不愿妥协的选择，都可以成为故事的起点。dsh-NextTavern 把原生 Agent Loop 带进长篇角色扮演：AI 主动查阅世界、整理记忆、推演人物，你掌握方向，一起把故事写下去。
 
 **创作一个世界，走进它，再把它带走。**
 
-[在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
+[在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md)
 
 ![沉浸式游玩](screenshots/play.png)
 

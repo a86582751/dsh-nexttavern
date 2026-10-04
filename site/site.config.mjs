@@ -202,7 +202,8 @@ export const site = {
                 { id: 'screenshots', title: '截图集', nav: '截图集', file: 'SCREENSHOTS.md' },
                 { id: 'changelog', title: '更新日志', nav: '更新日志', file: 'CHANGELOG.md' },
                 { id: 'development', title: '参与开发', nav: '参与开发', file: 'CONTRIBUTING.md', lang: 'en' },
-                { id: 'feedback', title: '反馈、社区与许可', nav: '反馈与许可', file: 'README.md', sections: ['源码与验证范围', '社区支持', '反馈与许可'] }
+                { id: 'feedback', title: '反馈、社区与许可', nav: '反馈与许可', file: 'README.md', sections: ['源码与验证范围', '社区支持', '反馈与许可'] },
+                { id: 'development-0.3', title: '0.3 开发日志', nav: '0.3开发日志', file: 'DEVELOPMENT-0.3.md' }
             ]
         }
     ],
@@ -232,6 +233,7 @@ export const site = {
                 links: [
                     { label: 'GitHub 仓库', href: 'https://github.com/a86582751/dsh-nexttavern' },
                     { label: '问题反馈', href: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose' },
+                    { label: '0.3开发日志', href: 'development-0.3.html' },
                     { label: '参与开发', href: 'development.html' },
                     { label: '许可证 GPL-3.0-only', href: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE' }
                 ]

@@ -2049,6 +2049,10 @@
       "source": "README.md"
     },
     {
+      "id": "public-v03-development-log",
+      "source": "DEVELOPMENT-0.3.md"
+    },
+    {
       "id": "public-cover",
       "source": "images/cover.png"
     },

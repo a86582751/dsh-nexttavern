@@ -12,15 +12,13 @@
 
 Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, structured events and recovery mechanisms has proved harder than expected, and work is accelerating. This 0.2.9 patch fixes distribution, installation and third-party dependency compatibility; roleplay features continue from 0.2.8, and the broader compatibility work remains in development. Thank you for helping us improve it with your feedback.
 
-0
-
 **Let your characters think for themselves, and let the world unfold from your choices.**
 
 NextTavern is a long-form roleplay / Tavern plugin for DeepSeek Harness (DSH), with SillyTavern character-card compatibility, worldlines, long-term memory, and hybrid keyword + semantic retrieval. A character card, a sudden idea, one choice you refuse to compromise on — any of them can start a story. NextTavern brings the native agent loop to long-form roleplay: the agent looks things up on its own, keeps memory in order and reasons as individual characters, while you hold the direction.
 
 **Create a world, step into it, and take it with you.**
 
-[Online documentation](https://a86582751.github.io/dsh-nexttavern/) · [One-click install](#one-click-install) · [Getting started](#getting-started) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [Capabilities](#capabilities) · [Memory system](#memory-system) · [Architecture](#architecture) · [Public access guide (Chinese)](PUBLIC-ACCESS.md) · [All screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
+[Online documentation](https://a86582751.github.io/dsh-nexttavern/) · [One-click install](#one-click-install) · [Getting started](#getting-started) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [Capabilities](#capabilities) · [Memory system](#memory-system) · [Architecture](#architecture) · [Public access guide (Chinese)](PUBLIC-ACCESS.md) · [All screenshots](SCREENSHOTS.md) · [Report an issue](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3 development log (Chinese)](DEVELOPMENT-0.3.md)
 
 ![Play](screenshots/play.png)
 

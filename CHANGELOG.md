@@ -1,5 +1,12 @@
 # Changelog
 
+## 文档 — 0.3 开发日志 — 2026-10-04
+
+- 新增独立的 [0.3 开发日志](DEVELOPMENT-0.3.md)，用玩家能读懂的说法整理目标、近期进展和下一步；首页入口放在「反馈问题」后面，详细进度移入日志。
+- 这次只更新文档。0.3 尚未发布，GitHub 最新发行版仍为 0.2.9-rc.2，npm 正式版仍为 0.2.9。
+
+English: Add a separate [0.3 development log (Chinese)](DEVELOPMENT-0.3.md) with player-facing goals, recent progress and remaining work. This documentation update does not release 0.3 or change the current downloads.
+
 ## 0.2.9-rc.2 — GitHub Latest & Issue #5 Closeout — 2026-10-03
 
 - 将已核验的 0.2.9-rc.2 设为 GitHub latest，首页模板、中英 README 与所有当前便携安装器／归档下载链接统一到该版本，避免下载旧安装器。npm latest 按用户选择保持 0.2.9。
