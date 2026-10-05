@@ -1,5 +1,11 @@
 # Changelog
 
+## 文档 — 0.3 开发日志更新 — 2026-10-06
+
+- 补入 10 月 5 日已限定验证的原生 JSON 与小说 Markdown 导出、受控分支恢复及卡片页面联动进展；34 张真实卡完整玩法、NativeApp 资格、作者脚本、应用联动与恢复矩阵仍在开发，0.3 尚未发布。
+
+English: Update the 0.3 development log with limited 2026-10-05 results for native JSON and novel Markdown exports, controlled branch recovery and authoring-page integration. Full gameplay across 34 real cards, NativeApp qualification, author scripts, app integration and the recovery matrix remain in development; 0.3 is not released.
+
 ## 文档 — 0.3 开发日志 — 2026-10-04
 
 - 新增独立的 [0.3 开发日志](DEVELOPMENT-0.3.md)，用玩家能读懂的说法整理目标、近期进展和下一步；首页入口放在「反馈问题」后面，详细进度移入日志。
