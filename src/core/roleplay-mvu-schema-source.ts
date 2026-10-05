@@ -5,7 +5,7 @@ import {createRoleplayMvuSource,readMvuSchemaCurrentAuthorSource} from './rolepl
 import {freezeSchemaJournalData,createRoleplayMvuSchemaJournal} from './roleplay-mvu-schema-journal.js'
 import {validateMvuSchemaOpeningPreparation} from './roleplay-mvu-schema-opening-types.js'
 import {compileSchemaMvuInitData} from './tavern-mvu-initvar.js'
-import {cloneSchemaData} from './tavern-mvu-schema-data.js'
+import {cloneSchemaEnvelopeV4} from './tavern-mvu-schema-data.js'
 import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
 import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeInitialChat,schemaScopeVisibleMessages}
   from './roleplay-mvu-schema-scope-facts.js'
@@ -60,10 +60,9 @@ function exact(input:object,keys:readonly string[]) {
  * original program, a current Source observation or publication permission. */
 export function validateSchemaStorySourceFrame(input:SchemaStorySourceFrame):SchemaStorySourceFrame {
   try {
-    const frame=cloneSchemaData(input,8*1048576),snapshot=frame.snapshot,material=frame.material
+    const frame=cloneSchemaEnvelopeV4(input,8*1048576),snapshot=frame.snapshot,material=frame.material
     exact(frame,['schemaVersion','encoding','sessionId','material','materialSha256','snapshot','snapshotSha256'])
     exact(material,['card','rows','openingContext'])
-    cloneSchemaData(material,4*1048576)
     exact(snapshot,['schemaVersion','encoding','source','pointerSha256','importRecordSha256','coverageSha256','materialRows',
       'settings','bindings','selected','swipes','macroContext','documentSha256','snapshotSha256',
       ...Object.hasOwn(snapshot,'sourceProvenance')?['sourceProvenance']:[]])

@@ -3,7 +3,7 @@
 import {createHash} from 'node:crypto'
 import {types} from 'node:util'
 import {recordSha256,stableJson} from './roleplay-data.js'
-import {cloneSchemaData,cloneSchemaValues} from './tavern-mvu-schema-data.js'
+import {cloneSchemaEnvelopeV4,cloneSchemaValues} from './tavern-mvu-schema-data.js'
 import {validateSchemaAuthorProgram} from './roleplay-mvu-schema-executor-types.js'
 import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
@@ -177,7 +177,7 @@ function exact(value:object,keys:readonly string[]) {
   if(!same(Object.keys(value).sort(),[...keys].sort()))fail('SCHEMA_JOURNAL_SHAPE')
 }
 export function freezeSchemaJournalData<T>(input:T):T {
-  const value=cloneSchemaData(input,SCHEMA_JOURNAL_BOUNDS.bytes,bounds)
+  const value=cloneSchemaEnvelopeV4(input,SCHEMA_JOURNAL_BOUNDS.bytes,bounds)
   function freeze(item:unknown):void {
     if(item&&typeof item==='object'){for(const child of Object.values(item))freeze(child);Object.freeze(item)}
   }
@@ -243,7 +243,8 @@ function loadFrame(value:SchemaRealmLoadFrame,version:1|2|3|4):void {
     ||!integer(value.clockEpochMs)||typeof value.randomSeed!=='string'||!value.randomSeed.length||value.randomSeed.length>256) {
     fail('SCHEMA_LOAD_FRAME_INVALID')
   }
-  cloneSchemaValues(value.values);cloneSchemaValues(value.material);cloneSchemaValues(value.context)
+  cloneSchemaValues(value.values);cloneSchemaValues(value.context)
+  if(version!==4)cloneSchemaValues(value.material)
   if(Object.hasOwn(value.context,'stat_data'))fail('SCHEMA_CONTEXT_INVALID')
   if(version>=3) {
     if(value.schemaVersion!==3&&value.schemaVersion!==4)fail('SCHEMA_LOAD_FRAME_INVALID')
@@ -256,7 +257,7 @@ function requested(value:SchemaTraceRequestedStep,version:1|2|3|4):void {
   const frame=value.frame
   exact(frame,['ownerSessionId','sourceNativeCutSha256','material','input'])
   if(!id(frame.ownerSessionId)||!hash(frame.sourceNativeCutSha256))fail('SCHEMA_STEP_INVALID')
-  cloneSchemaValues(frame.material)
+  if(version!==4)cloneSchemaValues(frame.material)
   const input=frame.input
   if(version===4) {
     const validated=validateSchemaEvaluationInputV4(input)

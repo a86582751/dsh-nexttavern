@@ -3,7 +3,7 @@
  * never Native history, Source currency or private execution permission. */
 import { recordSha256, sha256 } from './roleplay-data.js';
 import { cloneSchemaValues } from './tavern-mvu-schema-data.js';
-import { freezeImmutableDescriptorData, createImmutableDescriptorValidator } from './roleplay-mvu-schema-descriptor-data.js';
+import { freezeImmutableSchemaDescriptorDataV4, createImmutableDescriptorValidator } from './roleplay-mvu-schema-descriptor-data.js';
 import { validateMvuSchemaOpeningHead } from './roleplay-mvu-schema-opening-types.js';
 import { parseMvuUpdate, reduceMvuUpdateOperations } from './roleplay-mvu-update.js';
 import { parseMvuUpdateV2, reduceMvuUpdateOperationsV2 } from './roleplay-mvu-update-v2.js';
@@ -19,7 +19,7 @@ export const isMvuSchemaGenesisHead = (head) => head.encoding === 'mvu-schema-op
     || head.encoding === 'native-mvu-schema-derived-head-v1';
 export const MVU_SCHEMA_STORY_BOUNDS = Object.freeze({ bytes: 16777216, depth: 66, nodes: 131072, narrativeBytes: 1048576 });
 export function freezeMvuSchemaStoryData(input) {
-    return freezeImmutableDescriptorData(input, MVU_SCHEMA_STORY_BOUNDS.bytes, { depth: MVU_SCHEMA_STORY_BOUNDS.depth, nodes: MVU_SCHEMA_STORY_BOUNDS.nodes });
+    return freezeImmutableSchemaDescriptorDataV4(input, MVU_SCHEMA_STORY_BOUNDS.bytes, { depth: MVU_SCHEMA_STORY_BOUNDS.depth, nodes: MVU_SCHEMA_STORY_BOUNDS.nodes });
 }
 // Journal inventory deliberately rejects non-journal rows in its namespace.
 // Numerical publication facts therefore stay under the state namespace.

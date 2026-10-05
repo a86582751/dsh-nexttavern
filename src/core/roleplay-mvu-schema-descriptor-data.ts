@@ -1,6 +1,6 @@
 /** Process-local proof of a bounded immutable JSON clone. These private tags
  * and validator-local successes contain no Source, Native or owner authority. */
-import {cloneSchemaDescriptorData} from './tavern-mvu-schema-data.js'
+import {cloneSchemaDescriptorData,cloneSchemaDescriptorEnvelopeV4} from './tavern-mvu-schema-data.js'
 
 const ownedImmutableClones=new WeakSet<object>()
 export function freezeImmutableDescriptorData<T>(input:T,maxBytes:number,
@@ -8,9 +8,25 @@ export function freezeImmutableDescriptorData<T>(input:T,maxBytes:number,
   // Always traverse and charge the whole new envelope, including repeated
   // tagged child references. A prior clone's budget cannot pay for a new parent.
   const value=cloneSchemaDescriptorData(input,maxBytes,bounds)
+  return freezeOwnedClone(value)
+}
+
+/** Full v4 author material belongs to the DATA owner. Non-material descriptor
+ * fields keep the caller's existing byte, node and depth budget. */
+export function freezeImmutableSchemaDescriptorDataV4<T>(input:T,maxBytes:number,
+  bounds?:{nodes:number;depth:number}):T {
+  const value=cloneSchemaDescriptorEnvelopeV4(input,maxBytes,bounds)
+  return freezeOwnedClone(value,true)
+}
+
+function freezeOwnedClone<T>(value:T,sourceMaterials=false):T {
   const objects:object[]=[]
   function freeze(data:unknown):void {
     if(data&&typeof data==='object') {
+      // This private clone output contains only fresh metadata and DATA-owner
+      // deeply frozen material. External Object.freeze never reaches this path
+      // without first being detached by the selected bounded clone.
+      if(sourceMaterials&&Object.isFrozen(data))return
       for(const child of Object.values(data))freeze(child)
       Object.freeze(data)
       objects.push(data)

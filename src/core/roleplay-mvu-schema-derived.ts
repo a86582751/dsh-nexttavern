@@ -4,7 +4,7 @@
 import {recordSha256} from './roleplay-data.js'
 import {createRoleplayMvuLineage} from './roleplay-mvu-lineage.js'
 import {createRoleplayMvuFrozenLineage} from './roleplay-mvu-frozen-lineage.js'
-import {freezeImmutableDescriptorData} from './roleplay-mvu-schema-descriptor-data.js'
+import {freezeImmutableSchemaDescriptorDataV4} from './roleplay-mvu-schema-descriptor-data.js'
 import type {MvuFrozenLineageDeps,MvuDerivedSourceProofUnion} from './roleplay-mvu-frozen-lineage.js'
 import type {TavernSourceFrozenRefV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {MvuSchemaPrefixInputClosureV1} from './roleplay-mvu-schema-frozen-prefix-input.js'
@@ -82,7 +82,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     const existing=table.get(key)
     if(existing!==undefined&&!same(existing,value))fail('SCHEMA_DERIVED_WRITE_CONFLICT')
     const copied=maxBytes===8_388_608?freezeMvuSchemaStoryData(value)
-      :freezeImmutableDescriptorData(value,maxBytes,{nodes:524_288,depth:96})
+      :freezeImmutableSchemaDescriptorDataV4(value,maxBytes,{nodes:524_288,depth:96})
     if(existing===undefined)try {await table.put(key,copied)}
     catch { /* Retain the original intent and confirm only exact committed bytes. */ }
     if(!same(table.get(key),value))fail('SCHEMA_DERIVED_WRITE_UNCONFIRMED')

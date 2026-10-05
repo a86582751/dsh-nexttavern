@@ -2,7 +2,7 @@
  * never Native history, Source currency or private execution permission. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import {cloneSchemaValues} from './tavern-mvu-schema-data.js'
-import {freezeImmutableDescriptorData,createImmutableDescriptorValidator} from './roleplay-mvu-schema-descriptor-data.js'
+import {freezeImmutableSchemaDescriptorDataV4,createImmutableDescriptorValidator} from './roleplay-mvu-schema-descriptor-data.js'
 import {validateMvuSchemaOpeningHead} from './roleplay-mvu-schema-opening-types.js'
 import {parseMvuUpdate,reduceMvuUpdateOperations} from './roleplay-mvu-update.js'
 import {parseMvuUpdateV2,reduceMvuUpdateOperationsV2} from './roleplay-mvu-update-v2.js'
@@ -208,7 +208,7 @@ export type MvuSchemaStoryPublication={kind:'acknowledged';settlement:MvuSchemaS
 
 export const MVU_SCHEMA_STORY_BOUNDS=Object.freeze({bytes:16777216,depth:66,nodes:131072,narrativeBytes:1048576})
 export function freezeMvuSchemaStoryData<T>(input:T):T {
-  return freezeImmutableDescriptorData(input,MVU_SCHEMA_STORY_BOUNDS.bytes,
+  return freezeImmutableSchemaDescriptorDataV4(input,MVU_SCHEMA_STORY_BOUNDS.bytes,
     {depth:MVU_SCHEMA_STORY_BOUNDS.depth,nodes:MVU_SCHEMA_STORY_BOUNDS.nodes})
 }
 // Journal inventory deliberately rejects non-journal rows in its namespace.

@@ -7,7 +7,7 @@ import { freezeMvuSchemaStoryData, sealMvuSchemaStoryFact, validateMvuSchemaNume
 import { validateMvuSchemaOpeningIntent, validateMvuSchemaOpeningEvent, validateMvuSchemaOpeningHead } from './roleplay-mvu-schema-opening-types.js';
 import { validateMvuDerivedSourceProof } from './roleplay-mvu-lineage.js';
 import { validateMvuDerivedSourceProofUnion, validateMvuPreparedSourceRefV1 } from './roleplay-mvu-frozen-lineage.js';
-import { freezeImmutableDescriptorData } from './roleplay-mvu-schema-descriptor-data.js';
+import { freezeImmutableSchemaDescriptorDataV4 } from './roleplay-mvu-schema-descriptor-data.js';
 export const mvuSchemaDerivedPreparedKey = (sid) => `${sid}__mvu-schema-derived-prepared`;
 export const mvuSchemaPrefixClosureKey = (sid, sha) => `${sid}__mvu-schema-prefix-input-${sha}`;
 export const mvuSchemaDerivedBasisKey = (sid) => `${sid}__mvu-schema-derived-basis`;
@@ -77,7 +77,7 @@ export function validateMvuSchemaDerivedPrepared(input) {
     return validateDerivedPreparedDescriptor(input);
 }
 function validateDerivedPreparedUncached(input) {
-    const bounded = freezeImmutableDescriptorData(input, 16_777_216, { nodes: 131_072, depth: 96 });
+    const bounded = freezeImmutableSchemaDescriptorDataV4(input, 16_777_216, { nodes: 131_072, depth: 96 });
     const prepared = bounded.schemaVersion === 2 ? bounded : freezeMvuSchemaStoryData(bounded);
     exact(prepared, ['schemaVersion', 'encoding', 'operationId', 'anchorSha256', 'parentSessionId', 'childSessionId',
         'seedLength', 'parentInheritedEventCount', 'parentSourceSha256', 'prefix', 'preparedSha256',
@@ -117,7 +117,7 @@ export function validateMvuSchemaDerivedBasis(input) {
     return validateDerivedBasisDescriptor(input);
 }
 function validateDerivedBasisUncached(input) {
-    const bounded = freezeImmutableDescriptorData(input, 16_777_216, { nodes: 131_072, depth: 96 });
+    const bounded = freezeImmutableSchemaDescriptorDataV4(input, 16_777_216, { nodes: 131_072, depth: 96 });
     const basis = bounded.schemaVersion === 2 ? bounded : freezeMvuSchemaStoryData(bounded);
     exact(basis, ['schemaVersion', 'encoding', 'prepared', 'source', 'basisSha256']);
     checksum(basis, 'basisSha256');

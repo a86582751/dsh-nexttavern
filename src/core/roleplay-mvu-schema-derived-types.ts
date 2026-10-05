@@ -8,7 +8,7 @@ import {validateMvuSchemaOpeningIntent,validateMvuSchemaOpeningEvent,validateMvu
   from './roleplay-mvu-schema-opening-types.js'
 import {validateMvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
 import {validateMvuDerivedSourceProofUnion,validateMvuPreparedSourceRefV1} from './roleplay-mvu-frozen-lineage.js'
-import {freezeImmutableDescriptorData} from './roleplay-mvu-schema-descriptor-data.js'
+import {freezeImmutableSchemaDescriptorDataV4} from './roleplay-mvu-schema-descriptor-data.js'
 import type {OpeningIntentV5,MvuSchemaOpeningEventV2,MvuSchemaOpeningHeadV2} from './roleplay-mvu-schema-opening-types.js'
 import type {SchemaFrozenOriginal} from './roleplay-mvu-schema-source.js'
 import type {SchemaJournalFrozenCut} from './roleplay-mvu-schema-journal.js'
@@ -162,7 +162,7 @@ export function validateMvuSchemaDerivedPrepared(input:MvuSchemaDerivedPrepared)
   return validateDerivedPreparedDescriptor(input)
 }
 function validateDerivedPreparedUncached(input:MvuSchemaDerivedPrepared):MvuSchemaDerivedPrepared {
-  const bounded=freezeImmutableDescriptorData(input,16_777_216,{nodes:131_072,depth:96})
+  const bounded=freezeImmutableSchemaDescriptorDataV4(input,16_777_216,{nodes:131_072,depth:96})
   const prepared=bounded.schemaVersion===2?bounded:freezeMvuSchemaStoryData(bounded)
   exact(prepared,['schemaVersion','encoding','operationId','anchorSha256','parentSessionId','childSessionId',
     'seedLength','parentInheritedEventCount','parentSourceSha256','prefix','preparedSha256',
@@ -200,7 +200,7 @@ export function validateMvuSchemaDerivedBasis(input:MvuSchemaDerivedBasis):MvuSc
   return validateDerivedBasisDescriptor(input)
 }
 function validateDerivedBasisUncached(input:MvuSchemaDerivedBasis):MvuSchemaDerivedBasis {
-  const bounded=freezeImmutableDescriptorData(input,16_777_216,{nodes:131_072,depth:96})
+  const bounded=freezeImmutableSchemaDescriptorDataV4(input,16_777_216,{nodes:131_072,depth:96})
   const basis=bounded.schemaVersion===2?bounded:freezeMvuSchemaStoryData(bounded)
   exact(basis,['schemaVersion','encoding','prepared','source','basisSha256'])
   checksum(basis,'basisSha256')

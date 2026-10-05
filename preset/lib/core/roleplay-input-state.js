@@ -36,6 +36,9 @@ function explanatorySuffix(suffix) {
         || suffix.startsWith('task-steering-') || suffix.startsWith('maintenance-timing-')
         || suffix.startsWith('tavern-prompt-v1-')
         || suffix.startsWith('program-opening-material-')
+        // Reconciliation may first publish this display index while starting a
+        // child input. Actual text edits use Native message-edit invalidation.
+        || suffix.startsWith('player-projection-')
         || suffix.startsWith('fork-anchor-') || suffix.startsWith('fork-pending-')
         || suffix.startsWith('phasea-') || suffix.startsWith('phaseb-') || suffix.startsWith('phasec-');
 }

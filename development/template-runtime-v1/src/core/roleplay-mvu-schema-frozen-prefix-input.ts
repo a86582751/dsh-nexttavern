@@ -1,7 +1,7 @@
 /** Owns the bounded table inputs of one successful schema prefix validation.
  * The closed reader can replay facts; it cannot publish or create a hot owner. */
 import {recordSha256} from './roleplay-data.js'
-import {freezeImmutableDescriptorData} from './roleplay-mvu-schema-descriptor-data.js'
+import {freezeImmutableSchemaDescriptorDataV4} from './roleplay-mvu-schema-descriptor-data.js'
 
 interface Table {
   get(key:string):unknown
@@ -34,7 +34,7 @@ function exact(value:unknown,fields:readonly string[]):asserts value is Record<s
     ||!same(Object.keys(value).sort(),[...fields].sort()))fail()
 }
 function data<T>(input:T):T {
-  return freezeImmutableDescriptorData(input,67_108_864,{nodes:524_288,depth:96})
+  return freezeImmutableSchemaDescriptorDataV4(input,67_108_864,{nodes:524_288,depth:96})
 }
 function enumerationKey(table:'branch'|'status',value:string):boolean {
   return table==='branch'
