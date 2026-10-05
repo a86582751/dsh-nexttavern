@@ -95,7 +95,9 @@
     "dsh-nexttavern-mvu-schema-runtime-v2": "0.3.0",
     "dsh-nexttavern-mvu-schema-runtime-v3": "0.3.0",
     "dsh-nexttavern-mvu-schema-runtime-v4": "0.4.0",
-    "dsh-nexttavern-template-runtime-v1": "0.1.0"
+    "dsh-nexttavern-template-runtime-v1": "0.1.0",
+    "dsh-nexttavern-author-browser-runtime-v1": "0.1.0",
+    "dsh-nexttavern-author-host-runtime-v5": "0.5.0"
   },
   "bundleDependencies": [
     "dsh-nexttavern-anydoc",
@@ -114,7 +116,9 @@
     "protobufjs",
     "dsh-nexttavern-mvu-schema-runtime-v3",
     "dsh-nexttavern-mvu-schema-runtime-v4",
-    "dsh-nexttavern-template-runtime-v1"
+    "dsh-nexttavern-template-runtime-v1",
+    "dsh-nexttavern-author-browser-runtime-v1",
+    "dsh-nexttavern-author-host-runtime-v5"
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",

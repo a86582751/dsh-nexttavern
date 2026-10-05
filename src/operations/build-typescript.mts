@@ -7,6 +7,8 @@ import { fileURLToPath,pathToFileURL } from 'node:url'
 import type * as CompilerAPI from '../../build-tools/node_modules/typescript/lib/typescript.js'
 import type {MvuSchemaRuntimeAssetRecipe} from './mvu-schema-runtime-assets.mjs'
 import type {TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
+import type {AuthorBrowserRuntimeAssetRecipeV1} from './author-browser-runtime-assets.mjs'
+import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 interface Recipe {
   id: string; kind: string; artifact: string; entry: string; inputs: string[]
   outputSource?: string; text?: string; typeContext?: string; banner?: string
@@ -18,6 +20,7 @@ export interface CompilePlan {
   artifacts: {id: string; source: string}[]
   product?:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe;mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[];
     templateRuntime?:TavernTemplateRuntimeAssetRecipeV1;
+    authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1;authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5;
     packages?:readonly {packageArtifact:string;resources?:readonly {artifact:string;path:string}[]}[]}
   typeScript: {
     config: string; declarationPackages: string[]; ambientDeclarations?: string[]
@@ -392,6 +395,32 @@ export async function checkTavernTemplateRuntimeBuild(repo:string,plan:CompilePl
     libraryRoot:inside(repo,path.posix.dirname(plan.typeScript.config)+'/node_modules'),write})
 }
 
+/** Each independent author component is produced from its sole manifest
+ * recipe. Strict module generation runs first, including these producers. */
+export async function checkAuthorRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
+  const product=plan.product
+  if(!product||!product.authorBrowserRuntime&&!product.authorHostRuntime)return undefined
+  const packages=[]
+  const componentPlan={artifacts:plan.artifacts,product:{...product,packages:product.packages??[]}}
+  for(const component of ['authorBrowserRuntime','authorHostRuntime'] as const) {
+    const recipe=product[component]
+    if(!recipe)continue
+    const builderId=component==='authorBrowserRuntime'?'author-browser-runtime-assets-generated':'author-host-runtime-assets-generated'
+    const builder=plan.artifacts.find(artifact=>artifact.id===builderId)
+    const metadata=plan.artifacts.find(artifact=>artifact.id===recipe.packageArtifact)
+    if(!builder||!metadata)throw Error('Author component producer or package is not registered')
+    const options={repo,plan:componentPlan,packageRoot:inside(repo,path.posix.dirname(metadata.source)),write}
+    if(component==='authorBrowserRuntime') {
+      const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-browser-runtime-assets.mjs')
+      packages.push(await producer.buildAuthorBrowserRuntimeAssetsV1(options))
+    }else {
+      const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-host-runtime-assets.mjs')
+      packages.push(await producer.buildAuthorHostRuntimeAssetsV5(options))
+    }
+  }
+  return {packages,files:packages.flatMap(pkg=>pkg.files.map(file=>({...file,packageName:pkg.name})))}
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [entry, output] = process.argv.slice(2)
   if (entry === '--types') {
@@ -408,13 +437,19 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const templateAssets=await checkTavernTemplateRuntimeBuild(root,plan,process.argv.includes('--write'))
     console.log(JSON.stringify({templateAssets:templateAssets?.files??[],mode:process.argv.includes('--write')?'write':'check'}))
   }
+  else if(entry==='--author-assets') {
+    const plan=readJson<CompilePlan>(path.join(root,'release/source-manifest.json'))
+    const assets=await checkAuthorRuntimeBuild(root,plan,process.argv.includes('--write'))
+    console.log(JSON.stringify({authorAssets:assets?.files??[],mode:process.argv.includes('--write')?'write':'check'}))
+  }
   else if (entry === '--check' || entry === '--write') {
     const compilation=compileTypeScript(root)
     const result=checkTypeScript(root,entry==='--write',compilation)
     const assets=await checkMvuSchemaRuntimeBuild(root,compilation.plan,entry==='--write')
     const templateAssets=await checkTavernTemplateRuntimeBuild(root,compilation.plan,entry==='--write')
+    const authorAssets=await checkAuthorRuntimeBuild(root,compilation.plan,entry==='--write')
     console.log(JSON.stringify({...result,...(assets?{schemaAssets:assets.files}: {}),
-      ...(templateAssets?{templateAssets:templateAssets.files}:{})}))
+      ...(templateAssets?{templateAssets:templateAssets.files}:{}),...(authorAssets?{authorAssets:authorAssets.files}:{})}))
   }
   else {
     writeTypeScriptBuild(compileTypeScript(), entry, output)

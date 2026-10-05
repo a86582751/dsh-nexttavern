@@ -9,6 +9,7 @@ import type { StateReply } from './state-store.js';
 import type { ActivityState, ActivityComponents } from './activity-view.js';
 import { normalizeConversationNodes, readerNodeSeq, readerMessageId, readerText, readerTime, usageTokens, formatReaderTime } from './reader-model.js';
 import { scopeReaderCss, READER_BASE_CSS } from './reader-rendering.js';
+import {createAuthorBrowserSession, type AuthorBrowserStatus} from './author-browser-session.js';
 
 
 import type { ReaderRule } from './reader-regex.js';
@@ -107,6 +108,10 @@ React,
         const stateRequestRef = React.useRef(0);
         const frameRef = React.useRef<HTMLIFrameElement>(null);
         const frameControllerRef = React.useRef<ReturnType<typeof createAuthorFrame> | null>(null);
+        const browserContainerRef = React.useRef<HTMLDivElement>(null);
+        const browserControllerRef = React.useRef<ReturnType<typeof createAuthorBrowserSession> | null>(null);
+        const browserObservedStateRef = React.useRef<ReaderState | null>(null);
+        const [browserStatus, setBrowserStatus] = React.useState<AuthorBrowserStatus>({kind: 'loading'});
         const frameIdentityRef = React.useRef('');
         const [frameEpoch, setFrameEpoch] = React.useState(0);
         const [frameLayout, setFrameLayout] = React.useState<{identity: string;value: AuthorFrameLayout;} | null>(null);
@@ -149,7 +154,7 @@ React,
                 frameControllerRef.current?.dispose();
                 frameControllerRef.current = null;
                 setFrameEpoch(value => value + 1);
-                setState(null);
+                void browserControllerRef.current?.refresh();
                 load(true);
             });
             return () => { alive = false; stateRequestRef.current++; clearInterval(timer); unsubscribe(); };
@@ -217,7 +222,9 @@ React,
         const rules = Array.isArray(beauty?.regexRules) ? beauty.regexRules : [];
         const authorCss = String(beauty?.css ?? '');
         const authorJs = String(beauty?.js ?? '');
-        const authorWindow = !!authorJs.trim();
+        const actualFramed = browserControllerRef.current?.hasFrame() === true
+            && browserStatus.kind !== 'failed' && browserStatus.kind !== 'inactive';
+        const authorWindow = actualFramed || !!authorJs.trim();
 
         // Collect only the authoritative surface of this Session.  The Chat
         // target may retain audit/shadow nodes after a replacement, and sibling
@@ -423,11 +430,44 @@ React,
             frameEpoch, sessionId, state?.sessionId, state?.preset, authorJs, authorCss, committedDocHtml,
         ]);
         frameIdentityRef.current = frameIdentity;
-        const framed = !!authorJs.trim() && frameFailure?.identity !== frameIdentity;
+        const framed = browserStatus.kind === 'inactive' && !!authorJs.trim() && frameFailure?.identity !== frameIdentity;
         const activeFrameLayout = frameLayout?.identity === frameIdentity ? frameLayout.value : null;
         const framePayload = JSON.stringify(renderedParts.map(part => ({
             key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html,
         } satisfies AuthorFramePart)));
+        const committedBrowserPayload = JSON.stringify(renderedParts.filter(part => !part.transient).map(part => ({
+            key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html,
+        })));
+        React.useEffect(() => {
+            if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !browserContainerRef.current) return;
+            const controller = createAuthorBrowserSession({
+                sessionId, container: browserContainerRef.current,
+                current: () => readerSessionRef.current === sessionId && browserControllerRef.current === controller,
+                status: setBrowserStatus,
+            });
+            browserControllerRef.current = controller;
+            browserObservedStateRef.current = state;
+            setBrowserStatus({kind: 'loading'});
+            void controller.start();
+            return () => {
+                controller.dispose();
+                if (browserControllerRef.current === controller) browserControllerRef.current = null;
+            };
+        }, [sessionId, state?.sessionId, state?.preset]);
+        React.useEffect(() => {
+            browserControllerRef.current?.render({
+                css: READER_BASE_CSS + '\n' + authorCss,
+                parts: JSON.parse(committedBrowserPayload),
+            });
+        }, [sessionId, state?.sessionId, state?.preset, committedBrowserPayload, authorCss]);
+        React.useEffect(() => {
+            // Core decides whether a changed cut is merely a read revision or a
+            // new author generation. React never derives that from body text.
+            if (state?.sessionId === sessionId && browserObservedStateRef.current !== state) {
+                browserObservedStateRef.current = state;
+                void browserControllerRef.current?.refresh();
+            }
+        }, [state, sessionId]);
         React.useEffect(() => {
             if (!framed || !sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !frameRef.current) return;
             const identity = frameIdentity;
@@ -627,6 +667,13 @@ React,
             },
 
             React.createElement('style', null, scopedCss + ACTIVITY_CSS),
+            browserStatus.kind === 'pending' ? React.createElement('div', {className: 'rp-reader-empty', role: 'status'},
+                '作者数值保存尚未确认，已保留原请求。',
+                React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.confirm()}, '确认保存结果'),
+                React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.retry()}, '重试同一次保存')) : null,
+            browserStatus.kind === 'failed' ? React.createElement('div', {className: 'rp-reader-empty', role: 'status'},
+                '作者交互视图不可用：' + browserStatus.code,
+                React.createElement('button', {type: 'button', onClick: () => void browserControllerRef.current?.confirm()}, '重新连接')) : null,
             frameFailure?.identity === frameIdentity ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' },
                 '隔离阅读视图不可用，已保留正文和原生操作；作者脚本未运行。' + frameFailure.reason) : null,
 
@@ -662,7 +709,16 @@ React,
                 ? React.createElement('div', { className: 'rp-reader-empty' }, '暂无可阅读的正文')
                 : null,
 
-            framed
+            React.createElement('div', {className: 'rp-author-frame-host', ref: browserContainerRef,
+                style: {display: actualFramed ? undefined : 'none'}}),
+            actualFramed
+                ? React.createElement('div', {className: 'rp-reader'},
+                    renderedParts.map((part, index) => React.createElement('section', {
+                        className: 'rp-reader-message', 'data-reader-key': readerPartKey(part),
+                        key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
+                    }, part.transient ? React.createElement('div', {className: 'rp-reader-narrative',
+                        dangerouslySetInnerHTML: {__html: part.html}}) : null, renderReaderActions(part))))
+                : framed
                 ? React.createElement('div', { className: 'rp-author-frame-host' },
                     React.createElement('iframe', {
                         className: 'rp-author-guard-frame', title: '隔离阅读内容', ref: frameRef,

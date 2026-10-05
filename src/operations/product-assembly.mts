@@ -9,9 +9,14 @@ import {contained as inside} from './public-transaction.mjs'
 import {materializeBundledLibraries} from './bundled-library-assembly.mjs'
 import {templateRuntimeRecipeV1,materializeTavernTemplateRuntimeDependenciesV1,
   assertTavernTemplateRuntimePackageV1,type TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
+import {authorBrowserRuntimeRecipeV1,materializeAuthorBrowserRuntimeDependenciesV1,
+  type AuthorBrowserRuntimeAssetRecipeV1} from './author-browser-runtime-assets.mjs'
+import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 
 interface ProductRecipe {
   templateRuntime?:TavernTemplateRuntimeAssetRecipeV1
+  authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1
+  authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5
   packageArtifact: string
   patchArtifact: string
   packages: {packageArtifact: string; assembly?: string; resources?: {artifact: string; path: string}[]}[]
@@ -311,6 +316,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
   if (rows.length !== 1) throw Error('Product package must have exactly one registered recipe')
   const row = rows[0]!
   const templateRecipe=templateRuntimeRecipeV1(plan),templateComponent=templateRecipe?.packageArtifact===row.packageArtifact
+  const browserRecipe=authorBrowserRuntimeRecipeV1(plan),browserComponent=browserRecipe?.packageArtifact===row.packageArtifact
   const source = artifact(row.packageArtifact).source
   const pkg = json<Metadata>(inside(repo, source))
   const product = json<Metadata>(inside(repo, artifact(plan.product.packageArtifact).source))
@@ -352,7 +358,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     }
   }
   const ordinaryDependencies = Object.fromEntries(Object.entries(pkg.dependencies ?? {})
-    .filter(([name]) => !Object.hasOwn(ownedRootLibraries, name)&&!templateComponent))
+    .filter(([name]) => !Object.hasOwn(ownedRootLibraries, name)&&!templateComponent&&!browserComponent))
   const excludedVendoredFiles = vendorLibraries(output, pkg.name, ordinaryDependencies, options.libraryRoot,
     plan.product.bundleLibraries ?? {}, options.admitVendoredFile, plan.product.bundlePlatforms ?? [])
   if(templateComponent) {
@@ -363,6 +369,12 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
         throw Error('Template component requires complete public vendor admission')
       })})
     assertTavernTemplateRuntimePackageV1({repo,plan,packageRoot:output})
+  }
+  if(browserComponent) {
+    materializeAuthorBrowserRuntimeDependenciesV1({repo,plan,packageRoot:output,
+      libraryRoot:options.libraryRoot??'',admit:options.admitVendoredFile??(()=>{
+        throw Error('Author browser component requires complete published vendor admission')
+      })})
   }
   if (Object.keys(ownedRootLibraries).length) {
     // These packages move to protected file pins outside the product tree.

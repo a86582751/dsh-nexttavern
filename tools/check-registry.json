@@ -121,7 +121,11 @@
         "manifests/sillytavern-compatibility-p2-*",
         "roleplay-tavern-prompt-initial*",
         "roleplay-tavern-prompt-variables*",
-        "roleplay-mvu-prompt-numerical-facts*"
+        "roleplay-mvu-prompt-numerical-facts*",
+        "roleplay-author-host*",
+        "tavern-author-combined*",
+        "runtime/alpha3/compat/author-host-runtime-v5/*",
+        "roleplay-author-browser*"
       ]
     },
     {
@@ -241,7 +245,10 @@
         "roleplay-tavern-render*",
         "roleplay-tavern-macros*",
         "tavern-template*",
-        "tavern-lore-editor*"
+        "tavern-lore-editor*",
+        "tavern-author-browser*",
+        "runtime/alpha3/compat/author-browser-runtime-v1/*",
+        "author-browser-*"
       ]
     },
     {
@@ -411,7 +418,9 @@
         ".gitignore",
         "bundled-library-assembly*",
         "tavern-template-runtime-assets*",
-        "runtime/alpha3/compat/template-runtime-v1/*"
+        "runtime/alpha3/compat/template-runtime-v1/*",
+        "author-browser-runtime-assets*",
+        "author-host-runtime-assets*"
       ]
     },
     {
@@ -24874,6 +24883,79 @@
       "requires": [
         "compiler"
       ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:author-host-core",
+      "action": "test",
+      "modules": [
+        "status",
+        "reader"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "cache": true,
+      "timeoutMs": 1800000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:author-browser-core",
+      "action": "test",
+      "modules": [
+        "status",
+        "reader"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "cache": true,
+      "timeoutMs": 1800000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:author-browser-pending",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": false,
+      "cache": true,
+      "timeoutMs": 60000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]

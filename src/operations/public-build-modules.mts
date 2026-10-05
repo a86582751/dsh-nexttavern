@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {compileTypeScript,checkMvuSchemaRuntimeBuild,checkTavernTemplateRuntimeBuild,type CompilePlan} from './build-typescript.mjs'
+import {compileTypeScript,checkMvuSchemaRuntimeBuild,checkTavernTemplateRuntimeBuild,checkAuthorRuntimeBuild,type CompilePlan} from './build-typescript.mjs'
 
 interface PublicModule {artifact: string; source: string; primaryOutput?: string; outputs: string[]}
 interface PublicBuildMap {
@@ -97,5 +97,6 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
   if (stale) throw Error(`${stale} generated files differ; run npm run build:modules`)
   const assets=await checkMvuSchemaRuntimeBuild(root,map.compilerPlan,write)
   const templateAssets=await checkTavernTemplateRuntimeBuild(root,map.compilerPlan,write)
-  console.log(`strict public modules=${map.modules.length}; wrote=${written}; schemaAssets=${assets?.files.length??0}; templateAssets=${templateAssets?.files.length??0}`)
+  const authorAssets=await checkAuthorRuntimeBuild(root,map.compilerPlan,write)
+  console.log(`strict public modules=${map.modules.length}; wrote=${written}; schemaAssets=${assets?.files.length??0}; templateAssets=${templateAssets?.files.length??0}; authorAssets=${authorAssets?.files.length??0}`)
 }
