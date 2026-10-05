@@ -206,6 +206,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock}
     schemaStory??=createRoleplayMvuSchemaStoryCore({...completion,...common,inputState:deps.inputState,
       manualPendingCode:(id:string)=>schemaPlayer?.pendingCode(id),
+      manualEditBlockCode:(id:string)=>schemaPlayer?.editBlockCode(id),
       derivedRequired:deps.schemaDerivedRequired,readDerivedGenesis:deps.readSchemaDerivedGenesis,
       readEditInvalidation:deps.readSchemaEditInvalidation,
       projectPrefix:events=>deps.messageEdits.projectPrefix(events),editProtocol:deps.messageEdits,
@@ -553,6 +554,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     createSchemaStory,readSchemaSnapshot:(id:string)=>schemaStory?.readSnapshot(id),
     readSchemaObservation:(id:string)=>schemaStory?.readSchemaObservation(id),
     captureSchemaPromptScopes:(id:string)=>schemaStory?.capturePromptScopes(id),
+    captureSchemaBrowserFacts:(id:string)=>schemaStory?.captureBrowserFacts(id)??Promise.resolve(undefined),
     capturePlainPromptScopeFacts:(id:string)=>{
       try {
         const observation=readInputObservation(id)
@@ -574,7 +576,9 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       }catch{return undefined}
     },
     readSchemaEditBasis:(id:string)=>schemaStory?.readEditBasis(id),
-    submitSchemaPlayer:(input:unknown)=>schemaPlayer?.submit(input)??Promise.resolve({ok:false,
+    submitSchemaPlayer:(input:unknown,current?:()=>boolean)=>schemaPlayer?.submit(input,current)??Promise.resolve({ok:false,
+      code:'SCHEMA_PLAYER_UNAVAILABLE',error:'SCHEMA_PLAYER_UNAVAILABLE'}),
+    confirmSchemaPlayer:(input:unknown)=>schemaPlayer?.confirm(input)??Promise.resolve({ok:false,
       code:'SCHEMA_PLAYER_UNAVAILABLE',error:'SCHEMA_PLAYER_UNAVAILABLE'}),
     schemaPlayerEditBlockCode:(id:string)=>schemaPlayer?schemaPlayer.editBlockCode(id):'SCHEMA_PLAYER_UNAVAILABLE',
     awaitSchemaPlayerBarrier:(session:{id:string},signal:AbortSignal)=>schemaPlayer?.awaitMutationBarrier(session,signal)??Promise.resolve(),

@@ -16,14 +16,15 @@ import {freezeMvuSchemaStoryData,sealMvuSchemaStoryFact,validateMvuSchemaStoryPl
 import type {InputCompletionScope} from './roleplay-input-completion.js'
 import type {SchemaStorySourceFrame} from './roleplay-mvu-schema-source.js'
 import type {SourceNativeCutFacts} from './roleplay-mvu-schema-replay.js'
+import type {SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
 import type {MvuSchemaStoryDeps,MvuSchemaStoryCanonical,MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlan,
-  MvuSchemaStoryPlanV2,MvuSchemaStoryPlanV3,MvuSchemaStoryPlanV4,MvuSchemaStoryPlanV5,
+  MvuSchemaStoryPlanV2,MvuSchemaStoryPlanV3,MvuSchemaStoryPlanV4,MvuSchemaStoryPlanV5,MvuSchemaStoryPlanV6,
   MvuSchemaStoryPhaseFact,MvuSchemaStoryReducerBridge,MvuSchemaStoryLive,MvuSchemaStoryPublication,
   MvuSchemaStoryPublicationBoundary,MvuSchemaStoryEventV2,MvuSchemaStorySettlementV2}
   from './roleplay-mvu-schema-story-types.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 
-export type {MvuSchemaStoryDeps,MvuSchemaStoryPlan,MvuSchemaStoryPlanV2,MvuSchemaStoryPlanV3,MvuSchemaStoryPlanV4,MvuSchemaStoryPlanV5,
+export type {MvuSchemaStoryDeps,MvuSchemaStoryPlan,MvuSchemaStoryPlanV2,MvuSchemaStoryPlanV3,MvuSchemaStoryPlanV4,MvuSchemaStoryPlanV5,MvuSchemaStoryPlanV6,
   MvuSchemaNumericalSnapshotV2,MvuSchemaStorySettlementV2}
   from './roleplay-mvu-schema-story-types.js'
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
@@ -36,13 +37,24 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
   const attempted=new Set<string>()
   function makePlan<V extends 1|2|3|4=1>(scope:InputCompletionScope,canonical:MvuSchemaStoryCanonical,base:MvuSchemaNumericalSnapshotV2,
     currentFrame:SchemaStorySourceFrame,realmEpoch:string,programSha256:string,initialCut:SourceNativeCutFacts,
-    clockEpochMs=0,executorVersion:V=1 as V,scopeReadFrame?:MvuScopeReadFrameV1):
-    V extends 4?MvuSchemaStoryPlanV5:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2 {
+    clockEpochMs?:number,executorVersion?:V,scopeReadFrame?:MvuScopeReadFrameV1):
+    V extends 4?MvuSchemaStoryPlanV5:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2
+  function makePlan<V extends 1|2|3|4>(scope:InputCompletionScope,canonical:MvuSchemaStoryCanonical,base:MvuSchemaNumericalSnapshotV2,
+    currentFrame:SchemaStorySourceFrame,realmEpoch:string,programSha256:string,initialCut:SourceNativeCutFacts,
+    clockEpochMs:number,executorVersion:V,scopeReadFrame:MvuScopeReadFrameV1|undefined,
+    hostEpoch:{epoch:SchemaJournalRef;serverProgramSha256:string}|undefined):
+    V extends 4?MvuSchemaStoryPlanV5|MvuSchemaStoryPlanV6:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2
+  function makePlan<V extends 1|2|3|4=1>(scope:InputCompletionScope,canonical:MvuSchemaStoryCanonical,base:MvuSchemaNumericalSnapshotV2,
+    currentFrame:SchemaStorySourceFrame,realmEpoch:string,programSha256:string,initialCut:SourceNativeCutFacts,
+    clockEpochMs=0,executorVersion:V=1 as V,scopeReadFrame?:MvuScopeReadFrameV1,
+    hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string}):
+    V extends 4?MvuSchemaStoryPlanV5|MvuSchemaStoryPlanV6:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2 {
     const input=freezeMvuSchemaStoryData({scope,canonical,base,currentFrame,realmEpoch,programSha256,initialCut,clockEpochMs})
     scope=input.scope;canonical=input.canonical;base=input.base;currentFrame=input.currentFrame
     realmEpoch=input.realmEpoch;programSha256=input.programSha256;initialCut=input.initialCut;clockEpochMs=input.clockEpochMs
     if(![1,2,3,4].includes(executorVersion))fail('SCHEMA_EXECUTOR_VERSION_MISMATCH')
     if(executorVersion>=3&&!scopeReadFrame)fail('SCHEMA_SCOPE_READ_REQUIRED')
+    if(hostEpoch&&executorVersion!==4)fail('SCHEMA_EXECUTOR_VERSION_MISMATCH')
     const suffix={currentFrame,realmEpoch,programSha256,initialCut,clockEpochMs,randomSeed:recordSha256({scope,canonical}),
       selectors:deriveMvuSchemaStorySelectors(scope,canonical,realmEpoch)}
     const body=executorVersion===1?freezeMvuSchemaStoryData({schemaVersion:2 as const,
@@ -50,14 +62,17 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
       candidate:parseMvuUpdate(canonical.narrative),...suffix}):executorVersion===2?freezeMvuSchemaStoryData({schemaVersion:3 as const,
       encoding:'native-mvu-schema-story-plan-v3' as const,executorVersion:2 as const,scope,canonical,
       base:validateMvuSchemaNumericalSnapshot(base),candidate:parseMvuUpdateV2(canonical.narrative),...suffix}):executorVersion===4?
-      freezeMvuSchemaStoryData({schemaVersion:5 as const,encoding:'native-mvu-schema-story-plan-v5' as const,
+      freezeMvuSchemaStoryData({
+        ...(hostEpoch?{schemaVersion:6 as const,encoding:'native-mvu-schema-story-plan-v6' as const,
+          epoch:hostEpoch.epoch,serverProgramSha256:hostEpoch.serverProgramSha256}:
+          {schemaVersion:5 as const,encoding:'native-mvu-schema-story-plan-v5' as const}),
         executorVersion:4 as const,scope,canonical,base:validateMvuSchemaNumericalSnapshot(base),
         candidate:parseMvuUpdateV2(canonical.narrative),scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame),...suffix}):
       freezeMvuSchemaStoryData({schemaVersion:4 as const,encoding:'native-mvu-schema-story-plan-v4' as const,
         executorVersion:3 as const,scope,canonical,base:validateMvuSchemaNumericalSnapshot(base),
         candidate:parseMvuUpdateV2(canonical.narrative),scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame),...suffix})
     return validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact(body,'planSha256')) as
-      V extends 4?MvuSchemaStoryPlanV5:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2
+      V extends 4?MvuSchemaStoryPlanV5|MvuSchemaStoryPlanV6:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2
   }
   function read(key:string):unknown {
     const value=deps.table.get(key)
@@ -135,9 +150,9 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
         if(result.kind!=='completed')return {kind:'unknown',code:schemaStoryCode(result.code)}
         if(!result.evidence||typeof result.evidence!=='object')fail('SCHEMA_STORY_EXECUTION_UNPROVEN')
         let capturedInput=input
-        if(plan.schemaVersion===4||plan.schemaVersion===5) {
+        if(plan.schemaVersion===4||plan.schemaVersion===5||plan.schemaVersion===6) {
           if(!result.capturedInput)fail('SCHEMA_STORY_EXECUTION_UNPROVEN')
-          const actual=plan.schemaVersion===5?validateSchemaEvaluationInputV4(result.capturedInput)
+          const actual=plan.executorVersion===4?validateSchemaEvaluationInputV4(result.capturedInput)
             :validateSchemaEvaluationInputV3(result.capturedInput)
           if(!schemaScopeReadFactsEqual(actual.scopeReadFrame,plan.scopeReadFrame)
             ||actual.scopeReadFrame.sourceNativeCutSha256!==result.association.sourceNativeCutSha256

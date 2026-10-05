@@ -47,6 +47,7 @@ import { createRoleplayMvuState } from './roleplay-mvu-state.js';
 import { acceptedMvuDisplayUpdate, formatMvuDisplayUpdates } from './roleplay-mvu-display-facts.js';
 import { createRoleplayMvuPlayer } from './roleplay-mvu-player.js';
 import { registerMvuPlayerRoutes } from './roleplay-mvu-player-routes.js';
+import { createRoleplayAuthorBrowser } from './roleplay-author-browser.js';
 import { foldSurface, deriveEventMessage } from '@deepseek-ai/dsh-session/surface';
 import { createRoleplayMvuDerived, readMvuPrefixCanonical } from './roleplay-mvu-derived.js';
 import { createRoleplayMvuSchemaDerived } from './roleplay-mvu-schema-derived.js';
@@ -1827,6 +1828,7 @@ export async function apply(ctx, config = {}) {
             } }),
         readGenesis: id => mvuDerived.required(id) ? mvuDerived.readGenesis(id) : readOwnNumericalGenesis(id), state: () => mvuState });
     function readOwnNumericalGenesis(id) { return programOpening?.readGenesis(id) ?? mvuOpening.readGenesis(id); }
+    let authorBrowser;
     const mvuOpening = createRoleplayMvuOpening({ tables: T, inputState, session: id => ctx.sessions.get(id),
         inheritedNativeObservation, readInheritedPromptTemplateSource,
         readSourceInheritance: id => tavernSourceInheritance.readCommittedSourceInheritance(id),
@@ -2506,6 +2508,7 @@ export async function apply(ctx, config = {}) {
         onMutationStop: (session, notice) => {
             inputState.invalidateSession(session.id);
             mvuOpening.invalidateSchemaSession(session.id);
+            authorBrowser?.invalidateSession(session.id);
             mvuPlayer.onMutationStop(session, notice);
         },
         onError: error => ctx.logger?.warn?.(`roleplay: input permission write is unknown: ${String(error)}`) });
@@ -2515,6 +2518,7 @@ export async function apply(ctx, config = {}) {
     ctx.on('agent/disposed', ({ agent }) => {
         inputState.releaseSession(agent.session.id);
         mvuOpening.invalidateSchemaAgent(agent);
+        authorBrowser?.invalidateSession(agent.session.id);
         inputBindings.get(agent)?.dispose();
         inputBindings.delete(agent);
     }, { global: true });
@@ -2542,6 +2546,38 @@ export async function apply(ctx, config = {}) {
                 const id = input?.sessionId;
                 return typeof id === 'string' && mvuOpening.hasSchemaOpening(id) ? mvuOpening.submitSchemaPlayer(input) : mvuPlayer.submit(input);
             } }, observe: observeNumericalState });
+    authorBrowser = createRoleplayAuthorBrowser({ ctx, resolveSession: async (id) => {
+            const session = await resolveRoleplaySession(id);
+            if (session)
+                await ensureBranch(session);
+            return session;
+        }, captureOwner: sid => {
+            const session = ctx.sessions.get(sid), catalog = ctx.get('tavernConversations');
+            const agent = ctx.agents?.list().find(row => row.session === session);
+            const actual = agent && ctx.get('agentLoop')?.getInputAdmissionAgent(agent);
+            const selected = catalog?.selectionOf(sid);
+            if (!session || !agent || actual !== agent || !storyBranchIsActive(session)
+                || selected && selected.activeSessionId !== sid)
+                return undefined;
+            const nativeOwner = actual;
+            const cwd = session.header?.cwd, selection = selected
+                ? `${selected.root}:${selected.activeSessionId}:${selected.revision}` : sid;
+            const stopSha256 = recordSha256(nativeOwner.lookupInputStop());
+            return () => {
+                const now = ctx.get('tavernConversations'), choice = now?.selectionOf(sid);
+                return !sourceReadOwnerClosed && ctx.sessions.get(sid) === session && session.header?.cwd === cwd
+                    && ctx.agents?.list().includes(agent) === true && ctx.get('agentLoop')?.getInputAdmissionAgent(agent) === actual
+                    && storyBranchIsActive(session) && now === catalog
+                    && (choice ? `${choice.root}:${choice.activeSessionId}:${choice.revision}` : sid) === selection
+                    && recordSha256(nativeOwner.lookupInputStop()) === stopSha256;
+            };
+        }, captureFacts: async (sid) => {
+            if (!mvuOpening.hasSchemaOpening(sid))
+                return undefined;
+            return mvuOpening.captureSchemaBrowserFacts(sid);
+        }, submit: (input, current) => mvuOpening.submitSchemaPlayer(input, current), confirm: mvuOpening.confirmSchemaPlayer });
+    ctx.on('session/disposed', session => authorBrowser?.invalidateSession(session.id), { global: true });
+    ctx.effect(() => () => authorBrowser?.dispose(), 'roleplay: owned browser lifetime');
     registerTavernLoreEditorRoutesV1({ ctx, store: tavernLoreEdits, resolveSessionScope: async (id) => {
             const session = await resolveRoleplaySession(id);
             if (!session || !storyBranchIsActive(session))

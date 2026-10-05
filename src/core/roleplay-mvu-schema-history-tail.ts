@@ -5,7 +5,10 @@ import {recordSha256,textOf} from './roleplay-data.js'
 import {canonicalAssistantForTurn} from './roleplay-context.js'
 import {inputCompletionKey} from './roleplay-input-completion.js'
 import {readMvuSchemaUnpublishedStoryPlanFacts} from './roleplay-mvu-schema-prefix-facts.js'
-import {validateSchemaJournalRecord,validateSchemaSourceCut,schemaJournalKey} from './roleplay-mvu-schema-journal.js'
+import {validateSchemaJournalRecord,validateSchemaSourceCut,schemaJournalKey,schemaEpochExecution,schemaEpochAuthorIdentity}
+  from './roleplay-mvu-schema-journal.js'
+import {schemaOriginalProgramSha256} from './roleplay-mvu-schema-source.js'
+import {schemaExecutionProgramSha256,schemaExecutionServerTailSha256} from './roleplay-mvu-schema-replay.js'
 import {validateSchemaEvaluationInputV2,validateSchemaGuestOutputV2} from './tavern-mvu-schema-runner-v2.js'
 import {validateSchemaEvaluationInputV3,validateSchemaGuestOutputV3} from './tavern-mvu-schema-runner-v3.js'
 import {validateSchemaEvaluationInputV4,validateSchemaGuestOutputForProgramV4} from './tavern-mvu-schema-runner-v4.js'
@@ -25,8 +28,8 @@ import type {SchemaFrozenOriginal,SchemaStorySourceFrame} from './roleplay-mvu-s
 import type {SchemaExecutionAssociation,SchemaExecutionSelector} from './roleplay-mvu-schema-replay.js'
 import type {SchemaEvaluationInput,SchemaGuestOutput,SchemaAuthorProgram} from './roleplay-mvu-schema-executor-types.js'
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlan,MvuSchemaStoryPhaseFact,
-  MvuSchemaStoryReducerBridge} from './roleplay-mvu-schema-story-types.js'
-import type {MvuSchemaPlayerPlanV1,MvuSchemaPlayerPhaseFact} from './roleplay-mvu-schema-player-types.js'
+  MvuSchemaStoryReducerBridge,MvuSchemaStoryPlanV6} from './roleplay-mvu-schema-story-types.js'
+import type {MvuSchemaPlayerPlanV1,MvuSchemaPlayerPhaseFact,MvuSchemaPlayerPlanV5} from './roleplay-mvu-schema-player-types.js'
 import type {MvuSchemaUnpublishedStoryPlanFacts} from './roleplay-mvu-schema-prefix-facts.js'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {MvuInheritedMessageEditProtocol} from './roleplay-mvu-prefix-facts.js'
@@ -75,6 +78,10 @@ function baseOf(candidate:Candidate) {
 function versionOf(candidate:Candidate):1|2|3|4 {
   return candidate.kind==='story'?candidate.plan.schemaVersion===2?1:candidate.plan.executorVersion
     :candidate.plan.schemaVersion===1?1:candidate.plan.executorVersion
+}
+function hostPlanOf(candidate:Candidate):MvuSchemaStoryPlanV6|MvuSchemaPlayerPlanV5|undefined {
+  return candidate.kind==='story'?(candidate.plan.schemaVersion===6?candidate.plan:undefined)
+    :candidate.plan.schemaVersion===5?candidate.plan:undefined
 }
 function candidatePlans(request:MvuSchemaUnpublishedTailRequest,deps:MvuSchemaUnpublishedTailDeps,
   first:SchemaJournalStepFacts):Candidate[] {
@@ -127,9 +134,10 @@ function provePair(request:MvuSchemaUnpublishedTailRequest,deps:MvuSchemaUnpubli
     ||step.dispatch.batchId!==selector.batchId||step.completion.batchId!==selector.batchId
     ||step.dispatchMarker.seq!==seq||step.completionMarker.seq!==seq+1)fail()
   validateSchemaJournalRecord(step.dispatch);validateSchemaJournalRecord(step.completion)
-  const version=versionOf(candidate)
-  if(step.dispatch.schemaVersion!==version||step.completion.schemaVersion!==version
-    ||step.step.frame.input.schemaVersion!==version||!same(step.completion.runner,request.ready.epoch.runner)
+  const version=versionOf(candidate),hostPlan=hostPlanOf(candidate),outerVersion=hostPlan?5:version
+  const execution=schemaEpochExecution(request.ready.epoch)
+  if(step.dispatch.schemaVersion!==outerVersion||step.completion.schemaVersion!==outerVersion
+    ||step.step.frame.input.schemaVersion!==version||!same(step.completion.runner,execution.runner)
     ||!same(step.dispatchRef,{key:schemaJournalKey(step.dispatch),sha256:step.dispatch.recordSha256})
     ||!same(step.completion.dispatch,step.dispatchRef)||!same(step.dispatch.epoch,request.ready.epochRef)
     ||!same(step.completionRef,{key:schemaJournalKey(step.completion),sha256:step.completion.recordSha256})
@@ -158,13 +166,23 @@ function provePair(request:MvuSchemaUnpublishedTailRequest,deps:MvuSchemaUnpubli
     ||step.step.frame.sourceNativeCutSha256!==recordSha256(step.dispatch.sourceNativeCut)
     ||!same(step.step.frame.material,plan.currentFrame.material))fail()
   const association=deps.associationAt(request.ordinal+index)
+  if(hostPlan) {
+    if(association.schemaVersion!==5||step.dispatch.schemaVersion!==5||step.completion.schemaVersion!==5)fail()
+    if(!same(association.epoch,hostPlan.epoch)
+      ||association.serverProgramSha256!==hostPlan.serverProgramSha256
+      ||step.dispatch.combinedProgramSha256!==hostPlan.programSha256
+      ||step.completion.combinedProgramSha256!==hostPlan.programSha256
+      ||step.dispatch.serverProgramSha256!==hostPlan.serverProgramSha256
+      ||step.completion.serverProgramSha256!==hostPlan.serverProgramSha256)fail()
+  }else if(association.schemaVersion!==1)fail()
   if(association.sessionId!==request.sessionId||association.realmEpoch!==plan.realmEpoch
-    ||association.batchId!==selector.batchId||association.programSha256!==plan.programSha256
+    ||association.batchId!==selector.batchId||schemaExecutionProgramSha256(association)!==plan.programSha256
     ||!same(association.anchor,selector.anchor)||!same(association.dispatch,step.dispatchRef)
     ||!same(association.completion,step.completionRef)||!same(association.dispatchMarker,step.dispatchMarker)
     ||!same(association.completionMarker,step.completionMarker)
     ||association.sourceNativeCutSha256!==recordSha256(step.dispatch.sourceNativeCut)
-    ||association.tailSha256!==step.step.stepSha256||association.outputSha256!==recordSha256(step.step.output))fail()
+    ||schemaExecutionServerTailSha256(association)!==step.step.stepSha256
+    ||association.outputSha256!==recordSha256(step.step.output))fail()
   return association
 }
 function proveOutput(input:SchemaEvaluationInput,output:SchemaGuestOutput,program:SchemaAuthorProgram):void {
@@ -236,18 +254,28 @@ export function verifyMvuSchemaUnpublishedTail(request:MvuSchemaUnpublishedTailR
     const first=ready.steps[ordinal]!,candidates=candidatePlans(request,deps,first)
     if(candidates.length!==1)fail()
     const candidate=candidates[0]!,plan=candidate.plan,base=baseOf(candidate),version=versionOf(candidate)
+    const hostPlan=hostPlanOf(candidate),execution=schemaEpochExecution(ready.epoch)
+    const authorIdentity=schemaEpochAuthorIdentity(ready.epoch)
     const {stateSnapshotSha256:_old,...basis}=snapshot
     const comparable=validateMvuSchemaNumericalSnapshot(sealMvuSchemaStoryFact(
       {...basis,sourceSha256:base.sourceSha256},'stateSnapshotSha256'))
     if(!same(base,comparable)||plan.initialCut.nativeCut!==first.dispatchMarker.seq
-      ||plan.realmEpoch!==original.realmEpoch||plan.programSha256!==original.programSha256
-      ||plan.realmEpoch!==ready.epoch.realmEpoch||plan.programSha256!==ready.epoch.program.programSha256
-      ||ready.epoch.schemaVersion!==version||ready.epoch.program.compiler.version!==version
-      ||ready.epoch.program.bridge.version!==version||ready.epoch.runner.version!==version
+      ||plan.realmEpoch!==original.realmEpoch||plan.programSha256!==schemaOriginalProgramSha256(original)
+      ||plan.realmEpoch!==ready.epoch.realmEpoch||plan.programSha256!==authorIdentity.programSha256
+      ||ready.epoch.schemaVersion!==(hostPlan?5:version)||execution.program.compiler.version!==version
+      ||execution.program.bridge.version!==version||execution.runner.version!==version
       ||!deps.verifyFrozenFrame(original,plan.currentFrame))fail()
-    if(original.preparation.schemaVersion!==1&&!same(original.preparation.executor,
-      {compiler:ready.epoch.program.compiler,bridge:ready.epoch.program.bridge,
-        libraries:ready.epoch.program.libraries,runner:ready.epoch.runner}))fail()
+    if(hostPlan) {
+      if(original.schemaVersion!==5||ready.epoch.schemaVersion!==5
+        ||!same(hostPlan.epoch,ready.epochRef)||hostPlan.serverProgramSha256!==execution.program.programSha256
+        ||hostPlan.serverProgramSha256!==original.serverProgramSha256
+        ||!same(original.preparation.host,ready.epoch.host))fail()
+    }else {
+      if(original.schemaVersion!==1)fail()
+      if(original.preparation.schemaVersion!==1&&!same(original.preparation.executor,
+        {compiler:execution.program.compiler,bridge:execution.program.bridge,
+          libraries:execution.program.libraries,runner:execution.runner}))fail()
+    }
     proveCut(request,plan.initialCut,plan.initialCut,plan.currentFrame,plan.selectors[0]!,first.dispatchMarker.seq)
     if(version>=3&&(!('scopeReadFrame' in plan)
       ||!same(plan.scopeReadFrame,deps.scopeFrameAt(plan.currentFrame,plan.initialCut))))fail()
@@ -280,7 +308,7 @@ export function verifyMvuSchemaUnpublishedTail(request:MvuSchemaUnpublishedTailR
       const input=candidate.kind==='story'?mvuSchemaStoryPhaseInput(candidate.plan,index,storyPhases,reducer,read)
         :mvuSchemaPlayerPhaseInput(candidate.plan,index,playerPhases,read)
       if(!same(input,step.step.frame.input))fail()
-      proveOutput(input,step.step.output,ready.epoch.program)
+      proveOutput(input,step.step.output,execution.program)
       if(candidate.kind==='story') {
         const phase:MvuSchemaStoryPhaseFact={phase:MVU_SCHEMA_STORY_PHASES[index]!,input,
           association,output:step.step.output}

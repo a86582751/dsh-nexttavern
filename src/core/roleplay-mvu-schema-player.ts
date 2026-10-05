@@ -15,12 +15,12 @@ import {validateMvuSchemaNumericalSnapshot,isMvuSchemaGenesisHead} from './rolep
 import type {MvuSchemaPlayerDeps,MvuSchemaPlayerOperationV1,MvuSchemaPlayerPlanV1,MvuSchemaPlayerPhaseFact,
   MvuSchemaPlayerLive,MvuSchemaPlayerEventV1,MvuSchemaPlayerSettlementV1,MvuSchemaPlayerPublication,
   MvuSchemaPlayerPublicationBoundary} from './roleplay-mvu-schema-player-types.js'
-import type {SchemaNativeMarkerRef} from './roleplay-mvu-schema-journal.js'
+import type {SchemaNativeMarkerRef,SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
 import type {SchemaStorySourceFrame} from './roleplay-mvu-schema-source.js'
 import type {SourceNativeCutFacts} from './roleplay-mvu-schema-replay.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 
-export type {MvuSchemaPlayerDeps,MvuSchemaPlayerPlanV1,MvuSchemaPlayerPlanV3,MvuSchemaPlayerSettlementV1}
+export type {MvuSchemaPlayerDeps,MvuSchemaPlayerPlanV1,MvuSchemaPlayerPlanV3,MvuSchemaPlayerPlanV5,MvuSchemaPlayerSettlementV1}
   from './roleplay-mvu-schema-player-types.js'
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 function fail(code:string):never {throw Error(code)}
@@ -31,10 +31,14 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
   const attempted=new Set<string>()
   function makePlan(operation:MvuSchemaPlayerOperationV1,marker:SchemaNativeMarkerRef,
     currentFrame:SchemaStorySourceFrame,initialCut:SourceNativeCutFacts,clockEpochMs=0,executorVersion:1|2|3|4=1,
-    scopeReadFrame?:MvuScopeReadFrameV1):MvuSchemaPlayerPlanV1 {
+    scopeReadFrame?:MvuScopeReadFrameV1,hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string}):MvuSchemaPlayerPlanV1 {
     if(executorVersion>=3&&!scopeReadFrame)fail('SCHEMA_SCOPE_READ_REQUIRED')
+    if(hostEpoch&&executorVersion!==4)fail('SCHEMA_EXECUTOR_VERSION_MISMATCH')
     const input=freezeMvuSchemaPlayerData({operation,marker,currentFrame,initialCut,clockEpochMs})
-    const version=executorVersion===4?{schemaVersion:4 as const,encoding:'native-mvu-schema-player-plan-v4' as const,
+    const version=executorVersion===4?{
+      ...(hostEpoch?{schemaVersion:5 as const,encoding:'native-mvu-schema-player-plan-v5' as const,
+        epoch:hostEpoch.epoch,serverProgramSha256:hostEpoch.serverProgramSha256}:
+        {schemaVersion:4 as const,encoding:'native-mvu-schema-player-plan-v4' as const}),
       executorVersion:4 as const,scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame)}:
       executorVersion===3?{schemaVersion:3 as const,encoding:'native-mvu-schema-player-plan-v3' as const,
       executorVersion:3 as const,scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame)}:
@@ -109,9 +113,9 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
         if(result.kind!=='completed')return {kind:'unknown',code:schemaPlayerCode(result.code)}
         if(!result.evidence||typeof result.evidence!=='object')fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
         let capturedInput=input
-        if(plan.schemaVersion===3||plan.schemaVersion===4) {
+        if(plan.schemaVersion===3||plan.schemaVersion===4||plan.schemaVersion===5) {
           if(!result.capturedInput)fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
-          const actual=plan.schemaVersion===4?validateSchemaEvaluationInputV4(result.capturedInput)
+          const actual=plan.executorVersion===4?validateSchemaEvaluationInputV4(result.capturedInput)
             :validateSchemaEvaluationInputV3(result.capturedInput)
           if(!schemaScopeReadFactsEqual(actual.scopeReadFrame,plan.scopeReadFrame)
             ||actual.scopeReadFrame.sourceNativeCutSha256!==result.association.sourceNativeCutSha256

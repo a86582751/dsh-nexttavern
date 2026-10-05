@@ -12,7 +12,12 @@ import {validateSchemaTraceInputV4,validateSchemaGuestOutputForProgramV4,validat
   from './tavern-mvu-schema-runner-v4.js'
 import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
 import {createRoleplayMvuSchemaJournal,freezeSchemaJournalData,sealSchemaJournalRecord,
-  validateSchemaSourceCut,validateSchemaAnchor} from './roleplay-mvu-schema-journal.js'
+  validateSchemaSourceCut,validateSchemaAnchor,schemaEpochExecution,
+  schemaJournalServerTailSha256,schemaJournalHostFrontierSha256} from './roleplay-mvu-schema-journal.js'
+import type {CombinedAuthorCompilerV3,CombinedCompilationInputV3,CombinedAuthorProgramV3}
+  from './tavern-author-combined-types.mjs'
+import type {AuthorHostIdentityV5,AuthorServerExecutorV4,AuthorHostAssociationV5}
+  from './roleplay-author-host-types-v5.js'
 import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
 import type {mvuSchemaMarkers} from 'dsh-nexttavern-session-format/mvu-schema-marker'
 import type {SchemaTraceRunner,SchemaRealmLoadFrame,SchemaTraceRequestedStep,SchemaTraceStepRecord,
@@ -29,12 +34,22 @@ export interface SchemaOwnedScope {
   incarnation:object
   session:Session
   signal:AbortSignal
-  authorInput:SchemaAuthorCompilationInput
+  authorInput:SchemaAuthorCompilationInput|CombinedCompilationInputV3
   realmEpoch:string
   loadFrame:SchemaRealmLoadFrame
   requestedStep:SchemaTraceRequestedStep
   sourceNativeCut:SourceNativeCutFacts
   inheritedCut:SchemaJournalFrozenCut|null
+}
+/** Initialization has no server frames until the single Combined compile
+ * produces its actual partition. All other executions arrive with frames. */
+export type SchemaCapturedScope=SchemaOwnedScope|
+  (Omit<SchemaOwnedScope,'authorInput'|'loadFrame'|'requestedStep'>&{
+    authorInput:CombinedCompilationInputV3;loadFrame?:undefined;requestedStep?:undefined
+  })
+export interface SchemaHostInitializationFrames {
+  loadFrame:import('./tavern-mvu-schema-types-v4.js').MvuSchemaRealmLoadFrameV4
+  requestedStep:import('./tavern-mvu-schema-types-v4.js').MvuSchemaTraceRequestedStepV4
 }
 export type SchemaBoundaryStage='captured'|'compiled'|'program-verified'|'history-verified'|'epoch-written'
   |'dispatch-written'|'dispatch-appended'|'dispatch-flushed'|'guest-completed'|'completion-written'
@@ -46,7 +61,7 @@ export interface SchemaBoundary {
 }
 export interface HistoricalCutSelector {sessionId:string;realmEpoch:string;nativeCut:number}
 export interface HistoricalCutFacts {
-  authorInput:SchemaAuthorCompilationInput
+  authorInput:SchemaAuthorCompilationInput|CombinedCompilationInputV3
   frozen:SchemaJournalFrozenCut
   events:readonly SessionEvent[]
 }
@@ -57,11 +72,17 @@ export interface SchemaReplayDeps {
   /** Omission exists only for legacy v1 adapter tests. Core selects explicitly
    * from the epoch's exact compiler/bridge/libraries/runner implementation. */
   executorVersion?:1|2|3|4
+  /** Set only by the admitted Host5 package factory. The v4 compiler and
+   * runner still own their actual guest ABI; Host5 owns complete association. */
+  hostV5?:{identity:AuthorHostIdentityV5;compiler:CombinedAuthorCompilerV3;server:AuthorServerExecutorV4}
   markers:typeof mvuSchemaMarkers
   /** Trusted Core producer reads actual Source/Native records and admits the
    * original load lifecycle; selectors never carry program/source authority. */
-  captureOwned(selector:SchemaExecutionSelector):SchemaOwnedScope|Promise<SchemaOwnedScope>
-  checkOwned(scope:SchemaOwnedScope,boundary:SchemaBoundary):boolean
+  captureOwned(selector:SchemaExecutionSelector):SchemaCapturedScope|Promise<SchemaCapturedScope>
+  checkOwned(scope:SchemaCapturedScope,boundary:SchemaBoundary):boolean
+  /** Synchronous Core callback uses its private initialization owner and the
+   * captured cut. It can provide frames, never replace scope authority. */
+  completeHostFrames?(scope:SchemaCapturedScope,program:CombinedAuthorProgramV3):SchemaHostInitializationFrames
   /** Core alone knows whether its private lease already owns the Source lock.
    * No caller-controlled flag can skip acquisition or grant reentrancy. */
   withSourceBoundary<T>(scope:SchemaOwnedScope,action:()=>Promise<T>):Promise<T>
@@ -70,7 +91,7 @@ export interface SchemaReplayDeps {
    * reads must not consult a parent's later active pointer or numerical head. */
   captureHistoricalCut(selector:HistoricalCutSelector,signal?:AbortSignal):Promise<HistoricalCutFacts>
 }
-export interface SchemaExecutionAssociation {
+export interface LegacySchemaExecutionAssociation {
   schemaVersion:1
   encoding:'native-mvu-schema-execution-association-v1'
   sessionId:string
@@ -87,6 +108,13 @@ export interface SchemaExecutionAssociation {
   frontierSha256:string
   outputSha256:string
 }
+export type SchemaExecutionAssociation=LegacySchemaExecutionAssociation|AuthorHostAssociationV5
+export const schemaExecutionProgramSha256=(association:SchemaExecutionAssociation)=>
+  association.schemaVersion===5?association.combinedProgramSha256:association.programSha256
+export const schemaExecutionServerTailSha256=(association:SchemaExecutionAssociation)=>
+  association.schemaVersion===5?association.serverTailSha256:association.tailSha256
+export const schemaExecutionHostFrontierSha256=(association:SchemaExecutionAssociation)=>
+  association.schemaVersion===5?association.hostFrontierSha256:association.frontierSha256
 export interface SchemaPublicationBinding {
   association:SchemaExecutionAssociation
   output:SchemaGuestOutput
@@ -156,19 +184,27 @@ function fullRecords(program:SchemaAuthorProgram,input:SchemaTraceInput,evaluati
 }
 export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
   const executorVersion=deps.executorVersion??1
+  const host=deps.hostV5
   function checkExecutor(epoch?:SchemaEpochRecord):void {
     if(![1,2,3,4].includes(executorVersion)||deps.runner.identity.version!==executorVersion
       ||deps.compiler.identity.version!==executorVersion)fail('SCHEMA_IMPLEMENTATION_CHANGED')
-    if(epoch&&(epoch.schemaVersion!==executorVersion||epoch.program.compiler.version!==executorVersion
-      ||epoch.program.bridge.version!==executorVersion||!same(epoch.runner,deps.runner.identity))) {
-      fail('SCHEMA_IMPLEMENTATION_CHANGED')
+    if(host) {
+      if(executorVersion!==4)fail('SCHEMA_IMPLEMENTATION_CHANGED')
+      if(epoch&&(epoch.schemaVersion!==5||!same(epoch.host,host.identity)
+        ||!same(epoch.server.executor,host.server)||!same(epoch.program.compiler,host.compiler.identity))) {
+        fail('SCHEMA_IMPLEMENTATION_CHANGED')
+      }
+    }else if(epoch) {
+      if(epoch.schemaVersion===5||epoch.schemaVersion!==executorVersion
+        ||epoch.program.compiler.version!==executorVersion||epoch.program.bridge.version!==executorVersion
+        ||!same(epoch.runner,deps.runner.identity))fail('SCHEMA_IMPLEMENTATION_CHANGED')
     }
   }
   function traceInput(program:SchemaAuthorProgram,epoch:SchemaEpochRecord,prefix:readonly SchemaTraceStepRecord[],
     requestedStep:SchemaTraceRequestedStep):SchemaTraceInput {
     checkExecutor(epoch)
     const trace={schemaVersion:executorVersion,encoding:`native-mvu-author-schema-trace-input-v${executorVersion}`,
-      realmEpoch:epoch.realmEpoch,loadFrame:epoch.loadFrame,prefix,requestedStep} as SchemaTraceInput
+      realmEpoch:epoch.realmEpoch,loadFrame:schemaEpochExecution(epoch).loadFrame,prefix,requestedStep} as SchemaTraceInput
     if(executorVersion===4)validateSchemaTraceInputV4(validateSchemaProgramV4(program),trace)
     else if(executorVersion===3) {
       if(program.schemaVersion!==1)fail('SCHEMA_REPLAY_VERSION_MISMATCH')
@@ -177,7 +213,7 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       if(program.schemaVersion!==1)fail('SCHEMA_REPLAY_VERSION_MISMATCH')
       validateSchemaTraceInputV2(program,trace)
     }
-    else if(epoch.loadFrame.schemaVersion!==1||requestedStep.frame.input.schemaVersion!==1
+    else if(schemaEpochExecution(epoch).loadFrame.schemaVersion!==1||requestedStep.frame.input.schemaVersion!==1
       ||prefix.some(step=>step.frame.input.schemaVersion!==1))fail('SCHEMA_REPLAY_VERSION_MISMATCH')
     return trace
   }
@@ -196,6 +232,14 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
   let historicalCacheBytes=0
   let disposed=false,generation=0
   const ownerGeneration=(owner:object)=>ownerGenerations.get(owner)??0
+  async function compileAuthor(input:SchemaOwnedScope['authorInput'],signal:AbortSignal) {
+    if(host) {
+      if(input.schemaVersion!==3)fail('SCHEMA_REPLAY_VERSION_MISMATCH')
+      return host.compiler.compile(input,signal)
+    }
+    if(input.schemaVersion===3)fail('SCHEMA_REPLAY_VERSION_MISMATCH')
+    return deps.compiler.compile(input,signal)
+  }
   async function replayHistory(ready:SchemaJournalReady,program:SchemaAuthorProgram,signal:AbortSignal):Promise<void> {
     const steps=ready.steps.map(item=>item.step),last=steps.at(-1)
     if(!last)fail('SCHEMA_REALM_HISTORY_UNPROVEN')
@@ -215,76 +259,109 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
     if(disposed||active.has(selector.sessionId))return {kind:'blocked',code:disposed?'SCHEMA_REPLAY_DISPOSED':'SCHEMA_REPLAY_BUSY',anchor:selector}
     const job={abort:new AbortController()} as {owner?:object;abort:AbortController}
     active.set(selector.sessionId,job)
-    let scope:SchemaOwnedScope|undefined,dispatchRef:SchemaJournalRef|undefined,epochWritten=false,pairFlushed=false
+    let captured:SchemaCapturedScope|undefined,scope:SchemaOwnedScope|undefined
+    let dispatchRef:SchemaJournalRef|undefined,epochWritten=false,pairFlushed=false
+    let combined:CombinedAuthorProgramV3|null=null
     let dispatchMarker:SchemaNativeMarkerRef|null=null,completionMarker:SchemaNativeMarkerRef|null=null
     const admittedGeneration=generation
     let admittedOwnerGeneration=0
     function check(stage:SchemaBoundaryStage):void {
-      if(!scope||disposed||generation!==admittedGeneration||job.abort.signal.aborted||scope.signal.aborted||invalidatedOwners.has(scope.owner)
-        ||ownerGeneration(scope.owner)!==admittedOwnerGeneration
-        ||!deps.checkOwned(scope,{stage,dispatchMarker,completionMarker}))fail('SCHEMA_PERMISSION_REVOKED')
+      const current=scope??captured
+      if(!current||disposed||generation!==admittedGeneration||job.abort.signal.aborted||current.signal.aborted
+        ||invalidatedOwners.has(current.owner)||ownerGeneration(current.owner)!==admittedOwnerGeneration
+        ||!deps.checkOwned(current,{stage,dispatchMarker,completionMarker}))fail('SCHEMA_PERMISSION_REVOKED')
     }
-    try {
-      checkExecutor()
-      scope=await deps.captureOwned(selector)
-      if(!scope||!scope.owner||!scope.incarnation||typeof scope.owner!=='object'||typeof scope.incarnation!=='object') {
-        fail('SCHEMA_OWNER_UNPROVEN')
-      }
-      job.owner=scope.owner;admittedOwnerGeneration=ownerGeneration(scope.owner)
-      // Snapshot data independently of private native objects. No caller can
-      // mutate author/frame inputs while the compiler or worker is awaiting.
-      scope={...scope,signal:AbortSignal.any([scope.signal,job.abort.signal]),
-        authorInput:freezeSchemaJournalData(scope.authorInput),loadFrame:freezeSchemaJournalData(scope.loadFrame),
-        requestedStep:freezeSchemaJournalData(scope.requestedStep),sourceNativeCut:validateSchemaSourceCut(scope.sourceNativeCut),
-        inheritedCut:scope.inheritedCut===null?null:freezeSchemaJournalData(scope.inheritedCut)}
-      check('captured')
-      if(scope.loadFrame.schemaVersion!==executorVersion||scope.requestedStep.frame.input.schemaVersion!==executorVersion) {
+    function checkFrames(current:SchemaOwnedScope):void {
+      if(current.loadFrame.schemaVersion!==executorVersion||current.requestedStep.frame.input.schemaVersion!==executorVersion) {
         fail('SCHEMA_REPLAY_VERSION_MISMATCH')
       }
-      if(scope.session.id!==selector.sessionId||scope.sourceNativeCut.sessionId!==selector.sessionId
-        ||scope.sourceNativeCut.ownerSessionId!==selector.sessionId||!hash(scope.realmEpoch)
-        ||!same(scope.sourceNativeCut.anchor,selector.anchor)
-        ||scope.sourceNativeCut.nativeCut!==scope.session.snapshotEvents().length
-        ||scope.sourceNativeCut.nativePrefixSha256!==recordSha256(scope.session.snapshotEvents())
-        ||scope.requestedStep.frame.sourceNativeCutSha256!==recordSha256(scope.sourceNativeCut)
-        ||scope.requestedStep.frame.ownerSessionId!==selector.sessionId
-        ||scope.sourceNativeCut.materialSha256!==recordSha256(scope.requestedStep.frame.material))fail('SCHEMA_SOURCE_CUT_INVALID')
+      const stepFrame=current.requestedStep.frame
+      if(stepFrame.sourceNativeCutSha256!==recordSha256(current.sourceNativeCut)
+        ||stepFrame.ownerSessionId!==selector.sessionId
+        ||current.sourceNativeCut.materialSha256!==recordSha256(stepFrame.material))fail('SCHEMA_SOURCE_CUT_INVALID')
       if(executorVersion===3||executorVersion===4) {
-        const stepFrame=scope.requestedStep.frame
         const frame=(executorVersion===4?validateSchemaEvaluationInputV4(stepFrame.input)
           :validateSchemaEvaluationInputV3(stepFrame.input)).scopeReadFrame
-        // Current child frames may read a later controlled Source cut than the
-        // ancestor program/load. Match this dispatch's owner and cut, rather
-        // than substituting the realm's original source snapshot or authority.
+        // A child reads its controlled current Source cut, not an ancestor's authority.
         if(frame.source.sessionId!==selector.sessionId
           ||frame.sourceNativeCutSha256!==stepFrame.sourceNativeCutSha256
-          ||frame.source.sourceSnapshotSha256!==scope.sourceNativeCut.sourceSnapshotSha256) {
+          ||frame.source.sourceSnapshotSha256!==current.sourceNativeCut.sourceSnapshotSha256) {
           fail('SCHEMA_SCOPE_BINDING_INVALID')
         }
       }
-      const original=journal.capture(selector.sessionId,scope.realmEpoch,scope.session.snapshotEvents(),scope.inheritedCut)
+    }
+    try {
+      checkExecutor()
+      captured=await deps.captureOwned(selector)
+      if(!captured||!captured.owner||!captured.incarnation||typeof captured.owner!=='object'||typeof captured.incarnation!=='object') {
+        fail('SCHEMA_OWNER_UNPROVEN')
+      }
+      job.owner=captured.owner;admittedOwnerGeneration=ownerGeneration(captured.owner)
+      // Snapshot data independently of private native objects. No caller can
+      // mutate author/frame inputs while the compiler or worker is awaiting.
+      const capturedBase={signal:AbortSignal.any([captured.signal,job.abort.signal]),
+        sourceNativeCut:validateSchemaSourceCut(captured.sourceNativeCut),
+        inheritedCut:captured.inheritedCut===null?null:freezeSchemaJournalData(captured.inheritedCut)}
+      captured=captured.loadFrame===undefined?{...captured,...capturedBase,
+        authorInput:freezeSchemaJournalData(captured.authorInput),loadFrame:undefined,requestedStep:undefined}:
+        {...captured,...capturedBase,authorInput:freezeSchemaJournalData(captured.authorInput),
+          loadFrame:freezeSchemaJournalData(captured.loadFrame),requestedStep:freezeSchemaJournalData(captured.requestedStep)}
+      if(captured.loadFrame!==undefined) {
+        scope=captured
+      }else if(!host||captured.authorInput.schemaVersion!==3||!deps.completeHostFrames)fail('SCHEMA_OWNER_UNPROVEN')
+      check('captured')
+      if(captured.session.id!==selector.sessionId||captured.sourceNativeCut.sessionId!==selector.sessionId
+        ||captured.sourceNativeCut.ownerSessionId!==selector.sessionId||!hash(captured.realmEpoch)
+        ||!same(captured.sourceNativeCut.anchor,selector.anchor)
+        ||captured.sourceNativeCut.nativeCut!==captured.session.snapshotEvents().length
+        ||captured.sourceNativeCut.nativePrefixSha256!==recordSha256(captured.session.snapshotEvents()))fail('SCHEMA_SOURCE_CUT_INVALID')
+      if(scope)checkFrames(scope)
+      const original=journal.capture(selector.sessionId,captured.realmEpoch,captured.session.snapshotEvents(),captured.inheritedCut)
       if(original.kind==='blocked')fail(original.code)
       if(original.kind==='ready')checkExecutor(original.epoch)
       if(original.kind==='ready'&&original.steps.some(step=>step.dispatch.batchId===selector.batchId)) {
         fail('SCHEMA_BATCH_ALREADY_EXECUTED')
       }
-      const compiled=await deps.compiler.compile(scope.authorInput,scope.signal)
+      const compiled=await compileAuthor(captured.authorInput,captured.signal)
       check('compiled')
       if(compiled.kind!=='compiled')fail('SCHEMA_COMPILATION_REFUSED')
-      const program=compiled.program
+      const completeProgram=compiled.program
+      combined=completeProgram.schemaVersion===3?completeProgram:null
+      const program:SchemaAuthorProgram=combined?combined.serverProgram!:completeProgram as SchemaAuthorProgram
+      // Compilation can retain browser-only DATA. Numerical initialization
+      // needs a real server result and creates no fake epoch or Native marker.
+      if(!program)fail('AUTHOR_HOST_BROWSER_ONLY_INITIALIZATION_UNSUPPORTED')
       if(program.compiler.version!==executorVersion||program.bridge.version!==executorVersion)fail('SCHEMA_IMPLEMENTATION_CHANGED')
-      if(!same(compilationInput(program,scope.authorInput),scope.authorInput))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
+      if(combined) {
+        if(!same({schemaVersion:3,encoding:'native-author-combined-compilation-input-v3',original:combined.original,
+          sourceRecordSessionId:combined.sourceRecordSessionId},captured.authorInput))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
+      }else {
+        if(captured.authorInput.schemaVersion===3
+          ||!same(compilationInput(program,captured.authorInput),captured.authorInput))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
+      }
+      if(!scope) {
+        const frames=deps.completeHostFrames!(captured,combined!)
+        scope={...captured,loadFrame:freezeSchemaJournalData(frames.loadFrame),
+          requestedStep:freezeSchemaJournalData(frames.requestedStep)}
+        checkFrames(scope)
+      }
       // This program came from the current owned compiler, not a stored DTO.
       // Historical verification separately recompiles frozen persisted programs.
-      const epoch:SchemaEpochRecord=original.kind==='ready'?original.epoch:sealSchemaJournalRecord({
+      const epoch:SchemaEpochRecord=original.kind==='ready'?original.epoch:host&&combined?sealSchemaJournalRecord({
+        schemaVersion:5 as const,encoding:'native-mvu-schema-epoch-v5' as const,
+        sessionId:selector.sessionId,realmEpoch:scope.realmEpoch,host:host.identity,program:combined,
+        server:{executor:host.server,loadFrame:scope.loadFrame as import('./tavern-mvu-schema-types-v4.js').MvuSchemaRealmLoadFrameV4,
+          loadAnchorSha256:recordSha256({programSha256:program.programSha256,realmEpoch:scope.realmEpoch,loadFrame:scope.loadFrame})}}):
+        sealSchemaJournalRecord({
         schemaVersion:executorVersion,encoding:executorVersion===1?'native-mvu-schema-epoch-v1' as const
           :executorVersion===2?'native-mvu-schema-epoch-v2' as const:executorVersion===3?'native-mvu-schema-epoch-v3' as const
           :'native-mvu-schema-epoch-v4' as const,
         sessionId:selector.sessionId,
         realmEpoch:scope.realmEpoch,program,runner:deps.runner.identity,loadFrame:scope.loadFrame,
         loadAnchorSha256:recordSha256({programSha256:program.programSha256,realmEpoch:scope.realmEpoch,loadFrame:scope.loadFrame})}) as SchemaEpochRecord
-      if(!same(epoch.program,program)||!same(epoch.loadFrame,scope.loadFrame))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
-      if(!same(epoch.runner,deps.runner.identity))fail('SCHEMA_IMPLEMENTATION_CHANGED')
+      const execution=schemaEpochExecution(epoch)
+      if(!same(epoch.program,combined??program)||!same(execution.loadFrame,scope.loadFrame))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
+      if(!same(execution.runner,deps.runner.identity))fail('SCHEMA_IMPLEMENTATION_CHANGED')
       // evaluateTrace below replays and compares every historical output before
       // evaluating the new step. A separate prefix-only replay repeats that work.
       const prefix=original.kind==='ready'?original.steps.map(item=>item.step):[]
@@ -299,14 +376,15 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
         const result=await journal.put(epoch);epochWritten=true;check('epoch-written');return result
       })
       check('epoch-written')
-      const dispatch:SchemaDispatchRecord=sealSchemaJournalRecord({schemaVersion:executorVersion,
+      const dispatch:SchemaDispatchRecord=sealSchemaJournalRecord({schemaVersion:host?5:executorVersion,
         encoding:executorVersion===1?'native-mvu-schema-dispatch-v1' as const
           :executorVersion===2?'native-mvu-schema-dispatch-v2' as const:executorVersion===3?'native-mvu-schema-dispatch-v3' as const
-          :'native-mvu-schema-dispatch-v4' as const,
+          :host?'native-mvu-schema-dispatch-v5' as const:'native-mvu-schema-dispatch-v4' as const,
         sessionId:selector.sessionId,realmEpoch:scope.realmEpoch,
         batchId:selector.batchId,ordinal:prefix.length+1,epoch:epochRef,
-        previousTailSha256:original.kind==='ready'?original.tailSha256:epoch.loadAnchorSha256,
-        requestedStep:scope.requestedStep,sourceNativeCut:scope.sourceNativeCut}) as SchemaDispatchRecord
+        previousTailSha256:original.kind==='ready'?schemaJournalServerTailSha256(original):execution.loadAnchorSha256,
+        requestedStep:scope.requestedStep,sourceNativeCut:scope.sourceNativeCut,
+        ...combined?{combinedProgramSha256:combined.combinedProgramSha256,serverProgramSha256:program.programSha256}:{}}) as SchemaDispatchRecord
       dispatchRef=await deps.withSourceBoundary(scope,async()=>{
         check('epoch-written')
         const result=await journal.put(dispatch);check('dispatch-written');return result
@@ -315,7 +393,8 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       await deps.withSourceBoundary(scope,async()=>{
         check('dispatch-written')
         const event=deps.markers.appendDispatch(scope!.session,{schemaVersion:1,encoding:'native-mvu-schema-dispatch-marker-v1',
-          sessionId:selector.sessionId,realmEpoch:scope!.realmEpoch,batchId:selector.batchId,programSha256:program.programSha256,
+          sessionId:selector.sessionId,realmEpoch:scope!.realmEpoch,batchId:selector.batchId,
+          programSha256:combined?.combinedProgramSha256??program.programSha256,
           sourceSha256:program.source.sourceSha256,previousTailSha256:dispatch.previousTailSha256,
           dispatchRecordSha256:dispatch.recordSha256,loadDescriptorSha256:prefix.length?null:epoch.recordSha256,
           observedNativeSeq:scope!.session.snapshotEvents().length-1})
@@ -330,13 +409,14 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       if(evaluated.kind!=='evaluated-trace')fail(evaluated.diagnostics[0]?.code??'SCHEMA_EXECUTION_UNAVAILABLE')
       const steps=fullRecords(program,trace,evaluated.evaluation,deps.runner),step=steps.at(-1)!
       const {frame:completedFrame,...completedReceipt}=step
-      const completion:SchemaCompletionRecord=sealSchemaJournalRecord({schemaVersion:executorVersion,
+      const completion:SchemaCompletionRecord=sealSchemaJournalRecord({schemaVersion:host?5:executorVersion,
         encoding:executorVersion===1?'native-mvu-schema-completion-v1' as const
           :executorVersion===2?'native-mvu-schema-completion-v2' as const:executorVersion===3?'native-mvu-schema-completion-v3' as const
-          :'native-mvu-schema-completion-v4' as const,
+          :host?'native-mvu-schema-completion-v5' as const:'native-mvu-schema-completion-v4' as const,
         sessionId:selector.sessionId,realmEpoch:scope.realmEpoch,
         batchId:selector.batchId,dispatch:dispatchRef,dispatchMarker:dispatchMarker!,runner:deps.runner.identity,
-        step:{...completedReceipt,frameSha256:recordSha256(completedFrame)}}) as SchemaCompletionRecord
+        step:{...completedReceipt,frameSha256:recordSha256(completedFrame)},
+        ...combined?{combinedProgramSha256:combined.combinedProgramSha256,serverProgramSha256:program.programSha256}:{}}) as SchemaCompletionRecord
       const completionRef=await deps.withSourceBoundary(scope,async()=>{
         check('guest-completed');const result=await journal.put(completion);check('completion-written');return result
       })
@@ -357,13 +437,19 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       const result=await deps.withSourceBoundary(scope,async():Promise<SchemaExecutionResult>=>{
         check('mint')
         const ready=journal.capture(selector.sessionId,scope!.realmEpoch,scope!.session.snapshotEvents(),scope!.inheritedCut)
-        if(ready.kind!=='ready'||ready.tailSha256!==step.stepSha256)fail(ready.kind==='blocked'?ready.code:'SCHEMA_REALM_HISTORY_UNPROVEN')
-        const association:SchemaExecutionAssociation=freezeSchemaJournalData({schemaVersion:1,
-          encoding:'native-mvu-schema-execution-association-v1',sessionId:selector.sessionId,realmEpoch:scope!.realmEpoch,
-          batchId:selector.batchId,anchor:selector.anchor,sourceNativeCutSha256:recordSha256(scope!.sourceNativeCut),
-          programSha256:program.programSha256,dispatch:dispatchRef!,completion:completionRef,
-          dispatchMarker:dispatchMarker!,completionMarker:completionMarker!,tailSha256:step.stepSha256,
-          frontierSha256:ready.frontierSha256,outputSha256:recordSha256(step.output)})
+        if(ready.kind!=='ready'||schemaJournalServerTailSha256(ready)!==step.stepSha256) {
+          fail(ready.kind==='blocked'?ready.code:'SCHEMA_REALM_HISTORY_UNPROVEN')
+        }
+        const common={sessionId:selector.sessionId,realmEpoch:scope!.realmEpoch,batchId:selector.batchId,
+          anchor:selector.anchor,sourceNativeCutSha256:recordSha256(scope!.sourceNativeCut),
+          dispatch:dispatchRef!,completion:completionRef,dispatchMarker:dispatchMarker!,completionMarker:completionMarker!,
+          outputSha256:recordSha256(step.output)}
+        const association:SchemaExecutionAssociation=combined?freezeSchemaJournalData({...common,schemaVersion:5,
+          encoding:'native-author-host-association-v5',combinedProgramSha256:combined.combinedProgramSha256,
+          serverProgramSha256:program.programSha256,epoch:epochRef,serverTailSha256:step.stepSha256,
+          hostFrontierSha256:schemaJournalHostFrontierSha256(ready)}):freezeSchemaJournalData({...common,schemaVersion:1,
+          encoding:'native-mvu-schema-execution-association-v1',programSha256:program.programSha256,
+          tailSha256:step.stepSha256,frontierSha256:schemaJournalHostFrontierSha256(ready)})
         const token=Object.freeze({})
         evidence.set(token,{scope:scope!,association,output:step.output,generation:admittedGeneration,ownerGeneration:admittedOwnerGeneration})
         return {kind:'completed',output:step.output,association,evidence:token}
@@ -376,12 +462,13 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
     } catch(error) {
       let code=codeOf(error)
       if(scope&&(dispatchRef||epochWritten)&&!pairFlushed) {
-        const unavailable:SchemaUnavailableRecord=sealSchemaJournalRecord({schemaVersion:executorVersion,
+        const unavailable:SchemaUnavailableRecord=sealSchemaJournalRecord({schemaVersion:host?5:executorVersion,
           encoding:executorVersion===1?'native-mvu-schema-unavailable-v1' as const
             :executorVersion===2?'native-mvu-schema-unavailable-v2' as const:executorVersion===3?'native-mvu-schema-unavailable-v3' as const
-            :'native-mvu-schema-unavailable-v4' as const,
+            :host?'native-mvu-schema-unavailable-v5' as const:'native-mvu-schema-unavailable-v4' as const,
           sessionId:selector.sessionId,realmEpoch:scope.realmEpoch,
-          batchId:selector.batchId,dispatch:dispatchRef??null,sourceNativeCut:scope.sourceNativeCut,code}) as SchemaUnavailableRecord
+          batchId:selector.batchId,dispatch:dispatchRef??null,sourceNativeCut:scope.sourceNativeCut,code,
+          ...combined?{combinedProgramSha256:combined.combinedProgramSha256}:{}}) as SchemaUnavailableRecord
         try {await deps.withSourceBoundary(scope,()=>journal.put(unavailable))}catch {code='SCHEMA_UNAVAILABLE_WRITE_UNKNOWN'}
         return {kind:'unavailable',code,anchor:selector,...(dispatchRef?{dispatch:dispatchRef}:{})}
       }
@@ -404,10 +491,11 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       const ready=journal.captureFrozen(value.sessionId,value.realmEpoch,events,frozen.records)
       if(ready.kind!=='ready')fail(ready.code)
       checkExecutor(ready.epoch)
-      if(!same(ready.epoch.runner,deps.runner.identity))fail('SCHEMA_IMPLEMENTATION_CHANGED')
+      if(!same(schemaEpochExecution(ready.epoch).runner,deps.runner.identity))fail('SCHEMA_IMPLEMENTATION_CHANGED')
       const keyFor=(captured:HistoricalCutFacts)=>recordSha256({generation,selector:value,
         authorInput:captured.authorInput,frozen:captured.frozen,
-        events:captured.events.slice(0,value.nativeCut),compiler:deps.compiler.identity,runner:deps.runner.identity})
+        events:captured.events.slice(0,value.nativeCut),compiler:host?.compiler.identity??deps.compiler.identity,
+        host:host?.identity,runner:deps.runner.identity})
       const key=keyFor(facts),cached=historicalCache.get(key)
       let result:SchemaJournalFrozenCut
       if(cached) {
@@ -420,13 +508,15 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
           const created={abort,waiters:0,promise:undefined as unknown as Promise<SchemaJournalFrozenCut>}
           const check=()=>{abort.signal.throwIfAborted();if(disposed||generation!==admittedGeneration)fail('SCHEMA_REPLAY_DISPOSED')}
           created.promise=(async()=>{
-            const compiled=await deps.compiler.compile(freezeSchemaJournalData(facts.authorInput),abort.signal)
+            const compiled=await compileAuthor(freezeSchemaJournalData(facts.authorInput),abort.signal)
             check()
             if(compiled.kind!=='compiled'||!same(compiled.program,ready.epoch.program))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
             // The current compiler already reproduced the exact persisted
             // program above. Keep one real historical execution, not a second
             // compilation of that same newly produced result.
-            await replayHistory(ready,compiled.program,abort.signal);check()
+            const program=compiled.program.schemaVersion===3?compiled.program.serverProgram:compiled.program
+            if(!program)fail('SCHEMA_HOST_SERVER_PROGRAM_REQUIRED')
+            await replayHistory(ready,program,abort.signal);check()
             const bytes=Buffer.byteLength(JSON.stringify(frozen),'utf8')
             // Large valid cuts remain readable; they simply do not occupy this
             // optional cache. Failed/aborted work never becomes a success entry.
@@ -474,8 +564,8 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
         ||!deps.checkOwned(pin.scope,{stage:'publication',dispatchMarker:pin.association.dispatchMarker,
           completionMarker:pin.association.completionMarker}))return false
       const ready=journal.capture(pin.scope.session.id,pin.scope.realmEpoch,pin.scope.session.snapshotEvents(),pin.scope.inheritedCut)
-      return ready.kind==='ready'&&ready.frontierSha256===pin.association.frontierSha256
-        &&ready.tailSha256===pin.association.tailSha256
+      return ready.kind==='ready'&&schemaJournalHostFrontierSha256(ready)===schemaExecutionHostFrontierSha256(pin.association)
+        &&schemaJournalServerTailSha256(ready)===schemaExecutionServerTailSha256(pin.association)
     } catch {return false}
   }
   return {execute,verifyHistorical,checkEvidence,

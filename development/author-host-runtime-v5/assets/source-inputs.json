@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "encoding": "owned-author-host-runtime-source-inputs-v5",
+  "name": "dsh-nexttavern-author-host-runtime-v5",
+  "version": "0.5.0",
+  "package": {
+    "artifact": "author-host-runtime-v5-package",
+    "sha256": "ad468e5c78278caba133d6e762a784d5ad70c0d964c10d6025bb54af12a8338c"
+  },
+  "builder": {
+    "esbuildVersion": "0.24.2",
+    "lock": {
+      "artifact": "inventory-runtime-alpha3-build-tools-package-lock-json",
+      "sha256": "3d9f9d307eacd4f97e4694ed7fdb9833380636af1ed2fa60268e7976c567feb3"
+    }
+  },
+  "dependencyClosure": "bundled-owned-host-source-only",
+  "graphs": {
+    "provider": [
+      {
+        "artifact": "roleplay-data-typescript",
+        "path": "src/core/roleplay-data.ts",
+        "sha256": "16683dea5487a51cff7c4dc1c5bde6226cc608c131f9930cf4cac361d5a48714"
+      },
+      {
+        "artifact": "roleplay-mvu-schema-executor-types-typescript",
+        "path": "src/core/roleplay-mvu-schema-executor-types.ts",
+        "sha256": "3d3371f0cf42b86d9db44a3f9164f5ad6a847d371c6881b7a1df997d88ef97ca"
+      },
+      {
+        "artifact": "roleplay-mvu-schema-journal-typescript",
+        "path": "src/core/roleplay-mvu-schema-journal.ts",
+        "sha256": "fdb35fbd7cc09f2813f9f1353d1441c98f4e8cde7f793aa44926b1a0fec7d35f"
+      },
+      {
+        "artifact": "roleplay-mvu-schema-replay-typescript",
+        "path": "src/core/roleplay-mvu-schema-replay.ts",
+        "sha256": "82a0d1fbdf3385c72d676e14f565ef492cf3b310d2e0a9b928949a4ae74a6f72"
+      },
+      {
+        "artifact": "roleplay-mvu-update-v2-typescript",
+        "path": "src/core/roleplay-mvu-update-v2.ts",
+        "sha256": "fb1cab3615c233251b4dd96b393fa6eaebff2601ee51fff7a531d293914b9ea3"
+      },
+      {
+        "artifact": "roleplay-mvu-update-typescript",
+        "path": "src/core/roleplay-mvu-update.ts",
+        "sha256": "8deccf53394516e2b009327ac9bbfc62df9ebb7165517092648c3b05bc05c26e"
+      },
+      {
+        "artifact": "roleplay-userinfo-typescript",
+        "path": "src/core/roleplay-userinfo.ts",
+        "sha256": "62fec850e195c8a7129e28b7afb90b1a26d3cce42c671f5cba58e69659eaaf79"
+      },
+      {
+        "artifact": "tavern-author-combined-compiler-typescript",
+        "path": "src/core/tavern-author-combined-compiler.mts",
+        "sha256": "d41c199055f26431ba3698737306b5a3eda50a6187792186bc3e46e1645d526c"
+      },
+      {
+        "artifact": "tavern-author-combined-data-typescript",
+        "path": "src/core/tavern-author-combined-data.mts",
+        "sha256": "57c159807932b4ea474545c26bc48592fbd486e904dd6dde21289d40b404186a"
+      },
+      {
+        "artifact": "tavern-author-host-provider-typescript",
+        "path": "src/core/tavern-author-host-provider.mts",
+        "sha256": "f32b53a52497806b19a41080a8e5c90a814593e00363ff944d2ef7d9ca5612ee"
+      },
+      {
+        "artifact": "tavern-mvu-schema-data-typescript",
+        "path": "src/core/tavern-mvu-schema-data.ts",
+        "sha256": "e76ddc0150474a51c1eab2e42855f68389dfb365b8478cb387a9c57e155eb94f"
+      },
+      {
+        "artifact": "tavern-mvu-schema-import-policy-typescript",
+        "path": "src/core/tavern-mvu-schema-import-policy.ts",
+        "sha256": "947ae8550ff8226f0529b7a98c784518a9a6158a9f2c31a6e840cfd6919072fc"
+      },
+      {
+        "artifact": "tavern-mvu-schema-program-v4-typescript",
+        "path": "src/core/tavern-mvu-schema-program-v4.ts",
+        "sha256": "927dffa84b03590ca67a24a40dc95e815a086a5917ae9a696e1083e341d34a64"
+      },
+      {
+        "artifact": "tavern-mvu-schema-runner-v2-typescript",
+        "path": "src/core/tavern-mvu-schema-runner-v2.ts",
+        "sha256": "c62218d5606f5ca2e60d1ea677cef50650e760c6b96af453913ddfc73ce239b2"
+      },
+      {
+        "artifact": "tavern-mvu-schema-runner-v3-typescript",
+        "path": "src/core/tavern-mvu-schema-runner-v3.ts",
+        "sha256": "eb2b4c4ac27231054cd4eccdb3914a96914b8c3beb017226ccdd6a53d0a9fa78"
+      },
+      {
+        "artifact": "tavern-mvu-schema-runner-v4-typescript",
+        "path": "src/core/tavern-mvu-schema-runner-v4.ts",
+        "sha256": "4a311895e5c50a7e32e34ad3d8eba9b9c955b40d9a5baea65539e3e330b11fc7"
+      },
+      {
+        "artifact": "tavern-mvu-schema-types-typescript",
+        "path": "src/core/tavern-mvu-schema-types.ts",
+        "sha256": "e79ac7e90e7dca64749bf5d16a6a41f6f9892c6a8cc1af1379d7f03263ccf6d9"
+      },
+      {
+        "artifact": "tavern-mvu-schema-update-effects-v2-typescript",
+        "path": "src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "sha256": "dd68c63a68306ef2830ae12d50fdc16552e354858a424aad369be3fb34a8ff62"
+      },
+      {
+        "artifact": "tavern-mvu-scope-read-types-typescript",
+        "path": "src/core/tavern-mvu-scope-read-types.ts",
+        "sha256": "73ddf6093ca4b41e1d497cc6961a0195882e7f91cebc820df392af0ac71a60a4"
+      },
+      {
+        "artifact": "tavern-mvu-scope-read-typescript",
+        "path": "src/core/tavern-mvu-scope-read.ts",
+        "sha256": "50c9cc4c002292a2423c5dc938bd75fa354d082789445de9191da461584a5248"
+      },
+      {
+        "artifact": "tavern-mvu-state-loader-policy-v4-typescript",
+        "path": "src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "sha256": "43d884a995c5f95fb6a8cf9612461006335c1ca02716756d0e4ff1e0b77a04cd"
+      }
+    ]
+  }
+}

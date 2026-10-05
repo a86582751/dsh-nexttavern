@@ -8,6 +8,7 @@ import { validateMvuSchemaOpeningIntent, validateMvuSchemaOpeningEvent, validate
 import { validateMvuDerivedSourceProof } from './roleplay-mvu-lineage.js';
 import { validateMvuDerivedSourceProofUnion, validateMvuPreparedSourceRefV1 } from './roleplay-mvu-frozen-lineage.js';
 import { freezeImmutableSchemaDescriptorDataV4 } from './roleplay-mvu-schema-descriptor-data.js';
+import { schemaOriginalProgramSha256, schemaOriginalSnapshot } from './roleplay-mvu-schema-source.js';
 export const mvuSchemaDerivedPreparedKey = (sid) => `${sid}__mvu-schema-derived-prepared`;
 export const mvuSchemaPrefixClosureKey = (sid, sha) => `${sid}__mvu-schema-prefix-input-${sha}`;
 export const mvuSchemaDerivedBasisKey = (sid) => `${sid}__mvu-schema-derived-basis`;
@@ -42,7 +43,8 @@ function validateFrozenPrefixUncached(input) {
         || initial.sessionId !== prefix.sessionId || snapshot.sessionId !== prefix.sessionId
         || initial.sourceSha256 !== prefix.sourceSha256 || snapshot.sourceSha256 !== prefix.sourceSha256
         || !same(initial.root, snapshot.root) || prefix.journal.sessionId !== prefix.sessionId
-        || prefix.journal.realmEpoch !== prefix.original.realmEpoch || prefix.original.programSha256 !== snapshot.root.programSha256
+        || prefix.journal.realmEpoch !== prefix.original.realmEpoch
+        || schemaOriginalProgramSha256(prefix.original) !== snapshot.root.programSha256
         || prefix.original.realmEpoch !== snapshot.root.realmEpoch || prefix.inheritedEventCount > prefix.journal.nativeCut
         || !Array.isArray(prefix.eventKeys) || new Set(prefix.eventKeys).size !== prefix.eventKeys.length
         || prefix.eventKeys.some(key => typeof key !== 'string' || !key.startsWith(`${prefix.sessionId}__mvu-state-schema-`))
@@ -60,6 +62,9 @@ function validateFrozenPrefixUncached(input) {
         validateMvuSchemaOpeningEvent(prefix.seed.event);
         validateMvuSchemaOpeningHead(prefix.seed.head);
         if (prefix.inheritedEventCount !== 0 || initial.root.derived)
+            fail();
+        if (prefix.original.schemaVersion === 5 && (prefix.seed.intent.preparation.schemaVersion !== 5
+            || prefix.seed.event.plan.schemaVersion !== 7))
             fail();
     }
     else if (prefix.seed.kind === 'derived') {
@@ -129,11 +134,12 @@ function validateDerivedBasisUncached(input) {
         || source.parentSessionId !== prepared.parentSessionId || source.childSessionId !== prepared.childSessionId
         || source.expectedSeedLength !== prepared.seedLength || source.parentSourceSha256 !== prepared.parentSourceSha256)
         fail();
-    const original = prepared.prefix.original.sourceSnapshot.source, imported = source.originalImport;
+    const originalSnapshot = schemaOriginalSnapshot(prepared.prefix.original);
+    const original = originalSnapshot.source, imported = source.originalImport;
     if (imported.ownerSessionId !== original.sourceRecordSessionId || imported.importId !== original.importId
         || imported.rawSha256 !== original.rawSha256 || imported.normalizedSha256 !== original.normalizedSha256
         || imported.coverageSha256 !== original.coverageSha256 || imported.transactionId !== original.transactionId
-        || imported.recordSha256 !== prepared.prefix.original.sourceSnapshot.importRecordSha256)
+        || imported.recordSha256 !== originalSnapshot.importRecordSha256)
         fail();
     return basis;
 }

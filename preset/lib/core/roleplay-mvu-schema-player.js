@@ -16,12 +16,18 @@ export function createRoleplayMvuSchemaPlayer(deps) {
     // Attempt identities survive this owner; durable operation/pair/completion
     // gates supplied by Root prohibit cold retries even when this set is gone.
     const attempted = new Set();
-    function makePlan(operation, marker, currentFrame, initialCut, clockEpochMs = 0, executorVersion = 1, scopeReadFrame) {
+    function makePlan(operation, marker, currentFrame, initialCut, clockEpochMs = 0, executorVersion = 1, scopeReadFrame, hostEpoch) {
         if (executorVersion >= 3 && !scopeReadFrame)
             fail('SCHEMA_SCOPE_READ_REQUIRED');
+        if (hostEpoch && executorVersion !== 4)
+            fail('SCHEMA_EXECUTOR_VERSION_MISMATCH');
         const input = freezeMvuSchemaPlayerData({ operation, marker, currentFrame, initialCut, clockEpochMs });
-        const version = executorVersion === 4 ? { schemaVersion: 4, encoding: 'native-mvu-schema-player-plan-v4',
-            executorVersion: 4, scopeReadFrame: validateMvuScopeReadFrameV1(scopeReadFrame) } :
+        const version = executorVersion === 4 ? {
+            ...(hostEpoch ? { schemaVersion: 5, encoding: 'native-mvu-schema-player-plan-v5',
+                epoch: hostEpoch.epoch, serverProgramSha256: hostEpoch.serverProgramSha256 } :
+                { schemaVersion: 4, encoding: 'native-mvu-schema-player-plan-v4' }),
+            executorVersion: 4, scopeReadFrame: validateMvuScopeReadFrameV1(scopeReadFrame)
+        } :
             executorVersion === 3 ? { schemaVersion: 3, encoding: 'native-mvu-schema-player-plan-v3',
                 executorVersion: 3, scopeReadFrame: validateMvuScopeReadFrameV1(scopeReadFrame) } :
                 executorVersion === 2 ? { schemaVersion: 2, encoding: 'native-mvu-schema-player-plan-v2', executorVersion: 2 } :
@@ -122,10 +128,10 @@ export function createRoleplayMvuSchemaPlayer(deps) {
                 if (!result.evidence || typeof result.evidence !== 'object')
                     fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN');
                 let capturedInput = input;
-                if (plan.schemaVersion === 3 || plan.schemaVersion === 4) {
+                if (plan.schemaVersion === 3 || plan.schemaVersion === 4 || plan.schemaVersion === 5) {
                     if (!result.capturedInput)
                         fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN');
-                    const actual = plan.schemaVersion === 4 ? validateSchemaEvaluationInputV4(result.capturedInput)
+                    const actual = plan.executorVersion === 4 ? validateSchemaEvaluationInputV4(result.capturedInput)
                         : validateSchemaEvaluationInputV3(result.capturedInput);
                     if (!schemaScopeReadFactsEqual(actual.scopeReadFrame, plan.scopeReadFrame)
                         || actual.scopeReadFrame.sourceNativeCutSha256 !== result.association.sourceNativeCutSha256

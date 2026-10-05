@@ -13,6 +13,7 @@ import {validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
 import {schemaScopeReadFactsEqual} from './roleplay-mvu-schema-scope-facts.js'
 import {validateSchemaSourceCut,validateSchemaAnchor} from './roleplay-mvu-schema-journal.js'
 import {validateSchemaStorySourceFrame} from './roleplay-mvu-schema-source.js'
+import {schemaExecutionServerTailSha256,schemaExecutionHostFrontierSha256} from './roleplay-mvu-schema-replay.js'
 import type {InputCompletionScope} from './roleplay-input-completion.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuUpdateCandidate,PreparedMvuUpdate,MvuUpdateRejection} from './roleplay-mvu-update.js'
@@ -24,6 +25,7 @@ import type {SchemaExecutionAssociation,SchemaExecutionSelector,SchemaExecutionR
   from './roleplay-mvu-schema-replay.js'
 import type {SchemaGuestOutput,SchemaEvaluationInput} from './roleplay-mvu-schema-executor-types.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
+import type {SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
 
 export const MVU_SCHEMA_STORY_PHASES=Object.freeze(['command-parsed','commands-parsed','update-ended'] as const)
 export type MvuSchemaStoryPhase=typeof MVU_SCHEMA_STORY_PHASES[number]
@@ -130,7 +132,15 @@ export interface MvuSchemaStoryPlanV5 extends Omit<MvuSchemaStoryPlanV4,'schemaV
   encoding:'native-mvu-schema-story-plan-v5'
   executorVersion:4
 }
+/** Host5 keeps Combined as the root identity; phase execution remains ABI4. */
+export interface MvuSchemaStoryPlanV6 extends Omit<MvuSchemaStoryPlanV5,'schemaVersion'|'encoding'> {
+  schemaVersion:6
+  encoding:'native-mvu-schema-story-plan-v6'
+  epoch:SchemaJournalRef
+  serverProgramSha256:string
+}
 export type MvuSchemaStoryPlan=MvuSchemaStoryPlanV2|MvuSchemaStoryPlanV3|MvuSchemaStoryPlanV4|MvuSchemaStoryPlanV5
+  |MvuSchemaStoryPlanV6
 export interface MvuSchemaStoryPhaseFact {
   phase:MvuSchemaStoryPhase
   input:SchemaEvaluationInput
@@ -313,7 +323,8 @@ export function validateMvuSchemaStoryPlan<T extends MvuSchemaStoryPlan>(input:T
   exact(value,['schemaVersion','encoding','scope','canonical','base','candidate','currentFrame','realmEpoch',
     'programSha256','initialCut','clockEpochMs','randomSeed','selectors','planSha256',
     ...(value.schemaVersion>=3?['executorVersion']:[]),
-    ...(value.schemaVersion>=4?['scopeReadFrame']:[])])
+    ...(value.schemaVersion>=4?['scopeReadFrame']:[]),
+    ...(value.schemaVersion===6?['epoch','serverProgramSha256']:[])])
   fact(value,'planSha256');validateMvuSchemaNumericalSnapshot(value.base)
   validateSchemaStorySourceFrame(value.currentFrame)
   const scope=value.scope,currency=scope.currency,receipt=scope.receipt,canonical=value.canonical,frame=value.currentFrame
@@ -329,7 +340,8 @@ export function validateMvuSchemaStoryPlan<T extends MvuSchemaStoryPlan>(input:T
   if(!(value.schemaVersion===2&&value.encoding==='native-mvu-schema-story-plan-v2'
       ||value.schemaVersion===3&&value.encoding==='native-mvu-schema-story-plan-v3'&&value.executorVersion===2
       ||value.schemaVersion===4&&value.encoding==='native-mvu-schema-story-plan-v4'&&value.executorVersion===3
-      ||value.schemaVersion===5&&value.encoding==='native-mvu-schema-story-plan-v5'&&value.executorVersion===4)
+      ||value.schemaVersion===5&&value.encoding==='native-mvu-schema-story-plan-v5'&&value.executorVersion===4
+      ||value.schemaVersion===6&&value.encoding==='native-mvu-schema-story-plan-v6'&&value.executorVersion===4)
     ||currency.schemaVersion!==2
     ||currency.source.kind!=='story'||currency.source.headRef!.kind!=='schema-head'
     ||currency.source.headRef!.sha256!==value.base.stateSnapshotSha256
@@ -358,7 +370,11 @@ export function validateMvuSchemaStoryPlan<T extends MvuSchemaStoryPlan>(input:T
     ||!same(value.initialCut.anchor,value.selectors[0]!.anchor)
     ||!same(value.candidate,value.schemaVersion>=3
       ?parseMvuUpdateV2(canonical.narrative):parseMvuUpdate(canonical.narrative)))fail()
-  if(value.schemaVersion===4||value.schemaVersion===5) {
+  if(value.schemaVersion===6) {
+    exact(value.epoch,['key','sha256'])
+    if(!id(value.epoch.key,512)||!hash(value.epoch.sha256)||!hash(value.serverProgramSha256))fail()
+  }
+  if(value.schemaVersion===4||value.schemaVersion===5||value.schemaVersion===6) {
     const read=validateMvuScopeReadFrameV1(value.scopeReadFrame),source=frame.snapshot.source
     if(read.source.sessionId!==value.base.sessionId||read.source.sourceRecordSessionId!==source.sourceRecordSessionId
       ||read.source.importId!==source.importId||read.source.rawSha256!==source.rawSha256
@@ -388,7 +404,7 @@ function output(value:SchemaGuestOutput) {
 export function mvuSchemaStoryPhaseInput(plan:MvuSchemaStoryPlan,index:number,
   phases:readonly MvuSchemaStoryPhaseFact[],bridge:MvuSchemaStoryReducerBridge|null,
   scopeReadFrame?:MvuScopeReadFrameV1):SchemaEvaluationInput {
-  if(plan.schemaVersion===4||plan.schemaVersion===5) {
+  if(plan.schemaVersion===4||plan.schemaVersion===5||plan.schemaVersion===6) {
     if(!integer(index)||index>=MVU_SCHEMA_STORY_PHASES.length||phases.length<index)fail()
     const read=validateMvuScopeReadFrameV1(scopeReadFrame??plan.scopeReadFrame)
     if(!schemaScopeReadFactsEqual(read,plan.scopeReadFrame))fail()
@@ -396,7 +412,7 @@ export function mvuSchemaStoryPhaseInput(plan:MvuSchemaStoryPlan,index:number,
     if(index===0)commands=plan.candidate.kind==='parsed'?plan.candidate.operations:[]
     else {
       const previous=phases[index-1]!
-      const accepted=plan.schemaVersion===5
+      const accepted=plan.schemaVersion>=5
         ?validateSchemaGuestOutputV4(previous.output,validateSchemaEvaluationInputV4(previous.input))
         :validateSchemaGuestOutputV3(previous.output,validateSchemaEvaluationInputV3(previous.input))
       if(accepted.kind!=='accepted')fail()
@@ -406,7 +422,7 @@ export function mvuSchemaStoryPhaseInput(plan:MvuSchemaStoryPlan,index:number,
         values=bridge.result.values
       } else values=accepted.values
     }
-    if(plan.schemaVersion===5)return freezeMvuSchemaStoryData(validateSchemaEvaluationInputV4({schemaVersion:4,
+    if(plan.schemaVersion>=5)return freezeMvuSchemaStoryData(validateSchemaEvaluationInputV4({schemaVersion:4,
       encoding:'native-mvu-author-schema-phase-input-v4',commandsEncoding:'native-mvu-update-operations-v2',
       errorPolicy:'atomic-refusal',phase:MVU_SCHEMA_STORY_PHASES[index]!,base:plan.base.values,
       values,commands,context,scopeReadFrame:read,clockEpochMs:plan.clockEpochMs,randomSeed:plan.randomSeed}))
@@ -485,15 +501,31 @@ export function mvuSchemaStoryReducerBridge(first:MvuSchemaStoryPhaseFact):MvuSc
     phaseOutputSha256:recordSha256(first.output),result:reduceMvuUpdateOperations(first.output.values,first.output.commands)},'bridgeSha256')
 }
 function association(value:SchemaExecutionAssociation,plan:MvuSchemaStoryPlan,index:number) {
-  exact(value,['schemaVersion','encoding','sessionId','realmEpoch','batchId','anchor','sourceNativeCutSha256',
-    'programSha256','dispatch','completion','dispatchMarker','completionMarker','tailSha256','frontierSha256','outputSha256'])
   const selector=plan.selectors[index]!
-  if(value.schemaVersion!==1||value.encoding!=='native-mvu-schema-execution-association-v1'
-    ||value.sessionId!==selector.sessionId||value.realmEpoch!==plan.realmEpoch||value.programSha256!==plan.programSha256
-    ||value.batchId!==selector.batchId||!same(value.anchor,selector.anchor)
-    ||![value.sourceNativeCutSha256,value.tailSha256,value.frontierSha256,value.outputSha256].every(hash))fail()
-  for(const ref of [value.dispatch,value.completion]) {
-    exact(ref,['key','sha256']);if(!id(ref.key,512)||!hash(ref.sha256))fail()
+  if(plan.schemaVersion===6) {
+    if(value.schemaVersion!==5)fail()
+    exact(value,['schemaVersion','encoding','sessionId','realmEpoch','batchId','anchor','sourceNativeCutSha256',
+      'combinedProgramSha256','serverProgramSha256','epoch','dispatch','completion','dispatchMarker','completionMarker',
+      'serverTailSha256','hostFrontierSha256','outputSha256'])
+    if(value.encoding!=='native-author-host-association-v5'||value.sessionId!==selector.sessionId
+      ||value.realmEpoch!==plan.realmEpoch||value.combinedProgramSha256!==plan.programSha256
+      ||value.serverProgramSha256!==plan.serverProgramSha256||!same(value.epoch,plan.epoch)
+      ||value.batchId!==selector.batchId||!same(value.anchor,selector.anchor)
+      ||![value.sourceNativeCutSha256,value.serverTailSha256,value.hostFrontierSha256,value.outputSha256].every(hash))fail()
+    for(const ref of [value.epoch,value.dispatch,value.completion]) {
+      exact(ref,['key','sha256']);if(!id(ref.key,512)||!hash(ref.sha256))fail()
+    }
+  }else {
+    if(value.schemaVersion!==1)fail()
+    exact(value,['schemaVersion','encoding','sessionId','realmEpoch','batchId','anchor','sourceNativeCutSha256',
+      'programSha256','dispatch','completion','dispatchMarker','completionMarker','tailSha256','frontierSha256','outputSha256'])
+    if(value.encoding!=='native-mvu-schema-execution-association-v1'
+      ||value.sessionId!==selector.sessionId||value.realmEpoch!==plan.realmEpoch||value.programSha256!==plan.programSha256
+      ||value.batchId!==selector.batchId||!same(value.anchor,selector.anchor)
+      ||![value.sourceNativeCutSha256,value.tailSha256,value.frontierSha256,value.outputSha256].every(hash))fail()
+    for(const ref of [value.dispatch,value.completion]) {
+      exact(ref,['key','sha256']);if(!id(ref.key,512)||!hash(ref.sha256))fail()
+    }
   }
   for(const marker of [value.dispatchMarker,value.completionMarker]) {
     exact(marker,['seq','sha256']);if(!integer(marker.seq)||!hash(marker.sha256))fail()
@@ -513,7 +545,8 @@ export function mvuSchemaStoryEvent(plan:MvuSchemaStoryPlan,phases:readonly MvuS
     eventId:recordSha256({encoding:'native-mvu-schema-story-event-identity-v2',planSha256:plan.planSha256}),
     plan,phases,reducer,outcome,refusal:refused?(last.output.kind==='refused'?'guest' as const:'reducer' as const):null,
     values,valuesSha256,context,frontier:{nativeCut:last.association.completionMarker.seq+1,
-      tailSha256:last.association.tailSha256,frontierSha256:last.association.frontierSha256}},'eventSha256')
+      tailSha256:schemaExecutionServerTailSha256(last.association),
+      frontierSha256:schemaExecutionHostFrontierSha256(last.association)}},'eventSha256')
 }
 const validateStoryEventDescriptor=createImmutableDescriptorValidator(validateStoryEventUncached)
 export function validateMvuSchemaStoryEvent(input:MvuSchemaStoryEventV2):MvuSchemaStoryEventV2 {
@@ -532,8 +565,8 @@ function validateStoryEventUncached(input:MvuSchemaStoryEventV2):MvuSchemaStoryE
   for(const [index,phase] of event.phases.entries()) {
     exact(phase,['phase','input','association','output'])
     let read:MvuScopeReadFrameV1|undefined
-    if(plan.schemaVersion===4||plan.schemaVersion===5) {
-      const input=plan.schemaVersion===5?validateSchemaEvaluationInputV4(phase.input):validateSchemaEvaluationInputV3(phase.input)
+    if(plan.schemaVersion===4||plan.schemaVersion===5||plan.schemaVersion===6) {
+      const input=plan.schemaVersion>=5?validateSchemaEvaluationInputV4(phase.input):validateSchemaEvaluationInputV3(phase.input)
       if(input.schemaVersion===4)validateSchemaGuestOutputV4(phase.output,input)
       else validateSchemaGuestOutputV3(phase.output,input)
       read=input.scopeReadFrame

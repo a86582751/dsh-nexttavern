@@ -6,6 +6,9 @@ import {recordSha256,stableJson} from './roleplay-data.js'
 import {cloneSchemaEnvelopeV4,cloneSchemaValues} from './tavern-mvu-schema-data.js'
 import {validateSchemaAuthorProgram} from './roleplay-mvu-schema-executor-types.js'
 import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
+import {validateCombinedAuthorProgramV3} from './tavern-author-combined-data.mjs'
+import type {AuthorHostEpochV5,AuthorHostDispatchV5,AuthorHostCompletionV5,AuthorHostUnavailableV5}
+  from './roleplay-author-host-types-v5.js'
 import type {MvuSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {validateSchemaEvaluationInputV2,validateSchemaGuestOutputV2} from './tavern-mvu-schema-runner-v2.js'
@@ -54,11 +57,12 @@ interface EpochBody extends Header {
   runner:MvuSchemaRunnerIdentity
   loadAnchorSha256:string
 }
-export type SchemaEpochRecord=EpochBody&(
+export type LegacySchemaEpochRecord=EpochBody&(
   {schemaVersion:1;encoding:'native-mvu-schema-epoch-v1';loadFrame:MvuSchemaRealmLoadFrame;program:MvuSchemaProgram}
   |{schemaVersion:2;encoding:'native-mvu-schema-epoch-v2';loadFrame:MvuSchemaRealmLoadFrameV2;program:MvuSchemaProgram}
   |{schemaVersion:3;encoding:'native-mvu-schema-epoch-v3';loadFrame:MvuSchemaRealmLoadFrameV3;program:MvuSchemaProgram}
   |{schemaVersion:4;encoding:'native-mvu-schema-epoch-v4';loadFrame:MvuSchemaRealmLoadFrameV4;program:MvuSchemaProgramV4})
+export type SchemaEpochRecord=LegacySchemaEpochRecord|AuthorHostEpochV5
 interface DispatchBody extends Header {
   batchId:string
   ordinal:number
@@ -66,11 +70,12 @@ interface DispatchBody extends Header {
   previousTailSha256:string
   sourceNativeCut:SourceNativeCutFacts
 }
-export type SchemaDispatchRecord=DispatchBody&(
+export type LegacySchemaDispatchRecord=DispatchBody&(
   {schemaVersion:1;encoding:'native-mvu-schema-dispatch-v1';requestedStep:MvuSchemaTraceRequestedStep}
   |{schemaVersion:2;encoding:'native-mvu-schema-dispatch-v2';requestedStep:MvuSchemaTraceRequestedStepV2}
   |{schemaVersion:3;encoding:'native-mvu-schema-dispatch-v3';requestedStep:MvuSchemaTraceRequestedStepV3}
   |{schemaVersion:4;encoding:'native-mvu-schema-dispatch-v4';requestedStep:MvuSchemaTraceRequestedStepV4})
+export type SchemaDispatchRecord=LegacySchemaDispatchRecord|AuthorHostDispatchV5
 interface CompletionBody extends Header {
   batchId:string
   dispatch:SchemaJournalRef
@@ -78,38 +83,44 @@ interface CompletionBody extends Header {
   runner:MvuSchemaRunnerIdentity
   /** Full original frame lives once in dispatch, like the runner receipt. */
 }
-export type SchemaCompletionRecord=CompletionBody&(
+export type LegacySchemaCompletionRecord=CompletionBody&(
   {schemaVersion:1;encoding:'native-mvu-schema-completion-v1';step:MvuSchemaTraceEvaluationStep}
   |{schemaVersion:2;encoding:'native-mvu-schema-completion-v2';step:MvuSchemaTraceEvaluationStepV2}
   |{schemaVersion:3;encoding:'native-mvu-schema-completion-v3';step:MvuSchemaTraceEvaluationStepV3}
   |{schemaVersion:4;encoding:'native-mvu-schema-completion-v4';step:MvuSchemaTraceEvaluationStepV4})
+export type SchemaCompletionRecord=LegacySchemaCompletionRecord|AuthorHostCompletionV5
 interface UnavailableBody extends Header {
   batchId:string
   dispatch:SchemaJournalRef|null
   sourceNativeCut:SourceNativeCutFacts
   code:string
 }
-export type SchemaUnavailableRecord=UnavailableBody&(
+export type LegacySchemaUnavailableRecord=UnavailableBody&(
   {schemaVersion:1;encoding:'native-mvu-schema-unavailable-v1'}
   |{schemaVersion:2;encoding:'native-mvu-schema-unavailable-v2'}
   |{schemaVersion:3;encoding:'native-mvu-schema-unavailable-v3'}
   |{schemaVersion:4;encoding:'native-mvu-schema-unavailable-v4'})
+export type SchemaUnavailableRecord=LegacySchemaUnavailableRecord|AuthorHostUnavailableV5
 export type SchemaJournalRecord=SchemaEpochRecord|SchemaDispatchRecord|SchemaCompletionRecord|SchemaUnavailableRecord
 function isEpoch(row:SchemaJournalRecord):row is SchemaEpochRecord {
   return row.encoding==='native-mvu-schema-epoch-v1'||row.encoding==='native-mvu-schema-epoch-v2'
     ||row.encoding==='native-mvu-schema-epoch-v3'||row.encoding==='native-mvu-schema-epoch-v4'
+    ||row.encoding==='native-mvu-schema-epoch-v5'
 }
 function isDispatch(row:SchemaJournalRecord):row is SchemaDispatchRecord {
   return row.encoding==='native-mvu-schema-dispatch-v1'||row.encoding==='native-mvu-schema-dispatch-v2'
     ||row.encoding==='native-mvu-schema-dispatch-v3'||row.encoding==='native-mvu-schema-dispatch-v4'
+    ||row.encoding==='native-mvu-schema-dispatch-v5'
 }
 function isCompletion(row:SchemaJournalRecord):row is SchemaCompletionRecord {
   return row.encoding==='native-mvu-schema-completion-v1'||row.encoding==='native-mvu-schema-completion-v2'
     ||row.encoding==='native-mvu-schema-completion-v3'||row.encoding==='native-mvu-schema-completion-v4'
+    ||row.encoding==='native-mvu-schema-completion-v5'
 }
 function isUnavailable(row:SchemaJournalRecord):row is SchemaUnavailableRecord {
   return row.encoding==='native-mvu-schema-unavailable-v1'||row.encoding==='native-mvu-schema-unavailable-v2'
     ||row.encoding==='native-mvu-schema-unavailable-v3'||row.encoding==='native-mvu-schema-unavailable-v4'
+    ||row.encoding==='native-mvu-schema-unavailable-v5'
 }
 export interface SchemaJournalRow {key:string;record:SchemaJournalRecord}
 export interface SchemaJournalTable {
@@ -136,16 +147,44 @@ export interface SchemaJournalStepFacts {
   completionMarker:SchemaNativeMarkerRef
   step:SchemaTraceStepRecord
 }
-export interface SchemaJournalReady {
+export interface LegacySchemaJournalReady {
   kind:'ready'
-  epoch:SchemaEpochRecord
+  epoch:LegacySchemaEpochRecord
   epochRef:SchemaJournalRef
   steps:readonly SchemaJournalStepFacts[]
   tailSha256:string
   frontierSha256:string
   frozen:SchemaJournalFrozenCut
 }
+export interface AuthorHostJournalReadyV5 extends Omit<LegacySchemaJournalReady,
+  'epoch'|'tailSha256'|'frontierSha256'> {
+  hostProtocol:5
+  epoch:AuthorHostEpochV5
+  serverTailSha256:string
+  hostFrontierSha256:string
+}
+export type SchemaJournalReady=LegacySchemaJournalReady|AuthorHostJournalReadyV5
 export type SchemaJournalCapture=SchemaJournalReady|{kind:'absent'|'blocked';code:string}
+/** Execution projections consume an already validated epoch. Host identity
+ * never substitutes for its retained real server program or v4 load frame. */
+export function schemaEpochExecution(epoch:SchemaEpochRecord):{
+  program:MvuSchemaProgram|MvuSchemaProgramV4;runner:MvuSchemaRunnerIdentity;
+  loadFrame:SchemaRealmLoadFrame;loadAnchorSha256:string} {
+  return epoch.schemaVersion===5?{program:epoch.program.serverProgram!,runner:epoch.server.executor.runner,
+    loadFrame:epoch.server.loadFrame,loadAnchorSha256:epoch.server.loadAnchorSha256}:epoch
+}
+export function schemaEpochAuthorIdentity(epoch:SchemaEpochRecord):{programSha256:string;sourceSha256:string} {
+  return epoch.schemaVersion===5?{programSha256:epoch.program.combinedProgramSha256,
+    sourceSha256:epoch.program.original.source.sourceSha256}:
+    {programSha256:epoch.program.programSha256,sourceSha256:epoch.program.source.sourceSha256}
+}
+export function isAuthorHostJournalReadyV5(ready:SchemaJournalReady):ready is AuthorHostJournalReadyV5 {
+  return ready.epoch.schemaVersion===5
+}
+export const schemaJournalServerTailSha256=(ready:SchemaJournalReady)=>
+  isAuthorHostJournalReadyV5(ready)?ready.serverTailSha256:ready.tailSha256
+export const schemaJournalHostFrontierSha256=(ready:SchemaJournalReady)=>
+  isAuthorHostJournalReadyV5(ready)?ready.hostFrontierSha256:ready.frontierSha256
 export const SCHEMA_JOURNAL_BOUNDS=Object.freeze({records:512,
   bytes:MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes+MVU_SCHEMA_BOUNDS.outputBytes+131072})
 const bounds={nodes:MVU_SCHEMA_BOUNDS.evaluationNodes,depth:MVU_SCHEMA_BOUNDS.evaluationDepth}
@@ -184,7 +223,7 @@ export function freezeSchemaJournalData<T>(input:T):T {
   freeze(value)
   return value
 }
-export function sealSchemaJournalRecord<T extends {schemaVersion:1|2|3|4}>(body:T):T&{recordSha256:string} {
+export function sealSchemaJournalRecord<T extends {schemaVersion:1|2|3|4|5}>(body:T):T&{recordSha256:string} {
   return freezeSchemaJournalData({...body,recordSha256:recordSha256(freezeSchemaJournalData(body))})
 }
 export function validateSchemaAnchor(input:SchemaExecutionAnchor):void {
@@ -321,11 +360,32 @@ function output(value:SchemaGuestOutput,version:1|2|3|4):void {
  * Keep semantic/hash checks intact while avoiding a second whole-row clone. */
 function validateClonedSchemaJournalRecord(row:SchemaJournalRecord):SchemaJournalRecord {
   const common=['schemaVersion','encoding','sessionId','realmEpoch','recordSha256']
-  if(![1,2,3,4].includes(row.schemaVersion)||!id(row.sessionId)||!hash(row.realmEpoch)||!hash(row.recordSha256))fail('SCHEMA_JOURNAL_INVALID')
+  if(![1,2,3,4,5].includes(row.schemaVersion)||!id(row.sessionId)||!hash(row.realmEpoch)||!hash(row.recordSha256))fail('SCHEMA_JOURNAL_INVALID')
   const {recordSha256:checksum,...body}=row
   if(recordSha256(body)!==checksum)fail('SCHEMA_JOURNAL_HASH_MISMATCH')
   if(!row.encoding.endsWith(`-v${row.schemaVersion}`))fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
   if(isEpoch(row)) {
+    if(row.schemaVersion===5) {
+      exact(row,[...common,'host','program','server'])
+      exact(row.host,['id','version','implementationSha256'])
+      if(row.host.id!=='native-author-host'||row.host.version!==5||!hash(row.host.implementationSha256)) {
+        fail('SCHEMA_IMPLEMENTATION_CHANGED')
+      }
+      const combined=validateCombinedAuthorProgramV3(row.program),program=combined.serverProgram
+      if(!program)fail('SCHEMA_HOST_SERVER_PROGRAM_REQUIRED')
+      exact(row.server,['executor','loadFrame','loadAnchorSha256'])
+      exact(row.server.executor,['compiler','bridge','libraries','stateLoader','runner'])
+      const {runner,...executor}=row.server.executor
+      runnerIdentity(runner);loadFrame(row.server.loadFrame,4)
+      if(runner.version!==4||!same(executor,{compiler:program.compiler,bridge:program.bridge,
+        libraries:program.libraries,stateLoader:program.stateLoader}))fail('SCHEMA_IMPLEMENTATION_CHANGED')
+      validateSchemaScopeProgramFrameV4(program,row.server.loadFrame.scopeReadFrame,row.server.loadFrame,true)
+      if(row.server.loadFrame.ownerSessionId!==row.sessionId||row.server.loadAnchorSha256!==recordSha256({
+        programSha256:program.programSha256,realmEpoch:row.realmEpoch,loadFrame:row.server.loadFrame})) {
+        fail('SCHEMA_LOAD_ANCHOR_INVALID')
+      }
+      return row
+    }
     exact(row,[...common,'program','runner','loadFrame','loadAnchorSha256'])
     validateSchemaAuthorProgram(row.program);runnerIdentity(row.runner);loadFrame(row.loadFrame,row.schemaVersion)
     if(row.schemaVersion===4) {
@@ -345,33 +405,43 @@ function validateClonedSchemaJournalRecord(row:SchemaJournalRecord):SchemaJourna
     if(row.loadFrame.ownerSessionId!==row.sessionId||row.loadAnchorSha256!==recordSha256({
       programSha256:row.program.programSha256,realmEpoch:row.realmEpoch,loadFrame:row.loadFrame}))fail('SCHEMA_LOAD_ANCHOR_INVALID')
   } else if(isDispatch(row)) {
-    exact(row,[...common,'batchId','ordinal','epoch','previousTailSha256','requestedStep','sourceNativeCut'])
-    ref(row.epoch);requested(row.requestedStep,row.schemaVersion);validateSchemaSourceCut(row.sourceNativeCut)
+    exact(row,[...common,'batchId','ordinal','epoch','previousTailSha256','requestedStep','sourceNativeCut',
+      ...row.schemaVersion===5?['combinedProgramSha256','serverProgramSha256']:[]])
+    if(row.schemaVersion===5&&![row.combinedProgramSha256,row.serverProgramSha256].every(hash)) {
+      fail('SCHEMA_DISPATCH_INVALID')
+    }
+    ref(row.epoch);requested(row.requestedStep,row.schemaVersion===5?4:row.schemaVersion);validateSchemaSourceCut(row.sourceNativeCut)
     if(!id(row.batchId)||!integer(row.ordinal,1)||!hash(row.previousTailSha256)
       ||row.sourceNativeCut.sessionId!==row.sessionId||row.sourceNativeCut.ownerSessionId!==row.sessionId
       ||row.requestedStep.frame.ownerSessionId!==row.sessionId
       ||row.requestedStep.frame.sourceNativeCutSha256!==recordSha256(row.sourceNativeCut)
       ||recordSha256(row.requestedStep.frame.material)!==row.sourceNativeCut.materialSha256)fail('SCHEMA_DISPATCH_INVALID')
-    if((row.schemaVersion===3||row.schemaVersion===4)
+    if((row.schemaVersion===3||row.schemaVersion===4||row.schemaVersion===5)
       &&row.requestedStep.frame.input.scopeReadFrame.source.sourceSnapshotSha256!==row.sourceNativeCut.sourceSnapshotSha256) {
       fail('SCHEMA_SCOPE_BINDING_INVALID')
     }
   } else if(isCompletion(row)) {
-    exact(row,[...common,'batchId','dispatch','dispatchMarker','runner','step'])
+    exact(row,[...common,'batchId','dispatch','dispatchMarker','runner','step',
+      ...row.schemaVersion===5?['combinedProgramSha256','serverProgramSha256']:[]])
+    if(row.schemaVersion===5&&![row.combinedProgramSha256,row.serverProgramSha256].every(hash)) {
+      fail('SCHEMA_COMPLETION_UNPROVEN')
+    }
     ref(row.dispatch);markerRef(row.dispatchMarker)
     runnerIdentity(row.runner)
     if(row.schemaVersion===2&&row.runner.version!==2)fail('SCHEMA_IMPLEMENTATION_CHANGED')
     if(row.schemaVersion===3&&row.runner.version!==3)fail('SCHEMA_IMPLEMENTATION_CHANGED')
-    if(row.schemaVersion===4&&row.runner.version!==4)fail('SCHEMA_IMPLEMENTATION_CHANGED')
+    if((row.schemaVersion===4||row.schemaVersion===5)&&row.runner.version!==4)fail('SCHEMA_IMPLEMENTATION_CHANGED')
     if(!id(row.batchId))fail('SCHEMA_JOURNAL_INVALID')
     exact(row.step,['eventId','frameSha256','ordinal','previousStepSha256','output','stepSha256'])
-    output(row.step.output,row.schemaVersion)
+    output(row.step.output,row.schemaVersion===5?4:row.schemaVersion)
     if(typeof row.step.eventId!=='string'||!row.step.eventId.length||row.step.eventId.length>256
       ||!integer(row.step.ordinal,1)||![row.step.previousStepSha256,row.step.frameSha256,row.step.stepSha256].every(hash)) {
       fail('SCHEMA_STEP_INVALID')
     }
   } else if(isUnavailable(row)) {
-    exact(row,[...common,'batchId','dispatch','sourceNativeCut','code'])
+    exact(row,[...common,'batchId','dispatch','sourceNativeCut','code',
+      ...row.schemaVersion===5?['combinedProgramSha256']:[]])
+    if(row.schemaVersion===5&&!hash(row.combinedProgramSha256))fail('SCHEMA_UNAVAILABLE_INVALID')
     if(row.dispatch!==null)ref(row.dispatch)
     validateSchemaSourceCut(row.sourceNativeCut)
     if(!id(row.batchId)||row.sourceNativeCut.sessionId!==row.sessionId
@@ -432,12 +502,13 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
     if(!epochs.length&&!relevant.length&&!native.length)return {kind:'absent',code:'SCHEMA_REALM_HISTORY_UNPROVEN'}
     if(epochs.length!==1)fail('SCHEMA_REALM_HISTORY_UNPROVEN')
     const epoch=epochs[0]!.record as SchemaEpochRecord,epochRef=reference(epoch)
+    const execution=schemaEpochExecution(epoch),authorIdentity=schemaEpochAuthorIdentity(epoch)
     // The epoch chooses one execution protocol for all its retained frames.
     // A valid checksum cannot permit a dispatch/completion from another wire.
     if(relevant.some(item=>item.record.schemaVersion!==epoch.schemaVersion))fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
     const nativePrefixes=schemaNativePrefixSha256(events,
       native.filter(event=>event.type===markers.dispatchEventType).map(event=>event.seq))
-    let tail=epoch.loadAnchorSha256
+    let tail=execution.loadAnchorSha256
     let pending:Pick<SchemaJournalStepFacts,'dispatch'|'dispatchRef'|'dispatchMarker'>|undefined
     const steps:SchemaJournalStepFacts[]=[],selected=new Set<string>([epochRef.key]),seenEvents=new Set<string>()
     for(const event of native) {
@@ -447,11 +518,11 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
         if(!row||!isDispatch(row))fail('SCHEMA_DISPATCH_UNPROVEN')
         if(row.recordSha256!==marker.dispatchRecordSha256||!same(row.epoch,epochRef)||row.ordinal!==steps.length+1
           ||row.previousTailSha256!==tail||marker.previousTailSha256!==tail
-          ||marker.programSha256!==epoch.program.programSha256||marker.sourceSha256!==epoch.program.source.sourceSha256
+          ||marker.programSha256!==authorIdentity.programSha256||marker.sourceSha256!==authorIdentity.sourceSha256
           ||marker.loadDescriptorSha256!==(steps.length===0?epoch.recordSha256:null)
           ||row.sourceNativeCut.nativeCut!==event.seq||row.sourceNativeCut.nativePrefixSha256!==nativePrefixes.get(event.seq)
           ||seenEvents.has(row.requestedStep.eventId))fail('SCHEMA_DISPATCH_UNPROVEN')
-        if(steps.length===0&&!same(epoch.loadFrame.sourceNativeCutSha256,row.requestedStep.frame.sourceNativeCutSha256)) {
+        if(steps.length===0&&!same(execution.loadFrame.sourceNativeCutSha256,row.requestedStep.frame.sourceNativeCutSha256)) {
           fail('SCHEMA_LOAD_BOUNDARY_INVALID')
         }
         if(row.schemaVersion===3) {
@@ -462,17 +533,28 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
           if(epoch.schemaVersion!==4)fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
           validateSchemaScopeProgramFrameV4(epoch.program,row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
         }
+        if(row.schemaVersion===5) {
+          if(epoch.schemaVersion!==5)fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
+          if(row.combinedProgramSha256!==epoch.program.combinedProgramSha256
+            ||row.serverProgramSha256!==epoch.program.serverProgram!.programSha256)fail('SCHEMA_DISPATCH_UNPROVEN')
+          validateSchemaScopeProgramFrameV4(epoch.program.serverProgram!,
+            row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
+        }
         seenEvents.add(row.requestedStep.eventId);selected.add(key)
         pending={dispatch:row,dispatchRef:reference(row),dispatchMarker:{seq:event.seq,sha256:recordSha256(event)}}
       } else if(event.type===markers.completionEventType) {
         const marker=event.data,key=schemaCompletionKey(marker.sessionId,realmEpoch,marker.batchId),row=all.get(key)
         if(!pending||!row||!isCompletion(row))fail('SCHEMA_COMPLETION_UNPROVEN')
-        if(row.recordSha256!==marker.completionRecordSha256||!same(row.runner,epoch.runner)||!same(row.dispatch,pending.dispatchRef)
+        if(row.recordSha256!==marker.completionRecordSha256||!same(row.runner,execution.runner)||!same(row.dispatch,pending.dispatchRef)
           ||!same(row.dispatchMarker,pending.dispatchMarker)||marker.dispatchSeq!==pending.dispatchMarker.seq
           ||marker.dispatchRecordSha256!==pending.dispatch.recordSha256||row.step.ordinal!==steps.length+1
           ||row.step.previousStepSha256!==tail||row.step.eventId!==pending.dispatch.requestedStep.eventId
           ||row.step.frameSha256!==recordSha256(pending.dispatch.requestedStep.frame)
           ||marker.completedTailSha256!==row.step.stepSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
+        if(row.schemaVersion===5) {
+          if(epoch.schemaVersion!==5||row.combinedProgramSha256!==epoch.program.combinedProgramSha256
+            ||row.serverProgramSha256!==epoch.program.serverProgram!.programSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
+        }
         const {frameSha256:_frameHash,...receipt}=row.step
         const step={...receipt,frame:pending.dispatch.requestedStep.frame} as SchemaTraceStepRecord
         const {stepSha256,...body}=step
@@ -484,6 +566,10 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
         }
         if(epoch.schemaVersion===4) {
           validateSchemaGuestOutputForProgramV4(step.output,validateSchemaProgramV4(epoch.program),
+            validateSchemaEvaluationInputV4(pending.dispatch.requestedStep.frame.input))
+        }
+        if(epoch.schemaVersion===5) {
+          validateSchemaGuestOutputForProgramV4(step.output,epoch.program.serverProgram!,
             validateSchemaEvaluationInputV4(pending.dispatch.requestedStep.frame.input))
         }
         if(recordSha256(body)!==stepSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
@@ -514,8 +600,11 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
       Object.freeze(step.dispatchMarker);Object.freeze(step.completionMarker)
       Object.freeze(step.step);Object.freeze(step)
     }
-    return Object.freeze({kind:'ready' as const,epoch,epochRef:Object.freeze(epochRef),steps:Object.freeze(steps),
-      tailSha256:tail,frontierSha256,frozen:freezeSchemaJournalData(frozen)})
+    const common={kind:'ready' as const,epochRef:Object.freeze(epochRef),steps:Object.freeze(steps),
+      frozen:freezeSchemaJournalData(frozen)}
+    if(epoch.schemaVersion===5)return Object.freeze({...common,epoch,hostProtocol:5 as const,
+      serverTailSha256:tail,hostFrontierSha256:frontierSha256})
+    return Object.freeze({...common,epoch,tailSha256:tail,frontierSha256})
   } catch(error) {return {kind:'blocked',code:codeOf(error)}}
 }
 /** Pure frontier derivation. Inputs must already be captured journal facts;
@@ -576,7 +665,9 @@ export function createRoleplayMvuSchemaJournal(deps:{table:SchemaJournalTable;ma
     if(frozen.schemaVersion!==1||frozen.encoding!=='native-mvu-schema-frozen-cut-v1'||frozen.nativeCut!==events.length
       ||frozen.nativePrefixSha256!==recordSha256(events))fail('SCHEMA_FROZEN_CUT_INVALID')
     const result=captured(deps.markers,frozen.sessionId,frozen.realmEpoch,events,new BoundedRows(frozen.records),true)
-    if(result.kind!=='ready'||result.frontierSha256!==frozen.frontierSha256)fail(result.kind==='blocked'?result.code:'SCHEMA_FROZEN_CUT_INVALID')
+    if(result.kind!=='ready'||schemaJournalHostFrontierSha256(result)!==frozen.frontierSha256) {
+      fail(result.kind==='blocked'?result.code:'SCHEMA_FROZEN_CUT_INVALID')
+    }
     // Capture validates every supplied row before selecting this cut. Expose
     // those same facts so a synchronous caller need not capture the selection
     // again; this is neither cached evidence nor a historical executor proof.

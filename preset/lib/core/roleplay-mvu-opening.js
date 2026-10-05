@@ -156,6 +156,7 @@ export function createRoleplayMvuOpening(deps) {
             protectedRuntime: schemaCore.protectedRuntime, withSourceLock: deps.withSourceLock };
         schemaStory ??= createRoleplayMvuSchemaStoryCore({ ...completion, ...common, inputState: deps.inputState,
             manualPendingCode: (id) => schemaPlayer?.pendingCode(id),
+            manualEditBlockCode: (id) => schemaPlayer?.editBlockCode(id),
             derivedRequired: deps.schemaDerivedRequired, readDerivedGenesis: deps.readSchemaDerivedGenesis,
             readEditInvalidation: deps.readSchemaEditInvalidation,
             projectPrefix: events => deps.messageEdits.projectPrefix(events), editProtocol: deps.messageEdits,
@@ -577,6 +578,7 @@ export function createRoleplayMvuOpening(deps) {
         createSchemaStory, readSchemaSnapshot: (id) => schemaStory?.readSnapshot(id),
         readSchemaObservation: (id) => schemaStory?.readSchemaObservation(id),
         captureSchemaPromptScopes: (id) => schemaStory?.capturePromptScopes(id),
+        captureSchemaBrowserFacts: (id) => schemaStory?.captureBrowserFacts(id) ?? Promise.resolve(undefined),
         capturePlainPromptScopeFacts: (id) => {
             try {
                 const observation = readInputObservation(id);
@@ -606,7 +608,9 @@ export function createRoleplayMvuOpening(deps) {
             }
         },
         readSchemaEditBasis: (id) => schemaStory?.readEditBasis(id),
-        submitSchemaPlayer: (input) => schemaPlayer?.submit(input) ?? Promise.resolve({ ok: false,
+        submitSchemaPlayer: (input, current) => schemaPlayer?.submit(input, current) ?? Promise.resolve({ ok: false,
+            code: 'SCHEMA_PLAYER_UNAVAILABLE', error: 'SCHEMA_PLAYER_UNAVAILABLE' }),
+        confirmSchemaPlayer: (input) => schemaPlayer?.confirm(input) ?? Promise.resolve({ ok: false,
             code: 'SCHEMA_PLAYER_UNAVAILABLE', error: 'SCHEMA_PLAYER_UNAVAILABLE' }),
         schemaPlayerEditBlockCode: (id) => schemaPlayer ? schemaPlayer.editBlockCode(id) : 'SCHEMA_PLAYER_UNAVAILABLE',
         awaitSchemaPlayerBarrier: (session, signal) => schemaPlayer?.awaitMutationBarrier(session, signal) ?? Promise.resolve(),

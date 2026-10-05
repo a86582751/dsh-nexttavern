@@ -1,14 +1,18 @@
 /** Actual closing-work owner and read-only history for schema story turns.
  * Source descriptors and stored terminal plans never mint this private lease. */
 import {recordSha256,sha256,textOf} from './roleplay-data.js'
-import {canonicalAssistantForTurn} from './roleplay-context.js'
+import {canonicalAssistantForTurn,surfaceEntries} from './roleplay-context.js'
+import type {ContextSession,ContextEvent} from './roleplay-context.js'
 import {openingIntentKey} from './roleplay-opening-selection.js'
 import {mvuInitializationEventKey,mvuInitializationHeadKey} from './roleplay-mvu-initialization.js'
 import {mvuStateCurrentHeadKey} from './roleplay-mvu-state.js'
 import {readInputCompletion} from './roleplay-input-completion.js'
 import {inputSnapshotReferenceCurrent} from './roleplay-preparation.js'
-import {createRoleplayMvuSchemaJournal,schemaJournalFrontierSha256} from './roleplay-mvu-schema-journal.js'
-import {createRoleplayMvuSchemaReplay} from './roleplay-mvu-schema-replay.js'
+import {createRoleplayMvuSchemaJournal,schemaJournalFrontierSha256,schemaEpochExecution,schemaEpochAuthorIdentity,
+  isAuthorHostJournalReadyV5,schemaJournalServerTailSha256,schemaJournalHostFrontierSha256} from './roleplay-mvu-schema-journal.js'
+import {createRoleplayMvuSchemaReplay,schemaExecutionHostFrontierSha256} from './roleplay-mvu-schema-replay.js'
+import {schemaOriginalSnapshot,schemaOriginalCompilationInput,schemaOriginalServerScripts,
+  schemaOriginalProgramSha256,schemaOriginalReplayCompilationInput} from './roleplay-mvu-schema-source.js'
 import {schemaTraceRequestedStep} from './roleplay-mvu-schema-executor-types.js'
 import {createRoleplayMvuSchemaStory} from './roleplay-mvu-schema-story.js'
 import {createRoleplayMvuSchemaPrefixInputs} from './roleplay-mvu-schema-frozen-prefix-input.js'
@@ -23,7 +27,8 @@ import {validateMvuSchemaPlayerEvent,readMvuSchemaPlayerCompletedFacts,mvuSchema
 import {validateMvuSchemaFrozenPrefix,validateMvuSchemaDerivedBasis} from './roleplay-mvu-schema-derived-types.js'
 import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeInitialChat,schemaScopeConfiguration,
   schemaScopeOwner,schemaScopePublished,schemaScopeMessageKey,schemaScopeVisibleMessages,
-  schemaScopeReadFactsEqual} from './roleplay-mvu-schema-scope-facts.js'
+  schemaScopeReadFactsEqual,schemaScopeEmpty,schemaScopeReowner} from './roleplay-mvu-schema-scope-facts.js'
+import type {BrowserSnapshotV1,BrowserChatMessageSnapshotV1} from './tavern-author-browser-types.mjs'
 import type {MvuScopeVariablesV1,MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 import {readMvuSchemaInheritedStoryFacts,verifyMvuSchemaInheritedOpeningFacts}
   from './roleplay-mvu-schema-prefix-facts.js'
@@ -31,6 +36,9 @@ import {verifyMvuSchemaUnpublishedTail} from './roleplay-mvu-schema-history-tail
 import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
 import type {NativeInputAdmissionAgentV2} from '@deepseek-ai/dsh-agent-loop'
 import type {OwnedMvuSchemaExecutor,SchemaExecutorIdentityTuple} from './roleplay-mvu-schema-executor-types.js'
+import type {ProtectedAuthorHostRuntimeV5} from './roleplay-author-host-assets.js'
+import type {AuthorHostIdentityV5} from './roleplay-author-host-types-v5.js'
+import type {SchemaReplayDeps} from './roleplay-mvu-schema-replay.js'
 import type {mvuSchemaMarkers} from 'dsh-nexttavern-session-format/mvu-schema-marker'
 import type {InputCompletionScope} from './roleplay-input-completion.js'
 import type {InputClosingView,InputObservation} from './roleplay-input-preparation.js'
@@ -64,7 +72,7 @@ export interface MvuSchemaStoryCoreDeps {
   sourceSha256(sid:string):string
   /** The actual closing owner verifies current before returning this view. */
   closingView(lease:object,scope:InputCompletionScope):InputClosingView|undefined
-  protectedRuntime(tuple?:SchemaExecutorIdentityTuple):Promise<OwnedMvuSchemaExecutor>
+  protectedRuntime(tuple?:SchemaExecutorIdentityTuple,host?:AuthorHostIdentityV5):Promise<OwnedMvuSchemaExecutor|ProtectedAuthorHostRuntimeV5>
   withSourceLock<T>(sid:string,action:()=>Promise<T>):Promise<T>
   flush(session:Session):Promise<boolean>
   markers:typeof mvuSchemaMarkers
@@ -75,6 +83,7 @@ export interface MvuSchemaStoryCoreDeps {
   readConsumedCanonical(sid:string,seq:number,turn:number,throughSeq:number):CompletedStoryBody|undefined
   awaitOwnedCompletion(sid:string,turn:number):Promise<void>
   manualPendingCode?(sid:string):string|undefined
+  manualEditBlockCode?(sid:string):string|undefined
   derivedRequired?(sid:string):boolean
   readDerivedGenesis?(sid:string,currentSource?:boolean):MvuSchemaDerivedGenesis|undefined
   readEditInvalidation?(sid:string):MvuEditInvalidation
@@ -131,6 +140,9 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   // already verified opening basis. It is DATA, never a live execution lease.
   let capturingEditBasis:{sid:string;basis:History['editBasis']}|undefined
   const drivers=new Map<string,ReturnType<typeof createRoleplayMvuSchemaReplay>>()
+  // Source alone returns the branded Original5. Retain that object across
+  // immutable derived/history DATA reads; a DTO is never promoted in place.
+  const sourceOriginals=new Map<string,SchemaFrozenOriginal>()
   // This cache contains results of the same fully verified frozen-prefix fold.
   // Derivation revalidates its immutable rows before looking up the result; a
   // cache entry cannot bypass Native lineage, Source checks or mint a lease.
@@ -142,7 +154,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   const all=(session:Session)=>session.snapshotEvents()
   const currentSession=(session:Session)=>!disposed&&deps.session(session.id)===session&&deps.active(session)
   const frontier=(ready:SchemaJournalReady)=>({nativeCut:ready.steps.at(-1)!.completionMarker.seq+1,
-    tailSha256:ready.tailSha256,frontierSha256:ready.frontierSha256})
+    tailSha256:schemaJournalServerTailSha256(ready),frontierSha256:schemaJournalHostFrontierSha256(ready)})
   function snapshot(body:Omit<MvuSchemaNumericalSnapshotV2,'stateSnapshotSha256'>) {
     const {stateSnapshotSha256:_prior,...content}=body as MvuSchemaNumericalSnapshotV2
     return validateMvuSchemaNumericalSnapshot(sealMvuSchemaStoryFact(content,'stateSnapshotSha256'))
@@ -167,15 +179,17 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       ||cut.sourceSnapshotSha256!==current.snapshotSha256||cut.materialSha256!==current.materialSha256
       ||cut.nativePrefixSha256!==recordSha256(events.slice(0,cut.nativeCut)))fail('SCHEMA_SCOPE_CUT_UNPROVEN')
     const source=schemaScopeSource(current.snapshot),prefix=events.slice(0,cut.nativeCut)
-    if(source.importId!==original.sourceSnapshot.source.importId||source.rawSha256!==original.sourceSnapshot.source.rawSha256
-      ||source.sourceRecordSessionId!==original.sourceSnapshot.source.sourceRecordSessionId)fail('SCHEMA_SCOPE_SOURCE_UNPROVEN')
-    return buildSchemaScopeReadFrame(source,recordSha256(cut),original.authorInput.scripts,facts.chat,
+    const snapshot=schemaOriginalSnapshot(original)
+    if(source.importId!==snapshot.source.importId||source.rawSha256!==snapshot.source.rawSha256
+      ||source.sourceRecordSessionId!==snapshot.source.sourceRecordSessionId)fail('SCHEMA_SCOPE_SOURCE_UNPROVEN')
+    return buildSchemaScopeReadFrame(source,recordSha256(cut),schemaOriginalServerScripts(original),facts.chat,
       schemaScopeVisibleMessages(prefix,deps.projectPrefix,source,seq=>scopeOwnerForSeq(facts,seq),facts.messages))
   }
   function scopesForOpening(seed:Extract<MvuSchemaPrefixSeed,{kind:'opening'}>,original:SchemaFrozenOriginal,
     ready:SchemaJournalReady,events:readonly SessionEvent[]):ScopeFacts|undefined {
-    if(original.preparation.schemaVersion!==3&&original.preparation.schemaVersion!==4)return undefined
-    const source=schemaScopeSource(original.sourceSnapshot),opening=seed.event,seq=opening.native.assistantSeq
+    if(original.preparation.schemaVersion<3)return undefined
+    const snapshot=schemaOriginalSnapshot(original),material=schemaOriginalCompilationInput(original).source.material
+    const source=schemaScopeSource(snapshot),opening=seed.event,seq=opening.native.assistantSeq
     const raw=events[seq]
     if(raw?.type!=='assistant/message'||raw.data.message.id!==opening.native.messageId)fail('SCHEMA_SCOPE_OPENING_UNPROVEN')
     const versionSha256=recordSha256(raw.data.message),owner=schemaScopeOwner(source,'message',opening.native.messageId,seed.intent.sessionId)
@@ -184,13 +198,13 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       valuesSha256:opening.valuesSha256,revision:1},opening.plan.values,ready.steps[0]!.step.output.kind==='accepted'
       ?ready.steps[0]!.step.output.context:fail('SCHEMA_SCOPE_OPENING_UNPROVEN'))
     const messages=new Map([[schemaScopeMessageKey(seed.intent.sessionId,seq,opening.native.messageId,versionSha256),values]])
-    return {chat:schemaScopeInitialChat(original.preparation,original.authorInput.source.material,
+    return {chat:schemaScopeInitialChat(original.preparation,material,
       ready.steps[0]!.dispatch.sourceNativeCut),messages,
       owners:[{sessionId:seed.intent.sessionId,fromSeq:0,throughSeq:null}],
-      updateChat:schemaScopeConfiguration(original.sourceSnapshot,original.authorInput.source.material).updateChat}
+      updateChat:schemaScopeConfiguration(snapshot,material).updateChat}
   }
   function scopesForDerived(genesis:MvuSchemaDerivedGenesis,events:readonly SessionEvent[]):ScopeFacts|undefined {
-    if(genesis.original.preparation.schemaVersion!==3&&genesis.original.preparation.schemaVersion!==4)return undefined
+    if(genesis.original.preparation.schemaVersion<3)return undefined
     const basis=validateMvuSchemaDerivedBasis(prefixInputs.branch.get(genesis.basisKey) as never)
     if(basis.basisSha256!==genesis.basisSha256||basis.prepared.childSessionId!==genesis.sessionId) {
       fail('SCHEMA_SCOPE_PREFIX_UNPROVEN')
@@ -236,9 +250,17 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     // this actual Native prefix. Derive its earlier phase frontier from those
     // immutable steps; re-cloning all frames per phase adds no authority.
     const frontierSha256=schemaJournalFrontierSha256(ready.epochRef,ready.steps.slice(0,index+1))
+    if(isAuthorHostJournalReadyV5(ready))return {schemaVersion:5,encoding:'native-author-host-association-v5',
+      sessionId:step.dispatch.sessionId,realmEpoch:ready.epoch.realmEpoch,batchId:step.dispatch.batchId,
+      anchor:step.dispatch.sourceNativeCut.anchor,sourceNativeCutSha256:recordSha256(step.dispatch.sourceNativeCut),
+      combinedProgramSha256:ready.epoch.program.combinedProgramSha256,
+      serverProgramSha256:ready.epoch.program.serverProgram!.programSha256,epoch:ready.epochRef,
+      dispatch:step.dispatchRef,completion:step.completionRef,dispatchMarker:step.dispatchMarker,
+      completionMarker:step.completionMarker,serverTailSha256:step.step.stepSha256,
+      hostFrontierSha256:frontierSha256,outputSha256:recordSha256(step.step.output)}
     return {schemaVersion:1,encoding:'native-mvu-schema-execution-association-v1',sessionId:step.dispatch.sessionId,
       realmEpoch:ready.epoch.realmEpoch,batchId:step.dispatch.batchId,anchor:step.dispatch.sourceNativeCut.anchor,
-      sourceNativeCutSha256:recordSha256(step.dispatch.sourceNativeCut),programSha256:ready.epoch.program.programSha256,
+      sourceNativeCutSha256:recordSha256(step.dispatch.sourceNativeCut),programSha256:schemaEpochAuthorIdentity(ready.epoch).programSha256,
       dispatch:step.dispatchRef,completion:step.completionRef,dispatchMarker:step.dispatchMarker,
       completionMarker:step.completionMarker,tailSha256:step.step.stepSha256,frontierSha256,
       outputSha256:recordSha256(step.step.output)}
@@ -387,6 +409,22 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(ready.kind!=='ready')fail(ready.code)
     return ready
   }
+  function derivedOriginal(original:SchemaFrozenOriginal,ready:SchemaJournalReady,
+    events:readonly SessionEvent[]):SchemaFrozenOriginal {
+    if(original.schemaVersion!==5)return original
+    const retained=sourceOriginals.get(original.originalSha256)
+    if(retained)return retained
+    const initialization=ready.steps.find(step=>step.dispatch.sessionId===original.sessionId
+      &&step.dispatch.batchId===original.preparation.selector.batchId)
+    if(!initialization)fail('SCHEMA_ORIGINAL_LOAD_UNPROVEN')
+    const cut=events.slice(0,initialization.completionMarker.seq+1)
+    const opening=journal.captureFrozen(original.sessionId,original.realmEpoch,cut,ready.frozen.records)
+    if(opening.kind!=='ready')fail(opening.code)
+    const captured=deps.source.readFrozenOriginal(original.preparation,opening,cut)
+    if(!same(captured,original))fail('SCHEMA_ORIGINAL_PROGRAM_UNPROVEN')
+    sourceOriginals.set(original.originalSha256,captured)
+    return captured
+  }
   function initialForOpening(seed:Extract<MvuSchemaPrefixSeed,{kind:'opening'}>,sourceSha256:string,
     original:SchemaFrozenOriginal,ready:SchemaJournalReady,events:readonly SessionEvent[]) {
     const {event:opening,head:head,intent}=seed,sid=intent.sessionId,first=ready.steps[0]!
@@ -394,11 +432,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       ||!same(first.step.output.values,opening.plan.values)
       ||!same(associationAt(sid,events,ready,0),opening.plan.execution))fail('SCHEMA_OPENING_JOURNAL_UNPROVEN')
     const root={openingEventId:opening.eventId,openingEventSha256:opening.eventSha256,openingHeadSha256:recordSha256(head),
-      openingPlanSha256:opening.plan.planSha256,realmEpoch:original.realmEpoch,programSha256:original.programSha256}
+      openingPlanSha256:opening.plan.planSha256,realmEpoch:original.realmEpoch,programSha256:schemaOriginalProgramSha256(original)}
     return snapshot({schemaVersion:2,encoding:'native-mvu-schema-state-snapshot-v2',sessionId:sid,sourceSha256,
       root,currentHead:head,revision:1,headSha256:recordSha256(head),values:opening.plan.values,valuesSha256:opening.valuesSha256,
       context:first.step.output.context,schemaFrontier:{nativeCut:first.completionMarker.seq+1,
-        tailSha256:first.step.stepSha256,frontierSha256:opening.plan.execution.frontierSha256}})
+        tailSha256:first.step.stepSha256,frontierSha256:schemaExecutionHostFrontierSha256(opening.plan.execution)}})
   }
   function factual(session:Session,nativeCut=all(session).length,historical=false,includeDisplay=false,
     captureBasis=false):History {
@@ -417,6 +455,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       const inherited=journal.captureFrozen(inheritedCut.sessionId,original.realmEpoch,
         events.slice(0,inheritedCut.nativeCut),inheritedCut.records)
       if(inherited.kind!=='ready')fail(inherited.code)
+      original=derivedOriginal(original,inherited,events.slice(0,inheritedCut.nativeCut))
       ordinal=inherited.steps.length
       initial=snapshot({...genesis.snapshot,sourceSha256})
       seed={kind:'derived',basisKey:genesis.basisKey,basisSha256:genesis.basisSha256}
@@ -441,6 +480,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         const captured=deps.source.captureCurrentOriginal(intent.preparation,{sessionId:sid,table:prefixInputs.status,events})
         ready=captured.ready;original=captured.original
       }
+      if(original.schemaVersion===5)sourceOriginals.set(original.originalSha256,original)
       seed={kind:'opening',intent,event:opening,head}
       initial=initialForOpening(seed,sourceSha256,original,ready,events)
       scopeSeed=scopesForOpening(seed,original,ready,events)
@@ -466,7 +506,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     return {original,ready,snapshot:state,consumed:result.consumed,initial,seed,inheritedCut,eventKeys:result.eventKeys,
       readScopes:result.readScopes,
       displayUpdates:result.displayUpdates,editBasis,
-      digest:recordSha256({original,epoch:ready.epoch,steps:ready.steps,frontierSha256:ready.frontierSha256,
+      digest:recordSha256({original,epoch:ready.epoch,steps:ready.steps,frontierSha256:schemaJournalHostFrontierSha256(ready),
         state,consumed:[...result.consumed],...scopeDigest})}
   }
   function verifyForkPrefix(input:MvuSchemaFrozenPrefixV1,events:readonly SessionEvent[],
@@ -609,6 +649,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         fail('SCHEMA_DERIVED_GENESIS_UNPROVEN')
       }
       ready=readyFor(sid,selector.realmEpoch,prefix,derived.inheritedCut,true)
+      original=derivedOriginal(original,ready,prefix)
       ordinal=journal.validateFrozenReady(derived.inheritedCut,prefix.slice(0,derived.inheritedCut.nativeCut)).steps.length
       initial=derived.snapshot
       scopeSeed=scopesForDerived(derived,prefix)
@@ -623,6 +664,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       if(captured.kind!=='ready')fail(captured.code)
       ready=captured
       original=deps.source.readFrozenOriginal(intent.preparation,ready,prefix)
+      if(original.schemaVersion===5)sourceOriginals.set(original.originalSha256,original)
       const opening=validateMvuSchemaOpeningEvent(prefixInputs.status.get(
         mvuInitializationEventKey(sid,intent.initializationReceipt.eventId)) as never)
       const head=mvuSchemaOpeningHead(opening),seed={kind:'opening' as const,intent,event:opening,head}
@@ -649,7 +691,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     }
     // Re-admit protected bytes for every waiter, including a cache hit.
     await protectedFor(ready)
-    return {authorInput:original.authorInput,frozen:ready.frozen,events:all(session)}
+    return {authorInput:schemaOriginalReplayCompilationInput(original),frozen:ready.frozen,events:all(session)}
   }
   function rowsCurrent(owner:Owner):boolean {
     const sid=owner.view.session.id,boundary=owner.publication,proposed=new Map<string,unknown>()
@@ -711,14 +753,19 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     })
   }
   function identityTuple(ready:SchemaJournalReady):SchemaExecutorIdentityTuple {
-    const epoch=ready.epoch
-    return {compiler:epoch.program.compiler,bridge:epoch.program.bridge,libraries:epoch.program.libraries,runner:epoch.runner}
+    if(isAuthorHostJournalReadyV5(ready))return ready.epoch.server.executor
+    const {program,runner}=schemaEpochExecution(ready.epoch)
+    return {compiler:program.compiler,bridge:program.bridge,libraries:program.libraries,runner}
   }
-  async function protectedFor(ready:SchemaJournalReady):Promise<OwnedMvuSchemaExecutor> {
-    const tuple=identityTuple(ready),runtime=await deps.protectedRuntime(tuple)
+  async function protectedFor(ready:SchemaJournalReady):Promise<OwnedMvuSchemaExecutor|ProtectedAuthorHostRuntimeV5> {
+    const tuple=identityTuple(ready),host=isAuthorHostJournalReadyV5(ready)?ready.epoch.host:undefined
+    const runtime=await deps.protectedRuntime(tuple,host)
     if(disposed)fail('SCHEMA_RUNTIME_DISPOSED')
-    if(runtime.executorVersion!==ready.epoch.schemaVersion||runtime.implementationKey!==recordSha256(tuple)
-      ||!same(tuple,{compiler:runtime.compiler.identity,bridge:runtime.bridge,libraries:runtime.libraries,runner:runtime.runner.identity})) {
+    if(runtime.executorVersion!==(host?4:ready.epoch.schemaVersion)
+      ||(host?!('host' in runtime)||!same(runtime.host.identity,host)
+        ||runtime.implementationKey!==recordSha256(host):runtime.implementationKey!==recordSha256(tuple))
+      ||!same(tuple,{compiler:runtime.compiler.identity,bridge:runtime.bridge,libraries:runtime.libraries,
+        runner:runtime.runner.identity,...(host?{stateLoader:runtime.stateLoader}:{})})) {
       fail('SCHEMA_IMPLEMENTATION_CHANGED')
     }
     return runtime
@@ -727,8 +774,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const runtime=await protectedFor(ready)
     let driver=drivers.get(runtime.implementationKey)
     if(!driver) {
-      driver=createRoleplayMvuSchemaReplay({table:prefixInputs.status as never,executorVersion:runtime.executorVersion,
-        compiler:runtime.compiler,runner:runtime.runner,
+      const bindings:Omit<SchemaReplayDeps,'compiler'|'runner'|'executorVersion'|'hostV5'>={table:prefixInputs.status as never,
         markers:deps.markers,captureHistoricalCut,flush:deps.flush,captureOwned:selector=>{
           const owner=owners.get(selector.sessionId)
           if(!owner?.scope||owner.driver!==driver||!owner.inSource||!ownerCurrent(owner)
@@ -736,7 +782,9 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
           return owner.scope
         },checkOwned,withSourceBoundary:(scope,action)=>{
           const owner=scopes.get(scope.owner);if(!owner)fail('SCHEMA_OWNER_UNPROVEN');return withLease(owner,action)
-        }})
+        }}
+      driver='host' in runtime?runtime.host.createReplay(bindings):createRoleplayMvuSchemaReplay({...bindings,
+        executorVersion:runtime.executorVersion,compiler:runtime.compiler,runner:runtime.runner})
       drivers.set(runtime.implementationKey,driver)
     }
     return {runtime,driver}
@@ -795,7 +843,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       authority:'consumer-data-only' as const,sessionId:sid,sourceSnapshotSha256:view.frame.snapshotSha256,
       materialSha256:view.frame.materialSha256,numericalSnapshotSha256:view.history.snapshot.stateSnapshotSha256,
       nativeCut:events.length,nativePrefixSha256:recordSha256(events)})
-    const frame=buildSchemaScopeReadFrame(source,recordSha256(basis),view.history.original.authorInput.scripts,
+    const frame=buildSchemaScopeReadFrame(source,recordSha256(basis),schemaOriginalServerScripts(view.history.original),
       facts.chat,schemaScopeVisibleMessages(events,deps.projectPrefix,source,
         seq=>scopeOwnerForSeq(facts,seq),facts.messages))
     const data=Object.freeze({schemaVersion:1 as const,encoding:'native-mvu-prompt-scope-read-data-v1' as const,
@@ -820,6 +868,60 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         // Source lease after verifying its exact numerical row baseline.
         return scopeFrameAt(view.history.readScopes,view.history.original,view.frame,cut,all(view.session))
       }}
+  }
+  async function captureBrowserFacts(sid:string) {
+    await preflight(sid)
+    const view=views.get(sid)
+    if(!view||!viewCurrent(view))fail('SCHEMA_BROWSER_FACTS_UNPROVEN')
+    const ready=view.history.ready
+    if(!isAuthorHostJournalReadyV5(ready)||!ready.epoch.program.browserProgram)return undefined
+    const program=ready.epoch.program.browserProgram,{runtime}=await engine(ready)
+    if(!('host' in runtime)||!viewCurrent(view))fail('SCHEMA_BROWSER_FACTS_CHANGED')
+    const facts=view.history.readScopes
+    if(!facts||!view.agent)fail('SCHEMA_BROWSER_FACTS_UNPROVEN')
+    const session=view.session,agent=view.agent,original=view.history.original,frame=view.frame
+    const stopSha256=recordSha256(agent.lookupInputStop()),events=all(session),snapshot=view.history.snapshot
+    const source=schemaScopeSource(frame.snapshot)
+    const basis={sessionId:sid,sourceSnapshotSha256:frame.snapshotSha256,materialSha256:frame.materialSha256,
+      numericalSnapshotSha256:snapshot.stateSnapshotSha256,nativeCut:events.length,nativePrefixSha256:recordSha256(events)}
+    // Project the selected complete Native prefix once for both Browser text
+    // and scope messages. Reader pagination and maintenance prose do not enter.
+    const projected=deps.projectPrefix(events as never)
+    const selected={id:sid,events,surface:{nodes:projected.nodes},
+      deriveEventMessage:(entry:ContextEvent)=>projected.projectedMessageAt(entry.seq)} as ContextSession
+    const messages:BrowserChatMessageSnapshotV1[]=[]
+    const scoped=surfaceEntries(selected).map((entry,position)=>{
+      const event=events[entry.seq]
+      const raw=event?.type==='assistant/message'?event.data.message:event?.type==='user/message'?event.data:undefined
+      const message=projected.projectedMessageAt(entry.seq)??raw,ownerSessionId=scopeOwnerForSeq(facts,entry.seq)
+      if(!message||message.id!==entry.messageId)fail('SCHEMA_SCOPE_MESSAGE_UNPROVEN')
+      const messageVersionSha256=recordSha256(message),owner=schemaScopeOwner(source,'message',entry.messageId,ownerSessionId)
+      const key=schemaScopeMessageKey(ownerSessionId,entry.seq,entry.messageId,messageVersionSha256)
+      const variables=schemaScopeReowner(facts.messages.get(key)??schemaScopeEmpty(owner),owner)
+      const identity={position,ownerSessionId,nativeSeq:entry.seq,messageId:entry.messageId,messageVersionSha256,
+        selectedVariant:messageVersionSha256}
+      messages.push({...identity,role:entry.kind,text:textOf(message.content)})
+      return {...identity,isSystem:false as const,variables}
+    })
+    const scopeFrame=buildSchemaScopeReadFrame(source,recordSha256(basis),program.scripts.map(row=>row.descriptor),
+      facts.chat,scoped)
+    const editBlockCode=(deps.manualEditBlockCode??deps.manualPendingCode)?.(sid)
+    const data:Omit<BrowserSnapshotV1,'generation'|'readRevision'>={schemaVersion:1,encoding:'native-author-browser-snapshot-v1',
+      basis,scopeFrame,messages,numerical:{kind:'schema-ready',values:snapshot.values,expected:{
+        sourceSha256:snapshot.sourceSha256,root:snapshot.root,revision:snapshot.revision,headSha256:snapshot.headSha256,
+        valuesSha256:snapshot.valuesSha256,stateSnapshotSha256:snapshot.stateSnapshotSha256,observedNativeSeq:events.length-1},
+        canEdit:!editBlockCode,...(editBlockCode?{editBlockCode}:{})}}
+    // Attachment stability outlives this DATA's numerical/Native cut. Each
+    // subsequent capture refreshes the view; writes keep their actual owner.
+    const current=()=>{
+      try {
+        runtime.host.checkCurrent()
+        return currentSession(session)&&deps.agent(session)===agent&&agent.session===session
+          &&recordSha256(agent.lookupInputStop())===stopSha256&&deps.source.frameCurrent(original,frame)
+      }catch {return false}
+    }
+    if(!current())fail('SCHEMA_BROWSER_FACTS_CHANGED')
+    return {program,artifact:runtime.browser.artifact,data,current}
   }
   /** A denial basis survives later projection/head changes. This selects only
    * immutable original Native/author facts and never exposes numerical values. */
@@ -847,7 +949,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         events:events.slice(0,cut)},true)
       return {root:{openingEventId:event.eventId,openingEventSha256:event.eventSha256,
         openingHeadSha256:recordSha256(head),openingPlanSha256:event.plan.planSha256,
-        realmEpoch:original.realmEpoch,programSha256:original.programSha256},editFloorSeq:native.turnEndSeq+1}
+        realmEpoch:original.realmEpoch,programSha256:schemaOriginalProgramSha256(original)},editFloorSeq:native.turnEndSeq+1}
     }catch {return undefined}
   }
   function ownerFor(closing:object,plan:MvuSchemaStoryPlan):Owner|undefined {
@@ -874,7 +976,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         if(ready.kind!=='ready')fail(ready.code)
         let capturedInput=input
         if(input.schemaVersion===3||input.schemaVersion===4) {
-          if((plan.schemaVersion!==4&&plan.schemaVersion!==5)||input.schemaVersion!==plan.executorVersion
+          if((plan.schemaVersion!==4&&plan.schemaVersion!==5&&plan.schemaVersion!==6)||input.schemaVersion!==plan.executorVersion
             ||!owner.readScopes||!schemaScopeReadFactsEqual(input.scopeReadFrame,plan.scopeReadFrame)) {
             fail('SCHEMA_SCOPE_BASIS_UNPROVEN')
           }
@@ -883,8 +985,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
           capturedInput={...input,scopeReadFrame:expected}
         }
         owner.scope={owner:owner.token,incarnation:owner.view.agent,session,
-          signal:AbortSignal.any([owner.view.signal,owner.abort.signal]),authorInput:owner.original.authorInput,
-          realmEpoch:plan.realmEpoch,loadFrame:ready.epoch.loadFrame,inheritedCut:owner.inheritedCut,sourceNativeCut:cut,
+          signal:AbortSignal.any([owner.view.signal,owner.abort.signal]),authorInput:schemaOriginalReplayCompilationInput(owner.original),
+          realmEpoch:plan.realmEpoch,loadFrame:schemaEpochExecution(ready.epoch).loadFrame,inheritedCut:owner.inheritedCut,sourceNativeCut:cut,
           requestedStep:schemaTraceRequestedStep(selector.batchId,{ownerSessionId:session.id,
             sourceNativeCutSha256:recordSha256(cut),material:owner.frame.material},capturedInput)}
         const {driver:replay}=await engine(ready)
@@ -949,8 +1051,10 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         materialSha256:frame.materialSha256,stopGeneration:scope.stopGeneration,anchor:selectorsAnchor}
       const scopeReadFrame=history.ready.epoch.schemaVersion>=3&&history.readScopes
         ?scopeFrameAt(history.readScopes,history.original,frame,initialCut,events):undefined
-      const plan=transaction.makePlan(scope,canonical,base,frame,history.original.realmEpoch,history.original.programSha256,
-        initialCut,events[scope.receipt.turnEndSeq]!.time,history.ready.epoch.schemaVersion,scopeReadFrame)
+      const ready=history.ready,executorVersion=isAuthorHostJournalReadyV5(ready)?4:ready.epoch.schemaVersion
+      const plan=transaction.makePlan(scope,canonical,base,frame,history.original.realmEpoch,schemaOriginalProgramSha256(history.original),
+        initialCut,events[scope.receipt.turnEndSeq]!.time,executorVersion,scopeReadFrame,
+        isAuthorHostJournalReadyV5(ready)?{epoch:ready.epochRef,serverProgramSha256:ready.epoch.program.serverProgram!.programSha256}:undefined)
       if(owners.has(sid))fail('SCHEMA_STORY_OWNER_EXISTS')
       const baseline=new Map([...prefixInputs.status.entries()].filter(([key])=>key.startsWith(`${sid}__mvu-`)
         &&!key.startsWith(`${sid}__mvu-schema-`)).map(([key,value])=>[key,recordSha256(value)]))
@@ -990,7 +1094,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       return view.history.consumed.get(plan.planSha256)===recordSha256({terminal,event,settlement})
     } catch {return false}
   }
-  return {preflight,observation,readSnapshot,readSchemaObservation,capturePromptScopes,readEditBasis,captureManualBasis,captureHistoricalCut,
+  return {preflight,observation,readSnapshot,readSchemaObservation,capturePromptScopes,captureBrowserFacts,
+    readEditBasis,captureManualBasis,captureHistoricalCut,
     captureForkPrefix,verifyForkPrefix,captureFrozenForkPrefix,verifyFrozenForkPrefix,
     prepareCompletion,releaseClosing,verifyConsumed,
     publishCompletion:(scope:InputCompletionScope,plan:MvuSchemaStoryPlan,closing?:object)=>closing
@@ -1017,6 +1122,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       displayPrefixes.clear()
       for(const driver of drivers.values())driver.dispose()
       drivers.clear()
+      sourceOriginals.clear()
     },
   }
 }
