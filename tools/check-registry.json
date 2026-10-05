@@ -69,7 +69,9 @@
       "patterns": [
         "roleplay-author*",
         "author-panels*",
-        "roleplay-card-workflow*"
+        "roleplay-card-workflow*",
+        "nexttavern-card*",
+        "roleplay-native-card-export*"
       ]
     },
     {
@@ -94,7 +96,8 @@
         "roleplay-source-lock*",
         "roleplay-tavern-lore-source*",
         "roleplay-tavern-lore-contributions*",
-        "roleplay-input-cold-row-facts*"
+        "roleplay-input-cold-row-facts*",
+        "nexttavern-program-source*"
       ]
     },
     {
@@ -237,7 +240,8 @@
         "roleplay-tavern-prompt*",
         "roleplay-tavern-render*",
         "roleplay-tavern-macros*",
-        "tavern-template*"
+        "tavern-template*",
+        "tavern-lore-editor*"
       ]
     },
     {
@@ -1229,7 +1233,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -1751,7 +1757,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -1923,6 +1931,8 @@
         "state-store-typescript",
         "status-rendering-typescript",
         "status-surface-typescript",
+        "tavern-lore-editor-data-typescript",
+        "tavern-lore-editor-typescript",
         "telemetry-panels-typescript",
         "user-info-typescript",
         "card-adaptation-ui-test",
@@ -1970,7 +1980,9 @@
         "roleplay-tavern-material-history-typescript",
         "tavern-prompt-transform-output-typescript",
         "roleplay-tavern-current-overlay-typescript",
-        "roleplay-tavern-legacy-write-target-types-typescript"
+        "roleplay-tavern-legacy-write-target-types-typescript",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -2811,7 +2823,9 @@
         "roleplay-card-export-opening-typescript",
         "roleplay-card-export-opening-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -3580,7 +3594,9 @@
         "roleplay-card-export-opening-typescript",
         "roleplay-card-export-opening-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -4349,7 +4365,9 @@
         "roleplay-card-export-opening-typescript",
         "roleplay-card-export-opening-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -5118,7 +5136,9 @@
         "roleplay-card-export-opening-typescript",
         "roleplay-card-export-opening-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -5443,6 +5463,8 @@
         "state-store-typescript",
         "status-rendering-typescript",
         "status-surface-typescript",
+        "tavern-lore-editor-data-typescript",
+        "tavern-lore-editor-typescript",
         "telemetry-panels-typescript",
         "user-info-typescript",
         "roleplay-activity-contract",
@@ -5757,6 +5779,8 @@
         "card-adaptation-presentations",
         "memory-retrieval-panel-generated",
         "author-panels",
+        "tavern-lore-editor-js",
+        "tavern-lore-editor-data-js",
         "roleplay-tavern-lore-editor-types-js",
         "preset-panel",
         "management-panels",
@@ -5958,7 +5982,9 @@
         "roleplay-card-export-opening-typescript",
         "roleplay-card-export-opening-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -6343,6 +6369,8 @@
         "state-store-typescript",
         "status-rendering-typescript",
         "status-surface-typescript",
+        "tavern-lore-editor-data-typescript",
+        "tavern-lore-editor-typescript",
         "telemetry-panels-typescript",
         "user-info-typescript",
         "fallback-log-contract",
@@ -6671,6 +6699,8 @@
         "card-adaptation-presentations",
         "memory-retrieval-panel-generated",
         "author-panels",
+        "tavern-lore-editor-js",
+        "tavern-lore-editor-data-js",
         "roleplay-tavern-lore-editor-types-js",
         "preset-panel",
         "management-panels",
@@ -6699,7 +6729,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -6873,6 +6905,8 @@
         "state-store-typescript",
         "status-rendering-typescript",
         "status-surface-typescript",
+        "tavern-lore-editor-data-typescript",
+        "tavern-lore-editor-typescript",
         "telemetry-panels-typescript",
         "user-info-typescript",
         "toast-confirm-contract",
@@ -7202,6 +7236,8 @@
         "card-adaptation-presentations",
         "memory-retrieval-panel-generated",
         "author-panels",
+        "tavern-lore-editor-js",
+        "tavern-lore-editor-data-js",
         "roleplay-tavern-lore-editor-types-js",
         "preset-panel",
         "management-panels",
@@ -7219,7 +7255,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -7988,7 +8026,9 @@
         "roleplay-card-export-opening-typescript",
         "roleplay-card-export-opening-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -8446,7 +8486,9 @@
         "test-temp-helper",
         "test-temp-helper-typescript",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -9376,7 +9418,9 @@
         "roleplay-card-export-opening-typescript",
         "roleplay-card-export-opening-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -9921,7 +9965,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -10028,6 +10074,8 @@
         "pricing-panel-typescript",
         "settings-projection-typescript",
         "state-store-typescript",
+        "tavern-lore-editor-data-typescript",
+        "tavern-lore-editor-typescript",
         "telemetry-panels-typescript",
         "user-info-typescript",
         "author-save-ui-contract",
@@ -10118,6 +10166,8 @@
         "pricing-panel",
         "user-info",
         "author-panels",
+        "tavern-lore-editor-js",
+        "tavern-lore-editor-data-js",
         "tavern-lore-plan-types-mjs",
         "roleplay-tavern-source-inheritance-types-js",
         "roleplay-program-absence-inheritance-data-js",
@@ -10381,7 +10431,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -10397,6 +10449,21 @@
       "requires": [
         "compiler"
       ]
+    },
+    {
+      "id": "test:nexttavern-card.test.mts",
+      "action": "test",
+      "modules": [
+        "card-writing"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
       "id": "test:ask-user-decision-pr.test.mjs",
@@ -10887,7 +10954,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -11671,7 +11740,9 @@
         "roleplay-mvu-basis-js",
         "roleplay-chat-card-context-js",
         "roleplay-card-export-opening-typescript",
-        "roleplay-card-export-opening-js"
+        "roleplay-card-export-opening-js",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -12169,7 +12240,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -12940,7 +13013,9 @@
         "roleplay-card-export-opening-typescript",
         "roleplay-card-export-opening-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -13387,7 +13462,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -13830,7 +13907,9 @@
         "test-temp-helper",
         "test-temp-helper-typescript",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -13874,6 +13953,26 @@
       "requires": [
         "compiler"
       ]
+    },
+    {
+      "id": "test:tavern-core-native-export.test.mts",
+      "action": "test",
+      "modules": [
+        "card-writing",
+        "card-import",
+        "novel-export",
+        "notes"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "heavy": true,
+      "timeoutMs": 600000,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
       "id": "test:ui-contract.test.mjs",
@@ -14355,7 +14454,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -14844,7 +14945,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -15764,7 +15867,9 @@
         "roleplay-card-export-opening-typescript",
         "roleplay-card-export-opening-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -16548,7 +16653,9 @@
         "roleplay-mvu-basis-js",
         "roleplay-chat-card-context-js",
         "roleplay-card-export-opening-typescript",
-        "roleplay-card-export-opening-js"
+        "roleplay-card-export-opening-js",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -16996,7 +17103,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -17481,7 +17590,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -17945,7 +18056,9 @@
         "roleplay-program-copy-span-typescript",
         "roleplay-program-copy-span-js",
         "inventory-runtime-alpha3-build-tools-package-json",
-        "inventory-runtime-alpha3-build-tools-package-lock-json"
+        "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -18829,7 +18942,9 @@
         "memory-notes-writer-js",
         "memory-compaction-js",
         "roleplay-card-export-opening-typescript",
-        "roleplay-card-export-opening-js"
+        "roleplay-card-export-opening-js",
+        "roleplay-tavern-lore-export-typescript",
+        "roleplay-tavern-lore-export-js"
       ]
     },
     {
@@ -23695,6 +23810,32 @@
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
+      "id": "test:tavern-lore-editor-ui",
+      "action": "test",
+      "modules": [
+        "worldbook",
+        "reader"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "inputs": [],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "args": [],
+      "heavy": false,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
       "id": "test:tavern-lore-evaluator",
       "action": "test",
       "modules": [
@@ -24694,6 +24835,45 @@
         "--case=native-d-jsonpatch"
       ],
       "heavy": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-core-lore-export",
+      "action": "test",
+      "modules": [
+        "card-import",
+        "worldbook",
+        "branches"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "inputs": [],
+      "cache": true,
+      "timeoutMs": 900000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "args": [],
+      "heavy": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:nexttavern-program-source.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler"
+      ],
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]

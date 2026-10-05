@@ -6755,6 +6755,22 @@
       "source": "lib/core/tavern-template-injection-guest.mjs"
     },
     {
+      "id": "tavern-lore-editor-data-typescript",
+      "source": "src/ui/tavern-lore-editor-data.ts"
+    },
+    {
+      "id": "tavern-lore-editor-data-js",
+      "source": "lib/ui/tavern-lore-editor-data.js"
+    },
+    {
+      "id": "tavern-lore-editor-typescript",
+      "source": "src/ui/tavern-lore-editor.ts"
+    },
+    {
+      "id": "tavern-lore-editor-js",
+      "source": "lib/ui/tavern-lore-editor.js"
+    },
+    {
       "id": "compat-agent-loop-opening-generation-typescript",
       "source": "development/agent-loop/src/opening-generation.ts"
     },
@@ -7054,6 +7070,34 @@
     {
       "id": "roleplay-card-export-opening-js",
       "source": "lib/core/roleplay-card-export-opening.js"
+    },
+    {
+      "id": "roleplay-tavern-lore-export-typescript",
+      "source": "src/core/roleplay-tavern-lore-export.ts"
+    },
+    {
+      "id": "roleplay-tavern-lore-export-js",
+      "source": "lib/core/roleplay-tavern-lore-export.js"
+    },
+    {
+      "id": "nexttavern-card-typescript",
+      "source": "src/core/nexttavern-card.ts"
+    },
+    {
+      "id": "nexttavern-card-js",
+      "source": "lib/core/nexttavern-card.js"
+    },
+    {
+      "id": "roleplay-native-card-export-typescript",
+      "source": "src/core/roleplay-native-card-export.ts"
+    },
+    {
+      "id": "roleplay-native-card-export-js",
+      "source": "lib/core/roleplay-native-card-export.js"
+    },
+    {
+      "id": "nexttavern-card-v1-schema",
+      "source": "schema/nexttavern-card-v1.schema.json"
     },
     {
       "id": "quality-registry",
@@ -8827,7 +8871,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -11970,7 +12015,183 @@
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
         "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
         "src/core/tavern-mvu-schema-import-policy.ts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "development/schema-executors/v2/src/core/roleplay-data.ts",
+        "development/schema-executors/v2/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v2/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v2/src/core/roleplay-mvu-update-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-types-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-runner-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-worker-v2.mts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/index.ts",
+        "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/descriptor.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-json-types-v2.ts",
+        "development/mvu-schema-runtime-v3/LICENSE",
+        "development/mvu-schema-runtime-v3/NOTICE.md",
+        "development/mvu-schema-runtime-v3/src/index.ts",
+        "development/mvu-schema-runtime-v3/src/descriptor.ts",
+        "src/core/tavern-mvu-schema-types-v3.ts",
+        "src/core/tavern-mvu-schema-runner-v3.ts",
+        "src/core/tavern-mvu-schema-worker-v3.mts",
+        "src/core/tavern-mvu-scope-read-types.ts",
+        "src/core/tavern-mvu-scope-read.ts",
+        "src/core/roleplay-mvu-schema-scope-facts.ts",
+        "src/core/roleplay-mvu-schema-history-tail.ts",
+        "src/core/roleplay-mvu-schema-descriptor-data.ts",
+        "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/index.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-runner-v3.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-worker-v3.mts",
+        "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/descriptor.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v3.ts",
+        "development/schema-executors/v3/src/core/roleplay-data.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-scope-read.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-scope-read-types.ts",
+        "development/schema-executors/v3/src/core/roleplay-mvu-update-v2.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v2.ts",
+        "development/schema-executors/v3/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v3/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-json-types-v3.ts",
+        "src/core/tavern-mvu-author-execution-types-v4.mts",
+        "src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "src/core/tavern-mvu-author-execution-classifier-v4.mts",
+        "src/core/tavern-mvu-schema-program-v4.ts",
+        "src/core/tavern-mvu-schema-compiler-v4.ts",
+        "src/core/tavern-mvu-schema-compiler-worker-v4.mts",
+        "src/core/tavern-mvu-schema-compiler-ast-v4.ts",
+        "src/core/tavern-mvu-schema-types-v4.ts",
+        "src/core/tavern-mvu-schema-runner-v4.ts",
+        "src/core/tavern-mvu-schema-worker-v4.mts",
+        "src/core/tavern-mvu-schema-fresh-selector.ts",
+        "development/mvu-schema-runtime-v4/src/index.ts",
+        "development/mvu-schema-runtime-v4/src/descriptor.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/agent-loop/src/request-envelope.ts",
+        "development/agent-loop/src/request-material-owner.ts",
+        "development/agent-loop/src/request-material-sidecar.ts",
+        "development/agent-loop/src/request-material.ts",
+        "development/session/src/request-material-types.ts",
+        "development/session/src/request-preview.ts",
+        "src/core/card-export-projection.ts",
+        "src/core/card-export.ts",
+        "src/core/roleplay-branch-routes-types.ts",
+        "src/core/roleplay-import.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "src/core/roleplay-input-material.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-source-data.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-frozen-lineage.ts",
+        "src/core/roleplay-mvu-lineage.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "src/core/roleplay-mvu-prefix-ledger.ts",
+        "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+        "src/core/roleplay-mvu-schema-journal.ts",
+        "src/core/roleplay-mvu-schema-replay.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update-v2.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-prompt-template-only-data.ts",
+        "src/core/roleplay-prompt-template-only-types.ts",
+        "src/core/roleplay-source-lock.ts",
+        "src/core/roleplay-tavern-lore-contributions.ts",
+        "src/core/roleplay-tavern-lore-data.ts",
+        "src/core/roleplay-tavern-lore-editor-types.ts",
+        "src/core/roleplay-tavern-lore-edits-data.ts",
+        "src/core/roleplay-tavern-lore-edits-journal.ts",
+        "src/core/roleplay-tavern-lore-edits-types.ts",
+        "src/core/roleplay-tavern-lore-edits.ts",
+        "src/core/roleplay-tavern-lore-source-types.ts",
+        "src/core/roleplay-tavern-source-edit-baseline.ts",
+        "src/core/roleplay-tavern-source-inheritance-data.ts",
+        "src/core/roleplay-tavern-source-inheritance-types.ts",
+        "src/core/roleplay-worldline-surface.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-worldlines.ts",
+        "src/core/tavern-conversations.ts",
+        "src/core/tavern-lore-compiler.mts",
+        "src/core/tavern-lore-fixed-profile.mts",
+        "src/core/tavern-lore-plan-types.mts",
+        "src/core/tavern-mvu-schema-data.ts",
+        "src/core/tavern-mvu-schema-types.ts",
+        "src/core/tavern-template-data.mts",
+        "src/core/tavern-template-types.mts",
+        "src/ui/tavern-lore-editor-data.ts",
+        "src/ui/tavern-lore-editor.ts",
+        "src/core/bounded-regex.ts",
+        "src/core/character-cluster-projection.ts",
+        "src/core/character-cluster-settings.ts",
+        "src/core/character-cluster.ts",
+        "src/core/roleplay-author-context.ts",
+        "src/core/roleplay-author-contributions.ts",
+        "src/core/roleplay-mvu-schema-derived-types.ts",
+        "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+        "src/core/roleplay-mvu-schema-player-types.ts",
+        "src/core/roleplay-mvu-schema-prefix-facts.ts",
+        "src/core/roleplay-mvu-story.ts",
+        "src/core/roleplay-preparation-types.ts",
+        "src/core/roleplay-preparation.ts",
+        "src/core/roleplay-program-genesis-data.ts",
+        "src/core/roleplay-program-genesis-types.ts",
+        "src/core/roleplay-program-opening-basis-types.ts",
+        "src/core/roleplay-program-opening-records.ts",
+        "src/core/roleplay-prompt-opening-source-data.ts",
+        "src/core/roleplay-prompt-opening-source-types.ts",
+        "src/core/roleplay-prompt-opening-source.ts",
+        "src/core/roleplay-prompt-program-source-types.ts",
+        "src/core/roleplay-prompt-program-source.ts",
+        "src/core/roleplay-prompt-template-only-origins.ts",
+        "src/core/roleplay-status-types.ts",
+        "src/core/roleplay-task-host-types.ts",
+        "src/core/roleplay-tavern-layout.ts",
+        "src/core/roleplay-tavern-lore-source.ts",
+        "src/core/roleplay-tavern-prompt-source.ts",
+        "src/core/tavern-lore-evaluator-types.mts",
+        "src/core/tavern-prompt-transform-types.mts",
+        "src/core/tavern-prompt-transform-worker.mts",
+        "src/memory/memory-history.ts",
+        "src/operations/build-typescript.mts",
+        "src/core/novel-export-projection.ts",
+        "src/core/roleplay-input-cold-row-facts.ts",
+        "src/core/roleplay-mvu-ancestry.ts",
+        "src/core/roleplay-opening-material.ts",
+        "src/core/roleplay-phase-a-row-facts.ts",
+        "src/core/roleplay-program-absence-inheritance-data.ts",
+        "src/core/roleplay-tavern-material-history.ts",
+        "src/core/tavern-prompt-transform-output.mts",
+        "src/core/roleplay-tavern-current-overlay.ts",
+        "src/core/roleplay-tavern-legacy-write-target-types.ts",
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-input-state.ts",
+        "src/core/roleplay-card-export-opening.ts",
+        "development/session/src/opening-records.ts",
+        "development/agent-loop/src/opening-record-hashes.ts",
+        "development/agent-loop/src/opening-generation.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/constants.ts",
+        "development/session-format/src/mvu-schema-marker.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -12365,7 +12586,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -12751,7 +12973,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -12882,7 +13105,266 @@
         "src/core/tavern-mvu-schema-runner-v2.ts",
         "src/core/tavern-mvu-schema-worker-v2.mts",
         "src/core/tavern-mvu-schema-update-effects-v2.ts",
-        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts"
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "development/schema-executors/v2/src/core/roleplay-data.ts",
+        "development/schema-executors/v2/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v2/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v2/src/core/roleplay-mvu-update-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-types-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-runner-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-worker-v2.mts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/index.ts",
+        "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/descriptor.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-json-types-v2.ts",
+        "development/mvu-schema-runtime-v3/LICENSE",
+        "development/mvu-schema-runtime-v3/NOTICE.md",
+        "development/mvu-schema-runtime-v3/src/index.ts",
+        "development/mvu-schema-runtime-v3/src/descriptor.ts",
+        "src/core/tavern-mvu-schema-types-v3.ts",
+        "src/core/tavern-mvu-schema-runner-v3.ts",
+        "src/core/tavern-mvu-schema-worker-v3.mts",
+        "src/core/tavern-mvu-scope-read-types.ts",
+        "src/core/tavern-mvu-scope-read.ts",
+        "src/core/roleplay-mvu-schema-scope-facts.ts",
+        "src/core/roleplay-mvu-schema-history-tail.ts",
+        "src/core/roleplay-mvu-schema-descriptor-data.ts",
+        "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/index.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-runner-v3.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-worker-v3.mts",
+        "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/descriptor.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v3.ts",
+        "development/schema-executors/v3/src/core/roleplay-data.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-scope-read.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-scope-read-types.ts",
+        "development/schema-executors/v3/src/core/roleplay-mvu-update-v2.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v2.ts",
+        "development/schema-executors/v3/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v3/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-json-types-v3.ts",
+        "src/core/tavern-mvu-author-execution-types-v4.mts",
+        "src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "src/core/tavern-mvu-author-execution-classifier-v4.mts",
+        "src/core/tavern-mvu-schema-program-v4.ts",
+        "src/core/tavern-mvu-schema-compiler-v4.ts",
+        "src/core/tavern-mvu-schema-compiler-worker-v4.mts",
+        "src/core/tavern-mvu-schema-compiler-ast-v4.ts",
+        "src/core/tavern-mvu-schema-types-v4.ts",
+        "src/core/tavern-mvu-schema-runner-v4.ts",
+        "src/core/tavern-mvu-schema-worker-v4.mts",
+        "src/core/tavern-mvu-schema-fresh-selector.ts",
+        "development/mvu-schema-runtime-v4/src/index.ts",
+        "development/mvu-schema-runtime-v4/src/descriptor.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/card-export-projection.ts",
+        "src/core/card-export.ts",
+        "src/core/roleplay-branch-routes-types.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-import.ts",
+        "src/core/roleplay-input-source-data.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-journal.ts",
+        "src/core/roleplay-mvu-schema-opening-types.ts",
+        "src/core/roleplay-mvu-schema-replay.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-mvu-update-v2.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-prompt-template-only-data.ts",
+        "src/core/roleplay-prompt-template-only-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/roleplay-source-lock.ts",
+        "src/core/roleplay-tavern-lore-contributions.ts",
+        "src/core/roleplay-tavern-lore-data.ts",
+        "src/core/roleplay-tavern-lore-editor-types.ts",
+        "src/core/roleplay-tavern-lore-edits-data.ts",
+        "src/core/roleplay-tavern-lore-edits-journal.ts",
+        "src/core/roleplay-tavern-lore-edits-types.ts",
+        "src/core/roleplay-tavern-lore-edits.ts",
+        "src/core/roleplay-tavern-lore-source-types.ts",
+        "src/core/roleplay-tavern-source-edit-baseline.ts",
+        "src/core/roleplay-tavern-source-inheritance-data.ts",
+        "src/core/roleplay-tavern-source-inheritance-types.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-worldline-surface.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-worldlines.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-conversations.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-lore-compiler.mts",
+        "src/core/tavern-lore-fixed-profile.mts",
+        "src/core/tavern-lore-plan-types.mts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/tavern-mvu-schema-data.ts",
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/tavern-mvu-schema-types.ts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/tavern-task-context.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-template-data.mts",
+        "src/core/tavern-template-types.mts",
+        "src/memory/memory-provenance.ts",
+        "src/status-template.ts",
+        "src/ui/tavern-lore-editor-data.ts",
+        "src/ui/tavern-lore-editor.ts",
+        "src/core/roleplay-tavern-lore-source.ts",
+        "src/operations/build-typescript.mts",
+        "src/core/bounded-regex.ts",
+        "src/core/character-cluster-projection.ts",
+        "src/core/character-cluster-settings.ts",
+        "src/core/character-cluster.ts",
+        "src/core/narrative-preset-catalog.ts",
+        "src/core/narrative-preset-default.ts",
+        "src/core/narrative-presets.ts",
+        "src/core/narrative-styles/annalistic.ts",
+        "src/core/narrative-styles/cinematic.ts",
+        "src/core/narrative-styles/classical.ts",
+        "src/core/narrative-styles/comedy.ts",
+        "src/core/narrative-styles/cosmic-romance.ts",
+        "src/core/narrative-styles/delicate.ts",
+        "src/core/narrative-styles/fantasy.ts",
+        "src/core/narrative-styles/horror.ts",
+        "src/core/narrative-styles/jrpg.ts",
+        "src/core/narrative-styles/light-novel.ts",
+        "src/core/narrative-styles/luxun.ts",
+        "src/core/narrative-styles/lyrical.ts",
+        "src/core/narrative-styles/minimal.ts",
+        "src/core/narrative-styles/otome.ts",
+        "src/core/novel-export-projection.ts",
+        "src/core/roleplay-author-context-types.ts",
+        "src/core/roleplay-author-context.ts",
+        "src/core/roleplay-author-contributions.ts",
+        "src/core/roleplay-author-tools-types.ts",
+        "src/core/roleplay-input-cold-row-facts.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "src/core/roleplay-input-material.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-ancestry.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-frozen-lineage.ts",
+        "src/core/roleplay-mvu-lineage.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-prefix-ledger.ts",
+        "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+        "src/core/roleplay-mvu-schema-derived-types.ts",
+        "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+        "src/core/roleplay-mvu-schema-player-types.ts",
+        "src/core/roleplay-mvu-schema-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-source.ts",
+        "src/core/roleplay-mvu-schema-story-core.ts",
+        "src/core/roleplay-mvu-schema-story-types.ts",
+        "src/core/roleplay-mvu-schema-story.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-story.ts",
+        "src/core/roleplay-opening-material.ts",
+        "src/core/roleplay-phase-a-row-facts.ts",
+        "src/core/roleplay-preparation-types.ts",
+        "src/core/roleplay-preparation.ts",
+        "src/core/roleplay-program-absence-inheritance-data.ts",
+        "src/core/roleplay-program-genesis-data.ts",
+        "src/core/roleplay-program-genesis-types.ts",
+        "src/core/roleplay-program-opening-basis-types.ts",
+        "src/core/roleplay-program-opening-records.ts",
+        "src/core/roleplay-prompt-opening-source-data.ts",
+        "src/core/roleplay-prompt-opening-source-types.ts",
+        "src/core/roleplay-prompt-opening-source.ts",
+        "src/core/roleplay-prompt-program-source-types.ts",
+        "src/core/roleplay-prompt-program-source.ts",
+        "src/core/roleplay-prompt-template-only-origins.ts",
+        "src/core/roleplay-status-types.ts",
+        "src/core/roleplay-task-host-types.ts",
+        "src/core/roleplay-tavern-layout.ts",
+        "src/core/roleplay-tavern-material-history.ts",
+        "src/core/roleplay-tavern-prompt-source.ts",
+        "src/core/tavern-lore-evaluator-types.mts",
+        "src/core/tavern-prompt-transform-types.mts",
+        "src/core/tavern-prompt-transform-worker.mts",
+        "src/memory/memory-history.ts",
+        "src/core/tavern-prompt-transform-output.mts",
+        "src/core/roleplay-tavern-current-overlay.ts",
+        "src/core/roleplay-tavern-legacy-write-target-types.ts",
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-input-state.ts",
+        "src/core/roleplay-card-export-opening.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/agent-loop/src/request-material-owner.ts",
+        "development/agent-loop/src/request-material.ts",
+        "development/session/src/index.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/session/src/types.ts",
+        "development/session/src/request-material-types.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/assembler.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/session/src/request-preview.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/opening-records.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/tool-history.ts",
+        "development/agent-loop/src/opening-record-hashes.ts",
+        "development/agent-loop/src/opening-generation.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/request-material-sidecar.ts",
+        "development/agent-loop/src/request-envelope.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/constants.ts",
+        "development/session-format/src/mvu-schema-marker.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -13393,7 +13875,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -14458,7 +14941,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -14764,7 +15248,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -15053,7 +15538,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -15350,7 +15836,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -15644,7 +16131,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -15947,7 +16435,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -16248,7 +16737,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -16557,7 +17047,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -16848,7 +17339,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -17146,7 +17638,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -17438,7 +17931,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -17732,7 +18226,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -18029,7 +18524,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -18327,7 +18823,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -18624,7 +19121,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -18922,7 +19420,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -19213,7 +19712,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -19505,7 +20005,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -19951,7 +20452,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -20395,7 +20897,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -20838,7 +21341,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -21136,7 +21640,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -21436,7 +21941,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -21725,7 +22231,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -22015,7 +22522,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -22307,7 +22815,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -22600,7 +23109,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -22887,7 +23397,9 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts",
+        "src/core/nexttavern-card.ts"
       ]
     },
     {
@@ -23175,7 +23687,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -23466,7 +23979,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -23808,7 +24322,8 @@
         "development/agent-loop/src/opening-generation.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -24095,7 +24610,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -24383,7 +24899,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -24673,7 +25190,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -24964,7 +25482,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -25255,7 +25774,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -25547,7 +26067,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -27971,7 +28492,8 @@
         "src/core/tavern-mvu-schema-fresh-selector.ts",
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
-        "src/operations/build-typescript.mts"
+        "src/operations/build-typescript.mts",
+        "src/core/nexttavern-card.ts"
       ]
     },
     {
@@ -29640,6 +30162,146 @@
         "lib/ui/card-upload-panel.js",
         "src/ui/card-upload-request.ts",
         "lib/ui/card-upload-request.js",
+        "src/core/card-export-projection.ts",
+        "src/core/card-export.ts",
+        "src/core/roleplay-branch-routes-types.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-import.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "src/core/roleplay-input-material.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-source-data.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-frozen-lineage.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/roleplay-mvu-lineage.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "src/core/roleplay-mvu-prefix-ledger.ts",
+        "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+        "src/core/roleplay-mvu-schema-descriptor-data.ts",
+        "src/core/roleplay-mvu-schema-executor-types.ts",
+        "src/core/roleplay-mvu-schema-journal.ts",
+        "src/core/roleplay-mvu-schema-opening-types.ts",
+        "src/core/roleplay-mvu-schema-replay.ts",
+        "src/core/roleplay-mvu-schema-scope-facts.ts",
+        "src/core/roleplay-mvu-schema-source.ts",
+        "src/core/roleplay-mvu-schema-story-types.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-update-v2.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-prompt-template-only-data.ts",
+        "src/core/roleplay-prompt-template-only-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/roleplay-source-lock.ts",
+        "src/core/roleplay-tavern-lore-contributions.ts",
+        "src/core/roleplay-tavern-lore-data.ts",
+        "src/core/roleplay-tavern-lore-editor-types.ts",
+        "src/core/roleplay-tavern-lore-edits-data.ts",
+        "src/core/roleplay-tavern-lore-edits-journal.ts",
+        "src/core/roleplay-tavern-lore-edits-types.ts",
+        "src/core/roleplay-tavern-lore-edits.ts",
+        "src/core/roleplay-tavern-lore-source-types.ts",
+        "src/core/roleplay-tavern-source-edit-baseline.ts",
+        "src/core/roleplay-tavern-source-inheritance-data.ts",
+        "src/core/roleplay-tavern-source-inheritance-types.ts",
+        "src/core/roleplay-worldline-surface.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-worldlines.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-conversations.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-lore-compiler.mts",
+        "src/core/tavern-lore-fixed-profile.mts",
+        "src/core/tavern-lore-plan-types.mts",
+        "src/core/tavern-mvu-author-execution-types-v4.mts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/tavern-mvu-schema-data.ts",
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/tavern-mvu-schema-program-v4.ts",
+        "src/core/tavern-mvu-schema-runner-v2.ts",
+        "src/core/tavern-mvu-schema-runner-v3.ts",
+        "src/core/tavern-mvu-schema-runner-v4.ts",
+        "src/core/tavern-mvu-schema-types-v2.ts",
+        "src/core/tavern-mvu-schema-types-v3.ts",
+        "src/core/tavern-mvu-schema-types-v4.ts",
+        "src/core/tavern-mvu-schema-types.ts",
+        "src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "src/core/tavern-mvu-schema-worker-v2.mts",
+        "src/core/tavern-mvu-schema-worker-v3.mts",
+        "src/core/tavern-mvu-schema-worker-v4.mts",
+        "src/core/tavern-mvu-scope-read-types.ts",
+        "src/core/tavern-mvu-scope-read.ts",
+        "src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/tavern-template-data.mts",
+        "src/core/tavern-template-types.mts",
+        "src/ui/card-import-panel.ts",
+        "src/ui/chat-opening-card.ts",
+        "src/ui/mvu-state-panel.ts",
+        "src/ui/opening-panel.ts",
+        "src/ui/tavern-lore-editor-data.ts",
+        "src/ui/tavern-lore-editor.ts",
+        "src/core/bounded-regex.ts",
+        "src/core/character-cluster-projection.ts",
+        "src/core/character-cluster-settings.ts",
+        "src/core/character-cluster.ts",
+        "src/core/roleplay-author-context.ts",
+        "src/core/roleplay-author-contributions.ts",
+        "src/core/roleplay-mvu-schema-derived-types.ts",
+        "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+        "src/core/roleplay-mvu-schema-history-tail.ts",
+        "src/core/roleplay-mvu-schema-player-types.ts",
+        "src/core/roleplay-mvu-schema-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-story-core.ts",
+        "src/core/roleplay-mvu-schema-story.ts",
+        "src/core/roleplay-mvu-story.ts",
+        "src/core/roleplay-preparation-types.ts",
+        "src/core/roleplay-preparation.ts",
+        "src/core/roleplay-program-genesis-data.ts",
+        "src/core/roleplay-program-genesis-types.ts",
+        "src/core/roleplay-program-opening-basis-types.ts",
+        "src/core/roleplay-program-opening-records.ts",
+        "src/core/roleplay-prompt-opening-source-data.ts",
+        "src/core/roleplay-prompt-opening-source-types.ts",
+        "src/core/roleplay-prompt-opening-source.ts",
+        "src/core/roleplay-prompt-program-source-types.ts",
+        "src/core/roleplay-prompt-program-source.ts",
+        "src/core/roleplay-prompt-template-only-origins.ts",
+        "src/core/roleplay-status-types.ts",
+        "src/core/roleplay-task-host-types.ts",
+        "src/core/roleplay-tavern-layout.ts",
+        "src/core/roleplay-tavern-lore-source.ts",
+        "src/core/roleplay-tavern-prompt-source.ts",
+        "src/core/tavern-lore-evaluator-types.mts",
+        "src/core/tavern-prompt-transform-types.mts",
+        "src/core/tavern-prompt-transform-worker.mts",
+        "src/memory/memory-history.ts",
+        "src/operations/build-typescript.mts",
+        "src/core/novel-export-projection.ts",
+        "src/core/roleplay-input-cold-row-facts.ts",
+        "src/core/roleplay-mvu-ancestry.ts",
+        "src/core/roleplay-opening-material.ts",
+        "src/core/roleplay-phase-a-row-facts.ts",
+        "src/core/roleplay-program-absence-inheritance-data.ts",
+        "src/core/roleplay-tavern-material-history.ts",
+        "src/core/tavern-prompt-transform-output.mts",
+        "src/core/roleplay-tavern-current-overlay.ts",
+        "src/core/roleplay-tavern-legacy-write-target-types.ts",
         "src/core/roleplay-mvu-display-facts.ts"
       ]
     },
@@ -30755,7 +31417,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -31532,7 +32195,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -31824,7 +32488,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -32113,7 +32778,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -32402,7 +33068,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -32692,7 +33359,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -32983,7 +33651,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -33270,7 +33939,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -33557,7 +34227,9 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts",
+        "src/core/nexttavern-card.ts"
       ]
     },
     {
@@ -34325,7 +34997,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -34616,7 +35289,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -35043,7 +35717,9 @@
         "development/agent-loop/src/opening-record-hashes.ts",
         "development/agent-loop/src/opening-generation.ts",
         "development/session-format/src/mvu-schema-marker.ts",
-        "development/session-format/src/projection.ts"
+        "development/session-format/src/projection.ts",
+        "src/core/roleplay-tavern-lore-export.ts",
+        "src/core/roleplay-native-card-export.ts"
       ]
     },
     {
@@ -35443,7 +36119,8 @@
         "development/agent-loop/src/opening-record-hashes.ts",
         "development/agent-loop/src/opening-generation.ts",
         "development/session-format/src/mvu-schema-marker.ts",
-        "development/session-format/src/projection.ts"
+        "development/session-format/src/projection.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -35732,7 +36409,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -36019,7 +36697,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -37505,7 +38184,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -37807,7 +38487,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -38112,7 +38793,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -49098,7 +49780,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -49573,7 +50256,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "entry": "src/core/tavern-mvu-initvar.ts",
       "artifact": "tavern-mvu-initvar-js",
@@ -49864,7 +50548,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "entry": "src/core/roleplay-mvu-initialization.ts",
       "artifact": "roleplay-mvu-initialization-js",
@@ -50204,7 +50889,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -50496,7 +51182,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -50788,7 +51475,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -51091,7 +51779,8 @@
         "development/agent-loop/src/opening-generation.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -51378,7 +52067,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -51666,7 +52356,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -51961,7 +52652,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -52254,7 +52946,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -52641,7 +53334,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -52935,7 +53629,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -53228,7 +53923,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -53559,7 +54255,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "entry": "src/core/roleplay-mvu-update.ts",
       "artifact": "roleplay-mvu-update-js",
@@ -53858,7 +54555,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -54152,7 +54850,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -54446,7 +55145,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -54741,7 +55441,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -55035,7 +55736,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -55329,7 +56031,8 @@
         "development/agent-loop/src/request-envelope.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -55507,7 +56210,8 @@
         "development/session/src/request-material-types.ts",
         "development/session/src/request-preview.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -55802,7 +56506,8 @@
         "development/agent-loop/src/opening-record-hashes.ts",
         "development/agent-loop/src/opening-generation.ts",
         "development/session-format/src/mvu-schema-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -56096,7 +56801,8 @@
         "development/agent-loop/src/opening-record-hashes.ts",
         "development/agent-loop/src/opening-generation.ts",
         "development/session-format/src/mvu-schema-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -56390,7 +57096,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -56685,7 +57392,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -56977,7 +57685,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -57366,7 +58075,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -57661,7 +58371,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -57953,7 +58664,8 @@
         "development/agent-loop/src/inbox.ts",
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -58246,7 +58958,8 @@
         "development/agent-loop/src/inbox.ts",
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -58549,7 +59262,8 @@
         "development/agent-loop/src/inbox.ts",
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -58844,7 +59558,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -59152,7 +59867,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -59444,7 +60160,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -59738,7 +60455,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -60031,7 +60749,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -60325,7 +61044,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -60619,7 +61339,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -61078,7 +61799,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -61517,7 +62239,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -61956,7 +62679,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -62295,7 +63019,8 @@
         "src/core/tavern-mvu-schema-fresh-selector.ts",
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "banner": "runtime/alpha3/compat/mvu-schema-runtime/src/index.ts"
     },
@@ -62635,7 +63360,8 @@
         "src/core/tavern-mvu-schema-fresh-selector.ts",
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "banner": "runtime/alpha3/compat/mvu-schema-runtime/src/descriptor.ts"
     },
@@ -62975,7 +63701,8 @@
         "src/core/tavern-mvu-schema-fresh-selector.ts",
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -63414,7 +64141,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -63855,7 +64583,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -64299,7 +65028,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -64738,7 +65468,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -65180,7 +65911,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -65620,7 +66352,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -66062,7 +66795,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -66501,7 +67235,8 @@
         "development/agent-loop/src/input-completion.ts",
         "development/agent-loop/src/inbox.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -66942,7 +67677,8 @@
         "development/agent-loop/src/input-completion.ts",
         "development/agent-loop/src/inbox.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -67384,7 +68120,8 @@
         "development/agent-loop/src/input-completion.ts",
         "development/agent-loop/src/inbox.ts",
         "development/agent-loop/src/constants.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -67825,7 +68562,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -68267,7 +69005,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -68706,7 +69445,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -68992,7 +69732,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "entry": "src/core/roleplay-mvu-update-v2.ts",
       "artifact": "roleplay-mvu-update-v2-js",
@@ -69132,7 +69873,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -69267,7 +70009,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -69402,7 +70145,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -69537,7 +70281,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -69672,7 +70417,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -69807,7 +70553,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -69942,7 +70689,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -70077,7 +70825,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -70212,7 +70961,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -70347,7 +71097,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs",
       "banner": "runtime/alpha3/compat/mvu-schema-runtime-v2/src/index.ts"
@@ -70483,7 +71234,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs",
       "banner": "runtime/alpha3/compat/mvu-schema-runtime-v2/src/descriptor.ts"
@@ -70776,7 +71528,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -71068,7 +71821,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -71360,7 +72114,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -71652,7 +72407,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -71944,7 +72700,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -72079,7 +72836,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -72597,7 +73355,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -72732,7 +73491,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -72867,7 +73627,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -73002,7 +73763,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -73137,7 +73899,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -73272,7 +74035,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -73407,7 +74171,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -73542,7 +74307,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -73677,7 +74443,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -73812,7 +74579,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -73947,7 +74715,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -74082,7 +74851,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -74217,7 +74987,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -74352,7 +75123,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -74644,7 +75416,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -74936,7 +75709,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -75228,7 +76002,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -75520,7 +76295,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -75812,7 +76588,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -76104,7 +76881,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -76396,7 +77174,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -76688,7 +77467,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -76822,7 +77602,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -76957,7 +77738,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -77093,7 +77875,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -77228,7 +78011,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -77362,7 +78146,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -77496,7 +78281,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -77629,7 +78415,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -77764,7 +78551,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -77992,7 +78780,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "typeContext": "default"
     },
@@ -78126,7 +78915,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -78261,7 +79051,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -78395,7 +79186,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -78547,7 +79339,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "entry": "development/schema-executors/v3/src/core/roleplay-mvu-update-v2.ts",
       "artifact": "mvu-schema-v3-frozen-lib-core-roleplay-mvu-update-v2-generated",
@@ -78686,7 +79479,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -78931,7 +79725,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ],
       "entry": "development/schema-executors/v3/src/core/roleplay-mvu-update.ts",
       "artifact": "mvu-schema-v3-frozen-lib-core-roleplay-mvu-update-generated",
@@ -79071,7 +79866,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -79363,7 +80159,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -79655,7 +80452,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -79947,7 +80745,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -80239,7 +81038,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -80531,7 +81331,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -80823,7 +81624,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -81115,7 +81917,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -81407,7 +82210,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -81699,7 +82503,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -81991,7 +82796,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -82283,7 +83089,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -82575,7 +83382,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -82710,7 +83518,8 @@
         "development/schema-executors/v3/src/core/roleplay-mvu-update.ts",
         "development/schema-executors/v3/src/core/tavern-mvu-json-types-v3.ts",
         "src/operations/build-typescript.mts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -83203,7 +84012,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -83447,7 +84257,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -83675,7 +84486,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -83903,7 +84715,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -84133,7 +84946,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -84361,7 +85175,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -84380,6 +85195,7 @@
         "src/core/roleplay-chat-card-source.ts",
         "src/core/roleplay-context.ts",
         "src/core/roleplay-data.ts",
+        "src/core/nexttavern-card.ts",
         "src/core/roleplay-import-record.ts",
         "src/core/roleplay-import-types.ts",
         "src/core/roleplay-import.ts",
@@ -84589,7 +85405,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -84818,7 +85635,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -85046,7 +85864,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -85331,7 +86150,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -85572,7 +86392,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -85800,7 +86621,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -86029,7 +86851,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -86252,7 +87075,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -86503,7 +87327,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -86732,7 +87557,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -86960,7 +87786,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -87188,7 +88015,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -87416,7 +88244,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -87644,7 +88473,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -87872,7 +88702,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -88100,7 +88931,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -88332,7 +89164,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -88566,7 +89399,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -88794,7 +89628,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -89024,7 +89859,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -89258,7 +90094,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -89277,6 +90114,7 @@
         "src/core/roleplay-chat-card-source.ts",
         "src/core/roleplay-context.ts",
         "src/core/roleplay-data.ts",
+        "src/core/nexttavern-card.ts",
         "src/core/roleplay-import-record.ts",
         "src/core/roleplay-import-types.ts",
         "src/core/roleplay-import.ts",
@@ -89487,7 +90325,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -89730,7 +90569,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -89965,7 +90805,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -90193,7 +91034,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -90425,7 +91267,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -90658,7 +91501,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -90887,7 +91731,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -91121,7 +91966,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -91161,6 +92007,7 @@
         "src/core/roleplay-chat-card-source.ts",
         "src/core/roleplay-context.ts",
         "src/core/roleplay-data.ts",
+        "src/core/nexttavern-card.ts",
         "src/core/roleplay-import-record.ts",
         "src/core/roleplay-import-types.ts",
         "src/core/roleplay-import.ts",
@@ -91389,7 +92236,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -91617,7 +92465,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -91845,7 +92694,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -92074,7 +92924,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -92302,7 +93153,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -92532,7 +93384,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -92761,7 +93614,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -93002,7 +93856,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -93231,7 +94086,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -93459,7 +94315,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -93687,7 +94544,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -93921,7 +94779,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -94149,7 +95008,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -94378,7 +95238,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -94606,7 +95467,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -94836,7 +95698,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -95066,7 +95929,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -95298,7 +96162,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -95528,7 +96393,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -95756,7 +96622,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -95984,7 +96851,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -96213,7 +97081,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -96444,7 +97313,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -96674,7 +97544,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -96910,7 +97781,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -97139,7 +98011,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -97369,7 +98242,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -97598,7 +98472,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -97828,7 +98703,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -98065,7 +98941,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -98294,7 +99171,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -98529,7 +99407,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -98549,6 +99428,468 @@
         "src/operations/test-temp.mts",
         "src/operations/tool-resolution.mts",
         "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "tavern-lore-editor-data-build",
+      "kind": "typescript-module",
+      "artifact": "tavern-lore-editor-data-js",
+      "entry": "src/ui/tavern-lore-editor-data.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/card-adaptation-context.ts",
+        "src/core/card-export-projection.ts",
+        "src/core/card-export.ts",
+        "src/core/roleplay-branch-routes-types.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-import.ts",
+        "src/core/roleplay-input-source-data.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-executor-types.ts",
+        "src/core/roleplay-mvu-schema-journal.ts",
+        "src/core/roleplay-mvu-schema-opening-types.ts",
+        "src/core/roleplay-mvu-schema-replay.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-mvu-update-v2.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-prompt-template-only-data.ts",
+        "src/core/roleplay-prompt-template-only-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/roleplay-source-lock.ts",
+        "src/core/roleplay-tavern-lore-contributions.ts",
+        "src/core/roleplay-tavern-lore-data.ts",
+        "src/core/roleplay-tavern-lore-edits-data.ts",
+        "src/core/roleplay-tavern-lore-edits-journal.ts",
+        "src/core/roleplay-tavern-lore-edits-types.ts",
+        "src/core/roleplay-tavern-lore-source-types.ts",
+        "src/core/roleplay-tavern-source-edit-baseline.ts",
+        "src/core/roleplay-tavern-source-inheritance-data.ts",
+        "src/core/roleplay-tavern-source-inheritance-types.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-worldline-surface.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-worldlines.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-conversations.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-lore-compiler.mts",
+        "src/core/tavern-lore-fixed-profile.mts",
+        "src/core/tavern-lore-plan-types.mts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/tavern-mvu-author-execution-types-v4.mts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/tavern-mvu-schema-data.ts",
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/tavern-mvu-schema-program-v4.ts",
+        "src/core/tavern-mvu-schema-runner-v2.ts",
+        "src/core/tavern-mvu-schema-runner-v3.ts",
+        "src/core/tavern-mvu-schema-runner-v4.ts",
+        "src/core/tavern-mvu-schema-types-v2.ts",
+        "src/core/tavern-mvu-schema-types-v3.ts",
+        "src/core/tavern-mvu-schema-types-v4.ts",
+        "src/core/tavern-mvu-schema-types.ts",
+        "src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "src/core/tavern-mvu-schema-worker-v2.mts",
+        "src/core/tavern-mvu-schema-worker-v3.mts",
+        "src/core/tavern-mvu-schema-worker-v4.mts",
+        "src/core/tavern-mvu-scope-read-types.ts",
+        "src/core/tavern-mvu-scope-read.ts",
+        "src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/tavern-task-context.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-template-data.mts",
+        "src/core/tavern-template-types.mts",
+        "src/memory/memory-provenance.ts",
+        "src/status-template.ts",
+        "src/ui/tavern-lore-editor-data.ts",
+        "src/operations/build-typescript.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/roleplay-tavern-lore-source.ts",
+        "src/core/bounded-regex.ts",
+        "src/core/character-cluster-projection.ts",
+        "src/core/character-cluster-settings.ts",
+        "src/core/character-cluster.ts",
+        "src/core/narrative-preset-catalog.ts",
+        "src/core/narrative-preset-default.ts",
+        "src/core/narrative-presets.ts",
+        "src/core/narrative-styles/annalistic.ts",
+        "src/core/narrative-styles/cinematic.ts",
+        "src/core/narrative-styles/classical.ts",
+        "src/core/narrative-styles/comedy.ts",
+        "src/core/narrative-styles/cosmic-romance.ts",
+        "src/core/narrative-styles/delicate.ts",
+        "src/core/narrative-styles/fantasy.ts",
+        "src/core/narrative-styles/horror.ts",
+        "src/core/narrative-styles/jrpg.ts",
+        "src/core/narrative-styles/light-novel.ts",
+        "src/core/narrative-styles/luxun.ts",
+        "src/core/narrative-styles/lyrical.ts",
+        "src/core/narrative-styles/minimal.ts",
+        "src/core/narrative-styles/otome.ts",
+        "src/core/novel-export-projection.ts",
+        "src/core/roleplay-author-context-types.ts",
+        "src/core/roleplay-author-context.ts",
+        "src/core/roleplay-author-contributions.ts",
+        "src/core/roleplay-author-tools-types.ts",
+        "src/core/roleplay-input-cold-row-facts.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "src/core/roleplay-input-material.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-ancestry.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-frozen-lineage.ts",
+        "src/core/roleplay-mvu-lineage.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-prefix-ledger.ts",
+        "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+        "src/core/roleplay-mvu-schema-derived-types.ts",
+        "src/core/roleplay-mvu-schema-descriptor-data.ts",
+        "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+        "src/core/roleplay-mvu-schema-history-tail.ts",
+        "src/core/roleplay-mvu-schema-player-types.ts",
+        "src/core/roleplay-mvu-schema-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-scope-facts.ts",
+        "src/core/roleplay-mvu-schema-source.ts",
+        "src/core/roleplay-mvu-schema-story-core.ts",
+        "src/core/roleplay-mvu-schema-story-types.ts",
+        "src/core/roleplay-mvu-schema-story.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-story.ts",
+        "src/core/roleplay-opening-material.ts",
+        "src/core/roleplay-phase-a-row-facts.ts",
+        "src/core/roleplay-preparation-types.ts",
+        "src/core/roleplay-preparation.ts",
+        "src/core/roleplay-program-absence-inheritance-data.ts",
+        "src/core/roleplay-program-genesis-data.ts",
+        "src/core/roleplay-program-genesis-types.ts",
+        "src/core/roleplay-program-opening-basis-types.ts",
+        "src/core/roleplay-program-opening-records.ts",
+        "src/core/roleplay-prompt-opening-source-data.ts",
+        "src/core/roleplay-prompt-opening-source-types.ts",
+        "src/core/roleplay-prompt-opening-source.ts",
+        "src/core/roleplay-prompt-program-source-types.ts",
+        "src/core/roleplay-prompt-program-source.ts",
+        "src/core/roleplay-prompt-template-only-origins.ts",
+        "src/core/roleplay-status-types.ts",
+        "src/core/roleplay-task-host-types.ts",
+        "src/core/roleplay-tavern-layout.ts",
+        "src/core/roleplay-tavern-lore-edits.ts",
+        "src/core/roleplay-tavern-material-history.ts",
+        "src/core/roleplay-tavern-prompt-source.ts",
+        "src/core/tavern-lore-evaluator-types.mts",
+        "src/core/tavern-prompt-transform-types.mts",
+        "src/core/tavern-prompt-transform-worker.mts",
+        "src/memory/memory-history.ts",
+        "src/core/tavern-prompt-transform-output.mts",
+        "src/core/roleplay-tavern-current-overlay.ts",
+        "src/core/roleplay-tavern-legacy-write-target-types.ts",
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-input-state.ts",
+        "src/core/roleplay-card-export-opening.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/agent-loop/src/request-material-owner.ts",
+        "development/agent-loop/src/request-material.ts",
+        "development/session/src/index.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/session/src/types.ts",
+        "development/session/src/request-material-types.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/assembler.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/session/src/request-preview.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/opening-records.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/tool-history.ts",
+        "development/agent-loop/src/opening-record-hashes.ts",
+        "development/agent-loop/src/opening-generation.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/request-material-sidecar.ts",
+        "development/agent-loop/src/request-envelope.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/constants.ts",
+        "development/session-format/src/mvu-schema-marker.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
+      ]
+    },
+    {
+      "id": "tavern-lore-editor-build",
+      "kind": "typescript-module",
+      "artifact": "tavern-lore-editor-js",
+      "entry": "src/ui/tavern-lore-editor.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/card-adaptation-context.ts",
+        "src/core/card-export-projection.ts",
+        "src/core/card-export.ts",
+        "src/core/roleplay-branch-routes-types.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-import.ts",
+        "src/core/roleplay-input-source-data.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-executor-types.ts",
+        "src/core/roleplay-mvu-schema-journal.ts",
+        "src/core/roleplay-mvu-schema-opening-types.ts",
+        "src/core/roleplay-mvu-schema-replay.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-mvu-update-v2.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-prompt-template-only-data.ts",
+        "src/core/roleplay-prompt-template-only-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/roleplay-source-lock.ts",
+        "src/core/roleplay-tavern-lore-contributions.ts",
+        "src/core/roleplay-tavern-lore-data.ts",
+        "src/core/roleplay-tavern-lore-editor-types.ts",
+        "src/core/roleplay-tavern-lore-edits-data.ts",
+        "src/core/roleplay-tavern-lore-edits-journal.ts",
+        "src/core/roleplay-tavern-lore-edits-types.ts",
+        "src/core/roleplay-tavern-lore-edits.ts",
+        "src/core/roleplay-tavern-lore-source-types.ts",
+        "src/core/roleplay-tavern-source-edit-baseline.ts",
+        "src/core/roleplay-tavern-source-inheritance-data.ts",
+        "src/core/roleplay-tavern-source-inheritance-types.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-worldline-surface.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-worldlines.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-conversations.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-lore-compiler.mts",
+        "src/core/tavern-lore-fixed-profile.mts",
+        "src/core/tavern-lore-plan-types.mts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/tavern-mvu-author-execution-types-v4.mts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/tavern-mvu-schema-data.ts",
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/tavern-mvu-schema-program-v4.ts",
+        "src/core/tavern-mvu-schema-runner-v2.ts",
+        "src/core/tavern-mvu-schema-runner-v3.ts",
+        "src/core/tavern-mvu-schema-runner-v4.ts",
+        "src/core/tavern-mvu-schema-types-v2.ts",
+        "src/core/tavern-mvu-schema-types-v3.ts",
+        "src/core/tavern-mvu-schema-types-v4.ts",
+        "src/core/tavern-mvu-schema-types.ts",
+        "src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "src/core/tavern-mvu-schema-worker-v2.mts",
+        "src/core/tavern-mvu-schema-worker-v3.mts",
+        "src/core/tavern-mvu-schema-worker-v4.mts",
+        "src/core/tavern-mvu-scope-read-types.ts",
+        "src/core/tavern-mvu-scope-read.ts",
+        "src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/tavern-task-context.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-template-data.mts",
+        "src/core/tavern-template-types.mts",
+        "src/memory/memory-provenance.ts",
+        "src/status-template.ts",
+        "src/ui/tavern-lore-editor-data.ts",
+        "src/ui/tavern-lore-editor.ts",
+        "src/operations/build-typescript.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/roleplay-tavern-lore-source.ts",
+        "src/core/bounded-regex.ts",
+        "src/core/character-cluster-projection.ts",
+        "src/core/character-cluster-settings.ts",
+        "src/core/character-cluster.ts",
+        "src/core/narrative-preset-catalog.ts",
+        "src/core/narrative-preset-default.ts",
+        "src/core/narrative-presets.ts",
+        "src/core/narrative-styles/annalistic.ts",
+        "src/core/narrative-styles/cinematic.ts",
+        "src/core/narrative-styles/classical.ts",
+        "src/core/narrative-styles/comedy.ts",
+        "src/core/narrative-styles/cosmic-romance.ts",
+        "src/core/narrative-styles/delicate.ts",
+        "src/core/narrative-styles/fantasy.ts",
+        "src/core/narrative-styles/horror.ts",
+        "src/core/narrative-styles/jrpg.ts",
+        "src/core/narrative-styles/light-novel.ts",
+        "src/core/narrative-styles/luxun.ts",
+        "src/core/narrative-styles/lyrical.ts",
+        "src/core/narrative-styles/minimal.ts",
+        "src/core/narrative-styles/otome.ts",
+        "src/core/novel-export-projection.ts",
+        "src/core/roleplay-author-context-types.ts",
+        "src/core/roleplay-author-context.ts",
+        "src/core/roleplay-author-contributions.ts",
+        "src/core/roleplay-author-tools-types.ts",
+        "src/core/roleplay-input-cold-row-facts.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "src/core/roleplay-input-material.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-ancestry.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-frozen-lineage.ts",
+        "src/core/roleplay-mvu-lineage.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-prefix-ledger.ts",
+        "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+        "src/core/roleplay-mvu-schema-derived-types.ts",
+        "src/core/roleplay-mvu-schema-descriptor-data.ts",
+        "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+        "src/core/roleplay-mvu-schema-history-tail.ts",
+        "src/core/roleplay-mvu-schema-player-types.ts",
+        "src/core/roleplay-mvu-schema-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-scope-facts.ts",
+        "src/core/roleplay-mvu-schema-source.ts",
+        "src/core/roleplay-mvu-schema-story-core.ts",
+        "src/core/roleplay-mvu-schema-story-types.ts",
+        "src/core/roleplay-mvu-schema-story.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-story.ts",
+        "src/core/roleplay-opening-material.ts",
+        "src/core/roleplay-phase-a-row-facts.ts",
+        "src/core/roleplay-preparation-types.ts",
+        "src/core/roleplay-preparation.ts",
+        "src/core/roleplay-program-absence-inheritance-data.ts",
+        "src/core/roleplay-program-genesis-data.ts",
+        "src/core/roleplay-program-genesis-types.ts",
+        "src/core/roleplay-program-opening-basis-types.ts",
+        "src/core/roleplay-program-opening-records.ts",
+        "src/core/roleplay-prompt-opening-source-data.ts",
+        "src/core/roleplay-prompt-opening-source-types.ts",
+        "src/core/roleplay-prompt-opening-source.ts",
+        "src/core/roleplay-prompt-program-source-types.ts",
+        "src/core/roleplay-prompt-program-source.ts",
+        "src/core/roleplay-prompt-template-only-origins.ts",
+        "src/core/roleplay-status-types.ts",
+        "src/core/roleplay-task-host-types.ts",
+        "src/core/roleplay-tavern-layout.ts",
+        "src/core/roleplay-tavern-material-history.ts",
+        "src/core/roleplay-tavern-prompt-source.ts",
+        "src/core/tavern-lore-evaluator-types.mts",
+        "src/core/tavern-prompt-transform-types.mts",
+        "src/core/tavern-prompt-transform-worker.mts",
+        "src/memory/memory-history.ts",
+        "src/core/tavern-prompt-transform-output.mts",
+        "src/core/roleplay-tavern-current-overlay.ts",
+        "src/core/roleplay-tavern-legacy-write-target-types.ts",
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-input-state.ts",
+        "src/core/roleplay-card-export-opening.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/agent-loop/src/request-material-owner.ts",
+        "development/agent-loop/src/request-material.ts",
+        "development/session/src/index.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/session/src/types.ts",
+        "development/session/src/request-material-types.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/assembler.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/session/src/request-preview.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/opening-records.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/tool-history.ts",
+        "development/agent-loop/src/opening-record-hashes.ts",
+        "development/agent-loop/src/opening-generation.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/request-material-sidecar.ts",
+        "development/agent-loop/src/request-envelope.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/constants.ts",
+        "development/session-format/src/mvu-schema-marker.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -98827,7 +100168,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -99055,7 +100397,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -99283,7 +100626,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -99512,7 +100856,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -99740,7 +101085,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -99969,7 +101315,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -100197,7 +101544,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -100426,7 +101774,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -100764,7 +102113,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -100995,7 +102345,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -101223,7 +102574,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -101494,7 +102846,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -101722,7 +103075,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -101950,7 +103304,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -102178,7 +103533,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -102406,7 +103762,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -102634,7 +103991,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -102864,7 +104222,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -103092,7 +104451,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -103354,7 +104714,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -103579,7 +104940,8 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -103808,7 +105170,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -104037,7 +105400,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -104270,7 +105634,8 @@
         "development/agent-loop/src/constants.ts",
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
-        "development/session-format/src/mvu-player-marker.ts"
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -104499,7 +105864,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -104727,7 +106093,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -104985,7 +106352,8 @@
         "development/session-format/src/mvu-schema-marker.ts",
         "development/session-format/src/projection.ts",
         "development/session-format/src/mvu-player-marker.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
       ]
     },
     {
@@ -105236,7 +106604,263 @@
         "src/core/roleplay-mvu-prefix-ledger.ts",
         "src/core/roleplay-input-cold-row-facts.ts",
         "src/core/roleplay-tavern-material-history.ts",
-        "src/core/roleplay-program-copy-span.ts"
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-export.ts"
+      ]
+    },
+    {
+      "id": "roleplay-tavern-lore-export-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-tavern-lore-export-js",
+      "entry": "src/core/roleplay-tavern-lore-export.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/card-adaptation-context.ts",
+        "src/core/card-export-projection.ts",
+        "src/core/card-export.ts",
+        "src/core/roleplay-branch-routes-types.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-import.ts",
+        "src/core/roleplay-input-source-data.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-executor-types.ts",
+        "src/core/roleplay-mvu-schema-journal.ts",
+        "src/core/roleplay-mvu-schema-opening-types.ts",
+        "src/core/roleplay-mvu-schema-replay.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-mvu-update-v2.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-prompt-template-only-data.ts",
+        "src/core/roleplay-prompt-template-only-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/roleplay-source-lock.ts",
+        "src/core/roleplay-tavern-lore-contributions.ts",
+        "src/core/roleplay-tavern-lore-data.ts",
+        "src/core/roleplay-tavern-lore-export.ts",
+        "src/core/roleplay-tavern-lore-source-types.ts",
+        "src/core/roleplay-tavern-source-edit-baseline.ts",
+        "src/core/roleplay-tavern-source-inheritance-data.ts",
+        "src/core/roleplay-tavern-source-inheritance-types.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-worldline-surface.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-worldlines.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-conversations.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-lore-compiler.mts",
+        "src/core/tavern-lore-fixed-profile.mts",
+        "src/core/tavern-lore-plan-types.mts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/tavern-mvu-author-execution-types-v4.mts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/tavern-mvu-schema-data.ts",
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/tavern-mvu-schema-program-v4.ts",
+        "src/core/tavern-mvu-schema-runner-v2.ts",
+        "src/core/tavern-mvu-schema-runner-v3.ts",
+        "src/core/tavern-mvu-schema-runner-v4.ts",
+        "src/core/tavern-mvu-schema-types-v2.ts",
+        "src/core/tavern-mvu-schema-types-v3.ts",
+        "src/core/tavern-mvu-schema-types-v4.ts",
+        "src/core/tavern-mvu-schema-types.ts",
+        "src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "src/core/tavern-mvu-schema-worker-v2.mts",
+        "src/core/tavern-mvu-schema-worker-v3.mts",
+        "src/core/tavern-mvu-schema-worker-v4.mts",
+        "src/core/tavern-mvu-scope-read-types.ts",
+        "src/core/tavern-mvu-scope-read.ts",
+        "src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/tavern-task-context.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-template-data.mts",
+        "src/core/tavern-template-types.mts",
+        "src/memory/memory-provenance.ts",
+        "src/status-template.ts",
+        "src/operations/build-typescript.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/core/roleplay-tavern-lore-source.ts",
+        "src/core/bounded-regex.ts",
+        "src/core/character-cluster-projection.ts",
+        "src/core/character-cluster-settings.ts",
+        "src/core/character-cluster.ts",
+        "src/core/narrative-preset-catalog.ts",
+        "src/core/narrative-preset-default.ts",
+        "src/core/narrative-presets.ts",
+        "src/core/narrative-styles/annalistic.ts",
+        "src/core/narrative-styles/cinematic.ts",
+        "src/core/narrative-styles/classical.ts",
+        "src/core/narrative-styles/comedy.ts",
+        "src/core/narrative-styles/cosmic-romance.ts",
+        "src/core/narrative-styles/delicate.ts",
+        "src/core/narrative-styles/fantasy.ts",
+        "src/core/narrative-styles/horror.ts",
+        "src/core/narrative-styles/jrpg.ts",
+        "src/core/narrative-styles/light-novel.ts",
+        "src/core/narrative-styles/luxun.ts",
+        "src/core/narrative-styles/lyrical.ts",
+        "src/core/narrative-styles/minimal.ts",
+        "src/core/narrative-styles/otome.ts",
+        "src/core/novel-export-projection.ts",
+        "src/core/roleplay-author-context-types.ts",
+        "src/core/roleplay-author-context.ts",
+        "src/core/roleplay-author-contributions.ts",
+        "src/core/roleplay-author-tools-types.ts",
+        "src/core/roleplay-input-cold-row-facts.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "src/core/roleplay-input-material.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-mvu-ancestry.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-frozen-lineage.ts",
+        "src/core/roleplay-mvu-lineage.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-prefix-ledger.ts",
+        "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+        "src/core/roleplay-mvu-schema-derived-types.ts",
+        "src/core/roleplay-mvu-schema-descriptor-data.ts",
+        "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+        "src/core/roleplay-mvu-schema-history-tail.ts",
+        "src/core/roleplay-mvu-schema-player-types.ts",
+        "src/core/roleplay-mvu-schema-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-scope-facts.ts",
+        "src/core/roleplay-mvu-schema-source.ts",
+        "src/core/roleplay-mvu-schema-story-core.ts",
+        "src/core/roleplay-mvu-schema-story-types.ts",
+        "src/core/roleplay-mvu-schema-story.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-story.ts",
+        "src/core/roleplay-opening-material.ts",
+        "src/core/roleplay-phase-a-row-facts.ts",
+        "src/core/roleplay-preparation-types.ts",
+        "src/core/roleplay-preparation.ts",
+        "src/core/roleplay-program-absence-inheritance-data.ts",
+        "src/core/roleplay-program-genesis-data.ts",
+        "src/core/roleplay-program-genesis-types.ts",
+        "src/core/roleplay-program-opening-basis-types.ts",
+        "src/core/roleplay-program-opening-records.ts",
+        "src/core/roleplay-prompt-opening-source-data.ts",
+        "src/core/roleplay-prompt-opening-source-types.ts",
+        "src/core/roleplay-prompt-opening-source.ts",
+        "src/core/roleplay-prompt-program-source-types.ts",
+        "src/core/roleplay-prompt-program-source.ts",
+        "src/core/roleplay-prompt-template-only-origins.ts",
+        "src/core/roleplay-status-types.ts",
+        "src/core/roleplay-task-host-types.ts",
+        "src/core/roleplay-tavern-layout.ts",
+        "src/core/roleplay-tavern-material-history.ts",
+        "src/core/roleplay-tavern-prompt-source.ts",
+        "src/core/tavern-lore-evaluator-types.mts",
+        "src/core/tavern-prompt-transform-types.mts",
+        "src/core/tavern-prompt-transform-worker.mts",
+        "src/memory/memory-history.ts",
+        "src/core/tavern-prompt-transform-output.mts",
+        "src/core/roleplay-tavern-current-overlay.ts",
+        "src/core/roleplay-tavern-legacy-write-target-types.ts",
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-input-state.ts",
+        "src/core/roleplay-card-export-opening.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/agent-loop/src/request-material-owner.ts",
+        "development/agent-loop/src/request-material.ts",
+        "development/session/src/index.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/session/src/types.ts",
+        "development/session/src/request-material-types.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/types.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/assembler.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/session/src/request-preview.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/opening-records.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/tool-history.ts",
+        "development/agent-loop/src/opening-record-hashes.ts",
+        "development/agent-loop/src/opening-generation.ts",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/request-material-sidecar.ts",
+        "development/agent-loop/src/request-envelope.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/constants.ts",
+        "development/session-format/src/mvu-schema-marker.ts",
+        "development/session-format/src/projection.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-tavern-lore-edits.ts"
+      ]
+    },
+    {
+      "id": "nexttavern-card-build",
+      "kind": "typescript-module",
+      "artifact": "nexttavern-card-js",
+      "entry": "src/core/nexttavern-card.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/nexttavern-card.ts",
+        "src/core/tavern-card.ts"
+      ]
+    },
+    {
+      "id": "roleplay-native-card-export-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-native-card-export-js",
+      "entry": "src/core/roleplay-native-card-export.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-native-card-export.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/tavern-card.ts",
+        "src/core/nexttavern-card.ts",
+        "src/core/tavern-lore-compiler.mts",
+        "src/core/roleplay-tavern-lore-source-types.ts",
+        "src/core/roleplay-tavern-lore-edits.ts",
+        "src/core/roleplay-card-export-opening.ts",
+        "src/core/roleplay-import-types.ts"
       ]
     }
   ],
