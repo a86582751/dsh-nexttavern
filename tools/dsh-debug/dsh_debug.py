@@ -177,7 +177,11 @@ def parse(argv):
         if command == 'upload':
             p.add_argument('--file', required=True, help='Local regular file, maximum 20 MiB')
             p.add_argument('--dir', required=True, help='Relative target directory inside the exact session\'s registered workspace')
-        if command == 'export': p.add_argument('--kind', choices=['card-export', 'novel-export'], required=True)
+        if command == 'export':
+            p.add_argument('--kind', choices=['card-export', 'novel-export'], required=True)
+            p.add_argument('--mode', choices=['original', 'organized'], default='original',
+                           help=('original (default): card JSON or current-worldline Markdown without model requests; '
+                                 'organized: explicitly reorganize content using a model'))
         if command == 'job-action':
             p.add_argument('--job-id', required=True)
             p.add_argument('--action', choices=['retry', 'cancel'], required=True)
@@ -428,7 +432,7 @@ def build_plan(args):
              'Model body requires scope/settings/expectedRevision')
         return rest('models', {**settings, **body})
     if command == 'model-route': return rest('models?' + urlencode(body), readPolicy=True)
-    if command == 'export': return rest('jobs', {**body, 'kind': args.kind})
+    if command == 'export': return rest('jobs', {**body, 'kind': args.kind, 'mode': args.mode})
     if command == 'job-action': return rest('jobs', {**body, 'action': args.action, 'jobId': args.job_id})
     if command == 'download': return rest('download?' + urlencode({**body, 'resourceId': args.resource_id}), download=True)
     if command == 'request':

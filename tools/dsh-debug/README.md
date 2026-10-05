@@ -107,10 +107,19 @@ dsh-debug model-route --session session-ID --purpose status --provider qwen --mo
 dsh-debug worldline --session session-ID --action operation-status --operation-id operation-ID
 dsh-debug jobs --session session-ID
 dsh-debug export --session session-ID --kind card-export --dry-run
+dsh-debug export --session session-ID --kind novel-export --mode original --dry-run
+dsh-debug export --session session-ID --kind card-export --mode organized --dry-run
 dsh-debug resources --session session-ID
 dsh-debug download --session session-ID --resource-id resource-ID --out book.md
 dsh-debug request /api/roleplay/state?sessionId=session-ID
 ```
+
+`export` defaults to `--mode original`: `card-export` preserves the complete
+current card as NextTavern JSON, and `novel-export` preserves the selected
+worldline's prose as Markdown. Both add zero model requests. Use
+`--mode organized` only when explicitly requesting semantic reorganization:
+it uses the existing model workflow to organize card Markdown or novel chapters.
+The selected mode is included in the jobs POST and in `--dry-run` output.
 
 `sessions` and `resolve` use native session metadata, projected on-server before
 SSH transfer: only IDs, title/preset/model, status, workspace and parent fields.
