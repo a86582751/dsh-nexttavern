@@ -12,11 +12,14 @@ import {templateRuntimeRecipeV1,materializeTavernTemplateRuntimeDependenciesV1,
 import {authorBrowserRuntimeRecipeV1,materializeAuthorBrowserRuntimeDependenciesV1,
   type AuthorBrowserRuntimeAssetRecipeV1} from './author-browser-runtime-assets.mjs'
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
+import {authorPromptRuntimeRecipeV1,materializeAuthorPromptRuntimeDependenciesV1,
+  type AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
 
 interface ProductRecipe {
   templateRuntime?:TavernTemplateRuntimeAssetRecipeV1
   authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1
   authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5
+  authorPromptRuntime?:AuthorPromptRuntimeAssetRecipeV1
   packageArtifact: string
   patchArtifact: string
   packages: {packageArtifact: string; assembly?: string; resources?: {artifact: string; path: string}[]}[]
@@ -317,6 +320,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
   const row = rows[0]!
   const templateRecipe=templateRuntimeRecipeV1(plan),templateComponent=templateRecipe?.packageArtifact===row.packageArtifact
   const browserRecipe=authorBrowserRuntimeRecipeV1(plan),browserComponent=browserRecipe?.packageArtifact===row.packageArtifact
+  const promptRecipe=authorPromptRuntimeRecipeV1(plan),promptComponent=promptRecipe?.packageArtifact===row.packageArtifact
   const source = artifact(row.packageArtifact).source
   const pkg = json<Metadata>(inside(repo, source))
   const product = json<Metadata>(inside(repo, artifact(plan.product.packageArtifact).source))
@@ -358,7 +362,7 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     }
   }
   const ordinaryDependencies = Object.fromEntries(Object.entries(pkg.dependencies ?? {})
-    .filter(([name]) => !Object.hasOwn(ownedRootLibraries, name)&&!templateComponent&&!browserComponent))
+    .filter(([name]) => !Object.hasOwn(ownedRootLibraries, name)&&!templateComponent&&!browserComponent&&!promptComponent))
   const excludedVendoredFiles = vendorLibraries(output, pkg.name, ordinaryDependencies, options.libraryRoot,
     plan.product.bundleLibraries ?? {}, options.admitVendoredFile, plan.product.bundlePlatforms ?? [])
   if(templateComponent) {
@@ -374,6 +378,12 @@ export function assembleProductPackage(options: ProductPackageAssemblyOptions) {
     materializeAuthorBrowserRuntimeDependenciesV1({repo,plan,packageRoot:output,
       libraryRoot:options.libraryRoot??'',admit:options.admitVendoredFile??(()=>{
         throw Error('Author browser component requires complete published vendor admission')
+      })})
+  }
+  if(promptComponent) {
+    materializeAuthorPromptRuntimeDependenciesV1({repo,plan,packageRoot:output,
+      libraryRoot:options.libraryRoot??'',admit:options.admitVendoredFile??(()=>{
+        throw Error('Author prompt component requires complete locked vendor admission')
       })})
   }
   if (Object.keys(ownedRootLibraries).length) {
