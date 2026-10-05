@@ -2,7 +2,7 @@
 // Frozen import evidence and source-span validation. No table writes, workflow
 // state or import locks live here; validation remains usable by export/readback.
 import { sha256, cloneRecord, stableJson } from './roleplay-data.js';
-import { readCardSource, decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1, compileTavernExtensionInventoryV3, compileTavernCapabilityReport } from './tavern-card.js';
+import { readCardSource, decodeTavernCard, readTavernExecutionCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1, compileTavernExtensionInventoryV3, compileTavernCapabilityReport } from './tavern-card.js';
 import { projectNextTavernCard } from './nexttavern-card.js';
 export const IMPORT_NORMALIZER = 'utf8-lf+anydoc-deescape-v2';
 export const NEXTTAVERN_IMPORT_NORMALIZER = 'nexttavern-fields-v1';
@@ -12,7 +12,7 @@ export function readStructuredImportDataV1(record) {
     if (!envelope)
         throw new Error('结构化导入缺少执行原件');
     const bytes = envelope.schemaVersion === 2 ? Buffer.from(record.rawSource, 'utf8') : Buffer.from(envelope.base64, 'base64');
-    const decoded = decodeTavernCard(bytes, envelope.extension);
+    const decoded = envelope.schemaVersion === 2 ? readTavernExecutionCard(record.rawSource) : decodeTavernCard(bytes, envelope.extension);
     return { decoded, provenance: { transportSha256: record.rawSha256, transportBytes: record.sourceBytes,
             transportResourceId: envelope.schemaVersion === 2 ? envelope.transportResourceId : null,
             executionSha256: decoded.sourceSha256, executionBytes: bytes.length } };

@@ -31,7 +31,7 @@ import {
   stableImportId,
 } from './roleplay-data.js';
 import { lastSeq, eventsOf } from './roleplay-context.js';
-import { readCardSource, decodeTavernCard, projectTavernCardCompact, compileTavernFieldCoverage,
+import { readCardSource, decodeTavernCard, prepareNextTavernExecutionCard, projectTavernCardCompact, compileTavernFieldCoverage,
   compileTavernExtensionInventory, compileTavernExtensionInventoryV3, compileTavernCapabilityReport,
   fenceCardContent } from './tavern-card.js';
 import { registerCardExport } from './card-export.js';
@@ -747,15 +747,15 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             return {
               ok: false, error: `角色卡超过 ${IMPORT_LIMITS.maxBytes.toLocaleString()} 字节，拒绝静默截断；请先拆成多个来源文件`
             };
-          let decoded, projected;
+          let decoded, projected, executionRawSource:string|undefined;
           let nativeTransport:DecodedTavernCard|undefined;
           try {
             if (['.png', '.json'].includes(source.extension)) {
               decoded = decodeTavernCard(rawBytes, source.extension);
               if(decoded.format==='json-nexttavern-v1') {
                 nativeTransport=decoded;
-                const executionBytes=Buffer.from(JSON.stringify({...decoded.document,archive:{}},null,2),'utf8');
-                decoded=decodeTavernCard(executionBytes,'.json');
+                const execution=prepareNextTavernExecutionCard(decoded);
+                decoded=execution.decoded;executionRawSource=execution.rawSource;
                 projected=projectStructuredImport({schemaVersion:6,normalizer:NEXTTAVERN_IMPORT_NORMALIZER} as ImportRecord,decoded);
               }else projected = projectTavernCardCompact(decoded);
             }
@@ -767,12 +767,12 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               }).message)
             };
           }
-          const rawSource = decoded ? JSON.stringify(decoded.document, null, 2) : rawBytes.toString('utf8');
+          const rawSource = executionRawSource??(decoded ? JSON.stringify(decoded.document, null, 2) : rawBytes.toString('utf8'));
           if (!decoded && !Buffer.from(rawSource, 'utf8').equals(rawBytes))
             return {
               ok: false, error: '角色卡不是有效 UTF-8；拒绝以替换字符损坏原文'
             };
-          if (rawSource.length > IMPORT_LIMITS.maxChars)
+          if (!decoded&&rawSource.length > IMPORT_LIMITS.maxChars)
             return {
               ok: false, error: `角色卡超过 ${IMPORT_LIMITS.maxChars.toLocaleString()} 字符，拒绝静默截断；请先拆成多个来源文件`
             };

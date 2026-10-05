@@ -3,8 +3,8 @@
  * numbers, activate entries, construct a prompt, or write persistent state. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import {types} from 'node:util'
-import {cloneSchemaData} from './tavern-mvu-schema-data.js'
-import {CARD_LIMITS,decodeTavernCard} from './tavern-card.js'
+import {cloneSchemaData,cloneSchemaDescriptorData} from './tavern-mvu-schema-data.js'
+import {CARD_LIMITS,inspectTavernCardDocument} from './tavern-card.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {validateTavernSourceInheritanceDescriptorV1} from './roleplay-tavern-source-inheritance-data.js'
 import {ST_LORE_COMMIT,ST_LORE_ENTRY_DEFAULTS_V1,ST_LORE_LOGIC_V1,ST_LORE_POSITION_V1,
@@ -16,7 +16,9 @@ import type {TavernLoreCompilationInputV1,TavernLoreCompilationV1,TavernLoreDiag
   TavernLoreBookAbsenceProofV1} from './tavern-lore-plan-types.mjs'
 
 const OUTPUT_BYTES=16_777_216 // Existing cloneSchemaData absolute envelope ceiling.
-const inputBounds={nodes:CARD_LIMITS.nodes,depth:CARD_LIMITS.depth}
+const HISTORICAL_BOOK_BYTES=5_000_000
+const SOURCE_DATA_BYTES=67_108_864
+const inputBounds={nodes:100_000,depth:48}
 const outputBounds={nodes:MVU_SCHEMA_BOUNDS.evaluationNodes,depth:MVU_SCHEMA_BOUNDS.evaluationDepth}
 const has=(record:object,key:string)=>Object.hasOwn(record,key)
 const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
@@ -66,11 +68,12 @@ class OutputBudget {
     visit(value)
   }
 }
-function validateInput(raw:unknown,profile:CompilerProfile=compilerProfiles.O2):TavernLoreCompilationInputV1 {
-  // The envelope contains the immutable book plus explicitly edited text and
-  // provenance. Keep the book's original adapter ceiling, without counting a
-  // legitimate current overlay as a second raw source inside that same cap.
-  const value=cloneSchemaData(raw,OUTPUT_BYTES,outputBounds)
+function validateInput(raw:unknown,profile:CompilerProfile=compilerProfiles.O3):TavernLoreCompilationInputV1 {
+  // Current compilation consumes Source-owned book DATA and current edits.
+  // The decoder owns upload limits; historical profiles retain their original
+  // aggregate and per-book admission for exact stored-plan reconstruction.
+  const value=profile.sourceOwned?cloneSchemaDescriptorData(raw,SOURCE_DATA_BYTES,outputBounds)
+    :cloneSchemaData(raw,OUTPUT_BYTES,outputBounds)
   if(!object(value))fail('LORE_INPUT_SHAPE_INVALID')
   exact(value,['schemaVersion','encoding','source','book',
     ...(has(value,'currentNativeOverlay')?['currentNativeOverlay']:[])],'/')
@@ -78,7 +81,7 @@ function validateInput(raw:unknown,profile:CompilerProfile=compilerProfiles.O2):
     ||value.book!==null&&!object(value.book)) {
     fail('LORE_INPUT_SHAPE_INVALID')
   }
-  cloneSchemaData(value.book,CARD_LIMITS.jsonBytes,inputBounds)
+  if(!profile.sourceOwned)cloneSchemaData(value.book,HISTORICAL_BOOK_BYTES,inputBounds)
   const source=value.source
   if(!object(source))fail('LORE_SOURCE_REFERENCE_INVALID','/source')
   exact(source,['schemaVersion','encoding','ownerSessionId','sourceRecordSessionId','importId','rawSourceSha256',
@@ -124,7 +127,7 @@ function validateInput(raw:unknown,profile:CompilerProfile=compilerProfiles.O2):
     }
   }else {
     if(has(source,'bookPresence')||has(source,'absenceProof'))fail('LORE_BOOK_PRESENCE_CONTRADICTION',source.bookPointer)
-    if(has(value,'currentNativeOverlay'))validateOverlay(value.currentNativeOverlay,value.book,source.bookPointer)
+    if(has(value,'currentNativeOverlay'))validateOverlay(value.currentNativeOverlay,value.book,source.bookPointer,profile)
   }
   return value as unknown as TavernLoreCompilationInputV1
 }
@@ -158,10 +161,10 @@ function validateBookAbsence(raw:unknown,source:Record<string,unknown>):void {
   if(!object(raw.document)||recordSha256(raw.document)!==raw.documentSha256) {
     fail('LORE_BOOK_ABSENCE_DOCUMENT_CHANGED',`${at}/document`)
   }
-  // Reencoding validates the complete document through the maintained decoder.
-  // Its new byte hash is deliberately not claimed as the original JSON/PNG hash.
-  let decoded:ReturnType<typeof decodeTavernCard>
-  try {decoded=decodeTavernCard(Buffer.from(JSON.stringify(raw.document),'utf8'),'.json')}
+  // The Source DATA owner already bounded this document; keep transport limits
+  // at intake and share the maintained format inspection without reencoding it.
+  let decoded:ReturnType<typeof inspectTavernCardDocument>
+  try {decoded=inspectTavernCardDocument(raw.document)}
   catch {fail('LORE_BOOK_ABSENCE_DOCUMENT_INVALID',`${at}/document`)}
   if(decoded.document.data!==decoded.data||Object.hasOwn(decoded.data,'character_book')
     ||recordSha256(decoded.data)!==raw.dataSha256
@@ -295,20 +298,21 @@ const legacyBindings:readonly {raw:string;field:keyof TavernLoreRetainedDeclarat
 const bookKnown=new Set(['entries','name','description','scan_depth','token_budget','recursive_scanning','extensions'])
 const nonnegative=new Set(['displayIndex','depth','groupWeight','scanDepth','sticky','cooldown','delay'])
 const integerFields=new Set(['displayIndex','depth','scanDepth','sticky','cooldown','delay'])
-interface CompilerProfile {readonly native:boolean;readonly outputCap:boolean;
+interface CompilerProfile {readonly native:boolean;readonly outputCap:boolean;readonly sourceOwned:boolean;
   readonly presentSha256:string;readonly absentSha256:string}
-function compilerProfile(native:boolean,outputCap:boolean):CompilerProfile {
+function compilerProfile(native:boolean,outputCap:boolean,sourceOwned=false):CompilerProfile {
   const presentSha256=recordSha256({schemaVersion:1,
     encoding:'owned-st-character-book-consumer-profile-v1',fixedImportProfileSha256:ST_LORE_PROFILE_SHA256,
     fields,legacyBindings,unknownPolicy:native?'retain-uninterpreted-metadata-without-semantic-authority'
       :'retain-complete-source-and-make-unknown-control-data-ineligible',
     ...(native?{entryCollectionPolicy:'native-ordered-object-keys-legacy-fixed-array'}:{}),
     defaultsPolicy:'fixed-convertCharacterBook-not-editor-template-not-player-globals',
-    bounds:{inputEnvelopeBytes:OUTPUT_BYTES,inputEnvelopeBounds:outputBounds,
-      originalBookBytes:CARD_LIMITS.jsonBytes,originalBookBounds:inputBounds,
+    bounds:{inputEnvelopeBytes:sourceOwned?SOURCE_DATA_BYTES:OUTPUT_BYTES,inputEnvelopeBounds:outputBounds,
+      ...(sourceOwned?{originalBookPolicy:'source-owner-decoded-data'}
+        :{originalBookBytes:HISTORICAL_BOOK_BYTES,originalBookBounds:inputBounds}),
       ...(outputCap?{outputBytes:OUTPUT_BYTES,outputBounds}:{generatedOutputPolicy:'input-owned-derived-data'}),
-      entries:CARD_LIMITS.entries}})
-  return freeze({native,outputCap,presentSha256,absentSha256:recordSha256({schemaVersion:1,
+      entries:2048}})
+  return freeze({native,outputCap,sourceOwned,presentSha256,absentSha256:recordSha256({schemaVersion:1,
     encoding:'owned-st-character-book-proven-absence-profile-v1',presentBookProfileSha256:presentSha256,
     absence:'complete-verified-document-own-field-absence-with-actual-import-and-activation-refs',
     plan:'program-owned-empty-plan-with-null-original-book',overlay:'explicit-empty-only',
@@ -316,9 +320,10 @@ function compilerProfile(native:boolean,outputCap:boolean):CompilerProfile {
 }
 // Fixed historical definitions reconstruct data only; they do not revive an
 // old task's execution authority or rewrite a Source/journal/snapshot record.
-const compilerProfiles={O0:compilerProfile(false,true),O1:compilerProfile(true,true),O2:compilerProfile(true,false)}
-export const TAVERN_LORE_COMPILER_PROFILE_SHA256=compilerProfiles.O2.presentSha256
-export const TAVERN_LORE_ABSENT_BOOK_PROFILE_SHA256=compilerProfiles.O2.absentSha256
+const compilerProfiles={O0:compilerProfile(false,true),O1:compilerProfile(true,true),O2:compilerProfile(true,false),
+  O3:compilerProfile(true,false,true)}
+export const TAVERN_LORE_COMPILER_PROFILE_SHA256=compilerProfiles.O3.presentSha256
+export const TAVERN_LORE_ABSENT_BOOK_PROFILE_SHA256=compilerProfiles.O3.absentSha256
 function fieldValue(definition:FieldDefinition,value:unknown):unknown {
   const {kind,field}=definition
   if(kind==='boolean'||kind==='nullable-boolean')return typeof value==='boolean'?value:undefined
@@ -334,18 +339,32 @@ function fieldValue(definition:FieldDefinition,value:unknown):unknown {
     ||field==='probability'&&(value<0||value>100)||field==='order'&&Math.abs(value)>1_000_000)return undefined
   return value
 }
-export const TAVERN_LORE_CURRENT_NATIVE_OVERLAY_POLICY_V1=freeze({schemaVersion:1,
-  encoding:'st-character-book-current-native-overlay-policy-v1',
-  semantics:'explicit-canonical-fields-only-original-entry-address-and-hashes-retained',
-  origin:'consumer-data-only-live-owner-verifies-concrete-row-or-append-only-ref',
-  bounds:{entries:CARD_LIMITS.entries,originBytes:65_536,originNodes:4096,originDepth:16,
-    fieldStringBytes:4096,contentBytes:CARD_LIMITS.jsonBytes},
-  fields:[...fields.map(row=>row.field),'content','position','keyMatcher'],
-  positions:ST_LORE_POSITION_V1,roles:ST_LORE_ROLE_V1,logic:ST_LORE_LOGIC_V1})
+function overlayPolicy(version:1|2,contentBytes:number) {
+  return freeze({schemaVersion:version,
+    encoding:`st-character-book-current-native-overlay-policy-v${version}`,
+    semantics:'explicit-canonical-fields-only-original-entry-address-and-hashes-retained',
+    origin:'consumer-data-only-live-owner-verifies-concrete-row-or-append-only-ref',
+    bounds:{entries:2048,originBytes:65_536,originNodes:4096,originDepth:16,
+      fieldStringBytes:4096,contentBytes},
+    fields:[...fields.map(row=>row.field),'content','position','keyMatcher'],
+    positions:ST_LORE_POSITION_V1,roles:ST_LORE_ROLE_V1,logic:ST_LORE_LOGIC_V1})
+}
+export const TAVERN_LORE_CURRENT_NATIVE_OVERLAY_POLICY_V1=overlayPolicy(1,HISTORICAL_BOOK_BYTES)
 export const TAVERN_LORE_CURRENT_NATIVE_OVERLAY_PROFILE_SHA256=
   recordSha256(TAVERN_LORE_CURRENT_NATIVE_OVERLAY_POLICY_V1)
-function overlayFieldValue(field:string,value:unknown,at:string):void {
-  const bounds=TAVERN_LORE_CURRENT_NATIVE_OVERLAY_POLICY_V1.bounds
+export const TAVERN_LORE_CURRENT_NATIVE_OVERLAY_POLICY_V2=overlayPolicy(2,CARD_LIMITS.jsonBytes)
+export const TAVERN_LORE_CURRENT_NATIVE_OVERLAY_PROFILE_SHA256_V2=
+  recordSha256(TAVERN_LORE_CURRENT_NATIVE_OVERLAY_POLICY_V2)
+function selectedOverlayPolicy(profile:CompilerProfile) {
+  return profile.sourceOwned?TAVERN_LORE_CURRENT_NATIVE_OVERLAY_POLICY_V2
+    :TAVERN_LORE_CURRENT_NATIVE_OVERLAY_POLICY_V1
+}
+function selectedOverlaySha256(profile:CompilerProfile) {
+  return profile.sourceOwned?TAVERN_LORE_CURRENT_NATIVE_OVERLAY_PROFILE_SHA256_V2
+    :TAVERN_LORE_CURRENT_NATIVE_OVERLAY_PROFILE_SHA256
+}
+function overlayFieldValue(field:string,value:unknown,at:string,profile:CompilerProfile):void {
+  const bounds=selectedOverlayPolicy(profile).bounds
   if(field==='content') {
     if(typeof value!=='string')fail('LORE_OVERLAY_FIELD_INVALID',at)
     const bytes=Buffer.byteLength(value,'utf8')
@@ -383,8 +402,8 @@ function originalValueAt(book:Record<string,unknown>,bookPointer:string,at:strin
   }
   return value
 }
-function validateOverlay(raw:unknown,book:Record<string,unknown>,bookPointer:string):void {
-  const at='/currentNativeOverlay',bounds=TAVERN_LORE_CURRENT_NATIVE_OVERLAY_POLICY_V1.bounds
+function validateOverlay(raw:unknown,book:Record<string,unknown>,bookPointer:string,profile:CompilerProfile):void {
+  const at='/currentNativeOverlay',bounds=selectedOverlayPolicy(profile).bounds
   if(!object(raw))fail('LORE_OVERLAY_INVALID',at)
   exact(raw,['schemaVersion','encoding','entries'],at)
   if(raw.schemaVersion!==1||raw.encoding!=='st-character-book-current-native-overlay-v1'
@@ -413,7 +432,7 @@ function validateOverlay(raw:unknown,book:Record<string,unknown>,bookPointer:str
     const ref=cloneSchemaData(row.origin.ref,bounds.originBytes,{nodes:bounds.originNodes,depth:bounds.originDepth})
     if(recordSha256(ref)!==row.origin.refSha256)fail('LORE_OVERLAY_ORIGIN_HASH',where)
     if(!object(row.fields)||!Object.keys(row.fields).length)fail('LORE_OVERLAY_FIELDS_INVALID',where)
-    for(const [field,value] of Object.entries(row.fields))overlayFieldValue(field,value,`${where}/fields/${token(field)}`)
+    for(const [field,value] of Object.entries(row.fields))overlayFieldValue(field,value,`${where}/fields/${token(field)}`,profile)
   }
 }
 function declarationValue(kind:FieldKind|'role-token',value:unknown):unknown {
@@ -441,7 +460,7 @@ function compileAbsentBook(input:TavernLoreCompilationInputV1,profile:CompilerPr
     authority:'consumer-data-only' as const,
     compiler:{id:'owned-st-character-book-compiler' as const,version:1 as const,upstreamCommit:ST_LORE_COMMIT,
       semanticProfileSha256:profile.absentSha256,
-      ...(overlay?{currentNativeOverlayProfileSha256:TAVERN_LORE_CURRENT_NATIVE_OVERLAY_PROFILE_SHA256}:{})},
+      ...(overlay?{currentNativeOverlayProfileSha256:selectedOverlaySha256(profile)}:{})},
     source,sourceReferenceSha256:recordSha256(source),
     bookId:recordSha256({schemaVersion:1,encoding:'st-lore-book-source-address-v1',
       ownerSessionId:source.ownerSessionId,sourceRecordSessionId:source.sourceRecordSessionId,
@@ -644,7 +663,7 @@ function compile(input:TavernLoreCompilationInputV1,profile:CompilerProfile):Ext
   const body={schemaVersion:1 as const,encoding:'st-character-book-semantic-plan-inputs-v1' as const,
     authority:'consumer-data-only' as const,compiler:{id:'owned-st-character-book-compiler' as const,version:1 as const,
       upstreamCommit:ST_LORE_COMMIT,semanticProfileSha256:profile.presentSha256,
-      ...(overlay?{currentNativeOverlayProfileSha256:TAVERN_LORE_CURRENT_NATIVE_OVERLAY_PROFILE_SHA256}:{})},source,
+      ...(overlay?{currentNativeOverlayProfileSha256:selectedOverlaySha256(profile)}:{})},source,
     sourceReferenceSha256:recordSha256(source),bookId,rawBook:book,rawBookSha256:recordSha256(book),
     ...(overlay?{currentNativeOverlay:overlay,currentNativeOverlaySha256:recordSha256(overlay)}:{}),
     bookDisposition:bookBlocked?'retained-ineligible' as const:'eligible-semantic-data' as const,
@@ -660,7 +679,7 @@ function compile(input:TavernLoreCompilationInputV1,profile:CompilerProfile):Ext
   return compiledOutput({kind:'compiled',plan,diagnostics},profile)
 }
 export function compileTavernLoreBookV1(input:unknown):TavernLoreCompilationV1 {
-  try {return compile(validateInput(input),compilerProfiles.O2)}
+  try {return compile(validateInput(input),compilerProfiles.O3)}
   catch(error) {
     const code=error instanceof LoreRefusal?error.code:error instanceof Error&&/^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
       ?error.message:'LORE_COMPILATION_REFUSED'
