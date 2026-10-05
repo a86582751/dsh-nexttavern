@@ -25,6 +25,12 @@ export const PROMPT_OPENING_SOURCE_POLICY_V1=Object.freeze({schemaVersion:1,
   schemaExecution:'none',sourceCurrent:'sole-actual-Source-current-identity; full-audit-refs-retained',
   modelRequests:0,proofBytes:16_777_216,greetings:4096,entries:4096})
 export const PROMPT_OPENING_SOURCE_POLICY_SHA256=recordSha256(PROMPT_OPENING_SOURCE_POLICY_V1)
+export const NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_V1=Object.freeze({...PROMPT_OPENING_SOURCE_POLICY_V1,
+  encoding:'native-nexttavern-prompt-opening-source-policy-v1',
+  prompt:'canonical-exact-author-fields-and-actual-recomputed-book-content; archive-and-open-metadata-inert',
+  identityRendering:'template-three-identity-macros-or-exact-materialized-prose-copy-v1',
+  initialization:'immutable-raw-book-init-entries-and-template-greetings; materialized-prose-never-initializes'})
+export const NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256=recordSha256(NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_V1)
 export class PromptOpeningSourceFailureV1 extends Error {
   constructor(readonly code:PromptOpeningSourceCodeV1,readonly pointer:string,readonly calculatorCode?:string) {super(code)}
 }
@@ -138,6 +144,26 @@ export function renderPromptOpeningIdentityV1(text:string,context:TavernOpeningC
   return {text:rendered,facts}
 }
 
+/** A delivered opening is prose. Its syntax has no new macro or InitVar authority. */
+export function readPromptOpeningGreetingFactsV1(candidate:TavernOpeningCandidate,context:TavernOpeningContext):PromptOpeningGreetingFactsV1 {
+  const materialized=candidate.materialization==='materialized',text=candidate.rawText,pointer=candidate.sourcePointer
+  if(!materialized)rawDataSyntax(text,pointer)
+  const blocks=materialized?[]:readPromptOpeningGreetingBlocksV1(text,pointer)
+  const rendered=materialized?{text,facts:{policy:'copy-materialized-opening-v1' as const,
+    rawSha256:sha256(text),renderedSha256:sha256(text),used:false,reads:[],readsSha256:recordSha256([])}}
+    :renderPromptOpeningIdentityV1(text,context,pointer,blocks.map(block=>({start:block.bodyStart,end:block.bodyEnd})))
+  if(rendered.text!==candidate.renderedText||candidate.sourceSha256!==sha256(text)) {
+    openingSourceFail('OPENING_SOURCE_MACRO_UNSUPPORTED',pointer)
+  }
+  if(!materialized)rawDataSyntax(rendered.text,pointer+'/rendered')
+  const expanded=materialized?[]:readPromptOpeningGreetingBlocksV1(rendered.text,pointer+'/rendered')
+  if(blocks.length!==expanded.length)openingSourceFail('OPENING_SOURCE_INITVAR_WRAPPER_UNSUPPORTED',pointer)
+  return {index:candidate.index,sourcePointer:pointer,sourceSha256:candidate.sourceSha256,rawText:text,
+    renderedText:rendered.text,renderedSha256:sha256(rendered.text),macros:candidate.macros,
+    identityRendering:rendered.facts,originalInitBlocks:blocks,renderedInitBlocks:expanded,
+    ...(candidate.materialization?{materialization:candidate.materialization}:{})}
+}
+
 /** Sources are actual private-owner facts supplied by the Source factory.
  * This calculator builder remains inert and never mints an opening proof. */
 export function calculatePromptOpeningRawInitV1(input:{source:TavernLoreSourceDataV1;decoded:DecodedTavernCard;
@@ -174,28 +200,14 @@ export function calculatePromptOpeningRawInitV1(input:{source:TavernLoreSourceDa
       renderedContent:rendering?.text??null,identityRendering:rendering?.facts??null,
       effectivePromptContentSha256:entry.effective.textSha256})
   }
-  const greetingFacts:PromptOpeningGreetingFactsV1[]=candidates.map(candidate=>{
-    rawDataSyntax(candidate.rawText,candidate.sourcePointer)
-    const blocks=readPromptOpeningGreetingBlocksV1(candidate.rawText,candidate.sourcePointer)
-    const rendered=renderPromptOpeningIdentityV1(candidate.rawText,context,candidate.sourcePointer,
-      blocks.map(block=>({start:block.bodyStart,end:block.bodyEnd})))
-    if(rendered.text!==candidate.renderedText||candidate.sourceSha256!==sha256(candidate.rawText)) {
-      openingSourceFail('OPENING_SOURCE_MACRO_UNSUPPORTED',candidate.sourcePointer)
-    }
-    rawDataSyntax(candidate.renderedText,candidate.sourcePointer+'/rendered')
-    const expanded=readPromptOpeningGreetingBlocksV1(candidate.renderedText,candidate.sourcePointer+'/rendered')
-    if(blocks.length!==expanded.length)openingSourceFail('OPENING_SOURCE_INITVAR_WRAPPER_UNSUPPORTED',candidate.sourcePointer)
-    macros||=rendered.facts.used
-    return {index:candidate.index,sourcePointer:candidate.sourcePointer,sourceSha256:candidate.sourceSha256,
-      rawText:candidate.rawText,renderedText:candidate.renderedText,renderedSha256:sha256(candidate.renderedText),
-      macros:candidate.macros,identityRendering:rendered.facts,originalInitBlocks:blocks,renderedInitBlocks:expanded}
-  })
+  const greetingFacts=candidates.map(candidate=>readPromptOpeningGreetingFactsV1(candidate,context))
+  macros||=greetingFacts.some(greeting=>greeting.identityRendering.used)
   const books:SchemaMvuInitDataSource['books']=primary.binding==='primary'
     ?[{identity:'embedded-primary',binding:'primary',sourcePointer:primary.bookPointer,sourceSha256:primary.bookSha256,
       entries:initEntries}]:[]
   const swipes:SchemaMvuInitDataSource['swipes']=greetingFacts.map(item=>({identity:`swipe-${item.index}`,
     sourcePointer:item.sourcePointer,sourceSha256:item.sourceSha256,rawOpening:item.rawText,renderedOpening:item.renderedText,
-    renderedSha256:item.renderedSha256,statData:{}}))
+    renderedSha256:item.renderedSha256,statData:{},...(item.materialization?{materialization:item.materialization}:{})}))
   const policy=selectNativeMvuInitializationPolicy({books,swipes})
   if(policy.kind!=='selected')openingSourceFail('OPENING_SOURCE_INIT_DATA_UNSUPPORTED',
     policy.diagnostics[0]?.pointer??'/initialization',policy.diagnostics[0]?.code)
@@ -231,6 +243,7 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
   record:ImportRecord;program:PromptProgramSourceInventoryV1;context:TavernOpeningContext;bindings:PromptOpeningRawInitBindingV1}) {
   const {source,decoded,record,program,context,bindings}=input,
     initByPointer=new Map(bindings.rawEntries.filter(entry=>entry.isInitVar).map(entry=>[entry.sourcePointer,entry] as const))
+  const native=program.importTuple.format==='json-nexttavern-v1'
   try {assertMvuNonSchemaSourceExtensionsV1(decoded.data.extensions,'/data/extensions')}
   catch {return openingSourceFail('OPENING_SOURCE_STATE_SYNTAX_UNSUPPORTED','/data/extensions')}
   const rawSpecial=new Set<string>(program.authorFields.map(field=>field.originalPointer))
@@ -252,7 +265,9 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
       walk(child,next,skip)
     }
   }
-  walk(decoded.document,'',rawSpecial)
+  // The native format enumerates all executable author fields below. Its
+  // archive and open metadata are portable values, never interpreter input.
+  if(!native)walk(decoded.document,'',rawSpecial)
   for(const field of program.authorFields) {
     if(field.raw)programText(field.raw,context,field.originalPointer)
     if(field.normalized)programText(field.normalized,context,field.originalPointer+'/normalized')
@@ -269,7 +284,8 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
       }else {
         // Use the already-proved complete piece partition, not a matched EJS
         // substring. Each peripheral literal still receives the strict guard.
-        const owner=part.kind==='author-field'?program.authorFields.find(field=>field.originalPointer===part.originalPointer)?.normalized
+        const field=program.authorFields.find(field=>field.originalPointer===part.originalPointer)
+        const owner=part.kind==='author-field'?(native?field?.raw:field?.normalized)
           :program.bookEntries.find(entry=>entry.contentPointer===part.originalPointer)?.original
         if(!owner)openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE',group.groupId)
         programText(owner,context,part.originalPointer)
@@ -297,16 +313,16 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
   }
   const openingAssignments=record.assignments.filter(assignment=>assignment.target==='opening')
   const opening=source.current.rows.find(row=>row.ref.table==='opening'&&row.ref.key===source.sessionId+'__scene')
-  if(opening?.value&&openingAssignments.length&&opening.value.importId===record.importId
+  if(!native&&opening?.value&&openingAssignments.length&&opening.value.importId===record.importId
     &&opening.value.text===spanText(record,openingAssignments.flatMap(assignment=>assignment.sourceSpans))
     &&same(opening.value.sources,openingAssignments.map(assignment=>sourceDescriptor(record,assignment)))) {
     rawDataSyntax(String(opening.value.text),'/current/opening/text')
     allow(opening.ref.table,opening.ref.key,'/text')
   }
-  for(const row of source.current.rows)walk(row.value,'',currentSpecial.get(row.ref.table+':'+row.ref.key)??new Set())
+  if(!native)for(const row of source.current.rows)walk(row.value,'',currentSpecial.get(row.ref.table+':'+row.ref.key)??new Set())
   // InitVar comments in legacy tavern metadata are exact original projections.
   // Other metadata and appended overlay fields are never broadly exempted.
-  for(const entry of program.bookEntries)if(entry.currentNativeOrigin) {
+  if(!native)for(const entry of program.bookEntries)if(entry.currentNativeOrigin) {
     const origin=entry.currentNativeOrigin
     walk(origin,'/currentNativeOrigin',new Set())
   }

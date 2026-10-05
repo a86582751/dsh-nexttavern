@@ -42,7 +42,7 @@ export interface PromptOpeningIdentityMacroReadV1 {
   readonly valueSha256:string
 }
 export interface PromptOpeningIdentityRenderingV1 {
-  readonly policy:'only-actual-three-identity-macros-v1'
+  readonly policy:'only-actual-three-identity-macros-v1'|'copy-materialized-opening-v1'
   readonly rawSha256:string
   readonly renderedSha256:string
   readonly used:boolean
@@ -58,6 +58,7 @@ export interface PromptOpeningGreetingBlockV1 {
   readonly bodySha256:string
 }
 export interface PromptOpeningGreetingFactsV1 {
+  readonly materialization?:'template'|'materialized'
   readonly index:number
   readonly sourcePointer:string
   readonly sourceSha256:string
@@ -139,7 +140,8 @@ export interface PromptOpeningSourceProofV1 {
   readonly context:{readonly values:TavernOpeningContext;readonly bindingSha256:string;readonly valuesSha256:string;
     readonly policy:'only-actual-three-identity-macros-v1'}
   readonly selected:{readonly index:number;readonly sourcePointer:string;readonly sourceSha256:string;
-    readonly rawText:string;readonly renderedText:string;readonly renderedSha256:string}
+    readonly rawText:string;readonly renderedText:string;readonly renderedSha256:string;
+    readonly materialization?:'template'|'materialized'}
   readonly initialization:PromptOpeningInitializationV1
   readonly initializationInputBindingSha256:string
   readonly promptCurrentInputBindingSha256:string

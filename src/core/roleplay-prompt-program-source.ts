@@ -1,8 +1,8 @@
 /** Actual Source/import/current editor provenance, with inert complete text
  * partitions. The protected renderer and numeric/opening owners live elsewhere. */
 import {recordSha256,sha256} from './roleplay-data.js'
-import {decodeTavernCard} from './tavern-card.js'
-import {assertImportRecordIntegrity,projectStructuredImport,spanText} from './roleplay-import-record.js'
+import type {DecodedTavernCard} from './tavern-card.js'
+import {spanText} from './roleplay-import-record.js'
 import {captureRoleplayTavernPromptSourceV1,captureRoleplayTavernPromptSourceDataV1}
   from './roleplay-tavern-prompt-source.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
@@ -28,6 +28,12 @@ export const PROMPT_PROGRAM_SOURCE_POLICY_V1=Object.freeze({schemaVersion:1,
   sourceTextBudget:'existing-tokenizer-per-text-limit; unsupported-text-keeps-complete-inert-inventory',
   proofBytes:16_777_216,leafInventory:32_768,groups:4096,entries:4096})
 export const PROMPT_PROGRAM_SOURCE_POLICY_SHA256=recordSha256(PROMPT_PROGRAM_SOURCE_POLICY_V1)
+export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V1=Object.freeze({...PROMPT_PROGRAM_SOURCE_POLICY_V1,
+  encoding:'native-nexttavern-author-prompt-program-source-policy-v1',
+  fields:'actual-canonical-author-text-pointers-and-noncontributing-sillytavern-macro-fields',
+  projection:'exact-portable-author-body-and-current-owned-row; normalized-assignment-receipt-separate',
+  book:'actual-recomputed-entry-content-with-archive-only-ordinal-receipts; no-canonical-row-duplication'})
+export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256=recordSha256(NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V1)
 class ProgramSourceFailure extends Error {
   constructor(readonly code:PromptProgramSourceCodeV1,readonly pointer:string) {super(code)}
 }
@@ -38,6 +44,9 @@ function object(value:unknown):value is Record<string,unknown> {
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
 const escape=(key:string)=>key.replace(/~/g,'~0').replace(/\//g,'~1')
 const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
+const nativeAuthorFieldPattern=new RegExp('^(?:(?:cards|worldbook)/\\d+/content'
+  +'|rules/(?:core|plot|narrative|reply|style)|status/text'
+  +'|compatibility/sillytavernMacroFields/(?:description|personality|scenario|mes_example|system_prompt|post_history_instructions))$')
 function clone<T>(input:T):T {
   try {return cloneRoleplayTavernLoreDataV1(input,PROMPT_PROGRAM_SOURCE_POLICY_V1.proofBytes)}
   catch {return fail('PROGRAM_SOURCE_BUDGET','/inventory')}
@@ -121,14 +130,17 @@ function validateText(text:PromptProgramTextV1,pointer:string):void {
 }
 function validateInventory(input:unknown):PromptProgramSourceInventoryV1 {
   const value=clone(input)
+  const native=object(value)&&object(value.importTuple)&&value.importTuple.format==='json-nexttavern-v1'
   const keys=['schemaVersion','encoding','authority','policySha256','sessionId','includeCardStyle','importTuple',
     'sourceCurrentIdentitySha256','authorFields','authorGroups','assignments','bookEntries','book','currentRows',
     'editing','unauthorized','unauthorizedSha256','authorityLimits','bindingSha256','audit','inventorySha256']
   if(!object(value)||Object.keys(value).length!==keys.length||Object.keys(value).some(key=>!keys.includes(key))
-    ||value.schemaVersion!==1||value.encoding!=='native-author-prompt-program-source-inventory-v1'
-    ||value.authority!=='consumer-data-only'||value.policySha256!==PROMPT_PROGRAM_SOURCE_POLICY_SHA256
+    ||value.schemaVersion!==1||value.encoding!==(native?'native-nexttavern-author-prompt-program-source-inventory-v1'
+      :'native-author-prompt-program-source-inventory-v1')
+    ||value.authority!=='consumer-data-only'||value.policySha256!==(native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256
+      :PROMPT_PROGRAM_SOURCE_POLICY_SHA256)
     ||typeof value.sessionId!=='string'||typeof value.includeCardStyle!=='boolean'
-    ||!Array.isArray(value.authorFields)||value.authorFields.length!==6||!Array.isArray(value.authorGroups)
+    ||!Array.isArray(value.authorFields)||(!native&&value.authorFields.length!==6)||!Array.isArray(value.authorGroups)
     ||!Array.isArray(value.bookEntries)||value.authorGroups.length>PROMPT_PROGRAM_SOURCE_POLICY_V1.groups
     ||value.bookEntries.length>PROMPT_PROGRAM_SOURCE_POLICY_V1.entries||!hash(value.inventorySha256)
     ||!hash(value.bindingSha256)||!Array.isArray(value.unauthorized)
@@ -142,7 +154,9 @@ function validateInventory(input:unknown):PromptProgramSourceInventoryV1 {
     nativeInput:'not-authorized',protectedExecution:'not-authorized',
     tokenizer:'delimiter-partition-only-not-AST-effect-or-success-proof'}))fail('PROGRAM_INVENTORY_INVALID','/authorityLimits')
   for(const [index,field] of data.authorFields.entries()) {
-    if(field.field!==PROMPT_TEMPLATE_ONLY_FIELDS_V1[index]||field.originalPointer!==`/data/${field.field}`) {
+    const compatibility=native&&field.field.startsWith('compatibility/sillytavernMacroFields/')
+    if((native?!nativeAuthorFieldPattern.test(field.field)
+      :field.field!==PROMPT_TEMPLATE_ONLY_FIELDS_V1[index])||field.originalPointer!==`/data/${field.field}`) {
       fail('PROGRAM_INVENTORY_INVALID','/authorFields')
     }
     if(field.raw)validateText(field.raw,field.originalPointer)
@@ -155,9 +169,13 @@ function validateInventory(input:unknown):PromptProgramSourceInventoryV1 {
         ||field.normalized.text!==(field.raw.text===''?'':field.raw.text.replace(/\r\n?/g,'\n')+'\n')) {
         fail('PROGRAM_INVENTORY_INVALID','/authorFields/normalization')
       }
-      if(field.raw.text!=='') {
+      if(compatibility) {
+        if(field.assignment!==null||field.currentGroupId!==null||field.originalGroupSpan!==null) {
+          fail('PROGRAM_INVENTORY_INVALID','/authorFields/macro-contribution')
+        }
+      }else if(field.raw.text!=='') {
         const group=data.authorGroups.find(row=>row.groupId===field.currentGroupId),span=field.originalGroupSpan
-        if(!group||!span||!field.assignment||group.original.text.slice(span.start,span.end)!==field.normalized.text) {
+        if(!group||!span||!field.assignment||group.original.text.slice(span.start,span.end)!==(native?field.raw.text:field.normalized.text)) {
           fail('PROGRAM_INVENTORY_INVALID','/authorFields/original-group')
         }
       }else if(field.assignment!==null||field.currentGroupId!==null||field.originalGroupSpan!==null) {
@@ -173,8 +191,9 @@ function validateInventory(input:unknown):PromptProgramSourceInventoryV1 {
     validateText(group.original,group.groupId);validateText(group.effective,group.groupId)
     let end=0
     for(const part of group.parts) {
+      const partText=group.original.text.slice(part.start,part.end),receiptText=native?partText.replace(/\r\n?/g,'\n')+'\n':partText
       if(part.start!==end||part.end<part.start||part.end>group.original.utf16Length
-        ||sha256(group.original.text.slice(part.start,part.end))!==part.assignment.normalizedSectionSha256) {
+        ||sha256(receiptText)!==part.assignment.normalizedSectionSha256) {
         fail('PROGRAM_INVENTORY_INVALID','/authorGroups/partition')
       }
       end=part.end
@@ -232,7 +251,7 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
   function read(sessionId:string,includeCardStyle:boolean,assertOwnerCurrent:()=>void,
     saveCapture?:(data:PromptProgramSourceInventoryV1,live:LiveCapture)=>void,
     saveData?:(data:PromptProgramSourceInventoryV1,source:TavernLoreSourceDataV1,
-      record:ImportRecord,decoded:ReturnType<typeof decodeTavernCard>)=>void):PromptProgramSourceInventoryV1 {
+      record:ImportRecord,decoded:DecodedTavernCard)=>void):PromptProgramSourceInventoryV1 {
     if(closed)fail('PROGRAM_SOURCE_CHANGED','/owner/disposed')
     const tables=deps.tables,sourceOwner=deps.source,editOwner=deps.edits,importReader=deps.readImportRecord,
       tableOwners=[tables.cards,tables.worldbook,tables.rules,tables.status],
@@ -256,19 +275,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       edits:{observeSourceData:deps.edits.observeSourceData!}},sessionId,includeCardStyle)
       :captureRoleplayTavernPromptSourceV1(deps,sessionId,includeCardStyle,assertOwnerCurrent)
     if(captured.kind!=='captured-data')fail('PROGRAM_SOURCE_UNAVAILABLE','/source/'+captured.reason)
-    const {source}=captured
-    const supplied=deps.readImportRecord(source.sourceRecordSessionId,source.original.activePointer.importId)
-    if(!object(supplied))fail('PROGRAM_IMPORT_UNPROVEN','/importRecord')
-    const record=clone(supplied) as ImportRecord
-    assertImportRecordIntegrity(record)
-    if(!record.sourceEnvelope||!record.activation||record.status!=='active'
-      ||record.sessionId!==source.sourceRecordSessionId||record.importId!==source.original.activePointer.importId
-      ||recordSha256(record)!==source.original.importRecordRef.sha256||record.rawSha256!==source.original.rawSha256
-      ||record.normalizedSha256!==source.original.normalizedSha256)fail('PROGRAM_IMPORT_UNPROVEN','/importRecord/ref')
-    const decoded=decodeTavernCard(Buffer.from(record.sourceEnvelope.base64,'base64'),record.sourceEnvelope.extension)
-    if(decoded.data!==decoded.document.data||decoded.format!==source.original.decodedFormat
-      ||recordSha256(decoded.document)!==source.original.documentSha256||recordSha256(decoded.data)!==source.original.dataSha256
-      ||projectStructuredImport(record,decoded).text!==record.normalizedSource)fail('PROGRAM_IMPORT_UNPROVEN','/decoded')
+    // The actual Source capture owns import integrity and decoded author DATA.
+    // Its detached record keeps the transport archive without charging that
+    // archive again as a Program inventory or repeating decode/projection.
+    const {source,record,decoded}=captured
     const mapping=mapPromptProgramAuthorOriginsV1({decoded,record,source})
     const compilation=validateTavernLoreCompilationV1(captured.compilation),plan=compilation.plan
     if(plan.source.sourceSnapshotSha256!==source.sourceSha256||plan.rawBookSha256!==source.original.primary.bookSha256
@@ -349,8 +359,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       deniedLeaves(overlay,{domain:'current-overlay',row:null,pointer:'',authorized},unauthorized)
     }
     const importTuple=promptProgramSourceImportTupleV1(source,record)
+    const native=decoded.format==='json-nexttavern-v1'
     const body={schemaVersion:1 as const,encoding:'native-author-prompt-program-source-inventory-v1' as const,
-      authority:'consumer-data-only' as const,policySha256:PROMPT_PROGRAM_SOURCE_POLICY_SHA256,sessionId,includeCardStyle,
+      authority:'consumer-data-only' as const,policySha256:native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256
+        :PROMPT_PROGRAM_SOURCE_POLICY_SHA256,sessionId,includeCardStyle,
       importTuple,sourceCurrentIdentitySha256:sourceIdentitySha256,authorFields,authorGroups,
       assignments:mapping.assignmentInventory,bookEntries,
       book:{pointer:plan.source.bookPointer,rawBookSha256:plan.rawBookSha256,bookDisposition:plan.bookDisposition,
@@ -364,7 +376,8 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
         schemaScripts:'not-authorized' as const,nativeInput:'not-authorized' as const,protectedExecution:'not-authorized' as const,
         tokenizer:'delimiter-partition-only-not-AST-effect-or-success-proof' as const},
       audit:{wholeSourceSha256:source.sourceSha256,currentRowsSha256:recordSha256(source.current.rows.map(row=>row.ref))}}
-    const bound={...body,bindingSha256:recordSha256(bindingBody(body))}
+    const domainBody={...body,encoding:native?'native-nexttavern-author-prompt-program-source-inventory-v1' as const:body.encoding}
+    const bound={...domainBody,bindingSha256:recordSha256(bindingBody(domainBody))}
     assertOwnerCurrent()
     const data=validatePromptProgramSourceInventoryV1({...bound,inventorySha256:recordSha256(bound)})
     if(saveData) {
@@ -429,7 +442,7 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
   }
   function captureDataWithCurrentSource(sessionId:string,includeCardStyle:boolean,assertOwnerCurrent:()=>void) {
     let result:{kind:'captured-program-source';data:PromptProgramSourceInventoryV1;source:TavernLoreSourceDataV1;
-      record:ImportRecord;decoded:ReturnType<typeof decodeTavernCard>}|undefined
+      record:ImportRecord;decoded:DecodedTavernCard}|undefined
     read(sessionId,includeCardStyle,assertOwnerCurrent,undefined,(data,source,record,decoded)=>{
       result={kind:'captured-program-source',data,source,record,decoded}
     })

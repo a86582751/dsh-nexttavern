@@ -205,7 +205,9 @@ function readPublication(deps:Pick<TavernMaterialHistoryDependenciesV1,'table'>,
     if(!ref.key.startsWith(prefix))fail('INPUT_MATERIAL_HISTORY_CORE_OWNER_UNPROVEN')
     const raw=deps.table.get(ref.key)
     if(recordSha256(raw)!==ref.sha256)fail('INPUT_MATERIAL_HISTORY_CORE_ROW_CHANGED')
-    const priorRow=budget.rows.get(ref.key),row=priorRow??cloneRoleplayTavernLoreDataV1(raw,16_777_216,{nodes:131072,depth:66})
+    // Native binds this published derived record by its full digest. Source
+    // budgets belong to its producer, not to the repeated explanatory layout.
+    const priorRow=budget.rows.get(ref.key),row=priorRow??raw
     if(!object(row)||row.schemaVersion!==1||row.authority!=='consumer-data-only'||row.sessionId!==ownerSessionId
       ||row.kind!==kind||row.turn!==event.data.turn||row.step!==event.data.step
       ||!object(row.payload))
@@ -219,7 +221,7 @@ function readPublication(deps:Pick<TavernMaterialHistoryDependenciesV1,'table'>,
     }else if(row.encoding!=='core-input-material-record-v1'||row.branchId!==ownerSessionId
       ||!object(row.currency)||row.currency.schemaVersion!==2)fail('INPUT_MATERIAL_HISTORY_CORE_SCHEMA_INVALID')
     rememberReference(references,ref)
-    const result=freeze(row as unknown as TavernBoundCoreMaterialRowV1)
+    const result=row as unknown as TavernBoundCoreMaterialRowV1
     if(!priorRow) {
       budget.bytes+=Buffer.byteLength(JSON.stringify(result),'utf8')
       if(budget.bytes>67_108_864||budget.rows.size>=8192)fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET')
@@ -271,7 +273,7 @@ function captureMaterialHistory(deps:TavernMaterialHistoryDependenciesV1,complet
     assertOpeningInputsCurrent(deps,budget)
   }
   assertCurrent()
-  return {events:freeze([...events]),publications:freeze(publications),assertCurrent,evidence:freeze({schemaVersion:1,
+  return {events:freeze([...events]),publications:Object.freeze(publications.map(row=>Object.freeze(row))),assertCurrent,evidence:freeze({schemaVersion:1,
     encoding:'native-bound-Core-material-history-v1',authority:'consumer-data-only',sessionId:deps.sessionId,
     prefixLength,prefixSha256,coreRefs:[...references].map(([key,sha256])=>({key,sha256}))})}
 }

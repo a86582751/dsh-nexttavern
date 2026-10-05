@@ -4,7 +4,7 @@
  * never template, suppression, publication or Native execution permission. */
 import {recordSha256, sha256} from './roleplay-data.js'
 import {roleplaySourceMetadataValue} from './roleplay-input-state.js'
-import {cloneRoleplayTavernLoreDataV1,TavernLoreDataFailureV1,TAVERN_LORE_DATA_BOUNDS_V1}
+import {cloneRoleplayTavernLoreDataV1,cloneRoleplayTavernLoreImportRecordV1,TavernLoreDataFailureV1,TAVERN_LORE_DATA_BOUNDS_V1}
   from './roleplay-tavern-lore-data.js'
 import type {TavernLoreDataBudgetV1} from './roleplay-tavern-lore-data.js'
 import {CARD_LIMITS} from './tavern-card.js'
@@ -57,8 +57,9 @@ function freeze<T>(value:T):T {
   return value
 }
 /** This bridge owns Source pointers/codes; the lore-purpose clone owns bounds. */
-function cloneData<T>(input:T,pointer:string,used?:TavernLoreDataBudgetV1):T {
-  try {return cloneRoleplayTavernLoreDataV1(input,TAVERN_LORE_DATA_BOUNDS_V1.bytes,undefined,used)}
+function cloneData<T>(input:T,pointer:string,used?:TavernLoreDataBudgetV1,
+  clone:typeof cloneRoleplayTavernLoreDataV1=cloneRoleplayTavernLoreDataV1):T {
+  try {return clone(input,TAVERN_LORE_DATA_BOUNDS_V1.bytes,undefined,used)}
   catch(error) {
     if(error instanceof TavernLoreDataFailureV1)fail(error.code==='LORE_DATA_BUDGET' ? 'SOURCE_BUDGET' : 'DATA_INVALID',
       pointer,error.limit)
@@ -147,18 +148,10 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   }
   const rawRecord=deps.readImportRecord(sourceRecordSessionId,pointer.importId)
   if(rawRecord===undefined)fail('IMPORT_RECORD_INVALID','/activeImport')
-  const record=cloneData(rawRecord,'/activeImport',used) as ImportRecord
+  const record=cloneData(rawRecord,'/activeImport',used,cloneRoleplayTavernLoreImportRecordV1) as ImportRecord
   if(!isObject(record)||record.sessionId!==sourceRecordSessionId||record.importId!==pointer.importId
     ||record.status!=='active'||record.normalizedSha256!==pointer.normalizedSha256
     ||record.activation?.transactionId!==pointer.transactionId)fail('IMPORT_RECORD_INVALID','/activeImport')
-  const importRecordRef:LegacyRowRefDataV1={table:'branch',key:`${sourceRecordSessionId}__import-${record.importId}`,
-    exists:true,sha256:recordSha256(record)}
-  const storedRecord=deps.readRow('branch',importRecordRef.key)
-  if(storedRecord===undefined||!same(cloneData(storedRecord,'/importRecordRef'),record)) {
-    fail('IMPORT_RECORD_REF_CHANGED','/importRecordRef')
-  }
-  if(inheritance&&!same(importRecordRef,{table:'branch',exists:true,...inheritance.originalBinding.importRecordRef}))
-    fail('IMPORT_RECORD_REF_CHANGED','/importRecordRef/inheritance')
   if(record.schemaVersion===3)outside('LEGACY_SOURCE_OUTSIDE_DOMAIN','/activeImport/normalizer')
   const normalizer: 'tavern-fields-v1'|'tavern-fields-v2'|'nexttavern-fields-v1'|undefined=
     record.schemaVersion===4&&record.normalizer==='tavern-fields-v1' ? 'tavern-fields-v1'
@@ -170,6 +163,13 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   ])
   if(record.mode!==undefined&&record.mode!=='replace')fail('IMPORT_RECORD_INVALID','/activeImport/mode')
   try {assertImportRecordIntegrity(record)}catch(error) {importFailure(error,'/activeImport')}
+  const importRecordRef:LegacyRowRefDataV1={table:'branch',key:`${sourceRecordSessionId}__import-${record.importId}`,
+    exists:true,sha256:recordSha256(record)}
+  const storedRecord=deps.readRow('branch',importRecordRef.key)
+  if(storedRecord===undefined||!same(cloneData(storedRecord,'/importRecordRef',undefined,
+    cloneRoleplayTavernLoreImportRecordV1),record))fail('IMPORT_RECORD_REF_CHANGED','/importRecordRef')
+  if(inheritance&&!same(importRecordRef,{table:'branch',exists:true,...inheritance.originalBinding.importRecordRef}))
+    fail('IMPORT_RECORD_REF_CHANGED','/importRecordRef/inheritance')
   if(!record.sourceEnvelope||!record.activation||!isHash(record.rawSha256))fail('IMPORT_RECORD_INVALID','/activeImport')
   if(pointer.activatedAt!==record.activatedAt)fail('ACTIVATION_INVALID','/activeImport/activatedAt')
   let coverage:ReturnType<typeof importCoverage>
@@ -227,7 +227,12 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   const entries=Object.entries(rawEntries)
   if(entries.length>TAVERN_LORE_SOURCE_BOUNDS_V1.rows)fail('SOURCE_BUDGET',`${bookPointer}/entries`,
     {field:'rawEntries',maximum:TAVERN_LORE_SOURCE_BOUNDS_V1.rows,observed:entries.length})
-  const rawDecoded=cloneData(decoded,'/rawDecoded')
+  // A decoder owns the /data alias. Clone its document once so downstream
+  // structural projectors consume that same root, without carrying PNG cover
+  // bytes or duplicating the complete document under a detached data field.
+  const {document:decodedDocument,data:_decodedData,avatarBase64:_avatar,...decodedMetadata}=decoded
+  const document=cloneData(decodedDocument,'/rawDecoded/document')
+  const rawDecoded:DecodedTavernCard={...decodedMetadata,document,data:document.data as DecodedTavernCard['data']}
   const book=hasBook ? cloneData(rawBook as Record<string,unknown>,bookPointer) : null
   const bookSha256=recordSha256(book)
   let absenceProof:TavernLoreBookAbsenceProofV1|undefined
@@ -324,9 +329,8 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
     activeImport:record,importRecordRef,activePointer:pointer as unknown as ImportPointer,activePointerRef,
     currentRules:{ref:{...rules.ref,table:'rules'},value:rules.value},currentWorldbook,
     currentWorldbookMembershipSha256:recordSha256(Object.fromEntries(currentWorldbook.map(row=>[row.ref.key,row.ref.sha256])))}
-  // Bound this complete data packet separately. The contribution consumer owns
-  // its further proof/refusal policy and explicit suppression selections.
-  cloneData(contributionInput,'/contributionInput')
+  // These are the already captured record, decoder and actual rows. Consumers
+  // use them directly; their combined representation is not a new input.
   const membership={cards,worldbook,rules:versions.rules,settings:versions.settings}
   const primary:TavernLoreSourcePrimaryV1=hasBook
     ? {binding:'primary',bookPointer,bookSha256,value:book!,entries:rawEntryData}
@@ -343,7 +347,6 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
       openingContext:{context:openingContext.context,bindingSha256:openingContext.bindingSha256,
         valuesSha256:recordSha256(openingContext.context)}}}
   const source={...body,sourceSha256:recordSha256(body)}
-  cloneData(source,'/source')
   // Source already owns the complete admission above. Publish the same currency
   // identity for consumers without cloning or validating this DATA again.
   const currentIdentitySha256=recordSha256(sourceCurrentIdentity(body))
@@ -361,7 +364,9 @@ export function createRoleplayTavernLoreSourceV1(deps:TavernLoreSourceDepsV1) {
   }
   function current(input:TavernLoreSourceDataV1):boolean {
     try {
-      const saved=cloneData(input,'/source')
+      // Callers pass captured Source or an actual parsed inheritance record.
+      // Its assembled representation is not another raw input budget.
+      const saved=input
       if(!isObject(saved)||saved.schemaVersion!==1||saved.encoding!=='tavern-lore-current-source-data-v1'
         ||saved.authority!=='consumer-data-only'||!isHash(saved.sourceSha256))return false
       const {sourceSha256,...body}=saved
@@ -427,7 +432,7 @@ export function createRoleplayTavernLoreSourceV1(deps:TavernLoreSourceDepsV1) {
  * the full original meta and sourceSha; only these three normal Native
  * counters do not invalidate an otherwise unchanged current Source. */
 export function tavernLoreSourceCurrentIdentityV1(input:TavernLoreSourceDataV1) {
-  const source=cloneData(input,'/source/currentIdentity'),{sourceSha256,...body}=source
+  const {sourceSha256,...body}=input
   if(recordSha256(body)!==sourceSha256)fail('DATA_INVALID','/source/currentIdentity')
   return freeze(sourceCurrentIdentity(body))
 }

@@ -36,6 +36,9 @@ export type RoleplayInputMaterialScopeInputV1=NativeRequestMaterialPrepareInputV
   |{admission:NativeInputAdmissionCheckV2}
 export interface RoleplayInputMaterialBuildV1 {
   readonly kind:'prepared-data'
+  /** The original producer owns detached, immutable explanatory DATA. Its
+   * accepted Source may appear more than once in this derived capture; this
+   * publisher does not charge those owned subtrees to another input budget. */
   readonly snapshot:Readonly<Record<string,unknown>>
   readonly plan:Readonly<Record<string,unknown>>
   readonly requiredSections:NativeRequestMaterialTransformV1['requiredSections']
@@ -197,11 +200,9 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
           authority:'consumer-data-only' as const,sessionId:scope.session.id,branchId:scope.session.id,
           preparation:scope.preparation,currency:scope.currency,originalInputRefs:scope.originalInputRefs,
           turn:scope.turn,step:scope.step}
-        const snapshot=freeze(cloneRoleplayTavernLoreDataV1({...basis,kind:'snapshot',payload:data.snapshot},16_777_216,
-          {nodes:131072,depth:66}) as unknown as MaterialRecordV1)
-        const plan=freeze(cloneRoleplayTavernLoreDataV1({...basis,kind:'plan',payload:{promptPlan:data.plan,
-          nativeTransform:material,nativeTransformSha256:materialSha256}},4_194_304,
-          {nodes:131072,depth:66}) as unknown as MaterialRecordV1)
+        const snapshot=Object.freeze({...basis,kind:'snapshot',payload:data.snapshot}) as MaterialRecordV1
+        const plan=Object.freeze({...basis,kind:'plan',payload:Object.freeze({promptPlan:data.plan,
+          nativeTransform:material,nativeTransformSha256:materialSha256})}) as MaterialRecordV1
         const refs={snapshot:{key:prefix+'-snapshot',sha256:recordSha256(snapshot)},
           plan:{key:prefix+'-plan',sha256:recordSha256(plan)}}
         const records:{snapshot?:unknown;plan?:unknown}={}

@@ -2,7 +2,8 @@
 /** Actual closed nonnumerical Source producer. It proves origin and complete
  * source coverage, never JavaScript semantics or authority to run a VM. */
 import { recordSha256, sha256 } from './roleplay-data.js';
-import { decodeTavernCard, compileTavernOpeningCandidates } from './tavern-card.js';
+import { compileTavernOpeningCandidates } from './tavern-card.js';
+import { readStructuredImportDataV1 } from './roleplay-import-record.js';
 import { createRoleplayTavernLoreSourceV1 } from './roleplay-tavern-lore-source.js';
 import { validateTavernLoreAbsentSourceReferenceV1 } from './tavern-lore-compiler.mjs';
 import { assertMvuLiteralSourceTextV1, assertMvuNonSchemaSourceExtensionsV1 } from './roleplay-mvu-source.js';
@@ -169,9 +170,12 @@ export function createRoleplayPromptTemplateOnlySourceV1(deps) {
                 fail('PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN', '/source');
             }
             const { source, contributionInput } = captured, record = contributionInput.activeImport;
-            const envelope = record.sourceEnvelope;
-            const decoded = decodeTavernCard(Buffer.from(envelope.base64, 'base64'), envelope.extension);
-            if (!['json-v2', 'json-v3', 'png-v2', 'png-v3'].includes(decoded.format) || decoded.document.data !== decoded.data
+            const decoded = readStructuredImportDataV1(record).decoded;
+            // Own author rows use the dynamic program Source domain. Keep this old
+            // NoBook proof and its six-field normalization contract unchanged.
+            if (decoded.format === 'json-nexttavern-v1')
+                return { kind: 'not-applicable' };
+            if (!['json-v2', 'json-v3', 'png-v2', 'png-v3', 'json-nexttavern-v1'].includes(decoded.format) || decoded.document.data !== decoded.data
                 || record.mode === 'merge' || record.mode !== undefined && record.mode !== 'replace'
                 || source.sourceRecordSessionId !== sessionId || Object.hasOwn(source.original.activePointer, 'inheritedFrom')) {
                 if (source.sourceRecordSessionId !== sessionId || Object.hasOwn(source.original.activePointer, 'inheritedFrom')) {
@@ -192,7 +196,8 @@ export function createRoleplayPromptTemplateOnlySourceV1(deps) {
                 rawSourceSha256: record.rawSha256, importRecordSha256: source.original.importRecordRef.sha256,
                 sourceSnapshotSha256: source.sourceSha256, documentSha256: source.original.documentSha256,
                 bookPointer: primary.bookPointer, bookValueSha256: primary.bookSha256,
-                sourceFormat: decoded.format.endsWith('v3') ? 'ccv3-character-book' : 'ccv2-character-book',
+                sourceFormat: decoded.format === 'json-nexttavern-v1' ? 'nexttavern-character-book'
+                    : decoded.format.endsWith('v3') ? 'ccv3-character-book' : 'ccv2-character-book',
                 bookPresence: 'proven-absence', absenceProof: primary.absenceProof });
             const inventory = readPromptTemplateOnlyScopeInventoryV1(deps, sessionId);
             const context = source.current.openingContext.context, candidates = compileTavernOpeningCandidates(decoded, context);
@@ -254,7 +259,8 @@ export function createRoleplayPromptTemplateOnlySourceV1(deps) {
             const materialRows = source.current.rows.filter(row => !(row.ref.table === 'branch' && row.ref.key === `${sessionId}__meta`))
                 .map(row => row.ref);
             const snapshotBody = { schemaVersion: 1, encoding: 'native-prompt-template-only-source-snapshot-v1',
-                source: openingSource, normalizer: source.normalizer, documentSha256: source.original.documentSha256,
+                source: openingSource, normalizer: source.normalizer,
+                documentSha256: source.original.documentSha256,
                 dataSha256: source.original.dataSha256, pointerSha256: source.original.activePointerRef.sha256,
                 importRecordSha256: source.original.importRecordRef.sha256, coverageSha256: source.original.coverageSha256,
                 materialRows, materialRowsSha256: recordSha256(materialRows),
@@ -286,10 +292,10 @@ export function createRoleplayPromptTemplateOnlySourceV1(deps) {
     function current(input) {
         try {
             const saved = validatePromptTemplateOnlySourceProofV1(input), snapshot = saved.sourceSnapshot;
-            const envelope = deps.readImportRecord(snapshot.source.sourceRecordSessionId, snapshot.source.importId)?.sourceEnvelope;
-            if (!envelope)
+            const record = deps.readImportRecord(snapshot.source.sourceRecordSessionId, snapshot.source.importId);
+            if (!record?.sourceEnvelope)
                 return false;
-            const decoded = decodeTavernCard(Buffer.from(envelope.base64, 'base64'), envelope.extension);
+            const decoded = readStructuredImportDataV1(record).decoded;
             const candidates = compileTavernOpeningCandidates(decoded, deps.readOpeningContext(snapshot.source.sessionId).context);
             const candidate = candidates.find(candidate => candidate.index === snapshot.selected.index);
             if (!candidate)

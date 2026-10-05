@@ -2,9 +2,9 @@
  * writers; get/put/entries do not pretend to provide a database transaction. */
 import {recordSha256} from './roleplay-data.js'
 import {TAVERN_LORE_EDITS_BOUNDS_V1,LoreEditFailureV1,fail,freeze,same,sessionId,requestData,
-  boundedLoreEditData,strictData,identityOf,eventKey,rowRef,headRef,eventFrom,nextHead,receiptOf,validateFields}
+  strictData,identityOf,eventKey,rowRef,headRef,eventFrom,nextHead,receiptOf,validateFields}
   from './roleplay-tavern-lore-edits-data.js'
-import {readJournal,readJournalData,publishedData,plannedPublication,journalReferencesShaV1}
+import {readJournal,readJournalData,publishedData,publishedJournalData,plannedPublication,journalReferencesShaV1}
   from './roleplay-tavern-lore-edits-journal.js'
 import type {LoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
 import type {TavernLoreSourceDataV1,TavernLoreContributionInputV1} from './roleplay-tavern-lore-source-types.js'
@@ -12,7 +12,7 @@ import {produceRoleplayTavernCurrentLegacyOverlayV1} from './roleplay-tavern-cur
 import type {TavernLoreCurrentNativeOverlayV1} from './tavern-lore-plan-types.mjs'
 import type {TavernLoreEditsDepsV1,TavernLoreEditRequestV1,TavernLoreEditEventV1,
   TavernLoreEditRecoveryAnchorV1,TavernLoreEditsDataV1,TavernLoreEditRefusalV1,
-  TavernLoreEditObservationV1,TavernLoreEditResultV1,TavernLoreEditSourceDataCaptureV1}
+  TavernLoreEditObservationV1,TavernLoreEditJournalObservationV1,TavernLoreEditResultV1,TavernLoreEditSourceDataCaptureV1}
   from './roleplay-tavern-lore-edits-types.js'
 export type * from './roleplay-tavern-lore-edits-types.js'
 export {TAVERN_LORE_EDITS_BOUNDS_V1} from './roleplay-tavern-lore-edits-data.js'
@@ -27,8 +27,8 @@ function pendingFailure(event:TavernLoreEditEventV1):never {
     payloadSha256:event.payloadSha256,eventRef:rowRef(eventKey(event.identitySha256,event.request.operationId),event)}})
 }
 export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
-  function editorBaseline(input:TavernLoreContributionInputV1):TavernLoreCurrentNativeOverlayV1 {
-    try {return produceRoleplayTavernCurrentLegacyOverlayV1(input).overlay}
+  function currentLegacyData(input:TavernLoreContributionInputV1,options:{suppressBookConstants?:boolean}={}) {
+    try {return produceRoleplayTavernCurrentLegacyOverlayV1(input,options)}
     catch(error) {fail('FIELDS_INVALID',error instanceof Error&&/^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
       ?error.message:'current-legacy-overlay-unavailable')}
   }
@@ -37,11 +37,11 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
     try {
       const result=deps.source.capture(sid)
       if(result.kind!=='captured-data')fail('SOURCE_UNAVAILABLE',result.kind)
-      const source=boundedLoreEditData(result.source)
+      const source=result.source
       if(source.sessionId!==sid)fail('SOURCE_IDENTITY_INVALID')
       identityOf(source)
       if(!deps.source.current(source))fail('SOURCE_CHANGED')
-      return {source:freeze(source),editorBaseOverlay:editorBaseline(result.contributionInput)}
+      return {source:freeze(source),editorBaseOverlay:currentLegacyData(result.contributionInput).overlay}
     }catch(error){if(error instanceof LoreEditFailureV1)throw error;fail('SOURCE_UNAVAILABLE')}
   }
   function observe(sid:string):TavernLoreEditObservationV1 {
@@ -60,25 +60,52 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
    * Parse its editor namespace once; no second Source capture or live callback
    * is created for this synchronous DATA supplier. */
   function observeSourceData(captured:TavernLoreEditSourceDataCaptureV1):TavernLoreEditObservationV1 {
-    try {
-      if(!captured||captured.schemaVersion!==1||captured.kind!=='captured-data')fail('SOURCE_UNAVAILABLE')
-      const source=freeze(boundedLoreEditData(captured.source))
-      identityOf(source)
-      const editorBaseOverlay=editorBaseline(captured.contributionInput),journal=readJournalData(deps,source)
-      if(journal.pending)pendingFailure(journal.pending)
-      const packet=publishedData(source,journal,editorBaseOverlay)
-      return freeze({schemaVersion:1,kind:'captured-data',...packet})
-    }catch(error){return refusal(error)}
+    return observeSourceDataWithLegacyData(captured).observed
   }
-  function current(raw:unknown):boolean {
+  function sourceJournal(captured:TavernLoreEditSourceDataCaptureV1,options:{suppressBookConstants?:boolean}) {
+    if(!captured||captured.schemaVersion!==1||captured.kind!=='captured-data')fail('SOURCE_UNAVAILABLE')
+    const source=captured.source
+    identityOf(source)
+    const legacy=currentLegacyData(captured.contributionInput,options),journal=readJournalData(deps,source)
+    if(journal.pending)pendingFailure(journal.pending)
+    return {source,legacy,journal}
+  }
+  /** Raw author JSON needs published fields and their provenance, without
+   * building a semantic editor view or acquiring another Source reader. */
+  function observeJournalDataWithLegacyData(captured:TavernLoreEditSourceDataCaptureV1,
+    options:{suppressBookConstants?:boolean}={}):{
+    observed:TavernLoreEditJournalObservationV1;
+    legacy:ReturnType<typeof produceRoleplayTavernCurrentLegacyOverlayV1>|null
+  } {
     try {
-      const data=boundedLoreEditData(raw) as TavernLoreEditsDataV1
+      const {source,legacy,journal}=sourceJournal(captured,options),data=publishedJournalData(source,journal)
+      return {observed:freeze({schemaVersion:1,kind:'captured-data',data}),legacy}
+    }catch(error){return {observed:refusal(error),legacy:null}}
+  }
+  /** Export uses the same already-resolved legacy bindings as this editor.
+   * Returning resolved DATA avoids a second Source/journal/resolver capture. */
+  function observeSourceDataWithLegacyData(captured:TavernLoreEditSourceDataCaptureV1,
+    options:{suppressBookConstants?:boolean}={}):{
+    observed:TavernLoreEditObservationV1;
+    legacy:ReturnType<typeof produceRoleplayTavernCurrentLegacyOverlayV1>|null
+  } {
+    try {
+      const {source,legacy,journal}=sourceJournal(captured,options),packet=publishedData(source,journal,legacy.overlay)
+      return {observed:freeze({schemaVersion:1,kind:'captured-data',...packet}),legacy}
+    }catch(error){return {observed:refusal(error),legacy:null}}
+  }
+  /** Currency of already parsed owner DATA; raw records enter through the
+   * journal/Source parsers, not through this derived-output comparison. */
+  function current(data:TavernLoreEditsDataV1):boolean {
+    try {
       if(!data||data.schemaVersion!==1||data.encoding!=='tavern-lore-edits-current-data-v1'
         ||data.authority!=='consumer-data-only')return false
       const {dataSha256,...body}=data
-      if(recordSha256(body)!==dataSha256||!deps.source.current(data.source))return false
-      const result=observe(data.sessionId)
-      return result.kind==='captured-data'&&same(data,result.data)
+      if(recordSha256(body)!==dataSha256)return false
+      const live=deps.source.captureCurrent?.(data.sessionId),captured=live?.captured??deps.source.capture(data.sessionId)
+      if(captured.kind!=='captured-data')return false
+      const source=captured.source,journal=readJournal(deps,source,live?.assertCurrent)
+      return same(data,publishedJournalData(source,journal))
     }catch{return false}
   }
   function observeCurrent(sid:string):{observed:TavernLoreEditObservationV1;assertCurrent():void} {
@@ -93,7 +120,7 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       sourceCurrent()
       const journal=readJournal(deps,source,sourceCurrent)
       if(journal.pending)pendingFailure(journal.pending)
-      const packet=publishedData(source,journal,editorBaseline(captured.contributionInput))
+      const packet=publishedData(source,journal,currentLegacyData(captured.contributionInput).overlay)
       const assertCurrent=()=>{
         sourceCurrent()
         // Full namespace replay still catches absent head, added orphan/pending
@@ -193,5 +220,6 @@ export function createRoleplayTavernLoreEditsV1(deps:TavernLoreEditsDepsV1) {
       return await deps.withSourceLock(request.sessionId,()=>lockedEdit(request))
     }catch(error){return refusal(error)}
   }
-  return {observe,captureCurrentData:observe,observeSourceData,current,edit,observeCurrent}
+  return {observe,captureCurrentData:observe,observeSourceData,observeSourceDataWithLegacyData,
+    observeJournalDataWithLegacyData,current,edit,observeCurrent}
 }

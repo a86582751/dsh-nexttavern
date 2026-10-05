@@ -443,6 +443,15 @@ function captureSource(deps: MvuSourceDeps, sessionId: string, selectedIndex: nu
 }
 
 
+/** Freezes producer-owned DATA; execution envelopes retain their own budgets. */
+function freezeAuthorSourceData<T>(value:T):T {
+  if(value!==null&&typeof value==='object') {
+    for(const child of Object.values(value))freezeAuthorSourceData(child)
+    Object.freeze(value)
+  }
+  return value
+}
+
 function authorSourceOf(captured:Captured):MvuSchemaAuthorSourceDecision {
   try {
     const extension=captured.data.extensions
@@ -472,12 +481,16 @@ function authorSourceOf(captured:Captured):MvuSchemaAuthorSourceDecision {
     const snapshotBody={...scope,encoding:'native-mvu-author-source-snapshot-v1' as const,
       documentSha256:recordSha256(captured.document)}
     const snapshot={...snapshotBody,snapshotSha256:recordSha256(snapshotBody)}
-    const material=cloneSchemaData({card:captured.document,
-      rows:captured.rows.map(({ref,value})=>({table:ref.table,key:ref.key,exists:ref.exists,value:value??null})),
-      openingContext:captured.context},4*MAX_BYTES) as unknown as MvuJsonObject
+    // Decoder DATA belongs to this capture. Domain get() returns its shared
+    // logical row, so detach each row once before freezing the derived Source.
+    // The combined descriptor is not another guest execution input.
+    const material={card:captured.document,
+      rows:captured.rows.map(({ref,value})=>({table:ref.table,key:ref.key,exists:ref.exists,
+        value:structuredClone(value??null)})),
+      openingContext:{...captured.context}} as unknown as MvuJsonObject
     const body={schemaVersion:1 as const,encoding:'native-mvu-author-source-v1' as const,
       snapshot,scripts,material,materialSha256:recordSha256(material)}
-    return {kind:'author-source',source:cloneSchemaData({...body,authorSourceSha256:recordSha256(body)},8*MAX_BYTES)}
+    return {kind:'author-source',source:freezeAuthorSourceData({...body,authorSourceSha256:recordSha256(body)})}
   } catch(error) {
     return {kind:'unsupported',diagnostics:[error instanceof SourceFailure
       ?error.diagnostic:{code:'SOURCE_INVALID',pointer:'/source'}]}

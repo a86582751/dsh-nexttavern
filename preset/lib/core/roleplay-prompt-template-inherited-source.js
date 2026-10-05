@@ -2,8 +2,8 @@
 /** An inherited domain is verified against frozen original opening facts and
  * the actual child's Source/Native owners. It never rewrites a parent proof. */
 import { recordSha256 } from './roleplay-data.js';
-import { decodeTavernCard, compileTavernOpeningCandidates } from './tavern-card.js';
-import { assertImportRecordIntegrity } from './roleplay-import-record.js';
+import { compileTavernOpeningCandidates } from './tavern-card.js';
+import { assertImportRecordIntegrity, readStructuredImportDataV1 } from './roleplay-import-record.js';
 import { createRoleplayTavernLoreSourceV1, tavernLoreSourceCurrentIdentityV1 } from './roleplay-tavern-lore-source.js';
 import { validateTavernSourceInheritanceDescriptorV1, tavernSourceOwnedRecordKeysV1 } from './roleplay-tavern-source-inheritance-data.js';
 import { inspectPromptTemplateCurrentRowsV1 } from './roleplay-prompt-template-only-source.js';
@@ -265,7 +265,7 @@ export function createRoleplayPromptInheritedSourceV2(deps, nativeCurrent) {
             const envelope = record.sourceEnvelope;
             if (!envelope)
                 fail('/original/envelope');
-            const decoded = decodeTavernCard(Buffer.from(envelope.base64, 'base64'), envelope.extension);
+            const decoded = readStructuredImportDataV1(record).decoded;
             const context = source.current.openingContext.context, candidates = compileTavernOpeningCandidates(decoded, context);
             const selected = candidates.find(candidate => candidate.index === frozen.index);
             if (!selected || selected.sourcePointer !== frozen.sourcePointer || selected.sourceSha256 !== frozen.sourceSha256

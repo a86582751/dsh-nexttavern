@@ -120,3 +120,30 @@ export function cloneRoleplayTavernLoreDataV1<T>(data:T,maxBytes:number=TAVERN_L
   }
   return visit(data,0) as T
 }
+
+/** Legacy import integrity owns the immutable original-file transport scalar.
+ * Borrow only that string; all semantic fields still consume the lore budget.
+ * Descriptors keep accessors/proxies out of this path without executing them. */
+export function cloneRoleplayTavernLoreImportRecordV1<T>(data:T,
+  maxBytes:number=TAVERN_LORE_DATA_BOUNDS_V1.bytes,recordBounds?:TavernLoreDataBoundsV1,
+  sharedBudget?:TavernLoreDataBudgetV1):T {
+  const plain=(value:unknown):value is object=>{
+    if(value===null||typeof value!=='object'||types.isProxy(value)||Array.isArray(value))return false
+    const prototype=Object.getPrototypeOf(value)
+    return prototype===Object.prototype||prototype===null
+  }
+  const clone=(value:T)=>cloneRoleplayTavernLoreDataV1(value,maxBytes,recordBounds,sharedBudget)
+  if(!plain(data))return clone(data)
+  const recordDescriptors:PropertyDescriptorMap=Object.getOwnPropertyDescriptors(data)
+  const version=recordDescriptors.schemaVersion?.value,envelope=recordDescriptors.sourceEnvelope?.value as unknown
+  if((version!==4&&version!==5)||!plain(envelope))return clone(data)
+  const envelopeDescriptors=Object.getOwnPropertyDescriptors(envelope),base64=envelopeDescriptors.base64?.value as unknown
+  if(envelopeDescriptors.schemaVersion?.value!==1||typeof base64!=='string')return clone(data)
+  envelopeDescriptors.base64={...envelopeDescriptors.base64!,value:''}
+  recordDescriptors.sourceEnvelope={...recordDescriptors.sourceEnvelope!,
+    value:Object.create(Object.getPrototypeOf(envelope),envelopeDescriptors)}
+  const result=clone(Object.create(Object.getPrototypeOf(data),recordDescriptors) as T)
+  const clonedEnvelope=(result as {sourceEnvelope:{base64:string}}).sourceEnvelope
+  clonedEnvelope.base64=base64
+  return result
+}

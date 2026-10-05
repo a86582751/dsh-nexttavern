@@ -47,8 +47,12 @@ export interface PromptProgramAssignmentOriginV1 {
   readonly normalizedSectionSha256:string
   readonly normalizedSectionLength:number
 }
+export type NextTavernPromptAuthorFieldV1=`cards/${number}/content`|`worldbook/${number}/content`
+  |`rules/${'core'|'plot'|'narrative'|'reply'|'style'}`|'status/text'
+  |`compatibility/sillytavernMacroFields/${PromptTemplateOnlyFieldV1}`
+export type PromptProgramAuthorFieldNameV1=PromptTemplateOnlyFieldV1|NextTavernPromptAuthorFieldV1
 export interface PromptProgramAuthorFieldMappingV1 {
-  readonly field:PromptTemplateOnlyFieldV1
+  readonly field:PromptProgramAuthorFieldNameV1
   readonly originalPointer:string
   readonly presence:'absent'|'text'
   readonly rawText:string|null
@@ -60,7 +64,7 @@ export interface PromptProgramAuthorFieldMappingV1 {
 export interface PromptProgramProjectionPartV1 {
   readonly kind:'author-field'|'worldbook-content'
   readonly originalPointer:string
-  readonly authorField:PromptTemplateOnlyFieldV1|null
+  readonly authorField:PromptProgramAuthorFieldNameV1|null
   readonly rawEntryPointer:string|null
   readonly start:number
   readonly end:number
@@ -73,7 +77,7 @@ export interface PromptProgramAuthorGroupMappingV1 {
   readonly originalProjection:string
   readonly effectiveText:string
   readonly parts:readonly PromptProgramProjectionPartV1[]
-  readonly currentOrigin:{readonly kind:'exact-original-projection'|'actual-current-row-edit';
+  readonly currentOrigin:{readonly kind:'exact-original-projection'|'exact-portable-author-data'|'actual-current-row-edit';
     readonly row:TavernLoreSourceRowDataV1['ref'];readonly sourceDescriptorsSha256:string;
     readonly editedFrom:Readonly<Record<string,unknown>>|null;readonly editedFromSha256:string|null}
   /** An edited shared field is one actual current group. No substring-derived
@@ -149,6 +153,7 @@ export interface PromptProgramImportTupleV1 {
 export interface PromptProgramSourceInventoryV1 {
   readonly schemaVersion:1
   readonly encoding:'native-author-prompt-program-source-inventory-v1'
+    |'native-nexttavern-author-prompt-program-source-inventory-v1'
   readonly authority:'consumer-data-only'
   readonly policySha256:string
   readonly sessionId:string

@@ -2,12 +2,15 @@
  * the Native evaluator: a passive query cannot reopen hidden/unselected source,
  * execute another template or turn its importer defaults into activation. */
 import {keyOf,recordSha256} from './roleplay-data.js'
-import {captureRoleplayTavernPromptSourceV1} from './roleplay-tavern-prompt-source.js'
+import {captureRoleplayTavernPromptSourceV1,captureRoleplayTavernPromptSourceDataV1}
+  from './roleplay-tavern-prompt-source.js'
 import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
 import type {AuthorRecord,AuthorTables} from './roleplay-author-context-types.js'
 import type {LegacyWorldbookWriteTargetV1} from './roleplay-tavern-legacy-write-target-types.js'
 
 type Dependencies=Parameters<typeof captureRoleplayTavernPromptSourceV1>[0]
+type DataDependencies=Parameters<typeof captureRoleplayTavernPromptSourceDataV1>[0]&Pick<Dependencies,'tables'>
+type CapturedReadData=Extract<ReturnType<typeof captureRoleplayTavernPromptSourceDataV1>,{kind:'captured-data'}>
 type CapturedWriteData=Pick<Extract<ReturnType<typeof captureRoleplayTavernPromptSourceV1>,
   {kind:'captured-data'}>,'compilation'|'contributions'>
 function fail(code:string):never {throw Error(code)}
@@ -95,22 +98,23 @@ export function classifyRoleplayTavernLegacyWriteTargetsV1(deps:Dependencies,ses
   captured.assertCurrent()
   return target
 }
-export function captureRoleplayTavernLegacyReadV1(deps:Dependencies,sessionId:string,assertOwnerCurrent:()=>void) {
-  const captured=captureRoleplayTavernPromptSourceV1(deps,sessionId,false,assertOwnerCurrent)
-  if(captured.kind==='outside-declared-domain') {
-    if(['ACTIVE_SOURCE_MISSING','LEGACY_SOURCE_OUTSIDE_DOMAIN'].includes(captured.reason))return null
-    fail(`LEGACY_READ_${captured.reason}`)
-  }
+function outsideLegacyReadDomain(reason:string):null {
+  if(['ACTIVE_SOURCE_MISSING','LEGACY_SOURCE_OUTSIDE_DOMAIN'].includes(reason))return null
+  fail(`LEGACY_READ_${reason}`)
+}
+function projectPassiveLegacyRead(captured:CapturedReadData,tables:AuthorTables,sessionId:string) {
   const linked=new Set(captured.contributions.overlays.flatMap(row=>row.kind==='exact-current-row-data'?[row.row.ref.key]:[]))
   const rows:[string,AuthorRecord][]=[]
-  for(const [key,value] of deps.tables.worldbook.entries()) {
+  // Preserve the legacy table order in supplemental hashes and summaries.
+  // InputState owns this synchronous actual scan and its later invalidation.
+  for(const [key,value] of tables.worldbook.entries()) {
     if(!key.startsWith(`${sessionId}__`)||!value||linked.has(key))continue
     if(typeof value.content==='string'&&value.content.includes('<%'))fail('LEGACY_READ_TEMPLATE_REQUIRES_NATIVE_MATERIAL')
     rows.push([key,structuredClone(value)])
   }
   // Imported author instructions only enter the admitted Native story material.
   // Background tasks use their frozen story and their own declared task inputs.
-  const tables:AuthorTables={cards:table([]),rules:table([]),worldbook:table(rows)}
+  const passiveTables:AuthorTables={cards:table([]),rules:table([]),worldbook:table(rows)}
   const {source,currentIdentitySha256,edits,compilation}=captured
   // Audit snapshots retain complete Native counters. Dependency currency uses
   // the Source owner's admitted identity and the published edit/overlay inputs,
@@ -135,6 +139,20 @@ export function captureRoleplayTavernLegacyReadV1(deps:Dependencies,sessionId:st
   for(const [key,value] of rows)entries.push(passiveLegacyEntrySummary({id:value.id,name:value.name,kind:value.kind,aliases:value.aliases,
     keywords:value.keywords,enabled:value.enabled!==false,priority:value.priority,alwaysOn:value.alwaysOn===true,
     locked:value.locked===true,version:value.version,rowKey:key,nativeManaged:false}))
+  return {tables:passiveTables,entries,sourceProjectionSha256,evidence:body}
+}
+/** The input Owner already captures under the actual Source lock and tracks
+ * these reads. Its synchronous supplier publishes passive DATA only. */
+export function captureRoleplayTavernLegacyReadDataV1(deps:DataDependencies,sessionId:string) {
+  const captured=captureRoleplayTavernPromptSourceDataV1(deps,sessionId,false)
+  if(captured.kind==='outside-declared-domain')return outsideLegacyReadDomain(captured.reason)
+  return projectPassiveLegacyRead(captured,deps.tables,sessionId)
+}
+/** Standalone readers retain the complete actual after-await currency guard. */
+export function captureRoleplayTavernLegacyReadV1(deps:Dependencies,sessionId:string,assertOwnerCurrent:()=>void) {
+  const captured=captureRoleplayTavernPromptSourceV1(deps,sessionId,false,assertOwnerCurrent)
+  if(captured.kind==='outside-declared-domain')return outsideLegacyReadDomain(captured.reason)
+  const data=projectPassiveLegacyRead(captured,deps.tables,sessionId)
   captured.assertCurrent()
-  return {tables,entries,sourceProjectionSha256,evidence:body,assertCurrent:captured.assertCurrent}
+  return {...data,assertCurrent:captured.assertCurrent}
 }

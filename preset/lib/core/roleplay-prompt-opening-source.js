@@ -2,12 +2,12 @@
 /** Actual Source/Native relationship readers plus a pure raw-data calculator.
  * Root separately owns fresh basis, protected execution, intent and publication. */
 import { recordSha256, sha256 } from './roleplay-data.js';
-import { decodeTavernCard, compileTavernOpeningCandidates } from './tavern-card.js';
-import { assertImportRecordIntegrity, projectStructuredImport } from './roleplay-import-record.js';
+import { compileTavernOpeningCandidates } from './tavern-card.js';
+import { assertImportRecordIntegrity, projectStructuredImport, readStructuredImportDataV1 } from './roleplay-import-record.js';
 import { compileSchemaMvuInitData, selectNativeMvuInitializationPolicy } from './tavern-mvu-initvar.js';
 import { isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
 import { createRoleplayPromptProgramSourceV1, validatePromptProgramSourceInventoryV1, promptProgramSourceImportTupleV1 } from './roleplay-prompt-program-source.js';
-import { PROMPT_OPENING_SOURCE_POLICY_SHA256, PromptOpeningSourceFailureV1, openingSourceFail, clonePromptOpeningSourceDataV1, freezePromptOpeningSourceDataV1, openingSourceObject, calculatePromptOpeningRawInitV1, promptOpeningInitializationInputBindingV1, readPromptOpeningGreetingBlocksV1, renderPromptOpeningIdentityV1 } from './roleplay-prompt-opening-source-data.js';
+import { PROMPT_OPENING_SOURCE_POLICY_SHA256, NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256, PromptOpeningSourceFailureV1, openingSourceFail, clonePromptOpeningSourceDataV1, freezePromptOpeningSourceDataV1, openingSourceObject, calculatePromptOpeningRawInitV1, promptOpeningInitializationInputBindingV1, renderPromptOpeningIdentityV1, readPromptOpeningGreetingFactsV1 } from './roleplay-prompt-opening-source-data.js';
 const same = (left, right) => recordSha256(left) === recordSha256(right);
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const seal = (value) => freezePromptOpeningSourceDataV1(clonePromptOpeningSourceDataV1(value));
@@ -105,28 +105,24 @@ function validateInitialization(initialization, proof) {
     const greetings = bindings.greetingFacts;
     for (const [index, greeting] of greetings.entries()) {
         exact(greeting, ['index', 'sourcePointer', 'sourceSha256', 'rawText', 'renderedText', 'renderedSha256', 'macros',
-            'identityRendering', 'originalInitBlocks', 'renderedInitBlocks'], '/greetings/' + index);
+            'identityRendering', 'originalInitBlocks', 'renderedInitBlocks',
+            ...greeting.materialization === undefined ? [] : ['materialization']], '/greetings/' + index);
         if (typeof greeting.rawText !== 'string' || typeof greeting.sourcePointer !== 'string' || typeof greeting.renderedText !== 'string') {
             openingSourceFail('OPENING_SOURCE_PROOF_INVALID', '/greetings/' + index);
         }
-        const candidate = proof.catalog.candidates[index], blocks = readPromptOpeningGreetingBlocksV1(greeting.rawText, greeting.sourcePointer);
-        const rendered = renderPromptOpeningIdentityV1(greeting.rawText, proof.context.values, greeting.sourcePointer, blocks.map(block => ({ start: block.bodyStart, end: block.bodyEnd })));
-        if (!candidate || greeting.index !== candidate.index || greeting.sourcePointer !== candidate.sourcePointer
-            || greeting.rawText !== candidate.rawText || greeting.sourceSha256 !== sha256(greeting.rawText)
-            || greeting.renderedText !== candidate.renderedText || greeting.renderedText !== rendered.text
-            || greeting.renderedSha256 !== sha256(rendered.text) || !same(greeting.macros, candidate.macros)
-            || !same(greeting.identityRendering, rendered.facts) || !same(greeting.originalInitBlocks, blocks)
-            || !same(greeting.renderedInitBlocks, readPromptOpeningGreetingBlocksV1(rendered.text, greeting.sourcePointer))) {
+        const candidate = proof.catalog.candidates[index];
+        if (!candidate || !same(greeting, readPromptOpeningGreetingFactsV1(candidate, proof.context.values))) {
             openingSourceFail('OPENING_SOURCE_PROOF_INVALID', greeting.sourcePointer);
         }
-        macros ||= rendered.facts.used;
+        macros ||= greeting.identityRendering.used;
     }
     const books = bindings.bookPresence === 'actual-primary-book'
         ? [{ identity: 'embedded-primary', binding: 'primary', sourcePointer: bindings.bookPointer,
                 sourceSha256: bindings.rawBookSha256, entries: initEntries }] : [];
     const swipes = greetings.map(greeting => ({ identity: `swipe-${greeting.index}`,
         sourcePointer: greeting.sourcePointer, sourceSha256: greeting.sourceSha256, rawOpening: greeting.rawText,
-        renderedOpening: greeting.renderedText, renderedSha256: greeting.renderedSha256, statData: {} }));
+        renderedOpening: greeting.renderedText, renderedSha256: greeting.renderedSha256, statData: {},
+        ...(greeting.materialization ? { materialization: greeting.materialization } : {}) }));
     const policy = selectNativeMvuInitializationPolicy({ books, swipes });
     if (policy.kind !== 'selected' || !same(policy.policy, value.grammarPolicy))
         openingSourceFail('OPENING_SOURCE_PROOF_INVALID', '/grammarPolicy');
@@ -160,7 +156,8 @@ export function validatePromptOpeningSourceProofV1(input) {
         const proof = value;
         const { proofSha256, bindingSha256, ...body } = proof;
         if (proof.schemaVersion !== 1 || proof.encoding !== 'native-prompt-opening-source-proof-v1'
-            || proof.authority !== 'consumer-data-only' || proof.policySha256 !== PROMPT_OPENING_SOURCE_POLICY_SHA256
+            || proof.authority !== 'consumer-data-only' || proof.policySha256 !== (proof.program?.importTuple?.format === 'json-nexttavern-v1'
+            ? NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256 : PROMPT_OPENING_SOURCE_POLICY_SHA256)
             || proofSha256 !== recordSha256({ bindingSha256, ...body }) || bindingSha256 !== recordSha256(bindingBody(body))) {
             openingSourceFail('OPENING_SOURCE_PROOF_INVALID', '/proof/hash');
         }
@@ -168,7 +165,8 @@ export function validatePromptOpeningSourceProofV1(input) {
         exact(proof.source, ['sessionId', 'importId', 'sourceRecordSessionId', 'rawSha256', 'normalizedSha256', 'transactionId',
             'coverageSha256', 'pointer'], '/source');
         exact(proof.context, ['values', 'bindingSha256', 'valuesSha256', 'policy'], '/context');
-        exact(selected, ['index', 'sourcePointer', 'sourceSha256', 'rawText', 'renderedText', 'renderedSha256'], '/selected');
+        exact(selected, ['index', 'sourcePointer', 'sourceSha256', 'rawText', 'renderedText', 'renderedSha256',
+            ...selected.materialization === undefined ? [] : ['materialization']], '/selected');
         if (proof.source.sessionId !== program.sessionId || proof.source.sourceRecordSessionId !== tuple.sourceRecordSessionId
             || proof.source.importId !== tuple.importId || proof.source.rawSha256 !== tuple.rawSha256
             || proof.source.normalizedSha256 !== tuple.normalizedSha256 || proof.source.transactionId !== tuple.transactionId
@@ -181,6 +179,7 @@ export function validatePromptOpeningSourceProofV1(input) {
         const candidate = proof.catalog.candidates.find(item => item.index === selected.index);
         if (!candidate || candidate.sourcePointer !== selected.sourcePointer || candidate.sourceSha256 !== selected.sourceSha256
             || candidate.rawText !== selected.rawText || candidate.renderedText !== selected.renderedText
+            || candidate.materialization !== selected.materialization
             || selected.renderedSha256 !== sha256(selected.renderedText)
             || !same(proof.authorityLimits, { freshBasis: 'not-proven', numericalAbsence: 'not-proven', initialized: 'not-claimed',
                 schemaExecution: 'none', native: 'not-authorized', protectedRenderer: 'not-authorized', publish: 'not-authorized' })) {
@@ -296,7 +295,7 @@ export function createRoleplayPromptOpeningSourceV1(deps) {
             || record.rawSha256 !== tuple.rawSha256 || record.normalizedSha256 !== tuple.normalizedSha256
             || recordSha256(record.activation) !== tuple.activationSha256)
             openingSourceFail('OPENING_SOURCE_IMPORT_UNPROVEN', '/importRecord');
-        const decoded = suppliedData?.decoded ?? decodeTavernCard(Buffer.from(record.sourceEnvelope.base64, 'base64'), record.sourceEnvelope.extension);
+        const decoded = suppliedData?.decoded ?? readStructuredImportDataV1(record).decoded;
         if (!suppliedData && (decoded.data !== decoded.document.data || decoded.format !== tuple.format
             || recordSha256(decoded.document) !== tuple.documentSha256 || recordSha256(decoded.data) !== tuple.dataSha256
             || projectStructuredImport(record, decoded).text !== record.normalizedSource)) {
@@ -317,12 +316,14 @@ export function createRoleplayPromptOpeningSourceV1(deps) {
         const sourceRelation = readRelation(source), initialization = calculatePromptOpeningRawInitV1({ source, decoded, record, program,
             candidates: catalog.candidates, selectedIndex: index, context: context.context });
         const body = { schemaVersion: 1, encoding: 'native-prompt-opening-source-proof-v1',
-            authority: 'consumer-data-only', policySha256: PROMPT_OPENING_SOURCE_POLICY_SHA256,
+            authority: 'consumer-data-only', policySha256: tuple.format === 'json-nexttavern-v1'
+                ? NEXTTAVERN_PROMPT_OPENING_SOURCE_POLICY_SHA256 : PROMPT_OPENING_SOURCE_POLICY_SHA256,
             source: openingSource, sourceRelation, program, catalog, catalogSha256: recordSha256(catalog),
             context: { values: context.context, bindingSha256: context.bindingSha256, valuesSha256: recordSha256(context.context),
                 policy: 'only-actual-three-identity-macros-v1' },
             selected: { index, sourcePointer: candidate.sourcePointer, sourceSha256: candidate.sourceSha256, rawText: candidate.rawText,
-                renderedText: candidate.renderedText, renderedSha256: sha256(candidate.renderedText) }, initialization,
+                renderedText: candidate.renderedText, renderedSha256: sha256(candidate.renderedText),
+                ...(candidate.materialization ? { materialization: candidate.materialization } : {}) }, initialization,
             initializationInputBindingSha256: initialization.inputBindingSha256, promptCurrentInputBindingSha256: program.bindingSha256,
             authorityLimits: { freshBasis: 'not-proven', numericalAbsence: 'not-proven', initialized: 'not-claimed',
                 schemaExecution: 'none', native: 'not-authorized', protectedRenderer: 'not-authorized',

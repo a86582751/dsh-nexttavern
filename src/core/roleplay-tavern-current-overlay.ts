@@ -3,7 +3,7 @@
 import {recordSha256,sha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {projectStructuredImport,spanText} from './roleplay-import-record.js'
-import {resolveLegacyContributionDataV1} from './roleplay-tavern-lore-contributions.js'
+import {resolveCapturedLegacyContributionDataV1} from './roleplay-tavern-lore-contributions.js'
 import type {TavernLoreContributionInputV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreCurrentNativeOverlayV1,TavernLoreCurrentNativeOverlayEntryV1,
   TavernLoreCurrentNativeFieldsV1,TavernLoreCurrentNativeOriginV1} from './tavern-lore-plan-types.mjs'
@@ -11,8 +11,14 @@ import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 
 function fail(code:string):never {throw Error(code)}
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
-export function produceRoleplayTavernCurrentLegacyOverlayV1(input:TavernLoreContributionInputV1) {
-  const contributions=resolveLegacyContributionDataV1({...input,suppressRawEntryPointers:[],suppressAlwaysOnRowKeys:[]})
+export function produceRoleplayTavernCurrentLegacyOverlayV1(input:TavernLoreContributionInputV1,
+  options:{suppressBookConstants?:boolean}={}) {
+  const book=input.rawDecoded.data.character_book as {entries?:Record<string,Record<string,unknown>>}|undefined
+  const suppressRawEntryPointers=options.suppressBookConstants&&input.rawDecoded.format!=='json-nexttavern-v1'
+    ?Object.entries(book?.entries??{}).filter(([,entry])=>entry.constant===true
+      &&entry.enabled!==false&&entry.disable!==true&&entry.content!=='')
+      .map(([key])=>'/data/character_book/entries/'+key.replace(/~/g,'~0').replace(/\//g,'~1')):[]
+  const contributions=resolveCapturedLegacyContributionDataV1(input,{suppressRawEntryPointers,suppressAlwaysOnRowKeys:[]})
   if(contributions.kind!=='proven-consumer-data')fail(contributions.code)
   const projection=projectStructuredImport(input.activeImport,input.rawDecoded),
     entries:TavernLoreCurrentNativeOverlayEntryV1[]=[],linkedRowKeys:string[]=[]

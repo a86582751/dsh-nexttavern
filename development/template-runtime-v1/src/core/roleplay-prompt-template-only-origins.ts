@@ -19,11 +19,12 @@ interface Section {text:string;field:PromptTemplateOnlyFieldV1|null;target:strin
 interface Piece {field:PromptTemplateOnlyFieldV1;assignment:ImportAssignment;assignmentIndex:number;text:string}
 interface OwnedField {row:TavernLoreSourceRowDataV1;field:string;value:string;pieces:Piece[];sources:unknown[]}
 
-function assignmentsMatch(actual:ImportAssignment,expected:ImportAssignment):boolean {
+function assignmentsMatch(actual:ImportAssignment,expected:ImportAssignment,portable=false):boolean {
   if(!same(actual.sourceSpans,expected.sourceSpans)||actual.target!==expected.target
     ||actual.id!==expected.id||actual.name!==expected.name||actual.kind!==expected.kind
     ||actual.merge_group!==expected.merge_group||actual.secondary===true||actual.reuse_reason!==undefined
-    ||(actual.locked===true)!==(expected.locked===true)||actual.always_on===true
+    ||(actual.locked===true)!==(expected.locked===true)
+    ||(portable?(actual.always_on===true)!==(expected.always_on===true):actual.always_on===true)
     ||['aliases','keywords','triggers'].some(key=>!same(actual[key]??[],expected[key]??[])))return false
   if(Number(actual.priority??0)!==Number(expected.priority??0)
     ||Number(actual.token_budget??0)!==Number(expected.token_budget??0)
@@ -129,9 +130,98 @@ export function mapPromptTemplateOnlyOriginsV1(input:{decoded:DecodedTavernCard;
 // New inventory version. The legacy function above and its NoBook policy are
 // deliberately unchanged. Only the maintained projector knows normalization.
 import type {PromptProgramAuthorMappingV1,PromptProgramAssignmentOriginV1,
-  PromptProgramAuthorFieldMappingV1,PromptProgramAuthorGroupMappingV1,PromptProgramProjectionPartV1}
+  PromptProgramAuthorFieldMappingV1,PromptProgramAuthorGroupMappingV1,PromptProgramProjectionPartV1,
+  NextTavernPromptAuthorFieldV1}
   from './roleplay-prompt-program-source-types.js'
 import type {SourceDescriptor} from './roleplay-import-types.js'
+import type {NextTavernCardData} from './nexttavern-card.js'
+
+/** Match the maintained stage's classification shape, while full portable
+ * author controls remain in DATA. This does not copy author provenance. */
+function portableAssignmentShape(expected:ImportAssignment):ImportAssignment {
+  const number=(value:unknown,minimum:number,maximum:number)=>
+    Math.min(maximum,Math.max(minimum,Number(value??0)))
+  return {...expected,
+    ...(expected.name===undefined?{}:{name:expected.name.trim()}),
+    ...(expected.target==='card'?{kind:expected.kind==='user'?'user':'npc',
+      ...(expected.kind==='user'?{id:'user'}:{})}:{}),
+    priority:number(expected.priority,-1_000_000,1_000_000),
+    token_budget:number(expected.token_budget,0,10_000_000)}
+}
+
+/** DATA owns exact author bytes; assignment spans own only the normalized
+ * classifier receipt. Raw book content is independently owned by its compiler. */
+function mapNextTavernPromptAuthorOriginsV1(input:{decoded:DecodedTavernCard;record:ImportRecord;
+  source:TavernLoreSourceDataV1},projection:ReturnType<typeof projectStructuredImport>,
+  inventory:PromptProgramAssignmentOriginV1[]):PromptProgramAuthorMappingV1 {
+  const {decoded,record,source}=input,data=decoded.data as NextTavernCardData
+  const fields:PromptProgramAuthorFieldMappingV1[]=[],groups:PromptProgramAuthorGroupMappingV1[]=[]
+  const rowOf=(table:'cards'|'worldbook'|'rules'|'status',key:string)=>
+    source.current.rows.find(row=>row.ref.table===table&&row.ref.key===key)!
+  const add=(field:NextTavernPromptAuthorFieldV1,raw:string,table:'cards'|'worldbook'|'rules'|'status',
+    key:string,rowField:string,assignmentIndex:number)=>{
+    const originalPointer=`/data/${field}`
+    if(raw==='') {
+      fields.push({field,originalPointer,presence:'text',rawText:'',normalizedText:'',assignment:null,
+        currentGroupId:null,originalGroupSpan:null});return
+    }
+    const assignment=inventory[assignmentIndex]!,row=rowOf(table,key),current=row?.value,
+      sources=table==='rules'&&object(current?.sources)?current.sources[rowField]:current?.sources,
+      expectedSources=table==='status'?inventory.filter(item=>item.assignment.target==='status')
+        .map(item=>item.sourceDescriptor):[assignment.sourceDescriptor]
+    if(!current||current.importId!==record.importId||typeof current[rowField]!=='string'
+      ||!same(sources,expectedSources))failure('/program/current/portable-provenance')
+    const exact=current[rowField]===raw,editedFrom=exact?null:current.editedFrom
+    // The Source already owns today's complete row/membership. In particular
+    // rp_worldbook_update has no editedFrom marker; do not require another edit
+    // protocol to consume its actual current bytes and unchanged source link.
+    const groupId=`${table}:${key}:/${rowField}`,span={start:0,end:raw.length}
+    fields.push({field,originalPointer,presence:'text',rawText:raw,normalizedText:lf(raw),assignment,
+      currentGroupId:groupId,originalGroupSpan:span})
+    groups.push({groupId,row:row.ref,fieldPointer:`/${rowField}`,originalProjection:raw,
+      effectiveText:current[rowField] as string,
+      parts:[{kind:'author-field',originalPointer,authorField:field,rawEntryPointer:null,...span,assignment}],
+      currentFieldOffsets:exact?'same-as-original':'unavailable-shared-group-edit',
+      currentOrigin:{kind:exact?'exact-portable-author-data':'actual-current-row-edit',row:row.ref,
+        sourceDescriptorsSha256:recordSha256(sources),editedFrom:object(editedFrom)?editedFrom:null,
+        editedFromSha256:editedFrom?recordSha256(editedFrom):null}})
+  }
+  // Ordinal/ID identity comes from the projector, never from locating text.
+  for(const [table,rows,target] of [['cards',data.cards,'card'],['worldbook',data.worldbook,'worldbook']] as const) {
+    for(const [index,row] of rows.entries()) {
+      const expectedId=`${projection.cardId}-${target}-${index}`,
+        at=projection.assignments.findIndex(assignment=>assignment.target===target&&assignment.id===expectedId),
+        id=table==='cards'&&row.kind==='user'?'user':expectedId
+      add(`${table}/${index}/content`,row.content,table,`${source.sessionId}__${id}`,'content',at)
+    }
+  }
+  for(const [field,target] of [['core','core-setting'],['plot','plot-guidance'],['narrative','rule-narrative'],
+    ['reply','rule-reply'],['style','rule-style']] as const) {
+    const raw=data.rules[field]
+    if(raw!==undefined)add(`rules/${field}`,raw,'rules',`${source.sessionId}__spec`,field,
+      projection.assignments.findIndex(assignment=>assignment.target===target))
+  }
+  if(data.status)add('status/text',data.status.text,'status',`${source.sessionId}__spec`,'text',
+    projection.assignments.findLastIndex(assignment=>assignment.target==='status'))
+  const compatibility=object(data.compatibility)?data.compatibility.sillytavernMacroFields:undefined
+  if(object(compatibility))for(const field of PROMPT_TEMPLATE_ONLY_FIELDS_V1) {
+    const raw=compatibility[field]
+    if(typeof raw!=='string')continue
+    const key=`compatibility/sillytavernMacroFields/${field}` as const
+    // Macro aliases are immutable Source inputs, not a second author row or
+    // independent prompt contribution. Only a real render can consume them.
+    fields.push({field:key,originalPointer:`/data/${key}`,presence:'text',rawText:raw,
+      normalizedText:raw===''?'':lf(raw),assignment:null,currentGroupId:null,originalGroupSpan:null})
+  }
+  const bookAssignments:PromptProgramAuthorMappingV1['bookAssignments'][number][]=[]
+  for(const [ordinal,entry] of source.original.primary.entries.entries()) {
+    if(entry.value.content==='')continue
+    const id=projection.worldbook[ordinal]!.id,
+      at=projection.assignments.findIndex(assignment=>assignment.target==='archive-only'&&assignment.id===id)
+    bookAssignments.push({rawEntryPointer:entry.ref.entryPointer,assignment:inventory[at]!})
+  }
+  return {fields,groups,assignmentInventory:inventory,bookAssignments}
+}
 
 /** Complete author groups, including canonical constant-book fragments in a
  * shared rules field. Changed shared groups are never split by text matching. */
@@ -143,13 +233,15 @@ export function mapPromptProgramAuthorOriginsV1(input:{decoded:DecodedTavernCard
   }
   const inventory:PromptProgramAssignmentOriginV1[]=record.assignments.map((actual,index)=>{
     const expected=projection.assignments[index]!,text=spanText(record,expected.sourceSpans)
-    if(!assignmentsMatch(actual,expected)||actual.sourceSha256!==sha256(text)
+    const native=decoded.format==='json-nexttavern-v1'
+    if(!assignmentsMatch(actual,native?portableAssignmentShape(expected):expected,native)||actual.sourceSha256!==sha256(text)
       ||actual.materializedSha256!==sha256(text))failure(`/program/assignments/${index}`)
     const descriptor=sourceDescriptor(record,actual)
     return {assignmentIndex:index,assignment:actual,assignmentSha256:recordSha256(actual),
       sourceDescriptor:descriptor,sourceDescriptorSha256:recordSha256(descriptor),
       normalizedSectionSha256:sha256(text),normalizedSectionLength:text.length}
   })
+  if(decoded.format==='json-nexttavern-v1')return mapNextTavernPromptAuthorOriginsV1(input,projection,inventory)
   const prefix=sectionsOf(decoded,5),authorAt=new Map<number,PromptTemplateOnlyFieldV1>()
   for(const [index,section] of prefix.entries()) {
     if(spanText(record,record.assignments[index]!.sourceSpans)!==section.text

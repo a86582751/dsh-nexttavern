@@ -142,7 +142,7 @@ import {createProgramOpeningAtCutReaderV1} from './roleplay-program-opening-hist
 import {programOpeningDomainKeyV1,programOpeningInputKeyV1,programOpeningSeedKeyV1,
   programOpeningRefV1,programOpeningRecordDataV1}
   from './roleplay-program-opening-records.js'
-import {captureRoleplayTavernLegacyReadV1,classifyRoleplayTavernLegacyWriteTargetV1,
+import {captureRoleplayTavernLegacyReadDataV1,classifyRoleplayTavernLegacyWriteTargetV1,
   classifyRoleplayTavernLegacyWriteTargetsV1} from './roleplay-tavern-legacy-reading.js'
 import {createRoleplayTavernTemplateAssetOwnerV1} from './roleplay-tavern-template-assets.js'
 import {TEMPLATE_POLICY_SHA256} from './tavern-template-data.mjs'
@@ -1703,7 +1703,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   function captureLegacySourceRead(original:{id:string}) {
     const {session,assertCurrent}=captureLegacySourceOwner(original,'LEGACY_READ')
     const captured=inputState.captureSource(session.id,'legacy-author',()=>
-      captureRoleplayTavernLegacyReadV1({tables:T,source:tavernSource,edits:tavernLoreEdits},session.id,assertCurrent))
+      captureRoleplayTavernLegacyReadDataV1({tables:T,source:tavernSource,edits:tavernLoreEdits},session.id))
     const read=captured.data
     return read?{...read,assertCurrent:()=>{assertCurrent();captured.assertCurrent()}}:null
   }

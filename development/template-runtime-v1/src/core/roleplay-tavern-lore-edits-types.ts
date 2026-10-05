@@ -143,6 +143,8 @@ export interface TavernLoreEditRefusalV1 {
 }
 export type TavernLoreEditObservationV1={readonly schemaVersion:1;readonly kind:'captured-data';
   readonly data:TavernLoreEditsDataV1;readonly editor:TavernLoreEditEditorDataV1}|TavernLoreEditRefusalV1
+export type TavernLoreEditJournalObservationV1={readonly schemaVersion:1;readonly kind:'captured-data';
+  readonly data:TavernLoreEditsDataV1}|TavernLoreEditRefusalV1
 export type TavernLoreEditResultV1={readonly schemaVersion:1;readonly kind:'edited-data';
   readonly receipt:TavernLoreEditReceiptV1;readonly data:TavernLoreEditsDataV1;
   readonly editor:TavernLoreEditEditorDataV1}|TavernLoreEditRefusalV1

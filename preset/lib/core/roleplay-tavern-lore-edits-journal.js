@@ -7,7 +7,7 @@ import { ST_LORE_ENTRY_DEFAULTS_V1 } from './tavern-lore-fixed-profile.mjs';
 import { composeRoleplayTavernCurrentOverlayV1 } from './roleplay-tavern-current-overlay.js';
 import { validateFrozenSourceEditBaselineV1, validateInheritanceEditSlotV1 } from './roleplay-tavern-source-edit-baseline.js';
 import { tavernSourceEditSlotKeyV1 } from './roleplay-tavern-source-inheritance-data.js';
-import { TAVERN_LORE_EDITS_BOUNDS_V1, fail, freeze, strictData, same, identityOf, namespace, headKey, eventKey, rowRef, headRef, genesis, parseHead, parseEvent, nextHead, validateFields, compilerInput, LoreEditFailureV1, boundedLoreEditData } from './roleplay-tavern-lore-edits-data.js';
+import { TAVERN_LORE_EDITS_BOUNDS_V1, fail, freeze, strictData, same, identityOf, namespace, headKey, eventKey, rowRef, headRef, genesis, parseHead, parseEvent, nextHead, validateFields, compilerInput, LoreEditFailureV1 } from './roleplay-tavern-lore-edits-data.js';
 export const journalReferencesShaV1 = (refs, inherited) => recordSha256(inherited ? { local: refs, inherited: { baselineRef: inherited.baselineRef, slotRef: inherited.slotRef,
         baselineSha256: inherited.baseline.baselineSha256 } } : refs);
 /** Existing live consumers retain the Source checkpoint after the complete
@@ -156,7 +156,9 @@ export function plannedPublication(source, journal, event) {
     publishedData(source, result);
     return result;
 }
-export function publishedData(source, journal, editorBaseOverlay) {
+/** Published journal fields are author DATA. Reading them does not need the
+ * semantic editor plan, which has its own compiler output contract. */
+export function publishedJournalData(source, journal) {
     if (journal.pending)
         fail('PENDING_INTENT');
     const edited = new Map();
@@ -193,12 +195,6 @@ export function publishedData(source, journal, editorBaseOverlay) {
     const overlay = { schemaVersion: 1,
         encoding: 'st-character-book-current-native-overlay-v1', entries: journal.inherited
             ? [...effective].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, entry]) => entry) : entries };
-    // Only the editor view includes actual pre-existing legacy differences.
-    // The journal data/encodings remain append-only fields, so the prompt owner
-    // applies its own same baseline exactly once and retains original receipts.
-    const editorOverlay = editorBaseOverlay ? composeRoleplayTavernCurrentOverlayV1(editorBaseOverlay, overlay) : overlay, compiled = compileTavernLoreBookV1(compilerInput(source, editorOverlay));
-    if (compiled.kind !== 'compiled')
-        fail('FIELDS_INVALID', compiled.diagnostics[0]?.code);
     const body = { schemaVersion: 1, encoding: 'tavern-lore-edits-current-data-v1',
         authority: 'consumer-data-only', sessionId: source.sessionId, source, identity: journal.identity,
         identitySha256: journal.identitySha256, revision: journal.head.revision, head: journal.head,
@@ -207,7 +203,16 @@ export function publishedData(source, journal, editorBaseOverlay) {
                 baselineSha256: journal.inherited.baseline.baselineSha256,
                 effectiveOverlaySha256: recordSha256(journal.inherited.baseline.effectiveOverlay)
             } } : {} };
-    const data = freeze({ ...body, dataSha256: recordSha256(body) });
+    return freeze({ ...body, dataSha256: recordSha256(body) });
+}
+export function publishedData(source, journal, editorBaseOverlay) {
+    const data = publishedJournalData(source, journal);
+    // Only the editor view includes actual pre-existing legacy differences.
+    // The journal data/encodings remain append-only fields, so the prompt owner
+    // applies its own same baseline exactly once and retains original receipts.
+    const editorOverlay = editorBaseOverlay ? composeRoleplayTavernCurrentOverlayV1(editorBaseOverlay, data.overlay) : data.overlay, compiled = compileTavernLoreBookV1(compilerInput(source, editorOverlay));
+    if (compiled.kind !== 'compiled')
+        fail('FIELDS_INVALID', compiled.diagnostics[0]?.code);
     const editor = { authority: 'consumer-data-only', sessionId: source.sessionId,
         sourceSha256: source.sourceSha256, dataSha256: data.dataSha256, revision: journal.head.revision,
         entries: compiled.plan.entries.map(entry => ({ entryId: entry.entryId, rawEntryPointer: entry.sourcePointer,
@@ -215,7 +220,7 @@ export function publishedData(source, journal, editorBaseOverlay) {
             semantic: { ...ST_LORE_ENTRY_DEFAULTS_V1, displayIndex: entry.ordinal, ...entry.semanticOverrides },
             contentText: resolveTavernLoreContentTextV1(compiled.plan, `${entry.sourcePointer}/content`).text,
             fieldSources: entry.fieldSources, diagnosticCodes: entry.diagnosticIndexes.map(index => compiled.diagnostics[index].code) })) };
-    // Source archives may contain more than 4096 lines. Keep their purpose clone;
-    // strict persisted/request clones retain the smaller guest-array contract.
-    return freeze(boundedLoreEditData({ data, editor }));
+    // These are owner outputs. Raw requests, journal records and compiler inputs
+    // keep their admission budgets; combining their results is not another input.
+    return freeze({ data, editor });
 }
