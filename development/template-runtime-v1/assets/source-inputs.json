@@ -18,7 +18,7 @@
       {
         "artifact": "tavern-mvu-schema-data-typescript",
         "path": "src/core/tavern-mvu-schema-data.ts",
-        "sha256": "7f269a6ed18e7635bee683ac294f8e45b7291870e388bc8a62298870fc5e09cd"
+        "sha256": "e76ddc0150474a51c1eab2e42855f68389dfb365b8478cb387a9c57e155eb94f"
       },
       {
         "artifact": "tavern-mvu-schema-types-typescript",
@@ -70,7 +70,7 @@
       {
         "artifact": "tavern-mvu-schema-data-typescript",
         "path": "src/core/tavern-mvu-schema-data.ts",
-        "sha256": "7f269a6ed18e7635bee683ac294f8e45b7291870e388bc8a62298870fc5e09cd"
+        "sha256": "e76ddc0150474a51c1eab2e42855f68389dfb365b8478cb387a9c57e155eb94f"
       },
       {
         "artifact": "tavern-mvu-schema-types-typescript",
@@ -107,7 +107,7 @@
       {
         "artifact": "tavern-mvu-schema-data-typescript",
         "path": "src/core/tavern-mvu-schema-data.ts",
-        "sha256": "7f269a6ed18e7635bee683ac294f8e45b7291870e388bc8a62298870fc5e09cd"
+        "sha256": "e76ddc0150474a51c1eab2e42855f68389dfb365b8478cb387a9c57e155eb94f"
       },
       {
         "artifact": "tavern-mvu-schema-types-typescript",

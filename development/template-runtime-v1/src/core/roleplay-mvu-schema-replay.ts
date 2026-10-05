@@ -1,7 +1,7 @@
 /** The only schema execution owner. Persisted descriptors are facts; only this
  * factory's private WeakMap can associate replay with current publication. */
 import {recordSha256} from './roleplay-data.js'
-import {cloneSchemaData} from './tavern-mvu-schema-data.js'
+import {cloneSchemaData,cloneSchemaEnvelopeV4} from './tavern-mvu-schema-data.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {schemaTraceRequestedStep} from './roleplay-mvu-schema-executor-types.js'
 import {validateSchemaTraceInputV2,validateSchemaGuestOutputV2,validateSchemaEvaluationInputV2}
@@ -126,7 +126,8 @@ function selectorData(input:SchemaExecutionSelector):SchemaExecutionSelector {
 }
 function fullRecords(program:SchemaAuthorProgram,input:SchemaTraceInput,evaluation:SchemaTraceEvaluation,
   runner:SchemaTraceRunner):SchemaTraceStepRecord[] {
-  const value=cloneSchemaData(evaluation,MVU_SCHEMA_BOUNDS.inputBytes+MVU_SCHEMA_BOUNDS.outputBytes+131072,
+  const value=(evaluation.schemaVersion===4?cloneSchemaEnvelopeV4:cloneSchemaData)(evaluation,
+    MVU_SCHEMA_BOUNDS.inputBytes+MVU_SCHEMA_BOUNDS.outputBytes+131072,
     {nodes:MVU_SCHEMA_BOUNDS.evaluationNodes,depth:MVU_SCHEMA_BOUNDS.evaluationDepth})
   exact(value,['schemaVersion','encoding','programSha256','runner','input','inputSha256','records','evaluationSha256'])
   const {evaluationSha256,...body}=value
@@ -136,6 +137,7 @@ function fullRecords(program:SchemaAuthorProgram,input:SchemaTraceInput,evaluati
   const frames=[...input.prefix,input.requestedStep]
   if(!Array.isArray(value.records)||value.records.length!==frames.length)fail('SCHEMA_REPLAY_MISMATCH')
   let previous=recordSha256({programSha256:program.programSha256,realmEpoch:input.realmEpoch,loadFrame:input.loadFrame})
+  const actualProgram=input.schemaVersion===4?validateSchemaProgramV4(program):null
   return value.records.map((record,index)=>{
     exact(record,['eventId','ordinal','previousStepSha256','output','frameSha256','stepSha256'])
     const {frameSha256,...header}=record,frame=frames[index]!.frame
@@ -143,7 +145,7 @@ function fullRecords(program:SchemaAuthorProgram,input:SchemaTraceInput,evaluati
     const {stepSha256,...content}=step
     if(input.schemaVersion===2)validateSchemaGuestOutputV2(step.output,validateSchemaEvaluationInputV2(frame.input))
     if(input.schemaVersion===3)validateSchemaGuestOutputV3(step.output,validateSchemaEvaluationInputV3(frame.input))
-    if(input.schemaVersion===4)validateSchemaGuestOutputForProgramV4(step.output,validateSchemaProgramV4(program),
+    if(input.schemaVersion===4)validateSchemaGuestOutputForProgramV4(step.output,actualProgram!,
       validateSchemaEvaluationInputV4(frame.input))
     if(frameSha256!==recordSha256(frame)||step.eventId!==frames[index]!.eventId||step.ordinal!==index+1
       ||step.previousStepSha256!==previous||stepSha256!==recordSha256(content)
@@ -202,7 +204,8 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
     const result=await deps.runner.evaluateTrace(program,input,signal)
     signal.throwIfAborted()
     if(disposed)fail('SCHEMA_REPLAY_DISPOSED')
-    if(result.kind!=='evaluated-trace'||!same(fullRecords(program,input,result.evaluation,deps.runner),steps)) {
+    if(result.kind!=='evaluated-trace')fail(result.diagnostics[0]?.code??'SCHEMA_EXECUTION_UNAVAILABLE')
+    if(!same(fullRecords(program,input,result.evaluation,deps.runner),steps)) {
       fail('SCHEMA_REPLAY_MISMATCH')
     }
   }
@@ -271,9 +274,8 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       const program=compiled.program
       if(program.compiler.version!==executorVersion||program.bridge.version!==executorVersion)fail('SCHEMA_IMPLEMENTATION_CHANGED')
       if(!same(compilationInput(program,scope.authorInput),scope.authorInput))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
-      const verified=await deps.compiler.verifyProgram(program,scope.signal)
-      check('program-verified')
-      if(!verified)fail('SCHEMA_PROGRAM_UNPROVEN')
+      // This program came from the current owned compiler, not a stored DTO.
+      // Historical verification separately recompiles frozen persisted programs.
       const epoch:SchemaEpochRecord=original.kind==='ready'?original.epoch:sealSchemaJournalRecord({
         schemaVersion:executorVersion,encoding:executorVersion===1?'native-mvu-schema-epoch-v1' as const
           :executorVersion===2?'native-mvu-schema-epoch-v2' as const:executorVersion===3?'native-mvu-schema-epoch-v3' as const
@@ -283,12 +285,13 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
         loadAnchorSha256:recordSha256({programSha256:program.programSha256,realmEpoch:scope.realmEpoch,loadFrame:scope.loadFrame})}) as SchemaEpochRecord
       if(!same(epoch.program,program)||!same(epoch.loadFrame,scope.loadFrame))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
       if(!same(epoch.runner,deps.runner.identity))fail('SCHEMA_IMPLEMENTATION_CHANGED')
-      if(original.kind==='ready') {await replayHistory(original,program,scope.signal);check('history-verified')}
+      // evaluateTrace below replays and compares every historical output before
+      // evaluating the new step. A separate prefix-only replay repeats that work.
       const prefix=original.kind==='ready'?original.steps.map(item=>item.step):[]
       const trace=traceInput(program,epoch,prefix,scope.requestedStep)
-      // Check aggregate trace size before dispatch. Prefix is never truncated
-      // to fit limits because doing so would silently change retained closures.
-      cloneSchemaData(trace,MVU_SCHEMA_BOUNDS.inputBytes)
+      // traceInput already validated the full logical trace and its DATA envelope.
+      // Retained closures are never truncated to fit the transport budget.
+      if(executorVersion===1)cloneSchemaData(trace,MVU_SCHEMA_BOUNDS.inputBytes)
       if(prefix.length>=MVU_SCHEMA_BOUNDS.traceSteps)fail('SCHEMA_TRACE_LIMIT')
       let epochRef:SchemaJournalRef
       epochRef=await deps.withSourceBoundary(scope,async()=>{
@@ -420,8 +423,9 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
             const compiled=await deps.compiler.compile(freezeSchemaJournalData(facts.authorInput),abort.signal)
             check()
             if(compiled.kind!=='compiled'||!same(compiled.program,ready.epoch.program))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
-            const verified=await deps.compiler.verifyProgram(compiled.program,abort.signal)
-            check();if(!verified)fail('SCHEMA_PROGRAM_UNPROVEN')
+            // The current compiler already reproduced the exact persisted
+            // program above. Keep one real historical execution, not a second
+            // compilation of that same newly produced result.
             await replayHistory(ready,compiled.program,abort.signal);check()
             const bytes=Buffer.byteLength(JSON.stringify(frozen),'utf8')
             // Large valid cuts remain readable; they simply do not occupy this

@@ -2,7 +2,8 @@
  * Source/Native capability. Only the trusted Core supplies assets and workers. */
 import {Worker} from 'node:worker_threads'
 import {recordSha256} from './roleplay-data.js'
-import {cloneSchemaData,cloneSchemaValues,schemaTextSha256} from './tavern-mvu-schema-data.js'
+import {cloneSchemaData,cloneSchemaEnvelopeV4,packSchemaEnvelopeV4,cloneSchemaValues,schemaTextSha256}
+  from './tavern-mvu-schema-data.js'
 import {validateSchemaProgramV4,deriveOwnedStateLoaderIdentityV4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
@@ -180,9 +181,9 @@ function outputData(json:string,program:MvuSchemaProgramV4,input:MvuSchemaEvalua
   return validateSchemaGuestOutputForProgramV4(JSON.parse(json),program,input)
 }
 export function validateSchemaTraceInputV4(program:MvuSchemaProgramV4,input:unknown):MvuSchemaTraceInputV4 {
-  // One aggregate bound covers all load/prefix/requested data, including old
-  // outputs. Per-frame validation never grants 64 multiplied envelopes.
-  const value=cloneSchemaData(input,MVU_SCHEMA_BOUNDS.inputBytes) as MvuSchemaTraceInputV4
+  // Numerical/code metadata retains one aggregate budget. Source DATA is owned
+  // separately and repeated load/prefix/requested references share one material.
+  const value=cloneSchemaEnvelopeV4(input,MVU_SCHEMA_BOUNDS.inputBytes) as MvuSchemaTraceInputV4
   exact(value,['schemaVersion','encoding','realmEpoch','loadFrame','prefix','requestedStep'])
   if(value.schemaVersion!==4||value.encoding!=='native-mvu-author-schema-trace-input-v4'
     ||!hash(value.realmEpoch)||!Array.isArray(value.prefix)||value.prefix.length>=MVU_SCHEMA_BOUNDS.traceSteps) {
@@ -281,7 +282,9 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     if(blocked)return blocked
     let worker:Worker
     try {
-      worker=new Worker(workerUrl,{workerData:request,env:{TZ:'UTC'},resourceLimits:{maxOldGenerationSizeMb:256,stackSizeMb:4}})
+      const wire=packSchemaEnvelopeV4(request,2*MVU_SCHEMA_BOUNDS.programBytes+MVU_SCHEMA_BOUNDS.inputBytes,
+        evaluationBounds)
+      worker=new Worker(workerUrl,{workerData:wire,env:{TZ:'UTC'},resourceLimits:{maxOldGenerationSizeMb:256,stackSizeMb:4}})
     } catch {return unavailable('SCHEMA_WORKER_UNAVAILABLE')}
     const closed=Promise.withResolvers<void>()
     const execute=async():Promise<MvuSchemaWorkerResponseV4|RunnerFailure>=>{try {
@@ -377,7 +380,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
       }
       const body={schemaVersion:4 as const,encoding:'native-mvu-author-schema-trace-evaluation-v4' as const,
         programSha256:frozenProgram.programSha256,runner:identity,input:frozenInput,inputSha256:recordSha256(frozenInput),records}
-      return {kind:'evaluated-trace',evaluation:cloneSchemaData({...body,evaluationSha256:recordSha256(body)},
+      return {kind:'evaluated-trace',evaluation:cloneSchemaEnvelopeV4({...body,evaluationSha256:recordSha256(body)},
         traceEvaluationBytes,evaluationBounds)}
     } catch(error) {return unavailable(safeCode(error instanceof Error?error.message:undefined,'SCHEMA_TRACE_OUTPUT_INVALID'))}
   }
@@ -397,7 +400,7 @@ export function createMvuSchemaRunnerV4(deps:MvuSchemaRunnerDepsV4):MvuSchemaRun
     },
     async verifyTrace(program:MvuSchemaProgramV4,evaluation:MvuSchemaTraceEvaluationV4,signal?:AbortSignal) {
       try {
-        const stored=cloneSchemaData(evaluation,traceEvaluationBytes,evaluationBounds)
+        const stored=cloneSchemaEnvelopeV4(evaluation,traceEvaluationBytes,evaluationBounds)
         exact(stored,['schemaVersion','encoding','programSha256','runner','input','inputSha256','records','evaluationSha256'])
         const {evaluationSha256,...body}=stored
         if(stored.schemaVersion!==4||stored.encoding!=='native-mvu-author-schema-trace-evaluation-v4'

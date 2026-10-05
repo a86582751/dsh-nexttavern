@@ -2,12 +2,13 @@
  * Parsing/binding/transpilation stays in a disposable deadline-bound worker. */
 import {Worker} from 'node:worker_threads'
 import {recordSha256} from './roleplay-data.js'
-import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
-import {validateSchemaProgramV4, validateSchemaCompilationInputV4, validateSchemaCompilerIdentityV4}
+import {validateSchemaProgramV4, validateSchemaCompilationInputV4, validateSchemaCompilerIdentityV4,
+  validateSchemaCompiledCodeV4}
   from './tavern-mvu-schema-program-v4.js'
 import type {CompilationV4, CompilerDepsV4, MvuSchemaCompilerV4,
-  MvuSchemaCompilationInputV4, MvuSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
+  MvuSchemaCompilationInputV4, MvuSchemaProgramV4, SchemaCompilationCodeV4}
+  from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaDiagnostic} from './tavern-mvu-schema-types.js'
 
 const same = (a: unknown, b: unknown) => recordSha256(a) === recordSha256(b)
@@ -44,9 +45,13 @@ export function createMvuSchemaCompilerV4(deps: CompilerDepsV4): MvuSchemaCompil
     catch {return refused('MVU_SCHEMA_COMPILER_INPUT_INVALID')}
     if (!live) return refused('MVU_SCHEMA_COMPILER_DISPOSED')
     if (signal?.aborted) return refused('MVU_SCHEMA_COMPILER_CANCELLED')
+    // The worker owns code admission only. Its message does not transport the
+    // complete author material that this immutable Host input already owns.
+    const codeInput:SchemaCompilationCodeV4={scripts:input.scripts,libraries:input.libraries,
+      bridge:input.bridge,stateLoader:input.stateLoader,executionPlan:input.executionPlan}
     let worker: Worker
     try {
-      worker = new Worker(workerUrl, {workerData: {identity, input}, resourceLimits: {
+      worker = new Worker(workerUrl, {workerData: {identity, input:codeInput}, resourceLimits: {
         maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16, stackSizeMb: 2,
       }})
     } catch {return refused('MVU_SCHEMA_COMPILER_WORKER_UNAVAILABLE')}
@@ -73,16 +78,25 @@ export function createMvuSchemaCompilerV4(deps: CompilerDepsV4): MvuSchemaCompil
       if (!live) {job.cancel('MVU_SCHEMA_COMPILER_DISPOSED');return}
       if (signal?.aborted) {abort();return}
       try {
-        const result = cloneSchemaData(rawResult, MVU_SCHEMA_BOUNDS.programBytes) as Record<string, unknown>
+        const result = rawResult as Record<string, unknown>
         if (!result || typeof result !== 'object' || Array.isArray(result)) throw Error('result')
-        if (result.kind === 'compiled' && Object.keys(result).sort().join(',') === 'kind,program') {
-          const program = validateSchemaProgramV4(result.program)
-          if (!same(program.compiler, identity) || !same(inputOf(program, input.executionPlan), input)) {
+        if (result.kind === 'compiled' && Object.keys(result).sort().join(',') === 'code,kind') {
+          const code = validateSchemaCompiledCodeV4(result.code)
+          const {compiler:_compiler,...compiledInput}=code
+          const restoredInput={...compiledInput,executionPlan:input.executionPlan,
+            scripts:code.scripts.map(({javascript:_javascript,javascriptSha256:_javascriptSha256,...script})=>script)}
+          if (!same(code.compiler, identity) || !same(restoredInput, codeInput)) {
             throw Error('result identity')
           }
           // A non-null expected plan can only be accepted after the trusted
           // worker recomputed it. Parent metadata equality adds a second guard.
-          if (input.executionPlan !== null && !same(input.executionPlan, program.executionPlan)) throw Error('expected plan')
+          if (input.executionPlan !== null && !same(input.executionPlan, code.executionPlan)) throw Error('expected plan')
+          // The durable schema and logical hashes still contain the complete
+          // original Source. No worker placeholder or replacement Source exists.
+          const descriptor={schemaVersion:2 as const,encoding:'native-mvu-author-schema-program-v2' as const,
+            compiler:code.compiler,source:input.source,bridge:code.bridge,stateLoader:code.stateLoader,
+            libraries:code.libraries,scripts:code.scripts,executionPlan:code.executionPlan}
+          const program=validateSchemaProgramV4({...descriptor,programSha256:recordSha256(descriptor)})
           finish({kind: 'compiled', program})
         } else if (result.kind === 'refused' && Object.keys(result).sort().join(',') === 'diagnostics,kind'
           && Array.isArray(result.diagnostics) && result.diagnostics.length === 1) {

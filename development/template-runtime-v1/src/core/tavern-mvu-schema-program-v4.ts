@@ -1,7 +1,7 @@
 /** Unapplied v4 data contract. Checksums describe bytes, never Source/Native
  * authority. Full AST plan recomputation remains in the bounded owned worker. */
 import {recordSha256} from './roleplay-data.js'
-import {cloneSchemaData, schemaTextSha256} from './tavern-mvu-schema-data.js'
+import {cloneSchemaData, cloneSchemaEnvelopeV4, schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {PINNED_C_SCHEMA_IMPORT_POLICY_V1}
   from './tavern-mvu-schema-import-policy.js'
@@ -18,6 +18,13 @@ export type {MvuSchemaProgramV4, MvuSchemaCompilationInputV4}
 
 export type CompilationV4 = {kind: 'compiled'; program: MvuSchemaProgramV4}
   | {kind: 'refused'; diagnostics: readonly MvuSchemaDiagnostic[]}
+/** Private compiler transport. Full Source DATA stays with the Host owner. */
+export type SchemaCompilationCodeV4=Pick<MvuSchemaCompilationInputV4,
+  'scripts'|'libraries'|'bridge'|'stateLoader'|'executionPlan'>
+export type SchemaCompiledCodeV4=Pick<MvuSchemaProgramV4,
+  'compiler'|'scripts'|'libraries'|'bridge'|'stateLoader'|'executionPlan'>
+export type CompilationCodeV4={kind:'compiled';code:SchemaCompiledCodeV4}
+  | Extract<CompilationV4,{kind:'refused'}>
 export interface MvuSchemaCompilerV4 {
   readonly identity: MvuSchemaCompilerIdentity & {readonly version: 4}
   compile(input: MvuSchemaCompilationInputV4, signal?: AbortSignal): Promise<CompilationV4>
@@ -70,7 +77,17 @@ const fixedEntries: ReadonlyMap<string, {exactSpecifier: string; group: StateLoa
   upstreamRootSha256: retainedPolicy.roots[group].sha256,
   namespaceContract: group === 'D' ? 'side-effect-only' : 'empty-esm-namespace',
   }]))
-const fixedCSpecifiers = new Set<string>(PINNED_C_SCHEMA_IMPORT_POLICY_V1.entries.map(item => item.specifier))
+// This exact author URL maps to the owned registration/update contract. The
+// reviewed upstream differs only in browser error notification; no remote code
+// or notification callback is loaded into the atomic-refusal executor.
+export const C_SCHEMA_IMPORT_POLICY_V4=Object.freeze({
+  version:4 as const,contract:'native-register-mvu-schema-atomic-refusal-v4' as const,
+  reviewedUpstream:Object.freeze({bytes:4607,
+    sha256:'e540ab99589ad83de1495056a84693bda00af92f8848926bcb9a53b9263a0302'}),
+  entries:Object.freeze([...PINNED_C_SCHEMA_IMPORT_POLICY_V1.entries.map(item=>item.specifier),
+    'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js']),
+})
+const fixedCSpecifiers=new Set<string>(C_SCHEMA_IMPORT_POLICY_V4.entries)
 
 /** The fixed policy SHA is module-owned. No caller supplied mapper key, policy
  * SHA, downloaded helper bytes, or import fulfilment can alter this identity. */
@@ -277,8 +294,8 @@ function executionPlan(raw: unknown, scripts: readonly RawAuthorScriptV4[],
     || raw.summary.enabledBrowserDeferred !== 0 || raw.summary.unsupportedEnabled !== 0) fail('SCHEMA_V4_PLAN_SUMMARY')
   checksum(raw, 'executionPlanSha256', 'SCHEMA_V4_EXECUTION_PLAN_HASH')
 }
-function common(value: RecordData, compiled: boolean): void {
-  source(value.source);bridgeIdentity(value.bridge);implementation(value.stateLoader)
+function compilationCode(value: RecordData, compiled: boolean): void {
+  bridgeIdentity(value.bridge);implementation(value.stateLoader)
   if (!same(value.stateLoader, deriveOwnedStateLoaderIdentityV4(value.bridge))) fail('SCHEMA_V4_STATE_LOADER_IDENTITY')
   if (!Array.isArray(value.libraries) || value.libraries.length > 2) fail('SCHEMA_V4_LIBRARY_INVALID')
   const kinds = new Set<string>(), globals = new Set<string>(), libraries: MvuSchemaLibraryIdentity[] = []
@@ -307,19 +324,38 @@ export function validateSchemaCompilerIdentityV4(input: unknown): MvuSchemaCompi
   return freezeData(value) as MvuSchemaCompilerIdentity & {readonly version: 4}
 }
 export function validateSchemaCompilationInputV4(input: unknown): MvuSchemaCompilationInputV4 {
-  const value = cloneSchemaData(input, MVU_SCHEMA_BOUNDS.inputBytes)
+  const value = cloneSchemaEnvelopeV4(input, MVU_SCHEMA_BOUNDS.inputBytes)
   exact(value, ['schemaVersion', 'encoding', 'source', 'scripts', 'libraries', 'bridge', 'stateLoader', 'executionPlan'])
   if (value.schemaVersion !== 2 || value.encoding !== 'native-mvu-author-compilation-input-v2') fail('SCHEMA_V4_INPUT_INVALID')
-  common(value, false)
+  source(value.source);compilationCode(value, false)
   return freezeData(value) as unknown as MvuSchemaCompilationInputV4
 }
+// Only this owner can certify its deeply frozen result. Wire/JSON copies and
+// values from other implementations still require their first full validation.
+const validatedPrograms = new WeakSet<object>()
 export function validateSchemaProgramV4(input: unknown): MvuSchemaProgramV4 {
-  const value = cloneSchemaData(input, MVU_SCHEMA_BOUNDS.programBytes)
+  if (validatedPrograms.has(input as object)) return input as MvuSchemaProgramV4
+  const value = cloneSchemaEnvelopeV4(input, MVU_SCHEMA_BOUNDS.programBytes)
   exact(value, ['schemaVersion', 'encoding', 'compiler', 'source', 'scripts', 'libraries',
     'bridge', 'stateLoader', 'executionPlan', 'programSha256'])
   if (value.schemaVersion !== 2 || value.encoding !== 'native-mvu-author-schema-program-v2') fail('SCHEMA_V4_PROGRAM_INVALID')
   implementation(value.compiler, true)
-  common(value, true)
+  source(value.source);compilationCode(value, true)
   checksum(value, 'programSha256', 'SCHEMA_V4_PROGRAM_HASH')
-  return freezeData(value) as unknown as MvuSchemaProgramV4
+  const program = freezeData(value) as unknown as MvuSchemaProgramV4
+  validatedPrograms.add(program)
+  return program
+}
+export function validateSchemaCompilationCodeV4(input:unknown):SchemaCompilationCodeV4 {
+  const value=cloneSchemaData(input,MVU_SCHEMA_BOUNDS.inputBytes)
+  exact(value,['scripts','libraries','bridge','stateLoader','executionPlan'])
+  compilationCode(value,false)
+  return freezeData(value) as unknown as SchemaCompilationCodeV4
+}
+export function validateSchemaCompiledCodeV4(input:unknown):SchemaCompiledCodeV4 {
+  const value=cloneSchemaData(input,MVU_SCHEMA_BOUNDS.programBytes)
+  exact(value,['compiler','scripts','libraries','bridge','stateLoader','executionPlan'])
+  implementation(value.compiler,true)
+  compilationCode(value,true)
+  return freezeData(value) as unknown as SchemaCompiledCodeV4
 }

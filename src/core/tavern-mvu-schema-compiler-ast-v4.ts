@@ -104,7 +104,8 @@ function hasRegistrationIntent(script: RawAuthorScriptV4, file: ts.SourceFile, c
   return nodes.some(node => ts.isCallExpression(node) && registrationReference(node.expression))
 }
 
-export function compileSchemaAstV4(script: RawAuthorScriptV4, input: MvuSchemaCompilationInputV4,
+export function compileSchemaAstV4(script: RawAuthorScriptV4,
+  input: Pick<MvuSchemaCompilationInputV4,'bridge'|'libraries'>,
   file: ts.SourceFile, checker: ts.TypeChecker): {kind: 'schema'; javascript: string}
     | {kind: 'not-schema'} {
   if (ts.version !== '5.9.3' || input.bridge.version !== 4 || file.text !== script.source) {
