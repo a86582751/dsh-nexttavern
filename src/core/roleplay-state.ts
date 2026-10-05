@@ -186,6 +186,9 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
     const activeImportRecord = activeImport?.importId
       ? T.branch.get(importRecordKey(importSourceSessionId, activeImport.importId))
       : null
+    const currentRules=T.rules.get(keyOf(session.id,'spec'));
+    const summary=activeImportRecord?importSummary(activeImportRecord as unknown as ImportRecord,currentRules??undefined):null;
+    const {authorCoreData,...cardSummary}=summary??{};
     const versions = T.branch.get(keyOf(session.id, 'versions')) ?? { anchors: {} }
     const flatVersions = []
     for (const [anchor, group] of Object.entries(versions.anchors ?? {})) {
@@ -218,10 +221,11 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       statusPanel: selectedStatusRecord(session),
       statusGeneration: selectedStatusGeneration(session),
       numericalState: await numericalState?.(session.id) ?? null,
-      rules: T.rules.get(keyOf(session.id, 'spec')) ?? null,
+      rules:currentRules?{...currentRules,...authorCoreData
+        ?{core:authorCoreData.text,coreOrigin:authorCoreData.kind}:{}}:null,
       opening: T.opening.get(keyOf(session.id, 'scene')) ?? null,
       cardImport: activeImportRecord
-        ? { ...importSummary(activeImportRecord as unknown as ImportRecord), sourceRecordSessionId: importSourceSessionId,
+        ? { ...cardSummary, sourceRecordSessionId: importSourceSessionId,
           ...chatImportProjection?.(session,activeImportRecord as unknown as ImportRecord) }
         : activeImport,
       drafts: [...T.drafts.entries()].filter(([k]) => k.startsWith(`${session.id}__draft__`)).map(([, v]) => ({ draft_id: v?.id, idea: String(v?.idea ?? '').slice(0, 80), modules: Object.keys(v?.modules ?? {}), updatedAt: v?.updatedAt })),

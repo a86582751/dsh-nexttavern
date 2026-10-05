@@ -8,6 +8,7 @@ import {
     buildCustomRulesSaveBody,
 } from './panel-state.js';
 import type { PanelDraft } from './panel-state.js';
+import {createTavernLoreEditorPanelV1} from './tavern-lore-editor.js';
 const errorMessage = (error: unknown) => error && typeof error === 'object' && 'message' in error ? error.message : error;
 interface RecordVersions extends Record<string, unknown> {
     cards?: Record<string, unknown>;
@@ -97,6 +98,7 @@ export interface AuthorState extends StateReply {
     cards?: CardEntry[];
     rules?: {
         core?: string;
+        coreOrigin?: 'legacy-projection'|'independent-author'|'legacy-edited-unsplit';
         plot?: string;
         style?: string;
         narrative?: string;
@@ -144,6 +146,7 @@ interface AuthorDependencies {
     toast(text: string): void;
 }
 export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidateState, saveState, runMaintenance, jsonFetch, toast }: AuthorDependencies) {
+    const TavernLoreEditorPanel=createTavernLoreEditorPanelV1({React,jsonFetch,toast});
     const btn = (
         label: ReactAPI.ReactNode,
         onClick: ReactAPI.MouseEventHandler<HTMLButtonElement>,
@@ -504,7 +507,14 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
     function WorldbookPanel(props: PanelProps) {
         const { scope, visible } = props;
         const sessionId = scope?.sessionId;
-        const { data, error, refresh } = useRoleplayState(sessionId, visible);
+        const [worldbookView, setWorldbookView] = React.useState<{
+            sessionId: string | undefined;
+            kind: 'supplemental' | 'structured';
+        }>({ sessionId, kind: 'supplemental' });
+        // The manager keys panels by Session. This render guard also hides the
+        // previous editor before effects if another caller keeps the panel mounted.
+        const structured = worldbookView.sessionId === sessionId && worldbookView.kind === 'structured';
+        const { data, error, refresh } = useRoleplayState(sessionId, structured ? false : visible);
         const [editing, setEditing] = React.useState<WorldbookEntry | WorldbookForm | 'new' | null>(null);
         const [formValue, setFormState] = React.useState<WorldbookForm | null>(null);
         // Editing and form are initialized together before these controls mount.
@@ -609,6 +619,16 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
             value: value ?? '',
             onChange: (e: ReactAPI.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)
         }));
+        const modes = React.createElement('div', {
+            className: 'dsh-rp-row', role: 'group', 'aria-label': '世界书管理方式'
+        }, btn('补充条目 / 旧记录', () => setWorldbookView({ sessionId, kind: 'supplemental' }), {
+            disabled: saving || !sessionId, 'aria-pressed': !structured
+        }), btn('结构化世界书', () => setWorldbookView({ sessionId, kind: 'structured' }), {
+            disabled: saving || !sessionId, 'aria-pressed': structured
+        }));
+        if (!visible) return null;
+        if (structured) return React.createElement(React.Fragment, null, modes,
+            React.createElement(TavernLoreEditorPanel, { scope, visible }));
         return React.createElement(PanelShell, {
             title: '世界书',
             visible,
@@ -618,7 +638,10 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
             extra: btn('＋ 新增', () => startEdit('new'), {
                 disabled: saving
             }),
-        }, editing
+        }, modes, React.createElement('p', {
+            className: 'dsh-rp-muted'
+        }, 'SillyTavern 原卡条目的内容、启用和常驻状态，请在上方「结构化世界书」中编辑。'
+            + '此处保留补充条目和旧记录视图；旧记录可能不含结构化编辑后的修改。'), editing
             ? React.createElement('fieldset', {
                 disabled: saving, style: {
                     border: 0, padding: 0, margin: 0
@@ -905,7 +928,11 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
         const legacyEntries = field === 'core' ? data?.worldbook?.filter(entry => entry.enabled !== false && entry.alwaysOn === true) ?? [] : [];
         return React.createElement(PanelShell, {
             title, visible, sessionId, error, loading, refresh
-        }, React.createElement('p', null, guidance), React.createElement('textarea', {
+        }, React.createElement('p',null,guidance),
+        field==='core'&&data?.rules?.coreOrigin==='legacy-edited-unsplit'
+          ?React.createElement('p',{className:'dsh-rp-muted'},
+            '这份旧核心正文曾整段修改，尚未分离世界书内容；此处保存会将全文作为独立核心设定。'):null,
+        React.createElement('textarea', {
             className: 'dsh-rp-textarea',
             style: {
                 minHeight: `${rows * 20}px`
@@ -941,7 +968,8 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
     }
     function CoreRulesPanel(props: PanelProps) {
         return React.createElement(RuleSlicePanel, {
-            ...props, field: 'core', title: '核心设定', rows: 10, guidance: '世界基础、核心威胁、长期矛盾；这些内容常驻且不参与剧情压缩。'
+            ...props,field:'core',title:'核心设定',rows:10,
+            guidance:'独立的世界基础、核心威胁、长期矛盾；常驻世界书条目在世界书编辑器维护。'
         });
     }
     function PlotGuidancePanel(props: PanelProps) {
@@ -1167,6 +1195,7 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
         PanelShell,
         MemoryPanel,
         WorldbookPanel,
+        TavernLoreEditorPanel,
         CardsPanel,
         CoreRulesPanel,
         PlotGuidancePanel,

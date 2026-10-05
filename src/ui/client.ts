@@ -348,6 +348,7 @@ export function apply(ctx: ClientContext) {
       btn,
       MemoryPanel,
       WorldbookPanel,
+      TavernLoreEditorPanel,
       CardsPanel,
       CoreRulesPanel,
       PlotGuidancePanel,
@@ -369,6 +370,7 @@ export function apply(ctx: ClientContext) {
     const panelTabs: [string, string, ReactAPI.ComponentType<{ scope?: { sessionId: string }; visible?: boolean }>][] = [
       ['cards', '人物设定', CardsPanel],
       ['worldbook', '世界书', WorldbookPanel],
+      ['tavern-lore', '结构化世界书', TavernLoreEditorPanel],
       ['memory', '记忆', MemoryPanel],
       ['core-rules', '核心设定', CoreRulesPanel],
       ['plot-guidance', '剧情指引', PlotGuidancePanel],

@@ -7,6 +7,7 @@ import { statusTemplateDiagnostics } from '../status-template.js';
 import type { HostSession } from './roleplay-task-host-types.js';
 import type { StateSession } from './roleplay-state-types.js';
 import { SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1 } from './roleplay-tavern-legacy-write-target-types.js';
+import {INDEPENDENT_AUTHOR_CORE_V1} from './roleplay-import-record.js';
 // Shared by the panel and bounded agent edits: one revision check and one mutation path.
 export async function savePanelSetting({ ctx,
      T,
@@ -197,6 +198,7 @@ export async function savePanelSetting({ ctx,
                     if (body[f] !== undefined)
                         next[f] = String(body[f]);
                 }
+                if(body.core!==undefined)next.coreOwnership=INDEPENDENT_AUTHOR_CORE_V1;
                 if (body.beauty !== undefined) {
                     const b = body.beauty;
                     const regexRules = Array.isArray(b?.regexRules)

@@ -7,6 +7,7 @@ import { simpleTool } from './roleplay-task-tools.js'
 import type { TaskToolExecution } from './roleplay-task-tools-types.js'
 import type { AuthoringInput, AuthoringDependencies, DraftDependencies, DraftInput, DraftRegex } from './roleplay-authoring-types.js'
 import { SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1 } from './roleplay-tavern-legacy-write-target-types.js'
+import {INDEPENDENT_AUTHOR_CORE_V1} from './roleplay-import-record.js'
 
 export function registerCardAuthoring({ctx, T, svc, RULE_TEXT_FIELDS, sessionOf,beforeWrite,mutateSource,
   checkLegacyWorldbookWriteTargets}: AuthoringDependencies) {
@@ -63,7 +64,9 @@ export function registerCardAuthoring({ctx, T, svc, RULE_TEXT_FIELDS, sessionOf,
       for (const key of RULE_TEXT_FIELDS) {
         if (typeof data.rules[key] === 'string') acceptedRules[key] = data.rules[key]
       }
-      await svc.setRules(session.id, { ...prev, ...acceptedRules, verified: false, source: 'authored-by-agent' }, atSeq)
+      await svc.setRules(session.id,{...prev,...acceptedRules,
+        ...(Object.hasOwn(acceptedRules,'core')?{coreOwnership:INDEPENDENT_AUTHOR_CORE_V1}:{}),
+        verified:false,source:'authored-by-agent'},atSeq)
       written.push({ target: 'rules' })
     }
     if (data.beauty && typeof data.beauty === 'object') {
@@ -122,7 +125,7 @@ export function registerCardAuthoring({ctx, T, svc, RULE_TEXT_FIELDS, sessionOf,
             rules: {
               type: 'object',
               properties: {
-                core: { type: 'string', description:'常驻核心设定：世界基础、核心威胁、长期矛盾，完整保留。' },
+                core: { type: 'string', description:'完整替换独立核心设定：世界基础、核心威胁、长期矛盾。世界书常驻条目由世界书编辑器管理，不复制进此字段。' },
                 plot: { type: 'string', description:'剧情指引：路线、条件与可能结局，不是已发生事实。' },
                 narrative: { type: 'string' },
                 reply: { type: 'string' },

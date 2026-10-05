@@ -39,7 +39,8 @@ export interface StateDependencies extends StateWorldlines {
   selectedStatusGeneration: Status['selectedStatusGeneration']
   normalizeDecisionRecord: Status['normalizeDecisionRecord']
   importRecordKey(id: string, importId: unknown): string
-  importSummary(record: ImportRecord): Record<string, unknown>
+  importSummary(record: ImportRecord,authorRules?:Record<string,unknown>):Record<string,unknown>
+    &{authorCoreData?:{kind:string;text:string}}
   chatImportProjection?(session:StateSession,record:ImportRecord):Record<string,unknown> | null
   numericalState?(sessionId:string):import('./roleplay-mvu-player-types.js').MvuStateObservation
     |Promise<import('./roleplay-mvu-player-types.js').MvuStateObservation>
