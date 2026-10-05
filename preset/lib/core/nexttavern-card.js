@@ -1,6 +1,7 @@
 // Generated from runtime/alpha3/src/core/nexttavern-card.ts; edit the TypeScript source.
 // NextTavern's author document is portable DATA. Archive fields never execute.
 import { createHash } from 'node:crypto';
+export const NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY = 'dsh_nexttavern_author';
 /** Activation and export address the same original array positions. */
 export function nextTavernCardSourceIdV1(document) {
     return `tavern-${createHash('sha256').update(JSON.stringify(document)).digest('hex').slice(0, 16)}`;
@@ -29,6 +30,68 @@ export function portableNextTavernAuthorFields(row) {
 export function isNextTavernCardDocument(document) {
     return object(document) && document.spec === 'nexttavern_card'
         && document.spec_version === '1.0' && object(document.data);
+}
+export function isNativeTavernCardDocument(document) {
+    return object(document) && (document.spec === 'chara_card_v2' || document.spec === 'chara_card_v3')
+        && typeof document.spec_version === 'string' && object(document.data);
+}
+/** This key has one writer. Other extension values never become author DATA. */
+export function readNativeNextTavernAuthorExtensionV1(document) {
+    if (!isNativeTavernCardDocument(document))
+        return undefined;
+    const extensions = document.data.extensions;
+    if (!object(extensions))
+        return undefined;
+    const value = extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY];
+    if (!object(value) || value.schemaVersion !== 1 || value.encoding !== 'nexttavern-native-author-extension-v1')
+        return undefined;
+    if (!object(value.author) || !object(value.archive))
+        throw Error('NATIVE_CARD_AUTHOR_EXTENSION_INVALID');
+    return value;
+}
+export function readTavernCardArchiveV1(document) {
+    return isNextTavernCardDocument(document) ? document.archive
+        : readNativeNextTavernAuthorExtensionV1(document)?.archive ?? {};
+}
+const nativeAuthorFields = ['name', 'cards', 'worldbook', 'rules', 'status', 'opening', 'settings', 'compatibility'];
+const standardTextFields = ['description', 'personality', 'scenario', 'mes_example', 'system_prompt',
+    'post_history_instructions', 'first_mes', 'alternate_greetings'];
+/** Physical ST fields keep their original paths; classified author rows have
+ * one canonical execution home, rather than being guessed back into ST fields. */
+export function nativeNextTavernExecutionDocumentV1(document) {
+    const extension = readNativeNextTavernAuthorExtensionV1(document);
+    if (!extension)
+        return undefined;
+    // Decoder DATA is already owned. Clone only the containers changed by this
+    // projection; copying the inert archive would be discarded by prepare().
+    const data = { ...document.data, extensions: { ...document.data.extensions } };
+    for (const field of [...standardTextFields, ...nativeAuthorFields])
+        delete data[field];
+    delete data.extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY];
+    return { spec: 'nexttavern_card', spec_version: '1.0',
+        data: { ...data, ...extension.author }, archive: extension.archive };
+}
+export function mergeNativeTavernCardExportV1(original, current) {
+    const document = structuredClone(original), data = document.data, prior = readNativeNextTavernAuthorExtensionV1(original);
+    const extensions = object(data.extensions) ? data.extensions : {};
+    const oldValue = extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY];
+    const author = Object.fromEntries(nativeAuthorFields.filter(field => Object.hasOwn(current.data, field))
+        .map(field => [field, structuredClone(current.data[field])]));
+    extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY] = { ...prior,
+        schemaVersion: 1, encoding: 'nexttavern-native-author-extension-v1', author, archive: structuredClone(current.archive),
+        ...!prior && Object.hasOwn(extensions, NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY) ? { originalExtension: oldValue } : {} };
+    data.extensions = extensions;
+    data.name = current.data.name;
+    for (const [field, rule] of [['scenario', 'core'], ['mes_example', 'style'], ['system_prompt', 'narrative'],
+        ['post_history_instructions', 'reply']]) {
+        if (current.data.rules[rule] !== undefined)
+            data[field] = current.data.rules[rule];
+    }
+    if (current.data.opening !== undefined)
+        data.first_mes = current.data.opening.text;
+    if (current.data.character_book !== undefined)
+        data.character_book = structuredClone(current.data.character_book);
+    return document;
 }
 const bookEntries = (data) => {
     const entries = data.character_book?.entries ?? [];

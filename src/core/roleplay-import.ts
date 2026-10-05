@@ -57,7 +57,8 @@ import type {
 } from './roleplay-import-types.js';
 import type { CardWorkflowAgent, CardWorkflowJob, CardWorkflowSession } from './roleplay-card-workflow-types.js';
 import type { ExportMaterial } from './card-export-projection.js';
-import {isNextTavernCardDocument,portableNextTavernAuthorFields} from './nexttavern-card.js';
+import {isNextTavernCardDocument,portableNextTavernAuthorFields,
+  readNativeNextTavernAuthorExtensionV1} from './nexttavern-card.js';
 export function importActiveKey(sessionId: string) {
   return keyOf(sessionId, 'import-active');
 }
@@ -752,7 +753,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
           try {
             if (['.png', '.json'].includes(source.extension)) {
               decoded = decodeTavernCard(rawBytes, source.extension);
-              if(decoded.format==='json-nexttavern-v1') {
+              if(decoded.format==='json-nexttavern-v1'||readNativeNextTavernAuthorExtensionV1(decoded.document)) {
                 nativeTransport=decoded;
                 const execution=prepareNextTavernExecutionCard(decoded);
                 decoded=execution.decoded;executionRawSource=execution.rawSource;

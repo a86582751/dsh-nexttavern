@@ -48,6 +48,23 @@ export interface NextTavernCardDocument extends Record<string, unknown> {
   data: NextTavernCardData
   archive: NextTavernCardArchive
 }
+export interface NativeTavernCardDocument extends Record<string, unknown> {
+  spec: 'chara_card_v2'|'chara_card_v3'
+  spec_version: string
+  data: Record<string, unknown>&{name:string;extensions?:Record<string,unknown>}
+}
+export type NextTavernCardExportDocument=NextTavernCardDocument|NativeTavernCardDocument
+export type NativeNextTavernAuthorDataV1=Pick<NextTavernCardData,
+  'name'|'cards'|'worldbook'|'rules'|'status'|'opening'|'settings'|'compatibility'>
+export interface NativeNextTavernAuthorExtensionV1 extends Record<string,unknown> {
+  schemaVersion:1
+  encoding:'nexttavern-native-author-extension-v1'
+  author:NativeNextTavernAuthorDataV1
+  archive:NextTavernCardArchive
+  /** An earlier opaque value at this writer-owned key remains inert DATA. */
+  originalExtension?:unknown
+}
+export const NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY='dsh_nexttavern_author'
 export interface NextTavernCardProjectionInput {
   document: Record<string, unknown>
   data: Record<string, unknown>
@@ -85,6 +102,67 @@ export function portableNextTavernAuthorFields(row: Record<string, unknown>): Re
 export function isNextTavernCardDocument(document: unknown): document is NextTavernCardDocument {
   return object(document) && document.spec === 'nexttavern_card'
     && document.spec_version === '1.0' && object(document.data)
+}
+
+export function isNativeTavernCardDocument(document:unknown):document is NativeTavernCardDocument {
+  return object(document)&&(document.spec==='chara_card_v2'||document.spec==='chara_card_v3')
+    &&typeof document.spec_version==='string'&&object(document.data)
+}
+
+/** This key has one writer. Other extension values never become author DATA. */
+export function readNativeNextTavernAuthorExtensionV1(document:unknown):NativeNextTavernAuthorExtensionV1|undefined {
+  if(!isNativeTavernCardDocument(document))return undefined
+  const extensions=document.data.extensions
+  if(!object(extensions))return undefined
+  const value=extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY]
+  if(!object(value)||value.schemaVersion!==1||value.encoding!=='nexttavern-native-author-extension-v1')return undefined
+  if(!object(value.author)||!object(value.archive))throw Error('NATIVE_CARD_AUTHOR_EXTENSION_INVALID')
+  return value as unknown as NativeNextTavernAuthorExtensionV1
+}
+
+export function readTavernCardArchiveV1(document:Record<string,unknown>):NextTavernCardArchive {
+  return isNextTavernCardDocument(document)?document.archive
+    :readNativeNextTavernAuthorExtensionV1(document)?.archive??{}
+}
+
+const nativeAuthorFields=['name','cards','worldbook','rules','status','opening','settings','compatibility'] as const
+const standardTextFields=['description','personality','scenario','mes_example','system_prompt',
+  'post_history_instructions','first_mes','alternate_greetings'] as const
+
+/** Physical ST fields keep their original paths; classified author rows have
+ * one canonical execution home, rather than being guessed back into ST fields. */
+export function nativeNextTavernExecutionDocumentV1(document:NativeTavernCardDocument):NextTavernCardDocument|undefined {
+  const extension=readNativeNextTavernAuthorExtensionV1(document)
+  if(!extension)return undefined
+  // Decoder DATA is already owned. Clone only the containers changed by this
+  // projection; copying the inert archive would be discarded by prepare().
+  const data:Record<string,unknown>&{extensions:Record<string,unknown>}=
+    {...document.data,extensions:{...document.data.extensions}}
+  for(const field of [...standardTextFields,...nativeAuthorFields])delete data[field]
+  delete data.extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY]
+  return {spec:'nexttavern_card',spec_version:'1.0',
+    data:{...data,...extension.author} as NextTavernCardData,archive:extension.archive}
+}
+
+export function mergeNativeTavernCardExportV1(original:NativeTavernCardDocument,
+  current:NextTavernCardDocument):NativeTavernCardDocument {
+  const document=structuredClone(original),data=document.data,prior=readNativeNextTavernAuthorExtensionV1(original)
+  const extensions=object(data.extensions)?data.extensions:{}
+  const oldValue=extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY]
+  const author=Object.fromEntries(nativeAuthorFields.filter(field=>Object.hasOwn(current.data,field))
+    .map(field=>[field,structuredClone(current.data[field])])) as unknown as NativeNextTavernAuthorDataV1
+  extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY]={...prior,
+    schemaVersion:1,encoding:'nexttavern-native-author-extension-v1',author,archive:structuredClone(current.archive),
+    ...!prior&&Object.hasOwn(extensions,NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY)?{originalExtension:oldValue}:{}}
+  data.extensions=extensions
+  data.name=current.data.name
+  for(const [field,rule] of [['scenario','core'],['mes_example','style'],['system_prompt','narrative'],
+    ['post_history_instructions','reply']] as const) {
+    if(current.data.rules[rule]!==undefined)data[field]=current.data.rules[rule]
+  }
+  if(current.data.opening!==undefined)data.first_mes=current.data.opening.text
+  if(current.data.character_book!==undefined)data.character_book=structuredClone(current.data.character_book)
+  return document
 }
 
 const bookEntries = (data: Record<string, unknown>): Record<string, unknown>[] => {

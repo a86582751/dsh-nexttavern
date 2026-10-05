@@ -2,7 +2,7 @@ import type { ContextSession, ContextMessage } from './roleplay-context.js'
 import type { TaskAgent, TaskSelection, StoredTask } from './tavern-task-types.js'
 import type { ResourceRecord } from './roleplay-resource-bridge-types.js'
 import type { createTavernLibrary } from './tavern-library.js'
-import type {NextTavernCardDocument} from './nexttavern-card.js'
+import type {NextTavernCardExportDocument} from './nexttavern-card.js'
 
 export interface CardWorkflowSession extends ContextSession { header: {cwd: string; seedLength?: unknown} }
 export interface CardWorkflowAgent extends TaskAgent { steer?(message: ContextMessage): unknown }
@@ -24,7 +24,7 @@ export interface CardWorkflowJob extends Record<string, unknown> {
   toolCallIds?: string[]
   openingRequested?: boolean
   mode?: 'original'|'organized'
-  exportDocument?: NextTavernCardDocument
+  exportDocument?: NextTavernCardExportDocument
 }
 export interface CardWorkflowDependencies {
   T: {
@@ -40,7 +40,7 @@ export interface CardWorkflowDependencies {
   statusFixedContext(session: CardWorkflowSession): unknown
   /** Startup DATA fingerprint only; final export/source and Actor checks remain with their owners. */
   captureExportStartSource?(session: CardWorkflowSession,mode:'original'|'organized'):
-    {sha256: string; document?:NextTavernCardDocument; assertCurrent(): void}
+    {sha256: string; document?:NextTavernCardExportDocument; assertCurrent(): void}
   nativeTask(options: {
     session: CardWorkflowSession; agent?: CardWorkflowAgent; kind: string; format: string; selection: TaskSelection;
     source: {workflowId: string; workflowType: string; generation: string; events: {seq: number; hash: string}[]}; signal?: AbortSignal;

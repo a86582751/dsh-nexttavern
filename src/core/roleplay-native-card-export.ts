@@ -3,9 +3,11 @@ import {keyOf,cloneRecord,recordSha256} from './roleplay-data.js'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
 import {readStructuredImportDataV1} from './roleplay-import-record.js'
 import {portableNextTavernAuthorFields,isNextTavernCardDocument,nextTavernCardSourceIdV1,
-  NEXTTAVERN_ST_MACRO_FIELDS} from './nexttavern-card.js'
+  NEXTTAVERN_ST_MACRO_FIELDS,isNativeTavernCardDocument,readNativeNextTavernAuthorExtensionV1,
+  readTavernCardArchiveV1,mergeNativeTavernCardExportV1} from './nexttavern-card.js'
 import {materializeTavernLoreEntryFieldsV1} from './tavern-lore-compiler.mjs'
-import type {NextTavernCardDocument,NextTavernCardData,NextTavernAuthorRow} from './nexttavern-card.js'
+import type {NextTavernCardDocument,NextTavernCardData,NextTavernAuthorRow,
+  NextTavernCardExportDocument} from './nexttavern-card.js'
 import type {TavernLoreSourceCaptureV1} from './roleplay-tavern-lore-source-types.js'
 import type {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
 import type {NativeCardOpeningExportReadV1} from './roleplay-card-export-opening.js'
@@ -17,12 +19,12 @@ interface Dependencies {
   readonly source:{capture(id:string):TavernLoreSourceCaptureV1}
   readonly edits:Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,'observeJournalDataWithLegacyData'>
   readonly readOpening:(capture:TavernLoreSourceCaptureV1)=>NativeCardOpeningExportReadV1
-  readonly readArchive:(record:ImportRecord)=>NextTavernCardDocument['archive']
+  readonly readTransport:(record:ImportRecord)=>NextTavernCardExportDocument
 }
 const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value)
 const authorFields=(value:unknown)=>object(value)?portableNextTavernAuthorFields(value):{}
 
-export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextTavernCardDocument {
+export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextTavernCardExportDocument {
   const {tables:T}=deps,prefix=id+'__',captured=deps.source.capture(id)
   if(captured.kind==='refused')throw Error(captured.diagnostics[0]?.code??'CARD_EXPORT_SOURCE_FAILED')
   if(captured.kind==='outside-declared-domain'
@@ -32,6 +34,7 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
   const decoded=captured.kind==='captured-data'?captured.contributionInput.rawDecoded:original?.sourceEnvelope
     ?readStructuredImportDataV1(original).decoded:undefined
   const native=decoded&&isNextTavernCardDocument(decoded.document)?decoded.document:undefined
+  const transport=original?.sourceEnvelope?.schemaVersion===2?deps.readTransport(original):decoded?.document
   // Keep open author fields in DATA while runtime text has one canonical home.
   const extra=cloneRecord(decoded?.data??{}) as Record<string,unknown>
   for(const field of ['name','description','personality','scenario','mes_example','system_prompt',
@@ -103,7 +106,7 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
     ...T.status.get(keyOf(id,'spec'))!==undefined?{status:authorFields(T.status.get(keyOf(id,'spec'))) as {text:string}}:{},
     ...opening?{opening}:{},...T.branch.get(keyOf(id,'settings'))!==undefined
       ?{settings:authorFields(T.branch.get(keyOf(id,'settings')))}:{}}
-  const archive=cloneRecord(native&&original?.sourceEnvelope?.schemaVersion===2?deps.readArchive(original):native?.archive??{})
+  const archive=cloneRecord(native&&transport?readTavernCardArchiveV1(transport):native?.archive??{})
   const documents:unknown[]=cloneRecord(archive.documents??[]),classifiedSources:unknown[]=cloneRecord(archive.classifiedSources??[])
   const records=new Map<string,ImportRecord>(original?[[original.importId,original]]:[])
   const collectSources=(value:unknown):void=>{
@@ -122,14 +125,17 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
     if(key.startsWith(prefix)&&object(value))collectSources(value.sources)
   for(const record of records.values()) {
     if(record.sourceEnvelope) {
-      let document=record===original&&decoded?decoded.document:readStructuredImportDataV1(record).decoded.document
-      const historicalNative=record!==original&&isNextTavernCardDocument(document)
-      if(historicalNative&&record.sourceEnvelope.schemaVersion===2)document={...document,archive:deps.readArchive(record)}
+      const document=record===original&&transport?transport:record.sourceEnvelope.schemaVersion===2
+        ?deps.readTransport(record):readStructuredImportDataV1(record).decoded.document
       // Historical native sources retain one complete inert document, including
       // open archive metadata. The current native archive remains authoritative;
       // reimporting this single export therefore does not add another wrapper.
-      if(historicalNative||!isNextTavernCardDocument(document))documents.push({document,source:{extension:record.sourceEnvelope.extension,
-        format:record.sourceEnvelope.format,sha256:record.rawSha256}})
+      if(record!==original||!isNextTavernCardDocument(document)&&!readNativeNextTavernAuthorExtensionV1(document)) {
+        documents.push({document,source:{extension:record.sourceEnvelope.extension,
+          format:record.sourceEnvelope.schemaVersion===2&&isNativeTavernCardDocument(document)
+            ?document.spec==='chara_card_v2'?'json-v2':'json-v3':record.sourceEnvelope.format,
+          sha256:record.rawSha256}})
+      }
     }else classifiedSources.push({normalizer:record.normalizer,rawSource:record.rawSource,
       normalizedSource:record.normalizedSource,assignments:record.assignments.map(assignment=>{
         const {materializedSha256:_materialized,...portable}=assignment
@@ -137,7 +143,12 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
       })})
   }
   const unique=(values:unknown[])=>[...new Map(values.map(value=>[recordSha256(value),value])).values()]
-  return {...native??{},spec:'nexttavern_card',spec_version:'1.0',data,
+  const result:NextTavernCardDocument={...native??{},spec:'nexttavern_card',spec_version:'1.0',data,
     archive:{...archive,...documents.length||archive.documents!==undefined?{documents:unique(documents)}:{},
       ...classifiedSources.length||archive.classifiedSources!==undefined?{classifiedSources:unique(classifiedSources)}:{}}}
+  if(isNativeTavernCardDocument(transport)) {
+    data.name=String(cards.find(card=>card.kind!=='user')?.name??transport.data.name)
+    return mergeNativeTavernCardExportV1(transport,result)
+  }
+  return result
 }

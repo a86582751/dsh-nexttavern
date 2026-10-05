@@ -59,7 +59,7 @@ export function registerTaskTools({ctx,T,clusterJob,resolveRoleplaySession,story
     {type:'object',properties:{mode:{type:'string',enum:['original','organized']}},additionalProperties:false},
     async(args,exec)=>({ok:true,jobId:(await startExportJob(await sessionOf(exec),'novel-export',exec.agent,undefined,undefined,args.mode)).id}))), 'roleplay: novel export tool')
   ctx.effect(()=>ctx.tools.register(simpleTool<TaskToolArguments,TaskToolExecution,Promise<unknown>>('rp_card_export',
-    '将当前人物、世界书、规则、模板和开场完整导出为可再次程序导入的 NextTavern JSON。默认 original 为纯程序保真导出。只有玩家明确要求重新按语义编排内容时才使用 organized。文件在酒馆管理下载。',
+    '将当前人物、世界书、规则、模板和开场完整导出为可再次程序导入的结构化 JSON；原生角色卡保留 V2/V3 格式。默认 original 为纯程序保真导出。只有玩家明确要求重新按语义编排内容时才使用 organized。文件在酒馆管理下载。',
     {type:'object',properties:{mode:{type:'string',enum:['original','organized']}},additionalProperties:false},
     async(args,exec)=>({ok:true,jobId:(await startExportJob(await sessionOf(exec),'card-export',exec.agent,undefined,undefined,args.mode)).id}))),
     'roleplay: deterministic card export tool')

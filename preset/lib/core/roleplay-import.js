@@ -10,7 +10,7 @@ import { cardCodeBlocks, statusTemplateDiagnostics } from '../status-template.js
 import { isInlinePending } from './tavern-tasks.js';
 import { chatCardSelector } from './roleplay-chat-card-source.js';
 import { runRoleplaySourceLockedV1 } from './roleplay-source-lock.js';
-import { isNextTavernCardDocument, portableNextTavernAuthorFields } from './nexttavern-card.js';
+import { isNextTavernCardDocument, portableNextTavernAuthorFields, readNativeNextTavernAuthorExtensionV1 } from './nexttavern-card.js';
 export function importActiveKey(sessionId) {
     return keyOf(sessionId, 'import-active');
 }
@@ -673,7 +673,7 @@ export function registerRoleplayImports(deps) {
         try {
             if (['.png', '.json'].includes(source.extension)) {
                 decoded = decodeTavernCard(rawBytes, source.extension);
-                if (decoded.format === 'json-nexttavern-v1') {
+                if (decoded.format === 'json-nexttavern-v1' || readNativeNextTavernAuthorExtensionV1(decoded.document)) {
                     nativeTransport = decoded;
                     const execution = prepareNextTavernExecutionCard(decoded);
                     decoded = execution.decoded;

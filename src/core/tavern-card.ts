@@ -3,7 +3,8 @@ import { createHash, randomBytes } from 'node:crypto'
 import { constants, openSync, closeSync, fstatSync, lstatSync, realpathSync, readSync } from 'node:fs'
 import { resolve, relative, isAbsolute, sep, extname } from 'node:path'
 import { pngCrc } from './tavern-card-crc.js'
-import {isNextTavernCardDocument,projectNextTavernCard} from './nexttavern-card.js'
+import {isNextTavernCardDocument,isNativeTavernCardDocument,projectNextTavernCard,
+  readNativeNextTavernAuthorExtensionV1,nativeNextTavernExecutionDocumentV1} from './nexttavern-card.js'
 
 const CARD_SOURCE_BYTES=20_000_000
 export const CARD_LIMITS = Object.freeze({ bytes:CARD_SOURCE_BYTES,jsonBytes:CARD_SOURCE_BYTES,
@@ -194,7 +195,9 @@ export function decodeTavernCard(bytes: unknown, extension: string): DecodedTave
   const png = extension === '.png' ? pngPayload(bytes) : null
   const document = parseJson(png?.payload ?? bytes,png?CARD_LIMITS.jsonBytes:CARD_LIMITS.bytes)
   const card=inspectTavernCardDocument(document)
-  if(png&&card.format==='json-nexttavern-v1')fail('NextTavern 原生角色卡使用 JSON 文件')
+  if(png&&(card.format==='json-nexttavern-v1'||readNativeNextTavernAuthorExtensionV1(document))) {
+    fail('NextTavern 原生角色卡使用 JSON 文件')
+  }
   if(png?.chunk==='ccv3'&&card.format!=='json-v3')fail('ccv3 数据块版本不匹配')
   return {schemaVersion:1,...card,format:png?card.format.replace('json-','png-'):card.format,
     sourceSha256:digest(bytes),...(png?{pngChunk:png.chunk,avatarBase64:png.avatar.toString('base64'),
@@ -258,6 +261,12 @@ export function inspectTavernCardDocument(document:unknown):Pick<DecodedTavernCa
       for(const key of ['css','js'])if(data.rules.beauty[key]!==undefined&&typeof data.rules.beauty[key]!=='string')fail('NextTavern beauty 正文格式无效')
     }
   }
+  if(isNativeTavernCardDocument(document)) {
+    const execution=nativeNextTavernExecutionDocumentV1(document)
+    // The transport decoder owns the declared extension's author structure.
+    // Runtime Source later consumes this canonical DATA without interpreting ST mirrors.
+    if(execution)inspectTavernCardDocument(execution)
+  }
   return {format:native?'json-nexttavern-v1':`json-v${version}`,document,data:data as CardData}
 }
 
@@ -272,8 +281,12 @@ export function readTavernExecutionCard(rawSource:string):DecodedTavernCard {
  * inert archive preserves the established canonical bytes and execution hash. */
 export function prepareNextTavernExecutionCard(decoded:DecodedTavernCard):
   {decoded:DecodedTavernCard;rawSource:string} {
-  const document={...decoded.document,archive:{}},rawSource=JSON.stringify(document,null,2)
-  return {decoded:{...decoded,document,sourceSha256:digest(rawSource)},rawSource}
+  const transport=decoded.document
+  const canonical=isNativeTavernCardDocument(transport)?nativeNextTavernExecutionDocumentV1(transport):transport
+  if(!canonical)fail('NATIVE_CARD_AUTHOR_EXTENSION_MISSING')
+  const document:Record<string,unknown>={...canonical,archive:{}},rawSource=JSON.stringify(document,null,2)
+  return {decoded:{...decoded,format:'json-nexttavern-v1',document,data:document.data as CardData,
+    sourceSha256:digest(rawSource)},rawSource}
 }
 
 // Keep this projection's bytes and spans stable for persisted schema-v4 records.

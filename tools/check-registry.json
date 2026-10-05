@@ -10475,6 +10475,21 @@
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     },
     {
+      "id": "test:native-tavern-author-transport.test.mts",
+      "action": "test",
+      "modules": [
+        "card-writing"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
       "id": "test:ask-user-decision-pr.test.mjs",
       "action": "test",
       "artifact": "ask-user-decision-pr-test",
@@ -24956,6 +24971,83 @@
         "network": false,
         "service": false
       },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:author-prompt-program",
+      "action": "test",
+      "modules": [
+        "card-import",
+        "operations"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "inputs": [],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "args": [],
+      "heavy": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-author-prompt-core",
+      "action": "test",
+      "modules": [
+        "status",
+        "reader"
+      ],
+      "inputs": [],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "cache": true,
+      "timeoutMs": 1800000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-tavern-injections",
+      "action": "test",
+      "modules": [
+        "status",
+        "card-import"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "inputs": [],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "args": [],
+      "heavy": true,
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]

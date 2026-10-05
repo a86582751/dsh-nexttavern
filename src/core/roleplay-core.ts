@@ -13,7 +13,7 @@ import type { TaskAgent } from './tavern-task-types.js'
 import type { ImportRecord,CardImportDependencies,ImportSession } from './roleplay-import-types.js'
 import {captureNextTavernCardExportV1} from './roleplay-native-card-export.js'
 import {decodeTavernCard} from './tavern-card.js'
-import type {NextTavernCardDocument} from './nexttavern-card.js'
+import type {NextTavernCardExportDocument} from './nexttavern-card.js'
 import type {TavernLoreSourceCaptureV1} from './roleplay-tavern-lore-source-types.js'
 import type {CompletionSnapshot} from './roleplay-completion-types.js'
 import {
@@ -989,12 +989,12 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       }
       assertCurrent()
       const document=captureNextTavernCardExportV1({tables:T,source:tavernSource,edits:tavernLoreEdits,
-        readOpening:captured=>readNativeOpeningForExport!(session,captured),readArchive:record=>{
+        readOpening:captured=>readNativeOpeningForExport!(session,captured),readTransport:record=>{
           const envelope=record.sourceEnvelope!
           if(envelope.schemaVersion!==2)throw Error('CARD_EXPORT_ARCHIVE_VERSION_INVALID')
           const resource=libraryFor(session).read(envelope.transportResourceId)
           if(resource.fullSha256!==envelope.transportSha256)throw Error('CARD_EXPORT_ARCHIVE_SOURCE_CHANGED')
-          return decodeTavernCard(Buffer.from(resource.text,'utf8'),'.json').document.archive as NextTavernCardDocument['archive']
+          return decodeTavernCard(Buffer.from(resource.text,'utf8'),'.json').document as NextTavernCardExportDocument
         }},session.id)
       // The exported settings are intentionally frozen at startup. Later author
       // edits do not invalidate this portable snapshot; selection still matters.
@@ -2475,6 +2475,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       return {sourceLineage:lineage,inheritedHistory,assertCurrent}
     },
     schemaScopes:mvuOpening.captureSchemaPromptScopes,
+    executeAuthorPrompt:mvuOpening.executeAuthorPrompt,
     openingPreparation:(native,scope,source)=>{
       if(!programOpening)throw Error('PROGRAM_OPENING_OWNER_UNAVAILABLE')
       return programOpening.openingPreparation(native,scope,source)
