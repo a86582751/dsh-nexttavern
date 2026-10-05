@@ -1,8 +1,8 @@
 // Generated from runtime/alpha3/src/core/roleplay-mvu-source.ts; edit the TypeScript source.
 import { createHash } from 'node:crypto';
 import { recordSha256 } from './roleplay-data.js';
-import { assertImportRecordIntegrity, importCoverage } from './roleplay-import-record.js';
-import { compileTavernOpeningCandidates, decodeTavernCard } from './tavern-card.js';
+import { assertImportRecordIntegrity, importCoverage, readStructuredImportDataV1 } from './roleplay-import-record.js';
+import { compileTavernOpeningCandidates } from './tavern-card.js';
 import { selectNativeMvuInitializationPolicy } from './tavern-mvu-initvar.js';
 import { NATIVE_MVU_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
 import { cloneSchemaData, schemaTextSha256 } from './tavern-mvu-schema-data.js';
@@ -181,6 +181,16 @@ export function assertMvuLiteralSourceTextV1(text, context, pointer) {
 export function assertMvuNonSchemaSourceExtensionsV1(value, pointer) {
     extensions(value, pointer);
 }
+function nativeBookEntries(data) {
+    const book = data.character_book;
+    if (book?.entries === undefined)
+        return [];
+    return Object.entries(book.entries);
+}
+const nativeInitComment = (raw) => isObject(raw)
+    && typeof (raw.comment ?? raw.name) === 'string'
+    && String(raw.comment ?? raw.name).toLowerCase().includes('[initvar]')
+    ? String(raw.comment ?? raw.name) : null;
 /** Core owns the existing source/import lock. All reads are synchronous; this
  * module neither acquires a second lock nor writes any Domain/native record. */
 function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) {
@@ -204,7 +214,7 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) 
     if (!idPattern.test(owner))
         fail('SOURCE_INVALID', '/source');
     const record = deps.readImportRecord(owner, pointer.importId);
-    if (!record || ![4, 5].includes(record.schemaVersion) || record.status !== 'active'
+    if (!record || ![4, 5, 6].includes(record.schemaVersion) || record.status !== 'active'
         || record.sessionId !== owner || record.importId !== pointer.importId
         || record.normalizedSha256 !== pointer.normalizedSha256 || record.activation?.transactionId !== pointer.transactionId) {
         fail('SOURCE_INVALID', '/source');
@@ -215,6 +225,8 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) 
     catch {
         fail('SOURCE_INVALID', '/source');
     }
+    const { decoded, provenance } = readStructuredImportDataV1(record);
+    const nativeCard = decoded.format === 'json-nexttavern-v1';
     const coverage = importCoverage(record);
     if (coverage.coverage !== 1 || coverage.uncovered.length || coverage.overlaps.length
         || recordSha256(coverage) !== pointer.coverageSha256)
@@ -289,9 +301,8 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) 
         if (typeof value !== 'string' || value.length > 512)
             fail('MACRO_UNSUPPORTED', '/macros');
     }
-    const envelope = record.sourceEnvelope;
-    const decoded = decodeTavernCard(Buffer.from(envelope.base64, 'base64'), envelope.extension);
-    boundedData(decoded.document, 'FIELD_UNSUPPORTED', '/document', budget);
+    // The import's real decoder has already parsed the entire original document.
+    // Numerical classification below consumes only its actual declarations.
     const candidates = compileTavernOpeningCandidates(decoded, context.context);
     const selected = candidates.find(item => item.index === selectedIndex);
     if (!selected)
@@ -300,8 +311,11 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) 
         rawSha256: record.rawSha256, normalizedSha256: record.normalizedSha256, transactionId: pointer.transactionId,
         coverageSha256: pointer.coverageSha256, pointer: { ...pointer } };
     const root = decoded.document.data === decoded.data ? '/data' : '';
-    const used = JSON.stringify(decoded.document).includes('{{')
-        || rows.some(item => JSON.stringify(item.value ?? null).includes('{{'));
+    const used = nativeCard ? candidates.some(item => item.materialization !== 'materialized' && item.rawText.includes('{{'))
+        || nativeBookEntries(decoded.data).some(([, raw]) => nativeInitComment(raw) !== null
+            && isObject(raw) && typeof raw.content === 'string' && raw.content.includes('{{'))
+        : JSON.stringify(decoded.document).includes('{{')
+            || rows.some(item => JSON.stringify(item.value ?? null).includes('{{'));
     const membership = { cards, worldbook, rules: versions.rules, settings: versions.settings };
     const content = {
         schemaVersion: 1, encoding: 'native-mvu-source-snapshot-v1', policy: NATIVE_MVU_SOURCE_POLICY,
@@ -318,6 +332,7 @@ function captureSource(deps, sessionId, selectedIndex, currentMaterial = false) 
         swipes: candidates.map(item => ({ identity: `swipe-${item.index}`, index: item.index, pointer: item.sourcePointer,
             sourceSha256: item.sourceSha256, renderedSha256: sha(item.renderedText) })),
         macroContext: { used, bindingSha256: used ? context.bindingSha256 : null, valuesSha256: used ? recordSha256(context.context) : null },
+        ...(record.schemaVersion === 6 ? { sourceProvenance: provenance } : {}),
     };
     return { snapshot: { ...content, snapshotSha256: recordSha256(content) }, document: decoded.document,
         data: decoded.data, context: context.context, candidates, rows, activationRows };
@@ -383,7 +398,53 @@ export function readMvuSchemaCurrentAuthorSource(deps, sessionId, selectedIndex)
 }
 export function createRoleplayMvuSource(deps) {
     const capture = (sessionId, selectedIndex) => captureSource(deps, sessionId, selectedIndex);
+    const classifyNative = (captured, authorSchema) => {
+        const { data, context, snapshot } = captured;
+        const helper = isObject(data.extensions) ? data.extensions.tavern_helper : undefined;
+        if (!authorSchema && isObject(helper) && helper.scripts !== undefined
+            && (!Array.isArray(helper.scripts) || helper.scripts.length)) {
+            fail('EXTENSION_UNSUPPORTED', '/data/extensions/tavern_helper');
+        }
+        const entries = [];
+        const budget = { nodes: 0, bytes: 0 };
+        // Canonical prompt DATA, ordinary book lore and archive metadata are not
+        // numerical declarations. The decoder owns their document structure.
+        for (const [ordinal, [key, raw]] of nativeBookEntries(data).entries()) {
+            const comment = nativeInitComment(raw);
+            if (comment === null)
+                continue;
+            const pointer = `${snapshot.bindings.primary.pointer}/entries/${pointerPart(key)}`;
+            if (!isObject(raw) || typeof raw.content !== 'string')
+                fail('FIELD_UNSUPPORTED', pointer);
+            boundedData(raw.content, 'FIELD_UNSUPPORTED', pointer, budget);
+            if (stateSyntax(raw.content))
+                fail('STATE_SYNTAX_UNSUPPORTED', pointer, raw.content);
+            const rendered = render(raw.content, context, true);
+            entries.push({ identity: `entry-${ordinal}`, sourcePointer: pointer, comment,
+                enabled: raw.enabled !== false && raw.disable !== true, content: raw.content, contentSha256: sha(raw.content),
+                renderedContent: rendered, renderedContentSha256: sha(rendered) });
+        }
+        let openingInit = false;
+        for (const candidate of captured.candidates) {
+            if (candidate.materialization === 'materialized')
+                continue;
+            boundedData(candidate.rawText, 'FIELD_UNSUPPORTED', candidate.sourcePointer, budget);
+            if (stateSyntax(candidate.rawText))
+                fail('STATE_SYNTAX_UNSUPPORTED', candidate.sourcePointer, candidate.rawText);
+            if (openingBlocks(candidate.renderedText, candidate.sourcePointer))
+                openingInit = true;
+            render(candidate.rawText, context, entries.length > 0 || openingInit);
+        }
+        const selection = selectNativeMvuInitializationPolicy({ books: [{ entries }],
+            swipes: captured.candidates.map(item => ({ rawOpening: item.rawText, renderedOpening: item.renderedText,
+                ...(item.materialization ? { materialization: item.materialization } : {}) })) });
+        if (selection.kind === 'unsupported')
+            fail('INITVAR_INVALID', selection.diagnostics[0].pointer);
+        return { entries, hasInit: entries.length > 0 || openingInit, policy: selection.policy };
+    };
     const classify = (captured, authorSchema = false) => {
+        if (captured.document.spec === 'nexttavern_card')
+            return classifyNative(captured, authorSchema);
         const { data, context, snapshot } = captured;
         if (captured.document !== data)
             requireKeys(captured.document, ['spec', 'spec_version', 'data'], '/document', 'FIELD_UNSUPPORTED');
@@ -514,7 +575,8 @@ export function createRoleplayMvuSource(deps) {
             }
         }
         const selection = selectNativeMvuInitializationPolicy({ books: [{ entries }],
-            swipes: captured.candidates.map(item => ({ rawOpening: item.rawText, renderedOpening: item.renderedText })) });
+            swipes: captured.candidates.map(item => ({ rawOpening: item.rawText, renderedOpening: item.renderedText,
+                ...(item.materialization ? { materialization: item.materialization } : {}) })) });
         if (selection.kind === 'unsupported')
             fail('INITVAR_INVALID', selection.diagnostics[0].pointer);
         return { entries, hasInit: entries.length > 0 || openingInit, policy: selection.policy };
@@ -598,7 +660,8 @@ export function createRoleplayMvuSource(deps) {
                     initializedBooks: [], messageIndex: 0, selectedSwipeIdentity: `swipe-${request.candidate.index}`,
                     swipes: captured.candidates.map((item, index) => ({ identity: `swipe-${item.index}`, sourcePointer: item.sourcePointer,
                         sourceSha256: item.sourceSha256, rawOpening: item.rawText, renderedOpening: item.renderedText,
-                        renderedSha256: sha(item.renderedText), statData: structuredClone(facts.basis.swipes[index].statData) })),
+                        renderedSha256: sha(item.renderedText), statData: structuredClone(facts.basis.swipes[index].statData),
+                        ...(item.materialization ? { materialization: item.materialization } : {}) })),
                     capabilities: { macros: snapshot.macroContext.used ? 'verified-identity-rendering' : 'none',
                         schema: 'json-object-subset-v1', callbacks: 'none' } } };
         }
@@ -649,7 +712,7 @@ export function createRoleplayMvuSource(deps) {
             selectedSwipeIdentity: `swipe-${captured.snapshot.selected.index}`,
             swipes: captured.candidates.map(item => ({ identity: `swipe-${item.index}`, sourcePointer: item.sourcePointer,
                 sourceSha256: item.sourceSha256, rawOpening: item.rawText, renderedOpening: item.renderedText,
-                renderedSha256: sha(item.renderedText), statData: {} })),
+                renderedSha256: sha(item.renderedText), statData: {}, ...(item.materialization ? { materialization: item.materialization } : {}) })),
             macros: captured.snapshot.macroContext.used ? 'verified-identity-rendering' : 'none' };
         const initSource = { ...body, initSourceSha256: recordSha256(body) };
         return { kind: 'schema-opening-data', authorSource: author.source, initSource };

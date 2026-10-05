@@ -6,11 +6,13 @@ import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePendin
 import type { ModelRoute } from './tavern-model-policy.js'
 import type {StoredTask} from './tavern-task-types.js'
 import type { HostSession, HostAgent, HostSource, NativeTaskInput, TaskHostDependencies } from './roleplay-task-host-types.js'
+import type {ImportSession,ImportExec,OwnedCardImportWorkflow} from './roleplay-import-types.js'
+import type {CardWorkflowJob} from './roleplay-card-workflow-types.js'
 
 export function createRoleplayTaskHost({
   T,ctx,config,taskAgents,storyBranchIsActive,statusFixedContext,taskDependenciesCurrent,
   taskInstruction,getMaintenanceJob,runStatusObligation,STATUS_SYSTEM,DECISION_SYSTEM,ORGANIZE_WORKER_SYSTEM,
-  inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,
+  inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,currentTaskClaim,assertCardWorkflow,
 }:TaskHostDependencies) {
   const continuationTimers=new Set<ReturnType<typeof setTimeout>>()
   let disposed=false
@@ -96,6 +98,40 @@ export function createRoleplayTaskHost({
         && job.kind==='memory' && job.input?.taskStage==='background-notes') && taskSourceCurrent(session,job,true)
     },
   })
+  function resolveCurrentCardImport(session:ImportSession,exec:ImportExec):OwnedCardImportWorkflow|undefined {
+    const actual=exec.agent as HostAgent|undefined
+    if(!actual?.session)return undefined
+    exec.signal?.throwIfAborted()
+    const child=Number(actual.options?.subagentDepth)>0||actual.session.header?.origin==='subagent'
+    let reference:{taskId?:string;generation?:string;workflowId?:string;childSessionId?:string}
+    if(child) {
+      const descriptor=eventsOf(actual.session).findLast(event=>event.type==='subagent/descriptor'
+        &&event.seq>=Number(actual.session!.inheritedEventCount??0)),
+        match=/^Tavern:([a-f0-9]{64}):([a-f0-9-]{36})$/.exec(String(descriptor?.data?.label??''))
+      if(!match)return undefined
+      reference={taskId:match[1]!,generation:match[2]!,childSessionId:actual.session.id}
+    }else {
+      const claim=currentTaskClaim?.(actual)
+      if(!claim)return undefined
+      reference=claim
+    }
+    const main=taskAgents.get(session.id)
+    if(disposed||ctx.sessions.get(session.id)!==session||ctx.sessions.get(actual.session.id)!==actual.session
+      ||!main||!child&&main!==actual)throw Error('CARD_IMPORT_TASK_SESSION_CHANGED')
+    const registered=tavernTasks.resolveRegisteredCardImport(session,main,reference),
+      source=registered.task.source as HostSource,
+      job=T.branch.get('tavern_cardjob__'+source.workflowId) as CardWorkflowJob|undefined
+    if(!job||job.kind!=='card-import')throw Error('CARD_IMPORT_WORKFLOW_OWNER_CHANGED')
+    assertCardWorkflow(session,{workflowId:source.workflowId,workflowGeneration:source.generation,
+      rawSha256:job.source.sha256})
+    const assertCurrent=()=>{
+      exec.signal?.throwIfAborted()
+      if(disposed||ctx.sessions.get(session.id)!==session||ctx.sessions.get(actual.session!.id)!==actual.session
+        ||taskAgents.get(session.id)!==main)throw Error('CARD_IMPORT_TASK_SESSION_CHANGED')
+      registered.assertCurrent()
+    }
+    return {session,job,assertCurrent}
+  }
   async function nativeTask<Result = unknown>({session,agent,system,user,promptContext,format='json',kind,signal,timeoutMs,maxTokens,validate,source:providedSource,selection,generationKey,tools:allowedTools,taskStage,background=false,onResult,onAdmission}: NativeTaskInput<Result>): Promise<Result> {
     if(!session)throw new Error('酒馆任务缺少所属会话')
     if(!agent&&!taskAgents.has(session.id)) {
@@ -183,5 +219,5 @@ export function createRoleplayTaskHost({
     if(result?.state==='completed'&&result.publicationState==='published'){job.state='completed';job.error=null;job.finishedAt=Date.now()}
     else {job.state='failed';job.error='状态结果尚未发布，可重试'}
   }
-  return {sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, nativeTask, resumeMemoryWork, resumeStatusMaintenance}
+  return {sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask, resumeMemoryWork, resumeStatusMaintenance}
 }

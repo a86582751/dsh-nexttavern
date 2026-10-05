@@ -15,6 +15,8 @@ import {
   projectStructuredImport,
   assertDeterministicAssignmentProof,
   deterministicAssignmentHash,
+  NEXTTAVERN_IMPORT_NORMALIZER,
+  readStructuredImportDataV1,
 } from './roleplay-import-record.js';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -33,6 +35,7 @@ import { readCardSource, decodeTavernCard, projectTavernCardCompact, compileTave
   compileTavernExtensionInventory, compileTavernExtensionInventoryV3, compileTavernCapabilityReport,
   fenceCardContent } from './tavern-card.js';
 import { registerCardExport } from './card-export.js';
+import type {DecodedTavernCard} from './tavern-card.js';
 import { cardCodeBlocks, statusTemplateDiagnostics } from '../status-template.js';
 import { isInlinePending } from './tavern-tasks.js';
 import {chatCardSelector} from './roleplay-chat-card-source.js';
@@ -54,6 +57,7 @@ import type {
 } from './roleplay-import-types.js';
 import type { CardWorkflowAgent, CardWorkflowJob, CardWorkflowSession } from './roleplay-card-workflow-types.js';
 import type { ExportMaterial } from './card-export-projection.js';
+import {isNextTavernCardDocument,portableNextTavernAuthorFields} from './nexttavern-card.js';
 export function importActiveKey(sessionId: string) {
   return keyOf(sessionId, 'import-active');
 }
@@ -100,16 +104,38 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
   // An external tool call must never wait on the driver that called it.
   const structuredDriverExecs = new WeakSet<ImportExec>();
   const importTool: typeof simpleTool = (name, description, parameters, execute) => {
-    const handler: typeof execute = name !== 'rp_card_import_begin' ? execute : async (args, exec) => {
+    const handler: typeof execute = async (args, actualExec) => {
+      let exec=actualExec;
       if (structuredDriverExecs.has(exec)) return execute(args,exec);
+      if(name!=='rp_card_import_begin'&&!deps.resolveCurrentCardImport)return execute(args,exec);
+      const session = await sessionOf(exec);
+      const owned=deps.resolveCurrentCardImport?.(session,exec);
+      if(owned)exec={...exec,ownedCardImport:owned};
+      if(name!=='rp_card_import_begin') {
+        return execute(args,exec);
+      }
       const chatAttachment = args.chat_attachment !== undefined;
       if (chatAttachment && (args.source_file !== undefined || args.request_id !== undefined || args.mode === 'merge')) {
         return {ok:false,error:'聊天附件不能同时指定路径、请求标识或 merge；请直接说明要导入的文件'};
       }
       if (chatAttachment && !deps.resolveChatCardSource) return {ok:false,error:'当前会话的聊天原件读取尚未就绪'};
-      const session = await sessionOf(exec);
       let enteredWorkflow = false;
       try {
+        if(owned) {
+          if(chatAttachment||args.mode==='merge'||args.request_id!==undefined&&args.request_id!==owned.job.clientRequestId) {
+            throw Error('CARD_IMPORT_TASK_ARGUMENTS_MISMATCH');
+          }
+          const source=resolveImportSource(session,String(args.source_file??'').trim());
+          if(source.sourcePath!==owned.job.source.sourceFile||sha256(source.bytes)!==owned.job.source.sha256) {
+            throw Error('CARD_IMPORT_TASK_SOURCE_MISMATCH');
+          }
+          // This exact task already owns its workflow and frozen source. Keep
+          // its resolved bytes in this call only; do not create a chat lease,
+          // second workflow identity or select another active task in the handler.
+          exec={...exec,ownedCardImport:{...owned,source}};
+          enteredWorkflow=true;
+          return await execute(args,exec);
+        }
         // Core revokes the current story capability synchronously before source
         // resolution's first await; the structured driver inherits that lease.
         const lease = deps.inputTransition?.begin(session,exec,args);
@@ -152,6 +178,16 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
     return simpleTool(name, description, parameters, handler);
   };
   const importRecordKey = (sessionId: string, importId: unknown) => keyOf(sessionId, `import-${safeId(importId)}`);
+  const assertOwnedImportRecord=(exec:ImportExec,record:ImportRecord)=>{
+    const owned=exec.ownedCardImport;
+    if(!owned)return;
+    if(record.workflowId!==owned.job.id||record.workflowGeneration!==owned.job.generation
+      ||record.rawSha256!==owned.job.source.sha256)throw Error('CARD_IMPORT_TASK_RECORD_MISMATCH');
+  };
+  const assertImportWorkflow=(session:ImportSession,record:ImportRecord,exec:ImportExec)=>{
+    assertCardWorkflow(session,record);
+    exec.ownedCardImport?.assertCurrent();
+  };
   const activeImportForWorkflow = (sessionId: string, workflowId: string) => {
     const record = ([...T.branch.entries()].map(([, value]) => value as ImportRecord)
       .find(value => value?.sessionId === sessionId && value.workflowId === workflowId && value.status === 'active'));
@@ -334,7 +370,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             });
         }
         for (const original of structuredOriginals.values()) {
-          const decoded = decodeTavernCard(Buffer.from(original.sourceEnvelope!.base64, 'base64'), original.sourceEnvelope!.extension);
+          const decoded = readStructuredImportDataV1(original).decoded;
           const extras = {
             ...decoded.data
           };
@@ -602,7 +638,14 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
           if (args.mode === 'merge' && args.request_id !== undefined)
             return {ok:false,error:'merge 手动导入不接受程序任务 request_id'};
           await deps.beforeWrite?.(exec);
-          if (args.mode !== 'merge' && !eventsOf(exec.agent?.session).some(e => e.type === 'subagent/descriptor')) {
+          if(exec.ownedCardImport) {
+            const job=exec.ownedCardImport.job;
+            assertCardWorkflow(session,{workflowId:job.id,workflowGeneration:job.generation,
+              rawSha256:job.source.sha256});
+            exec.ownedCardImport.assertCurrent();
+          }
+          if (!exec.ownedCardImport && args.mode !== 'merge'
+            && !eventsOf(exec.agent?.session).some(e => e.type === 'subagent/descriptor')) {
             let job;
             try {
               job = await beginCardWorkflow(session, 'card-import', requestedPath, exec.agent,
@@ -660,13 +703,14 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               return {ok:true, ...importSummary(imported), job:live, resumed:true};
             }
           }
-          const workflow = activeCardWorkflow(session);
+          const workflow = exec.ownedCardImport?.job??activeCardWorkflow(session);
           if (workflow?.kind === 'card-import' && resolve(session.header.cwd, requestedPath) !== workflow.source.sourceFile)
             return {
               ok: false, error: '任务只能读取已冻结的角色卡文件'
             };
           const resumed = workflow ? [...T.branch.entries()].map(([, v]) => v as ImportRecord).find(v => v?.workflowId === workflow.id && v.importId) : null;
           if (resumed) {
+            assertOwnedImportRecord(exec,resumed);
             if (!structuredDriverExecs.has(exec)) await deps.inputTransition?.bindLegacyRecord?.(session,exec,resumed);
             if (resumed.status === 'active') {
               const pointer = T.branch.get(importActiveKey(session.id)) as ImportPointer | undefined;
@@ -681,7 +725,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
           }
           let source;
           try {
-            source = resolveImportSource(session, requestedPath);
+            source = exec.ownedCardImport?.source??resolveImportSource(session, requestedPath);
           }
           catch (error) {
             return {
@@ -700,10 +744,16 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               ok: false, error: `角色卡超过 ${IMPORT_LIMITS.maxBytes.toLocaleString()} 字节，拒绝静默截断；请先拆成多个来源文件`
             };
           let decoded, projected;
+          let nativeTransport:DecodedTavernCard|undefined;
           try {
             if (['.png', '.json'].includes(source.extension)) {
               decoded = decodeTavernCard(rawBytes, source.extension);
-              projected = projectTavernCardCompact(decoded);
+              if(decoded.format==='json-nexttavern-v1') {
+                nativeTransport=decoded;
+                const executionBytes=Buffer.from(JSON.stringify({...decoded.document,archive:{}},null,2),'utf8');
+                decoded=decodeTavernCard(executionBytes,'.json');
+                projected=projectStructuredImport({schemaVersion:6,normalizer:NEXTTAVERN_IMPORT_NORMALIZER} as ImportRecord,decoded);
+              }else projected = projectTavernCardCompact(decoded);
             }
           }
           catch (error) {
@@ -754,8 +804,14 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             .slice(
               0,
               200);
+          // Complete transport commits before its reference becomes visible.
+          // Runtime Source reads the execution JSON without touching this file.
+          const transportResource=nativeTransport?await libraryFor(session).archive({
+            name:resourceName(nativeTransport.data.name,'.json'),type:'application/json',bytes:rawBytes,
+            source:{sessionId:session.id,kind:'card-import',importId,sha256:sha256(rawBytes)}}):undefined;
+          if(nativeTransport&&!transportResource?.id)throw new Error('原生角色卡原件归档未完成');
           const record: ImportRecord = {
-            schemaVersion: decoded ? 5 : 3,
+            schemaVersion: nativeTransport?6:decoded ? 5 : 3,
             importId,
             workflowId: workflow?.id,
             workflowGeneration: workflow?.generation,
@@ -764,7 +820,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             workspaceRoot: source.workspaceRoot,
             sourceBytes: rawBytes.length,
             sourceMtimeMs: source.sourceMtimeMs,
-            normalizer: decoded ? 'tavern-fields-v2' : IMPORT_NORMALIZER,
+            normalizer: nativeTransport?NEXTTAVERN_IMPORT_NORMALIZER:decoded ? 'tavern-fields-v2' : IMPORT_NORMALIZER,
             ...(decoded ? { fieldProof: compileTavernFieldCoverage(decoded) } : {}),
             ...(decoded ? { extensionInventory: compileTavernExtensionInventory(decoded) } : {}),
             ...(decoded ? { extensionDeclarations: compileTavernExtensionInventoryV3(decoded) } : {}),
@@ -774,7 +830,12 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
 
 
               ? {
-                sourceEnvelope: {
+                sourceEnvelope: nativeTransport?{
+                  schemaVersion:2,extension:'.json',format:'json-nexttavern-v1',
+                  executionSha256:decoded.sourceSha256,executionBytes:Buffer.byteLength(rawSource,'utf8'),
+                  transportSha256:sha256(rawBytes),transportBytes:rawBytes.length,
+                  transportResourceId:transportResource!.id!,warnings:projected!.warnings,
+                }:{
                   schemaVersion: 1,
                   extension: source.extension,
                   format: decoded.format,
@@ -841,6 +902,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 return {
                   ok: false, error: 'import_id 不存在'
                 };
+              exec.ownedCardImport?.assertCurrent();
+              assertOwnedImportRecord(exec,record);
               try {
                 assertImportRecordIntegrity(record);
               }
@@ -1038,6 +1101,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 return {
                   ok: false, error: 'import_id 不存在或已结束 staging'
                 };
+              exec.ownedCardImport?.assertCurrent();
+              assertOwnedImportRecord(exec,record);
               try {
                 assertImportRecordIntegrity(record);
               }
@@ -1046,8 +1111,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                   ok: false, recoveryRequired: true, error: String(errorMessage(error))
                 };
               }
-              const deterministicSuggested = record.schemaVersion === 5
-                && record.normalizer === 'tavern-fields-v2' && record.fieldProof !== undefined
+              const deterministicSuggested = (record.schemaVersion===5&&record.normalizer==='tavern-fields-v2'
+                ||record.schemaVersion===6&&record.normalizer===NEXTTAVERN_IMPORT_NORMALIZER)&&record.fieldProof !== undefined
                 && args.use_suggested === true;
               try {
                 if (!deterministicSuggested) assertReviewProof(record);
@@ -1063,7 +1128,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 if (args.use_suggested === true) {
                   if (!record.sourceEnvelope)
                     throw new Error('只有结构化 PNG/JSON 原件支持建议映射');
-                  const decoded = decodeTavernCard(Buffer.from(record.sourceEnvelope.base64, 'base64'), record.sourceEnvelope.extension);
+                  const decoded = readStructuredImportDataV1(record).decoded;
                   const suggested = projectStructuredImport(record, decoded).assignments;
                   if (deterministicSuggested) suggestedSha256 = sha256(stableJson(suggested));
                   args = {
@@ -1219,6 +1284,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 return {
                   ok: false, error: 'import_id 不存在'
                 };
+              exec.ownedCardImport?.assertCurrent();
+              assertOwnedImportRecord(exec,record);
               try {
                 assertImportRecordIntegrity(record);
               }
@@ -1323,7 +1390,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 return {
                   ok: false, error: `import 当前状态为 ${String(record.status)}，不能激活`
                 };
-              if (![3, 4, 5].includes(record.schemaVersion))
+              if (![3, 4, 5, 6].includes(record.schemaVersion))
                 return {
                   ok: false, error: '旧版 staging 记录缺少全文审阅证明；请重新执行 rp_card_import_begin'
                 };
@@ -1425,17 +1492,10 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               } = {
                 css: [], js: [], regexRules: [], sources: []
               };
-              const tavernProjection = record.sourceEnvelope
-
-
-
-
-                ? projectStructuredImport(record,
-                  decodeTavernCard(Buffer.from(record.sourceEnvelope.base64, 'base64'), record.sourceEnvelope.extension))
-
-
-
-                : null;
+              const structuredDecoded=record.sourceEnvelope?readStructuredImportDataV1(record).decoded:undefined;
+              const tavernProjection=structuredDecoded?projectStructuredImport(record,structuredDecoded):null;
+              const portable=structuredDecoded&&isNextTavernCardDocument(structuredDecoded.document)
+                ?structuredDecoded.document.data:undefined;
               const tavernWorldbookById = new Map<string, NonNullable<typeof tavernProjection>['worldbook'][number]>();
               for (const entry of tavernProjection?.worldbook ?? []) {
                 if (!tavernWorldbookById.has(entry.id))
@@ -1526,6 +1586,16 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               const writes: ImportWrite[] = [];
               const writeKeys = new Set();
               const addWrite = (tableName: string, entryKey: string, next: unknown) => {
+                if(portable) {
+                  const rowId=entryKey.slice(session.id.length+2),cardId=tavernProjection!.cardId;
+                  const fields=tableName==='cards'?portable.cards.find((row,index)=>
+                    rowId===(row.kind==='user'?'user':`${cardId}-card-${index}`))
+                    :tableName==='worldbook'?portable.worldbook.find((_,index)=>rowId===`${cardId}-worldbook-${index}`)
+                    :tableName==='rules'?portable.rules:tableName==='status'&&rowId==='spec'?portable.status
+                    :tableName==='opening'?portable.opening:undefined;
+                  if(fields)next={...(next as Record<string,unknown>|undefined),
+                    ...portableNextTavernAuthorFields(fields)};
+                }
                 const table = importTableByName[tableName];
                 const identity = `${tableName}:${entryKey}`;
                 if (!table || writeKeys.has(identity))
@@ -1596,6 +1666,18 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                         String))];
               const atSeq = lastSeq(session);
               const replaceMode = record.mode !== 'merge';
+              if(portable) {
+                // Empty author bodies still describe real rows. The portable
+                // document, rather than invented source text, owns their fields.
+                portable.cards.forEach((row,index)=>{
+                  const id=row.kind==='user'?'user':`${tavernProjection!.cardId}-card-${index}`;
+                  if(!cards.has(id))cards.set(id,[]);
+                });
+                portable.worldbook.forEach((_,index)=>{
+                  const id=`${tavernProjection!.cardId}-worldbook-${index}`;
+                  if(!worldbook.has(id))worldbook.set(id,[]);
+                });
+              }
               try {
                 for (const [id, pieces] of cards) {
                   const entryKey = keyOf(session.id, id);
@@ -1717,7 +1799,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 addWrite('rules', keyOf(session.id, 'spec'), nextRules);
                 const previousStatus = cloneRecord(T.status.get(keyOf(session.id, 'spec')));
                 const importedStatus = joinImported(status);
-                if (importedStatus) {
+                if (importedStatus||portable?.status) {
                   const headings = [...record.normalizedSource.matchAll(/^(#{1,6})[ \t]+(.+)$/gm)];
                   for (let index = 0;index < headings.length;index++) {
                     const heading = headings[index]!;
@@ -1751,7 +1833,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                       updatedAtSeq: atSeq,
                     });
                 }
-                else if (replaceMode && previousStatus) {
+                else if (portable?.status||replaceMode && previousStatus) {
                   addWrite('status', keyOf(session.id, 'spec'), undefined);
                 }
                 const previousPanel = cloneRecord(T.status.get(keyOf(session.id, 'panel')));
@@ -1759,7 +1841,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                   addWrite('status', keyOf(session.id, 'panel'), undefined);
                 const previousOpening = cloneRecord(T.opening.get(keyOf(session.id, 'scene')));
                 const importedOpening = joinImported(opening);
-                if (importedOpening) {
+                if (importedOpening||portable?.opening) {
                   addWrite(
                     'opening',
                     keyOf(session.id, 'scene'),
@@ -1773,8 +1855,14 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                       updatedAtSeq: atSeq,
                     });
                 }
-                else if (replaceMode && previousOpening) {
+                else if (portable?.opening||replaceMode && previousOpening) {
                   addWrite('opening', keyOf(session.id, 'scene'), undefined);
+                }
+                if(portable?.settings) {
+                  const settingsKey=keyOf(session.id,'settings');
+                  const previousSettings=replaceMode?{}:cloneRecord(T.branch.get(settingsKey)) ?? {};
+                  addWrite('branch',settingsKey,{...previousSettings,schemaVersion:1,
+                    ...portableNextTavernAuthorFields(portable.settings)});
                 }
                 const activeKey = importActiveKey(session.id);
                 const activePointerPrev = cloneRecord(T.branch.get(activeKey));
@@ -1808,7 +1896,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                 }
                 try {
                   for (const write of writes) {
-                    assertCardWorkflow(session, record);
+                    assertImportWorkflow(session, record, exec);
                     deps.inputTransition?.checkActivation?.(session,record);
                     const expectedPrev = recordSha256(write.prev);
                     const actualPrev = recordSha256(write.table.get(write.key));
@@ -1824,7 +1912,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                   const failedWrite = writes.find((write) => !verifyWrite(write));
                   if (failedWrite)
                     throw new Error(`写后校验失败：${failedWrite.tableName}:${failedWrite.key}`);
-                  assertCardWorkflow(session, record);
+                  assertImportWorkflow(session, record, exec);
                   const activatedAt = Date.now();
                   const activationSummary = {
                     cards: [...cards.keys()],
@@ -1879,13 +1967,13 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
                     throw new Error('active import record 写后校验失败');
                   }
                   let resource = null;
-                  assertCardWorkflow(session, activeRecord);
+                  assertImportWorkflow(session, activeRecord, exec);
                   try {
                     resource = await archiveImported(session, activeRecord);
                   }
                   catch {
                   }
-                  assertCardWorkflow(session, activeRecord);
+                  assertImportWorkflow(session, activeRecord, exec);
                   await completeCardWorkflow(
                     session,
                     activeRecord,

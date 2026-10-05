@@ -153,6 +153,21 @@ export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRolepl
             && ['list', 'read', 'repair', 'jobs'].includes(String(settingArgs.action)))
             return;
         const allowed = new Set(['rp_task_read', 'rp_task_submit', 'run_code']);
+        if (['rp_card_import_chunk', 'rp_card_import_stage', 'rp_card_import_finalize'].includes(execution.name)) {
+            const binding = execution.agent ? inputBinding?.(execution.agent) : undefined;
+            const transition = binding?.current()?.kind === 'legacy' ? binding.existingTransition() : undefined;
+            const legacy = transition?.legacyRecord, args = execution.arguments;
+            // A manual import has no card workflow. Its actual bound hot transition
+            // authorizes only this source's import tools; record integrity remains
+            // with the importer and a maintenance phase creates no permission.
+            if (legacy && args && args.import_id === legacy.importId) {
+                try {
+                    transition.lease.checkActivation();
+                    allowed.add(execution.name);
+                }
+                catch { /* A stopped/changed lease keeps the maintenance boundary. */ }
+            }
+        }
         const workflow = activeCardWorkflow(session);
         if (workflow)
             for (const name of workflow.kind === 'card-import'

@@ -7,10 +7,11 @@ import {roleplaySourceMetadataValue} from './roleplay-input-state.js'
 import {cloneRoleplayTavernLoreDataV1,TavernLoreDataFailureV1,TAVERN_LORE_DATA_BOUNDS_V1}
   from './roleplay-tavern-lore-data.js'
 import type {TavernLoreDataBudgetV1} from './roleplay-tavern-lore-data.js'
-import {CARD_LIMITS, decodeTavernCard} from './tavern-card.js'
+import {CARD_LIMITS} from './tavern-card.js'
+import type {DecodedTavernCard} from './tavern-card.js'
 import {assertImportRecordIntegrity, assertAssignmentBudget, assertReferenceBudget,
   assertReviewProof, importCoverage, normalizeSourceSpans, spanText,
-  validateAssignmentIdentities} from './roleplay-import-record.js'
+  validateAssignmentIdentities,readStructuredImportDataV1} from './roleplay-import-record.js'
 import type {ImportPointer, ImportRecord} from './roleplay-import-types.js'
 import type {MvuSourceTable} from './roleplay-mvu-source.js'
 import type {LegacyCurrentRowDataV1, LegacyRowRefDataV1} from './roleplay-tavern-lore-contributions.js'
@@ -159,9 +160,10 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   if(inheritance&&!same(importRecordRef,{table:'branch',exists:true,...inheritance.originalBinding.importRecordRef}))
     fail('IMPORT_RECORD_REF_CHANGED','/importRecordRef/inheritance')
   if(record.schemaVersion===3)outside('LEGACY_SOURCE_OUTSIDE_DOMAIN','/activeImport/normalizer')
-  const normalizer: 'tavern-fields-v1'|'tavern-fields-v2'|undefined=
+  const normalizer: 'tavern-fields-v1'|'tavern-fields-v2'|'nexttavern-fields-v1'|undefined=
     record.schemaVersion===4&&record.normalizer==='tavern-fields-v1' ? 'tavern-fields-v1'
-      : record.schemaVersion===5&&record.normalizer==='tavern-fields-v2' ? 'tavern-fields-v2' : undefined
+      : record.schemaVersion===5&&record.normalizer==='tavern-fields-v2' ? 'tavern-fields-v2'
+      : record.schemaVersion===6&&record.normalizer==='nexttavern-fields-v1' ? 'nexttavern-fields-v1' : undefined
   if(!normalizer)outside('STRUCTURED_VERSION_OUTSIDE_DOMAIN','/activeImport/normalizer')
   if(record.mode==='merge')outside('MERGE_PROVENANCE_UNPROVEN','/activeImport/mode',[
     'complete prior import/contribution lineage for current merged fields',
@@ -207,10 +209,10 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   if(activation.filter(row=>row.tableName==='rules'&&row.key===`${sourceRecordSessionId}__spec`&&isHash(row.sha256)).length!==1) {
     fail('ACTIVATION_INVALID','/activeImport/activation/writeDigests')
   }
-  let decoded:ReturnType<typeof decodeTavernCard>
-  try {decoded=decodeTavernCard(Buffer.from(record.sourceEnvelope.base64,'base64'),record.sourceEnvelope.extension)}
+  let decoded:DecodedTavernCard
+  try {decoded=readStructuredImportDataV1(record).decoded}
   catch(error) {importFailure(error,'/activeImport/sourceEnvelope')}
-  if(!['json-v2','json-v3','png-v2','png-v3'].includes(decoded.format)||decoded.document.data!==decoded.data) {
+  if(!['json-v2','json-v3','png-v2','png-v3','json-nexttavern-v1'].includes(decoded.format)||decoded.document.data!==decoded.data) {
     outside('STRUCTURED_VERSION_OUTSIDE_DOMAIN','/rawDecoded')
   }
   // Freeze this decoder fact before cloning: detached aliases cannot choose a

@@ -3,13 +3,13 @@
  * No table reads/writes, activation, evaluator, cache or capability lives here. */
 import {recordSha256, sha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {decodeTavernCard} from './tavern-card.js'
 import type {DecodedTavernCard} from './tavern-card.js'
 import {assertImportRecordIntegrity, assertAssignmentBudget, assertReferenceBudget,
   assertReviewProof, importCoverage, normalizeSourceSpans, projectStructuredImport,
-  sourceDescriptor, spanText, validateAssignmentIdentities} from './roleplay-import-record.js'
+  sourceDescriptor, spanText, validateAssignmentIdentities,hasIndependentAuthorCoreV1,readStructuredImportDataV1} from './roleplay-import-record.js'
 import type {ImportRecord, ImportAssignment, ImportPointer, SourceSpan, SourceDescriptor}
   from './roleplay-import-types.js'
+import type {TavernLoreContributionInputV1} from './roleplay-tavern-lore-source-types.js'
 
 export const LEGACY_CONTRIBUTION_DATA_BOUNDS = Object.freeze({bytes:16_777_216, nodes:131_072, depth:66})
 export interface LegacyRowRefDataV1 {
@@ -32,7 +32,7 @@ export interface LegacyRawEntryDataRefV1 {
   readonly normalizedSha256: string
   readonly coverageSha256: string
   readonly transactionId: string
-  readonly normalizer: 'tavern-fields-v1' | 'tavern-fields-v2'
+  readonly normalizer: 'tavern-fields-v1' | 'tavern-fields-v2' | 'nexttavern-fields-v1'
   readonly bookPointer: string
   readonly bookSha256: string
   readonly entryPointer: string
@@ -42,7 +42,7 @@ export interface LegacyRawEntryDataRefV1 {
 export interface LegacyContributionDataRequestV1 {
   readonly sessionId: string
   readonly sourceRecordSessionId: string
-  readonly normalizer: 'tavern-fields-v1' | 'tavern-fields-v2'
+  readonly normalizer: 'tavern-fields-v1' | 'tavern-fields-v2' | 'nexttavern-fields-v1'
   readonly rawDecoded: DecodedTavernCard
   readonly activeImport: ImportRecord
   readonly importRecordRef: LegacyRowRefDataV1
@@ -94,6 +94,7 @@ export interface LegacyDirectRowContributionDataV1 {
   readonly contributionSha256: string
 }
 export type LegacyEntryOverlayDataV1 =
+  | {readonly kind:'owned-structured-entry';readonly rawEntry:LegacyRawEntryDataRefV1}
   | {readonly kind:'exact-current-row-data'; readonly rawEntry:LegacyRawEntryDataRefV1;
       readonly row:LegacyCurrentRowDataV1; readonly currentContentSha256:string;
       readonly provenanceSha256:string}
@@ -104,6 +105,7 @@ export type LegacyContributionDataResolutionV1 =
   | {readonly schemaVersion:1; readonly kind:'proven-consumer-data';
       readonly rulesRow:LegacyRowRefDataV1; readonly beforeCoreSha256:string;
       readonly afterCoreSha256:string; readonly residualCore:string;
+      readonly coreData:{readonly kind:'legacy-projection'|'independent-author'|'legacy-edited-unsplit';readonly text:string};
       readonly orderedBefore:readonly LegacySourceFragmentDataV1[];
       readonly orderedAfter:readonly LegacySourceFragmentDataV1[];
       readonly orderedBeforeSha256:string; readonly orderedAfterSha256:string;
@@ -164,7 +166,7 @@ const fragmentData = ({text:_text,...fragment}:Fragment):LegacySourceFragmentDat
 function validateSource(input:LegacyContributionDataRequestV1):DecodedTavernCard {
   const record = input.activeImport
   if (!object(record) || record.status !== 'active' || !['replace',undefined].includes(record.mode)
-    || !['tavern-fields-v1','tavern-fields-v2'].includes(record.normalizer)) {
+    || !['tavern-fields-v1','tavern-fields-v2','nexttavern-fields-v1'].includes(record.normalizer)) {
     if (record?.mode === 'merge') fail('MERGE_UNPROVEN','/activeImport/mode')
     fail('IMPORT_RECORD_INVALID','/activeImport')
   }
@@ -213,14 +215,16 @@ function validateSource(input:LegacyContributionDataRequestV1):DecodedTavernCard
   if (coverage.coverage !== 1 || coverage.uncovered.length || coverage.overlaps.length
     || pointer.coverageSha256 !== recordSha256(coverage)
     || record.coverage === undefined || !same(record.coverage,coverage)) fail('COVERAGE_UNPROVEN','/activeImport/coverage')
-  const decoded = decodeTavernCard(Buffer.from(record.sourceEnvelope.base64,'base64'),record.sourceEnvelope.extension)
+  const decoded = readStructuredImportDataV1(record).decoded
   if (!same(input.rawDecoded,decoded)) fail('RAW_DECODED_CHANGED','/rawDecoded')
   // Use this fresh decoder result: the bounded data clone detaches aliases, but the
   // original projector uses document.data === data to distinguish its root.
   return decoded
 }
-function entryBindings(input:LegacyContributionDataRequestV1, decoded:DecodedTavernCard):EntryBinding[] {
-  const record = input.activeImport, projection = projectStructuredImport(record,decoded)
+function entryBindings(input:LegacyContributionDataRequestV1, decoded:DecodedTavernCard,
+  projection:ReturnType<typeof projectStructuredImport>):EntryBinding[] {
+  const native=decoded.format==='json-nexttavern-v1'
+  const record = input.activeImport
   const book = decoded.data.character_book
   if (!Object.hasOwn(decoded.data,'character_book')) {
     if(projection.worldbook.length)fail('RAW_ENTRY_PROJECTION_UNPROVEN','/rawDecoded/data/character_book')
@@ -235,7 +239,10 @@ function entryBindings(input:LegacyContributionDataRequestV1, decoded:DecodedTav
   // Count structural assignments, never locate entry content by text search.
   const prefixDecoded:DecodedTavernCard = {...decoded,data:{...decoded.data,character_book:{...book,entries:[]}}}
   const prefix = projectStructuredImport(record,prefixDecoded)
-  let projectionOrdinal = prefix.assignments.length - (record.normalizer === 'tavern-fields-v1' ? 1 : 0)
+  // Schema 6 omits the transport archive from its execution projection. Old
+  // native/schema 4 spans retain their final full-document/archive assignment.
+  const trailingArchive=native?record.schemaVersion!==6:record.normalizer==='tavern-fields-v1'
+  let projectionOrdinal = prefix.assignments.length - (trailingArchive ? 1 : 0)
   const bindings:EntryBinding[] = []
   for (const [entryOrdinal,[entryKey,raw]] of Object.entries(entries).entries()) {
     const projected = projection.worldbook[entryOrdinal]
@@ -247,8 +254,8 @@ function entryBindings(input:LegacyContributionDataRequestV1, decoded:DecodedTav
       const assignment = projection.assignments[projectionOrdinal++]
       const first = assignment?.sourceSpans[0]
       if (!assignment || assignment.sourceSpans.length !== 1 || !first
-        || assignment.target !== (projected.constant && projected.enabled ? 'core-setting' : 'worldbook')
-        || (!projected.constant || !projected.enabled) && assignment.id !== projected.id) {
+        || assignment.target !== (native?'archive-only':projected.constant && projected.enabled ? 'core-setting' : 'worldbook')
+        || (native||!projected.constant || !projected.enabled) && assignment.id !== projected.id) {
         fail('RAW_ENTRY_PROJECTION_UNPROVEN',`${bookPointer}/entries/${pointerPart(entryKey)}`)
       }
       span = first
@@ -260,7 +267,7 @@ function entryBindings(input:LegacyContributionDataRequestV1, decoded:DecodedTav
         transactionId:record.activation!.transactionId,normalizer:input.normalizer,bookPointer,bookSha256:recordSha256(book),
         entryPointer:`${bookPointer}/entries/${pointerPart(entryKey)}`,entryOrdinal,entrySha256:recordSha256(raw)}})
   }
-  const expectedEnd = projection.assignments.length - (record.normalizer === 'tavern-fields-v1' ? 1 : 0)
+  const expectedEnd = projection.assignments.length - (trailingArchive ? 1 : 0)
   if (projectionOrdinal !== expectedEnd) fail('RAW_ENTRY_PROJECTION_UNPROVEN',bookPointer)
   return bindings
 }
@@ -301,6 +308,7 @@ function residualFragments(record:ImportRecord, fragments:readonly Fragment[], s
 }
 function overlays(input:LegacyContributionDataRequestV1, bindings:readonly EntryBinding[], assignments:readonly IndexedAssignment[]):LegacyEntryOverlayDataV1[] {
   return bindings.map<LegacyEntryOverlayDataV1>(binding => {
+    if(input.rawDecoded.format==='json-nexttavern-v1')return {kind:'owned-structured-entry',rawEntry:binding.ref}
     if (!binding.span) return {kind:'empty-original-entry',rawEntry:binding.ref}
     if (binding.constant && binding.enabled) {
       return {kind:'constant-current-overlay-missing',rawEntry:binding.ref,reason:'NO_INDEPENDENT_LEGACY_CONSTANT_ROW'}
@@ -340,19 +348,8 @@ function refusal(error:unknown):Extract<LegacyContributionDataResolutionV1,{kind
 export function resolveLegacyContributionDataV1(request:LegacyContributionDataRequestV1):LegacyContributionDataResolutionV1 {
   try {
     const input = cloneRoleplayTavernLoreDataV1(request,LEGACY_CONTRIBUTION_DATA_BOUNDS.bytes,LEGACY_CONTRIBUTION_DATA_BOUNDS)
-    const decoded = validateSource(input), record = input.activeImport
+    const decoded = validateSource(input)
     if (!rowMatches(input.currentRules,'rules',`${input.sessionId}__spec`)) fail('CURRENT_RULES_REF_CHANGED','/currentRules/ref')
-    const rules = input.currentRules.value
-    if (typeof rules.core !== 'string' || !object(rules.sources) || !Array.isArray(rules.sources.core)) {
-      fail('CORE_SOURCE_DESCRIPTORS_CHANGED','/currentRules/value/sources/core')
-    }
-    const assignments = sortedAssignments(record), core = assignments.filter(item => item.assignment.target === 'core-setting')
-    if (core.some(item => item.assignment.secondary === true)) fail('SECONDARY_CORE_UNPROVEN','/activeImport/assignments')
-    if (!same(rules.sources.core,core.map(item => item.descriptor))) {
-      fail('CORE_SOURCE_DESCRIPTORS_CHANGED','/currentRules/value/sources/core')
-    }
-    const before = fragmentsFor(record,core), originalCore = before.map(fragment => fragment.text).join('')
-    if (rules.core !== originalCore) fail('CURRENT_CORE_EDIT_UNMAPPED','/currentRules/value/core')
     const keys = new Set<string>()
     for (const row of input.currentWorldbook) {
       if (!rowMatches(row,'worldbook',row.ref.key) || !row.ref.key.startsWith(`${input.sessionId}__`) || keys.has(row.ref.key)) {
@@ -364,14 +361,46 @@ export function resolveLegacyContributionDataV1(request:LegacyContributionDataRe
     if (recordSha256(membership) !== input.currentWorldbookMembershipSha256) {
       fail('CURRENT_WORLDBOOK_MEMBERSHIP_CHANGED','/currentWorldbookMembershipSha256')
     }
-    const bindings = entryBindings(input,decoded), selected = new Set<string>(), suppressed:LegacySuppressedEntryDataV1[] = []
-    for (const pointer of input.suppressRawEntryPointers) {
+    return computeLegacyContributionData(input,decoded)
+  } catch (error) {return refusal(error)}
+}
+/** Source owns the captured import, decoder and actual-row admission. Only
+ * this consumer's suppression choices and contribution semantics are new.
+ * The result is explanatory DATA, never a write or execution capability. */
+export function resolveCapturedLegacyContributionDataV1(input:TavernLoreContributionInputV1,
+  selection:Pick<LegacyContributionDataRequestV1,'suppressRawEntryPointers'|'suppressAlwaysOnRowKeys'>)
+  :LegacyContributionDataResolutionV1 {
+  try {return computeLegacyContributionData({...input,...selection},input.rawDecoded)}
+  catch(error) {return refusal(error)}
+}
+function computeLegacyContributionData(input:LegacyContributionDataRequestV1,decoded:DecodedTavernCard)
+  :Extract<LegacyContributionDataResolutionV1,{kind:'proven-consumer-data'}> {
+    const record=input.activeImport
+    const rules = input.currentRules.value
+    if (typeof rules.core !== 'string' || !object(rules.sources) || !Array.isArray(rules.sources.core)) {
+      fail('CORE_SOURCE_DESCRIPTORS_CHANGED','/currentRules/value/sources/core')
+    }
+    const assignments = sortedAssignments(record), core = assignments.filter(item => item.assignment.target === 'core-setting')
+    if (core.some(item => item.assignment.secondary === true)) fail('SECONDARY_CORE_UNPROVEN','/activeImport/assignments')
+    if (!same(rules.sources.core,core.map(item => item.descriptor))) {
+      fail('CORE_SOURCE_DESCRIPTORS_CHANGED','/currentRules/value/sources/core')
+    }
+    const before = fragmentsFor(record,core), originalCore = before.map(fragment => fragment.text).join('')
+    const independent=decoded.format==='json-nexttavern-v1'||hasIndependentAuthorCoreV1(rules)
+    const coreKind=independent?'independent-author':rules.core===originalCore?'legacy-projection':'legacy-edited-unsplit'
+    const projection=projectStructuredImport(record,decoded),bindings = entryBindings(input,decoded,projection),
+      selected = new Set<string>(), suppressed:LegacySuppressedEntryDataV1[] = []
+    // Only a still-identical legacy mixture has source spans in the live core.
+    // Independent author text and historical unsplit edits are never cut using
+    // positions from an older projection; the book/journal remains readable.
+    for (const pointer of coreKind==='legacy-projection'?input.suppressRawEntryPointers:[]) {
       const binding = bindings.find(item => item.ref.entryPointer === pointer)
       if (!binding || selected.has(pointer)) fail('SUPPRESSION_TARGET_UNPROVEN',pointer)
       selected.add(pointer); suppressed.push(suppressedEntry(record,binding,before))
     }
     suppressed.sort((left,right) => left.wholeEntrySpan.startLine - right.wholeEntrySpan.startLine)
-    const after = residualFragments(record,before,suppressed), residualCore = after.map(fragment => fragment.text).join('')
+    const after = residualFragments(record,before,suppressed), residualCore = coreKind==='legacy-projection'
+      ?after.map(fragment => fragment.text).join(''):rules.core
     const selectedRows = new Set<string>(), directAlwaysOn:LegacyDirectRowContributionDataV1[] = []
     for (const key of input.suppressAlwaysOnRowKeys) {
       const row = input.currentWorldbook.find(item => item.ref.key === key)
@@ -380,7 +409,7 @@ export function resolveLegacyContributionDataV1(request:LegacyContributionDataRe
     }
     const orderedBefore = before.map(fragmentData), orderedAfter = after.map(fragmentData)
     let primaryBookAbsence:LegacyPrimaryBookAbsenceDataV1|undefined
-    if(['json-v2','json-v3','png-v2','png-v3'].includes(decoded.format)
+    if(['json-v2','json-v3','png-v2','png-v3','json-nexttavern-v1'].includes(decoded.format)
       &&decoded.document.data===decoded.data&&!Object.hasOwn(decoded.data,'character_book')) {
       const absence={binding:'proven-absence' as const,bookPointer:'/data/character_book' as const,
         documentSha256:recordSha256(decoded.document),dataSha256:recordSha256(decoded.data),
@@ -389,10 +418,10 @@ export function resolveLegacyContributionDataV1(request:LegacyContributionDataRe
       primaryBookAbsence={...absence,absenceDataSha256:recordSha256(absence)}
     }
     return freeze({schemaVersion:1 as const,kind:'proven-consumer-data' as const,rulesRow:input.currentRules.ref,
-      beforeCoreSha256:sha256(originalCore),afterCoreSha256:sha256(residualCore),residualCore,
+      beforeCoreSha256:sha256(rules.core),afterCoreSha256:sha256(residualCore),residualCore,
+      coreData:{kind:coreKind,text:residualCore},
       orderedBefore,orderedAfter,orderedBeforeSha256:recordSha256(orderedBefore),orderedAfterSha256:recordSha256(orderedAfter),
       suppressed,directAlwaysOn,overlays:overlays(input,bindings,assignments),worldbookMembershipSha256:input.currentWorldbookMembershipSha256,
-      projectionSha256:recordSha256(projectStructuredImport(record,decoded)),
+      projectionSha256:recordSha256(projection),
       ...(primaryBookAbsence?{primaryBookAbsence}:{}),authority:'consumer-data-only' as const})
-  } catch (error) {return refusal(error)}
 }

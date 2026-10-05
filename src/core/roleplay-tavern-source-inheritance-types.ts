@@ -80,7 +80,7 @@ export interface TavernSourceOriginalBindingV1 {
   readonly normalizedSha256:string
   readonly coverageSha256:string
   readonly transactionId:string
-  readonly normalizer:'tavern-fields-v1'|'tavern-fields-v2'
+  readonly normalizer:'tavern-fields-v1'|'tavern-fields-v2'|'nexttavern-fields-v1'
   readonly documentSha256:string
   readonly dataSha256:string
   readonly importRecordRef:TavernSourceInheritanceRefV1

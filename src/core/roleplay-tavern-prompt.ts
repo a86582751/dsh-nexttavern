@@ -24,7 +24,7 @@ import type {TavernPromptVariableAttemptV1,TavernPromptVariableReadV1,
   TavernPromptVariableRefV1} from './roleplay-tavern-prompt-variables-types.js'
 import {produceRoleplayTavernMacroSnapshotV1,captureRoleplayTavernScopedRegexV1} from './roleplay-tavern-prompt-macros.js'
 import {prepareRoleplayTavernRenderCatalogV1} from './roleplay-tavern-prompt-render.js'
-import {prepareTavernLoreWithOwnerV1} from './tavern-lore-evaluator.mjs'
+import {prepareOwnedTavernLoreWithOwnerV1} from './tavern-lore-evaluator.mjs'
 import {validateTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
 import type {TavernLoreFrozenSettingsV1,TavernLoreFrozenSnapshotV1,
   TavernLoreVisibleMessageV1} from './tavern-lore-evaluator-types.mjs'
@@ -272,7 +272,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         globalScanData={personaDescription:macros.card?.find(value=>value.key==='persona')?.value??'',
           characterDescription:text(card.description),characterPersonality:text(card.personality),
           characterDepthPrompt:macros.card?.find(value=>value.key==='charDepthPrompt')?.value??'',
-          scenario:text(card.scenario),creatorNotes:text(card.creator_notes)}
+          scenario:text(aliases.scenario),creatorNotes:text(card.creator_notes)}
       const emptyCounts={schemaVersion:1 as const,encoding:'owned-frozen-token-count-ledger-v1' as const,
         identity:tokenCount.identity,implementationSha256:tokenCount.implementationSha256,method:tokenCount.method,counts:[]}
       const body:Omit<TavernLoreFrozenSnapshotV1,'snapshotSha256'>={schemaVersion:1,

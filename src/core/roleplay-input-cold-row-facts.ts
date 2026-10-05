@@ -155,7 +155,7 @@ function stop(value:unknown,sid:string):void {
 }
 function work(value:Row,sid:string,deps:ColdInputRowFactsDependenciesV1):void {
   exact(value,['schemaVersion','namespace','sessionId','branchId','preparationId','receiptGeneration','refs',
-    'credentialSha256','preparation','status','source','attemptGeneration','checkpoint'],['attempt','stop'])
+    'credentialSha256','preparation','status','source','attemptGeneration','checkpoint'],['attempt','stop','transition'])
   refs(value.refs,sid);preparation(value.preparation);receipt(value.checkpoint,sid);source(value.source,deps)
   if(!deps.isWork(value,sid)||!id(value.preparationId)||!integer(value.attemptGeneration)
     ||!['active','stopped','unknown'].includes(String(value.status)))fail('INPUT_COLD_WORK_INVALID')
@@ -313,6 +313,9 @@ export function readColdNonNumericalInputBranchRowFactsV1(session:Session,deps:C
       ['schemaVersion','namespace','sessionId','branchId','preparationId','receiptGeneration','refs','credentialSha256',
         'preparation','checkpoint'],materialFields,
       ['status','attempt.turn','attempt.step','attempt.prepared','attempt.legacyPreparationId','stop',
+        // Import transitions are retained writer metadata. Cold facts bind the
+        // real Native checkpoint below; they never resume this transition.
+        ...(value.transition!==undefined?['transition']:[]),
         ...((value.source as Row).kind!=='story'?['source','attemptGeneration','attempt.snapshot']:[])]))
   }
   const matching=(noticeValue:Row)=>[...verified].filter(([,item])=>{

@@ -2,6 +2,7 @@
  * This does not scan messages, evaluate templates, run regexes, draw random
  * numbers, activate entries, construct a prompt, or write persistent state. */
 import {recordSha256,sha256} from './roleplay-data.js'
+import {types} from 'node:util'
 import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {CARD_LIMITS,decodeTavernCard} from './tavern-card.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
@@ -47,9 +48,8 @@ function freeze<T>(value:T):T {
   }
   return value
 }
-/** Reserve individual output components before appending them. The final
- * clone also checks the exact complete envelope. A limit refuses the entire
- * compilation; no entry, archive or diagnostic list is silently truncated. */
+/** Historical O0/O1 output contract only. New output derives from the bounded
+ * primary inputs and does not re-charge generated metadata as guest input. */
 class OutputBudget {
   bytes=0
   nodes=0
@@ -66,7 +66,7 @@ class OutputBudget {
     visit(value)
   }
 }
-function validateInput(raw:unknown):TavernLoreCompilationInputV1 {
+function validateInput(raw:unknown,profile:CompilerProfile=compilerProfiles.O2):TavernLoreCompilationInputV1 {
   // The envelope contains the immutable book plus explicitly edited text and
   // provenance. Keep the book's original adapter ceiling, without counting a
   // legitimate current overlay as a second raw source inside that same cap.
@@ -86,7 +86,9 @@ function validateInput(raw:unknown):TavernLoreCompilationInputV1 {
     ...(has(source,'bookPresence')?['bookPresence','absenceProof']:[]),
     ...(has(source,'inheritance')?['inheritance']:[])],'/source')
   if(source.schemaVersion!==1||source.encoding!=='st-character-book-source-reference-v1'
-    ||typeof source.sourceFormat!=='string'||!['ccv2-character-book','ccv3-character-book'].includes(source.sourceFormat)
+    ||typeof source.sourceFormat!=='string'||!(profile.native
+      ?['ccv2-character-book','ccv3-character-book','nexttavern-character-book']
+      :['ccv2-character-book','ccv3-character-book']).includes(source.sourceFormat)
     ||!pointer(source.bookPointer))fail('LORE_SOURCE_REFERENCE_INVALID','/source')
   for(const key of ['ownerSessionId','sourceRecordSessionId','importId']) {
     const identifier=source[key]
@@ -147,7 +149,7 @@ function validateBookAbsence(raw:unknown,source:Record<string,unknown>):void {
     ||raw.ownerSessionId!==originalOwner||raw.sourceRecordSessionId!==source.sourceRecordSessionId
     ||raw.ownerSessionId!==raw.sourceRecordSessionId||raw.importId!==source.importId
     ||raw.rawSha256!==source.rawSourceSha256||raw.documentSha256!==source.documentSha256
-    ||!['json-v2','json-v3','png-v2','png-v3'].includes(String(raw.decodedFormat))) {
+    ||!['json-v2','json-v3','png-v2','png-v3','json-nexttavern-v1'].includes(String(raw.decodedFormat))) {
     fail('LORE_BOOK_ABSENCE_PROOF_INVALID',at)
   }
   for(const key of ['rawSha256','normalizedSha256','coverageSha256','documentSha256','dataSha256']) {
@@ -164,7 +166,8 @@ function validateBookAbsence(raw:unknown,source:Record<string,unknown>):void {
   if(decoded.document.data!==decoded.data||Object.hasOwn(decoded.data,'character_book')
     ||recordSha256(decoded.data)!==raw.dataSha256
     ||String(raw.decodedFormat).endsWith('v3')!==decoded.format.endsWith('v3')
-    ||source.sourceFormat!==(decoded.format.endsWith('v3')?'ccv3-character-book':'ccv2-character-book')) {
+    ||source.sourceFormat!==(decoded.format==='json-nexttavern-v1'?'nexttavern-character-book'
+      :decoded.format.endsWith('v3')?'ccv3-character-book':'ccv2-character-book')) {
     fail('LORE_BOOK_ABSENCE_CONTRADICTED',`${at}/document/data/character_book`)
   }
   const active=raw.activePointer,activeRef=raw.activePointerRef,recordRef=raw.importRecordRef,activation=raw.activation
@@ -244,6 +247,38 @@ const fields:readonly FieldDefinition[]=[
     ['matchCreatorNotes','match_creator_notes','boolean'],['triggers','triggers','strings'],['ignoreBudget','ignore_budget','boolean'],
   ].map(([field,raw,kind])=>({field:field as TavernLoreSemanticFieldV1,raw:raw!,kind:kind as FieldKind,extension:true})),
 ]
+/** Serialize only explicit author edits using the compiler's field vocabulary.
+ * Unknown source properties and untouched aliases remain byte-equivalent data. */
+export function materializeTavernLoreEntryFieldsV1(raw:Record<string,unknown>,
+  edits:Record<string,unknown>):Record<string,unknown> {
+  const entry=structuredClone(raw)
+  const extensions=()=>entry.extensions as Record<string,unknown>
+  const setExtension=(key:string,value:unknown)=>{
+    if(!entry.extensions||typeof entry.extensions!=='object'||Array.isArray(entry.extensions))entry.extensions={}
+    extensions()[key]=structuredClone(value)
+  }
+  const enumValue=(values:readonly string[],value:unknown)=>value===null?null:values.indexOf(String(value))
+  for(const [field,value] of Object.entries(edits)) {
+    if(field==='content'){entry.content=value;continue}
+    if(field==='position'){
+      setExtension('position',enumValue(ST_LORE_POSITION_V1,value))
+      if(Object.hasOwn(entry,'position'))entry.position=value==='before-character'?'before_char'
+        :value==='after-character'?'after_char':entry.position
+      continue
+    }
+    const definition=fields.find(item=>item.field===field)
+    if(!definition)continue
+    const serialized=definition.kind==='logic'?enumValue(ST_LORE_LOGIC_V1,value)
+      :definition.kind==='role'?enumValue(ST_LORE_ROLE_V1,value):value
+    if(definition.extension)setExtension(definition.raw,serialized)
+    else entry[definition.raw]=structuredClone(serialized)
+    const aliases=field==='primaryKeys'?['key']:field==='secondaryKeys'?['keysecondary']
+      :field==='order'?['order','priority']:field==='enabled'?['disable']:[definition.raw]
+    for(const alias of aliases)if(Object.hasOwn(entry,alias))entry[alias]=
+      alias==='disable'?!value:structuredClone(serialized)
+  }
+  return entry
+}
 const topKnown=new Set(['content','id','name','comment','position','extensions',
   ...fields.filter(field=>!field.extension).map(field=>field.raw)])
 const extensionKnown=new Set(['position',...fields.filter(field=>field.extension).map(field=>field.raw)])
@@ -260,21 +295,30 @@ const legacyBindings:readonly {raw:string;field:keyof TavernLoreRetainedDeclarat
 const bookKnown=new Set(['entries','name','description','scan_depth','token_budget','recursive_scanning','extensions'])
 const nonnegative=new Set(['displayIndex','depth','groupWeight','scanDepth','sticky','cooldown','delay'])
 const integerFields=new Set(['displayIndex','depth','scanDepth','sticky','cooldown','delay'])
-export const TAVERN_LORE_COMPILER_PROFILE_SHA256=recordSha256({schemaVersion:1,
-  encoding:'owned-st-character-book-consumer-profile-v1',fixedImportProfileSha256:ST_LORE_PROFILE_SHA256,
-  fields,legacyBindings,unknownPolicy:'retain-complete-source-and-make-unknown-control-data-ineligible',
-  defaultsPolicy:'fixed-convertCharacterBook-not-editor-template-not-player-globals',
-  bounds:{inputEnvelopeBytes:OUTPUT_BYTES,inputEnvelopeBounds:outputBounds,
-    originalBookBytes:CARD_LIMITS.jsonBytes,originalBookBounds:inputBounds,
-    outputBytes:OUTPUT_BYTES,outputBounds,entries:CARD_LIMITS.entries}})
-/** Keep the historical present-book profile bytes unchanged. The new absence
- * branch pins its own additional consistency policy. */
-export const TAVERN_LORE_ABSENT_BOOK_PROFILE_SHA256=recordSha256({schemaVersion:1,
-  encoding:'owned-st-character-book-proven-absence-profile-v1',
-  presentBookProfileSha256:TAVERN_LORE_COMPILER_PROFILE_SHA256,
-  absence:'complete-verified-document-own-field-absence-with-actual-import-and-activation-refs',
-  plan:'program-owned-empty-plan-with-null-original-book',overlay:'explicit-empty-only',
-  sourceAuthority:'live-owner-verifies-actual-source-no-consumer-capability'})
+interface CompilerProfile {readonly native:boolean;readonly outputCap:boolean;
+  readonly presentSha256:string;readonly absentSha256:string}
+function compilerProfile(native:boolean,outputCap:boolean):CompilerProfile {
+  const presentSha256=recordSha256({schemaVersion:1,
+    encoding:'owned-st-character-book-consumer-profile-v1',fixedImportProfileSha256:ST_LORE_PROFILE_SHA256,
+    fields,legacyBindings,unknownPolicy:native?'retain-uninterpreted-metadata-without-semantic-authority'
+      :'retain-complete-source-and-make-unknown-control-data-ineligible',
+    ...(native?{entryCollectionPolicy:'native-ordered-object-keys-legacy-fixed-array'}:{}),
+    defaultsPolicy:'fixed-convertCharacterBook-not-editor-template-not-player-globals',
+    bounds:{inputEnvelopeBytes:OUTPUT_BYTES,inputEnvelopeBounds:outputBounds,
+      originalBookBytes:CARD_LIMITS.jsonBytes,originalBookBounds:inputBounds,
+      ...(outputCap?{outputBytes:OUTPUT_BYTES,outputBounds}:{generatedOutputPolicy:'input-owned-derived-data'}),
+      entries:CARD_LIMITS.entries}})
+  return freeze({native,outputCap,presentSha256,absentSha256:recordSha256({schemaVersion:1,
+    encoding:'owned-st-character-book-proven-absence-profile-v1',presentBookProfileSha256:presentSha256,
+    absence:'complete-verified-document-own-field-absence-with-actual-import-and-activation-refs',
+    plan:'program-owned-empty-plan-with-null-original-book',overlay:'explicit-empty-only',
+    sourceAuthority:'live-owner-verifies-actual-source-no-consumer-capability'})})
+}
+// Fixed historical definitions reconstruct data only; they do not revive an
+// old task's execution authority or rewrite a Source/journal/snapshot record.
+const compilerProfiles={O0:compilerProfile(false,true),O1:compilerProfile(true,true),O2:compilerProfile(true,false)}
+export const TAVERN_LORE_COMPILER_PROFILE_SHA256=compilerProfiles.O2.presentSha256
+export const TAVERN_LORE_ABSENT_BOOK_PROFILE_SHA256=compilerProfiles.O2.absentSha256
 function fieldValue(definition:FieldDefinition,value:unknown):unknown {
   const {kind,field}=definition
   if(kind==='boolean'||kind==='nullable-boolean')return typeof value==='boolean'?value:undefined
@@ -382,7 +426,10 @@ function declarationValue(kind:FieldKind|'role-token',value:unknown):unknown {
   return typeof value==='number'&&Number.isFinite(value)?value:undefined
 }
 type EntryBody=Omit<TavernLoreEntryPlanV1,'entryPlanSha256'>
-function compileAbsentBook(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilationV1,{kind:'compiled'}> {
+function compiledOutput(value:Extract<TavernLoreCompilationV1,{kind:'compiled'}>,profile:CompilerProfile) {
+  return freeze(profile.outputCap?cloneSchemaData(value,OUTPUT_BYTES,outputBounds):value)
+}
+function compileAbsentBook(input:TavernLoreCompilationInputV1,profile:CompilerProfile):Extract<TavernLoreCompilationV1,{kind:'compiled'}> {
   const reference=input.source
   if(!('bookPresence' in reference)||reference.bookPresence!=='proven-absence') {
     fail('LORE_BOOK_ABSENCE_PROOF_REQUIRED','/source')
@@ -393,7 +440,7 @@ function compileAbsentBook(input:TavernLoreCompilationInputV1):Extract<TavernLor
   const body={schemaVersion:1 as const,encoding:'st-character-book-semantic-plan-inputs-v1' as const,
     authority:'consumer-data-only' as const,
     compiler:{id:'owned-st-character-book-compiler' as const,version:1 as const,upstreamCommit:ST_LORE_COMMIT,
-      semanticProfileSha256:TAVERN_LORE_ABSENT_BOOK_PROFILE_SHA256,
+      semanticProfileSha256:profile.absentSha256,
       ...(overlay?{currentNativeOverlayProfileSha256:TAVERN_LORE_CURRENT_NATIVE_OVERLAY_PROFILE_SHA256}:{})},
     source,sourceReferenceSha256:recordSha256(source),
     bookId:recordSha256({schemaVersion:1,encoding:'st-lore-book-source-address-v1',
@@ -411,28 +458,28 @@ function compileAbsentBook(input:TavernLoreCompilationInputV1):Extract<TavernLor
       'branch-scoped-timed-effects-and-recursion-frontier','real-tokenizer-budget-and-placement-adapter'],
     diagnosticsSha256:recordSha256(diagnostics)}
   const plan={...body,planSha256:recordSha256(body)}
-  return freeze(cloneSchemaData({kind:'compiled' as const,plan,diagnostics},OUTPUT_BYTES,outputBounds))
+  return compiledOutput({kind:'compiled',plan,diagnostics},profile)
 }
-function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilationV1,{kind:'compiled'}> {
-  const {book,source}=input,budget=new OutputBudget(),diagnostics:TavernLoreDiagnosticV1[]=[]
-  if(book===null)return compileAbsentBook(input)
+function compile(input:TavernLoreCompilationInputV1,profile:CompilerProfile):Extract<TavernLoreCompilationV1,{kind:'compiled'}> {
+  const {book,source}=input,budget=profile.outputCap?new OutputBudget():undefined,diagnostics:TavernLoreDiagnosticV1[]=[]
+  if(book===null)return compileAbsentBook(input,profile)
   const overlay=input.currentNativeOverlay
   const overlayEntries=new Map(overlay?.entries.map((row,index)=>[row.rawEntryPointer,{row,index}] as const))
   const bookId=recordSha256({schemaVersion:1,encoding:'st-lore-book-source-address-v1',
     ownerSessionId:source.ownerSessionId,sourceRecordSessionId:source.sourceRecordSessionId,
     importId:source.importId,bookPointer:source.bookPointer})
-  budget.add(book,source.bookPointer);budget.add(source,'/source')
-  if(overlay)budget.add(overlay,'/currentNativeOverlay')
+  budget?.add(book,source.bookPointer);budget?.add(source,'/source')
+  if(overlay)budget?.add(overlay,'/currentNativeOverlay')
   const diagnose=(code:string,at:string,entryOrdinal:number|null,blocking:boolean,observed:unknown=null)=>{
     if(!pointer(at))fail('LORE_POINTER_LIMIT',source.bookPointer)
     const row:TavernLoreDiagnosticV1={schemaVersion:1,encoding:'st-character-book-compiler-diagnostic-v1',
       code,pointer:at,entryOrdinal,blocking,observedType:observed===null?null:typeOf(observed),limit:null}
-    budget.add(row,at);diagnostics.push(row);return diagnostics.length-1
+    budget?.add(row,at);diagnostics.push(row);return diagnostics.length-1
   }
   const metadata=(at:string,value:unknown,disposition:TavernLoreMetadataReferenceV1['disposition'])=>{
     if(!pointer(at))fail('LORE_POINTER_LIMIT',source.bookPointer)
     const row={pointer:at,valueSha256:recordSha256(value),disposition}
-    budget.add(row,at);return row
+    budget?.add(row,at);return row
   }
   const bookMetadata:TavernLoreMetadataReferenceV1[]=[]
   const declaredBookSettings:{disposition:'not-applied-by-fixed-importer';scanDepth?:number;tokenBudget?:number;recursiveScanning?:boolean}
@@ -445,7 +492,8 @@ function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilati
     const disposition=known?'known-unapplied-by-profile':'retained-uninterpreted'
     bookMetadata.push(metadata(at,value,disposition))
     if(!known||key==='extensions'&&value!==null&&(!object(value)||Object.keys(value).length)) {
-      diagnose('LORE_BOOK_METADATA_UNINTERPRETED',at,null,true,value);bookBlocked=true
+      diagnose('LORE_BOOK_METADATA_UNINTERPRETED',at,null,!profile.native,value)
+      if(!profile.native)bookBlocked=true
     }else if(!['name','description','extensions'].includes(key)) {
       diagnose('LORE_BOOK_SETTING_NOT_APPLIED_BY_FIXED_IMPORTER',at,null,false,value)
       if(key==='recursive_scanning'&&typeof value==='boolean')declaredBookSettings.recursiveScanning=value
@@ -462,7 +510,8 @@ function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilati
   const array=Array.isArray(original),rawEntries=array?original.map((value,index)=>[String(index),value] as const):Object.entries(original)
   if(rawEntries.length>CARD_LIMITS.entries)fail('LORE_ENTRY_LIMIT',append(source.bookPointer,'entries'),
     {field:'entries',observed:rawEntries.length,maximum:CARD_LIMITS.entries})
-  if(!array) {
+  const nativeObject=profile.native&&!array&&source.sourceFormat==='nexttavern-character-book'
+  if(!array&&!nativeObject) {
     diagnose('LORE_OBJECT_ENTRY_COLLECTION_UNSUPPORTED',append(source.bookPointer,'entries'),null,true,original)
     bookBlocked=true
   }
@@ -478,7 +527,7 @@ function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilati
     const addField=(field:string,where:string,value:unknown,disposition:TavernLoreFieldSourceV1['disposition']='interpreted-input')=>{
       if(!pointer(where))fail('LORE_POINTER_LIMIT',at)
       const row={field,pointer:where,valueSha256:recordSha256(value),disposition}
-      budget.add(row,where);fieldSources.push(row)
+      budget?.add(row,where);fieldSources.push(row)
     }
     const entry=object(rawEntry)?rawEntry:{}
     if(!object(rawEntry))bad('LORE_ENTRY_OBJECT_REQUIRED',at,rawEntry)
@@ -540,9 +589,9 @@ function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilati
       if(topKnown.has(key))continue
       const where=append(at,key),legacy=legacyControls.has(key)
       retained.push(metadata(where,value,legacy?'known-unapplied-by-profile':'retained-uninterpreted'))
-      diagnose(legacy?'LORE_LEGACY_FIELD_NOT_APPLIED_BY_FIXED_IMPORTER':'LORE_ENTRY_METADATA_UNINTERPRETED',where,ordinal,!legacy,value)
-      if(!legacy)blocked=true
-      else {
+      diagnose(legacy?'LORE_LEGACY_FIELD_NOT_APPLIED_BY_FIXED_IMPORTER':'LORE_ENTRY_METADATA_UNINTERPRETED',where,ordinal,!legacy&&!profile.native,value)
+      if(!legacy&&!profile.native)blocked=true
+      if(legacy) {
         const binding=legacyBindings.find(binding=>binding.raw===key)!
         const normalized=declarationValue(binding.kind,value)
         if(normalized!==undefined)declarations[binding.field]=normalized
@@ -553,7 +602,8 @@ function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilati
     for(const [key,value] of Object.entries(ext))if(!extensionKnown.has(key)) {
       const where=append(append(at,'extensions'),key)
       retained.push(metadata(where,value,'retained-uninterpreted'))
-      bad('LORE_EXTENSION_METADATA_UNINTERPRETED',where,value)
+      if(profile.native)diagnose('LORE_EXTENSION_METADATA_UNINTERPRETED',where,ordinal,false,value)
+      else bad('LORE_EXTENSION_METADATA_UNINTERPRETED',where,value)
     }
     const current=overlayEntries.get(at)
     if(current) {
@@ -569,7 +619,7 @@ function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilati
         const where=`/currentNativeOverlay/entries/${current.index}/fields/${token(field)}`
         const row:TavernLoreFieldSourceV1={field,pointer:where,valueSha256:recordSha256(value),
           disposition:'current-native-origin',currentNativeOrigin:current.row.origin}
-        budget.add(row,where);fieldSources.push(row)
+        budget?.add(row,where);fieldSources.push(row)
       }
     }
     const effective={...ST_LORE_ENTRY_DEFAULTS_V1,displayIndex:ordinal,...overrides} as unknown as TavernLoreSemanticEntryV1
@@ -583,7 +633,7 @@ function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilati
       semanticOverrides:overrides as Partial<TavernLoreSemanticEntryV1>,fieldSources,retainedMetadata:retained,
       retainedDeclarations:declarations as TavernLoreRetainedDeclarationsV1,
       diagnosticIndexes:Array.from({length:diagnostics.length-start},(_,index)=>start+index)}
-    budget.add({...body,fieldSources:[],retainedMetadata:[],entryPlanSha256:'0'.repeat(64)},at)
+    budget?.add({...body,fieldSources:[],retainedMetadata:[],entryPlanSha256:'0'.repeat(64)},at)
     drafts.push(body)
   }
   for(const indexes of uidOwners.values())if(indexes.length>1)for(const index of indexes) {
@@ -593,12 +643,13 @@ function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilati
   const entries=drafts.map(body=>({...body,entryPlanSha256:recordSha256(body)}))
   const body={schemaVersion:1 as const,encoding:'st-character-book-semantic-plan-inputs-v1' as const,
     authority:'consumer-data-only' as const,compiler:{id:'owned-st-character-book-compiler' as const,version:1 as const,
-      upstreamCommit:ST_LORE_COMMIT,semanticProfileSha256:TAVERN_LORE_COMPILER_PROFILE_SHA256,
+      upstreamCommit:ST_LORE_COMMIT,semanticProfileSha256:profile.presentSha256,
       ...(overlay?{currentNativeOverlayProfileSha256:TAVERN_LORE_CURRENT_NATIVE_OVERLAY_PROFILE_SHA256}:{})},source,
     sourceReferenceSha256:recordSha256(source),bookId,rawBook:book,rawBookSha256:recordSha256(book),
     ...(overlay?{currentNativeOverlay:overlay,currentNativeOverlaySha256:recordSha256(overlay)}:{}),
     bookDisposition:bookBlocked?'retained-ineligible' as const:'eligible-semantic-data' as const,
-    collection:{kind:array?'source-array' as const:'object-retained-unsupported' as const,count:entries.length},
+    collection:{kind:array?'source-array' as const:nativeObject?'source-object' as const
+      :'object-retained-unsupported' as const,count:entries.length},
     bookMetadata,declaredBookSettings,entries,
     eligibleEntryIds:bookBlocked?[]:entries.filter(entry=>entry.disposition==='eligible-semantic-data').map(entry=>entry.entryId),
     evaluatorRequirements:['actual-frozen-global-settings','source-revision-and-message-version-owner',
@@ -606,10 +657,10 @@ function compile(input:TavernLoreCompilationInputV1):Extract<TavernLoreCompilati
       'branch-scoped-timed-effects-and-recursion-frontier','real-tokenizer-budget-and-placement-adapter'],
     diagnosticsSha256:recordSha256(diagnostics)}
   const plan={...body,planSha256:recordSha256(body)}
-  return freeze(cloneSchemaData({kind:'compiled' as const,plan,diagnostics},OUTPUT_BYTES,outputBounds))
+  return compiledOutput({kind:'compiled',plan,diagnostics},profile)
 }
 export function compileTavernLoreBookV1(input:unknown):TavernLoreCompilationV1 {
-  try {return compile(validateInput(input))}
+  try {return compile(validateInput(input),compilerProfiles.O2)}
   catch(error) {
     const code=error instanceof LoreRefusal?error.code:error instanceof Error&&/^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
       ?error.message:'LORE_COMPILATION_REFUSED'
@@ -631,14 +682,56 @@ export function validateTavernLoreAbsentSourceReferenceV1(input:unknown):TavernL
 }
 /** Recompute from the retained original book. Integrity does not prove that a
  * caller supplied the actual current Import/raw record; its owner must do so. */
+function rawRecord(value:unknown):Record<string,PropertyDescriptor> {
+  if(value===null||typeof value!=='object')fail('LORE_PLAN_INVALID')
+  if(types.isProxy(value))fail('SCHEMA_PROXY_VALUE')
+  const prototype=Object.getPrototypeOf(value)
+  if(Array.isArray(value)||prototype!==Object.prototype&&prototype!==null)fail('LORE_PLAN_INVALID')
+  const descriptors:Record<string,PropertyDescriptor>={}
+  for(const key of Reflect.ownKeys(value)) {
+    if(typeof key!=='string')fail('SCHEMA_NON_JSON_VALUE')
+    const descriptor=Object.getOwnPropertyDescriptor(value,key)!
+    if(!has(descriptor,'value')||!descriptor.enumerable)fail('SCHEMA_NON_JSON_VALUE')
+    Object.defineProperty(descriptors,key,{value:descriptor,enumerable:true})
+  }
+  return descriptors
+}
+/** The private compiler result bounds this walk. Compare every supplied DATA
+ * occurrence and scalar without cloning/hashing the amplified guest envelope.
+ * Object property order and -0 retain the original JSON parser semantics. */
+function matchesCompilationData(raw:unknown,expected:unknown):boolean {
+  if(expected===null||typeof expected!=='object')return raw===expected
+  if(raw===null||typeof raw!=='object')return false
+  if(types.isProxy(raw))fail('SCHEMA_PROXY_VALUE')
+  const array=Array.isArray(expected),prototype=Object.getPrototypeOf(raw)
+  if(Array.isArray(raw)!==array||(array?prototype!==Array.prototype
+    :prototype!==Object.prototype&&prototype!==null))return false
+  const keys=Reflect.ownKeys(raw),expectedKeys=Reflect.ownKeys(expected)
+  if(keys.length!==expectedKeys.length)return false
+  for(const key of expectedKeys) {
+    const descriptor=Object.getOwnPropertyDescriptor(raw,key)
+    if(!descriptor||!has(descriptor,'value'))return false
+    if(array&&key==='length') {
+      if(descriptor.enumerable||descriptor.value!==(expected as unknown[]).length)return false
+    }else {
+      if(!descriptor.enumerable||!matchesCompilationData(descriptor.value,
+        (expected as Record<PropertyKey,unknown>)[key]))return false
+    }
+  }
+  return true
+}
 export function validateTavernLoreCompilationV1(input:unknown):Extract<TavernLoreCompilationV1,{kind:'compiled'}> {
-  const value=cloneSchemaData(input,OUTPUT_BYTES,outputBounds)
-  if(!object(value)||value.kind!=='compiled'||!object(value.plan))fail('LORE_PLAN_INVALID')
-  const plan=value.plan
-  const rebuilt=compileTavernLoreBookV1({schemaVersion:1,encoding:'st-character-book-compilation-input-v1',
-    source:plan.source,book:plan.rawBook,
-    ...(has(plan,'currentNativeOverlay')?{currentNativeOverlay:plan.currentNativeOverlay}:{})})
-  if(rebuilt.kind!=='compiled'||recordSha256(value)!==recordSha256(rebuilt))fail('LORE_PLAN_RECOMPUTATION_MISMATCH')
+  const outer=rawRecord(input)
+  if(outer.kind?.value!=='compiled'||!outer.plan)fail('LORE_PLAN_INVALID')
+  const plan=rawRecord(outer.plan.value),compiler=rawRecord(plan.compiler?.value),
+    profileSha256=compiler.semanticProfileSha256?.value,
+    profile=Object.values(compilerProfiles).find(candidate=>candidate.presentSha256===profileSha256
+      ||candidate.absentSha256===profileSha256)
+  if(!profile)fail('LORE_PLAN_PROFILE_UNSUPPORTED')
+  const rebuilt=compile(validateInput({schemaVersion:1,encoding:'st-character-book-compilation-input-v1',
+    source:plan.source?.value,book:plan.rawBook?.value,
+    ...(plan.currentNativeOverlay?{currentNativeOverlay:plan.currentNativeOverlay.value}:{})},profile),profile)
+  if(!matchesCompilationData(input,rebuilt))fail('LORE_PLAN_RECOMPUTATION_MISMATCH')
   return rebuilt
 }
 /** Materialize only typed data. Content remains an unexecuted source reference;

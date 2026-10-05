@@ -27,7 +27,8 @@ export function validateSchemaStorySourceFrame(input) {
         exact(material, ['card', 'rows', 'openingContext']);
         cloneSchemaData(material, 4 * 1048576);
         exact(snapshot, ['schemaVersion', 'encoding', 'source', 'pointerSha256', 'importRecordSha256', 'coverageSha256', 'materialRows',
-            'settings', 'bindings', 'selected', 'swipes', 'macroContext', 'documentSha256', 'snapshotSha256']);
+            'settings', 'bindings', 'selected', 'swipes', 'macroContext', 'documentSha256', 'snapshotSha256',
+            ...Object.hasOwn(snapshot, 'sourceProvenance') ? ['sourceProvenance'] : []]);
         const { snapshotSha256, ...body } = snapshot;
         if (frame.schemaVersion !== 1 || frame.encoding !== 'native-mvu-schema-story-source-frame-v1'
             || typeof frame.sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(frame.sessionId)

@@ -7,7 +7,7 @@ export {TaskValidationError, taskValidationFailure, FAILURE_LABELS, taskFailureD
 
 
 import {storedTask, executableTask, taskObject} from './tavern-task-types.js'
-import type {TaskSession, TaskAgent, TaskSpec, TaskJob, TaskResult, TaskChild, TaskOptions, Admission, Batch, SharedBatch, TaskControl} from './tavern-task-types.js'
+import type {TaskSession, TaskAgent, TaskSpec, TaskJob, StoredTask, TaskResult, TaskChild, TaskOptions, Admission, Batch, SharedBatch, TaskControl} from './tavern-task-types.js'
 export type {TaskFailure} from './tavern-task-support.js'
 
 const copy = <T>(value: T): T => value == null ? value : structuredClone(value)
@@ -40,7 +40,8 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
   const liveHistoricalResult=(session:S,job:TaskJob) => job.background===true && job.status==='running'
     && controllers.get(job.id)?.generation===job.generation && running.get(job.id)?.generation===job.generation
     && isHistoricalResultCurrent?.(session,job)
-  const validators=new Map<string,(value:unknown)=>unknown>(), running=new Map<string,{generation:string;promise:Promise<unknown>}>(), controllers=new Map<string,TaskControl<S,A>>(), locks=new Map<string,Promise<unknown>>(), batches=new Map<string,Batch<S,A>>(), admissions=new Map<string,Admission<S,A>>(), holds=new Map<string,number>()
+  const validators=new Map<string,{spec:TaskSpec<S,A>;generation:string;validate:(value:unknown)=>unknown}>()
+  const running=new Map<string,{generation:string;promise:Promise<unknown>}>(), controllers=new Map<string,TaskControl<S,A>>(), locks=new Map<string,Promise<unknown>>(), batches=new Map<string,Batch<S,A>>(), admissions=new Map<string,Admission<S,A>>(), holds=new Map<string,number>()
   const list = (session: S) => [...table.entries()].flatMap(([key,value])=>{const job=key.startsWith('tavern_job__')?storedTask(value):null;return job?.sessionId===session.id?[copy(job)]:[]})
   async function lock<T>(id: string,fn: () => T | PromiseLike<T>): Promise<T> {
     const previous=locks.get(id)??Promise.resolve()
@@ -79,8 +80,11 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       const live=owned(session,item.job.id)
       if(live.generation!==item.job.generation||terminal.has(live.status))throw new Error('任务已取消或失效')
       const failure=taskFailureDetails(raw)
-      await table.put(keyOf(live.id),{...live,generation:randomUUID(),execution:'inline',actualRoute:copy(live.main),status:'queued',
-        fallback:{from:item.job.actualRoute,to:copy(live.main),at:Date.now(),reason:failure.category==='timeout'?'timeout':'failed',failure},error:`${failure.label}，已交回主循环`,updatedAt:Date.now()})
+      const next={...live,generation:randomUUID(),execution:'inline',actualRoute:copy(live.main),status:'queued',
+        fallback:{from:item.job.actualRoute,to:copy(live.main),at:Date.now(),reason:failure.category==='timeout'?'timeout':'failed',failure},error:`${failure.label}，已交回主循环`,updatedAt:Date.now()}
+      await table.put(keyOf(live.id),next)
+      const registration=validators.get(live.id)
+      if(registration?.generation===live.generation)registration.generation=next.generation
       return failure
     })
   }
@@ -261,11 +265,11 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         throw new Error('任务来源已变化，请按当前分支重建')
       }
       if (job.status==='completed') return copy(job.result)
-      const validate=validators.get(id)
-      if (!validate) throw new Error('任务尚未恢复来源校验，请先继续任务')
+      const registration=validators.get(id)
+      if (!registration) throw new Error('任务尚未恢复来源校验，请先继续任务')
       let result
       try {
-        result=await validate(copy(value))
+        result=await registration.validate(copy(value))
         if (result===undefined || result===null) throw new Error('任务结果没有通过校验')
       }catch(error){
         const failures=(job.validationFailures??0)+1
@@ -308,7 +312,6 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       if (canPublishResult && !await canPublishResult(session,live,false)) throw new Error('任务输入权限已变化')
       await spec.onResult?.(copy(live));return result
     }
-    validators.set(id,spec.validate??(value=>value))
     let job=await lock(id,async()=>{
       const raw=table.get(key)
       let found=raw===undefined?null:copy(executableTask(raw))
@@ -336,6 +339,10 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       }
       return found
     })
+    // The existing validator lifetime also retains the actual request owner.
+    // Inline tools consume this registration, never a phase label or pending
+    // workflow selected independently of the Native task that requested them.
+    validators.set(id,{spec,generation:job.generation,validate:spec.validate??(value=>value)})
     if (!await isCurrent(session,job) && !(job.status==='completed' && await isHistoricalResultCurrent?.(session,job))) {
       await lock(id,async()=>{await table.put(key,{...owned(session,id),status:'stale',updatedAt:Date.now()})})
       throw new Error('任务来源已变化')
@@ -410,7 +417,35 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     running.set(id,{generation:job.generation,promise:run})
     try{return await deliver(await run)}finally{if(running.get(id)?.promise===run)running.delete(id)}
   }
-  return {list,request,submit,holdBatch,
+  function resolveRegisteredCardImport(session:S,agent:A,reference:{taskId?:string;generation?:string;
+    workflowId?:string;childSessionId?:string}) {
+    const matches=[...validators.entries()].filter(([id,registration])=>{
+      const spec=registration.spec,source=taskObject(spec.source)
+      if(spec.session!==session||spec.agent!==agent||spec.kind!=='card-import'||source?.workflowType!=='card')return false
+      if(reference.taskId)return id===reference.taskId
+      if(reference.workflowId)return source.workflowId===reference.workflowId
+      const current=table.get(keyOf(id)) as StoredTask|undefined
+      return !!current&&!terminal.has(current.status)
+    })
+    if(matches.length!==1)throw Error('CARD_IMPORT_TASK_OWNER_UNAVAILABLE')
+    const [id,registration]=matches[0]!,source=taskObject(registration.spec.source)!,generation=registration.generation
+    const assertCurrent=()=>{
+      const current=validators.get(id),task=table.get(keyOf(id)) as TaskJob|undefined
+      if(task?.id!==id||task.sessionId!==session.id||current?.spec.session!==session||current.spec.agent!==agent
+        ||current.generation!==generation||task.generation!==generation
+        ||reference.generation!==undefined&&task.generation!==reference.generation
+        ||terminal.has(task.status)||task.kind!=='card-import'
+        ||reference.childSessionId!==undefined&&task.childSessionId!==reference.childSessionId) {
+        throw Error('CARD_IMPORT_TASK_OWNER_CHANGED')
+      }
+      const actualSource=taskObject(task.source)
+      if(actualSource?.workflowType!=='card'||actualSource.workflowId!==source.workflowId
+        ||actualSource.generation!==source.generation)throw Error('CARD_IMPORT_TASK_SOURCE_CHANGED')
+      return task
+    }
+    return {task:assertCurrent(),assertCurrent}
+  }
+  return {list,request,submit,holdBatch,resolveRegisteredCardImport,
     activity:(session: S)=>[...table.entries()].flatMap(([,value])=>{const j=storedTask(value);return j?.sessionId===session.id&&['queued','running'].includes(j.status)?[{sessionId:j.sessionId,kind:j.kind,status:j.status,execution:j.execution,background:j.background===true,createdAt:j.createdAt}]:[]}),
     async invalidate(session: S) {
       for(const job of list(session).filter(j=>!terminal.has(j.status)))if(!await isCurrent(session,job)
@@ -439,7 +474,11 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       const result=await lock(id,async()=>{const job=ownedRecord(session,id)
         if(job.status==='completed')return job
         if(!await isCurrent(session,job))throw new Error('来源已变化，需要新快照')
-        const next={...job,status:'queued',generation:randomUUID(),validationFailures:0,error:null,failure:null,failedAt:null,updatedAt:Date.now()};await table.put(keyOf(id),next);return next})
+        const next={...job,status:'queued',generation:randomUUID(),validationFailures:0,error:null,failure:null,failedAt:null,updatedAt:Date.now()}
+        await table.put(keyOf(id),next)
+        const registration=validators.get(id)
+        if(registration&&registration.generation===job.generation)registration.generation=next.generation
+        return next})
       if(result.status!=='completed') {
         const old=controllers.get(id)
         if(old&&old.generation!==result.generation)abortControl(session,id,old)

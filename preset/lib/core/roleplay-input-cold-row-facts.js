@@ -137,7 +137,7 @@ function stop(value, sid) {
 }
 function work(value, sid, deps) {
     exact(value, ['schemaVersion', 'namespace', 'sessionId', 'branchId', 'preparationId', 'receiptGeneration', 'refs',
-        'credentialSha256', 'preparation', 'status', 'source', 'attemptGeneration', 'checkpoint'], ['attempt', 'stop']);
+        'credentialSha256', 'preparation', 'status', 'source', 'attemptGeneration', 'checkpoint'], ['attempt', 'stop', 'transition']);
     refs(value.refs, sid);
     preparation(value.preparation);
     receipt(value.checkpoint, sid);
@@ -314,6 +314,9 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
         verified.set(key, { value, receipt: checkpoint, association, materialFields });
         result.push(make(key, value, 'input-work', [key], association, ['schemaVersion', 'namespace', 'sessionId', 'branchId', 'preparationId', 'receiptGeneration', 'refs', 'credentialSha256',
             'preparation', 'checkpoint'], materialFields, ['status', 'attempt.turn', 'attempt.step', 'attempt.prepared', 'attempt.legacyPreparationId', 'stop',
+            // Import transitions are retained writer metadata. Cold facts bind the
+            // real Native checkpoint below; they never resume this transition.
+            ...(value.transition !== undefined ? ['transition'] : []),
             ...(value.source.kind !== 'story' ? ['source', 'attemptGeneration', 'attempt.snapshot'] : [])]));
     }
     const matching = (noticeValue) => [...verified].filter(([, item]) => {

@@ -135,8 +135,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     if(!inheritanceObjectV1(pointer)||typeof pointer.importId!=='string')return false
     const owner=typeof pointer.sourceRecordSessionId==='string'?pointer.sourceRecordSessionId:sid,
       record=branch.get(`${owner}__import-${pointer.importId}`)
-    return inheritanceObjectV1(record)&&[4,5].includes(Number(record.schemaVersion))
-      &&['tavern-fields-v1','tavern-fields-v2'].includes(String(record.normalizer))
+    return inheritanceObjectV1(record)&&[4,5,6].includes(Number(record.schemaVersion))
+      &&['tavern-fields-v1','tavern-fields-v2','nexttavern-fields-v1'].includes(String(record.normalizer))
   }
   function assertOperation(p:TavernSourcePreparedV1) {
     const operation=branch.get(p.operationKey)

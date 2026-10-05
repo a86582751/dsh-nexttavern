@@ -329,7 +329,7 @@ export function validateOriginalInheritanceBindingV1(raw) {
     for (const field of ['rawSha256', 'normalizedSha256', 'coverageSha256', 'documentSha256', 'dataSha256', 'activationSha256'])
         if (!inheritanceHashV1(raw[field]))
             inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
-    if (!['tavern-fields-v1', 'tavern-fields-v2'].includes(String(raw.normalizer)))
+    if (!['tavern-fields-v1', 'tavern-fields-v2', 'nexttavern-fields-v1'].includes(String(raw.normalizer)))
         inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
     validateInheritanceRefV1(raw.importRecordRef, `${raw.sourceRecordSessionId}__import-${raw.importId}`);
     const pointer = raw.originalPointer;

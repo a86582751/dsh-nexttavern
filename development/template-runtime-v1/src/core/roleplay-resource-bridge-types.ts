@@ -1,5 +1,5 @@
 import type { LibraryTable } from './tavern-library.js'
-import type { ImportAssignment } from './roleplay-import-types.js'
+import type { ImportAssignment,ImportSourceEnvelope } from './roleplay-import-types.js'
 
 export interface ResourceSession { id: string; header: { cwd: string } }
 // One shared table holds both legacy import/export rows and library receipts.
@@ -17,7 +17,7 @@ export interface ResourceRecord extends Record<string, unknown> {
   rawSha256?: string
   rawSource?: string
   sourceFile?: string
-  sourceEnvelope?: { extension: string; base64: string }
+  sourceEnvelope?: ImportSourceEnvelope
   assignments?: ImportAssignment[]
 }
 export interface ResourceBridgeDependencies {

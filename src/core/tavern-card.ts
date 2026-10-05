@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { constants, openSync, closeSync, fstatSync, lstatSync, realpathSync, readSync } from 'node:fs'
 import { resolve, relative, isAbsolute, sep, extname } from 'node:path'
 import { pngCrc } from './tavern-card-crc.js'
+import {isNextTavernCardDocument,projectNextTavernCard} from './nexttavern-card.js'
 
 export const CARD_LIMITS = Object.freeze({ bytes: 20_000_000, jsonBytes: 5_000_000,
   nodes: 100_000, depth: 48, entries: 2048, pngChunks: 4096, pixels: 16_777_216 })
@@ -84,8 +85,8 @@ const utf8 = (bytes: Uint8Array): string => {
   try { return new TextDecoder('utf-8', {fatal:true}).decode(bytes) }
   catch { fail('角色卡不是有效 UTF-8') }
 }
-function parseJson(bytes: Buffer): unknown {
-  if (bytes.length > CARD_LIMITS.jsonBytes) fail('角色卡 JSON 大小超出字节限制')
+function parseJson(bytes: Buffer,maximumBytes:number=CARD_LIMITS.jsonBytes): unknown {
+  if (bytes.length > maximumBytes) fail('角色卡 JSON 大小超出字节限制')
   const text = utf8(bytes).replace(/^\uFEFF/, '')
   // Bound nesting before JSON.parse, then bound the complete tree, including
   // extensions. Never spread attacker objects into runtime configuration.
@@ -189,12 +190,14 @@ export function decodeTavernCard(bytes: unknown, extension: string): DecodedTave
   if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > CARD_LIMITS.bytes) fail('角色卡大小超出字节 limit')
   if (!['.json','.png'].includes(extension)) fail('仅支持 PNG/JSON 酒馆卡')
   const png = extension === '.png' ? pngPayload(bytes) : null
-  const document = parseJson(png?.payload ?? bytes)
+  const document = parseJson(png?.payload ?? bytes,png?CARD_LIMITS.jsonBytes:CARD_LIMITS.bytes)
   if (!object(document)) fail('角色卡必须是 JSON 对象')
+  const native=isNextTavernCardDocument(document)
+  if(!native&&!png&&bytes.length>CARD_LIMITS.jsonBytes)fail('角色卡 JSON 大小超出字节限制')
   let version = 1, data: unknown = document
   if (document.spec !== undefined) {
-    version = document.spec === 'chara_card_v2' ? 2 : document.spec === 'chara_card_v3' ? 3 : 0
-    if (!version || !String(document.spec_version ?? '').startsWith(`${version}.`)) fail('不支持的角色卡版本 version')
+    version = native?1:document.spec === 'chara_card_v2' ? 2 : document.spec === 'chara_card_v3' ? 3 : 0
+    if (!version || !native&&!String(document.spec_version ?? '').startsWith(`${version}.`)) fail('不支持的角色卡版本 version')
     data = document.data
   }
   if (!object(data) || typeof data.name !== 'string' || !data.name.trim()) fail('角色卡缺少有效 name')
@@ -202,8 +205,50 @@ export function decodeTavernCard(bytes: unknown, extension: string): DecodedTave
   for (const key of ['description','personality','scenario','first_mes','mes_example','system_prompt','post_history_instructions']) {
     if (data[key] !== undefined && typeof data[key] !== 'string') fail(`角色卡 ${key} 必须是字符串`)
   }
+  if(native) {
+    if(png)fail('NextTavern 原生角色卡使用 JSON 文件')
+    for(const key of ['cards','worldbook']) {
+      const rows=data[key]
+      if(!Array.isArray(rows)||rows.length>CARD_LIMITS.entries
+        ||rows.some(row=>!object(row)||typeof row.content!=='string'))fail(`NextTavern ${key} 条目格式无效`)
+    }
+    if(!object(data.rules)||!object(document.archive))fail('NextTavern rules/archive 格式无效')
+    for(const key of ['core','plot','narrative','reply','style','status']) {
+      if(data.rules[key]!==undefined&&typeof data.rules[key]!=='string')fail(`NextTavern rules.${key} 必须是字符串`)
+    }
+    for(const key of ['status','opening']) {
+      if(data[key]!==undefined&&(!object(data[key])||typeof data[key].text!=='string'))fail(`NextTavern ${key} 格式无效`)
+    }
+    const opening=data.opening
+    if(object(opening)) {
+      if(opening.materialization!==undefined&&!['template','materialized'].includes(String(opening.materialization))) {
+        fail('NextTavern opening.materialization 格式无效')
+      }
+      if(opening.catalog!==undefined&&(!Array.isArray(opening.catalog)
+        ||opening.catalog.some(row=>!object(row)||typeof row.rawText!=='string')))fail('NextTavern opening.catalog 格式无效')
+    }
+    if(data.compatibility!==undefined) {
+      if(!object(data.compatibility))fail('NextTavern compatibility 格式无效')
+      const aliases=data.compatibility.sillytavernMacroFields
+      if(aliases!==undefined&&(!object(aliases)||Object.values(aliases).some(value=>typeof value!=='string'))) {
+        fail('NextTavern compatibility.sillytavernMacroFields 格式无效')
+      }
+    }
+    const book=data.character_book
+    if(book!==undefined) {
+      if(!object(book))fail('NextTavern character_book 格式无效')
+      const entries=book.entries??[]
+      if(!Array.isArray(entries)&&!object(entries))fail('NextTavern character_book.entries 格式无效')
+      if(Object.keys(entries).length>CARD_LIMITS.entries
+        ||Object.values(entries).some(row=>!object(row)||typeof row.content!=='string'))fail('NextTavern 世界书正文格式无效')
+    }
+    if(data.rules.beauty!==undefined) {
+      if(!object(data.rules.beauty))fail('NextTavern beauty 格式无效')
+      for(const key of ['css','js'])if(data.rules.beauty[key]!==undefined&&typeof data.rules.beauty[key]!=='string')fail('NextTavern beauty 正文格式无效')
+    }
+  }
   if (png?.chunk === 'ccv3' && version !== 3) fail('ccv3 数据块版本不匹配')
-  return { schemaVersion:1, format:`${png ? 'png' : 'json'}-v${version}`, document, data: data as CardData,
+  return { schemaVersion:1, format:native?'json-nexttavern-v1':`${png ? 'png' : 'json'}-v${version}`, document, data: data as CardData,
     sourceSha256:digest(bytes), ...(png ? {pngChunk:png.chunk, avatarBase64:png.avatar.toString('base64'), avatarSha256:digest(png.avatar)} : {}) }
 }
 
@@ -268,9 +313,11 @@ function projectTavernCardVersion(decoded: DecodedTavernCard, includeFullArchive
 }
 
 export function projectTavernCard(decoded: DecodedTavernCard) {
+  if(isNextTavernCardDocument(decoded.document))return projectNextTavernCard(decoded)
   return projectTavernCardVersion(decoded, true)
 }
 export function projectTavernCardCompact(decoded: DecodedTavernCard) {
+  if(isNextTavernCardDocument(decoded.document))return projectNextTavernCard(decoded)
   return projectTavernCardVersion(decoded, false)
 }
 
@@ -287,6 +334,7 @@ export interface TavernOpeningCandidate {
   readonly rawText: string
   readonly renderedText: string
   readonly macros: readonly { name: string; status: 'resolved' | 'missing-context' | 'unknown' | 'malformed' }[]
+  readonly materialization?: 'template'|'materialized'
 }
 
 // An import can show every author opening before selecting one. Expansion is
@@ -298,16 +346,21 @@ export function compileTavernOpeningCandidates(
   const alternate = decoded.data.alternate_greetings
   if (alternate !== undefined && (!Array.isArray(alternate) || alternate.length > CARD_LIMITS.entries
     || alternate.some(value => typeof value !== 'string'))) fail('备选开场格式或数量无效')
-  const values = [decoded.data.first_mes, ...(alternate as string[] | undefined ?? [])]
+  const native=isNextTavernCardDocument(decoded.document)?decoded.document.data.opening:undefined
+  const catalog=native?.catalog
+  const nativeCatalog=(catalog??[]) as {rawText:string;label?:string}[]
+  const values = native?[native.text,...nativeCatalog.map(item=>item.rawText)]
+    :[decoded.data.first_mes, ...(alternate as string[] | undefined ?? [])]
   const root = decoded.document.data === decoded.data ? '/data' : ''
   const candidates: TavernOpeningCandidate[] = []
   const known = new Set(['user', 'char', 'user_gender'])
   for (const [index, raw] of values.entries()) {
     if (raw === undefined) continue
     if (typeof raw !== 'string') fail('开场正文格式无效')
+    const materialized=native&&index===0&&native.materialization==='materialized'
     const macros: TavernOpeningCandidate['macros'][number][] = []
     let cursor = 0, brokenDelimiter = false
-    const renderedText = raw.replace(/\{\{([^{}]*)\}\}/g, (token, name: string, at: number) => {
+    const renderedText = materialized?raw:raw.replace(/\{\{([^{}]*)\}\}/g, (token, name: string, at: number) => {
       if (/\{\{|\}\}/.test(raw.slice(cursor, at))) brokenDelimiter = true
       const malformed = raw[at - 1] === '{' || raw[at + token.length] === '}' || !name
       const value = known.has(name) ? context[name as keyof TavernOpeningContext] : undefined
@@ -318,10 +371,13 @@ export function compileTavernOpeningCandidates(
       return status === 'resolved' ? value! : token
     })
     // A broken delimiter is not a supported token and must never disappear.
-    if (brokenDelimiter || /\{\{|\}\}/.test(raw.slice(cursor))) macros.push({name:'', status:'malformed'})
-    candidates.push({index, sourcePointer:index === 0 ? `${root}/first_mes`
+    if (!materialized&&(brokenDelimiter || /\{\{|\}\}/.test(raw.slice(cursor)))) macros.push({name:'', status:'malformed'})
+    candidates.push({index, sourcePointer:native?index===0?'/data/opening/text'
+      :`/data/opening/catalog/${index-1}/rawText`:index === 0 ? `${root}/first_mes`
       : `${root}/alternate_greetings/${index - 1}`, sourceSha256:digest(raw),
-    label:index === 0 ? '默认开场' : `备选开场 ${index}`, rawText:raw, renderedText, macros})
+    label:native?index===0?'当前开场':String(nativeCatalog[index-1]?.label??`备选开场 ${index}`)
+      :index === 0 ? '默认开场' : `备选开场 ${index}`,rawText:raw,renderedText,macros,
+    ...(native?{materialization:materialized?'materialized' as const:'template' as const}:{})})
   }
   return candidates
 }

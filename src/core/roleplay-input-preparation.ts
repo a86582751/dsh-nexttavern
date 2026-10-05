@@ -142,7 +142,8 @@ export interface RoleplayInputBinding {
   currentStep(): RoleplayInputStep | undefined
   /** Actual checked claim Source before pre-step, not step/provider readiness. */
   readClaimedInputSource(): InputSourceObservation | undefined
-  existingTransition(): {lease: RoleplayInputTransitionLease; proof: InputTransitionProof} | undefined
+  existingTransition(): {lease: RoleplayInputTransitionLease; proof: InputTransitionProof;
+    legacyRecord?:InputLegacyMergeReference} | undefined
   originalMessages(step: RoleplayInputStep): NativeInputAdmissionCheckV2['claim']['messages']
   steerOwnedContinuation(message:ReturnType<typeof taskPhaseMessage>,turn:number):OwnedContinuationResult
   checkHistoricalTaskCurrency(currency: InputPreparationCurrency): {kind: 'allow'} | {kind: 'blocked'; code: string}
@@ -1071,7 +1072,9 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       },
       existingTransition() {
         return hot?.transition && currentLease && !baseCurrency(hot)
-          ? {lease: currentLease, proof: clone(hot.transition.reservation.proof)} : undefined
+          ? {lease: currentLease, proof: clone(hot.transition.reservation.proof),
+            ...(hot.transition.status==='legacy-delegated'&&hot.transition.legacyRecord
+              ?{legacyRecord:clone(hot.transition.legacyRecord)}:{})} : undefined
       },
       originalMessages(step: RoleplayInputStep) {
         const code = stepCurrency(step)

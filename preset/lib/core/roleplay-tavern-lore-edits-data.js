@@ -196,7 +196,8 @@ export function compilerInput(source, overlay) {
             rawSourceSha256: original.rawSha256, importRecordSha256: original.importRecordRef.sha256,
             sourceSnapshotSha256: source.sourceSha256, documentSha256: original.documentSha256,
             bookPointer: original.primary.bookPointer, bookValueSha256: original.primary.bookSha256,
-            sourceFormat: original.decodedFormat.endsWith('v3') ? 'ccv3-character-book' : 'ccv2-character-book',
+            sourceFormat: original.decodedFormat === 'json-nexttavern-v1' ? 'nexttavern-character-book'
+                : original.decodedFormat.endsWith('v3') ? 'ccv3-character-book' : 'ccv2-character-book',
             ...(source.inheritance ? { inheritance: source.inheritance } : {}),
             ...(original.primary.binding === 'proven-absence'
                 ? { bookPresence: 'proven-absence', absenceProof: original.primary.absenceProof } : {}) }, currentNativeOverlay: overlay };

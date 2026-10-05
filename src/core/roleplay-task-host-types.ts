@@ -56,6 +56,10 @@ export interface NativeTaskInput<Result = unknown> extends Omit<TaskSpec<HostSes
   taskStage?: string
 }
 export interface TaskHostDependencies {
+  assertCardWorkflow(session:import('./roleplay-import-types.js').ImportSession,
+    record:import('./roleplay-card-workflow-types.js').CardWorkflowRecord):void
+  /** The actual checked Native claim; a player claim never becomes an inline task. */
+  currentTaskClaim?(agent:HostAgent):{workflowId?:string}|undefined
   /** Known durable InputOwner refusal only; no task or Native authorization. */
   inputTaskRecoveryBlockCode?(session:HostSession):string|undefined
   inputCurrency?(session:HostSession):InputPreparationCurrency | undefined

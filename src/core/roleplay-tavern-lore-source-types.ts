@@ -47,7 +47,7 @@ export interface TavernLoreSourceDataV1 {
   readonly authority: 'consumer-data-only'
   readonly sessionId: string
   readonly sourceRecordSessionId: string
-  readonly normalizer: 'tavern-fields-v1' | 'tavern-fields-v2'
+  readonly normalizer: 'tavern-fields-v1' | 'tavern-fields-v2' | 'nexttavern-fields-v1'
   readonly inheritance?:TavernSourceInheritanceDescriptorV1
   readonly original: {
     readonly activePointer: Readonly<ImportPointer>
@@ -57,7 +57,7 @@ export interface TavernLoreSourceDataV1 {
     readonly normalizedSha256: string
     readonly coverageSha256: string
     readonly transactionId: string
-    readonly decodedFormat: 'json-v2' | 'json-v3' | 'png-v2' | 'png-v3'
+    readonly decodedFormat: 'json-v2' | 'json-v3' | 'png-v2' | 'png-v3' | 'json-nexttavern-v1'
     readonly documentSha256: string
     readonly dataSha256: string
     /** Determined from the fresh decoder's alias before any generic clone. */

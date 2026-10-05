@@ -859,10 +859,23 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     clusterPhase,
     clusterJob,
     tavernTasks,
+    resolveCurrentCardImport,
     nativeTask,
     resumeMemoryWork,
     resumeStatusMaintenance,
   } = createRoleplayTaskHost({
+    assertCardWorkflow:(session,record)=>assertCardWorkflow(session,record),
+    currentTaskClaim:agent=>{
+      const binding=inputBindings.get(agent),step=binding?.currentStep()
+      if(!step)return undefined
+      const original=binding!.originalMessages(step) as unknown as readonly ContextMessage[]
+      if(!original.length||!original.every(message=>message.source?.kind==='roleplay-tasks'
+        &&message.source.form==='phase'))return undefined
+      const workflows=[...new Set(original.flatMap(message=>typeof message.source?.jobId==='string'
+        ?[message.source.jobId]:[]))]
+      if(workflows.length>1)throw Error('CARD_IMPORT_TASK_CLAIM_CONFLICT')
+      return workflows.length?{workflowId:workflows[0]!}:{}
+    },
     inputTaskRecoveryBlockCode:session=>inputOwner?.readTaskRecoveryBlockCode(session.id),
     inputCurrency:session => {
       const agent = taskAgents.get(session.id)
@@ -1758,6 +1771,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     assertImportRecordIntegrity,
     driveStructuredImport,
   } = registerRoleplayImports({
+    resolveCurrentCardImport,
     inputTransition:createRoleplayImportInputTransition({
       owner:() => inputOwner,
       binding:agent => inputBindings.get(agent),
@@ -1786,7 +1800,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       },
     }),
     beforeWrite:async exec=>{
-      const session=await workspaceImportSessionOf(exec)
+      const session=exec.ownedCardImport?.session??await workspaceImportSessionOf(exec)
       if(adaptationIsActive(eventsOf(session)))await adaptation.beforeWrite(exec)
     },
     ctx,

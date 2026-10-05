@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nexttavern:card:1.0",
+  "title": "NextTavern portable character card 1.0",
+  "description": "DATA contains current author settings. ARCHIVE retains original sources and never supplies runtime instructions. Unknown author fields remain portable. Runtime identities, sources, import IDs, verification, versions and timestamps are omitted by the export producer.",
+  "type": "object",
+  "required": ["spec", "spec_version", "data", "archive"],
+  "additionalProperties": true,
+  "properties": {
+    "spec": {"const": "nexttavern_card"},
+    "spec_version": {"const": "1.0"},
+    "data": {
+      "type": "object",
+      "required": ["name", "cards", "worldbook", "rules"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {"type": "string"},
+        "cards": {"type": "array", "items": {"$ref": "#/$defs/authorRow"}},
+        "worldbook": {"type": "array", "items": {"$ref": "#/$defs/authorRow"}},
+        "rules": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "core": {"type": "string"},
+            "plot": {"type": "string"},
+            "narrative": {"type": "string"},
+            "reply": {"type": "string"},
+            "style": {"type": "string"},
+            "status": {"type": "string"},
+            "beauty": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "css": {"type": "string"},
+                "js": {"type": "string"},
+                "regexRules": {"type": "array"}
+              }
+            }
+          }
+        },
+        "status": {"$ref": "#/$defs/textRow"},
+        "opening": {
+          "allOf": [{"$ref": "#/$defs/textRow"}],
+          "properties": {
+            "materialization": {"enum": ["template", "materialized"]},
+            "catalog": {
+              "type": "array",
+              "items": {"type": "object", "required": ["rawText"], "additionalProperties": true,
+                "properties": {"rawText": {"type": "string"}, "label": {"type": "string"}}}
+            }
+          }
+        },
+        "compatibility": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "sillytavernMacroFields": {
+              "description": "Activated ST macro aliases retained independently of canonical author prose; expanded only by the existing protected prompt renderer.",
+              "type": "object",
+              "additionalProperties": {"type": "string"}
+            }
+          }
+        },
+        "settings": {"type": "object", "additionalProperties": true},
+        "character_book": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "entries": {
+              "description": "Retains original array order or object keys, complete entry content and unknown fields. Current editor changes are merged by the export producer.",
+              "oneOf": [
+                {"type": "array", "items": {"$ref": "#/$defs/bookEntry"}},
+                {"type": "object", "additionalProperties": {"$ref": "#/$defs/bookEntry"}}
+              ]
+            }
+          }
+        }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "documents": {"type": "array"},
+        "classifiedSources": {"type": "array"}
+      }
+    }
+  },
+  "$defs": {
+    "authorRow": {
+      "description": "Open author fields are preserved. Reserved local runtime fields (id, schemaVersion, version, updatedAt, updatedAtSeq, createdAt, importId, sources, verified, tavern and beauty.sources) are not portable execution permissions and are removed by export and activation.",
+      "type": "object",
+      "required": ["content"],
+      "additionalProperties": true,
+      "properties": {
+        "content": {"type": "string"},
+        "name": {"type": "string"},
+        "kind": {"type": "string"},
+        "aliases": {"type": "array", "items": {"type": "string"}},
+        "keywords": {"type": "array", "items": {"type": "string"}},
+        "triggers": {"type": "array", "items": {"type": "string"}},
+        "locked": {"type": "boolean"},
+        "priority": {"type": "number"},
+        "tokenBudget": {"type": "number"},
+        "alwaysOn": {"type": "boolean"}
+      }
+    },
+    "textRow": {
+      "description": "Current authored text and portable author metadata. Local runtime identities, provenance and verification are not portable execution permissions.",
+      "type": "object",
+      "required": ["text"],
+      "additionalProperties": true,
+      "properties": {"text": {"type": "string"}}
+    },
+    "bookEntry": {
+      "type": "object",
+      "required": ["content"],
+      "additionalProperties": true,
+      "properties": {"content": {"type": "string"}}
+    }
+  }
+}

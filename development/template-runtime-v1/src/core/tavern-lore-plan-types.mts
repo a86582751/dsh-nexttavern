@@ -15,7 +15,7 @@ export interface TavernLoreBookAbsenceProofV1 {
   readonly importId:string
   readonly documentDataRootPointer:'/data'
   readonly bookPointer:'/data/character_book'
-  readonly decodedFormat:'json-v2'|'json-v3'|'png-v2'|'png-v3'
+  readonly decodedFormat:'json-v2'|'json-v3'|'png-v2'|'png-v3'|'json-nexttavern-v1'
   readonly document:MvuJsonObject
   readonly documentSha256:string
   readonly dataSha256:string
@@ -43,7 +43,7 @@ export interface TavernLorePresentSourceReferenceV1 {
   readonly bookPointer:string
   readonly bookValueSha256:string
   /** The caller supplies both source identity and the format it decoded. */
-  readonly sourceFormat:'ccv2-character-book'|'ccv3-character-book'
+  readonly sourceFormat:'ccv2-character-book'|'ccv3-character-book'|'nexttavern-character-book'
   readonly inheritance?:TavernSourceInheritanceDescriptorV1
 }
 export interface TavernLoreAbsentSourceReferenceV1 extends TavernLorePresentSourceReferenceV1 {
@@ -213,7 +213,7 @@ export interface TavernLorePlanV1 {
   readonly currentNativeOverlay?:TavernLoreCurrentNativeOverlayV1
   readonly currentNativeOverlaySha256?:string
   readonly bookDisposition:'eligible-semantic-data'|'retained-ineligible'
-  readonly collection:{readonly kind:'source-array'|'object-retained-unsupported'|'proven-absent-book';readonly count:number}
+  readonly collection:{readonly kind:'source-array'|'source-object'|'object-retained-unsupported'|'proven-absent-book';readonly count:number}
   readonly bookMetadata:readonly TavernLoreMetadataReferenceV1[]
   readonly declaredBookSettings:{readonly disposition:'not-applied-by-fixed-importer';
     readonly scanDepth?:number;readonly tokenBudget?:number;readonly recursiveScanning?:boolean}

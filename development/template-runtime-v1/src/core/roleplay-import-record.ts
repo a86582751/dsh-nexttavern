@@ -6,6 +6,7 @@ import { readCardSource, decodeTavernCard, projectTavernCard, projectTavernCardC
   compileTavernExtensionInventoryV3,
   compileTavernCapabilityReport } from './tavern-card.js';
 import type { DecodedTavernCard } from './tavern-card.js';
+import {projectNextTavernCard} from './nexttavern-card.js';
 import type {
   ImportRecord,
   ImportAssignment,
@@ -14,6 +15,17 @@ import type {
   ImportSession,
 } from './roleplay-import-types.js';
 export const IMPORT_NORMALIZER = 'utf8-lf+anydoc-deescape-v2';
+export const NEXTTAVERN_IMPORT_NORMALIZER = 'nexttavern-fields-v1';
+/** Decode execution data without reading the inert transport archive. */
+export function readStructuredImportDataV1(record:ImportRecord) {
+  const envelope=record.sourceEnvelope;
+  if(!envelope)throw new Error('结构化导入缺少执行原件');
+  const bytes=envelope.schemaVersion===2?Buffer.from(record.rawSource,'utf8'):Buffer.from(envelope.base64,'base64');
+  const decoded=decodeTavernCard(bytes,envelope.extension);
+  return {decoded,provenance:{transportSha256:record.rawSha256,transportBytes:record.sourceBytes,
+    transportResourceId:envelope.schemaVersion===2?envelope.transportResourceId:null,
+    executionSha256:decoded.sourceSha256,executionBytes:bytes.length}};
+}
 const IMPORT_SOURCE_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.png', '.json']);
 // Hard limits protect the storage domain and the synchronous line/span
 // coverage pass from a malformed or adversarial tool payload.  These are
@@ -60,13 +72,39 @@ const lineStartsOf = (record: ImportRecord) => {
 export const projectStructuredImport = (record: ImportRecord, decoded: DecodedTavernCard) => {
   if (record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1') return projectTavernCard(decoded);
   if (record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2') return projectTavernCardCompact(decoded);
+  if (record.schemaVersion === 6 && record.normalizer === NEXTTAVERN_IMPORT_NORMALIZER)
+    return projectNextTavernCard(decoded,undefined,false);
   throw new Error('结构化导入投影版本不匹配');
 };
-export const assertImportRecordIntegrity = (record: ImportRecord) => {
+export const INDEPENDENT_AUTHOR_CORE_V1=Object.freeze({schemaVersion:1,kind:'independent-author-core'});
+export const hasIndependentAuthorCoreV1=(rules:Record<string,unknown>)=>{
+  const marker=rules.coreOwnership as {schemaVersion?:unknown;kind?:unknown}|undefined;
+  return marker?.schemaVersion===1&&marker.kind==='independent-author-core';
+};
+/** The state owner supplies its active import; this is a text projection, not
+ * another Source or activation audit. Historical edited mixtures stay intact. */
+export function readAuthorCoreDataV1(record:ImportRecord|null|undefined,rules:Record<string,unknown>,
+  decoded?:DecodedTavernCard) {
+  const text=String(rules.core??'');
+  if(hasIndependentAuthorCoreV1(rules)||record?.sourceEnvelope?.format==='json-nexttavern-v1')
+    return {kind:'independent-author' as const,text};
+  if(!record?.sourceEnvelope)return {kind:'independent-author' as const,text};
+  const spans=record.assignments.filter(item=>item.target==='core-setting').flatMap(item=>item.sourceSpans)
+    .sort((left,right)=>left.startLine-right.startLine);
+  if(spanText(record,spans)!==text)return {kind:'legacy-edited-unsplit' as const,text};
+  const source=decoded??readStructuredImportDataV1(record).decoded;
+  const prefix=projectStructuredImport(record,{...source,data:{...source.data,character_book:{entries:[]}}});
+  const independent=prefix.assignments.filter(item=>item.target==='core-setting').flatMap(item=>item.sourceSpans);
+  return {kind:'legacy-projection' as const,text:spanText(record,independent)};
+}
+export const assertImportRecordIntegrity = (record: ImportRecord,
+  onDecoded?:(decoded:DecodedTavernCard|undefined)=>void) => {
+  let structuredDecoded:DecodedTavernCard|undefined;
   if (!record || typeof record !== 'object')
     throw new Error('导入记录损坏或不存在');
   const structured = (record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1')
-    || (record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2');
+    || (record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2')
+    || (record.schemaVersion === 6 && record.normalizer === NEXTTAVERN_IMPORT_NORMALIZER);
   if (!structured && (record.schemaVersion !== 3 || record.normalizer !== IMPORT_NORMALIZER)) {
     throw new Error('导入记录版本或规范化器不匹配；请从不可变 raw source 重新 begin');
   }
@@ -103,19 +141,30 @@ export const assertImportRecordIntegrity = (record: ImportRecord) => {
   }
   if (structured) {
     const envelope = record.sourceEnvelope;
-    if (envelope?.schemaVersion !== 1 || typeof envelope.base64 !== 'string' || envelope.base64.length > 27000000)
-      throw new Error('结构化原件归档无效');
-    const bytes = Buffer.from(envelope.base64, 'base64');
-    if (bytes.toString('base64') !== envelope.base64 || bytes.length !== record.sourceBytes || sha256(bytes) !== record.rawSha256)
-      throw new Error('结构化原件哈希或大小校验失败');
-    const decoded = decodeTavernCard(bytes, envelope.extension);
-    if (decoded.format !== envelope.format || decoded.sourceSha256 !== envelope.sourceSha256 || record.rawSha256 !== envelope.sourceSha256)
+    if(!envelope)throw new Error('结构化原件归档无效');
+    if(record.schemaVersion===6) {
+      if(envelope.schemaVersion!==2||envelope.extension!=='.json'||envelope.format!=='json-nexttavern-v1'
+        ||envelope.transportSha256!==record.rawSha256||envelope.transportBytes!==record.sourceBytes
+        ||!envelope.transportResourceId)throw new Error('原生执行资料与原件来源不一致');
+    }else {
+      if(envelope.schemaVersion!==1||typeof envelope.base64!=='string'||envelope.base64.length>27000000)
+        throw new Error('结构化原件归档无效');
+      const bytes=Buffer.from(envelope.base64,'base64');
+      if(bytes.toString('base64')!==envelope.base64||bytes.length!==record.sourceBytes||sha256(bytes)!==record.rawSha256)
+        throw new Error('结构化原件哈希或大小校验失败');
+    }
+    const {decoded,provenance}=readStructuredImportDataV1(record);
+    structuredDecoded=decoded;
+    if(decoded.format!==envelope.format||(envelope.schemaVersion===2
+      ?provenance.executionSha256!==envelope.executionSha256||provenance.executionBytes!==envelope.executionBytes
+        ||Object.keys(decoded.document.archive as Record<string,unknown>).length!==0
+      :decoded.sourceSha256!==envelope.sourceSha256||record.rawSha256!==envelope.sourceSha256))
       throw new Error('结构化原件格式或来源证据不一致');
     if (JSON.stringify(decoded.document, null, 2) !== record.rawSource
       || projectStructuredImport(record, decoded).text !== normalizedSource)
       throw new Error('结构化原件与投影不一致');
     if (record.fieldProof !== undefined) {
-      if (record.schemaVersion !== 5
+      if (![5,6].includes(record.schemaVersion)
         || stableJson(compileTavernFieldCoverage(decoded)) !== stableJson(record.fieldProof))
         throw new Error('结构化字段覆盖证明与原件不一致');
     }
@@ -123,17 +172,17 @@ export const assertImportRecordIntegrity = (record: ImportRecord) => {
       const inventory = record.extensionInventory;
       const expected = inventory.schemaVersion === 1 ? compileTavernExtensionInventoryV1(decoded)
         : inventory.schemaVersion === 2 ? compileTavernExtensionInventory(decoded) : null;
-      if (record.schemaVersion !== 5
+      if (![5,6].includes(record.schemaVersion)
         || expected === null || stableJson(expected) !== stableJson(inventory))
         throw new Error('结构化扩展能力清单与原件不一致');
     }
     if (record.extensionDeclarations !== undefined) {
-      if (record.schemaVersion !== 5 || record.extensionDeclarations.schemaVersion !== 3
+      if (![5,6].includes(record.schemaVersion) || record.extensionDeclarations.schemaVersion !== 3
         || stableJson(compileTavernExtensionInventoryV3(decoded)) !== stableJson(record.extensionDeclarations))
         throw new Error('结构化扩展声明证明与原件不一致');
     }
     if (record.capabilityReport !== undefined) {
-      if (record.schemaVersion !== 5 || record.capabilityReport.schemaVersion !== 1
+      if (![5,6].includes(record.schemaVersion) || record.capabilityReport.schemaVersion !== 1
         || stableJson(compileTavernCapabilityReport(decoded)) !== stableJson(record.capabilityReport))
         throw new Error('结构化能力报告与原件不一致');
     }
@@ -151,22 +200,24 @@ export const assertImportRecordIntegrity = (record: ImportRecord) => {
     throw new Error('导入记录行内容元数据不一致');
   if (record.lines.some((line, index) => line !== expectedLines[index]))
     throw new Error('导入记录行内容与规范化原文不一致');
-  if (record.assignmentProof !== undefined) assertDeterministicAssignmentProof(record);
+  if (record.assignmentProof !== undefined) assertDeterministicAssignmentProof(record,structuredDecoded);
+  onDecoded?.(structuredDecoded);
   return true;
 };
 // Activation adds a materialization hash to each assignment. The deterministic
 // stage proof covers the original classification and remains stable afterward.
 export const deterministicAssignmentHash = (assignments: readonly ImportAssignment[]) =>
   sha256(stableJson(assignments.map(({ materializedSha256: _materialized, ...staged }) => staged)));
-export const assertDeterministicAssignmentProof = (record: ImportRecord) => {
+export const assertDeterministicAssignmentProof = (record: ImportRecord,decodedInput?:DecodedTavernCard) => {
   const proof = record.assignmentProof;
-  if (record.schemaVersion !== 5 || record.normalizer !== 'tavern-fields-v2'
+  if (!(record.schemaVersion===5&&record.normalizer==='tavern-fields-v2'
+    ||record.schemaVersion===6&&record.normalizer===NEXTTAVERN_IMPORT_NORMALIZER)
     || !record.fieldProof || proof?.schemaVersion !== 1 || proof.kind !== 'deterministic-suggested'
     || !record.sourceEnvelope || proof.sourceSha256 !== record.rawSha256
     || proof.normalizedSha256 !== record.normalizedSha256
     || proof.stagedSha256 !== deterministicAssignmentHash(record.assignments ?? []))
     throw new Error('程序字段映射证明缺失或与 staging 不一致');
-  const decoded = decodeTavernCard(Buffer.from(record.sourceEnvelope.base64, 'base64'), record.sourceEnvelope.extension);
+  const decoded = decodedInput??readStructuredImportDataV1(record).decoded;
   if (stableJson(compileTavernFieldCoverage(decoded)) !== stableJson(record.fieldProof)
     || proof.suggestedSha256 !== sha256(stableJson(projectStructuredImport(record, decoded).assignments)))
     throw new Error('程序字段映射证明与原件不一致');
@@ -413,8 +464,11 @@ export const validateAssignmentIdentities = (assignments: readonly ImportAssignm
     }
   }
 };
-export const importSummary = (record: ImportRecord) => {
-  assertImportRecordIntegrity(record);
+export const importSummary = (record: ImportRecord,authorRules?:Record<string,unknown>) => {
+  let authorCoreData:ReturnType<typeof readAuthorCoreDataV1>|undefined;
+  assertImportRecordIntegrity(record,decoded=>{
+    if(authorRules)authorCoreData=readAuthorCoreDataV1(record,authorRules,decoded);
+  });
   const coverage = importCoverage(record);
   const extensionEntries = record.extensionInventory?.entries ?? [];
   const declarationEntries = record.extensionDeclarations?.entries ?? [];
@@ -433,6 +487,7 @@ export const importSummary = (record: ImportRecord) => {
       omittedGroups: Math.max(0, groups.length - 8)}};
   });
   return {
+    ...(authorCoreData?{authorCoreData}:{}),
     importId: record.importId,
     sourceFile: record.sourceFile,
     mode: record.mode ?? 'replace',

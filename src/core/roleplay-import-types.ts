@@ -69,6 +69,13 @@ export interface ImportPointer {
   transactionId?: string
   coverageSha256?: string
 }
+export type ImportSourceEnvelope = {
+  schemaVersion: 1; extension: string; format: string; base64: string; sourceSha256: string; warnings?: string[]
+} | {
+  schemaVersion: 2; extension: '.json'; format: 'json-nexttavern-v1';
+  executionSha256: string; executionBytes: number;
+  transportSha256: string; transportBytes: number; transportResourceId: string; warnings?: string[]
+}
 export interface ImportRecord extends Record<string, unknown> {
   schemaVersion: number
   importId: string
@@ -80,7 +87,7 @@ export interface ImportRecord extends Record<string, unknown> {
   sourceBytes: number
   sourceMtimeMs: number
   normalizer: string
-  sourceEnvelope?: { schemaVersion: number; extension: string; format: string; base64: string; sourceSha256: string; warnings?: string[] }
+  sourceEnvelope?: ImportSourceEnvelope
   fieldProof?: TavernFieldCoverage
   extensionInventory?: TavernExtensionInventory
   extensionDeclarations?: TavernExtensionInventoryV3
@@ -88,6 +95,7 @@ export interface ImportRecord extends Record<string, unknown> {
   assignmentProof?: { schemaVersion: 1; kind: 'deterministic-suggested';
     sourceSha256: string; normalizedSha256: string; suggestedSha256: string; stagedSha256: string }
   mode?: string
+  /** Schema 6 stores the execution JSON here once; its complete transport is a library resource. */
   rawSource: string
   normalizedSource: string
   rawSha256: string
@@ -128,6 +136,10 @@ export interface ImportExec {
   callId?: string
   agent?: { session?: ImportSession; options?: { subagentDepth?: number } }
   signal?: AbortSignal
+  /** Supplied only by this import call's actual Native task owner. */
+  ownedCardImport?: OwnedCardImportWorkflow & {
+    source?:ReturnType<typeof import('./roleplay-import-record.js').resolveImportSource>
+  }
 }
 export interface ImportArguments extends Record<string, unknown> {
   assignments?: (ImportAssignment | CardAssignment)[]
@@ -149,6 +161,12 @@ export interface CardWorkflow {
   source: { sourceFile: string | null; sha256?: string }
   clientRequestId?: string
   toolCallIds?: string[]
+}
+export interface OwnedCardImportWorkflow {
+  readonly session:ImportSession
+  readonly job: CardWorkflow
+  /** Actual task/agent/session currency; the workflow owner checks its own record. */
+  assertCurrent(): void
 }
 export interface WorkspaceImportSourceProof {
   sourceFile: string
@@ -173,8 +191,11 @@ export interface ImportInputTransition {
 export interface ImportResource { id?: string; resourceId?: string; name?: string }
 export interface CardImportDependencies {
   inputTransition?: ImportInputTransition
+  resolveCurrentCardImport?(session:ImportSession,exec:ImportExec):OwnedCardImportWorkflow|undefined
   /** Read-only Native prose and provenance; never a story execution grant. */
   readNativeOpeningExport?(session:ImportSession):NativeCardOpeningExportReadV1
+  /** Current structured authoring DATA, supplied by the actual Source owner. */
+  readCurrentLoreExport?(session:ImportSession):import('./roleplay-tavern-lore-export.js').TavernLoreExportReadV1
   /** Core resolves only actual own visible native files; the model supplies no ref/path proof. */
   resolveChatCardSource?(session: ImportSession, exec: ImportExec, selector: ChatCardSelector): Promise<ChatCardSourceResult>
   beforeWrite?(exec:ImportExec):Promise<void>
@@ -186,11 +207,11 @@ export interface CardImportDependencies {
   activeCardWorkflow(session: ImportSession): CardWorkflow | undefined
   assertCardWorkflow(session: ImportSession, record: unknown): void
   beginCardWorkflow(session: ImportSession, kind: string, sourceFile: string | null,
-    agent?: ImportExec['agent'], clientRequestId?: string, toolCallId?: string): Promise<CardWorkflow>
+    agent?: ImportExec['agent'], clientRequestId?: string, toolCallId?: string,mode?:'original'|'organized'): Promise<CardWorkflow>
   resumeCardWorkflows(session: ImportSession, agent?: ImportExec['agent'], signal?: AbortSignal): Promise<unknown>
   cardWorkflowKey(id: string): string
   libraryFor(session: ImportSession): { archive(input: { name: string; type: string; bytes: Buffer; source: Record<string, unknown> }): Promise<ImportResource> }
-  resourceName(name: unknown): string
+  resourceName(name: unknown,extension?:string): string
   completeCardWorkflow(session: ImportSession, record: unknown, result: Record<string, unknown>): Promise<unknown>
   ensureBranch(session: ImportSession): Promise<unknown>
   ensureState(id: string): { importPending: Map<string, Promise<unknown>> }
