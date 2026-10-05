@@ -177,7 +177,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
   function reconstruct(preparation:MvuSchemaOpeningPreparation,material:MvuJsonObject):MvuSchemaAuthorSource {
     const snapshot=preparation.sourceSnapshot,sid=preparation.identity.sessionId
     const historical=historicalDeps(snapshot,material)
-    const found=createRoleplayMvuSource(historical).readSchemaOpeningData(sid,preparation.identity.index)
+    const found=createRoleplayMvuSource(historical).readSchemaOpeningData(sid,preparation.identity.index,preparation.initSource)
     if(found.kind!=='schema-opening-data'||!same(found.authorSource.snapshot,snapshot)
       ||!same(found.authorSource.material,material)
       ||found.authorSource.authorSourceSha256!==preparation.authorSourceSha256)fail('SCHEMA_ORIGINAL_SOURCE_UNPROVEN')

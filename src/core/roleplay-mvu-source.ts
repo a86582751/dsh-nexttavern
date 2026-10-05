@@ -519,7 +519,7 @@ export function readMvuSchemaCurrentAuthorSource(deps: MvuSourceDeps, sessionId:
 }
 export function createRoleplayMvuSource(deps: MvuSourceDeps) {
   const capture = (sessionId: string, selectedIndex: number) => captureSource(deps,sessionId,selectedIndex)
-  const classifyNative = (captured:Captured,authorSchema:boolean) => {
+  const classifyNative = (captured:Captured,authorSchema:boolean,candidates:readonly TavernOpeningCandidate[]) => {
     const {data,context,snapshot}=captured
     const helper=isObject(data.extensions)?data.extensions.tavern_helper:undefined
     if(!authorSchema&&isObject(helper)&&helper.scripts!==undefined
@@ -543,7 +543,7 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         renderedContent:rendered,renderedContentSha256:sha(rendered)})
     }
     let openingInit=false
-    for(const candidate of captured.candidates) {
+    for(const candidate of candidates) {
       if(candidate.materialization==='materialized')continue
       boundedData(candidate.rawText,'FIELD_UNSUPPORTED',candidate.sourcePointer,budget)
       if(stateSyntax(candidate.rawText))fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
@@ -551,13 +551,19 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       render(candidate.rawText,context,entries.length>0||openingInit)
     }
     const selection=selectNativeMvuInitializationPolicy({books:[{entries}],
-      swipes:captured.candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText,
+      swipes:candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText,
         ...(item.materialization?{materialization:item.materialization}:{})}))})
     if(selection.kind==='unsupported')fail('INITVAR_INVALID',selection.diagnostics[0]!.pointer)
-    return {entries,hasInit:entries.length>0||openingInit,policy:selection.policy}
+    return {entries,candidates,hasInit:entries.length>0||openingInit,policy:selection.policy}
   }
-  const classify = (captured: Captured, authorSchema=false) => {
-    if(captured.document.spec==='nexttavern_card')return classifyNative(captured,authorSchema)
+  const classify = (captured: Captured, authorSchema=false,recordedInitSource?:MvuSchemaOpeningInitSource) => {
+    // Schema opening initialization consumes one selected greeting. The capture
+    // retains the complete catalog for original Source and fresh-basis binding.
+    // Historical multi-greeting descriptors retain their recorded all-catalog scope.
+    const candidates=authorSchema&&!(recordedInitSource&&recordedInitSource.swipes.length>1)
+      ?captured.candidates.filter(candidate=>candidate.index===captured.snapshot.selected.index)
+      :captured.candidates
+    if(captured.document.spec==='nexttavern_card')return classifyNative(captured,authorSchema,candidates)
     const {data,context,snapshot} = captured
     // The decoder owns the complete envelope, including compatibility mirrors
     // and opaque metadata. Only supported prompt inputs and explicit numerical
@@ -567,8 +573,9 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     extensions(data.extensions,'/data/extensions',authorSchema)
     const depthPrompt = (data.extensions as JsonObject | undefined)?.depth_prompt as JsonObject | undefined
     if (depthPrompt) render(depthPrompt.prompt as string,context,false)
+    // creator_notes is retained archive DATA, not a runtime initialization field.
     for (const key of ['name','description','personality','scenario','mes_example','system_prompt',
-      'post_history_instructions','creator_notes']) {
+      'post_history_instructions']) {
       const value=data[key]
       if(value===undefined)continue
       if (typeof value !== 'string') {
@@ -597,7 +604,6 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         boundedData(raw.content,'FIELD_UNSUPPORTED',pointer,initBudget)
         requireKeys(raw,['id','name','comment','content','keys','key','secondary_keys','keysecondary','enabled','disable',
           'constant','selective','case_sensitive','use_regex','insertion_order','order','position','extensions'],pointer,'FIELD_UNSUPPORTED')
-        if (raw.extensions !== undefined && !plainEmpty(raw.extensions)) fail('EXTENSION_UNSUPPORTED',pointer)
         for (const key of ['enabled','disable','constant','selective','case_sensitive','use_regex']) {
           if (raw[key] !== undefined && typeof raw[key] !== 'boolean') fail('FIELD_UNSUPPORTED',pointer)
         }
@@ -621,7 +627,7 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       }
     }
     let openingInit = false
-    for (const candidate of captured.candidates) {
+    for (const candidate of candidates) {
       if (stateSyntax(candidate.rawText)) fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
       if (openingBlocks(candidate.renderedText,candidate.sourcePointer)) openingInit = true
       render(candidate.rawText,context,entries.length > 0 || openingInit)
@@ -654,10 +660,10 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       }
     }
     const selection=selectNativeMvuInitializationPolicy({books:[{entries}],
-      swipes:captured.candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText,
+      swipes:candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText,
         ...(item.materialization?{materialization:item.materialization}:{})}))})
     if(selection.kind==='unsupported')fail('INITVAR_INVALID',selection.diagnostics[0]!.pointer)
-    return {entries,hasInit:entries.length > 0 || openingInit,policy:selection.policy}
+    return {entries,candidates,hasInit:entries.length > 0 || openingInit,policy:selection.policy}
   }
 
   const fresh = (snapshot: MvuSourceSnapshot): {proof:FreshNativeBasisProof; facts:FreshNativeBasisFacts} => {
@@ -759,11 +765,11 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     catch(error) {return {kind:'unsupported',diagnostics:[error instanceof SourceFailure
       ?error.diagnostic:{code:'SOURCE_INVALID',pointer:'/source'}]}}
   }
-  function schemaOpeningData(captured:Captured) {
+  function schemaOpeningData(captured:Captured,recordedInitSource?:MvuSchemaOpeningInitSource) {
     const author=authorSourceOf(captured)
     if(author.kind!=='author-source')return author
     if(!author.source.scripts.some(script=>script.enabled))return {kind:'absent' as const}
-    const {entries,policy}=classify(captured,true)
+    const {entries,candidates,policy}=classify(captured,true,recordedInitSource)
     const primary=captured.snapshot.bindings.primary
     const body={schemaVersion:1 as const,encoding:'native-mvu-schema-opening-init-source-v1' as const,
       grammar:isNativeMvuYamlSourcePolicy(policy)?'yaml-1.2-json-data-v1' as const:'strict-json-object-v1' as const,
@@ -771,7 +777,7 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         sourceSha256:primary.sha256,entries}]:[],
       bookStatData:{},initializedBooks:[] as [],messageIndex:0 as const,
       selectedSwipeIdentity:`swipe-${captured.snapshot.selected.index}`,
-      swipes:captured.candidates.map(item=>({identity:`swipe-${item.index}`,sourcePointer:item.sourcePointer,
+      swipes:candidates.map(item=>({identity:`swipe-${item.index}`,sourcePointer:item.sourcePointer,
         sourceSha256:item.sourceSha256,rawOpening:item.rawText,renderedOpening:item.renderedText,
         renderedSha256:sha(item.renderedText),statData:{},...(item.materialization?{materialization:item.materialization}:{})})),
       macros:captured.snapshot.macroContext.used?'verified-identity-rendering' as const:'none' as const}
@@ -780,8 +786,9 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
   }
   /** Original raw descriptors only: no fresh-basis observation, numerical
    * capability, Native owner or publication side effect is created here. */
-  function readSchemaOpeningData(sessionId:string,selectedIndex:number):MvuSchemaOpeningDataDecision {
-    try {return schemaOpeningData(capture(sessionId,selectedIndex))}
+  function readSchemaOpeningData(sessionId:string,selectedIndex:number,
+    recordedInitSource?:MvuSchemaOpeningInitSource):MvuSchemaOpeningDataDecision {
+    try {return schemaOpeningData(capture(sessionId,selectedIndex),recordedInitSource)}
     catch(error) {return {kind:'unsupported',diagnostics:[error instanceof SourceFailure
       ?error.diagnostic:{code:'SOURCE_INVALID',pointer:'/source'}]}}
   }
@@ -805,7 +812,8 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     try {
       // Do not recapture an empty basis after our own dispatch/opening writes.
       // Original fresh-basis and current Native publication have distinct owners.
-      const data=schemaOpeningData(capture(expected.sourceSnapshot.source.sessionId,expected.sourceSnapshot.selected.index))
+      const data=schemaOpeningData(capture(expected.sourceSnapshot.source.sessionId,expected.sourceSnapshot.selected.index),
+        expected.initSource)
       return data.kind==='schema-opening-data'&&data.authorSource.authorSourceSha256===expected.authorSourceSha256
         &&same(data.authorSource.snapshot,expected.sourceSnapshot)&&same(data.initSource,expected.initSource)
     } catch {return false}
