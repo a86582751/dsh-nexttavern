@@ -370,8 +370,10 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
         const applied = await applyTextEdit(session, user, variant.text, 'player-message-canonical-sync',{repair:true})
         const revision = Math.max(1, Number(variant.revision) || 1)
         if (exact) {
+          // Original fork members have no edit seq until an actual edit. Do
+          // not rewrite consumed navigation just to normalize absent to null.
           if (exact.playerAppliedRevision === revision && exact.userSeq === user.seq &&
-            exact.playerEditSeq === applied.editSeq) return
+            (exact.playerEditSeq ?? null) === applied.editSeq) return
           exact.userMessageId = String(user.data?.id ?? '')
           exact.userSeq = Number(user.seq)
           exact.promptText = variant.text
