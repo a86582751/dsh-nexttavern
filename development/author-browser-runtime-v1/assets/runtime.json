@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "dsh-nexttavern-author-browser-runtime-v1",
+  "version": "0.1.0",
+  "modules": {
+    "provider": "dist/index.mjs",
+    "partition": "dist/partition.mjs",
+    "ast-worker": "dist/browser-ast-worker.mjs",
+    "child": "dist/browser-runtime-child.js",
+    "guard": "dist/browser-runtime-guard.js"
+  },
+  "dependencies": {
+    "typescript": "5.9.3"
+  },
+  "profileSha256": "edfaf49856a2842e73deb99c4e08ee45092867136be05220c4dd3500b80bbdd1",
+  "capabilityContractSha256": "e0400e71c1a972aee506583ccba3ba1d5c125410aa974521cf292bf6f45bcfbb"
+}
