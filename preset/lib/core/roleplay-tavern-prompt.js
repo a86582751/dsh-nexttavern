@@ -4,6 +4,7 @@
  * can recreate the original step, Source lock or Native selected capability. */
 import { assertNativeRequestMaterialSelectionV1, nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
 import { recordSha256, sha256, textOf } from './roleplay-data.js';
+import { readTavernCardMacroFields } from './nexttavern-card.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 import { captureRoleplayTavernPromptSourceDataV1 } from './roleplay-tavern-prompt-source.js';
 import { captureRoleplayTavernPromptScopesV1 } from './roleplay-tavern-prompt-scopes.js';
@@ -210,8 +211,8 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     return { messageId: row.id, versionSha256: row.messageSha256, role: row.role, speakerName, text, textSha256: sha256(text),
                         scanPolicy: 'owner-captured-st-message-string-v1', scanText, scanTextSha256: sha256(scanText) };
                 });
-                const card = captured.cardData, text = (value) => typeof value === 'string' ? value : '', globalScanData = { personaDescription: macros.card?.find(value => value.key === 'persona')?.value ?? '',
-                    characterDescription: text(card.description), characterPersonality: text(card.personality),
+                const card = captured.cardData, text = (value) => typeof value === 'string' ? value : '', aliases = readTavernCardMacroFields(card, source.original.decodedFormat), globalScanData = { personaDescription: macros.card?.find(value => value.key === 'persona')?.value ?? '',
+                    characterDescription: text(aliases.description), characterPersonality: text(aliases.personality),
                     characterDepthPrompt: macros.card?.find(value => value.key === 'charDepthPrompt')?.value ?? '',
                     scenario: text(aliases.scenario), creatorNotes: text(card.creator_notes) };
                 const emptyCounts = { schemaVersion: 1, encoding: 'owned-frozen-token-count-ledger-v1',
@@ -241,7 +242,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                 // The input owner closes the actual asynchronous producer calls. The
                 // protected runtime admits template assets at its own worker boundary.
                 const lorePreparationOwner = Object.freeze({ tokenCount, templates: loreProducer, assertCurrent: render.assertCurrent });
-                const evaluated = await prepareTavernLoreWithOwnerV1({ schemaVersion: 1, encoding: 'owned-st-lore-evaluator-input-v1',
+                const evaluated = await prepareOwnedTavernLoreWithOwnerV1({ schemaVersion: 1, encoding: 'owned-st-lore-evaluator-input-v1',
                     compilation, snapshot: frozenSnapshot }, lorePreparationOwner);
                 assertCurrent();
                 if (evaluated.kind !== 'prepared')

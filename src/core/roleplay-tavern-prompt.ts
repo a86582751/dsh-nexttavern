@@ -6,6 +6,7 @@ import type {NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,Na
   from '@deepseek-ai/dsh-agent-loop'
 import type {SessionMessageProjection} from '@deepseek-ai/dsh-session'
 import {recordSha256,sha256,textOf} from './roleplay-data.js'
+import {readTavernCardMacroFields} from './nexttavern-card.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
 import {captureRoleplayTavernPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
@@ -269,8 +270,9 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
           scanPolicy:'owner-captured-st-message-string-v1',scanText,scanTextSha256:sha256(scanText)}
       })
       const card=captured.cardData,text=(value:unknown)=>typeof value==='string'?value:'',
+        aliases=readTavernCardMacroFields(card,source.original.decodedFormat),
         globalScanData={personaDescription:macros.card?.find(value=>value.key==='persona')?.value??'',
-          characterDescription:text(card.description),characterPersonality:text(card.personality),
+          characterDescription:text(aliases.description),characterPersonality:text(aliases.personality),
           characterDepthPrompt:macros.card?.find(value=>value.key==='charDepthPrompt')?.value??'',
           scenario:text(aliases.scenario),creatorNotes:text(card.creator_notes)}
       const emptyCounts={schemaVersion:1 as const,encoding:'owned-frozen-token-count-ledger-v1' as const,
@@ -299,7 +301,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       // The input owner closes the actual asynchronous producer calls. The
       // protected runtime admits template assets at its own worker boundary.
       const lorePreparationOwner=Object.freeze({tokenCount,templates:loreProducer,assertCurrent:render.assertCurrent})
-      const evaluated=await prepareTavernLoreWithOwnerV1({schemaVersion:1,encoding:'owned-st-lore-evaluator-input-v1',
+      const evaluated=await prepareOwnedTavernLoreWithOwnerV1({schemaVersion:1,encoding:'owned-st-lore-evaluator-input-v1',
         compilation,snapshot:frozenSnapshot},lorePreparationOwner)
       assertCurrent()
       if(evaluated.kind!=='prepared')fail(evaluated.diagnostics[0]?.code??'INPUT_MATERIAL_LORE_REFUSED')

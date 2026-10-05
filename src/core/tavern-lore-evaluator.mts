@@ -1,5 +1,6 @@
 import {recordSha256} from './roleplay-data.js'
-import {cloneSchemaData,schemaTextSha256} from './tavern-mvu-schema-data.js'
+import {types} from 'node:util'
+import {schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {validateTavernLoreCompilationV1,resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
 import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
@@ -114,16 +115,31 @@ function placementsOf(activated:Candidate[]):TavernLorePlacementV1[] {
     outletName:item.semantic.outletName,slotIndex,text:item.text}))
   return result
 }
-async function evaluate(input:unknown,producer?:TavernLoreTokenCountProducerV1,
+function rawEvaluatorInput(input:unknown):TavernLoreEvaluatorInputV1 {
+  if(input===null||typeof input!=='object')refuse('LORE_EVALUATOR_INPUT_INVALID')
+  if(types.isProxy(input))throw Error('SCHEMA_PROXY_VALUE')
+  const prototype=Object.getPrototypeOf(input)
+  if(Array.isArray(input)||prototype!==Object.prototype&&prototype!==null)throw Error('SCHEMA_OBJECT_PROTOTYPE')
+  const value:Record<string,unknown>={}
+  for(const key of Reflect.ownKeys(input)) {
+    if(typeof key!=='string')throw Error('SCHEMA_NON_JSON_VALUE')
+    const descriptor=Object.getOwnPropertyDescriptor(input,key)!
+    if(!Object.hasOwn(descriptor,'value')||!descriptor.enumerable)throw Error('SCHEMA_NON_JSON_VALUE')
+    Object.defineProperty(value,key,{value:descriptor.value,enumerable:true})
+  }
+  exact(value,['schemaVersion','encoding','compilation','snapshot'])
+  if(value.schemaVersion!==1||value.encoding!=='owned-st-lore-evaluator-input-v1')refuse('LORE_EVALUATOR_INPUT_INVALID')
+  return {schemaVersion:1,encoding:'owned-st-lore-evaluator-input-v1',
+    compilation:validateTavernLoreCompilationV1(value.compilation),
+    snapshot:validateTavernLoreSnapshotV1(value.snapshot)}
+}
+async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTokenCountProducerV1,
   templateProducer?:TavernLoreTemplateProducerV1,owner?:TavernLorePreparationOwnerV1)
   :Promise<Extract<TavernLorePreparedEvaluationV1,{kind:'prepared'}>> {
   const ownerCurrent=owner?.assertCurrent
   if(owner&&(typeof ownerCurrent!=='function'||!producer||!templateProducer))refuse('LORE_PREPARATION_OWNER_INVALID')
-  const value=cloneSchemaData(input,LORE_EVALUATOR_POLICY_V1.bounds.inputBytes,{nodes:131072,depth:66})
-  exact(value,['schemaVersion','encoding','compilation','snapshot'])
-  if(value.schemaVersion!==1||value.encoding!=='owned-st-lore-evaluator-input-v1')refuse('LORE_EVALUATOR_INPUT_INVALID')
-  const compilation=validateTavernLoreCompilationV1(value.compilation),plan=compilation.plan
-  let snapshot=validateTavernLoreSnapshotV1(value.snapshot)
+  const compilation=input.compilation,plan=compilation.plan
+  let snapshot=input.snapshot
   const began=performance.now()
   const checkpoint=()=>{
     if(producer?.signal?.aborted||templateProducer?.signal?.aborted)refuse('LORE_PREPARATION_CANCELLED')
@@ -355,10 +371,9 @@ async function evaluate(input:unknown,producer?:TavernLoreTokenCountProducerV1,
       actions:timed.actions,disposition:timed.actions.length?'proposed-consumer-data-only':'empty-no-timed-effects'}}
   const finalPlan=freezeLoreData(cloneRoleplayTavernLoreDataV1({...descriptor,planSha256:recordSha256(descriptor)},
     LORE_EVALUATOR_POLICY_V1.bounds.outputBytes,{nodes:131072,depth:66}) as unknown as TavernLoreEvaluationPlanV1)
-  const finalInput=freezeLoreData(cloneSchemaData({schemaVersion:1 as const,
-    encoding:'owned-st-lore-evaluator-input-v1' as const,compilation,snapshot},
-    LORE_EVALUATOR_POLICY_V1.bounds.inputBytes,{nodes:131072,depth:66}) satisfies TavernLoreEvaluatorInputV1)
-  return freezeLoreData({kind:'prepared',input:finalInput,plan:finalPlan})
+  const finalInput=Object.freeze({schemaVersion:1 as const,
+    encoding:'owned-st-lore-evaluator-input-v1' as const,compilation,snapshot} satisfies TavernLoreEvaluatorInputV1)
+  return Object.freeze({kind:'prepared',input:finalInput,plan:finalPlan})
 }
 function refusal(error:unknown):Extract<TavernLoreEvaluationV1,{kind:'refused'}> {
   const code=error instanceof LoreEvaluationRefusal?error.code
@@ -368,19 +383,26 @@ function refusal(error:unknown):Extract<TavernLoreEvaluationV1,{kind:'refused'}>
     pointer:error instanceof LoreEvaluationRefusal?error.pointer:null,blocking:true}]})
 }
 export async function evaluateTavernLoreV1(input:unknown):Promise<TavernLoreEvaluationV1> {
-  try {const result=await evaluate(input);return freezeLoreData({kind:'evaluated',plan:result.plan})}
+  try {const result=await evaluate(rawEvaluatorInput(input));return freezeLoreData({kind:'evaluated',plan:result.plan})}
   catch(error){return refusal(error)}
 }
 export async function prepareTavernLoreV1(input:unknown,producer:TavernLoreTokenCountProducerV1,
   templateProducer?:TavernLoreTemplateProducerV1):Promise<TavernLorePreparedEvaluationV1> {
-  try{return await evaluate(input,producer,templateProducer)}catch(error){return refusal(error)}
+  try{return await evaluate(rawEvaluatorInput(input),producer,templateProducer)}catch(error){return refusal(error)}
 }
 export async function prepareTavernLoreWithOwnerV1(input:unknown,owner:TavernLorePreparationOwnerV1)
   :Promise<TavernLorePreparedEvaluationV1> {
   try {
     if(!owner||typeof owner.assertCurrent!=='function')refuse('LORE_PREPARATION_OWNER_INVALID')
-    return await evaluate(input,owner.tokenCount,owner.templates,owner)
+    return await evaluate(rawEvaluatorInput(input),owner.tokenCount,owner.templates,owner)
   }catch(error){return refusal(error)}
+}
+/** Core supplies its already compiled DATA and parsed frozen snapshot. The
+ * actual owner still controls every asynchronous producer boundary below. */
+export async function prepareOwnedTavernLoreWithOwnerV1(input:TavernLoreEvaluatorInputV1,
+  owner:TavernLorePreparationOwnerV1):Promise<TavernLorePreparedEvaluationV1> {
+  try {return await evaluate(input,owner.tokenCount,owner.templates,owner)}
+  catch(error){return refusal(error)}
 }
 export async function validateTavernLoreEvaluationV1(input:unknown,result:unknown)
   :Promise<Extract<TavernLoreEvaluationV1,{kind:'evaluated'}>> {
