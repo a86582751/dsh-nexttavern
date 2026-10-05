@@ -14,8 +14,9 @@ import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
 import {createRoleplayMvuSchemaJournal,freezeSchemaJournalData,sealSchemaJournalRecord,
   validateSchemaSourceCut,validateSchemaAnchor,schemaEpochExecution,
   schemaJournalServerTailSha256,schemaJournalHostFrontierSha256} from './roleplay-mvu-schema-journal.js'
-import type {CombinedAuthorCompilerV3,CombinedCompilationInputV3,CombinedAuthorProgramV3}
+import type {CombinedAuthorCompiler,CombinedCompilationInput,CombinedAuthorProgram}
   from './tavern-author-combined-types.mjs'
+import {combinedCompilationInputForProgram} from './tavern-author-combined-data.mjs'
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4,AuthorHostAssociationV5}
   from './roleplay-author-host-types-v5.js'
 import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
@@ -34,7 +35,7 @@ export interface SchemaOwnedScope {
   incarnation:object
   session:Session
   signal:AbortSignal
-  authorInput:SchemaAuthorCompilationInput|CombinedCompilationInputV3
+  authorInput:SchemaAuthorCompilationInput|CombinedCompilationInput
   realmEpoch:string
   loadFrame:SchemaRealmLoadFrame
   requestedStep:SchemaTraceRequestedStep
@@ -45,7 +46,7 @@ export interface SchemaOwnedScope {
  * produces its actual partition. All other executions arrive with frames. */
 export type SchemaCapturedScope=SchemaOwnedScope|
   (Omit<SchemaOwnedScope,'authorInput'|'loadFrame'|'requestedStep'>&{
-    authorInput:CombinedCompilationInputV3;loadFrame?:undefined;requestedStep?:undefined
+    authorInput:CombinedCompilationInput;loadFrame?:undefined;requestedStep?:undefined
   })
 export interface SchemaHostInitializationFrames {
   loadFrame:import('./tavern-mvu-schema-types-v4.js').MvuSchemaRealmLoadFrameV4
@@ -61,7 +62,7 @@ export interface SchemaBoundary {
 }
 export interface HistoricalCutSelector {sessionId:string;realmEpoch:string;nativeCut:number}
 export interface HistoricalCutFacts {
-  authorInput:SchemaAuthorCompilationInput|CombinedCompilationInputV3
+  authorInput:SchemaAuthorCompilationInput|CombinedCompilationInput
   frozen:SchemaJournalFrozenCut
   events:readonly SessionEvent[]
 }
@@ -74,7 +75,7 @@ export interface SchemaReplayDeps {
   executorVersion?:1|2|3|4
   /** Set only by the admitted Host5 package factory. The v4 compiler and
    * runner still own their actual guest ABI; Host5 owns complete association. */
-  hostV5?:{identity:AuthorHostIdentityV5;compiler:CombinedAuthorCompilerV3;server:AuthorServerExecutorV4}
+  hostV5?:{identity:AuthorHostIdentityV5;compiler:CombinedAuthorCompiler;server:AuthorServerExecutorV4}
   markers:typeof mvuSchemaMarkers
   /** Trusted Core producer reads actual Source/Native records and admits the
    * original load lifecycle; selectors never carry program/source authority. */
@@ -82,7 +83,7 @@ export interface SchemaReplayDeps {
   checkOwned(scope:SchemaCapturedScope,boundary:SchemaBoundary):boolean
   /** Synchronous Core callback uses its private initialization owner and the
    * captured cut. It can provide frames, never replace scope authority. */
-  completeHostFrames?(scope:SchemaCapturedScope,program:CombinedAuthorProgramV3):SchemaHostInitializationFrames
+  completeHostFrames?(scope:SchemaCapturedScope,program:CombinedAuthorProgram):SchemaHostInitializationFrames
   /** Core alone knows whether its private lease already owns the Source lock.
    * No caller-controlled flag can skip acquisition or grant reentrancy. */
   withSourceBoundary<T>(scope:SchemaOwnedScope,action:()=>Promise<T>):Promise<T>
@@ -234,10 +235,10 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
   const ownerGeneration=(owner:object)=>ownerGenerations.get(owner)??0
   async function compileAuthor(input:SchemaOwnedScope['authorInput'],signal:AbortSignal) {
     if(host) {
-      if(input.schemaVersion!==3)fail('SCHEMA_REPLAY_VERSION_MISMATCH')
+      if(input.schemaVersion!==3&&input.schemaVersion!==4)fail('SCHEMA_REPLAY_VERSION_MISMATCH')
       return host.compiler.compile(input,signal)
     }
-    if(input.schemaVersion===3)fail('SCHEMA_REPLAY_VERSION_MISMATCH')
+    if(input.schemaVersion===3||input.schemaVersion===4)fail('SCHEMA_REPLAY_VERSION_MISMATCH')
     return deps.compiler.compile(input,signal)
   }
   async function replayHistory(ready:SchemaJournalReady,program:SchemaAuthorProgram,signal:AbortSignal):Promise<void> {
@@ -261,7 +262,7 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
     active.set(selector.sessionId,job)
     let captured:SchemaCapturedScope|undefined,scope:SchemaOwnedScope|undefined
     let dispatchRef:SchemaJournalRef|undefined,epochWritten=false,pairFlushed=false
-    let combined:CombinedAuthorProgramV3|null=null
+    let combined:CombinedAuthorProgram|null=null
     let dispatchMarker:SchemaNativeMarkerRef|null=null,completionMarker:SchemaNativeMarkerRef|null=null
     const admittedGeneration=generation
     let admittedOwnerGeneration=0
@@ -308,7 +309,8 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
           loadFrame:freezeSchemaJournalData(captured.loadFrame),requestedStep:freezeSchemaJournalData(captured.requestedStep)}
       if(captured.loadFrame!==undefined) {
         scope=captured
-      }else if(!host||captured.authorInput.schemaVersion!==3||!deps.completeHostFrames)fail('SCHEMA_OWNER_UNPROVEN')
+      }else if(!host||(captured.authorInput.schemaVersion!==3&&captured.authorInput.schemaVersion!==4)
+        ||!deps.completeHostFrames)fail('SCHEMA_OWNER_UNPROVEN')
       check('captured')
       if(captured.session.id!==selector.sessionId||captured.sourceNativeCut.sessionId!==selector.sessionId
         ||captured.sourceNativeCut.ownerSessionId!==selector.sessionId||!hash(captured.realmEpoch)
@@ -326,17 +328,16 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       check('compiled')
       if(compiled.kind!=='compiled')fail('SCHEMA_COMPILATION_REFUSED')
       const completeProgram=compiled.program
-      combined=completeProgram.schemaVersion===3?completeProgram:null
+      combined=completeProgram.schemaVersion===3||completeProgram.schemaVersion===4?completeProgram:null
       const program:SchemaAuthorProgram=combined?combined.serverProgram!:completeProgram as SchemaAuthorProgram
       // Compilation can retain browser-only DATA. Numerical initialization
       // needs a real server result and creates no fake epoch or Native marker.
       if(!program)fail('AUTHOR_HOST_BROWSER_ONLY_INITIALIZATION_UNSUPPORTED')
       if(program.compiler.version!==executorVersion||program.bridge.version!==executorVersion)fail('SCHEMA_IMPLEMENTATION_CHANGED')
       if(combined) {
-        if(!same({schemaVersion:3,encoding:'native-author-combined-compilation-input-v3',original:combined.original,
-          sourceRecordSessionId:combined.sourceRecordSessionId},captured.authorInput))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
+        if(!same(combinedCompilationInputForProgram(combined),captured.authorInput))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
       }else {
-        if(captured.authorInput.schemaVersion===3
+        if(captured.authorInput.schemaVersion===3||captured.authorInput.schemaVersion===4
           ||!same(compilationInput(program,captured.authorInput),captured.authorInput))fail('SCHEMA_AUTHOR_SOURCE_MISMATCH')
       }
       if(!scope) {
@@ -514,7 +515,8 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
             // The current compiler already reproduced the exact persisted
             // program above. Keep one real historical execution, not a second
             // compilation of that same newly produced result.
-            const program=compiled.program.schemaVersion===3?compiled.program.serverProgram:compiled.program
+            const program=compiled.program.schemaVersion===3||compiled.program.schemaVersion===4
+              ?compiled.program.serverProgram:compiled.program
             if(!program)fail('SCHEMA_HOST_SERVER_PROGRAM_REQUIRED')
             await replayHistory(ready,program,abort.signal);check()
             const bytes=Buffer.byteLength(JSON.stringify(frozen),'utf8')

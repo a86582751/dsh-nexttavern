@@ -11,9 +11,12 @@ import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from './roleplay-autho
 import type {AuthorHostRuntimeV5,AuthorHostInventoryV5,AdmittedAuthorServerV4}
   from './tavern-author-host-provider.mjs'
 import type {OwnedAuthorBrowserRuntimeV1} from './tavern-author-browser-types.mjs'
+import type {OwnedAuthorPromptRuntimeV1} from './tavern-author-prompt-types.mjs'
+import {AUTHOR_PROMPT_RUNTIME_NAME,AUTHOR_PROMPT_RUNTIME_VERSION} from './tavern-author-prompt-descriptor.mjs'
+import {loadAdmittedAuthorPromptRuntimeV1} from './roleplay-author-prompt-assets.js'
 
 const browserName='dsh-nexttavern-author-browser-runtime-v1',browserVersion='0.1.0'
-const hostName='dsh-nexttavern-author-host-runtime-v5',hostVersion='0.5.0'
+const hostName='dsh-nexttavern-author-host-runtime-v5',hostVersion='0.5.1'
 interface AdmittedPackage {
   entry:string
   owned:string
@@ -24,6 +27,7 @@ export type ProtectedAuthorHostRuntimeV5=OwnedMvuSchemaExecutor&{
   stateLoader:AuthorServerExecutorV4['stateLoader']
   host:AuthorHostRuntimeV5
   browser:OwnedAuthorBrowserRuntimeV1
+  readonly prompt:OwnedAuthorPromptRuntimeV1
 }
 export type AuthorHostServerAssetsV5=Pick<ReturnType<typeof createRoleplayMvuSchemaAssetOwner>,
   'getDefaultForNewRealm'>
@@ -35,7 +39,8 @@ function productRoot():string {
     if(!fs.existsSync(metadata))continue
     const product=JSON.parse(fs.readFileSync(metadata,'utf8')) as {name?:string;dependencies?:Record<string,string>}
     if(product.name==='dsh-nexttavern'&&product.dependencies?.[browserName]===browserVersion
-      &&product.dependencies?.[hostName]===hostVersion)return root
+      &&product.dependencies?.[hostName]===hostVersion
+      &&product.dependencies?.[AUTHOR_PROMPT_RUNTIME_NAME]===AUTHOR_PROMPT_RUNTIME_VERSION)return root
   }
   throw Error('AUTHOR_HOST_PRODUCT_OWNER_UNAVAILABLE')
 }
@@ -83,25 +88,29 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
     }
     current()
     const browser=await browserModule.createOwnedAuthorBrowserRuntimeV1({verifyOwnedPackage:packageVerifier(admittedBrowser)})
-    let host:AuthorHostRuntimeV5|undefined
+    let host:AuthorHostRuntimeV5|undefined,prompt:OwnedAuthorPromptRuntimeV1|undefined
     try {
+      current()
+      const admittedPrompt=admit(AUTHOR_PROMPT_RUNTIME_NAME,AUTHOR_PROMPT_RUNTIME_VERSION)
+      prompt=await loadAdmittedAuthorPromptRuntimeV1({...admittedPrompt,inventory:{...admittedPrompt.inventory,
+        name:AUTHOR_PROMPT_RUNTIME_NAME,version:AUTHOR_PROMPT_RUNTIME_VERSION}},current)
       current()
       const admittedHost=admit(hostName,hostVersion)
       const hostModule=await import(pathToFileURL(admittedHost.entry).href) as {
         createOwnedAuthorHostRuntimeV5(deps:{verifyOwnedPackage(root:URL):AuthorHostInventoryV5;
-          server:AdmittedAuthorServerV4;browser:OwnedAuthorBrowserRuntimeV1}):Promise<AuthorHostRuntimeV5>
+          server:AdmittedAuthorServerV4;browser:OwnedAuthorBrowserRuntimeV1;prompt:OwnedAuthorPromptRuntimeV1}):Promise<AuthorHostRuntimeV5>
       }
       current()
       host=await hostModule.createOwnedAuthorHostRuntimeV5({
         verifyOwnedPackage:fixed=>packageVerifier(admittedHost)(fixed) as AuthorHostInventoryV5,
-        server:server as AdmittedAuthorServerV4,browser})
+        server:server as AdmittedAuthorServerV4,browser,prompt})
       current()
       return Object.freeze({executorVersion:4 as const,compiler:server.compiler,runner:server.runner,
         bridge:server.bridge,libraries:server.libraries,stateLoader:server.stateLoader,
-        implementationKey:recordSha256(host.identity),host,browser,dispose})
+        implementationKey:recordSha256(host.identity),host,browser,prompt,dispose})
     }catch(error) {
       host?.dispose()
-      await browser.dispose()
+      await Promise.all([browser.dispose(),prompt?.dispose()])
       throw error
     }
   }
@@ -120,7 +129,7 @@ export function createRoleplayAuthorHostAssetOwner(deps:{serverAssets:AuthorHost
       try {
         const runtime=await pending
         runtime.host.dispose()
-        await runtime.browser.dispose()
+        await Promise.all([runtime.browser.dispose(),runtime.prompt.dispose()])
       }catch { /* A revoked load cleans up its own created factories. */ }
       // The injected server asset owner retains its independent ABI1–4 lifetime.
     })()

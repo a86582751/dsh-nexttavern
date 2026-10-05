@@ -4,6 +4,7 @@ import type {MvuSchemaCompilationInputV4,MvuSchemaProgramV4}
   from './tavern-mvu-author-execution-types-v4.mjs'
 import type {MvuSchemaDiagnostic} from './tavern-mvu-schema-types.js'
 import type {BrowserProgramV1,BrowserDiagnosticV1} from './tavern-author-browser-types.mjs'
+import type {PromptProgramV1,PromptDiagnosticV1} from './tavern-author-prompt-types.mjs'
 
 export interface CombinedCompilerIdentityV1 {
   readonly id:'native-author-combined-compiler'
@@ -59,4 +60,42 @@ export interface CombinedAuthorCompilerV3 {
   readonly identity:CombinedCompilerIdentityV1
   compile(input:CombinedCompilationInputV3,signal?:AbortSignal):Promise<CombinedCompilationV3>
   verifyProgram(program:CombinedAuthorProgramV3,signal?:AbortSignal):Promise<boolean>
+}
+
+export type CombinedPlanRowV3=CombinedPlanRowV2|(
+  Omit<CombinedPlanRowV2,'disposition'>&{readonly disposition:'prompt';readonly promptIndex:number}
+)
+export interface AuthorExecutionPlanV3 {
+  readonly schemaVersion:3
+  readonly encoding:'native-author-complete-execution-plan-v3'
+  readonly authority:'compiled-program-data-only'
+  readonly scripts:readonly CombinedPlanRowV3[]
+  readonly summary:AuthorExecutionPlanV2['summary']&{readonly enabledPrompt:number}
+  readonly executionPlanSha256:string
+}
+export interface CombinedCompilationInputV4 extends Omit<CombinedCompilationInputV3,'schemaVersion'|'encoding'> {
+  readonly schemaVersion:4
+  readonly encoding:'native-author-combined-compilation-input-v4'
+}
+export interface CombinedAuthorProgramV4 extends Omit<CombinedAuthorProgramV3,'schemaVersion'|'encoding'|'executionPlan'> {
+  readonly schemaVersion:4
+  readonly encoding:'native-author-combined-program-v4'
+  readonly executionPlan:AuthorExecutionPlanV3
+  readonly promptProgram:PromptProgramV1|null
+}
+export type CombinedCompilationV4={readonly kind:'compiled';readonly program:CombinedAuthorProgramV4}
+  |{readonly kind:'refused';readonly diagnostics:readonly (MvuSchemaDiagnostic|BrowserDiagnosticV1|PromptDiagnosticV1)[]}
+export type CombinedCompilationInput=CombinedCompilationInputV3|CombinedCompilationInputV4
+export type CombinedAuthorProgram=CombinedAuthorProgramV3|CombinedAuthorProgramV4
+export type AuthorExecutionPlan=AuthorExecutionPlanV2|AuthorExecutionPlanV3
+export type CombinedCompilation=CombinedCompilationV3|CombinedCompilationV4
+/** Host accepts tagged historical inputs. Each actual compiler implements its
+ * own input version; a new generation cannot execute a legacy identity. */
+export interface CombinedAuthorCompiler {
+  readonly identity:CombinedCompilerIdentityV1
+  compile(input:CombinedCompilationInput,signal?:AbortSignal):Promise<CombinedCompilation>
+  verifyProgram(program:CombinedAuthorProgram,signal?:AbortSignal):Promise<boolean>
+}
+export interface CombinedAuthorCompilerV4 extends CombinedAuthorCompiler {
+  compile(input:CombinedCompilationInput,signal?:AbortSignal):Promise<CombinedCompilationV4>
 }

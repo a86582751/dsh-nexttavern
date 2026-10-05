@@ -8,9 +8,10 @@ import type {TavernLorePlanV1} from './tavern-lore-plan-types.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {AuthorContributionDataV1} from './roleplay-author-contributions.js'
 import type {TavernInjectionDefinitionV1} from './roleplay-tavern-injections.js'
+import type {PromptProgramV1} from './tavern-author-prompt-types.mjs'
 
 export function captureRoleplayTavernInjectionDefinitionsV1(source:TavernLoreSourceDataV1,
-  plan:TavernLorePlanV1,residual:AuthorContributionDataV1) {
+  plan:TavernLorePlanV1,residual:AuthorContributionDataV1,promptProgram?:PromptProgramV1) {
   const owner=recordSha256({schemaVersion:1,encoding:'native-logical-template-Source-owner-v1',
     sessionId:source.sessionId,sourceRecordSessionId:source.sourceRecordSessionId,
     importId:source.original.activePointer.importId,rawSha256:source.original.rawSha256,
@@ -31,7 +32,11 @@ export function captureRoleplayTavernInjectionDefinitionsV1(source:TavernLoreSou
     byKey.set(pointer,Object.freeze({logicalOwnerId,definitionSha256:recordSha256({logicalOwnerId,
       text,includeCardStyle:residual.includeCardStyle})}))
   }
-  return {definitions:Object.freeze([...byKey.values()]),definitionFor(pointer:string,entryId:string|undefined) {
+  const logicalOwnerId=`source-${owner}:generation-prompt`
+  const promptDefinition=promptProgram?Object.freeze({logicalOwnerId,
+    definitionSha256:recordSha256({logicalOwnerId,programSha256:promptProgram.programSha256})}):undefined
+  return {definitions:Object.freeze([...byKey.values(),...promptDefinition?[promptDefinition]:[]]),promptDefinition,
+    definitionFor(pointer:string,entryId:string|undefined) {
     const value=byKey.get(entryId??pointer)
     if(!value)throw Error('INPUT_MATERIAL_INJECTION_SOURCE_DEFINITION_UNAVAILABLE')
     return value

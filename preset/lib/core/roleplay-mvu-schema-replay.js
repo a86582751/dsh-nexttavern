@@ -10,6 +10,7 @@ import { validateSchemaTraceInputV3, validateSchemaGuestOutputV3, validateSchema
 import { validateSchemaTraceInputV4, validateSchemaGuestOutputForProgramV4, validateSchemaEvaluationInputV4 } from './tavern-mvu-schema-runner-v4.js';
 import { validateSchemaProgramV4 } from './tavern-mvu-schema-program-v4.js';
 import { createRoleplayMvuSchemaJournal, freezeSchemaJournalData, sealSchemaJournalRecord, validateSchemaSourceCut, validateSchemaAnchor, schemaEpochExecution, schemaJournalServerTailSha256, schemaJournalHostFrontierSha256 } from './roleplay-mvu-schema-journal.js';
+import { combinedCompilationInputForProgram } from './tavern-author-combined-data.mjs';
 export const schemaExecutionProgramSha256 = (association) => association.schemaVersion === 5 ? association.combinedProgramSha256 : association.programSha256;
 export const schemaExecutionServerTailSha256 = (association) => association.schemaVersion === 5 ? association.serverTailSha256 : association.tailSha256;
 export const schemaExecutionHostFrontierSha256 = (association) => association.schemaVersion === 5 ? association.hostFrontierSha256 : association.frontierSha256;
@@ -132,11 +133,11 @@ export function createRoleplayMvuSchemaReplay(deps) {
     const ownerGeneration = (owner) => ownerGenerations.get(owner) ?? 0;
     async function compileAuthor(input, signal) {
         if (host) {
-            if (input.schemaVersion !== 3)
+            if (input.schemaVersion !== 3 && input.schemaVersion !== 4)
                 fail('SCHEMA_REPLAY_VERSION_MISMATCH');
             return host.compiler.compile(input, signal);
         }
-        if (input.schemaVersion === 3)
+        if (input.schemaVersion === 3 || input.schemaVersion === 4)
             fail('SCHEMA_REPLAY_VERSION_MISMATCH');
         return deps.compiler.compile(input, signal);
     }
@@ -220,7 +221,8 @@ export function createRoleplayMvuSchemaReplay(deps) {
             if (captured.loadFrame !== undefined) {
                 scope = captured;
             }
-            else if (!host || captured.authorInput.schemaVersion !== 3 || !deps.completeHostFrames)
+            else if (!host || (captured.authorInput.schemaVersion !== 3 && captured.authorInput.schemaVersion !== 4)
+                || !deps.completeHostFrames)
                 fail('SCHEMA_OWNER_UNPROVEN');
             check('captured');
             if (captured.session.id !== selector.sessionId || captured.sourceNativeCut.sessionId !== selector.sessionId
@@ -244,7 +246,7 @@ export function createRoleplayMvuSchemaReplay(deps) {
             if (compiled.kind !== 'compiled')
                 fail('SCHEMA_COMPILATION_REFUSED');
             const completeProgram = compiled.program;
-            combined = completeProgram.schemaVersion === 3 ? completeProgram : null;
+            combined = completeProgram.schemaVersion === 3 || completeProgram.schemaVersion === 4 ? completeProgram : null;
             const program = combined ? combined.serverProgram : completeProgram;
             // Compilation can retain browser-only DATA. Numerical initialization
             // needs a real server result and creates no fake epoch or Native marker.
@@ -253,12 +255,11 @@ export function createRoleplayMvuSchemaReplay(deps) {
             if (program.compiler.version !== executorVersion || program.bridge.version !== executorVersion)
                 fail('SCHEMA_IMPLEMENTATION_CHANGED');
             if (combined) {
-                if (!same({ schemaVersion: 3, encoding: 'native-author-combined-compilation-input-v3', original: combined.original,
-                    sourceRecordSessionId: combined.sourceRecordSessionId }, captured.authorInput))
+                if (!same(combinedCompilationInputForProgram(combined), captured.authorInput))
                     fail('SCHEMA_AUTHOR_SOURCE_MISMATCH');
             }
             else {
-                if (captured.authorInput.schemaVersion === 3
+                if (captured.authorInput.schemaVersion === 3 || captured.authorInput.schemaVersion === 4
                     || !same(compilationInput(program, captured.authorInput), captured.authorInput))
                     fail('SCHEMA_AUTHOR_SOURCE_MISMATCH');
             }
@@ -478,7 +479,8 @@ export function createRoleplayMvuSchemaReplay(deps) {
                         // The current compiler already reproduced the exact persisted
                         // program above. Keep one real historical execution, not a second
                         // compilation of that same newly produced result.
-                        const program = compiled.program.schemaVersion === 3 ? compiled.program.serverProgram : compiled.program;
+                        const program = compiled.program.schemaVersion === 3 || compiled.program.schemaVersion === 4
+                            ? compiled.program.serverProgram : compiled.program;
                         if (!program)
                             fail('SCHEMA_HOST_SERVER_PROGRAM_REQUIRED');
                         await replayHistory(ready, program, abort.signal);

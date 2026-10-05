@@ -22,6 +22,7 @@ import { validateTavernLoreSnapshotV1 } from './tavern-lore-snapshot.mjs';
 import { createRoleplayTavernTokenCountV1 } from './roleplay-tavern-token-count.js';
 import { ST_LORE_ENTRY_DEFAULTS_V1 } from './tavern-lore-fixed-profile.mjs';
 import { produceRoleplayTavernLayoutV1, TAVERN_NATIVE_OWNED_SECTION_NAMES_V1 } from './roleplay-tavern-layout.js';
+import { produceAuthorPromptCaptureV1 } from './roleplay-author-prompt-capture.js';
 /** Native has no ST global settings store. This versioned program policy is
  * explicit; archived character-book settings remain importer metadata. */
 export const TAVERN_NATIVE_PROMPT_SETTINGS_V1 = Object.freeze({
@@ -44,6 +45,13 @@ export const TAVERN_NATIVE_PROMPT_POLICY_V1 = Object.freeze({ schemaVersion: 1,
     lateActivation: 'typed-refusal-after-lore-seal; no-silent-drop-or-invented-next-generation-activation',
     retry: 'same-Core-step-frozen-render-and-budget-ledger; actual-Native-selected-lineage-check',
     requests: { normal: 0, retry: 0, fallback: 0 } });
+/** New optional producer policy leaves existing completed v1 bodies intact. */
+export const TAVERN_NATIVE_PROMPT_POLICY_V2 = Object.freeze({ ...TAVERN_NATIVE_PROMPT_POLICY_V1, schemaVersion: 2,
+    encoding: 'native-tavern-actual-core-preparation-policy-v2',
+    generationHook: 'complete-stateless-PromptProgram1; actual-opening-anchored-Native-history-and-variable-DATA',
+    promptEffects: 'typed-Prompt-producer-in-the-one-published-injection-registry; existing-scan-and-chat-cuts',
+    promptClose: 'actual-Source-definition-close-and-Native-terminal-disposal; no-worker-or-provider-retry-close',
+    promptTransport: { newPreparationWorkerRoundTrips: 1, browserRoundTrips: 0, preparedProviderRetryWorkerRoundTrips: 0 } });
 function fail(code) { throw Error(code); }
 function freeze(value) {
     if (value && typeof value === 'object') {
@@ -114,6 +122,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     currentIdentitySha256: author.captured.currentIdentitySha256, selected: native.selected,
                     ...domain,
                     isStoryMessage: row => storyIds.has(row.id), assertOwnerCurrent: assertSignal });
+                const authorPromptFacts = domain.schema?.authorPrompt;
                 const materialHistory = captureRoleplayTavernMaterialHistoryV1({ sessionId: scope.session.id, table: deps.branch,
                     events: () => scope.session.snapshotEvents(), projections: deps.projections, assertOwnerCurrent: assertSignal });
                 const chatClock = captureTavernCanonicalChatClockV1({ session: scope.session, selected: native.selected,
@@ -123,7 +132,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     assertSourceLineageCurrent: () => inheritedTiming?.assertCurrent() });
                 const { kind: _authorKind, ...authorData } = author;
                 return { kind: 'input-data', ...authorData, opening, player, playerSnapshot, snapshot, storyRows,
-                    initialSelectedSha256, scopeData, materialHistory, chatClock, timed };
+                    initialSelectedSha256, scopeData, materialHistory, chatClock, timed, authorPromptFacts };
             });
             if (inputCapture.data.kind === 'outside-declared-domain') {
                 const outside = inputCapture.data;
@@ -132,12 +141,12 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     return outside;
                 fail(`INPUT_MATERIAL_${outside.reason}`);
             }
-            const { captured, opening, player, playerSnapshot, snapshot, storyRows, initialSelectedSha256, scopeData, materialHistory, chatClock, timed, includeCardStyle, authorPolicy, authorPolicySha256 } = inputCapture.data, { source, compilation, original, residual } = captured, assertCurrent = inputCapture.assertCurrent;
+            const { captured, opening, player, playerSnapshot, snapshot, storyRows, initialSelectedSha256, scopeData, materialHistory, chatClock, timed, authorPromptFacts, includeCardStyle, authorPolicy, authorPolicySha256 } = inputCapture.data, { source, compilation, original, residual } = captured, assertCurrent = inputCapture.assertCurrent;
             try {
                 assertCurrent();
                 const attemptId = opening?.attempt.attemptId ?? `${player.currency.preparationId}:${player.currency.attemptGeneration}`, turnId = String(scope.turn), seed = opening ? recordSha256(opening.attempt.seed) :
                     recordSha256({ schemaVersion: 1, encoding: 'native-tavern-attempt-seed-v1',
-                        currency: player.currency, sourceSha256: source.sourceSha256, selectedSha256: native.selected.sha256 }), clockEpochMs = Date.now(), packageSha256 = source.original.documentSha256;
+                        currency: player.currency, sourceSha256: source.sourceSha256, selectedSha256: native.selected.sha256 }), clockEpochMs = Date.now(), packageSha256 = source.original.documentSha256, policy = authorPromptFacts ? TAVERN_NATIVE_PROMPT_POLICY_V2 : TAVERN_NATIVE_PROMPT_POLICY_V1;
                 const declaredOutlets = compilation.plan.entries.flatMap(entry => {
                     const semantic = { ...ST_LORE_ENTRY_DEFAULTS_V1, ...entry.semanticOverrides };
                     return semantic.position === 'named-outlet' && semantic.outletName ? [semantic.outletName] : [];
@@ -147,9 +156,24 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                 const macros = macrosFor(scopeData.bindings), rules = captureRoleplayTavernScopedRegexV1(captured.cardData, source.sourceSha256, true);
                 const component = await deps.loadTemplate(scope.signal);
                 assertCurrent();
+                let authorPrompt;
+                if (authorPromptFacts) {
+                    const capture = produceAuthorPromptCaptureV1({ history: chatClock, scopes: authorPromptFacts.scopes,
+                        opening: authorPromptFacts.opening, attemptId, clockEpochMs, randomSeed: seed });
+                    const execution = await deps.executeAuthorPrompt(scope.session.id, authorPromptFacts.program, capture, scope.signal);
+                    assertCurrent();
+                    if (execution.kind !== 'executed')
+                        fail(execution.diagnostics[0]?.code ?? 'INPUT_MATERIAL_AUTHOR_PROMPT_REFUSED');
+                    authorPrompt = { capture, output: execution.output };
+                }
                 const note = snapshot.contextMessageRefs?.refs.find(row => row.form === 'director-notes'), noteIndex = note ? native.selected.messages.findIndex(row => row.id === note.id && row.messageSha256 === note.messageSha256) : -1;
-                const definitions = captureRoleplayTavernInjectionDefinitionsV1(source, compilation.plan, residual), injections = createRoleplayTavernInjectionRegistryV1({ sessionId: scope.session.id, turn: scope.turn, step: scope.step,
-                    attemptId, history: materialHistory, definitions: definitions.definitions, component, assertCurrent, signal: scope.signal });
+                const definitions = captureRoleplayTavernInjectionDefinitionsV1(source, compilation.plan, residual, authorPromptFacts?.program), injections = createRoleplayTavernInjectionRegistryV1({ sessionId: scope.session.id, turn: scope.turn, step: scope.step,
+                    attemptId, history: materialHistory, definitions: definitions.definitions, promptDefinition: definitions.promptDefinition,
+                    component, assertCurrent, signal: scope.signal });
+                if (authorPrompt && authorPromptFacts && definitions.promptDefinition) {
+                    await injections.acceptPromptGeneration(authorPromptFacts.program, authorPrompt.capture, authorPrompt.output, definitions.promptDefinition);
+                    assertCurrent();
+                }
                 const render = await prepareRoleplayTavernRenderCatalogV1({ source, plan: compilation.plan, macros, rules,
                     component, scopes: scopeData.bindings, authorsNoteDepth: noteIndex < 0 ? 0 : native.selected.messages.length - noteIndex - 1,
                     basis: { sessionId: scope.session.id, branchId: scope.session.id, revision: timed.timed.revision, turnId, attemptId,
@@ -163,7 +187,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     provenance: opening.attempt.provenance } : { attemptId, traceCounter: player.currency.attemptGeneration,
                     provenance: factRef(`${scope.session.id}:actual-input-attempt`, recordSha256(player.currency), {
                         schemaVersion: 1, encoding: 'actual-Core-prompt-variable-attempt-v1', currency: player.currency,
-                        preparation: player.preparation, turn: scope.turn, step: scope.step, policySha256: recordSha256(TAVERN_NATIVE_PROMPT_POLICY_V1)
+                        preparation: player.preparation, turn: scope.turn, step: scope.step, policySha256: recordSha256(policy)
                     }) };
                 const variables = await prepareRoleplayTavernPromptVariablesV1({ schemaVersion: 1,
                     encoding: 'owned-prompt-variable-input-v1', sessionId: scope.session.id, source, catalog: initialCatalog.catalog,
@@ -285,7 +309,7 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                 const { source: _editSource, ...editData } = captured.edits, { source: _variableSource, ...variableInput } = variables.input;
                 return { kind: 'prepared-data', ...layout,
                     snapshot: freeze({ schemaVersion: 1, encoding: 'native-tavern-prompt-capture-v1', authority: 'consumer-data-only',
-                        policy: TAVERN_NATIVE_PROMPT_POLICY_V1, source,
+                        policy, source, ...authorPrompt ? { authorPrompt } : {},
                         authorPolicy, authorPolicySha256,
                         edits: { ...editData, sourceRef: { sourceSha256: source.sourceSha256 } },
                         initialCatalogReceipt: initialCatalog.receipt,
@@ -297,8 +321,9 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                         ...opening ? { openingPreparation: { snapshotRef: opening.snapshotRef, ownedBranchRefs: opening.ownedBranchRefs, scopeFacts: opening.scopes.data,
                                 attempt: opening.attempt } } : { phaseASnapshotRef: player.currency.snapshot } }),
                     plan: freeze({ schemaVersion: 1, encoding: 'native-tavern-prompt-plan-v1', authority: 'consumer-data-only',
-                        policySha256: recordSha256(TAVERN_NATIVE_PROMPT_POLICY_V1), tavernEvaluationPlan: evaluated.plan,
+                        policySha256: recordSha256(policy), tavernEvaluationPlan: evaluated.plan,
                         finalLore, layout: layout.layout, variablePacketSha256: variables.packet.packetSha256,
+                        ...authorPrompt ? { authorPromptOutputSha256: authorPrompt.output.outputSha256 } : {},
                         injectionTransactionSha256: injectionTransaction.transactionSha256 }), assertCurrent, release: inputCapture.release,
                     assertSelected(selected, firstAttempt) {
                         // Only the original callback object is accepted during preparation,

@@ -2,17 +2,18 @@
  * same maintained replay/journal source; no lower replay plus JSON stamp can
  * mint its evidence. Source, locks and Native callbacks stay with Core. */
 import {recordSha256} from './roleplay-data.js'
-import {createCombinedAuthorCompilerV3} from './tavern-author-combined-compiler.mjs'
+import {createCombinedAuthorCompilerV4} from './tavern-author-combined-compiler.mjs'
 import {createRoleplayMvuSchemaReplay} from './roleplay-mvu-schema-replay.js'
 import type {SchemaReplayDeps} from './roleplay-mvu-schema-replay.js'
 import type {OwnedMvuSchemaExecutor} from './roleplay-mvu-schema-executor-types.js'
 import type {MvuSchemaCompilerV4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaImplementationIdentity} from './tavern-mvu-schema-types.js'
 import type {BrowserPartitionCompilerV1} from './tavern-author-browser-types.mjs'
+import type {OwnedAuthorPromptRuntimeV1} from './tavern-author-prompt-types.mjs'
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from './roleplay-author-host-types-v5.js'
 
 export const AUTHOR_HOST_NAME_V5='dsh-nexttavern-author-host-runtime-v5'
-export const AUTHOR_HOST_VERSION_V5='0.5.0'
+export const AUTHOR_HOST_VERSION_V5='0.5.1'
 export interface AuthorHostInventoryV5 {
   name:typeof AUTHOR_HOST_NAME_V5
   version:typeof AUTHOR_HOST_VERSION_V5
@@ -24,8 +25,9 @@ export type AuthorHostReplayBindingsV5=Omit<SchemaReplayDeps,'compiler'|'runner'
 export type AuthorHostReplayOwnerV5=ReturnType<typeof createRoleplayMvuSchemaReplay>
 export interface AuthorHostRuntimeV5 {
   readonly identity:AuthorHostIdentityV5
-  readonly compiler:ReturnType<typeof createCombinedAuthorCompilerV3>
+  readonly compiler:ReturnType<typeof createCombinedAuthorCompilerV4>
   readonly server:AuthorServerExecutorV4
+  readonly prompt:OwnedAuthorPromptRuntimeV1
   createReplay(bindings:AuthorHostReplayBindingsV5):AuthorHostReplayOwnerV5
   checkCurrent():void
   dispose():void
@@ -36,6 +38,7 @@ export async function createOwnedAuthorHostRuntimeV5(deps:{
   verifyOwnedPackage(root:URL):AuthorHostInventoryV5
   server:AdmittedAuthorServerV4
   browser:BrowserPartitionCompilerV1
+  prompt:OwnedAuthorPromptRuntimeV1
 }):Promise<AuthorHostRuntimeV5> {
   // Core verified these package bytes before import. This one callback fixes
   // the admitted generation; loaded calls never rescan its filesystem.
@@ -47,18 +50,19 @@ export async function createOwnedAuthorHostRuntimeV5(deps:{
   const server:AuthorServerExecutorV4=Object.freeze({compiler:deps.server.compiler.identity as AuthorServerExecutorV4['compiler'],
     bridge:deps.server.bridge,libraries:deps.server.libraries,stateLoader:deps.server.stateLoader,
     runner:deps.server.runner.identity as AuthorServerExecutorV4['runner']})
-  const actualCompiler=createCombinedAuthorCompilerV3({server:deps.server.compiler as MvuSchemaCompilerV4,
-    browser:deps.browser,implementationSha256:pin.generation})
+  const actualCompiler=createCombinedAuthorCompilerV4({server:deps.server.compiler as MvuSchemaCompilerV4,
+    browser:deps.browser,prompt:deps.prompt.compiler,implementationSha256:pin.generation})
   const identity:AuthorHostIdentityV5=Object.freeze({id:'native-author-host',version:5,
     implementationSha256:recordSha256({encoding:'native-author-host-implementation-v5',generation:pin.generation,
-      combinedCompiler:actualCompiler.identity,server,browser:{compiler:deps.browser.identity,runtime:deps.browser.runtime}})})
+      combinedCompiler:actualCompiler.identity,server,browser:{compiler:deps.browser.identity,runtime:deps.browser.runtime},
+      prompt:{compiler:deps.prompt.compiler.identity,runtime:deps.prompt.runtime}})})
   let disposed=false
   const owners=new Set<AuthorHostReplayOwnerV5>()
   const checkCurrent=()=>{if(disposed)throw Error('AUTHOR_HOST_RUNTIME_DISPOSED')}
   const compiler:AuthorHostRuntimeV5['compiler']={identity:actualCompiler.identity,
     compile(input,signal){checkCurrent();return actualCompiler.compile(input,signal)},
     verifyProgram(program,signal){checkCurrent();return actualCompiler.verifyProgram(program,signal)}}
-  return Object.freeze({identity,server,compiler,
+  return Object.freeze({identity,server,compiler,prompt:deps.prompt,
     createReplay(bindings:AuthorHostReplayBindingsV5) {
       checkCurrent()
       const replay=createRoleplayMvuSchemaReplay({...bindings,compiler:deps.server.compiler,runner:deps.server.runner,
@@ -73,6 +77,6 @@ export async function createOwnedAuthorHostRuntimeV5(deps:{
       disposed=true
       for(const replay of owners)replay.dispose()
       owners.clear()
-      // The Core asset owner owns the injected server/browser lifetimes.
+      // Core owns the injected server, Browser and Prompt component lifetimes.
     }})
 }

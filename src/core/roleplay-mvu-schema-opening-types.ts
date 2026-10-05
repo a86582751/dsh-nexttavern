@@ -318,8 +318,9 @@ export function validateMvuSchemaOpeningPreparation(input:MvuSchemaOpeningPrepar
   if(value.schemaVersion===5) {
     hostIdentity(value.host)
     exact(value.compilation,['schemaVersion','encoding','original','sourceRecordSessionId'])
-    if(value.encoding!=='native-author-opening-preparation-v5'||value.compilation.schemaVersion!==3
-      ||value.compilation.encoding!=='native-author-combined-compilation-input-v3'
+    if(value.encoding!=='native-author-opening-preparation-v5'
+      ||![3,4].includes(value.compilation.schemaVersion)
+      ||value.compilation.encoding!==`native-author-combined-compilation-input-v${value.compilation.schemaVersion}`
       ||value.compilation.sourceRecordSessionId!==value.sourceSnapshot.source.sourceRecordSessionId)fail()
   }else if(value.schemaVersion===2||value.schemaVersion===3||value.schemaVersion===4) {
     const executor=validateSchemaExecutorIdentityTuple(value.executor)

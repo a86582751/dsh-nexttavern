@@ -1,7 +1,7 @@
 /** Host5 binds the complete author program to real server ABI4 execution.
  * Durable records remain facts; the live replay owner's private evidence
  * still owns publication. Browser readiness is a separate Core lifecycle. */
-import type {CombinedAuthorProgramV3,CombinedCompilationInputV3,AuthorExecutionPlanV2} from './tavern-author-combined-types.mjs'
+import type {CombinedAuthorProgram,CombinedCompilationInput,AuthorExecutionPlan} from './tavern-author-combined-types.mjs'
 import type {MvuSchemaProgramV4} from './tavern-mvu-author-execution-types-v4.mjs'
 import type {MvuSchemaRunnerIdentity} from './tavern-mvu-schema-types.js'
 import type {MvuSchemaRealmLoadFrameV4,MvuSchemaTraceRequestedStepV4,MvuSchemaTraceEvaluationStepV4}
@@ -27,7 +27,7 @@ export interface AuthorOpeningPreparationV5 extends Omit<MvuSchemaOpeningPrepara
   readonly schemaVersion:5
   readonly encoding:'native-author-opening-preparation-v5'
   readonly host:AuthorHostIdentityV5
-  readonly compilation:CombinedCompilationInputV3
+  readonly compilation:CombinedCompilationInput
   readonly preparationSha256:string
 }
 export interface AuthorFrozenOriginalV5 {
@@ -39,7 +39,7 @@ export interface AuthorFrozenOriginalV5 {
   readonly combinedProgramSha256:string
   /** Small projection metadata from the same checked epoch. Complete raw
    * descriptors remain in preparation; scope reads never infer membership. */
-  readonly executionPlan:AuthorExecutionPlanV2
+  readonly executionPlan:AuthorExecutionPlan
   readonly serverProgramSha256:string
   readonly realmEpoch:string
   readonly originalSha256:string
@@ -53,7 +53,7 @@ interface AuthorHostRecordHeaderV5 {
 export interface AuthorHostEpochV5 extends AuthorHostRecordHeaderV5 {
   readonly encoding:'native-mvu-schema-epoch-v5'
   readonly host:AuthorHostIdentityV5
-  readonly program:CombinedAuthorProgramV3
+  readonly program:CombinedAuthorProgram
   /** Only real nonempty server execution creates a numerical Host5 epoch.
    * Browser-only compilation has no synthetic load or zero-step receipt. */
   readonly server:{readonly executor:AuthorServerExecutorV4;

@@ -22,7 +22,14 @@ export const TAVERN_NATIVE_INJECTION_POLICY_V1 = Object.freeze({ schemaVersion: 
     retention: 'prune-only-at-material-seal-or-terminal; no-live-prompt-and-no-armed-once-disposer',
     bounds: { programs: 256, prompts: 512, operations: 1024, archiveBytes: 67_108_864, scanPasses: 32 },
     requests: { normal: 0, retry: 0, fallback: 0 } });
-const policySha256 = recordSha256(TAVERN_NATIVE_INJECTION_POLICY_V1);
+export const TAVERN_NATIVE_INJECTION_POLICY_V2 = Object.freeze({ ...TAVERN_NATIVE_INJECTION_POLICY_V1,
+    schemaVersion: 2, encoding: 'native-author-injection-registry-policy-v2',
+    program: 'typed-Template-closure-replay-or-stateless-Prompt-generation',
+    prompt: 'whole-Source-owner-ID-space; ordered-effects; no-effects-retain-persistent',
+    cleanup: 'fixed-IDs-merged-per-Source-owner; actual-owner-close-only',
+    retention: 'latest-Prompt-generation; live-prompts-or-armed-once-or-Source-cleanup' });
+const policySha256V1 = recordSha256(TAVERN_NATIVE_INJECTION_POLICY_V1);
+const policySha256V2 = recordSha256(TAVERN_NATIVE_INJECTION_POLICY_V2);
 function fail(code) { throw Error(code); }
 const same = (left, right) => recordSha256(left) === recordSha256(right);
 function freeze(value) {
@@ -44,7 +51,7 @@ const keyOf = (owner, id) => JSON.stringify([owner, id]);
 const compareText = (left, right) => left === right ? 0 : left < right ? -1 : 1;
 export function createRoleplayTavernInjectionRegistryV1(deps) {
     const programs = new Map(), prompts = new Map(), operations = [], disposalEvidence = [], consumerEvidence = [], publishedPlans = new Set(), definitions = new Map(), consumedScan = new Set();
-    let archiveBytes = 0, creationOrdinal = 0, phaseOrdinal = 0, revision = 0, scanPasses = 0;
+    let archiveBytes = 0, creationOrdinal = 0, phaseOrdinal = 0, revision = 0, scanPasses = 0, registryVersion = 1;
     const checkpoint = () => deps.signal.throwIfAborted();
     const ownerCheckpoint = () => { checkpoint(); deps.assertCurrent(); };
     ownerCheckpoint();
@@ -53,11 +60,23 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             fail('INPUT_MATERIAL_INJECTION_DEFINITION_INVALID');
         definitions.set(definition.logicalOwnerId, definition.definitionSha256);
     }
-    const stateSha256 = () => recordSha256({ schemaVersion: 1, encoding: 'native-template-injection-registry-state-v1',
-        sessionId: deps.sessionId, policySha256, revision,
-        programs: [...programs].map(([id, p]) => ({ id, definition: p.creation.definition, head: p.head,
-            batches: [...p.batches], nextBatch: p.nextBatch, nextCallback: p.nextCallback, nextEffect: p.nextEffect,
-            blocked: p.blocked, closed: p.closed })), prompts: [...prompts] });
+    const currentPolicySha256 = () => registryVersion === 1 ? policySha256V1 : policySha256V2;
+    const definitionOf = (p) => p.kind === 'template' ? p.creation.definition : p.generation.definition;
+    const templateState = (id, p) => ({ id, definition: p.creation.definition, head: p.head,
+        batches: [...p.batches], nextBatch: p.nextBatch, nextCallback: p.nextCallback, nextEffect: p.nextEffect,
+        blocked: p.blocked, closed: p.closed });
+    const stateSha256 = () => registryVersion === 1 ? recordSha256({ schemaVersion: 1,
+        encoding: 'native-template-injection-registry-state-v1', sessionId: deps.sessionId, policySha256: policySha256V1, revision,
+        programs: [...programs].map(([id, p]) => {
+            if (p.kind !== 'template')
+                fail('INPUT_MATERIAL_INJECTION_STATE_VERSION');
+            return templateState(id, p);
+        }), prompts: [...prompts] }) : recordSha256({ schemaVersion: 2, encoding: 'native-author-injection-registry-state-v2',
+        sessionId: deps.sessionId, policySha256: policySha256V2, revision,
+        programs: [...programs].map(([id, p]) => p.kind === 'template' ? { kind: 'template', ...templateState(id, p) } :
+            { id, kind: 'prompt', definition: p.generation.definition, programSha256: p.generation.program.programSha256,
+                captureSha256: p.generation.capture.captureSha256, head: p.head, batches: [...p.batches], nextBatch: p.nextBatch,
+                cleanupRemovals: [...p.cleanupRemovals], closed: p.closed }), prompts: [...prompts] });
     const charge = (value) => {
         const bytes = Buffer.byteLength(JSON.stringify(value), 'utf8');
         archiveBytes += bytes;
@@ -72,6 +91,8 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             // of its arming turn. Removing its realm now would revive replacements.
             if (live.has(id) || [...p.batches.values()].some(batch => batch.once && !batch.deleted))
                 continue;
+            if (p.kind === 'prompt' && !p.closed && p.cleanupRemovals.size)
+                continue;
             programs.delete(id);
             archiveBytes -= p.archiveBytes;
             revision++;
@@ -79,6 +100,12 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
     };
     const readProgram = (id) => { const p = programs.get(id); if (!p)
         fail('INPUT_MATERIAL_INJECTION_PROGRAM_MISSING'); return p; };
+    const readTemplateProgram = (id) => {
+        const p = readProgram(id);
+        if (p.kind !== 'template')
+            fail('INPUT_MATERIAL_INJECTION_PROGRAM_KIND');
+        return p;
+    };
     const applyEffects = (p, output, turn) => {
         const owner = p.creation.definition.logicalOwnerId;
         for (const effect of output.injectionEffects ?? []) {
@@ -126,7 +153,7 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             || !output.injectionEffects?.length)
             fail('INPUT_MATERIAL_INJECTION_CREATION_INVALID');
         const creationBytes = charge(row);
-        const p = { creation: row, journal: [], head: injectionCreationHeadV1(row.programInstanceId, request, output),
+        const p = { kind: 'template', creation: row, journal: [], head: injectionCreationHeadV1(row.programInstanceId, request, output),
             batches: new Map(), nextBatch: 0, nextCallback: 0, nextEffect: 0, lastSnapshot: request.snapshot,
             blocked: null, closed: false, archiveBytes: creationBytes };
         programs.set(row.programInstanceId, p);
@@ -136,7 +163,7 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
     };
     const applyInvocation = (row, turn) => {
         exact(row, ['kind', 'programInstanceId', 'phase', 'receipt']);
-        const p = readProgram(row.programInstanceId);
+        const p = readTemplateProgram(row.programInstanceId);
         if (p.closed || p.blocked)
             fail('INPUT_MATERIAL_INJECTION_PROGRAM_BLOCKED');
         const phase = validateInjectionPhaseV1(row.phase), receipt = validateInjectionReceiptV1(row.receipt, row.programInstanceId, p.head, phase, p.creation.request, p.creation.output.engine);
@@ -156,12 +183,88 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
         p.lastSnapshot = phase.snapshot;
         revision++;
     };
+    const applyPromptGeneration = (row, turn) => {
+        exact(row, ['kind', 'programInstanceId', 'definition', 'program', 'capture', 'output']);
+        const prior = programs.get(row.programInstanceId);
+        if (registryVersion !== 2 || (row.kind === 'prompt-creation' ? !!prior :
+            !prior || prior.kind !== 'prompt' || prior.closed || !same(definitionOf(prior), row.definition))) {
+            fail('INPUT_MATERIAL_INJECTION_PROMPT_GENERATION_INVALID');
+        }
+        // Core supplied the actual execution result. The material transaction
+        // retains that result for cold folds; no worker or Template receipt is
+        // restored, and no inner DATA hash is re-proved at this consumer cut.
+        const p = prior?.kind === 'prompt' ? prior : { kind: 'prompt', generation: row, head: row.output.outputSha256,
+            batches: new Map(), nextBatch: 0, cleanupRemovals: new Map(), closed: false, archiveBytes: 0 };
+        archiveBytes -= p.archiveBytes;
+        p.archiveBytes = charge(row);
+        p.generation = row;
+        p.head = row.output.outputSha256;
+        programs.set(row.programInstanceId, p);
+        if (programs.size > TAVERN_NATIVE_INJECTION_POLICY_V2.bounds.programs)
+            fail('INPUT_MATERIAL_INJECTION_PROGRAM_LIMIT');
+        for (const removal of row.output.cleanupRemovals) {
+            const { ids, ...origin } = removal;
+            for (const id of ids)
+                p.cleanupRemovals.set(id, origin);
+        }
+        const owner = row.definition.logicalOwnerId;
+        for (const [effectOrdinal, effect] of row.output.effects.entries()) {
+            if (effect.kind === 'remove') {
+                for (const id of effect.ids)
+                    prompts.delete(keyOf(owner, id));
+            }
+            else {
+                const batchOrdinal = p.nextBatch++;
+                if (effect.once)
+                    p.batches.set(batchOrdinal, { ids: effect.prompts.map(prompt => prompt.id), once: true,
+                        deleted: false, armedTurn: turn });
+                const origin = { originalOrdinal: effect.originalOrdinal, scriptIdentity: effect.scriptIdentity,
+                    descriptorSha256: effect.descriptorSha256 };
+                for (const [promptOrdinal, prompt] of effect.prompts.entries()) {
+                    const registrationSha256 = recordSha256({ programInstanceId: row.programInstanceId,
+                        outputSha256: row.output.outputSha256, effectOrdinal, promptOrdinal });
+                    prompts.set(keyOf(owner, prompt.id), { owner, programInstanceId: row.programInstanceId,
+                        registrationSha256, prompt, origin, once: effect.once, batchOrdinal });
+                    if (prompts.size > TAVERN_NATIVE_INJECTION_POLICY_V2.bounds.prompts)
+                        fail('INPUT_MATERIAL_INJECTION_PROMPT_LIMIT');
+                }
+            }
+            revision++;
+        }
+        revision++;
+    };
     const phaseFor = (snapshot, schedule) => {
         const body = { schemaVersion: 1, encoding: 'owned-template-injection-phase-v1', snapshot, schedule };
         return validateInjectionPhaseV1({ ...body, phaseSha256: recordSha256(body) });
     };
     const dispose = (programInstanceId, batchOrdinals, consumer, actualRef) => {
         const p = readProgram(programInstanceId);
+        if (p.kind === 'prompt') {
+            const owner = p.generation.definition.logicalOwnerId, ids = [];
+            for (const ordinal of batchOrdinals) {
+                const batch = p.batches.get(ordinal);
+                ids.push(...batch.ids);
+                for (const id of batch.ids)
+                    prompts.delete(keyOf(owner, id));
+                p.batches.delete(ordinal);
+                revision++;
+            }
+            const cleanupRemovals = consumer === 'owner-close' ? [...p.cleanupRemovals] : [];
+            if (consumer === 'owner-close') {
+                for (const [id] of cleanupRemovals)
+                    prompts.delete(keyOf(owner, id));
+                p.cleanupRemovals.clear();
+                for (const [key, row] of prompts)
+                    if (row.owner === owner)
+                        prompts.delete(key);
+            }
+            if (batchOrdinals.length || consumer === 'owner-close') {
+                disposalEvidence.push(freeze({ schemaVersion: 2, encoding: 'native-author-prompt-disposal-fold-v2',
+                    authority: 'consumer-data-only', programInstanceId, consumer, actualRef, batchOrdinals, ids, cleanupRemovals,
+                    observedGuestExecution: false }));
+            }
+            return;
+        }
         if (!batchOrdinals.length)
             return;
         const phase = phaseFor(p.lastSnapshot, batchOrdinals.map(batchOrdinal => ({ kind: 'dispose-batch', batchOrdinal, consumer,
@@ -205,10 +308,12 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             applyCreation(operation, turn);
         else if (operation.kind === 'invocation')
             applyInvocation(operation, turn);
+        else if (operation.kind === 'prompt-creation' || operation.kind === 'prompt-generation')
+            applyPromptGeneration(operation, turn);
         else {
             exact(operation, ['kind', 'programInstanceId', 'definitionSha256']);
             const p = readProgram(operation.programInstanceId);
-            if (operation.kind !== 'owner-closed' || operation.definitionSha256 !== p.creation.definition.definitionSha256 || p.closed)
+            if (operation.kind !== 'owner-closed' || operation.definitionSha256 !== definitionOf(p).definitionSha256 || p.closed)
                 fail('INPUT_MATERIAL_INJECTION_OWNER_CLOSE_INVALID');
             dispose(operation.programInstanceId, [...p.batches].filter(([, batch]) => !batch.deleted).map(([id]) => id), 'owner-close', { turn, definitionSha256: operation.definitionSha256 });
             p.closed = true;
@@ -227,16 +332,25 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             exact(transaction, ['schemaVersion', 'encoding', 'authority', 'sessionId', 'turn', 'step', 'attemptId', 'policySha256',
                 'baseRegistrySha256', 'operations', 'finalRegistrySha256', 'transactionSha256']);
             const { transactionSha256, ...body } = transaction;
-            if (transaction.schemaVersion !== 1 || transaction.encoding !== 'native-template-injection-transaction-v1'
+            if (![1, 2].includes(transaction.schemaVersion) || transaction.encoding !== (transaction.schemaVersion === 1
+                ? 'native-template-injection-transaction-v1' : 'native-author-injection-transaction-v2')
                 || transaction.authority !== 'consumer-data-only' || transaction.sessionId !== deps.sessionId
                 || transaction.turn !== publication.event.data.turn || transaction.step !== publication.event.data.step
-                || transaction.policySha256 !== policySha256 || !id(transaction.attemptId) || recordSha256(body) !== transactionSha256
+                || transaction.policySha256 !== (transaction.schemaVersion === 1 ? policySha256V1 : policySha256V2)
+                || !id(transaction.attemptId) || recordSha256(body) !== transactionSha256
                 || !Array.isArray(transaction.operations) || transaction.operations.length > 1024)
                 fail('INPUT_MATERIAL_INJECTION_TRANSACTION_INVALID');
             const planKey = `${publication.event.data.plan.key}:${publication.event.data.plan.sha256}`;
             if (publishedPlans.has(planKey))
                 continue;
             publishedPlans.add(planKey);
+            // Legacy publications first consume the exact V1 projection. The first
+            // unique V2 plan deterministically changes only the state serialization;
+            // later absence of a Prompt definition cannot downgrade that history.
+            if (transaction.schemaVersion === 2)
+                registryVersion = 2;
+            else if (registryVersion !== 1)
+                fail('INPUT_MATERIAL_INJECTION_STATE_VERSION');
             if (stateSha256() !== transaction.baseRegistrySha256)
                 fail('INPUT_MATERIAL_INJECTION_BASE_CHANGED');
             for (const operation of transaction.operations)
@@ -253,6 +367,8 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             pruneUnreferencedPrograms();
         }
     }
+    if (deps.promptDefinition)
+        registryVersion = 2;
     const baseRegistrySha256 = stateSha256(), historyDisposals = disposalEvidence.length;
     const append = (operation) => {
         if (operations.length >= 1024)
@@ -262,8 +378,8 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
     };
     for (const [id, p] of programs)
         if (!p.closed
-            && definitions.get(p.creation.definition.logicalOwnerId) !== p.creation.definition.definitionSha256) {
-            append({ kind: 'owner-closed', programInstanceId: id, definitionSha256: p.creation.definition.definitionSha256 });
+            && definitions.get(definitionOf(p).logicalOwnerId) !== definitionOf(p).definitionSha256) {
+            append({ kind: 'owner-closed', programInstanceId: id, definitionSha256: definitionOf(p).definitionSha256 });
         }
     checkpoint();
     return {
@@ -276,6 +392,16 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
             const programInstanceId = `program-${recordSha256({ sessionId: deps.sessionId, turn: deps.turn, step: deps.step,
                 attemptId: deps.attemptId, ordinal: creationOrdinal++, definition, requestSha256: request.requestSha256 })}`;
             append({ kind: 'creation', programInstanceId, definition, request, output, phase });
+            ownerCheckpoint();
+        },
+        acceptPromptGeneration(program, capture, output, definition) {
+            ownerCheckpoint();
+            if (definitions.get(definition.logicalOwnerId) !== definition.definitionSha256) {
+                fail('INPUT_MATERIAL_INJECTION_SOURCE_DEFINITION_CHANGED');
+            }
+            const programInstanceId = `prompt-${recordSha256({ sessionId: deps.sessionId, definition })}`;
+            append({ kind: programs.has(programInstanceId) ? 'prompt-generation' : 'prompt-creation',
+                programInstanceId, definition, program, capture, output });
             ownerCheckpoint();
         },
         async consume(consumer, snapshot) {
@@ -292,11 +418,12 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
                 if (consumer === 'scan')
                     consumedScan.add(row.registrationSha256);
                 const p = readProgram(row.programInstanceId);
-                if (p.closed || p.blocked)
-                    fail(p.blocked ?? 'INPUT_MATERIAL_INJECTION_OWNER_CLOSED');
+                if (p.closed || p.kind === 'template' && p.blocked) {
+                    fail(p.kind === 'template' && p.blocked ? p.blocked : 'INPUT_MATERIAL_INJECTION_OWNER_CLOSED');
+                }
                 let include = true;
                 let receiptSha256 = null;
-                if (row.prompt.callbackOrdinal !== null) {
+                if (p.kind === 'template' && 'callbackOrdinal' in row.prompt && row.prompt.callbackOrdinal !== null) {
                     if (!same(p.creation.output.engine, deps.component.runtime.identity))
                         fail('INPUT_MATERIAL_INJECTION_ENGINE_CHANGED');
                     const phase = phaseFor(snapshot, [{ kind: 'filter', callbackOrdinal: row.prompt.callbackOrdinal, consumer,
@@ -331,13 +458,15 @@ export function createRoleplayTavernInjectionRegistryV1(deps) {
         transaction() {
             checkpoint();
             pruneUnreferencedPrograms();
-            const body = { schemaVersion: 1, encoding: 'native-template-injection-transaction-v1',
-                authority: 'consumer-data-only', sessionId: deps.sessionId, turn: deps.turn, step: deps.step,
-                attemptId: deps.attemptId, policySha256, baseRegistrySha256, operations: [...operations], finalRegistrySha256: stateSha256() };
+            const common = { authority: 'consumer-data-only', sessionId: deps.sessionId, turn: deps.turn, step: deps.step,
+                attemptId: deps.attemptId, policySha256: currentPolicySha256(), baseRegistrySha256, finalRegistrySha256: stateSha256() };
+            const body = registryVersion === 1 ? { schemaVersion: 1, encoding: 'native-template-injection-transaction-v1',
+                ...common, operations: [...operations] } :
+                { schemaVersion: 2, encoding: 'native-author-injection-transaction-v2', ...common, operations: [...operations] };
             return freeze({ ...body, transactionSha256: recordSha256(body) });
         },
-        audit: () => freeze({ schemaVersion: 1, encoding: 'native-injection-history-and-provisional-fold-v1',
-            authority: 'consumer-data-only', policySha256, history: deps.history.evidence, baseRegistrySha256,
+        audit: () => freeze({ schemaVersion: registryVersion, encoding: `native-injection-history-and-provisional-fold-v${registryVersion}`,
+            authority: 'consumer-data-only', policySha256: currentPolicySha256(), history: deps.history.evidence, baseRegistrySha256,
             historicalDisposals: disposalEvidence.slice(0, historyDisposals), currentDisposals: disposalEvidence.slice(historyDisposals),
             consumers: consumerEvidence, finalRegistrySha256: stateSha256(), archiveBytes, scanPasses }),
         assertCurrent: ownerCheckpoint,

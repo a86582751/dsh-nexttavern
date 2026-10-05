@@ -29,6 +29,9 @@ import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeInitialChat,schem
   schemaScopeOwner,schemaScopePublished,schemaScopeMessageKey,schemaScopeVisibleMessages,
   schemaScopeReadFactsEqual,schemaScopeEmpty,schemaScopeReowner} from './roleplay-mvu-schema-scope-facts.js'
 import type {BrowserSnapshotV1,BrowserChatMessageSnapshotV1} from './tavern-author-browser-types.mjs'
+import {produceAuthorPromptScopeFrameV1} from './roleplay-author-prompt-capture.js'
+import type {AuthorPromptPreparationFactsV1} from './roleplay-author-prompt-capture.js'
+import type {PromptProgramV1,PromptCaptureV1} from './tavern-author-prompt-types.mjs'
 import type {MvuScopeVariablesV1,MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 import {readMvuSchemaInheritedStoryFacts,verifyMvuSchemaInheritedOpeningFacts}
   from './roleplay-mvu-schema-prefix-facts.js'
@@ -853,7 +856,36 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     // their selected message versions and its evolving request cut separately.
     const current=()=>viewCurrent(view)
     if(!current())return undefined
-    return {data,current}
+    let authorPrompt:AuthorPromptPreparationFactsV1|undefined
+    const ready=view.history.ready
+    if(isAuthorHostJournalReadyV5(ready)&&ready.epoch.program.schemaVersion===4
+      &&ready.epoch.program.promptProgram) {
+      const program=ready.epoch.program.promptProgram,preparation=view.history.original.preparation,
+        identity=preparation.identity,anchor=frame.messages.find(row=>row.messageId===identity.messageId),
+        event=anchor?events[anchor.nativeSeq]:undefined
+      if(event?.type!=='assistant/message'||event.data.message.id!==identity.messageId)
+        fail('PROMPT_PROGRAM_OPENING_ANCHOR_UNAVAILABLE')
+      const originalMessageVersionSha256=recordSha256(event.data.message),
+        candidates=deps.source.readOriginalOpeningCandidates(view.history.original),
+        selected=candidates.findIndex(row=>row.index===identity.index)
+      // The completed schema opening already proves its original Native copy.
+      // An edited projected version is excluded by the consumer's version join.
+      const copiedCandidates=selected>=0&&sha256(textOf(event.data.message.content))===identity.renderedSha256
+        ?{source:'native-author-copy-opening-candidates-v1' as const,
+          swipes:candidates.map(row=>row.renderedText),swipe_id:selected}:null
+      authorPrompt={program,opening:{messageId:identity.messageId,originalMessageVersionSha256,copiedCandidates},
+        scopes:produceAuthorPromptScopeFrameV1(frame,program)}
+    }
+    return {data,current,...authorPrompt?{authorPrompt}:{}}
+  }
+  /** The completed history already admitted this exact Host generation.
+   * The material owner holds Source/currentness and validates the await. */
+  async function executePrompt(sid:string,program:PromptProgramV1,capture:PromptCaptureV1,signal?:AbortSignal) {
+    const view=views.get(sid)
+    if(!view)fail('AUTHOR_PROMPT_HISTORY_UNAVAILABLE')
+    const {runtime}=await engine(view.history.ready)
+    if(!('host' in runtime))fail('AUTHOR_PROMPT_RUNTIME_UNAVAILABLE')
+    return runtime.prompt.execute(program,capture,signal)
   }
   function captureManualBasis(sid:string) {
     const view=views.get(sid)
@@ -1094,7 +1126,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       return view.history.consumed.get(plan.planSha256)===recordSha256({terminal,event,settlement})
     } catch {return false}
   }
-  return {preflight,observation,readSnapshot,readSchemaObservation,capturePromptScopes,captureBrowserFacts,
+  return {preflight,observation,readSnapshot,readSchemaObservation,capturePromptScopes,executePrompt,captureBrowserFacts,
     readEditBasis,captureManualBasis,captureHistoricalCut,
     captureForkPrefix,verifyForkPrefix,captureFrozenForkPrefix,verifyFrozenForkPrefix,
     prepareCompletion,releaseClosing,verifyConsumed,

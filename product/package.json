@@ -97,7 +97,8 @@
     "dsh-nexttavern-mvu-schema-runtime-v4": "0.4.0",
     "dsh-nexttavern-template-runtime-v1": "0.1.0",
     "dsh-nexttavern-author-browser-runtime-v1": "0.1.0",
-    "dsh-nexttavern-author-host-runtime-v5": "0.5.0"
+    "dsh-nexttavern-author-host-runtime-v5": "0.5.1",
+    "dsh-nexttavern-author-prompt-runtime-v1": "0.1.0"
   },
   "bundleDependencies": [
     "dsh-nexttavern-anydoc",
@@ -118,7 +119,8 @@
     "dsh-nexttavern-mvu-schema-runtime-v4",
     "dsh-nexttavern-template-runtime-v1",
     "dsh-nexttavern-author-browser-runtime-v1",
-    "dsh-nexttavern-author-host-runtime-v5"
+    "dsh-nexttavern-author-host-runtime-v5",
+    "dsh-nexttavern-author-prompt-runtime-v1"
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",

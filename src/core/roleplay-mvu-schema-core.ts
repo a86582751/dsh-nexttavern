@@ -34,7 +34,8 @@ import type {SchemaCapturedScope,SchemaHostInitializationFrames,SchemaBoundary,H
   SchemaReplayDeps}
   from './roleplay-mvu-schema-replay.js'
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from './roleplay-author-host-types-v5.js'
-import type {CombinedAuthorProgramV3} from './tavern-author-combined-types.mjs'
+import type {CombinedAuthorProgram} from './tavern-author-combined-types.mjs'
+import {combinedCompilationInputForProgram} from './tavern-author-combined-data.mjs'
 import type {SchemaJournalTable,SourceNativeCutFacts,SchemaJournalReady} from './roleplay-mvu-schema-journal.js'
 import type {MvuSchemaOpeningPreparation,SchemaOpeningRequest,SchemaOpeningExecutionLive,
   OpeningIntentV5,MvuSchemaOpeningEventV2,MvuSchemaOpeningHeadV2,SchemaOpeningPublicationBoundary}
@@ -208,7 +209,7 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
     }
     return owner.scope
   }
-  function completeHostFrames(scope:SchemaCapturedScope,program:CombinedAuthorProgramV3):SchemaHostInitializationFrames {
+  function completeHostFrames(scope:SchemaCapturedScope,program:CombinedAuthorProgram):SchemaHostInitializationFrames {
     const owner=scopes.get(scope.owner),server=program.serverProgram
     if(!owner?.initialData||owner.preparation.schemaVersion!==5||owner.scope?.loadFrame!==undefined
       ||!server||!owner.inSource||sourceLeases.get(owner.session.id)!==owner)fail('SCHEMA_OWNER_UNPROVEN')
@@ -243,8 +244,7 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
     const completeSource=cut.epoch.schemaVersion===5?cut.epoch.program.original.source:program.source
     if(!same(completeSource.material,author.material))fail('SCHEMA_ORIGINAL_SOURCE_CHANGED')
     if(cut.epoch.schemaVersion===5) {
-      return {authorInput:{schemaVersion:3 as const,encoding:'native-author-combined-compilation-input-v3' as const,
-        original:cut.epoch.program.original,sourceRecordSessionId:cut.epoch.program.sourceRecordSessionId},
+      return {authorInput:combinedCompilationInputForProgram(cut.epoch.program),
         frozen:cut.frozen,events:all}
     }
     let authorInput:SchemaAuthorCompilationInput
@@ -294,7 +294,7 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
       const execution=deriveAuthorHostOpeningExecutionV5(request.identity,runtime.host.identity)
       const preparation=validateMvuSchemaOpeningPreparation(sealMvuSchemaOpeningFact({schemaVersion:5,
         encoding:'native-author-opening-preparation-v5',host:runtime.host.identity,
-        compilation:{schemaVersion:3,encoding:'native-author-combined-compilation-input-v3',original,
+        compilation:{schemaVersion:4,encoding:'native-author-combined-compilation-input-v4',original,
           sourceRecordSessionId:source.authorSource.snapshot.source.sourceRecordSessionId},identity:request.identity,
         authorSourceSha256:source.authorSource.authorSourceSha256,sourceSnapshot:source.authorSource.snapshot,
         initSource:source.initSource,freshNativeBasisProof:source.freshNativeBasisProof,...execution,

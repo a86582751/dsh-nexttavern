@@ -1,6 +1,10 @@
 /** Original author provenance and current story material are separate facts.
  * Neither descriptor can recreate Core's private Native publication owner. */
 import {recordSha256} from './roleplay-data.js'
+import {readStructuredImportDataV1} from './roleplay-import-record.js'
+import {compileTavernOpeningCandidates} from './tavern-card.js'
+import type {TavernOpeningCandidate,TavernOpeningContext} from './tavern-card.js'
+import type {ImportRecord} from './roleplay-import-types.js'
 import {createRoleplayMvuSource,readMvuSchemaCurrentAuthorSource} from './roleplay-mvu-source.js'
 import {freezeSchemaJournalData,createRoleplayMvuSchemaJournal,isAuthorHostJournalReadyV5}
   from './roleplay-mvu-schema-journal.js'
@@ -8,6 +12,7 @@ import {validateMvuSchemaOpeningPreparation} from './roleplay-mvu-schema-opening
 import {compileSchemaMvuInitData} from './tavern-mvu-initvar.js'
 import {cloneSchemaEnvelopeV4} from './tavern-mvu-schema-data.js'
 import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
+import {combinedCompilationInputForProgram} from './tavern-author-combined-data.mjs'
 import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeInitialChat,schemaScopeVisibleMessages}
   from './roleplay-mvu-schema-scope-facts.js'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
@@ -153,6 +158,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
   // parser. Version/currentness and all captured results belong to inputState.
   // It cannot recreate a Native execution or a publication lease.
   const parsedOriginals=new WeakSet<SchemaFrozenOriginal>()
+  const originalOpeningCandidates=new WeakMap<SchemaFrozenOriginal,readonly TavernOpeningCandidate[]>()
   const frameReads=new WeakMap<SchemaStorySourceFrame,{original:SchemaFrozenOriginal;
     read:RoleplayInputStateRead<SchemaStorySourceFrame>}>()
   function originalRecord(original:{sourceSnapshot:MvuSchemaAuthorSource['snapshot']}) {
@@ -301,8 +307,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     const sid=preparation.identity.sessionId,{epoch}=actual,first=actual.steps[0]!
     const combined=epoch.program,program=combined.serverProgram!,load=epoch.server.loadFrame,frame=first.step.frame
     if(epoch.sessionId!==sid||epoch.realmEpoch!==preparation.realmEpoch||!same(epoch.host,preparation.host)
-      ||!same(preparation.compilation,{schemaVersion:3,encoding:'native-author-combined-compilation-input-v3',
-        original:combined.original,sourceRecordSessionId:combined.sourceRecordSessionId})
+      ||!same(preparation.compilation,combinedCompilationInputForProgram(combined))
       ||first.dispatch.batchId!==preparation.selector.batchId
       ||!same(first.dispatch.sourceNativeCut.anchor,preparation.selector.anchor)
       ||first.dispatchMarker.seq!==preparation.freshNativeBasisProof.native.observedThroughSeq+1
@@ -429,10 +434,11 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     const plan=original.executionPlan,scripts=original.preparation.compilation.original.scripts
     exact(plan,['schemaVersion','encoding','authority','scripts','summary','executionPlanSha256'])
     const {executionPlanSha256,...body}=plan
-    if(plan.schemaVersion!==2||plan.encoding!=='native-author-complete-execution-plan-v2'
+    if((original.preparation.compilation.schemaVersion===3?plan.schemaVersion!==2:plan.schemaVersion!==3)
+      ||plan.encoding!==`native-author-complete-execution-plan-v${plan.schemaVersion}`
       ||plan.authority!=='compiled-program-data-only'||recordSha256(body)!==executionPlanSha256
       ||!Array.isArray(plan.scripts)||plan.scripts.length!==scripts.length)return false
-    let serverIndex=0,browserIndex=0,enabledServerSchema=0,enabledNativeLoaders=0,enabledBrowser=0,disabled=0
+    let serverIndex=0,browserIndex=0,promptIndex=0,enabledServerSchema=0,enabledNativeLoaders=0,enabledBrowser=0,disabled=0
     for(const [ordinal,row] of plan.scripts.entries()) {
       const script=scripts[ordinal]!,common={originalOrdinal:ordinal,identity:script.identity,pointer:script.pointer,
         enabled:script.enabled,sourceSha256:script.sourceSha256,rawDescriptorSha256:recordSha256(script)}
@@ -442,6 +448,10 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
           ||!same(row,{...common,disposition:'server',serverIndex,classification:row.classification}))return false
         serverIndex++
         if(row.classification==='server-schema')enabledServerSchema++;else enabledNativeLoaders++
+      }else if(row.disposition==='prompt') {
+        if(plan.schemaVersion!==3||!script.enabled
+          ||!same(row,{...common,disposition:'prompt',promptIndex}))return false
+        promptIndex++
       }else {
         const disposition=script.enabled?'browser':'disabled-source-retained'
         if(!same(row,{...common,disposition,browserIndex}))return false
@@ -449,7 +459,8 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
         if(script.enabled)enabledBrowser++;else disabled++
       }
     }
-    return serverIndex>0&&same(plan.summary,{enabledServerSchema,enabledNativeLoaders,enabledBrowser,disabled})
+    return serverIndex>0&&same(plan.summary,{enabledServerSchema,enabledNativeLoaders,enabledBrowser,disabled,
+      ...plan.schemaVersion===3?{enabledPrompt:promptIndex}:{}})
   }
   function originalCurrent(original:SchemaFrozenOriginal):boolean {
     return originalFactsCurrent(original)
@@ -520,6 +531,20 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       return read.current()
     } catch {return false}
   }
-  return {readFrozenOriginal,captureCurrentOriginal,captureFrame,originalCurrent,
+  function readOriginalOpeningCandidates(original:SchemaFrozenOriginal):readonly TavernOpeningCandidate[] {
+    let candidates=originalOpeningCandidates.get(original)
+    if(!candidates) {
+      // Original already owns the checked immutable import and macro inputs.
+      // Its full author catalog is separate from selected-only initialization.
+      const source=schemaOriginalSnapshot(original).source
+      const record=deps.readImportRecord(source.sourceRecordSessionId,source.importId) as ImportRecord
+      const decoded=readStructuredImportDataV1(record).decoded
+      const context=schemaOriginalCompilationInput(original).source.material.openingContext as TavernOpeningContext
+      candidates=Object.freeze(compileTavernOpeningCandidates(decoded,context).map(candidate=>Object.freeze(candidate)))
+      originalOpeningCandidates.set(original,candidates)
+    }
+    return candidates
+  }
+  return {readFrozenOriginal,captureCurrentOriginal,captureFrame,originalCurrent,readOriginalOpeningCandidates,
     originalFactsCurrent,frameCurrent,verifyFrozenFrame}
 }

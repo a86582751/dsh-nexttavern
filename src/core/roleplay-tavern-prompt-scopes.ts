@@ -24,6 +24,7 @@ export type {TavernActualProgramAbsencePromptScopesV1,TavernProgramAbsencePrompt
   from './roleplay-program-opening-prompt-scopes-types.js'
 import type {PromptTemplateOnlyScopeFactsV1,PromptInheritedScopeFactsV2}
   from './roleplay-prompt-template-only-types.js'
+import type {AuthorPromptPreparationFactsV1} from './roleplay-author-prompt-capture.js'
 
 export const TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'native-readonly-prompt-scope-adapter-policy-v1',
@@ -76,6 +77,9 @@ export interface TavernActualSchemaPromptScopesV1 {
     readonly authority:'consumer-data-only';readonly basis:{readonly sessionId:string;readonly numericalSnapshotSha256:string};
     readonly frame:MvuScopeReadFrameV1;readonly readDataSha256:string}
   current():boolean
+  /** Supplemental DATA from the same completed Source/Native capture. Old
+   * scope-frame and readData hashes keep their original body and policy. */
+  readonly authorPrompt?:AuthorPromptPreparationFactsV1
 }
 export interface TavernActualPlainPromptScopesV1 {
   readonly data:{readonly schemaVersion:1;readonly encoding:'native-plain-prompt-scope-facts-v1';

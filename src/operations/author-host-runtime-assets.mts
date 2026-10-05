@@ -5,7 +5,7 @@ import path from 'node:path'
 import {createRequire} from 'node:module'
 import {createHash} from 'node:crypto'
 
-const packageName='dsh-nexttavern-author-host-runtime-v5',packageVersion='0.5.0'
+const packageName='dsh-nexttavern-author-host-runtime-v5',packageVersion='0.5.1'
 const providerOutput='dist/index.mjs',sourceInputOutput='assets/source-inputs.json'
 interface Artifact {id:string;source:string}
 interface Resource {artifact:string;path:string}

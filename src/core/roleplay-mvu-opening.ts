@@ -554,6 +554,10 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     createSchemaStory,readSchemaSnapshot:(id:string)=>schemaStory?.readSnapshot(id),
     readSchemaObservation:(id:string)=>schemaStory?.readSchemaObservation(id),
     captureSchemaPromptScopes:(id:string)=>schemaStory?.capturePromptScopes(id),
+    executeAuthorPrompt:(...args:Parameters<NonNullable<typeof schemaStory>['executePrompt']>)=>{
+      if(!schemaStory)throw Error('AUTHOR_PROMPT_RUNTIME_UNAVAILABLE')
+      return schemaStory.executePrompt(...args)
+    },
     captureSchemaBrowserFacts:(id:string)=>schemaStory?.captureBrowserFacts(id)??Promise.resolve(undefined),
     capturePlainPromptScopeFacts:(id:string)=>{
       try {
