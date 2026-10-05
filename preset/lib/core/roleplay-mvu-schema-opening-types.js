@@ -124,7 +124,7 @@ function inputFacts(value) {
     identity(value.identity);
     const snapshot = value.sourceSnapshot, init = value.initSource, proof = value.freshNativeBasisProof, selected = snapshot.selected;
     exact(snapshot, ['schemaVersion', 'encoding', 'source', 'pointerSha256', 'importRecordSha256', 'coverageSha256', 'materialRows',
-        'settings', 'bindings', 'selected', 'swipes', 'macroContext', 'documentSha256', 'snapshotSha256']);
+        'settings', 'bindings', 'selected', 'swipes', 'macroContext', 'documentSha256', 'snapshotSha256'], ['sourceProvenance']);
     exact(selected, ['index', 'pointer', 'sourceSha256', 'renderedSha256']);
     exact(init, ['schemaVersion', 'encoding', 'grammar', 'books', 'bookStatData', 'initializedBooks', 'messageIndex',
         'selectedSwipeIdentity', 'swipes', 'macros', 'initSourceSha256']);
@@ -156,7 +156,7 @@ function inputFacts(value) {
         fail();
     cloneSchemaValues(init.bookStatData);
     for (const swipe of init.swipes) {
-        exact(swipe, ['identity', 'sourcePointer', 'sourceSha256', 'rawOpening', 'renderedOpening', 'renderedSha256', 'statData']);
+        exact(swipe, ['identity', 'sourcePointer', 'sourceSha256', 'rawOpening', 'renderedOpening', 'renderedSha256', 'statData'], ['materialization']);
         cloneSchemaValues(swipe.statData);
         if (typeof swipe.identity !== 'string' || !swipe.identity.length || typeof swipe.rawOpening !== 'string'
             || typeof swipe.renderedOpening !== 'string' || swipe.sourceSha256 !== sha256(swipe.rawOpening)

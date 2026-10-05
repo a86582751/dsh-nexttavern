@@ -4,18 +4,16 @@ import {types} from 'node:util'
 import {recordSha256} from './roleplay-data.js'
 import {schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {compileTavernLoreBookV1,resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
-import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
-import {tavernLoreEntrySemanticSha256V1} from './tavern-lore-timed.mjs'
-import {promptFreeze,promptInitialEntryV1,validatePromptVariableSourceV1,validatePromptVariableCatalogV1,
+import {resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
+import {promptFreeze,promptInitialEntryV1,
   TAVERN_PROMPT_VARIABLE_BOUNDS_V1} from './roleplay-tavern-prompt-variables-data.js'
 import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
-import type {TavernLorePlanV1,TavernLoreSemanticEntryV1} from './tavern-lore-plan-types.mjs'
+import type {TavernLorePlanV1,TavernLoreEntryPlanV1} from './tavern-lore-plan-types.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
-import type {TavernPromptVariableCatalogV1,TavernPromptVariableCatalogEntryV1,
+import type {TavernPromptVariableCatalogV2,TavernPromptVariableCatalogEntryV2,
   TavernPromptVariableRefV1} from './roleplay-tavern-prompt-variables-types.js'
 import type {TavernPromptInitialCatalogCaptureInputV1,TavernPromptInitialCatalogCaptureV1,
-  TavernPromptInitialCatalogEntryReceiptV1,TavernPromptInitialCatalogReceiptV1,
+  TavernPromptInitialCatalogEntryReceiptV1,TavernPromptInitialCatalogReceiptV2,
   TavernPromptInitialMetadataReadV1} from './roleplay-tavern-prompt-initial-types.js'
 export type * from './roleplay-tavern-prompt-initial-types.js'
 
@@ -32,7 +30,7 @@ export const TAVERN_PROMPT_INITIAL_NATIVE_POLICY_V1=promptFreeze({schemaVersion:
   catalogPolicy:'complete-source-primary-original-ordinal-v1',
   titlePolicy:'fixed-character-book-comment-or-empty-v1',
   decoratorPolicy:'fixed-importer-no-preparsed-inline-current-content-v1',
-  diagnosticPolicy:'refuse-blocking-except-unrelated-top-level-entry-metadata-v1',
+  diagnosticPolicy:'initial-fields-independent-of-lore-matching-eligibility-v2',
   initialWorkOwner:'prepareRoleplayTavernPromptVariablesV1',
   runtimeModelRequests:{normal:0,retry:0,fallback:0}})
 export const TAVERN_PROMPT_INITIAL_NATIVE_POLICY_SHA256_V1=recordSha256(TAVERN_PROMPT_INITIAL_NATIVE_POLICY_V1)
@@ -60,6 +58,15 @@ function title(raw:Readonly<Record<string,unknown>>,pointer:string):string {
   if(typeof value!=='string'||Buffer.byteLength(value,'utf8')>4096)fail('PROMPT_INITIAL_TITLE_UNSUPPORTED',pointer+'/comment')
   return value
 }
+function initialEnabled(raw:Readonly<Record<string,unknown>>,entry:TavernLoreEntryPlanV1):boolean {
+  const current=entry.fieldSources.some(field=>field.field==='enabled'&&field.disposition==='current-native-origin')
+  const value=current?entry.semanticOverrides.enabled:raw.enabled
+  // The fixed importer uses enabled ?? false. A present invalid control cannot
+  // be mistaken for that defined nullish default, even on a disabled Lore row.
+  if(!current&&(value===undefined||value===null))return false
+  if(typeof value!=='boolean')fail('PROMPT_INITIAL_ENABLED_UNAVAILABLE',entry.sourcePointer+'/enabled')
+  return value
+}
 function ref(ownerId:string,versionSha256:string,data:MvuJsonObject):TavernPromptVariableRefV1 {
   return {ownerId,versionSha256,ref:data,refSha256:recordSha256(data)}
 }
@@ -70,7 +77,8 @@ function verifySourcePlan(source:TavernLoreSourceDataV1,plan:TavernLorePlanV1):v
     rawSourceSha256:original.rawSha256,importRecordSha256:original.importRecordRef.sha256,
     sourceSnapshotSha256:source.sourceSha256,documentSha256:original.documentSha256,
     bookPointer:primary.bookPointer,bookValueSha256:primary.bookSha256,
-    sourceFormat:original.decodedFormat.endsWith('v3')?'ccv3-character-book':'ccv2-character-book',
+    sourceFormat:original.decodedFormat==='json-nexttavern-v1'?'nexttavern-character-book'
+      :original.decodedFormat.endsWith('v3')?'ccv3-character-book':'ccv2-character-book',
     ...(source.inheritance?{inheritance:source.inheritance}:{}),
     ...(primary.binding==='proven-absence'?{bookPresence:'proven-absence',absenceProof:primary.absenceProof}:{})}
   if(recordSha256(actual)!==recordSha256(expected)||recordSha256(plan.rawBook)!==primary.bookSha256
@@ -101,49 +109,42 @@ export function captureRoleplayTavernInitialCatalogV1(input:TavernPromptInitialC
   assertCurrent()
   const source=cloneRoleplayTavernLoreDataV1(ownValue(input,'source')) as TavernLoreSourceDataV1
   const plan=cloneRoleplayTavernLoreDataV1(ownValue(input,'plan')) as TavernLorePlanV1
-  validatePromptVariableSourceV1(source)
   if(source.original.primary.entries.length>TAVERN_PROMPT_VARIABLE_BOUNDS_V1.entries) {
     fail('PROMPT_INITIAL_CATALOG_ENTRY_LIMIT',source.original.primary.bookPointer+'/entries')
   }
   verifySourcePlan(source,plan)
-  const rebuilt=compileTavernLoreBookV1({schemaVersion:1,encoding:'st-character-book-compilation-input-v1',
-    source:plan.source,book:plan.rawBook,
-    ...(plan.currentNativeOverlay?{currentNativeOverlay:plan.currentNativeOverlay}:{})})
-  if(rebuilt.kind!=='compiled'||recordSha256(rebuilt.plan)!==recordSha256(plan))fail('PROMPT_INITIAL_PLAN_RECOMPUTATION_MISMATCH')
-  // Uninterpreted unrelated metadata is retained. Unsupported actual semantic
-  // inputs cannot become a default-disabled entry and counterfeit absence.
-  const blocking=rebuilt.diagnostics.find(d=>d.blocking&&d.code!=='LORE_ENTRY_METADATA_UNINTERPRETED')
-  if(blocking)fail('PROMPT_INITIAL_SOURCE_SEMANTICS_UNAVAILABLE',blocking.pointer)
+  // Core has already compiled this Source and owns its currentness. Initial
+  // variables consume only comment, current content/decorators and enabled;
+  // Lore matching diagnostics do not determine their selection eligibility.
   const policySha256=TAVERN_PROMPT_INITIAL_NATIVE_POLICY_SHA256_V1
   const versionSha256=recordSha256({sourceSha256:source.sourceSha256,planSha256:plan.planSha256,policySha256})
   const ownerId=source.sessionId+'/prompt-initial-source'
   const settingsRef=ref(ownerId,policySha256,{schemaVersion:1,encoding:'owned-native-prompt-initial-settings-ref-v1',
     policySha256,settings:TAVERN_PROMPT_INITIAL_NATIVE_POLICY_V1.settings,
     featureRegex:TAVERN_PROMPT_INITIAL_NATIVE_POLICY_V1.featureRegex})
-  const completeCatalogRef=ref(ownerId,versionSha256,{schemaVersion:1,
-    encoding:'owned-source-prompt-initial-complete-catalog-ref-v1',sourceSha256:source.sourceSha256,
+  const completeCatalogRef=ref(ownerId,versionSha256,{schemaVersion:2,
+    encoding:'owned-source-prompt-initial-complete-catalog-ref-v2',sourceSha256:source.sourceSha256,
     compilerPlanSha256:plan.planSha256,rawSourceSha256:source.original.rawSha256,
     originalBookSha256:source.original.primary.bookSha256,currentMaterialSha256:source.current.materialSha256,
     currentMembershipSha256:source.current.membershipSha256,
     currentNativeOverlaySha256:plan.currentNativeOverlaySha256??null,
     actualPrimaryEntryCount:source.original.primary.entries.length,policySha256})
   const receiptEntries:TavernPromptInitialCatalogEntryReceiptV1[]=[]
-  const entries:TavernPromptVariableCatalogEntryV1[]=plan.entries.map((entry,ordinal)=>{
+  const entries:TavernPromptVariableCatalogEntryV2[]=plan.entries.map((entry,ordinal)=>{
     assertCurrent()
     const original=source.original.primary.entries[ordinal]!
     if(entry.ordinal!==ordinal||entry.sourceKey!==original.entryKey||entry.sourcePointer!==original.ref.entryPointer
       ||entry.rawEntrySha256!==original.ref.entrySha256)fail('PROMPT_INITIAL_ENTRY_PLAN_LINK',entry.sourcePointer)
-    const raw=original.value,
-      semantic={...ST_LORE_ENTRY_DEFAULTS_V1,displayIndex:ordinal,...entry.semanticOverrides} as TavernLoreSemanticEntryV1
+    const raw=original.value,semantic={enabled:initialEnabled(raw,entry)}
     const resolved=resolveTavernLoreContentTextV1(plan,entry.sourcePointer+'/content')
     if(typeof raw.content!=='string')fail('PROMPT_INITIAL_ORIGINAL_CONTENT_UNAVAILABLE',entry.sourcePointer+'/content')
-    const currentSemanticSha256=tavernLoreEntrySemanticSha256V1(semantic)
-    const provenance=ref(ownerId,versionSha256,{schemaVersion:1,encoding:'owned-source-prompt-initial-entry-ref-v1',
+    const currentSemanticSha256=recordSha256(semantic)
+    const provenance=ref(ownerId,versionSha256,{schemaVersion:2,encoding:'owned-source-prompt-initial-entry-ref-v2',
       sourceSha256:source.sourceSha256,compilerPlanSha256:plan.planSha256,entryId:entry.entryId,
       rawEntryPointer:entry.sourcePointer,rawEntrySha256:entry.rawEntrySha256,
       entryPlanSha256:entry.entryPlanSha256,currentSemanticSha256,
       currentContentSha256:resolved.contentSha256,currentNativeOriginSha256:resolved.currentNativeOrigin?.refSha256??null})
-    const row:TavernPromptVariableCatalogEntryV1={ordinal,entryId:entry.entryId,
+    const row:TavernPromptVariableCatalogEntryV2={ordinal,entryId:entry.entryId,
       rawEntryPointer:entry.sourcePointer,rawEntrySha256:entry.rawEntrySha256,title:title(raw,entry.sourcePointer),
       currentSemantic:semantic,currentSemanticSha256,contentPointer:resolved.pointer,content:resolved.text,
       contentSha256:resolved.contentSha256,decorators:null,provenance}
@@ -159,19 +160,18 @@ export function captureRoleplayTavernInitialCatalogV1(input:TavernPromptInitialC
       initialSelected:selected.selected,initialBodySha256:schemaTextSha256(selected.body)})
     return row
   })
-  const catalogBody:Omit<TavernPromptVariableCatalogV1,'catalogSha256'>={schemaVersion:1,
-    encoding:'owned-prompt-initial-variable-catalog-v1',sourceSha256:source.sourceSha256,
+  const catalogBody:Omit<TavernPromptVariableCatalogV2,'catalogSha256'>={schemaVersion:2,
+    encoding:'owned-prompt-initial-variable-catalog-v2',sourceSha256:source.sourceSha256,
     bookSha256:source.original.primary.bookSha256,entries,invertEnabled:false,settingsRef,completeCatalogRef}
   const catalog=promptFreeze({...catalogBody,catalogSha256:recordSha256(catalogBody)})
-  validatePromptVariableCatalogV1(source,catalog)
-  const receiptBody:Omit<TavernPromptInitialCatalogReceiptV1,'receiptSha256'>={schemaVersion:1,
-    encoding:'owned-source-prompt-initial-catalog-receipt-v1',authority:'consumer-data-only',sessionId:source.sessionId,
+  const receiptBody:Omit<TavernPromptInitialCatalogReceiptV2,'receiptSha256'>={schemaVersion:2,
+    encoding:'owned-source-prompt-initial-catalog-receipt-v2',authority:'consumer-data-only',sessionId:source.sessionId,
     sourceSha256:source.sourceSha256,rawSourceSha256:source.original.rawSha256,
     originalBookSha256:source.original.primary.bookSha256,compilerPlanSha256:plan.planSha256,
     currentNativeOverlaySha256:plan.currentNativeOverlaySha256??null,catalogSha256:catalog.catalogSha256,policySha256,
     completeOriginalEntryCount:entries.length,
     selectedInitialEntryIds:receiptEntries.filter(row=>row.initialSelected).map(row=>row.entryId),
-    entries:receiptEntries,diagnostics:rebuilt.diagnostics}
+    entries:receiptEntries,loreDiagnosticsSha256:plan.diagnosticsSha256}
   const receipt={...receiptBody,receiptSha256:recordSha256(receiptBody)}
   const data=promptFreeze(cloneRoleplayTavernLoreDataV1({catalog,receipt},TAVERN_PROMPT_VARIABLE_BOUNDS_V1.outputBytes))
   assertCurrent()

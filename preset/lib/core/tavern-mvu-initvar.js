@@ -218,7 +218,7 @@ function validateCalculation(input) {
     const swipes = new Set();
     for (const [index, swipe] of input.swipes.entries()) {
         const pointer = `/swipes/${index}`;
-        exact(swipe, ['identity', 'sourceSha256', 'rawOpening', 'statData', 'statDataSha256'], ['renderedBlocks'], pointer);
+        exact(swipe, ['identity', 'sourceSha256', 'rawOpening', 'statData', 'statDataSha256'], ['renderedBlocks', 'materialization'], pointer);
         identifier(swipe.identity, pointer);
         hash(swipe.sourceSha256, pointer);
         if (typeof swipe.rawOpening !== 'string' || sha(swipe.rawOpening) !== swipe.sourceSha256)
@@ -385,6 +385,8 @@ export function selectNativeMvuInitializationPolicy(input) {
                 yaml ||= nativeMvuPayloadGrammar(expanded, expandedHeader.header, rawHeader.header, raw) === 'yaml';
             }
         for (const [index, swipe] of input.swipes.entries()) {
+            if (swipe.materialization === 'materialized')
+                continue;
             const rawHeaders = [], expandedHeaders = [];
             const raw = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`, rawHeaders);
             const expanded = extractGreetingPayloads(swipe.renderedOpening, `/swipes/${index}`, expandedHeaders);
@@ -486,14 +488,14 @@ function calculate(safe, existing, nativePolicy) {
     let resultBytes = Buffer.byteLength(canonical(baseline), 'utf8')
         + Buffer.byteLength(canonical(existing), 'utf8');
     for (const [index, swipe] of safe.swipes.entries()) {
-        if (/<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
+        if (swipe.materialization !== 'materialized' && /<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
             reject('OPENING_UPDATE_UNSUPPORTED', `/swipes/${index}`);
         }
         let statData = merge(jsonObject(swipe.statData, `/swipes/${index}/statData`), structuredClone(baseline.statData));
         const blocks = [];
         let replacement = {};
         const headers = [];
-        const matches = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`, headers);
+        const matches = swipe.materialization === 'materialized' ? [] : extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`, headers);
         if (swipe.renderedBlocks && swipe.renderedBlocks.length !== matches.length)
             reject('MACRO_BINDING', `/swipes/${index}`);
         for (const [blockIndex, match] of matches.entries()) {
@@ -622,14 +624,15 @@ function prepareCalculationSwipe(swipe, index, rendered) {
     const pointer = `/swipes/${index}`;
     if (sha(swipe.rawOpening) !== swipe.sourceSha256 || sha(swipe.renderedOpening) !== swipe.renderedSha256
         || dataHash(swipe.statData) !== dataHash({})
-        || !rendered && swipe.rawOpening !== swipe.renderedOpening)
+        || (!rendered || swipe.materialization === 'materialized') && swipe.rawOpening !== swipe.renderedOpening)
         reject('FRESH_BASIS', pointer);
-    const raw = extractGreetingPayloads(swipe.rawOpening, pointer);
-    const expanded = extractGreetingPayloads(swipe.renderedOpening, pointer);
+    const raw = swipe.materialization === 'materialized' ? [] : extractGreetingPayloads(swipe.rawOpening, pointer);
+    const expanded = swipe.materialization === 'materialized' ? [] : extractGreetingPayloads(swipe.renderedOpening, pointer);
     if (raw.length !== expanded.length)
         reject('MACRO_BINDING', pointer);
     return { identity: swipe.identity, sourceSha256: swipe.sourceSha256, rawOpening: swipe.rawOpening,
         statData: {}, statDataSha256: dataHash({}),
+        ...(swipe.materialization ? { materialization: swipe.materialization } : {}),
         ...(rendered ? { renderedBlocks: raw.map((text, block) => ({
                 capability: 'server-verified', sourceSha256: sha(text), text: expanded[block],
             })) } : {}) };
@@ -697,7 +700,7 @@ export function compileSchemaMvuInitData(input) {
         }
         for (const [index, swipe] of checked.swipes.entries()) {
             exact(swipe, ['identity', 'sourcePointer', 'sourceSha256', 'rawOpening', 'renderedOpening',
-                'renderedSha256', 'statData'], [], `/swipes/${index}`);
+                'renderedSha256', 'statData'], ['materialization'], `/swipes/${index}`);
             identifier(swipe.sourcePointer, `/swipes/${index}/sourcePointer`);
             if (typeof swipe.rawOpening !== 'string' || typeof swipe.renderedOpening !== 'string') {
                 reject('DESCRIPTOR_SHAPE', `/swipes/${index}`);

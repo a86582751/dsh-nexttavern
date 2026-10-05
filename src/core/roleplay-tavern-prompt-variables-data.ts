@@ -160,7 +160,7 @@ export function validatePromptVariableSourceV1(source:TavernLoreSourceDataV1):vo
   if(source.schemaVersion!==1||source.encoding!=='tavern-lore-current-source-data-v1'
     ||source.authority!=='consumer-data-only'||typeof source.sessionId!=='string'||!source.sessionId
     ||typeof source.sourceRecordSessionId!=='string'||!source.sourceRecordSessionId
-    ||!['tavern-fields-v1','tavern-fields-v2'].includes(source.normalizer))promptFail('PROMPT_VARIABLE_SOURCE_INVALID')
+    ||!['tavern-fields-v1','tavern-fields-v2','nexttavern-fields-v1'].includes(source.normalizer))promptFail('PROMPT_VARIABLE_SOURCE_INVALID')
   const {sourceSha256,...sourceBody}=source
   if(!promptHash(sourceSha256)||recordSha256(sourceBody)!==sourceSha256)promptFail('PROMPT_VARIABLE_SOURCE_HASH')
   if(source.inheritance) {
@@ -202,7 +202,8 @@ export function validatePromptVariableSourceV1(source:TavernLoreSourceDataV1):vo
       rawSourceSha256:original.rawSha256,importRecordSha256:original.importRecordRef.sha256,
       sourceSnapshotSha256:source.sourceSha256,documentSha256:original.documentSha256,
       bookPointer:primary.bookPointer,bookValueSha256:primary.bookSha256,
-      sourceFormat:original.decodedFormat.endsWith('v3')?'ccv3-character-book':'ccv2-character-book',
+      sourceFormat:original.decodedFormat==='json-nexttavern-v1'?'nexttavern-character-book'
+        :original.decodedFormat.endsWith('v3')?'ccv3-character-book':'ccv2-character-book',
       ...(source.inheritance?{inheritance:source.inheritance}:{}),
       bookPresence:'proven-absence',absenceProof:proof})
     const ancestor=source.inheritance?.originalBinding,
@@ -220,11 +221,13 @@ export function validatePromptVariableSourceV1(source:TavernLoreSourceDataV1):vo
 }
 export function validatePromptVariableCatalogV1(source:TavernLoreSourceDataV1,catalog:TavernPromptVariableCatalogV1):void {
   validatePromptVariableSourceV1(source)
+  const typedCatalog=catalog
   const sourceSha256=source.sourceSha256,primary=source.original.primary,entries=catalog.entries
   promptExact(catalog,['schemaVersion','encoding','sourceSha256','bookSha256','entries','invertEnabled',
     'settingsRef','completeCatalogRef','catalogSha256'])
   const {catalogSha256,...body}=catalog
-  if(catalog.schemaVersion!==1||catalog.encoding!=='owned-prompt-initial-variable-catalog-v1'
+  if(!(catalog.schemaVersion===1&&catalog.encoding==='owned-prompt-initial-variable-catalog-v1'
+      ||catalog.schemaVersion===2&&catalog.encoding==='owned-prompt-initial-variable-catalog-v2')
     ||catalog.sourceSha256!==sourceSha256||catalog.bookSha256!==primary.bookSha256
     ||typeof catalog.invertEnabled!=='boolean'||recordSha256(body)!==catalogSha256
     ||!Array.isArray(catalog.entries)||catalog.entries.length>TAVERN_PROMPT_VARIABLE_BOUNDS_V1.entries
@@ -255,18 +258,33 @@ export function validatePromptVariableCatalogV1(source:TavernLoreSourceDataV1,ca
       promptFail('PROMPT_VARIABLE_CATALOG_ENTRY_LINK',String(index))
     }
     pointers.add(entry.rawEntryPointer);entryIds.add(entry.entryId);promptRef(entry.provenance)
-    promptExact(entry.currentSemantic,semanticFields)
-    if(typeof entry.currentSemantic.enabled!=='boolean'||entry.currentSemantic.content.kind!=='unexecuted-source-text'
-      ||entry.currentSemantic.content.pointer!==entry.contentPointer
-      ||entry.currentSemantic.content.contentSha256!==entry.contentSha256
-      ||tavernLoreEntrySemanticSha256V1(entry.currentSemantic)!==entry.currentSemanticSha256) {
-      promptFail('PROMPT_VARIABLE_CATALOG_SEMANTIC_HASH',entry.entryId)
+    if(typedCatalog.schemaVersion===1) {
+      const semantic=typedCatalog.entries[index]!.currentSemantic
+      promptExact(semantic,semanticFields)
+      if(typeof semantic.enabled!=='boolean'||semantic.content.kind!=='unexecuted-source-text'
+        ||semantic.content.pointer!==entry.contentPointer||semantic.content.contentSha256!==entry.contentSha256
+        ||tavernLoreEntrySemanticSha256V1(semantic)!==entry.currentSemanticSha256) {
+        promptFail('PROMPT_VARIABLE_CATALOG_SEMANTIC_HASH',entry.entryId)
+      }
+      const current=semantic.content.currentNative
+      if(current) {
+        if(current.text!==entry.content||current.contentSha256!==entry.contentSha256
+          ||recordSha256(current.origin.ref)!==current.origin.refSha256)promptFail('PROMPT_VARIABLE_CURRENT_CONTENT_LINK')
+      } else if(original.value.content!==entry.content)promptFail('PROMPT_VARIABLE_ORIGINAL_CONTENT_LINK')
+    } else {
+      promptExact(entry.currentSemantic,['enabled'])
+      if(typeof entry.currentSemantic.enabled!=='boolean'||recordSha256(entry.currentSemantic)!==entry.currentSemanticSha256) {
+        promptFail('PROMPT_VARIABLE_CATALOG_SEMANTIC_HASH',entry.entryId)
+      }
+      const supplied=entry.provenance.ref,origin=supplied.currentNativeOriginSha256
+      if(supplied.schemaVersion!==2||supplied.encoding!=='owned-source-prompt-initial-entry-ref-v2'
+        ||supplied.sourceSha256!==sourceSha256||supplied.rawEntryPointer!==entry.rawEntryPointer
+        ||supplied.rawEntrySha256!==entry.rawEntrySha256||supplied.currentSemanticSha256!==entry.currentSemanticSha256
+        ||supplied.currentContentSha256!==entry.contentSha256||origin!==null&&!promptHash(origin)) {
+        promptFail('PROMPT_VARIABLE_CURRENT_CONTENT_LINK')
+      }
+      if(origin===null&&original.value.content!==entry.content)promptFail('PROMPT_VARIABLE_ORIGINAL_CONTENT_LINK')
     }
-    const current=entry.currentSemantic.content.currentNative
-    if(current) {
-      if(current.text!==entry.content||current.contentSha256!==entry.contentSha256
-        ||recordSha256(current.origin.ref)!==current.origin.refSha256)promptFail('PROMPT_VARIABLE_CURRENT_CONTENT_LINK')
-    } else if(original.value.content!==entry.content)promptFail('PROMPT_VARIABLE_ORIGINAL_CONTENT_LINK')
     if(entry.decorators!==null&&(!Array.isArray(entry.decorators)||entry.decorators.length>128
       ||entry.decorators.some(line=>typeof line!=='string'||!line.startsWith('@@')||line.length>4096))) {
       promptFail('PROMPT_VARIABLE_DECORATOR_RECORD_INVALID')

@@ -52,6 +52,7 @@ export interface MvuInitSwipe {
   identity: string
   sourceSha256: string
   rawOpening: string
+  materialization?:'template'|'materialized'
   /** Explicit observed swipe baseline; a new swipe uses an explicitly supplied empty object. */
   statData: MvuJsonObject
   statDataSha256: string
@@ -379,7 +380,7 @@ function validateCalculation(input: MvuJsonObject): asserts input is MvuJsonObje
   const swipes = new Set<string>()
   for (const [index, swipe] of input.swipes.entries()) {
     const pointer = `/swipes/${index}`
-    exact(swipe, ['identity', 'sourceSha256', 'rawOpening', 'statData', 'statDataSha256'], ['renderedBlocks'], pointer)
+    exact(swipe, ['identity', 'sourceSha256', 'rawOpening', 'statData', 'statDataSha256'], ['renderedBlocks','materialization'], pointer)
     identifier(swipe.identity, pointer)
     hash(swipe.sourceSha256, pointer)
     if (typeof swipe.rawOpening !== 'string' || sha(swipe.rawOpening) !== swipe.sourceSha256) reject('OPENING_HASH', pointer)
@@ -514,7 +515,7 @@ function extractGreetingPayloads(text: string, pointer: string,headers?:string[]
  * ordinary prose and unrelated YAML-looking colons cannot choose a policy. */
 export function selectNativeMvuInitializationPolicy(input:{
   books:readonly {entries:readonly {comment:string;content:string;renderedContent:string}[]}[]
-  swipes:readonly {rawOpening:string;renderedOpening:string}[]
+  swipes:readonly {rawOpening:string;renderedOpening:string;materialization?:'template'|'materialized'}[]
 }):{kind:'selected';policy:NativeMvuSourcePolicy}|{kind:'unsupported';diagnostics:MvuInitDiagnostic[]} {
   try {
     let yaml=false
@@ -526,6 +527,7 @@ export function selectNativeMvuInitializationPolicy(input:{
       yaml||=nativeMvuPayloadGrammar(expanded,expandedHeader.header,rawHeader.header,raw)==='yaml'
     }
     for(const [index,swipe] of input.swipes.entries()) {
+      if(swipe.materialization==='materialized')continue
       const rawHeaders:string[]=[],expandedHeaders:string[]=[]
       const raw=extractGreetingPayloads(swipe.rawOpening,`/swipes/${index}`,rawHeaders)
       const expanded=extractGreetingPayloads(swipe.renderedOpening,`/swipes/${index}`,expandedHeaders)
@@ -627,14 +629,14 @@ function calculate(safe: MvuCalculationInput, existing: MvuInitBasis,nativePolic
   let resultBytes = Buffer.byteLength(canonical(baseline as unknown as MvuJsonObject), 'utf8')
     + Buffer.byteLength(canonical(existing as unknown as MvuJsonObject), 'utf8')
   for (const [index, swipe] of safe.swipes.entries()) {
-    if (/<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
+    if (swipe.materialization!=='materialized'&&/<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
       reject('OPENING_UPDATE_UNSUPPORTED', `/swipes/${index}`)
     }
     let statData = merge(jsonObject(swipe.statData, `/swipes/${index}/statData`), structuredClone(baseline.statData))
     const blocks: MvuInitSwipePlan['blocks'] = []
     let replacement: MvuJsonObject = {}
     const headers:string[]=[]
-    const matches = extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`,headers)
+    const matches = swipe.materialization==='materialized'?[]:extractGreetingPayloads(swipe.rawOpening, `/swipes/${index}`,headers)
     if (swipe.renderedBlocks && swipe.renderedBlocks.length !== matches.length) reject('MACRO_BINDING', `/swipes/${index}`)
     for (const [blockIndex, match] of matches.entries()) {
       const parsed = payload(match, swipe.renderedBlocks?.[blockIndex], context,
@@ -756,12 +758,13 @@ function prepareCalculationSwipe(swipe: RawCalculationData['swipes'][number], in
   const pointer = `/swipes/${index}`
   if (sha(swipe.rawOpening) !== swipe.sourceSha256 || sha(swipe.renderedOpening) !== swipe.renderedSha256
     || dataHash(swipe.statData as MvuJsonObject) !== dataHash({})
-    || !rendered && swipe.rawOpening !== swipe.renderedOpening) reject('FRESH_BASIS', pointer)
-  const raw = extractGreetingPayloads(swipe.rawOpening, pointer)
-  const expanded = extractGreetingPayloads(swipe.renderedOpening, pointer)
+    || (!rendered||swipe.materialization==='materialized') && swipe.rawOpening !== swipe.renderedOpening) reject('FRESH_BASIS', pointer)
+  const raw = swipe.materialization==='materialized'?[]:extractGreetingPayloads(swipe.rawOpening, pointer)
+  const expanded = swipe.materialization==='materialized'?[]:extractGreetingPayloads(swipe.renderedOpening, pointer)
   if (raw.length !== expanded.length) reject('MACRO_BINDING', pointer)
   return {identity: swipe.identity, sourceSha256: swipe.sourceSha256, rawOpening: swipe.rawOpening,
     statData: {}, statDataSha256: dataHash({}),
+    ...(swipe.materialization?{materialization:swipe.materialization}:{}),
     ...(rendered ? {renderedBlocks: raw.map((text, block) => ({
       capability: 'server-verified' as const, sourceSha256: sha(text), text: expanded[block]!,
     }))} : {})}
@@ -825,7 +828,7 @@ export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource): Schema
     }
     for (const [index, swipe] of checked.swipes.entries()) {
       exact(swipe, ['identity', 'sourcePointer', 'sourceSha256', 'rawOpening', 'renderedOpening',
-        'renderedSha256', 'statData'], [], `/swipes/${index}`)
+        'renderedSha256', 'statData'], ['materialization'], `/swipes/${index}`)
       identifier(swipe.sourcePointer, `/swipes/${index}/sourcePointer`)
       if (typeof swipe.rawOpening !== 'string' || typeof swipe.renderedOpening !== 'string') {
         reject('DESCRIPTOR_SHAPE', `/swipes/${index}`)

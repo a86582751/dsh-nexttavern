@@ -1,6 +1,7 @@
 /** Frozen aliases are produced from the actual activated card/context. Runtime
  * globals and ST player settings are never inferred from another installation. */
 import {recordSha256,sha256} from './roleplay-data.js'
+import {readTavernCardMacroFields} from './nexttavern-card.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {TAVERN_PROMPT_CARD_ORDER_V1} from './tavern-prompt-transform-types.mjs'
 import type {TavernPromptBindingV1,TavernPromptMacroSnapshotV1,TavernPromptNamesV1,
@@ -51,15 +52,16 @@ export function produceRoleplayTavernMacroSnapshotV1(input:{
       model:binding('model',input.preparedRoute?.model??null,input.preparedRoute?.model??null,
         input.preparedRoute?.configSha256??recordSha256({schemaVersion:1,encoding:'native-route-unresolved-v1',source:basis}))}
   const userRow=source.current.rows.find(row=>row.ref.table==='cards'&&row.ref.key===`${source.sessionId}__user`)
-  const persona=text(userRow?.value?.content).trim(),examples=text(card.mes_example).trim()
+  const aliases=readTavernCardMacroFields(card,source.original.decodedFormat)
+  const persona=text(userRow?.value?.content).trim(),examples=text(aliases.mes_example).trim()
   const parsedExamples=!examples||examples==='<START>'?'':
     (examples.startsWith('<START>')?examples:`<START>\n${examples}`).split(/<START>/gi).slice(1)
       .map(block=>`<START>\n${block.trim()}\n`).join('')
   const depth=object(card.extensions)&&object(card.extensions.depth_prompt)?text(card.extensions.depth_prompt.prompt).trim():''
-  const cardAliases:Record<string,string>={charPrompt:includeCardStyle?text(card.system_prompt).trim():'',
-    charJailbreak:includeCardStyle?text(card.post_history_instructions).trim():'',
-    charInstruction:includeCardStyle?text(card.post_history_instructions).trim():'',
-    description:text(card.description).trim(),personality:text(card.personality).trim(),scenario:text(card.scenario).trim(),
+  const cardAliases:Record<string,string>={charPrompt:includeCardStyle?text(aliases.system_prompt).trim():'',
+    charJailbreak:includeCardStyle?text(aliases.post_history_instructions).trim():'',
+    charInstruction:includeCardStyle?text(aliases.post_history_instructions).trim():'',
+    description:text(aliases.description).trim(),personality:text(aliases.personality).trim(),scenario:text(aliases.scenario).trim(),
     persona,mesExamples:parsedExamples,mesExamplesRaw:examples,charVersion:text(card.character_version),
     char_version:text(card.character_version),charDepthPrompt:depth,creatorNotes:text(card.creator_notes).trim()}
   const variableBindings=(scopeName:'chat'|'global')=>{

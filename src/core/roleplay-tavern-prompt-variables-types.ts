@@ -20,7 +20,7 @@ export interface TavernPromptVariableScopeFactV1 {
   readonly scope:'global'|'chat'|'message'|'script'|'card'|'cache'
   readonly fact:TavernPromptVariableObjectFactV1
 }
-export interface TavernPromptVariableCatalogEntryV1 {
+export interface TavernPromptVariableCatalogLegacyEntryV1 {
   readonly ordinal:number
   readonly entryId:string
   readonly rawEntryPointer:string
@@ -36,17 +36,30 @@ export interface TavernPromptVariableCatalogEntryV1 {
   readonly decorators:readonly string[]|null
   readonly provenance:TavernPromptVariableRefV1
 }
-export interface TavernPromptVariableCatalogV1 {
+/** Initial selection reads these fields, independent of Lore scan eligibility. */
+export type TavernPromptVariableInitialFieldsV2=Pick<TavernLoreSemanticEntryV1,'enabled'>
+export interface TavernPromptVariableCatalogEntryV2 extends Omit<TavernPromptVariableCatalogLegacyEntryV1,'currentSemantic'> {
+  readonly currentSemantic:TavernPromptVariableInitialFieldsV2
+}
+export type TavernPromptVariableCatalogEntryV1=TavernPromptVariableCatalogLegacyEntryV1|TavernPromptVariableCatalogEntryV2
+export interface TavernPromptVariableCatalogLegacyV1 {
   readonly schemaVersion:1
   readonly encoding:'owned-prompt-initial-variable-catalog-v1'
   readonly sourceSha256:string
   readonly bookSha256:string
-  readonly entries:readonly TavernPromptVariableCatalogEntryV1[]
+  readonly entries:readonly TavernPromptVariableCatalogLegacyEntryV1[]
   readonly invertEnabled:boolean
   readonly settingsRef:TavernPromptVariableRefV1
   readonly completeCatalogRef:TavernPromptVariableRefV1
   readonly catalogSha256:string
 }
+export interface TavernPromptVariableCatalogV2 extends Omit<TavernPromptVariableCatalogLegacyV1,'schemaVersion'|'encoding'|'entries'> {
+  readonly schemaVersion:2
+  readonly encoding:'owned-prompt-initial-variable-catalog-v2'
+  readonly entries:readonly TavernPromptVariableCatalogEntryV2[]
+}
+/** Historical full Lore descriptors remain readable; new captures use V2. */
+export type TavernPromptVariableCatalogV1=TavernPromptVariableCatalogLegacyV1|TavernPromptVariableCatalogV2
 export interface TavernPromptMessageVariablesFactV1 {
   readonly index:number
   readonly messageId:string

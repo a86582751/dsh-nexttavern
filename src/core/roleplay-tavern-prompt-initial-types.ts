@@ -40,7 +40,7 @@ export interface TavernPromptInitialCatalogEntryReceiptV1 {
   readonly initialSelected:boolean
   readonly initialBodySha256:string
 }
-export interface TavernPromptInitialCatalogReceiptV1 {
+export interface TavernPromptInitialCatalogLegacyReceiptV1 {
   readonly schemaVersion:1
   readonly encoding:'owned-source-prompt-initial-catalog-receipt-v1'
   readonly authority:'consumer-data-only'
@@ -58,6 +58,13 @@ export interface TavernPromptInitialCatalogReceiptV1 {
   readonly diagnostics:readonly TavernLoreDiagnosticV1[]
   readonly receiptSha256:string
 }
+export interface TavernPromptInitialCatalogReceiptV2 extends Omit<TavernPromptInitialCatalogLegacyReceiptV1,
+  'schemaVersion'|'encoding'|'diagnostics'> {
+  readonly schemaVersion:2
+  readonly encoding:'owned-source-prompt-initial-catalog-receipt-v2'
+  readonly loreDiagnosticsSha256:string
+}
+export type TavernPromptInitialCatalogReceiptV1=TavernPromptInitialCatalogLegacyReceiptV1|TavernPromptInitialCatalogReceiptV2
 /** Consumer catalog/receipt are frozen. The retained actual closure remains
  * the only currentness authority; hashes and refs do not substitute for it. */
 export interface TavernPromptInitialCatalogCaptureV1 {
