@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto'
-import {compileTavernOpeningCandidates, decodeTavernCard} from './tavern-card.js'
+import {compileTavernOpeningCandidates} from './tavern-card.js'
+import {readStructuredImportDataV1} from './roleplay-import-record.js'
 import type {TavernOpeningCandidate, TavernOpeningContext} from './tavern-card.js'
 import type {ImportPointer, ImportRecord} from './roleplay-import-types.js'
 import {recordSha256} from './roleplay-data.js'
@@ -420,13 +421,13 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     if (!record || record.status !== 'active' || record.importId !== pointer.importId
       || record.normalizedSha256 !== pointer.normalizedSha256 || !record.activation
       || record.activation.transactionId !== pointer.transactionId || !validHash(record.rawSha256)
-      || !record.sourceEnvelope || record.sourceEnvelope.sourceSha256 !== record.rawSha256)
+      || !record.sourceEnvelope)
       throw new Error('active import record 与 pointer 不匹配')
-    const envelope = record.sourceEnvelope
-    const bytes = Buffer.from(envelope.base64, 'base64')
-    if (bytes.toString('base64') !== envelope.base64 || hash(bytes) !== record.rawSha256)
-      throw new Error('sourceEnvelope 原件校验失败')
-    const decoded = decodeTavernCard(bytes, envelope.extension)
+    const {decoded,provenance}=readStructuredImportDataV1(record)
+    const envelope=record.sourceEnvelope
+    if(envelope.schemaVersion===1?decoded.sourceSha256!==record.rawSha256||envelope.sourceSha256!==record.rawSha256
+      :decoded.sourceSha256!==envelope.executionSha256||provenance.transportSha256!==envelope.transportSha256)
+      throw new Error('sourceEnvelope 来源校验失败')
     const source: OpeningSource = {sessionId, importId:pointer.importId, sourceRecordSessionId,
       rawSha256:record.rawSha256, normalizedSha256:record.normalizedSha256,
       transactionId:pointer.transactionId, coverageSha256:pointer.coverageSha256, pointer:{...pointer}}

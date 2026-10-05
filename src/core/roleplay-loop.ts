@@ -45,7 +45,7 @@ export function createFirstResponseWatchdog(timeoutMs=90000) {
 export function registerRoleplayLoop({
   ctx,T,tavernTasks,clusterJob,isRoleplaySession,characterCluster,activeCardWorkflow,taskAgents,ensureState,clusterPhase,
   withDecisionMutationLock,normalizeDecisionRecord,resumeStatusMaintenance,resumeMemoryWork,resumeCardWorkflows,resumeNovelExports,
-  withImportLock,buildPhaseA,reconcileCanonicalPlayerVariants,buildForkLookupIndex,
+  withImportLock,ensureBranch,buildPhaseA,reconcileCanonicalPlayerVariants,buildForkLookupIndex,
   characterRoster,storyWindowSettings,runStatusObligation,publishTurnDecision,runPhaseBC,
   adaptationScope,importPromptCheckpoint,authorContext,inputBinding,inputSnapshotCurrent,programOpeningOwner,rowFacts,
 }:LoopDependencies) {
@@ -278,6 +278,9 @@ export function registerRoleplayLoop({
     // its own pre-step handler. The original player message is appended once,
     // only when preparation has committed successfully.
     try {
+      // Cold inheritance may replay Source writes and publish its ready marker.
+      // Finish that owner before Phase A takes the same Session's Source FIFO.
+      await ensureBranch(session)
       // Edit recovery takes the fork lock before Source FIFO. It must finish
       // before Phase A takes that FIFO; otherwise its numerical persistence
       // waits behind the Phase A operation that is awaiting this same recovery.

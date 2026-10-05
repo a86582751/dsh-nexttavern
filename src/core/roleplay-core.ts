@@ -1431,7 +1431,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     resumeCardWorkflows,
     reconcileCanonicalPlayerVariants,
     buildForkLookupIndex,
-    resumeNovelExports, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation,
+    resumeNovelExports, ensureBranch, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation,
     withImportLock: (...args) => withImportLock(...args),
     publishTurnDecision: (...args) => publishTurnDecision(...args),
     runPhaseBC: (...args) => runPhaseBC(...args),

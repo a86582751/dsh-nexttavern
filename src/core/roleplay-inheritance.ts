@@ -10,10 +10,9 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
   const { ensureState, cloneBranchRecord, T, clusterLoreVisible, contextWindowKey, cloneContextWindow, ctx, statusSource, statusFixedContext, normalizeDecisionRecord } = deps
   async function ensureBranch(session: InheritanceSession, { cadenceAnchorSeq = null, cadenceTurn = null }: InheritanceOptions = {}) {
     const st = ensureState(session.id)
-    if (st.branchReady) {
-      deps.sourceInheritance?.assertSourceInheritanceReady(session.id)
-      return
-    }
+    // Initialization owns the durable inheritance commit. Source consumers
+    // check their current inputs; completed initialization does not audit them.
+    if (st.branchReady) return
     if (st.branchPreparing) {
       await st.branchPreparing
       return

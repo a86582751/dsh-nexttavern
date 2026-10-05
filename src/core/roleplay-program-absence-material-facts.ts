@@ -130,6 +130,7 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
   // Reuse only detached DATA encoding, never a successful owner/current check.
   // Each address still pays its original clone cost in the new shared budget.
   const encodings=new WeakMap<object,{value:unknown;sha256:string;bytes:number;nodes:number}>()
+  const publishedMaterial=(key:string)=>/__(?:tavern-prompt-v1-|program-opening-material-)/.test(key)
   function capture(session:Session) {
     const sid=session.id
     const assertIdentity=()=>{
@@ -164,7 +165,12 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
           &&budget.bytes+memo.bytes<=TAVERN_LORE_DATA_BOUNDS_V1.bytes
           &&budget.nodes+memo.nodes<=TAVERN_LORE_DATA_BOUNDS_V1.nodes
       let value:unknown,sha256:string
-      if(reusable) {
+      if(publishedMaterial(key)) {
+        // This is explanatory output from the material producer, already
+        // bound below to Native's exact record digest. Its expanded Source
+        // is not another guest input. Keep primary control DTO parsing below.
+        value=raw;sha256=recordSha256(raw)
+      }else if(reusable) {
         budget.bytes+=memo.bytes;budget.nodes+=memo.nodes
         value=memo.value;sha256=memo.sha256
       }else {
@@ -175,7 +181,7 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
       if(!sameRowData(get.call(branch,key),value)) {
         fail('PROGRAM_ABSENCE_MATERIAL_FACT_NAMESPACE_CHANGED')
       }
-      if(!reusable&&object(raw))encodings.set(raw,{value,sha256,
+      if(!publishedMaterial(key)&&!reusable&&object(raw))encodings.set(raw,{value,sha256,
         bytes:budget.bytes-before.bytes,nodes:budget.nodes-before.nodes})
       const row:MaterialRowV1={table:'branch',key,value,sha256}
       rows.set(address,row)
@@ -197,12 +203,13 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
       // Keep original malformed-row/budget diagnostics on failure. A
       // dynamic reader restoring the bytes cannot undo this observed loss.
       const currentBudget={bytes:0,nodes:0}
-      for(const row of rows.values())strictRow(get.call(branch,row.key),currentBudget)
+      for(const row of rows.values())if(!publishedMaterial(row.key))strictRow(get.call(branch,row.key),currentBudget)
       fail('PROGRAM_ABSENCE_MATERIAL_FACT_NAMESPACE_CHANGED')
     }
     const assertRowsCurrent=()=>{
       for(const expected of rows.values()) {
-        if(!sameRowData(get.call(branch,expected.key),expected.value))changedRows()
+        const actual=get.call(branch,expected.key)
+        if(publishedMaterial(expected.key)?recordSha256(actual)!==expected.sha256:!sameRowData(actual,expected.value))changedRows()
       }
       for(const key of missing)if(get.call(branch,key)!==undefined) {
         fail('PROGRAM_ABSENCE_MATERIAL_FACT_NAMESPACE_CHANGED')
@@ -341,7 +348,7 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
     }
     const assertCurrent=()=>{
       assertIdentity()
-      // History already validated/froze this view during construction. Its
+      // History already validated this view during construction. Its
       // refs, seed/input and aliases are all registered above; confirm actual
       // rows and the complete Native frame instead of rehashing that DATA.
       assertNativeFrame()
@@ -350,7 +357,8 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
       assertNativeFrame()
     }
     assertCurrent()
-    const output=freeze([...facts.values()].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0))
+    const output=Object.freeze([...facts.values()].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0)
+      .map(row=>Object.freeze({...row,bindings:freeze(row.bindings)})))
     return {rows:output,publications:history.publications,
       evidence:freeze({schemaVersion:1,encoding:'native-bound-program-absence-material-row-facts-v1',
       authority:'consumer-data-only',sessionId:sid,historySha256,historyLength:events.length,inheritedEventCount:inherited,

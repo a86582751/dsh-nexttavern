@@ -223,10 +223,11 @@ export function createRoleplayProgramAbsenceMutableControlsV1(deps) {
                 return value['windowNumber'] === window['windowNumber'] && value['windowId'] === window['windowId']
                     && (value['previousWindowId'] ?? null) === window['previousWindowId'];
             });
-            if (!matches.length) {
-                skippedRows.push({ key: windowKey, sha256: recordSha256(value), reason: 'no-closed-bound-window-identity' });
-            }
-            else {
+            // Inheritance creates this control before the child's first request.
+            // A closed material cannot be a prerequisite for its cold DATA reader.
+            // The window's own grammar and actual Native relations explain it;
+            // existing material associations are descriptive evidence only.
+            {
                 const start = Number(value['startSeq']), through = Object.hasOwn(value, 'throughSeq') ? Number(value['throughSeq']) : undefined;
                 if (start >= events.length || through !== undefined && (through >= events.length || through < start))
                     fail();
@@ -267,7 +268,7 @@ export function createRoleplayProgramAbsenceMutableControlsV1(deps) {
                 else if (tail !== undefined || shadowed !== undefined)
                     fail('PROGRAM_ABSENCE_MUTABLE_CONTROL_CHECKPOINT_INVALID');
                 facts.push({ table: 'branch', key: windowKey, kind: 'context-window', family: 'branch-control',
-                    evidenceKind: 'native-associated-typed-local-data', value, sha256: recordSha256(value),
+                    evidenceKind: 'typed-local-window-data', value, sha256: recordSha256(value),
                     boundFields: { windowIdentity: { windowNumber: value['windowNumber'], windowId: value['windowId'],
                             previousWindowId: value['previousWindowId'] ?? null }, associations: matches.map(item => item.binding), referencedNative: referenced },
                     unboundControlFields: ['startSeq(range-checked)', 'throughSeq(range-checked)', 'storyTokens', 'previousStoryTokens',

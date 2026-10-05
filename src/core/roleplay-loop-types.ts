@@ -93,6 +93,7 @@ export interface LoopDependencies {
   resumeCardWorkflows(session: LoopSession, agent: LoopAgent, signal?: AbortSignal): Promise<unknown>
   resumeNovelExports(session: LoopSession, agent: LoopAgent, signal?: AbortSignal): Promise<unknown>
   withImportLock<T>(id: string, key: string, work: () => Promise<T>): Promise<T>
+  ensureBranch(session:LoopSession):Promise<void>
   reconcileCanonicalPlayerVariants(session:LoopSession,index:ForkLookup):Promise<unknown>
   buildForkLookupIndex(session:LoopSession):ForkLookup
   buildPhaseA(session: LoopSession, payload: LoopPayload, state: LoopState): Promise<readonly ContextMessage[]>

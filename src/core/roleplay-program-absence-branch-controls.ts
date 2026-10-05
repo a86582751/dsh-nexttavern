@@ -23,7 +23,7 @@ export interface ProgramAbsenceBranchControlRowFactV1 {
   readonly evidenceGrade:'strict-control-dto-with-native-turn-association'
   readonly nativeAssociatedFields:readonly string[]
   readonly unboundControlFields:readonly string[]
-  readonly nativeAssociation:{readonly turn:number;readonly startSeq:number;readonly endSeq:number;
+  readonly nativeAssociation:{readonly turn:number;readonly startSeq:number;readonly endSeq:number|null;
     readonly assistantSeq:number;readonly assistantEventSha256:string;readonly assistantMessageSha256:string;
     readonly assistantSurface:'current-node'|'retained-historical-node';readonly inheritedEventCount:number}
   readonly wholeRowWriterProvenance:'not-proven'
@@ -278,14 +278,17 @@ export function createRoleplayProgramAbsenceBranchControlsV1(deps:ProgramAbsence
     function association(turn:number,requestedSeq?:number):ProgramAbsenceBranchControlRowFactV1['nativeAssociation'] {
       const cacheKey=turn+':'+(requestedSeq??'last'),previous=associations.get(cacheKey)
       if(previous)return previous
-      const starts=events.filter(event=>event.type==='turn/start'&&event.data.turn===turn),
-        ends=events.filter(event=>event.type==='turn/end'&&event.data.turn===turn)
-      if(starts.length!==1||ends.length!==1)fail('PROGRAM_ABSENCE_BRANCH_CONTROL_TURN_UNPROVEN')
-      const start=starts[0]!,end=ends[0]!
-      if(Number(start.seq)<birth||Number(end.seq)<=Number(start.seq)
-        ||events.slice(Number(start.seq)+1,Number(end.seq)).some(event=>event.type==='turn/start'||event.type==='turn/end'))
+      // Fork seeds may retain a parent's unfinished turn with this number.
+      // These child control rows belong to the actual own suffix. Phase B
+      // writes them while Native is stopping, before its turn/end publication.
+      const own=events.slice(birth),starts=own.filter(event=>event.type==='turn/start'&&event.data.turn===turn),
+        ends=own.filter(event=>event.type==='turn/end'&&event.data.turn===turn)
+      if(starts.length!==1||ends.length>1)fail('PROGRAM_ABSENCE_BRANCH_CONTROL_TURN_UNPROVEN')
+      const start=starts[0]!,end=ends[0],through=end?Number(end.seq):cursor
+      if(through<=Number(start.seq)
+        ||events.slice(Number(start.seq)+1,through).some(event=>event.type==='turn/start'||event.type==='turn/end'))
         fail('PROGRAM_ABSENCE_BRANCH_CONTROL_TURN_UNPROVEN')
-      const assistants=events.slice(Number(start.seq)+1,Number(end.seq)).filter(event=>
+      const assistants=events.slice(Number(start.seq)+1,through).filter(event=>
         event.type==='assistant/message'&&event.data.turn===turn&&event.data.interrupted!==true&&event.surfaceOp!==undefined)
       const assistant=requestedSeq===undefined?assistants.findLast(event=>{
         const message=deriveEventMessage(event,surface.projectedMessages)
@@ -294,7 +297,7 @@ export function createRoleplayProgramAbsenceBranchControlsV1(deps:ProgramAbsence
       if(!assistant||assistant.type!=='assistant/message')fail('PROGRAM_ABSENCE_BRANCH_CONTROL_ASSISTANT_UNPROVEN')
       const message=deriveEventMessage(assistant,surface.projectedMessages)
       if(!message||message.role!=='assistant'||!textOf(message.content).trim())fail('PROGRAM_ABSENCE_BRANCH_CONTROL_ASSISTANT_UNPROVEN')
-      const result=freeze({turn,startSeq:Number(start.seq),endSeq:Number(end.seq),assistantSeq:Number(assistant.seq),
+      const result=freeze({turn,startSeq:Number(start.seq),endSeq:end?Number(end.seq):null,assistantSeq:Number(assistant.seq),
         assistantEventSha256:nativeInputSha256(assistant),assistantMessageSha256:nativeInputSha256(message),
         assistantSurface:visible.has(Number(assistant.seq))?'current-node' as const:'retained-historical-node' as const,
         inheritedEventCount:birth})

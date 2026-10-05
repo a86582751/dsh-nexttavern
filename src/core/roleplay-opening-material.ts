@@ -251,11 +251,11 @@ export function createRoleplayOpeningMaterialOwnerV1(deps:RoleplayOpeningMateria
             materialSha256=nativeInputSha256(material),basis={schemaVersion:1 as const,
               encoding:'core-program-opening-material-record-v1' as const,authority:'consumer-data-only' as const,
               sessionId:String(session.id),identity,seedRef,inputRef,nativeOwner:input.owner,turn:input.turn,step:input.step},
-            snapshot=data({...basis,kind:'snapshot' as const,payload:built.snapshot}) as RoleplayOpeningMaterialRecordV1,
-            plan=data({...basis,kind:'plan' as const,payload:{promptPlan:built.plan,nativeTransform:material,
-              nativeTransformSha256:materialSha256}},4_194_304) as RoleplayOpeningMaterialRecordV1,
-            snapshotRow=data({key:keys.snapshot,sha256:recordSha256(snapshot),value:snapshot}),
-            planRow=data({key:keys.plan,sha256:recordSha256(plan),value:plan})
+            snapshot=Object.freeze({...basis,kind:'snapshot' as const,payload:built.snapshot}) as RoleplayOpeningMaterialRecordV1,
+            plan=Object.freeze({...basis,kind:'plan' as const,payload:Object.freeze({promptPlan:built.plan,nativeTransform:material,
+              nativeTransformSha256:materialSha256})}) as RoleplayOpeningMaterialRecordV1,
+            snapshotRow=Object.freeze({key:keys.snapshot,sha256:recordSha256(snapshot),value:snapshot}),
+            planRow=Object.freeze({key:keys.plan,sha256:recordSha256(plan),value:plan})
           const records:{snapshot?:unknown;plan?:unknown}={}
           await enqueue(async()=>{
             checks.assertCurrent()
