@@ -23,6 +23,7 @@ export interface JobRouteBody {
   sourceFile?: unknown
   attachment?: unknown
   requestId?: string
+  mode?: 'original' | 'organized'
 }
 // Shared storage contains task, workflow and import/export records.
 export interface JobRouteRecord {

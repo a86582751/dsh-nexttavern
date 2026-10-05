@@ -17,6 +17,7 @@ export interface TaskToolArguments extends Record<string, unknown> {
   scope?: string
   limit?: number
   character_ids?: string[]
+  mode?: 'original'|'organized'
 }
 export interface TaskToolRecord extends Record<string, unknown> {
   sessionId?: string
@@ -53,7 +54,8 @@ export interface TaskToolsDependencies {
   ensureBranch(session: HostSession): Promise<unknown>
   ensureSourceActivationBranch?(session:HostSession):Promise<unknown>
   tavernTasks: TaskHost['tavernTasks']
-  startExportJob(session: HostSession, kind: 'novel-export', agent?: HostAgent): Promise<{id: string}>
+  startExportJob(session: HostSession, kind: 'novel-export'|'card-export', agent?: HostAgent,
+    sourceFile?:unknown,requestId?:string,mode?:'original'|'organized'): Promise<{id: string}>
   activeCardWorkflow(session: HostSession): unknown
   characterRoster(session: HostSession): {id?: string; name?: unknown; content: unknown}[]
   contextWindowKey(id: string): string

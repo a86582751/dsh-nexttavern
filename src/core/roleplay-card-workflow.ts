@@ -48,7 +48,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     if(job.kind==='card-import'&&record.rawSha256!==job.source.sha256)throw new Error('角色卡任务来源哈希不匹配')
   }
   async function beginCardWorkflow(session: CardWorkflowSession,kind: string,sourceFile: unknown,
-    agent?: CardWorkflowAgent,clientRequestId?: string,toolCallId?: string) {
+    agent?: CardWorkflowAgent,clientRequestId?: string,toolCallId?: string,mode:'original'|'organized'='original') {
     return withStartLock(session.id,async()=>{
     if(!['card-import','card-export'].includes(kind))throw new Error('角色卡任务类型无效')
     if(clientRequestId!==undefined && (typeof clientRequestId!=='string' || kind!=='card-import'
@@ -57,7 +57,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
       ||toolCallId.length<1||toolCallId.length>256))throw new Error('角色卡工具调用身份无效')
     const source=kind==='card-import'?readCardSource(session.header.cwd,sourceFile):null
     const exportSource=kind==='card-export'&&deps.captureExportStartSource
-      ?deps.captureExportStartSource(session):undefined
+      ?deps.captureExportStartSource(session,mode):undefined
     if(kind==='card-export'&&deps.captureExportStartSource) {
       if(!exportSource||typeof exportSource.sha256!=='string'||!/^[a-f0-9]{64}$/.test(exportSource.sha256)
         ||typeof exportSource.assertCurrent!=='function')throw new Error('角色卡导出启动来源无效')
@@ -88,7 +88,7 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
       }
     }
     const active=activeCardWorkflow(session)
-    if(active&&active.kind!==kind)throw new Error('当前会话已有另一项角色卡任务，请先完成或取消')
+    if(active&&(active.kind!==kind||kind==='card-export'&&(active.mode??'organized')!==mode))throw new Error('当前会话已有另一项角色卡任务，请先完成或取消')
     if(active){
       if(source&&(active.source.sha256!==sourceHash
         || active.source.sourceFile!==source.sourcePath))throw new Error('当前会话正在读取另一张卡，请先完成或取消')
@@ -103,11 +103,13 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
       }
       return next
     }
-    const deterministic = kind === 'card-import' && source !== null && ['.png', '.json'].includes(source.extension)
+    const deterministic = kind==='card-export'?mode==='original'
+      :source !== null && ['.png', '.json'].includes(source.extension)
     const selection=deterministic?undefined:await modelPolicy.resolve(session,kind,agent)
     exportSource?.assertCurrent()
     const id=randomUUID()
-    const job={schemaVersion:1,id,kind,sessionId:session.id,branchId:session.id,generation:randomUUID(),
+    const job={schemaVersion:deterministic&&kind==='card-export'?2:1,id,kind,sessionId:session.id,branchId:session.id,generation:randomUUID(),
+      ...(kind==='card-export'?{mode,...(exportSource?.document?{exportDocument:exportSource.document}:{})}:{}),
       ...(selection?{selection,actualRoute:selection.actualRoute}:{}),execution:deterministic?'deterministic':selection!.execution,
       status:'queued',createdAt:Date.now(),progress:{done:0,total:1},
       ...(clientRequestId?{clientRequestId}:{}),
@@ -154,7 +156,8 @@ export function createCardWorkflows(deps: CardWorkflowDependencies) {
     try {
       await T.branch.put(cardWorkflowKey(job.id),{...job,status:'running'})
       const result=job.execution==='deterministic'
-        ? await driveStructuredImport(session as CardWorkflowSession,job,agent,signal)
+        ?job.kind==='card-export'?await deps.driveStructuredExport(session,job)
+          :await driveStructuredImport(session as CardWorkflowSession,job,agent,signal)
         : await nativeTask({session,agent,kind:job.kind,format:'workflow',selection:job.selection!,source,signal,timeoutMs:600000,
         tools:job.kind==='card-import'?['rp_card_import_begin','rp_card_import_chunk','rp_card_import_stage','rp_card_import_finalize']:['rp_card_export_begin','rp_card_export_chunk','rp_card_export_finalize'],
         system:job.kind==='card-import'

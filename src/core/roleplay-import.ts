@@ -228,7 +228,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
       beforeBegin: async (session: ImportSession, exec: ImportExec) => {
         if (Number(exec.agent?.options?.subagentDepth) > 0 || eventsOf(exec.agent?.session).some(e => e.type === 'subagent/descriptor'))
           return null;
-        const job = await beginCardWorkflow(session, 'card-export', null, exec.agent);
+        const job = await beginCardWorkflow(session,'card-export',null,exec.agent,undefined,undefined,'organized');
         if (job.execution === 'spawn') {
           try {
             await resumeCardWorkflows(session, exec.agent, exec.signal);
@@ -262,15 +262,25 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
       },
       collect: async (session) => {
         await ensureBranch(session);
+        const pointer = T.branch.get(importActiveKey(session.id)) as ImportPointer | undefined;
+        const original = (pointer?.importId
+          ? T.branch.get(importRecordKey(pointer.sourceRecordSessionId ?? session.id, pointer.importId))
+          : null) as ImportRecord | null;
+        const currentLore=deps.readCurrentLoreExport?.(session);
+        if(currentLore?.kind==='blocked')throw new Error(
+          `当前结构化世界书的来源或编辑尚不能确认（${currentLore.code}）；请恢复当前世界线后重试导出`);
+        const lore=currentLore?.kind==='ready'?currentLore:undefined;
+        const skipWorldbookKeys=new Set(lore?.skipWorldbookKeys??[]);
         const selectedOpening = deps.readNativeOpeningExport?.(session);
         if (selectedOpening?.kind === 'blocked') {
           throw new Error(`选定开场的 Native 来源或正文尚不能确认（${selectedOpening.code}）；请恢复当前开场后重试导出`);
         }
-        const prefix = `${session.id}__`, material: ExportMaterial[] = [];
+        const prefix = `${session.id}__`, material: ExportMaterial[] = [...lore?.materials??[]];
         for (const [tableName, table, field] of [['cards', T.cards, 'content'], ['worldbook', T.worldbook, 'content']] as const) {
           for (const [key, record] of [...table.entries()].sort(([a], [b]) => a.localeCompare(b, 'en'))) {
             if (!key.startsWith(prefix) || !record)
               continue;
+            if(tableName==='worldbook'&&skipWorldbookKeys.has(key))continue;
             const { content, ...metadata } = record;
             const source = {
               table: tableName, key, sha256: sha256(stableJson(record))
@@ -307,7 +317,8 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             // superseded only by a proved current Native opening, even if an
             // edit made that selected text empty. Pending/deleted reads above
             // refuse export instead of silently reviving the default scene.
-            if (record[field] && !(tableName === 'opening' && selectedOpening?.kind === 'ready'))
+            if (record[field] && !(tableName === 'opening' && selectedOpening?.kind === 'ready')
+              && !(tableName === 'rules'&&field==='core'&&lore?.skipRulesCore))
               material.push({
                 label: `${tableName}: ${field}`, text: String(record[field]), source
               });
@@ -332,15 +343,6 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               text: '```json\n' + stableJson(metadata) + '\n```', source
             });
         }
-        const pointer = T.branch.get(importActiveKey(session.id)) as ImportPointer | undefined;
-        const original = (pointer?.importId
-
-          ? T.branch.get(
-            importRecordKey(
-              pointer.sourceRecordSessionId
-              ?? session.id,
-              pointer.importId))
-          : null) as ImportRecord | null;
         const structuredOriginals = new Map(original?.sourceEnvelope ? [[original.importId, original]] : []);
         // Export referenced appendices from every merged import, including an
         // inherited source record. Do not silently drop unclassified MD text.
@@ -399,8 +401,9 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
           }
           material.push(
             {
-              label: '原件附加字段（未映射资料；不覆盖当前编辑）',
-              text: '```json\n' + stableJson(extras) + '\n```',
+              label: '原件附加字段与世界书 metadata（归档来源；不作为当前编辑）',
+              text: '> 原件附加字段与世界书 metadata（归档来源；不作为当前编辑）\n\n'
+                + '```json\n' + stableJson(extras) + '\n```',
               source: {
                 importId: original.importId, rawSha256: original.rawSha256
               }
@@ -410,6 +413,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
       }
     });
   const importTableByName: Record<string, ImportTable> = {
+    branch: T.branch,
     cards: T.cards,
     worldbook: T.worldbook,
     rules: T.rules,

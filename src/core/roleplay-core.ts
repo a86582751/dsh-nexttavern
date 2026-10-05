@@ -10,7 +10,11 @@ import type { InheritanceOptions } from './roleplay-inheritance-types.js'
 import type { MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 import type { NativeTaskInput, HostAgent } from './roleplay-task-host-types.js'
 import type { TaskAgent } from './tavern-task-types.js'
-import type { ImportRecord } from './roleplay-import-types.js'
+import type { ImportRecord,CardImportDependencies,ImportSession } from './roleplay-import-types.js'
+import {captureNextTavernCardExportV1} from './roleplay-native-card-export.js'
+import {decodeTavernCard} from './tavern-card.js'
+import type {NextTavernCardDocument} from './nexttavern-card.js'
+import type {TavernLoreSourceCaptureV1} from './roleplay-tavern-lore-source-types.js'
 import type {CompletionSnapshot} from './roleplay-completion-types.js'
 import {
   keyOf,
@@ -112,6 +116,7 @@ import {createRoleplayInputStateOwner} from './roleplay-input-state.js'
 import {onUserInfoChanged} from './roleplay-userinfo.js'
 import {createRoleplayTavernLoreSourceV1} from './roleplay-tavern-lore-source.js'
 import {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
+import {captureRoleplayTavernLoreExportDataV1} from './roleplay-tavern-lore-export.js'
 import {readJournal as readTavernLoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
 import {createRoleplayTavernSourceInheritanceV1} from './roleplay-tavern-source-inheritance.js'
 import {createRoleplayTavernOwnSourceRecoveryV1} from './roleplay-tavern-source-recovery.js'
@@ -954,36 +959,50 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   }
   // The workflow host is registered before import tools; only the ready hook
   // invokes this driver, after the importer installs it below.
-  function captureCardExportStartSource(session:ContextSession) {
+  function captureCardExportSourceData(session:ContextSession) {
     const actual=ctx.sessions.get(session.id),prefix=session.id+'__'
     if(sourceReadOwnerClosed||!actual||(actual as unknown)!==session||!actual.header
       ||!isRoleplaySession(actual)||!storyBranchIsActive(actual))throw Error('CARD_EXPORT_START_SESSION_CHANGED')
-    const scope=()=>{
-      const selected=ctx.get('tavernConversations')?.selectionOf(session.id)
-      return recordSha256({cwd:actual.header?.cwd,headerId:actual.header?.id,
-        parentSession:actual.header?.parentSession??null,root:selected?.root??session.id,
-        activeSessionId:selected?.activeSessionId??session.id,revision:selected?.revision??null,
-        importPointerSha256:recordSha256(T.branch.get(importActiveKey(session.id))??null)})
-    }
-    const rows=()=>{
+    return inputState.captureSource(session.id,'card-export',()=>{
+      const lore=captureRoleplayTavernLoreExportDataV1({source:tavernSource,edits:tavernLoreEdits},session.id)
+      if(lore.kind==='blocked')throw Error(lore.code)
+      // The structured Source/journal owner already hashes these current author
+      // fields and their inheritance. Legacy MD keeps its existing three tables.
+      if(lore.kind==='ready')return {lore,sha256:lore.currentLoreSha256}
       const collect=(table:{entries():Iterable<[string,unknown]>})=>[...table.entries()]
         .filter(([key,value])=>key.startsWith(prefix)&&value!==undefined)
         .sort(([left],[right])=>left.localeCompare(right,'en'))
         .map(([key,value])=>({key,record:cloneRecord(value)}))
-      return {schemaVersion:1,encoding:'card-export-management-start-source-data-v1',sessionId:session.id,
+      const rows={schemaVersion:1,encoding:'card-export-management-start-source-data-v1',sessionId:session.id,
         cards:collect(T.cards),worldbook:collect(T.worldbook),rules:collect(T.rules)}
+      return {lore,sha256:recordSha256(rows)}
+    })
+  }
+  let readNativeOpeningForExport:((session:Parameters<NonNullable<CardImportDependencies['readNativeOpeningExport']>>[0],
+    captured?:TavernLoreSourceCaptureV1)=>ReturnType<NonNullable<CardImportDependencies['readNativeOpeningExport']>>)|undefined
+  function captureCardExportStartSource(session:ImportSession,mode:'original'|'organized') {
+    if(mode==='original') {
+      const assertCurrent=()=>{
+        if(sourceReadOwnerClosed||ctx.sessions.get(session.id)!==session||!storyBranchIsActive(session))
+          throw Error('CARD_EXPORT_START_SESSION_CHANGED')
+      }
+      assertCurrent()
+      const document=captureNextTavernCardExportV1({tables:T,source:tavernSource,edits:tavernLoreEdits,
+        readOpening:captured=>readNativeOpeningForExport!(session,captured),readArchive:record=>{
+          const envelope=record.sourceEnvelope!
+          if(envelope.schemaVersion!==2)throw Error('CARD_EXPORT_ARCHIVE_VERSION_INVALID')
+          const resource=libraryFor(session).read(envelope.transportResourceId)
+          if(resource.fullSha256!==envelope.transportSha256)throw Error('CARD_EXPORT_ARCHIVE_SOURCE_CHANGED')
+          return decodeTavernCard(Buffer.from(resource.text,'utf8'),'.json').document.archive as NextTavernCardDocument['archive']
+        }},session.id)
+      // The exported settings are intentionally frozen at startup. Later author
+      // edits do not invalidate this portable snapshot; selection still matters.
+      return {document,sha256:recordSha256(document),assertCurrent}
     }
-    const sourceScope=scope(),sha256=recordSha256(rows())
-    const assertCurrent=()=>{
-      if(sourceReadOwnerClosed||ctx.sessions.get(session.id)!==actual||!actual.header
-        ||!isRoleplaySession(actual)||!storyBranchIsActive(actual)||scope()!==sourceScope)
-        throw Error('CARD_EXPORT_START_SESSION_CHANGED')
-      if(recordSha256(rows())!==sha256)throw Error('CARD_EXPORT_START_AUTHOR_DATA_CHANGED')
-    }
-    // This startup marker hashes current edited DATA. Final export collection
-    // still owns full material coverage and selected Native opening provenance.
-    assertCurrent()
-    return {sha256,assertCurrent}
+    const read=captureCardExportSourceData(session)
+    // Domain/Native/selection changes retire the captured DATA in InputState.
+    // Startup awaits consume its cheap currency handle, never rescan the book.
+    return {sha256:read.data.sha256,assertCurrent:read.assertCurrent}
   }
   let structuredImportDriver: ReturnType<typeof registerRoleplayImports>['driveStructuredImport'] | undefined
   const {
@@ -999,7 +1018,15 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     storyBranchIsActive: (...args) => storyBranchIsActive(...args),
     modelPolicy,
     statusFixedContext: (...args) => statusFixedContext(...args),
-    captureExportStartSource:session=>captureCardExportStartSource(session),
+    captureExportStartSource:(session,mode)=>captureCardExportStartSource(session,mode),
+    driveStructuredExport:async(session,job)=>{
+      if(!job.exportDocument)throw Error('JSON_CARD_EXPORT_SNAPSHOT_MISSING')
+      const resource=await libraryFor(session).archive({
+        name:resourceName(job.exportDocument.data.name,'.json'),type:'application/json',
+        bytes:Buffer.from(JSON.stringify(job.exportDocument,null,2)+'\n','utf8'),
+        source:{sessionId:session.id,kind:'card-export',jobId:job.id,sourceHash:job.source.sha256}})
+      return {exportId:job.id,file:resource.path,resourceId:resource.id}
+    },
     nativeTask,
     driveStructuredImport: (...args) => {
       if (!structuredImportDriver) throw new Error('结构化导入执行器尚未注册')
@@ -1819,7 +1846,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     ensureState,
     simpleTool,
     sessionOf: workspaceImportSessionOf,
-    readNativeOpeningExport:session=>{
+    readCurrentLoreExport:session=>captureCardExportSourceData(session as ContextSession).data.lore,
+    readNativeOpeningExport:readNativeOpeningForExport=(session:ImportSession,sourceCapture?:TavernLoreSourceCaptureV1)=>{
       const actual=ctx.sessions.get(session.id),none={kind:'none' as const};
       if(sourceReadOwnerClosed||!actual||(actual as unknown)!==session
         ||!actual.header||!isRoleplaySession(actual)||!storyBranchIsActive(actual)) {
@@ -1859,7 +1887,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         // Source and Native composition consume one synchronous lineage read.
         // Its owner supplies the already closed transaction to Source capture.
         const readOpening=(lineage?:TavernSourceCommittedLineageV1)=>{
-          const captured=tavernSource.capture(session.id);
+          const captured=sourceCapture??tavernSource.capture(session.id);
           if(captured.kind!=='captured-data')throw Error('CARD_EXPORT_OPENING_SOURCE_UNPROVEN');
           const sourceData=captured.source,originalSource=sourceData.original,
             source={sessionId:session.id,importId:active.importId,sourceRecordSessionId:sourceData.sourceRecordSessionId,

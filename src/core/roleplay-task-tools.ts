@@ -55,8 +55,14 @@ export function registerTaskTools({ctx,T,clusterJob,resolveRoleplaySession,story
     {type:'object',properties:{id:{type:'string'},offset:{type:'integer'},maxChars:{type:'integer'}},required:['id'],additionalProperties:false},
     async(args,exec)=>tavernTasks.read(await sessionOf(exec),args.id!,args.offset,args.maxChars))), 'roleplay: task source tool')
   ctx.effect(()=>ctx.tools.register(simpleTool<TaskToolArguments, TaskToolExecution, Promise<unknown>>('rp_novel_export',
-    '将当前分支完整剧情整理为一章一章的 Markdown 小说，包含压缩前历史，排除工具和管理请求。玩家说导出小说或整理完整剧情时使用；任务可恢复并在酒馆管理下载。',
-    {type:'object',properties:{},additionalProperties:false},async(_args,exec)=>({ok:true,jobId:(await startExportJob(await sessionOf(exec),'novel-export',exec.agent)).id}))), 'roleplay: novel export tool')
+    '导出当前世界线的完整剧情原文为 Markdown，包含压缩前历史，排除工具、管理消息和思考。默认 original 由程序完成。只有玩家明确要求重新按语义编排时才使用 organized；任务可恢复并在酒馆管理下载。',
+    {type:'object',properties:{mode:{type:'string',enum:['original','organized']}},additionalProperties:false},
+    async(args,exec)=>({ok:true,jobId:(await startExportJob(await sessionOf(exec),'novel-export',exec.agent,undefined,undefined,args.mode)).id}))), 'roleplay: novel export tool')
+  ctx.effect(()=>ctx.tools.register(simpleTool<TaskToolArguments,TaskToolExecution,Promise<unknown>>('rp_card_export',
+    '将当前人物、世界书、规则、模板和开场完整导出为可再次程序导入的 NextTavern JSON。默认 original 为纯程序保真导出。只有玩家明确要求重新按语义编排内容时才使用 organized。文件在酒馆管理下载。',
+    {type:'object',properties:{mode:{type:'string',enum:['original','organized']}},additionalProperties:false},
+    async(args,exec)=>({ok:true,jobId:(await startExportJob(await sessionOf(exec),'card-export',exec.agent,undefined,undefined,args.mode)).id}))),
+    'roleplay: deterministic card export tool')
   ctx.effect(()=>ctx.tools.register(simpleTool<TaskToolArguments, TaskToolExecution, Promise<unknown>>('rp_task_submit',
     '提交当前循环完成的维护任务结果。id和generation来自系统任务元数据（完整内联或rp_task_read）；result为任务指定JSON对象或完整文本。各任务独立校验。',
     {type:'object',properties:{id:{type:'string'},generation:{type:'string'},result:{}},required:['id','generation','result'],additionalProperties:false},

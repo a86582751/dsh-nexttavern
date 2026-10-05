@@ -18,7 +18,8 @@ function decodeJob(value) {
     if (!record(value) || value.schemaVersion !== 1 || value.kind !== 'novel-export' ||
         !['id', 'sessionId', 'branchId', 'sourceHash', 'generation', 'execution'].every(field => typeof value[field] === 'string') ||
         !record(value.source) || !Array.isArray(value.source.entries) || !value.source.entries.every(entry) || !finite(value.source.cutoff) ||
-        !record(value.selection) || typeof value.selection.execution !== 'string' ||
+        (value.mode !== undefined && value.mode !== 'original' && value.mode !== 'organized') ||
+        (value.mode !== 'original' && (!record(value.selection) || typeof value.selection.execution !== 'string')) ||
         !Array.isArray(value.chunks) || !value.chunks.every(chunk => record(chunk) && typeof chunk.id === 'string' && Array.isArray(chunk.units) && chunk.units.length > 0 && chunk.units.every(unit)) ||
         !record(value.results) || !Object.values(value.results).every(result => record(result) && typeof result.verified === 'boolean' && 'draft' in result && (!result.verified || materialized(result.draft))) ||
         (value.plan !== undefined && !planShape(value.plan)) ||
@@ -68,17 +69,24 @@ export function createNovelExports({ table, history, request, archive }) {
         const live = new Map(history(session).map(entry => [entry.seq, taskHash(entry.text)]));
         return job.source.entries.every(entry => live.get(entry.seq) === taskHash(entry.text));
     };
-    async function begin(session, selection) {
+    async function begin(session, selection, options = {}) {
+        const mode = options.mode ?? 'original';
+        if (mode === 'organized' && !selection)
+            fail('整理导出需要模型选择');
         const entries = clone(history(session));
         if (!entries.some(entry => (entry.role ?? entry.kind) === 'assistant'))
             fail('当前分支没有可导出的完整剧情');
-        const source = { entries, cutoff: entries.at(-1)?.seq ?? -1 }, units = novelUnits(entries);
-        const existing = list(session).find(job => ['queued', 'running', 'waiting-main'].includes(job.status) && job.sourceHash === taskHash(source));
+        const source = { entries, cutoff: entries.at(-1)?.seq ?? -1 };
+        const units = mode === 'organized' ? novelUnits(entries) : [];
+        const existing = list(session).find(job => ['queued', 'running', 'waiting-main'].includes(job.status) && (job.mode ?? 'organized') === mode && job.sourceHash === taskHash(source));
         if (existing)
             return existing;
         const id = randomUUID(), job = {
-            schemaVersion: 1, id, kind: 'novel-export', sessionId: session.id, branchId: session.id, source, sourceHash: taskHash(source), selection: clone(selection), execution: selection.execution, actualRoute: selection.actualRoute,
-            chunks: chunksOf(units), results: {}, status: 'queued', generation: randomUUID(), attempt: 0, progress: { done: 0, total: units.length }, createdAt: Date.now(),
+            schemaVersion: 1, id, kind: 'novel-export', sessionId: session.id, branchId: session.id, source, sourceHash: taskHash(source), mode,
+            ...(mode === 'organized' ? { selection: clone(selection), actualRoute: selection.actualRoute } : {}),
+            execution: mode === 'original' ? 'deterministic' : selection.execution,
+            chunks: chunksOf(units), results: {}, ...(mode === 'original' ? { plan: { title: '当前世界线原文', chapters: [] } } : {}),
+            status: 'queued', generation: randomUUID(), attempt: 0, progress: { done: 0, total: mode === 'original' ? entries.length : units.length }, createdAt: Date.now(),
         };
         await table.put(key(id), job);
         return clone(job);
@@ -103,6 +111,14 @@ export function createNovelExports({ table, history, request, archive }) {
                 if (job.status === 'completed')
                     return job;
                 await save({ status: 'running' });
+                if (job.mode === 'original') {
+                    // The selected history already owns ordering and text extraction. Preserve
+                    // each frozen string, including whitespace, and only add a fixed separator.
+                    const markdown = `# ${job.plan.title}\n\n` + job.source.entries.map(entry => entry.text ?? '').join('\n\n');
+                    const resource = await archive(session, job, markdown);
+                    await save({ status: 'completed', progress: { done: job.source.entries.length, total: job.source.entries.length }, resourceId: resource.id, file: resource.path, resultHash: taskHash(markdown), completedAt: Date.now(), error: null });
+                    return get(session, id);
+                }
                 const ask = (phase, input, validate) => request({ session, agent, kind: 'novel-export', format: 'json', signal, selection: job.selection,
                     source: { events: job.source.entries.map(entry => ({ seq: entry.seq, hash: taskHash(entry.text) })), hashKind: 'taskHash', workflowId: id, generation },
                     system: phase === 'plan' ? '为完整剧情组织章节，并根据故事主题起一个便于辨认的书名。只输出 JSON {title,chapters:[{title,chunk_ids}]}。每个剧情块恰好属于一章，严格保持来源顺序。'

@@ -99,7 +99,7 @@ export function registerCardExport(ctx, options) {
             }
         })), `roleplay: tool ${name}`);
     };
-    tool('rp_card_export_begin', '开始逆向组卡：冻结当前分支已编辑的全部设定。必须由 LLM 分页全文审阅，再组织统一 Markdown 章节；不能摘要、漏项或用旧原件覆盖新设定。', {}, [], async (session) => {
+    tool('rp_card_export_begin', '仅在玩家明确要求重新按语义编排角色卡时开始逆向组卡：冻结当前分支已编辑设定，分页审阅后组织 Markdown。普通导出请用 rp_card_export，由程序生成保真 JSON。', {}, [], async (session) => {
         const workflowId = workflowOf?.(session);
         let prior;
         if (workflowId)

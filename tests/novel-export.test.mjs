@@ -22,17 +22,17 @@ const exporter=createNovelExports({table,history:()=>history,
     for(const field of ['approved','checked_source_ids','issues'])assert.ok(spec.system.includes(field),`model must receive review field ${field} without reading server code`)
     return spec.validate({approved:true,checked_source_ids:input.units.map(u=>u.id),issues:[]})
   },archive:async(s,j,text)=>{archives++;assert.match(text,/三只蓝瓶/);assert.match(text,/七枚银叶/);assert.match(text,/只有铜灯熄灭/);return {id:'resource',path:'verified.md'}}})
-const job=await exporter.begin(session,{execution:'inline'})
+const job=await exporter.begin(session,{execution:'inline'},{mode:'organized'})
 await exporter.drive(session,job.id,{})
 assert.equal(exporter.get(session,job.id).status,'failed');assert.equal(archives,0)
 fail=false;await exporter.retry(session,job.id);await exporter.drive(session,job.id,{})
 assert.equal(exporter.get(session,job.id).status,'completed');assert.equal(archives,1)
 await exporter.drive(session,job.id,{});assert.equal(archives,1)
-const added=await exporter.begin(session,{execution:'inline'})
+const added=await exporter.begin(session,{execution:'inline'},{mode:'organized'})
 history=[...entries,{seq:3,role:'assistant',text:'新增剧情不混入冻结稿。'}]
 await exporter.drive(session,added.id,{})
 assert.equal(exporter.get(session,added.id).source.entries.length,2)
-const stale=await exporter.begin(session,{execution:'inline'})
+const stale=await exporter.begin(session,{execution:'inline'},{mode:'organized'})
 history=history.filter(e=>e.seq!==2)
 await exporter.drive(session,stale.id,{})
 assert.equal(exporter.get(session,stale.id).status,'stale')
@@ -64,7 +64,7 @@ assert.equal(exporter.get(session,job.id).status,'stale','completed frozen expor
   const make=()=>createNovelExports({table,history:()=>source,request,archive:async(_session,_job,markdown)=>{
     archiveText=markdown;return {id:'resumed-resource',path:'resumed.md'}
   }})
-  const first=make(), job=await first.begin(session,{execution:'inline'})
+  const first=make(), job=await first.begin(session,{execution:'inline'},{mode:'organized'})
   assert.equal(first.get(session,job.id).chunks.length,3,'three ~12K entries form three independent durable chunks')
   await first.drive(session,job.id,{})
   assert.equal(first.get(session,job.id).status,'failed')
@@ -86,14 +86,14 @@ assert.equal(exporter.get(session,job.id).status,'stale','completed frozen expor
   assert.ok(archiveText.indexOf('〈第一剧情块〉')<archiveText.indexOf('〈第二剧情块〉')&&archiveText.indexOf('〈第二剧情块〉')<archiveText.indexOf('〈第三剧情块〉'))
 
   // The source is frozen at begin: later appended plot cannot leak in.
-  const frozen=await resumed.begin(session,{execution:'inline'})
+  const frozen=await resumed.begin(session,{execution:'inline'},{mode:'organized'})
   source=[...original,{seq:104,role:'assistant',text:'〈追加剧情〉不得混入冻结导出。'}]
   await resumed.drive(session,frozen.id,{})
   assert.equal(resumed.get(session,frozen.id).status,'completed')
   assert.doesNotMatch(archiveText,/追加剧情/)
 
   // Editing one of a new job's frozen source records makes that job stale.
-  const stale=await resumed.begin(session,{execution:'inline'})
+  const stale=await resumed.begin(session,{execution:'inline'},{mode:'organized'})
   source=source.map(entry=>entry.seq===102?{...entry,text:'〈第二剧情块已编辑〉'}:entry)
   await resumed.drive(session,stale.id,{})
   assert.equal(resumed.get(session,stale.id).status,'stale')
@@ -153,7 +153,7 @@ const legacy=JSON.parse(readFileSync(new URL('./fixtures/novel-export-legacy-v1.
     const input=JSON.parse(spec.user)
     return spec.validate({title:'Cancelled',chapters:[{title:'Chapter',chunk_ids:input.chunks.map(chunk=>chunk.id)}]})
   },archive:async()=>{archives++;return {id:'wrong',path:'wrong.md'}}})
-  const job=await api.begin(session,{execution:'spawn'})
+  const job=await api.begin(session,{execution:'spawn'},{mode:'organized'})
   const first=api.drive(session,job.id,{})
   await admitted
   const second=api.drive(session,job.id,{})
@@ -166,9 +166,74 @@ const legacy=JSON.parse(readFileSync(new URL('./fixtures/novel-export-legacy-v1.
 {
   const table=new Table(),session={id:'novel-inline-admission'}
   const api=createNovelExports({table,history:()=>entries,request:async()=>{throw new InlinePending('inline')},archive:async()=>assert.fail('no archive')})
-  const job=await api.begin(session,{execution:'inline'})
+  const job=await api.begin(session,{execution:'inline'},{mode:'organized'})
   await assert.rejects(api.drive(session,job.id,{}),error=>error.code==='TAVERN_INLINE_PENDING')
   assert.equal(api.get(session,job.id).status,'waiting-main')
   assert.equal(api.get(session,job.id).error,null)
 }
-console.log('novel-export=ok (coverage, legacy hashes/checkpoints, typed decoding, frozen cutoff, cancellation, inline admission)')
+// Default exports use the selected history's logical order, preserving full
+// strings without paragraph splitting, whitespace trimming, or model work.
+{
+  const table=new Table(),session={id:'original-frozen-order'}
+  const original=[
+    {seq:40,role:'user',text:'  我翻开旧书。\n\n\n'},
+    {seq:7,role:'assistant',text:'\n她说：“先读完，再点灯。”  \n\n尾页\n'},
+  ]
+  let source=original,archiveText='',archives=0
+  const make=()=>createNovelExports({table,history:()=>source,
+    request:async()=>assert.fail('original export must not request a model'),
+    archive:async(_session,job,text)=>{
+      archives++;archiveText=text;assert.equal(job.plan.title,'当前世界线原文')
+      return {id:'original-resource',path:'original.md'}
+    }})
+  const api=make(),job=await api.begin(session)
+  assert.equal(job.mode,'original');assert.equal(job.execution,'deterministic')
+  assert.equal(job.selection,undefined);assert.deepEqual(job.chunks,[])
+  assert.equal((await api.begin(session)).id,job.id,'same frozen original task is reused while queued')
+  source=[...original,{seq:50,role:'assistant',text:'追加剧情不进入冻结原文。'}]
+  const resumed=make(),done=await resumed.drive(session,job.id,{})
+  assert.equal(done.status,'completed');assert.deepEqual(done.progress,{done:2,total:2})
+  assert.equal(archiveText,'# 当前世界线原文\n\n'+original.map(entry=>entry.text).join('\n\n'))
+  assert.equal(done.resultHash,taskHash(archiveText))
+  await resumed.drive(session,job.id,{});assert.equal(archives,1)
+  const stale=await resumed.begin(session)
+  source=source.map(entry=>entry.seq===7?{...entry,text:'已修改原文。'}:entry)
+  assert.equal((await resumed.drive(session,stale.id,{})).status,'stale')
+  await resumed.refresh(session)
+  assert.equal(resumed.get(session,job.id).status,'stale')
+  await assert.rejects(resumed.retry(session,stale.id),/来源已变化/)
+}
+{
+  const table=new Table(),session={id:'original-retry'},texts=[]
+  let fail=true
+  const api=createNovelExports({table,history:()=>entries,
+    request:async()=>assert.fail('original retries must not request a model'),
+    archive:async(_session,_job,text)=>{
+      texts.push(text);if(fail)throw new Error('archive unavailable')
+      return {id:'retried-original',path:'retried-original.md'}
+    }})
+  const original=await api.begin(session)
+  assert.equal((await api.drive(session,original.id,{})).status,'failed')
+  fail=false;await api.retry(session,original.id)
+  assert.equal((await api.drive(session,original.id,{})).status,'completed')
+  assert.deepEqual(texts,[texts[0],texts[0]],'retry materializes the same frozen bytes')
+}
+{
+  const table=new Table(),session={id:'original-cancelled'}
+  const api=createNovelExports({table,history:()=>entries,
+    request:async()=>assert.fail('no model'),archive:async()=>assert.fail('cancelled export must not archive')})
+  const job=await api.begin(session)
+  await api.cancel(session,job.id)
+  assert.equal((await api.drive(session,job.id,{})).status,'cancelled')
+}
+{
+  const table=new Table(),session={id:'original-organized-independent'}
+  const api=createNovelExports({table,history:()=>entries,
+    request:async()=>assert.fail('begin does not request a model'),archive:async()=>assert.fail('no drive')})
+  const original=await api.begin(session)
+  const organized=await api.begin(session,{execution:'inline'},{mode:'organized'})
+  assert.notEqual(original.id,organized.id)
+  assert.equal(organized.mode,'organized');assert.equal(organized.execution,'inline')
+  await assert.rejects(api.begin(session,undefined,{mode:'organized'}),/模型选择/)
+}
+console.log('novel-export=ok (original bytes/order, zero model requests, organized coverage, legacy checkpoints, frozen cutoff, retry, cancellation, inline admission)')

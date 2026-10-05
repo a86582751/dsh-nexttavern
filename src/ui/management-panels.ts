@@ -749,7 +749,7 @@ export function createManagementPanels({
                 refreshSequence.current++;
             };
         }, [refresh]);
-        const start = async (kind: string) => {
+        const start = async (kind:string,mode:'original'|'organized'='original') => {
             if (mutationBusy.current)
                 return;
             mutationBusy.current = true;
@@ -759,7 +759,7 @@ export function createManagementPanels({
                     method: 'POST', headers: {
                         'content-type': 'application/json'
                     }, body: JSON.stringify({
-                        sessionId, kind
+                        sessionId,kind,mode
                     })
                 });
                 await refresh();
@@ -819,6 +819,7 @@ export function createManagementPanels({
         const canCancel = (status: string) => ['queued', 'running', 'waiting-main'].includes(status);
         const canRetry = (status: string) => ['failed', 'cancelled'].includes(status);
         const routeText = (job: ExportJob) => {
+            if(job.execution==='deterministic')return job.kind==='card-export'?'保真 JSON 导出':'剧情原文 Markdown 导出';
             const route = job.actualRoute;
             const model = route?.provider
                 && route?.model ? `${route.provider}/${route.model}${route.reasoningEffort ? ` · ${route.reasoningEffort}` : ''}` : '';
@@ -867,11 +868,19 @@ export function createManagementPanels({
             className: 'dsh-rp-row'
         }, React.createElement('button', {
             className: 'dsh-rp-btn', disabled: busy, onClick: () => start('card-export')
-        }, '导出角色卡'), React.createElement('button', {
+        }, '导出角色卡 JSON'), React.createElement('button', {
             className: 'dsh-rp-btn', disabled: busy, onClick: () => start('novel-export')
-        }, '导出完整小说'), childJobs.length ? React.createElement('button', {
+        }, '导出小说原文'), childJobs.length ? React.createElement('button', {
             className: 'dsh-rp-btn', onClick: () => setShowSteps(value => !value)
-        }, showSteps ? '隐藏处理步骤' : '显示处理步骤') : null), visibleJobs.map(renderJob));
+        }, showSteps ? '隐藏处理步骤' : '显示处理步骤') : null),
+        React.createElement('p',{className:'dsh-rp-muted'},'默认完整保留当前设定或剧情原文，不改写内容。'),
+        React.createElement('details',null,React.createElement('summary',null,'按语义重新编排（使用模型）'),
+          React.createElement('p',{className:'dsh-rp-muted'},'仅在需要重新理解杂乱内容并划分章节时使用。'),
+          React.createElement('div',{className:'dsh-rp-row'},
+            React.createElement('button',{className:'dsh-rp-btn',disabled:busy,
+              onClick:()=>start('card-export','organized')},'重新编排角色卡 Markdown'),
+            React.createElement('button',{className:'dsh-rp-btn',disabled:busy,
+              onClick:()=>start('novel-export','organized')},'重新编排小说章节'))),visibleJobs.map(renderJob));
     }
     return {
         CharacterClusterPanel, ModelPanel, CardImportPanel, ResourcesPanel, ExportPanel

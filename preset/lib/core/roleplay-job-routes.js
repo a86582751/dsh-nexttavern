@@ -30,12 +30,14 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
             resourceId: job.resourceId ?? job.result?.resourceId ?? null, createdAt: job.createdAt, completedAt: job.completedAt ?? null,
             failedAt: job.failedAt ?? (job.status === 'failed' ? job.updatedAt ?? null : null) };
     };
-    async function startExportJob(session, kind, agent, sourceFile, requestId) {
+    async function startExportJob(session, kind, agent, sourceFile, requestId, mode = 'original') {
         assertWorkspaceSession(session);
         assertSteeringAgent(agent);
-        const job = kind === 'novel-export' ? await novelExports.begin(session, await modelPolicy.resolve(session, kind, agent))
-            : await beginCardWorkflow(session, kind, sourceFile, agent, requestId);
+        const job = kind === 'novel-export' ? await novelExports.begin(session, mode === 'organized' ? await modelPolicy.resolve(session, kind, agent) : undefined, { mode })
+            : await beginCardWorkflow(session, kind, sourceFile, agent, requestId, undefined, mode);
         if (job.execution === 'deterministic') {
+            if (kind === 'novel-export')
+                return novelExports.drive(session, job.id, agent);
             if (['queued', 'running', 'waiting-main'].includes(job.status))
                 await resumeCardWorkflows(session, agent);
             return T.branch.get(cardWorkflowKey(job.id)) ?? job;
@@ -81,7 +83,10 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
                     if (novel || card)
                         for (const task of tavernTasks.list(session).filter(t => t.source?.workflowId === job.id && !['completed', 'cancelled', 'stale'].includes(t.status)))
                             await tavernTasks.cancel(session, task.id);
-                    if (body.action === 'retry' && card?.execution === 'deterministic') {
+                    if (body.action === 'retry' && novel?.execution === 'deterministic') {
+                        job = await novelExports.drive(session, novel.id, agent);
+                    }
+                    else if (body.action === 'retry' && card?.execution === 'deterministic') {
                         await resumeCardWorkflows(session, agent);
                         job = T.branch.get(cardWorkflowKey(card.id));
                     }
@@ -91,6 +96,8 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
                 }
                 if (!['novel-export', 'card-export', 'card-import'].includes(body.kind))
                     throw new Error('未知任务用途');
+                if (body.mode !== undefined && body.mode !== 'original' && body.mode !== 'organized')
+                    throw new Error('未知导出模式');
                 assertWorkspaceSession(session);
                 let sourceFile = body.resourceId ? libraryFor(session).metadata(body.resourceId).path : body.sourceFile;
                 if (body.attachment !== undefined) {
@@ -100,7 +107,7 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
                     const materialized = await attachmentSources.materialize(session, agent, body.attachment, body.requestId);
                     sourceFile = materialized.sourceFile;
                 }
-                const job = await startExportJob(session, body.kind, agent, sourceFile, body.requestId);
+                const job = await startExportJob(session, body.kind, agent, sourceFile, body.requestId, body.mode);
                 return jsonResponse(202, { ok: true, job: publicJob(job) });
             }
             catch (error) {

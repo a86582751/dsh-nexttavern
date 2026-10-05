@@ -18,7 +18,7 @@ function sourceMetadataSha256(value:unknown):string {
 }
 
 type Slot='schema'|'source'|'observation'|'control'|'input'|'closing'
-export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'
+export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'|'card-export'
   |`program-opening:${number}:${boolean}`
 export interface RoleplayInputStateSession {readonly id:string}
 export interface RoleplayInputStateRead<T> {
