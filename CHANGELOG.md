@@ -1,5 +1,11 @@
 # Changelog
 
+## 文档 — 0.3 开发日志更新 — 2026-10-07
+
+- 补入 10 月 6 日 Ruby 辅助分析、原卡剧情、脚本读取与恢复流程的限定进展；完整人物／世界书交互、原卡界面、全部样本和阶段验收仍未完成，0.3 尚未发布。
+
+English: Update the 0.3 development log with limited 2026-10-06 results for Ruby tasks, original-card story flows, script reading and recovery. Full character/worldbook interaction, original-card UI, sample coverage and phase acceptance remain incomplete; 0.3 is not released.
+
 ## 文档 — 0.3 开发日志更新 — 2026-10-06
 
 - 补入 10 月 5 日已限定验证的原生 JSON 与小说 Markdown 导出、受控分支恢复及卡片页面联动进展；34 张真实卡完整玩法、NativeApp 资格、作者脚本、应用联动与恢复矩阵仍在开发，0.3 尚未发布。
