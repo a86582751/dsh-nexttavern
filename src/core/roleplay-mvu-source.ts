@@ -274,18 +274,20 @@ function openingBlocks(text: string, pointer: string): boolean {
 function extensions(value: unknown, pointer: string, authorSchema=false) {
   if (value === undefined) return
   if (!isObject(value)) fail('EXTENSION_UNSUPPORTED',pointer,value)
-  for(const key of Object.keys(value))if(numericalChannel(key)||key==='tavern_helper'&&!authorSchema) {
+  for(const key of Object.keys(value))if(numericalChannel(key)) {
     fail('EXTENSION_UNSUPPORTED',pointer)
   }
-  if(authorSchema&&value.tavern_helper!==undefined) {
-    if(!isObject(value.tavern_helper))fail('EXTENSION_UNSUPPORTED',pointer)
-    // Script effects are preserved in authorSource and admitted by the actual
-    // compiler/guest. Unimplemented helper buttons/variables cannot be dropped.
-    requireKeys(value.tavern_helper,['scripts'],pointer,'EXTENSION_UNSUPPORTED')
+  if(value.tavern_helper!==undefined) {
+    const helper=value.tavern_helper
+    if(!isObject(helper))fail('EXTENSION_UNSUPPORTED',pointer)
+    // Empty exported Helper containers declare no effects. Active scripts are
+    // admitted only by authorSource/compiler; uploaded variable values have no
+    // initialization owner and cannot be silently discarded into plain mode.
+    requireKeys(helper,['scripts','variables'],pointer,'EXTENSION_UNSUPPORTED')
+    if(!authorSchema&&helper.scripts!==undefined
+      &&(!Array.isArray(helper.scripts)||helper.scripts.length))fail('EXTENSION_UNSUPPORTED',pointer)
+    if(helper.variables!==undefined&&!plainEmpty(helper.variables))fail('EXTENSION_UNSUPPORTED',pointer)
   }
-  if (value.fav !== undefined && typeof value.fav !== 'boolean') fail('EXTENSION_UNSUPPORTED',pointer,value)
-  if (value.talkativeness !== undefined && (typeof value.talkativeness !== 'number'
-    || !Number.isFinite(value.talkativeness))) fail('EXTENSION_UNSUPPORTED',pointer,value)
   if (value.depth_prompt !== undefined) {
     const depth = value.depth_prompt
     if (!isObject(depth)) fail('EXTENSION_UNSUPPORTED',pointer,value)
