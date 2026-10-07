@@ -67,11 +67,10 @@ function frozen<T>(v:T):T {
 function seal<T extends Record<string,unknown>,K extends string>(body:T,key:K):T&{[P in K]:string} {
   return frozen(cloneRoleplayTavernLoreDataV1({...body,[key]:recordSha256(body)},8_388_608)) as T&{[P in K]:string}
 }
-function epochOf(raw:TavernLoreSourceDataV1):EpochV2 {
-  const source=cloneRoleplayTavernLoreDataV1(raw,16_777_216,{nodes:131072,depth:66}),
-    {sourceSha256,...body}=source,original=source.original
-  if(source.schemaVersion!==1||source.encoding!=='tavern-lore-current-source-data-v1'
-    ||source.authority!=='consumer-data-only'||recordSha256(body)!==sourceSha256)fail()
+function epochOf(source:TavernLoreSourceDataV1):EpochV2 {
+  // Source capture and historical publication readers own the complete DATA;
+  // timing consumes only its epoch, without charging archived metadata again.
+  const original=source.original
   return {sourceRecordSessionId:source.sourceRecordSessionId,importId:original.activePointer.importId,
     rawSha256:original.rawSha256,normalizedSha256:original.normalizedSha256,coverageSha256:original.coverageSha256,
     transactionId:original.transactionId,importRecordSha256:original.importRecordRef.sha256,
