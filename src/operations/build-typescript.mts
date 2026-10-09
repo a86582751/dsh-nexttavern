@@ -69,7 +69,7 @@ const validateArtifactIds = (plan: CompilePlan) => {
   }
 }
 
-export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Compilation {
+export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entries?: readonly string[]): Compilation {
   // Audit/install/rollback import this module without developer dependencies.
   // The public projection supplies its own mapped plan and root; resolve the
   // compiler beside that plan's config, never through a maintenance checkout.
@@ -80,6 +80,11 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
   const require = createRequire(inside(repo, compilerPackage + '/package.json'))
   const ts = require('typescript') as typeof CompilerAPI
   const recipes = plan.builds.filter(build => build.kind === 'typescript-module')
+  // Entry selection limits Program roots. The complete recipe table still
+  // owns every dependency and destination reached by that actual Program.
+  const entryPaths = entries === undefined ? undefined : new Set(entries.map(entry => path.resolve(repo, entry)))
+  const requestedRecipes = entryPaths === undefined ? recipes
+    : recipes.filter(recipe => entryPaths.has(path.resolve(repo, recipe.entry)))
   const lock = readJson<PackageLock>(inside(repo, compilerPackage + '/package-lock.json'))
   const declarationRoots = plan.typeScript.declarationPackages.map(directory => {
     inside(repo,directory)
@@ -117,12 +122,13 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
   // Host and browser augment the same Cordis names with different services.
   // Keep strict programs separate, while inventory and output ownership remain
   // in this one manifest. Shared vocabulary may compile in both only identically.
-  const contexts = new Set(recipes.map(recipe => recipe.typeContext ?? 'default'))
+  const contexts = new Set(requestedRecipes.map(recipe => recipe.typeContext ?? 'default'))
   for (const context of contexts) {
     if (context !== 'default' && !Object.hasOwn(plan.typeScript.contexts ?? {}, context)) {
       throw Error('Unknown TypeScript context: ' + context)
     }
     const contextRecipes = recipes.filter(recipe => (recipe.typeContext ?? 'default') === context)
+    const contextEntries = requestedRecipes.filter(recipe => (recipe.typeContext ?? 'default') === context)
     // A partial maintained dependency can use the locked upstream declarations
     // as a virtual source tree. Runtime assembly still owns the complete package.
     const rootDirs = plan.typeScript.contexts?.[context]?.rootDirs
@@ -171,7 +177,7 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
       }
       return local
     })
-    const roots = contextRecipes.map(recipe => inside(repo, recipe.entry))
+    const roots = contextEntries.map(recipe => inside(repo, recipe.entry))
     // Some pinned packages publish a host augmentation without exporting it from
     // their root declaration. Explicit lock-audited declaration entries complete
     // that graph without modifying node_modules or weakening skipLibCheck.
@@ -227,7 +233,7 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
   if (diagnostics.length) throw Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, {
     getCanonicalFileName: file => file, getCurrentDirectory: () => repo, getNewLine: () => '\n',
   }))
-  for (const recipe of recipes) {
+  for (const recipe of requestedRecipes) {
     const source = plan.artifacts.find(artifact => artifact.id === recipe.artifact)?.source
     const emitted = outputs.get(path.resolve(repo, recipe.entry))
     if (!source || emitted === undefined) throw Error('Missing TypeScript output: ' + recipe.id)
@@ -242,7 +248,7 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
       recipe.declarationText = banner + declaration
     }
   }
-  return { outputs, declarationOutputs, recipes: recipes as CompiledRecipe[], plan, sources: [...sourceSet], compiler: ts.version }
+  return { outputs, declarationOutputs, recipes: requestedRecipes as CompiledRecipe[], plan, sources: [...sourceSet], compiler: ts.version }
 }
 
 // Reverse coverage is rooted at each package's src/lib pair, including nested
@@ -488,6 +494,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       ...(subagentTypert?{subagentTypert:[...subagentTypert.outputs.keys()]}:{})}))
   }
   else {
-    writeTypeScriptBuild(compileTypeScript(), entry, output)
+    writeTypeScriptBuild(compileTypeScript(root, undefined, entry === undefined ? [] : [entry]), entry, output)
   }
 }
