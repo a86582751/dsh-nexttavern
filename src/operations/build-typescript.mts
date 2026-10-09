@@ -10,10 +10,12 @@ import type {TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime
 import type {AuthorBrowserRuntimeAssetRecipeV1} from './author-browser-runtime-assets.mjs'
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 import type {AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
+import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
 interface Recipe {
   id: string; kind: string; artifact: string; entry: string; inputs: string[]
   outputSource?: string; text?: string; typeContext?: string; banner?: string
   declarationArtifact?: string; declarationOutputSource?: string; declarationText?: string
+  compatibilityEntry?: true
 }
 interface CompiledRecipe extends Recipe { outputSource: string; text: string }
 export interface CompilePlan {
@@ -23,7 +25,9 @@ export interface CompilePlan {
     templateRuntime?:TavernTemplateRuntimeAssetRecipeV1;
     authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1;authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5;
     authorPromptRuntime?:AuthorPromptRuntimeAssetRecipeV1;
-    packages?:readonly {packageArtifact:string;resources?:readonly {artifact:string;path:string}[]}[]}
+    packages?:readonly {packageArtifact:string;resources?:readonly {artifact:string;path:string}[]}[]
+    subagentTypert?:SubagentTypertRecipeV1;
+  }
   typeScript: {
     config: string; declarationPackages: string[]; ambientDeclarations?: string[]
     contexts?: Record<string, {
@@ -32,6 +36,8 @@ export interface CompilePlan {
       rewriteRelativeImportExtensions?: true
       exactOptionalPropertyTypes?: true
       declarationFallbacks?: {file: string; sha256: string; from: string[]; to: string}[]
+      allowJs?: true
+      checkJs?: false
     }>
   }
 }
@@ -134,6 +140,11 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan): Comp
       // explicit undefined. This opt-in strengthens checks for that program.
       ...(plan.typeScript.contexts?.[context]?.exactOptionalPropertyTypes
         ? {exactOptionalPropertyTypes: true} : {}),
+      // A migrated tool may still consume real legacy JS. Infer that API in
+      // its isolated program; capture emission in memory so no JS input is
+      // overwritten or added to the maintained source tree.
+      ...(plan.typeScript.contexts?.[context]?.allowJs
+        ? {allowJs:true,checkJs:false,outDir:inside(repo,'artifacts/test-temp/compiler-memory-output')} : {}),
     }
     const host = ts.createCompilerHost(options)
     const fallbacks = plan.typeScript.contexts?.[context]?.declarationFallbacks ?? []
@@ -264,7 +275,16 @@ export function checkTypeScriptOwnership(repo = root, plan?: CompilePlan) {
   if (declarations.size !== registered.filter(build => build.declarationArtifact !== undefined).length) {
     throw Error('Duplicate TypeScript declaration output mapping')
   }
-  const outputRoots = [...new Set(registered.map(build => treeRoot(outputFor(build), 'lib')))]
+  // Typert owns declarations produced from its actual maintained Native model;
+  // they are generated outputs, while ordinary package types point at TS.
+  for(const build of source.builds.filter(build=>build.kind==='subagent-typert')) {
+    const output=outputFor(build)
+    if(output.endsWith('.d.ts'))declarations.set(output,build.entry)
+  }
+  // A mapped compatibility entry keeps its established top-level path. The
+  // surrounding directory still contains unmigrated tools, outside lib ownership.
+  const outputRoots = [...new Set(registered.filter(build=>!build.compatibilityEntry)
+    .map(build => treeRoot(outputFor(build), 'lib')))]
   const directories = [...sourceRoots, ...outputRoots]
   const allBuildOutputs = new Set(source.builds.map(outputFor))
   const entries = new Set(registered.map(build => build.entry))
@@ -427,6 +447,14 @@ export async function checkAuthorRuntimeBuild(repo:string,plan:CompilePlan,write
   return {packages,files:packages.flatMap(pkg=>pkg.files.map(file=>({...file,packageName:pkg.name})))}
 }
 
+export async function checkSubagentTypertBuild(repo:string,plan:CompilePlan,write=false,
+  typescriptAlreadyChecked=false) {
+  if(!plan.product?.subagentTypert)return undefined
+  const builder=plan.artifacts.find(artifact=>artifact.id==='subagent-typert-assets-generated')!
+  const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./subagent-typert-assets.mjs')
+  return producer.buildSubagentTypertAssetsV1({repo,plan,write,typescriptAlreadyChecked})
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [entry, output] = process.argv.slice(2)
   if (entry === '--types') {
@@ -454,8 +482,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const assets=await checkMvuSchemaRuntimeBuild(root,compilation.plan,entry==='--write')
     const templateAssets=await checkTavernTemplateRuntimeBuild(root,compilation.plan,entry==='--write')
     const authorAssets=await checkAuthorRuntimeBuild(root,compilation.plan,entry==='--write')
+    const subagentTypert=await checkSubagentTypertBuild(root,compilation.plan,entry==='--write',true)
     console.log(JSON.stringify({...result,...(assets?{schemaAssets:assets.files}: {}),
-      ...(templateAssets?{templateAssets:templateAssets.files}:{}),...(authorAssets?{authorAssets:authorAssets.files}:{})}))
+      ...(templateAssets?{templateAssets:templateAssets.files}:{}),...(authorAssets?{authorAssets:authorAssets.files}:{}),
+      ...(subagentTypert?{subagentTypert:[...subagentTypert.outputs.keys()]}:{})}))
   }
   else {
     writeTypeScriptBuild(compileTypeScript(), entry, output)

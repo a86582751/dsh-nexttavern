@@ -1,0 +1,79 @@
+// Generated from runtime/alpha3/compat/subagent/src/control.ts; edit the TypeScript source.
+/**
+ * Browser-facing subagent prompt and interrupt request validation plus the
+ * stable prompt failure codes returned by the Remote surface.
+ *
+ * @module @deepseek-ai/dsh-subagent
+ */
+import { AttachmentError } from '@deepseek-ai/dsh-attachment';
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol';
+import { z } from 'zod';
+import { SubagentError } from "./error.js";
+const SESSION_ID_SCHEMA = z.string().min(1);
+const CONTROL_ID_SCHEMAS = {
+    'subagent.prompt': z.object({
+        parentSessionId: SESSION_ID_SCHEMA,
+        childSessionId: SESSION_ID_SCHEMA,
+        mode: z.literal('continuable'),
+        delivery: z.enum(['queue', 'steer']),
+    }),
+    'subagent.interrupt': z.object({
+        parentSessionId: SESSION_ID_SCHEMA,
+        childSessionId: SESSION_ID_SCHEMA,
+        mode: z.literal('continuable'),
+    }),
+};
+/**
+ * Apply the subagent payload checks that are stricter than generated
+ * branded-string codecs.
+ * @param method - method name carried in the failure message.
+ * @param payload - decoded control fields to validate.
+ * @throws {RemoteError} `gateway/bad-request` with the original Zod issues.
+ */
+export function validateControlRequest(method, payload) {
+    const parsed = CONTROL_ID_SCHEMAS[method].safeParse(payload);
+    if (!parsed.success) {
+        throw new RemoteError('gateway/bad-request', `invalid payload for ${method}`, { issues: parsed.error.issues });
+    }
+}
+/**
+ * Refuse one continuation prompt without exposing provider detail: admission
+ * failures the caller can act on keep their own code, everything else is
+ * internal.
+ * @param error - the thrown value.
+ * @param childSessionId - the addressed child.
+ * @param signal - the caller's cancellation.
+ * @returns Never — the refusal is thrown.
+ * @throws {RemoteError} always.
+ */
+export function rejectPrompt(error, childSessionId, signal) {
+    if (isCancellation(error, signal)) {
+        throw new RemoteError('gateway/cancelled', 'subagent prompt was cancelled', {}, { cause: error });
+    }
+    if (error instanceof AttachmentError) {
+        throw new RemoteError('subagent/attachment-invalid', error.message, { reason: error.code }, { cause: error });
+    }
+    if (error instanceof SubagentError) {
+        switch (error.code) {
+            case 'MODEL_DOES_NOT_SUPPORT_IMAGES':
+                throw new RemoteError('subagent/attachment-invalid', error.message, { reason: error.code }, { cause: error });
+            case 'NOT_RESUMABLE':
+                throw new RemoteError('subagent/not-resumable', 'subagent cannot be resumed', { childSessionId }, { cause: error });
+            case 'UNAUTHORIZED':
+                throw new RemoteError('subagent/unauthorized', 'subagent does not belong to this parent', { childSessionId }, { cause: error });
+            case 'DRAINING':
+            case 'ACTIVATION_CLOSING':
+            case 'ACTIVATION_LIMIT_REACHED':
+            case 'CONTINUATION_UNAVAILABLE':
+            case 'PERSISTENCE_UNAVAILABLE':
+                throw new RemoteError('subagent/delivery-unavailable', 'subagent follow-up is temporarily unavailable', { childSessionId }, { cause: error });
+            // A code outside the admission vocabulary is not the caller's move to make.
+            default:
+                break;
+        }
+    }
+    throw new RemoteError('gateway/internal', 'subagent prompt failed', {}, { cause: error });
+}
+function isCancellation(error, signal) {
+    return signal.aborted || (error instanceof SubagentError && error.code === 'CANCELLED');
+}

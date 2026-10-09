@@ -473,6 +473,9 @@
     "@deepseek-ai/schemastery": "3.18.4"
   },
   "devDependencies": {
-    "@types/js-yaml": "4.0.9"
+    "@types/js-yaml": "4.0.9",
+    "@deepseek-ai/dsh-permission-presets": "0.1.7-rc.2",
+    "nexttavern-typert-typescript": "npm:typescript@6.0.3",
+    "@jridgewell/gen-mapping": "0.3.13"
   }
 }
