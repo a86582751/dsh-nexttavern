@@ -1,4 +1,12 @@
 // Generated from runtime/alpha3/src/core/roleplay-author-host-assets.ts; edit the TypeScript source.
+var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExtension) || function (path, preserveJsx) {
+    if (typeof path === "string" && /^\.\.?\//.test(path)) {
+        return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function (m, tsx, d, ext, cm) {
+            return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : (d + ext + "." + cm.toLowerCase() + "js");
+        });
+    }
+    return path;
+};
 /** Core admits real Browser1/Host5 package bytes before importing either
  * factory. The admitted generation then owns this one lazy lifecycle. */
 import fs from 'node:fs';
@@ -41,8 +49,8 @@ export function createRoleplayAuthorHostAssetOwner(deps) {
         throw Error('AUTHOR_HOST_RUNTIME_DISPOSED'); };
     async function load() {
         const root = productRoot(), require = createRequire(path.join(root, 'package.json'));
-        const bootstrap = await import(pathToFileURL(path.join(root, 'lib/operations/bundled-package-bootstrap.mjs')).href);
-        const protection = await import(pathToFileURL(path.join(root, 'lib/operations/protected-packages.mjs')).href);
+        const bootstrap = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/bundled-package-bootstrap.mjs')).href));
+        const protection = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/protected-packages.mjs')).href));
         current();
         const identity = bootstrap.readBundleIdentity(root);
         if (identity.productRoot !== root)
@@ -64,7 +72,7 @@ export function createRoleplayAuthorHostAssetOwner(deps) {
         if (server.executorVersion !== 4 || !server.stateLoader)
             throw Error('AUTHOR_HOST_SERVER_ABI_UNSUPPORTED');
         const admittedBrowser = admit(browserName, browserVersion);
-        const browserModule = await import(pathToFileURL(admittedBrowser.entry).href);
+        const browserModule = await import(__rewriteRelativeImportExtension(pathToFileURL(admittedBrowser.entry).href));
         current();
         const browser = await browserModule.createOwnedAuthorBrowserRuntimeV1({ verifyOwnedPackage: packageVerifier(admittedBrowser) });
         let host, prompt;
@@ -75,7 +83,7 @@ export function createRoleplayAuthorHostAssetOwner(deps) {
                     name: AUTHOR_PROMPT_RUNTIME_NAME, version: AUTHOR_PROMPT_RUNTIME_VERSION } }, current);
             current();
             const admittedHost = admit(hostName, hostVersion);
-            const hostModule = await import(pathToFileURL(admittedHost.entry).href);
+            const hostModule = await import(__rewriteRelativeImportExtension(pathToFileURL(admittedHost.entry).href));
             current();
             host = await hostModule.createOwnedAuthorHostRuntimeV5({
                 verifyOwnedPackage: fixed => packageVerifier(admittedHost)(fixed),

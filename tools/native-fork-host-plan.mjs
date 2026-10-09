@@ -1,14 +1,23 @@
 // Generated from release/src/native-fork-host-plan.mts; edit the TypeScript source.
+var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExtension) || function (path, preserveJsx) {
+    if (typeof path === "string" && /^\.\.?\//.test(path)) {
+        return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function (m, tsx, d, ext, cm) {
+            return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : (d + ext + "." + cm.toLowerCase() + "js");
+        });
+    }
+    return path;
+};
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-export const NATIVE_FORKS = [
-    '@deepseek-ai/dsh-llm',
-    '@deepseek-ai/dsh-session',
-    '@deepseek-ai/dsh-agent-loop',
-];
-export const HOST_VERSION = '0.1.7-rc.2';
+// Source types and runtime values have different owners. The canonical compiler
+// writes the operations library before these manual maintenance tools are used.
+const packagedProfile = new URL('./native-fork-host-profile.mjs', import.meta.url);
+// The same tool runs from the repository and the isolated shipped tools directory.
+const nativeProfile = await import(__rewriteRelativeImportExtension(fs.existsSync(packagedProfile) ? packagedProfile.href :
+    new URL('../../runtime/alpha3/lib/operations/native-fork-host-profile.mjs', import.meta.url).href));
+export const { HOST_VERSION, NATIVE_FORKS, hostForkNames, readHostForkProfile } = nativeProfile;
 const within = (root, child) => child === root || child.startsWith(root + path.sep);
 const manifest = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -87,6 +96,7 @@ export function packageTreeSha256(directory) {
 }
 /** Read-only plan. It never copies, renames, installs, or executes package code. */
 export function planNativeForkHost(input) {
+    const members = hostForkNames(input.hostForkProfile);
     const errors = [];
     const packages = [];
     const applySteps = [];
@@ -98,7 +108,7 @@ export function planNativeForkHost(input) {
         const real = fs.realpathSync(anchor);
         if (!within(hostRoot, real))
             errors.push(`Anchor outside host: ${anchor}`);
-        for (const name of NATIVE_FORKS)
+        for (const name of members)
             queue.push({ name, anchor: real, range: HOST_VERSION, optional: false });
     }
     const planned = new Set();
@@ -125,7 +135,7 @@ export function planNativeForkHost(input) {
         }
         if (pkg.name !== name)
             errors.push(`Package identity mismatch: ${name} -> ${pkg.name} at ${real}`);
-        if (NATIVE_FORKS.includes(name) && pkg.private === true)
+        if (members.includes(name) && pkg.private === true)
             errors.push(`Host destination is already a private fork: ${name} at ${real}`);
         // The fixed native host packages must never cross an rc.2 boundary.
         if (name.startsWith('@deepseek-ai/dsh-') && pkg.version !== HOST_VERSION)
@@ -158,7 +168,7 @@ export function planNativeForkHost(input) {
                 optional: dependency in (pkg.optionalDependencies ?? {}) || pkg.peerDependenciesMeta?.[dependency]?.optional === true });
         }
     }
-    for (const name of NATIVE_FORKS) {
+    for (const name of members) {
         const source = input.sources[name];
         if (!source) {
             errors.push(`Missing source: ${name}`);

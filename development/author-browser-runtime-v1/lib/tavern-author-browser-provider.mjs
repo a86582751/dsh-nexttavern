@@ -1,4 +1,12 @@
 // Generated from runtime/alpha3/compat/author-browser-runtime-v1/src/tavern-author-browser-provider.mts; edit the TypeScript source.
+var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExtension) || function (path, preserveJsx) {
+    if (typeof path === "string" && /^\.\.?\//.test(path)) {
+        return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function (m, tsx, d, ext, cm) {
+            return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : (d + ext + "." + cm.toLowerCase() + "js");
+        });
+    }
+    return path;
+};
 /** Public async-only factory. Core admits the actual protected package once;
  * the private partition module owns fixed byte binding and worker lifecycle. */
 import { AUTHOR_BROWSER_RUNTIME_NAME, AUTHOR_BROWSER_RUNTIME_VERSION } from '../../../src/core/tavern-author-browser-descriptor.mjs';
@@ -14,6 +22,6 @@ export async function createOwnedAuthorBrowserRuntimeV1(deps) {
     if (loadedGeneration !== undefined && loadedGeneration !== admitted.generation)
         throw Error('BROWSER_RUNTIME_GENERATION_CHANGED');
     loadedGeneration ??= admitted.generation;
-    const module = await import(new URL('./partition.mjs', import.meta.url).href);
+    const module = await import(__rewriteRelativeImportExtension(new URL('./partition.mjs', import.meta.url).href));
     return module.createBrowserPartitionCompilerV1();
 }

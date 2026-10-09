@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { NATIVE_FORKS, packageTreeSha256, planNativeForkHost } from "./native-fork-host-plan.mjs";
+import { hostForkNames, packageTreeSha256, planNativeForkHost } from "./native-fork-host-plan.mjs";
 const inside = (root, child) => child === root || child.startsWith(root + path.sep);
 const exists = (file) => {
     try {
@@ -41,6 +41,7 @@ function fingerprint(directory, expected) {
  * This offline executor does not establish interprocess exclusion.
  */
 export function applyNativeForkHost(input, plan) {
+    const members = hostForkNames(input.hostForkProfile);
     const evidence = { ok: false, errors: [], applied: [], rolledBack: [], backups: [] };
     const moved = [];
     try {
@@ -50,7 +51,7 @@ export function applyNativeForkHost(input, plan) {
             throw new Error('Host plan changed or was rejected');
         const backups = fresh.applySteps.filter(step => step.action === 'backup');
         const replacements = fresh.applySteps.filter(step => step.action === 'replace');
-        if (backups.length !== replacements.length || backups.length !== NATIVE_FORKS.length)
+        if (backups.length !== replacements.length || backups.length !== members.length)
             throw new Error('Unexpected host plan shape');
         const distinct = new Set();
         for (let i = 0; i < backups.length; i++) {
@@ -121,16 +122,17 @@ export function applyNativeForkHost(input, plan) {
  * Caller owns the fixed-Harness lock and must keep the host stopped throughout this operation.
  */
 export function restoreNativeForkHost(input, plan, receipt) {
+    const members = hostForkNames(input.hostForkProfile);
     const result = { ok: false, errors: [], restored: [], preserved: [] };
     const items = [];
     try {
         const host = fs.realpathSync(input.hostRoot);
         if (!plan.ok || !receipt.ok || receipt.errors.length || receipt.rolledBack.length ||
-            receipt.backups.length !== NATIVE_FORKS.length || plan.applySteps.length !== NATIVE_FORKS.length * 3 ||
-            receipt.applied.length !== NATIVE_FORKS.length * 3)
+            receipt.backups.length !== members.length || plan.applySteps.length !== members.length * 3 ||
+            receipt.applied.length !== members.length * 3)
             throw new Error('Incomplete successful host apply receipt');
         const distinct = new Set();
-        for (let i = 0; i < NATIVE_FORKS.length; i++) {
+        for (let i = 0; i < members.length; i++) {
             const [backup, replace, verify] = plan.applySteps.slice(i * 3, i * 3 + 3);
             const [doneBackup, doneReplace, doneVerify] = receipt.applied.slice(i * 3, i * 3 + 3);
             if (backup.action !== 'backup' || replace.action !== 'replace' || verify.action !== 'verify' ||
@@ -143,11 +145,11 @@ export function restoreNativeForkHost(input, plan, receipt) {
                 receipt.backups[i] !== backup.to)
                 throw new Error('Host apply receipt differs from plan');
             const target = path.resolve(backup.from), saved = path.resolve(backup.to);
-            const plannedPackage = plan.packages.find(pkg => pkg.name === NATIVE_FORKS[i] &&
+            const plannedPackage = plan.packages.find(pkg => pkg.name === members[i] &&
                 path.dirname(pkg.manifestPath) === target && pkg.sha256 === backup.sha256);
             if (target !== backup.from || saved !== backup.to || !inside(host, target) || !inside(host, saved) ||
                 target === host || saved === host || saved !== `${target}.nexttavern-before-${replace.sha256.slice(0, 12)}` ||
-                path.basename(target) !== NATIVE_FORKS[i].split('/')[1] || !plannedPackage ||
+                path.basename(target) !== members[i].split('/')[1] || !plannedPackage ||
                 distinct.has(target) || distinct.has(saved))
                 throw new Error('Invalid host restore path');
             distinct.add(target);

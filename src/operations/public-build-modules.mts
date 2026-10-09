@@ -2,7 +2,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {compileTypeScript,checkMvuSchemaRuntimeBuild,checkTavernTemplateRuntimeBuild,checkAuthorRuntimeBuild,type CompilePlan} from './build-typescript.mjs'
+import {compileTypeScript,checkMvuSchemaRuntimeBuild,checkTavernTemplateRuntimeBuild,
+  checkAuthorRuntimeBuild,checkSubagentTypertBuild,type CompilePlan} from './build-typescript.mjs'
 
 interface PublicModule {artifact: string; source: string; primaryOutput?: string; outputs: string[]}
 interface PublicBuildMap {
@@ -27,9 +28,11 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
   const outputs = new Set(map.modules.flatMap(module => module.outputs.map(output => {safe(output); return output})))
   const allowedOutputs = new Set([...outputs, ...map.bundles])
   const generatedDeclarations = new Set(map.compilerPlan.builds.flatMap(recipe => {
-    if (recipe.declarationArtifact === undefined) return []
-    const artifact = map.compilerPlan.artifacts.find(item => item.id === recipe.declarationArtifact)
+    const output = recipe.kind === 'subagent-typert' ? recipe.artifact : recipe.declarationArtifact
+    if (output === undefined) return []
+    const artifact = map.compilerPlan.artifacts.find(item => item.id === output)
     if (!artifact) throw Error('Missing public declaration output: ' + recipe.id)
+    if (recipe.kind === 'subagent-typert' && !/\.d\.[cm]?ts$/.test(artifact.source)) return []
     safe(artifact.source)
     return [artifact.source]
   }))
@@ -98,5 +101,8 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
   const assets=await checkMvuSchemaRuntimeBuild(root,map.compilerPlan,write)
   const templateAssets=await checkTavernTemplateRuntimeBuild(root,map.compilerPlan,write)
   const authorAssets=await checkAuthorRuntimeBuild(root,map.compilerPlan,write)
-  console.log(`strict public modules=${map.modules.length}; wrote=${written}; schemaAssets=${assets?.files.length??0}; templateAssets=${templateAssets?.files.length??0}; authorAssets=${authorAssets?.files.length??0}`)
+  const subagentTypert=await checkSubagentTypertBuild(root,map.compilerPlan,write,true)
+  console.log(`strict public modules=${map.modules.length}; wrote=${written}`
+    +`; schemaAssets=${assets?.files.length??0}; templateAssets=${templateAssets?.files.length??0}`
+    +`; authorAssets=${authorAssets?.files.length??0}; subagentTypert=${subagentTypert?.outputs.size??0}`)
 }

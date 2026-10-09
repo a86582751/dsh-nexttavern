@@ -1,4 +1,12 @@
 // Generated from runtime/alpha3/compat/mvu-schema-runtime/src/index.ts; edit the TypeScript source.
+var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExtension) || function (path, preserveJsx) {
+    if (typeof path === "string" && /^\.\.?\//.test(path)) {
+        return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function (m, tsx, d, ext, cm) {
+            return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : (d + ext + "." + cm.toLowerCase() + "js");
+        });
+    }
+    return path;
+};
 /** Trusted factory over one already-inventoried product dependency. No caller
  * may select worker/library paths or promote an arbitrary directory's hashes. */
 import fs from 'node:fs';
@@ -104,8 +112,8 @@ export async function createMvuSchemaRuntime(deps) {
         });
         const bridge = Object.freeze({ id: 'native-mvu-schema-bridge', version: 1,
             implementationSha256: schemaRuntimeImplementation('bridge', pin.files) });
-        const compilerModule = await import(pathToFileURL(pathname(root, descriptor.modules.compiler)).href);
-        const runnerModule = await import(pathToFileURL(pathname(root, descriptor.modules.runner)).href);
+        const compilerModule = await import(__rewriteRelativeImportExtension(pathToFileURL(pathname(root, descriptor.modules.compiler)).href));
+        const runnerModule = await import(__rewriteRelativeImportExtension(pathToFileURL(pathname(root, descriptor.modules.runner)).href));
         if (admitted(root, deps).generation !== pin.generation)
             throw failure();
         compiler = compilerModule.createMvuSchemaCompiler({ identity: { id: 'native-mvu-schema-compiler', version: 1, typescriptVersion: '5.9.3',

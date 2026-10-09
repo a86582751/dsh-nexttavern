@@ -1,4 +1,12 @@
 // Generated from runtime/alpha3/src/memory/memory-local-worker.mts; edit the TypeScript source.
+var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExtension) || function (path, preserveJsx) {
+    if (typeof path === "string" && /^\.\.?\//.test(path)) {
+        return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function (m, tsx, d, ext, cm) {
+            return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : (d + ext + "." + cm.toLowerCase() + "js");
+        });
+    }
+    return path;
+};
 // Optional CPU backend, loaded only after a player explicitly installs a model.
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, statSync, rmSync, statfsSync } from 'node:fs';
@@ -153,7 +161,7 @@ async function loadTokenizer(item) {
             if (!existsSync(target) || statSync(target).size !== file.bytes || await fileHash(target) !== file.sha256)
                 throw Error('模型文件版本不匹配，请重新下载／校验');
         }
-    const imported = await import(pathToFileURL(join(runtime, 'node_modules/@huggingface/transformers/src/transformers.js')).href);
+    const imported = await import(__rewriteRelativeImportExtension(pathToFileURL(join(runtime, 'node_modules/@huggingface/transformers/src/transformers.js')).href));
     imported.env.allowRemoteModels = false;
     imported.env.allowLocalModels = true;
     imported.env.backends.onnx.wasm.numThreads = 2;
@@ -174,7 +182,7 @@ async function tokenCount(item, text) {
 const cpuOptions = (item) => ({ intraOpNumThreads: 2, interOpNumThreads: 1, ...(item.x64QuantPrecision ? { extra: { session: { x64quantprecision: '1' } } } : {}) });
 async function directOnnx(item, imported) {
     const root = join(models, item.id), tokenizer = await loadTokenizer(item);
-    const ort = await import(pathToFileURL(join(runtime, 'node_modules/onnxruntime-node/dist/index.js')).href);
+    const ort = await import(__rewriteRelativeImportExtension(pathToFileURL(join(runtime, 'node_modules/onnxruntime-node/dist/index.js')).href));
     const filename = item.onnxFile ?? ('onnx/' + (item.dtype === 'fp32' ? 'model.onnx' : 'model_quantized.onnx'));
     if (!item.files.some(f => f.name === filename))
         throw Error('本地模型入口未登记');
@@ -231,7 +239,7 @@ async function encode(item, texts, purpose, requested) {
             }
         if (freemem() < item.estimatedMiB * 1024 ** 2)
             throw Error('可用内存不足，建议使用更小模型或在线 API');
-        const imported = await import(pathToFileURL(join(runtime, 'node_modules/@huggingface/transformers/src/transformers.js')).href);
+        const imported = await import(__rewriteRelativeImportExtension(pathToFileURL(join(runtime, 'node_modules/@huggingface/transformers/src/transformers.js')).href));
         imported.env.allowRemoteModels = false;
         imported.env.allowLocalModels = true;
         imported.env.backends.onnx.wasm.numThreads = 2;

@@ -2,8 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {createHash,randomUUID} from 'node:crypto'
 import {applyNativeForkHost,restoreNativeForkHost,type HostForkApplyResult} from './native-fork-host-apply.mts'
-import {HOST_VERSION,NATIVE_FORKS,packageTreeSha256,planNativeForkHost,
+import {HOST_VERSION,hostForkNames,readHostForkProfile,packageTreeSha256,planNativeForkHost,
   type HostForkInput,type HostForkResult} from './native-fork-host-plan.mts'
+import type {HostForkProfileV1} from 'dsh-nexttavern-native-fork-host-profile-types'
 
 /** This maintenance API does not run during `dsh plugin add` or product boot. */
 export type HostActivationInput={packageRoot:string,hostRoot:string,anchors:string[]}
@@ -25,7 +26,6 @@ export type HostActivationReceipt={
 
 const sha=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex')
 const inside=(root:string,child:string)=>child===root||child.startsWith(root+path.sep)
-const exactNames=[...NATIVE_FORKS]
 const regular=(file:string)=>{const stat=fs.lstatSync(file);return stat.isFile()&&!stat.isSymbolicLink()}
 const exists=(file:string)=>{
   try{fs.lstatSync(file);return true}
@@ -60,7 +60,8 @@ function inventoryFiles(root:string):string[]{
 }
 
 function payload(input:HostActivationInput):{
-  packageRoot:string,hostRoot:string,anchors:string[],sources:HostForkInput['sources'],payloadSha256:string
+  packageRoot:string,hostRoot:string,anchors:string[],sources:HostForkInput['sources'],payloadSha256:string,
+  hostForkProfile?:HostForkProfileV1
 }{
   if(!path.isAbsolute(input.packageRoot)||!path.isAbsolute(input.hostRoot)||
     !Array.isArray(input.anchors)||input.anchors.length===0||
@@ -77,9 +78,11 @@ function payload(input:HostActivationInput):{
   const inventoryPath=path.join(packageRoot,'nexttavern.dependencies.json')
   if(!regular(inventoryPath))throw Error('Missing regular product dependency inventory')
   const inventoryBytes=fs.readFileSync(inventoryPath)
-  const inventory=JSON.parse(inventoryBytes.toString('utf8')) as {hostForks?:unknown}
+  const inventory=JSON.parse(inventoryBytes.toString('utf8')) as {hostForks?:unknown,hostForkProfile?:unknown}
+  const hostForkProfile=readHostForkProfile(inventory.hostForkProfile)
+  const exactNames=hostForkNames(hostForkProfile)
   if(!Array.isArray(inventory.hostForks)||inventory.hostForks.length!==exactNames.length)
-    throw Error('Expected exactly three host payload records')
+    throw Error(`Expected exactly ${exactNames.length} host payload records`)
   const forkRoot=path.join(packageRoot,'host-overrides')
   const registeredPayloadFiles=inventory.hostForks.flatMap(item=>{
     const row=item as {path?:unknown,files?:unknown}
@@ -125,13 +128,15 @@ function payload(input:HostActivationInput):{
       throw Error(`Host payload package identity mismatch: ${name}`)
     sources[name]={directory,sha256:packageTreeSha256(directory)}
   }
-  return {packageRoot,hostRoot,anchors,sources,payloadSha256:sha(inventoryBytes)}
+  return {packageRoot,hostRoot,anchors,sources,payloadSha256:sha(inventoryBytes),
+    ...(hostForkProfile?{hostForkProfile}:{})}
 }
 
 /** Read-only, exact inventory and actual Node-resolution audit. */
 export function auditHostActivation(input:HostActivationInput):HostActivationAudit{
   const verified=payload(input)
-  const hostInput={hostRoot:verified.hostRoot,anchors:verified.anchors,sources:verified.sources}
+  const hostInput={hostRoot:verified.hostRoot,anchors:verified.anchors,sources:verified.sources,
+    ...(verified.hostForkProfile?{hostForkProfile:verified.hostForkProfile}:{})}
   const plan=planNativeForkHost(hostInput)
   if(!plan.ok)throw Error(`Host fork plan rejected: ${plan.errors.join('; ')}`)
   return {input:hostInput,payloadSha256:verified.payloadSha256,plan}
@@ -220,14 +225,15 @@ export function restoreHostForks(input:HostActivationInput,control:HostActivatio
     if(receipt.schemaVersion!==1||receipt.state!=='applied'||!receipt.apply?.ok)
       throw Error('No completed host activation receipt')
     const verified=receiptInput(receipt,input)
-    for(const name of NATIVE_FORKS){
-      const source=verified.sources[name]
+    for(const name of hostForkNames(verified.hostForkProfile)){
+      const source=verified.sources[name]!
       if(receipt.plan.applySteps.find(step=>step.action==='replace'&&step.from===source.directory)?.sha256!==source.sha256)
         throw Error(`Host payload differs from receipt: ${name}`)
     }
     control.assertIdle()
     const restored=restoreNativeForkHost({hostRoot:verified.hostRoot,anchors:verified.anchors,
-      sources:verified.sources},receipt.plan,receipt.apply)
+      sources:verified.sources,
+      ...(verified.hostForkProfile?{hostForkProfile:verified.hostForkProfile}:{})},receipt.plan,receipt.apply)
     receipt.restore=restored
     receipt.state=restored.ok?'restored':'recovery-required'
     if(!restored.ok)receipt.error=restored.errors.join('; ')
@@ -248,13 +254,14 @@ export function recoverInterruptedHostActivation(input:HostActivationInput,
     if(receipt.state!=='prepared'&&receipt.state!=='recovery-required')
       throw Error('Host activation is not interrupted')
     const verified=receiptInput(receipt,input)
-    if(!receipt.plan.ok||receipt.plan.applySteps.length!==NATIVE_FORKS.length*3)
+    const members=hostForkNames(verified.hostForkProfile)
+    if(!receipt.plan.ok||receipt.plan.applySteps.length!==members.length*3)
       throw Error('Invalid interrupted host plan')
-    const items=NATIVE_FORKS.map((name,index)=>{
+    const items=members.map((name,index)=>{
       const [backup,replace,verify]=receipt.plan.applySteps.slice(index*3,index*3+3) as [
         HostForkResult['applySteps'][number],HostForkResult['applySteps'][number],HostForkResult['applySteps'][number]]
       const target=path.resolve(backup.from),saved=path.resolve(backup.to??'')
-      const source=verified.sources[name]
+      const source=verified.sources[name]!
       const packageRow=receipt.plan.packages.find(row=>row.name===name&&
         path.dirname(row.manifestPath)===target&&row.sha256===backup.sha256)
       if(backup.action!=='backup'||replace.action!=='replace'||verify.action!=='verify'||

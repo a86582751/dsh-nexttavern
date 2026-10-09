@@ -6912,6 +6912,376 @@
       "outputs": [
         "lib/operations/author-prompt-runtime-assets.mjs"
       ]
+    },
+    {
+      "artifact": "compat-subagent-archive-admission-js",
+      "source": "development/subagent/src/archive-admission.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/archive-admission.ts",
+      "primaryOutput": "development/subagent/lib/archive-admission.js",
+      "outputs": [
+        "development/subagent/lib/archive-admission.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-assistant-output-js",
+      "source": "development/subagent/src/assistant-output.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/assistant-output.ts",
+      "primaryOutput": "development/subagent/lib/assistant-output.js",
+      "outputs": [
+        "development/subagent/lib/assistant-output.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-author-dialog-activation-js",
+      "source": "development/subagent/src/author-dialog-activation.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/author-dialog-activation.ts",
+      "primaryOutput": "development/subagent/lib/author-dialog-activation.js",
+      "outputs": [
+        "development/subagent/lib/author-dialog-activation.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-catalog-js",
+      "source": "development/subagent/src/catalog.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/catalog.ts",
+      "primaryOutput": "development/subagent/lib/catalog.js",
+      "outputs": [
+        "development/subagent/lib/catalog.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-child-agent-js",
+      "source": "development/subagent/src/child-agent.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/child-agent.ts",
+      "primaryOutput": "development/subagent/lib/child-agent.js",
+      "outputs": [
+        "development/subagent/lib/child-agent.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-client-js",
+      "source": "development/subagent/src/client.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/client.ts",
+      "primaryOutput": "development/subagent/lib/client.js",
+      "outputs": [
+        "development/subagent/lib/client.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-continuation-activation-js",
+      "source": "development/subagent/src/continuation-activation.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/continuation-activation.ts",
+      "primaryOutput": "development/subagent/lib/continuation-activation.js",
+      "outputs": [
+        "development/subagent/lib/continuation-activation.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-continuation-messages-js",
+      "source": "development/subagent/src/continuation-messages.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/continuation-messages.ts",
+      "primaryOutput": "development/subagent/lib/continuation-messages.js",
+      "outputs": [
+        "development/subagent/lib/continuation-messages.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-continuation-js",
+      "source": "development/subagent/src/continuation.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/continuation.ts",
+      "primaryOutput": "development/subagent/lib/continuation.js",
+      "outputs": [
+        "development/subagent/lib/continuation.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-control-types-js",
+      "source": "development/subagent/src/control-types.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/control-types.ts",
+      "primaryOutput": "development/subagent/lib/control-types.js",
+      "outputs": [
+        "development/subagent/lib/control-types.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-control-js",
+      "source": "development/subagent/src/control.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/control.ts",
+      "primaryOutput": "development/subagent/lib/control.js",
+      "outputs": [
+        "development/subagent/lib/control.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-depth-js",
+      "source": "development/subagent/src/depth.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/depth.ts",
+      "primaryOutput": "development/subagent/lib/depth.js",
+      "outputs": [
+        "development/subagent/lib/depth.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-descriptor-js",
+      "source": "development/subagent/src/descriptor.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/descriptor.ts",
+      "primaryOutput": "development/subagent/lib/descriptor.js",
+      "outputs": [
+        "development/subagent/lib/descriptor.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-error-js",
+      "source": "development/subagent/src/error.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/error.ts",
+      "primaryOutput": "development/subagent/lib/error.js",
+      "outputs": [
+        "development/subagent/lib/error.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-inbox-js",
+      "source": "development/subagent/src/inbox.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/inbox.ts",
+      "primaryOutput": "development/subagent/lib/inbox.js",
+      "outputs": [
+        "development/subagent/lib/inbox.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-index-js",
+      "source": "development/subagent/src/index.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/index.ts",
+      "primaryOutput": "development/subagent/lib/index.js",
+      "outputs": [
+        "development/subagent/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-internal-js",
+      "source": "development/subagent/src/internal.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/internal.ts",
+      "primaryOutput": "development/subagent/lib/internal.js",
+      "outputs": [
+        "development/subagent/lib/internal.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-invariant-js",
+      "source": "development/subagent/src/invariant.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/invariant.ts",
+      "primaryOutput": "development/subagent/lib/invariant.js",
+      "outputs": [
+        "development/subagent/lib/invariant.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-lifecycle-js",
+      "source": "development/subagent/src/lifecycle.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/lifecycle.ts",
+      "primaryOutput": "development/subagent/lib/lifecycle.js",
+      "outputs": [
+        "development/subagent/lib/lifecycle.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-list-children-js",
+      "source": "development/subagent/src/list-children.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/list-children.ts",
+      "primaryOutput": "development/subagent/lib/list-children.js",
+      "outputs": [
+        "development/subagent/lib/list-children.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-out-of-process-js",
+      "source": "development/subagent/src/out-of-process.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/out-of-process.ts",
+      "primaryOutput": "development/subagent/lib/out-of-process.js",
+      "outputs": [
+        "development/subagent/lib/out-of-process.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-projection-types-js",
+      "source": "development/subagent/src/projection-types.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/projection-types.ts",
+      "primaryOutput": "development/subagent/lib/projection-types.js",
+      "outputs": [
+        "development/subagent/lib/projection-types.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-projection-js",
+      "source": "development/subagent/src/projection.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/projection.ts",
+      "primaryOutput": "development/subagent/lib/projection.js",
+      "outputs": [
+        "development/subagent/lib/projection.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-run-settlement-js",
+      "source": "development/subagent/src/run-settlement.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/run-settlement.ts",
+      "primaryOutput": "development/subagent/lib/run-settlement.js",
+      "outputs": [
+        "development/subagent/lib/run-settlement.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-types-js",
+      "source": "development/subagent/src/types.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/types.ts",
+      "primaryOutput": "development/subagent/lib/types.js",
+      "outputs": [
+        "development/subagent/lib/types.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-in-process-driver-index-js",
+      "source": "development/subagent-in-process-driver/src/index.ts",
+      "banner": "runtime/alpha3/compat/subagent-in-process-driver/src/index.ts",
+      "primaryOutput": "development/subagent-in-process-driver/lib/index.js",
+      "outputs": [
+        "development/subagent-in-process-driver/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-in-process-driver-structured-js",
+      "source": "development/subagent-in-process-driver/src/structured.ts",
+      "banner": "runtime/alpha3/compat/subagent-in-process-driver/src/structured.ts",
+      "primaryOutput": "development/subagent-in-process-driver/lib/structured.js",
+      "outputs": [
+        "development/subagent-in-process-driver/lib/structured.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-spawn-in-process-index-js",
+      "source": "development/subagent-spawn-in-process/src/index.ts",
+      "banner": "runtime/alpha3/compat/subagent-spawn-in-process/src/index.ts",
+      "primaryOutput": "development/subagent-spawn-in-process/lib/index.js",
+      "outputs": [
+        "development/subagent-spawn-in-process/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-typert-generator-analyzer-js",
+      "source": "development/typert-generator/src/analyzer.ts",
+      "banner": "runtime/alpha3/compat/typert-generator/src/analyzer.ts",
+      "primaryOutput": "development/typert-generator/lib/analyzer.js",
+      "outputs": [
+        "development/typert-generator/lib/analyzer.js"
+      ]
+    },
+    {
+      "artifact": "compat-typert-generator-cordis-catalog-js",
+      "source": "development/typert-generator/src/cordis-catalog.ts",
+      "banner": "runtime/alpha3/compat/typert-generator/src/cordis-catalog.ts",
+      "primaryOutput": "development/typert-generator/lib/cordis-catalog.js",
+      "outputs": [
+        "development/typert-generator/lib/cordis-catalog.js"
+      ]
+    },
+    {
+      "artifact": "compat-typert-generator-emitter-js",
+      "source": "development/typert-generator/src/emitter.ts",
+      "banner": "runtime/alpha3/compat/typert-generator/src/emitter.ts",
+      "primaryOutput": "development/typert-generator/lib/emitter.js",
+      "outputs": [
+        "development/typert-generator/lib/emitter.js"
+      ]
+    },
+    {
+      "artifact": "compat-typert-generator-index-js",
+      "source": "development/typert-generator/src/index.ts",
+      "banner": "runtime/alpha3/compat/typert-generator/src/index.ts",
+      "primaryOutput": "development/typert-generator/lib/index.js",
+      "outputs": [
+        "development/typert-generator/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-typert-generator-model-js",
+      "source": "development/typert-generator/src/model.ts",
+      "banner": "runtime/alpha3/compat/typert-generator/src/model.ts",
+      "primaryOutput": "development/typert-generator/lib/model.js",
+      "outputs": [
+        "development/typert-generator/lib/model.js"
+      ]
+    },
+    {
+      "artifact": "compat-typert-generator-renderer-js",
+      "source": "development/typert-generator/src/renderer.ts",
+      "banner": "runtime/alpha3/compat/typert-generator/src/renderer.ts",
+      "primaryOutput": "development/typert-generator/lib/renderer.js",
+      "outputs": [
+        "development/typert-generator/lib/renderer.js"
+      ]
+    },
+    {
+      "artifact": "compat-typert-generator-tsdown-plugin-js",
+      "source": "development/typert-generator/src/tsdown-plugin.ts",
+      "banner": "runtime/alpha3/compat/typert-generator/src/tsdown-plugin.ts",
+      "primaryOutput": "development/typert-generator/lib/tsdown-plugin.js",
+      "outputs": [
+        "development/typert-generator/lib/tsdown-plugin.js"
+      ]
+    },
+    {
+      "artifact": "compat-typert-generator-workspace-js",
+      "source": "development/typert-generator/src/workspace.ts",
+      "banner": "runtime/alpha3/compat/typert-generator/src/workspace.ts",
+      "primaryOutput": "development/typert-generator/lib/workspace.js",
+      "outputs": [
+        "development/typert-generator/lib/workspace.js"
+      ]
+    },
+    {
+      "artifact": "subagent-typert-assets-generated",
+      "source": "src/operations/subagent-typert-assets.mts",
+      "banner": "runtime/alpha3/src/operations/subagent-typert-assets.mts",
+      "primaryOutput": "lib/operations/subagent-typert-assets.mjs",
+      "outputs": [
+        "lib/operations/subagent-typert-assets.mjs"
+      ]
+    },
+    {
+      "artifact": "native-fork-host-profile-generated",
+      "source": "src/operations/native-fork-host-profile.mts",
+      "banner": "runtime/alpha3/src/operations/native-fork-host-profile.mts",
+      "primaryOutput": "lib/operations/native-fork-host-profile.mjs",
+      "outputs": [
+        "lib/operations/native-fork-host-profile.mjs",
+        "tools/native-fork-host-profile.mjs"
+      ]
+    },
+    {
+      "artifact": "native-fork-payload-verifier-generated",
+      "source": "src/operations/native-fork-payload-verifier.mts",
+      "banner": "runtime/alpha3/src/operations/native-fork-payload-verifier.mts",
+      "primaryOutput": "lib/operations/native-fork-payload-verifier.mjs",
+      "outputs": [
+        "lib/operations/native-fork-payload-verifier.mjs"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-owned-ruby-task-js",
+      "source": "development/subagent/src/owned-ruby-task.ts",
+      "banner": "runtime/alpha3/compat/subagent/src/owned-ruby-task.ts",
+      "primaryOutput": "development/subagent/lib/owned-ruby-task.js",
+      "outputs": [
+        "development/subagent/lib/owned-ruby-task.js"
+      ]
+    },
+    {
+      "artifact": "compat-subagent-in-process-driver-ruby-task-child-js",
+      "source": "development/subagent-in-process-driver/src/ruby-task-child.ts",
+      "banner": "runtime/alpha3/compat/subagent-in-process-driver/src/ruby-task-child.ts",
+      "primaryOutput": "development/subagent-in-process-driver/lib/ruby-task-child.js",
+      "outputs": [
+        "development/subagent-in-process-driver/lib/ruby-task-child.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -14051,6 +14421,402 @@
       {
         "id": "author-prompt-runtime-v1-assets-source-inputs-json",
         "source": "development/author-prompt-runtime-v1/assets/source-inputs.json"
+      },
+      {
+        "id": "compat-subagent-package-json",
+        "source": "development/subagent/package.json"
+      },
+      {
+        "id": "compat-subagent-license",
+        "source": "development/subagent/LICENSE"
+      },
+      {
+        "id": "compat-subagent-origin-md",
+        "source": "development/subagent/ORIGIN.md"
+      },
+      {
+        "id": "compat-subagent-archive-admission-typescript",
+        "source": "development/subagent/src/archive-admission.ts"
+      },
+      {
+        "id": "compat-subagent-archive-admission-js",
+        "source": "development/subagent/lib/archive-admission.js"
+      },
+      {
+        "id": "compat-subagent-assistant-output-typescript",
+        "source": "development/subagent/src/assistant-output.ts"
+      },
+      {
+        "id": "compat-subagent-assistant-output-js",
+        "source": "development/subagent/lib/assistant-output.js"
+      },
+      {
+        "id": "compat-subagent-author-dialog-activation-typescript",
+        "source": "development/subagent/src/author-dialog-activation.ts"
+      },
+      {
+        "id": "compat-subagent-author-dialog-activation-js",
+        "source": "development/subagent/lib/author-dialog-activation.js"
+      },
+      {
+        "id": "compat-subagent-catalog-typescript",
+        "source": "development/subagent/src/catalog.ts"
+      },
+      {
+        "id": "compat-subagent-catalog-js",
+        "source": "development/subagent/lib/catalog.js"
+      },
+      {
+        "id": "compat-subagent-child-agent-typescript",
+        "source": "development/subagent/src/child-agent.ts"
+      },
+      {
+        "id": "compat-subagent-child-agent-js",
+        "source": "development/subagent/lib/child-agent.js"
+      },
+      {
+        "id": "compat-subagent-client-typescript",
+        "source": "development/subagent/src/client.ts"
+      },
+      {
+        "id": "compat-subagent-client-js",
+        "source": "development/subagent/lib/client.js"
+      },
+      {
+        "id": "compat-subagent-continuation-activation-typescript",
+        "source": "development/subagent/src/continuation-activation.ts"
+      },
+      {
+        "id": "compat-subagent-continuation-activation-js",
+        "source": "development/subagent/lib/continuation-activation.js"
+      },
+      {
+        "id": "compat-subagent-continuation-messages-typescript",
+        "source": "development/subagent/src/continuation-messages.ts"
+      },
+      {
+        "id": "compat-subagent-continuation-messages-js",
+        "source": "development/subagent/lib/continuation-messages.js"
+      },
+      {
+        "id": "compat-subagent-continuation-typescript",
+        "source": "development/subagent/src/continuation.ts"
+      },
+      {
+        "id": "compat-subagent-continuation-js",
+        "source": "development/subagent/lib/continuation.js"
+      },
+      {
+        "id": "compat-subagent-control-types-typescript",
+        "source": "development/subagent/src/control-types.ts"
+      },
+      {
+        "id": "compat-subagent-control-types-js",
+        "source": "development/subagent/lib/control-types.js"
+      },
+      {
+        "id": "compat-subagent-control-typescript",
+        "source": "development/subagent/src/control.ts"
+      },
+      {
+        "id": "compat-subagent-control-js",
+        "source": "development/subagent/lib/control.js"
+      },
+      {
+        "id": "compat-subagent-depth-typescript",
+        "source": "development/subagent/src/depth.ts"
+      },
+      {
+        "id": "compat-subagent-depth-js",
+        "source": "development/subagent/lib/depth.js"
+      },
+      {
+        "id": "compat-subagent-descriptor-typescript",
+        "source": "development/subagent/src/descriptor.ts"
+      },
+      {
+        "id": "compat-subagent-descriptor-js",
+        "source": "development/subagent/lib/descriptor.js"
+      },
+      {
+        "id": "compat-subagent-error-typescript",
+        "source": "development/subagent/src/error.ts"
+      },
+      {
+        "id": "compat-subagent-error-js",
+        "source": "development/subagent/lib/error.js"
+      },
+      {
+        "id": "compat-subagent-inbox-typescript",
+        "source": "development/subagent/src/inbox.ts"
+      },
+      {
+        "id": "compat-subagent-inbox-js",
+        "source": "development/subagent/lib/inbox.js"
+      },
+      {
+        "id": "compat-subagent-index-typescript",
+        "source": "development/subagent/src/index.ts"
+      },
+      {
+        "id": "compat-subagent-index-js",
+        "source": "development/subagent/lib/index.js"
+      },
+      {
+        "id": "compat-subagent-internal-typescript",
+        "source": "development/subagent/src/internal.ts"
+      },
+      {
+        "id": "compat-subagent-internal-js",
+        "source": "development/subagent/lib/internal.js"
+      },
+      {
+        "id": "compat-subagent-invariant-typescript",
+        "source": "development/subagent/src/invariant.ts"
+      },
+      {
+        "id": "compat-subagent-invariant-js",
+        "source": "development/subagent/lib/invariant.js"
+      },
+      {
+        "id": "compat-subagent-lifecycle-typescript",
+        "source": "development/subagent/src/lifecycle.ts"
+      },
+      {
+        "id": "compat-subagent-lifecycle-js",
+        "source": "development/subagent/lib/lifecycle.js"
+      },
+      {
+        "id": "compat-subagent-list-children-typescript",
+        "source": "development/subagent/src/list-children.ts"
+      },
+      {
+        "id": "compat-subagent-list-children-js",
+        "source": "development/subagent/lib/list-children.js"
+      },
+      {
+        "id": "compat-subagent-out-of-process-typescript",
+        "source": "development/subagent/src/out-of-process.ts"
+      },
+      {
+        "id": "compat-subagent-out-of-process-js",
+        "source": "development/subagent/lib/out-of-process.js"
+      },
+      {
+        "id": "compat-subagent-projection-types-typescript",
+        "source": "development/subagent/src/projection-types.ts"
+      },
+      {
+        "id": "compat-subagent-projection-types-js",
+        "source": "development/subagent/lib/projection-types.js"
+      },
+      {
+        "id": "compat-subagent-projection-typescript",
+        "source": "development/subagent/src/projection.ts"
+      },
+      {
+        "id": "compat-subagent-projection-js",
+        "source": "development/subagent/lib/projection.js"
+      },
+      {
+        "id": "compat-subagent-run-settlement-typescript",
+        "source": "development/subagent/src/run-settlement.ts"
+      },
+      {
+        "id": "compat-subagent-run-settlement-js",
+        "source": "development/subagent/lib/run-settlement.js"
+      },
+      {
+        "id": "compat-subagent-types-typescript",
+        "source": "development/subagent/src/types.ts"
+      },
+      {
+        "id": "compat-subagent-types-js",
+        "source": "development/subagent/lib/types.js"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-package-json",
+        "source": "development/subagent-in-process-driver/package.json"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-license",
+        "source": "development/subagent-in-process-driver/LICENSE"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-origin-md",
+        "source": "development/subagent-in-process-driver/ORIGIN.md"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-index-typescript",
+        "source": "development/subagent-in-process-driver/src/index.ts"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-index-js",
+        "source": "development/subagent-in-process-driver/lib/index.js"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-structured-typescript",
+        "source": "development/subagent-in-process-driver/src/structured.ts"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-structured-js",
+        "source": "development/subagent-in-process-driver/lib/structured.js"
+      },
+      {
+        "id": "compat-subagent-spawn-in-process-package-json",
+        "source": "development/subagent-spawn-in-process/package.json"
+      },
+      {
+        "id": "compat-subagent-spawn-in-process-license",
+        "source": "development/subagent-spawn-in-process/LICENSE"
+      },
+      {
+        "id": "compat-subagent-spawn-in-process-origin-md",
+        "source": "development/subagent-spawn-in-process/ORIGIN.md"
+      },
+      {
+        "id": "compat-subagent-spawn-in-process-index-typescript",
+        "source": "development/subagent-spawn-in-process/src/index.ts"
+      },
+      {
+        "id": "compat-subagent-spawn-in-process-index-js",
+        "source": "development/subagent-spawn-in-process/lib/index.js"
+      },
+      {
+        "id": "compat-typert-generator-package-json",
+        "source": "development/typert-generator/package.json"
+      },
+      {
+        "id": "compat-typert-generator-license",
+        "source": "development/typert-generator/LICENSE"
+      },
+      {
+        "id": "compat-typert-generator-license-upstream",
+        "source": "development/typert-generator/LICENSE.upstream"
+      },
+      {
+        "id": "compat-typert-generator-origin-md",
+        "source": "development/typert-generator/ORIGIN.md"
+      },
+      {
+        "id": "compat-typert-generator-analyzer-typescript",
+        "source": "development/typert-generator/src/analyzer.ts"
+      },
+      {
+        "id": "compat-typert-generator-analyzer-js",
+        "source": "development/typert-generator/lib/analyzer.js"
+      },
+      {
+        "id": "compat-typert-generator-cordis-catalog-typescript",
+        "source": "development/typert-generator/src/cordis-catalog.ts"
+      },
+      {
+        "id": "compat-typert-generator-cordis-catalog-js",
+        "source": "development/typert-generator/lib/cordis-catalog.js"
+      },
+      {
+        "id": "compat-typert-generator-emitter-typescript",
+        "source": "development/typert-generator/src/emitter.ts"
+      },
+      {
+        "id": "compat-typert-generator-emitter-js",
+        "source": "development/typert-generator/lib/emitter.js"
+      },
+      {
+        "id": "compat-typert-generator-index-typescript",
+        "source": "development/typert-generator/src/index.ts"
+      },
+      {
+        "id": "compat-typert-generator-index-js",
+        "source": "development/typert-generator/lib/index.js"
+      },
+      {
+        "id": "compat-typert-generator-model-typescript",
+        "source": "development/typert-generator/src/model.ts"
+      },
+      {
+        "id": "compat-typert-generator-model-js",
+        "source": "development/typert-generator/lib/model.js"
+      },
+      {
+        "id": "compat-typert-generator-renderer-typescript",
+        "source": "development/typert-generator/src/renderer.ts"
+      },
+      {
+        "id": "compat-typert-generator-renderer-js",
+        "source": "development/typert-generator/lib/renderer.js"
+      },
+      {
+        "id": "compat-typert-generator-tsdown-plugin-typescript",
+        "source": "development/typert-generator/src/tsdown-plugin.ts"
+      },
+      {
+        "id": "compat-typert-generator-tsdown-plugin-js",
+        "source": "development/typert-generator/lib/tsdown-plugin.js"
+      },
+      {
+        "id": "compat-typert-generator-workspace-typescript",
+        "source": "development/typert-generator/src/workspace.ts"
+      },
+      {
+        "id": "compat-typert-generator-workspace-js",
+        "source": "development/typert-generator/lib/workspace.js"
+      },
+      {
+        "id": "subagent-typert-assets-typescript",
+        "source": "src/operations/subagent-typert-assets.mts"
+      },
+      {
+        "id": "subagent-typert-assets-generated",
+        "source": "lib/operations/subagent-typert-assets.mjs"
+      },
+      {
+        "id": "compat-subagent-typert-host-js",
+        "source": "development/subagent/lib/typert.host.js"
+      },
+      {
+        "id": "compat-subagent-typert-host-dts",
+        "source": "development/subagent/lib/typert.host.d.ts"
+      },
+      {
+        "id": "compat-subagent-typert-remote-client-js",
+        "source": "development/subagent/lib/typert.remote-client.js"
+      },
+      {
+        "id": "compat-subagent-typert-remote-client-dts",
+        "source": "development/subagent/lib/typert.remote-client.d.ts"
+      },
+      {
+        "id": "native-fork-host-profile-source",
+        "source": "src/operations/native-fork-host-profile.mts"
+      },
+      {
+        "id": "native-fork-host-profile-generated",
+        "source": "lib/operations/native-fork-host-profile.mjs"
+      },
+      {
+        "id": "native-fork-payload-verifier-source",
+        "source": "src/operations/native-fork-payload-verifier.mts"
+      },
+      {
+        "id": "native-fork-payload-verifier-generated",
+        "source": "lib/operations/native-fork-payload-verifier.mjs"
+      },
+      {
+        "id": "compat-subagent-owned-ruby-task-typescript",
+        "source": "development/subagent/src/owned-ruby-task.ts"
+      },
+      {
+        "id": "compat-subagent-owned-ruby-task-js",
+        "source": "development/subagent/lib/owned-ruby-task.js"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-ruby-task-child-typescript",
+        "source": "development/subagent-in-process-driver/src/ruby-task-child.ts"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-ruby-task-child-js",
+        "source": "development/subagent-in-process-driver/lib/ruby-task-child.js"
       }
     ],
     "builds": [
@@ -14067,7 +14833,8 @@
           "lib/operations/build-typescript.mjs",
           "build-tools/package.json",
           "build-tools/package-lock.json",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "src/operations/native-fork-host-profile.mts"
         ],
         "banner": "release/src/native-fork-host-plan.mts"
       },
@@ -14085,7 +14852,8 @@
           "lib/operations/build-typescript.mjs",
           "build-tools/package.json",
           "build-tools/package-lock.json",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "src/operations/native-fork-host-profile.mts"
         ],
         "banner": "release/src/native-fork-host-apply.mts"
       },
@@ -14104,7 +14872,8 @@
           "lib/operations/build-typescript.mjs",
           "build-tools/package.json",
           "build-tools/package-lock.json",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "src/operations/native-fork-host-profile.mts"
         ],
         "banner": "release/src/native-fork-host-activation.mts"
       },
@@ -34365,7 +35134,15 @@
           "src/operations/tavern-template-runtime-assets.mts",
           "src/operations/test-temp.mts",
           "src/operations/tool-resolution.mts",
-          "src/core/roleplay-mvu-display-facts.ts"
+          "src/core/roleplay-mvu-display-facts.ts",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "src/operations/subagent-typert-assets.mts"
         ],
         "banner": "runtime/alpha3/src/operations/build-typescript.mts"
       },
@@ -51270,7 +52047,9 @@
           "src/core/tavern-mvu-schema-fresh-selector.ts",
           "development/mvu-schema-runtime-v4/src/index.ts",
           "development/mvu-schema-runtime-v4/src/descriptor.ts",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts"
         ],
         "kind": "typescript-module",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
@@ -55934,7 +56713,17 @@
           "src/operations/tavern-template-runtime-assets.mts",
           "src/operations/test-temp.mts",
           "src/operations/tool-resolution.mts",
-          "src/core/roleplay-mvu-display-facts.ts"
+          "src/core/roleplay-mvu-display-facts.ts",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "src/operations/subagent-typert-assets.mts",
+          "development/typert-generator/package.json",
+          "lib/operations/subagent-typert-assets.mjs"
         ],
         "banner": "runtime/alpha3/src/operations/public-build-modules.mts"
       },
@@ -56033,7 +56822,18 @@
           "development/mvu-schema-runtime-v4/src/descriptor.ts",
           "build-tools/node_modules/typescript/lib/typescript.js",
           "src/operations/tavern-template-runtime-assets.mts",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "src/operations/native-fork-host-profile.mts",
+          "src/operations/subagent-typert-assets.mts"
         ],
         "kind": "typescript-module",
         "entry": "src/operations/product-assembly.mts",
@@ -68714,7 +69514,9 @@
           "development/session-format/src/projection.ts",
           "development/session-format/src/mvu-player-marker.ts",
           "src/core/roleplay-program-copy-span.ts",
-          "src/core/roleplay-tavern-lore-export.ts"
+          "src/core/roleplay-tavern-lore-export.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-mvu-schema-assets.ts"
       },
@@ -100600,7 +101402,9 @@
           "development/session-format/src/projection.ts",
           "development/session-format/src/mvu-player-marker.ts",
           "src/core/roleplay-program-copy-span.ts",
-          "src/core/roleplay-tavern-lore-export.ts"
+          "src/core/roleplay-tavern-lore-export.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-template-assets.ts"
       },
@@ -117700,7 +118504,10 @@
           "src/operations/bundled-package-bootstrap.mts",
           "src/operations/protected-packages.mts",
           "src/operations/public-transaction.mts",
-          "src/status-template.ts"
+          "src/status-template.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts",
+          "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-host-assets.ts"
       },
@@ -121022,7 +121829,10 @@
           "src/operations/bundled-package-bootstrap.mts",
           "src/operations/protected-packages.mts",
           "src/operations/public-transaction.mts",
-          "src/status-template.ts"
+          "src/status-template.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/owned-ruby-task.ts",
+          "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-author-prompt-assets.ts"
       },
@@ -121317,6 +122127,1749 @@
           "src/operations/test-temp.mts"
         ],
         "banner": "runtime/alpha3/src/operations/author-prompt-runtime-assets.mts"
+      },
+      {
+        "id": "compat-subagent-archive-admission-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-archive-admission-js",
+        "entry": "development/subagent/src/archive-admission.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/descriptor.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/archive-admission.ts"
+      },
+      {
+        "id": "compat-subagent-assistant-output-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-assistant-output-js",
+        "entry": "development/subagent/src/assistant-output.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/assistant-output.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/assistant-output.ts"
+      },
+      {
+        "id": "compat-subagent-author-dialog-activation-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-author-dialog-activation-js",
+        "entry": "development/subagent/src/author-dialog-activation.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/subagent/src/author-dialog-activation.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/author-dialog-activation.ts"
+      },
+      {
+        "id": "compat-subagent-catalog-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-catalog-js",
+        "entry": "development/subagent/src/catalog.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/projection-types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/catalog.ts"
+      },
+      {
+        "id": "compat-subagent-child-agent-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-child-agent-js",
+        "entry": "development/subagent/src/child-agent.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/depth.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/child-agent.ts"
+      },
+      {
+        "id": "compat-subagent-client-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-client-js",
+        "entry": "development/subagent/src/client.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/client.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/projection-types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/client.ts"
+      },
+      {
+        "id": "compat-subagent-continuation-activation-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-continuation-activation-js",
+        "entry": "development/subagent/src/continuation-activation.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/continuation-activation.ts"
+      },
+      {
+        "id": "compat-subagent-continuation-messages-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-continuation-messages-js",
+        "entry": "development/subagent/src/continuation-messages.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/continuation-messages.ts"
+      },
+      {
+        "id": "compat-subagent-continuation-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-continuation-js",
+        "entry": "development/subagent/src/continuation.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/continuation.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/index.ts",
+          "development/subagent/src/internal.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/continuation.ts"
+      },
+      {
+        "id": "compat-subagent-control-types-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-control-types-js",
+        "entry": "development/subagent/src/control-types.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/control-types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/control-types.ts"
+      },
+      {
+        "id": "compat-subagent-control-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-control-js",
+        "entry": "development/subagent/src/control.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/error.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/control.ts"
+      },
+      {
+        "id": "compat-subagent-depth-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-depth-js",
+        "entry": "development/subagent/src/depth.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/subagent/src/depth.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/depth.ts"
+      },
+      {
+        "id": "compat-subagent-descriptor-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-descriptor-js",
+        "entry": "development/subagent/src/descriptor.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/descriptor.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/descriptor.ts"
+      },
+      {
+        "id": "compat-subagent-error-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-error-js",
+        "entry": "development/subagent/src/error.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/subagent/src/error.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/error.ts"
+      },
+      {
+        "id": "compat-subagent-inbox-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-inbox-js",
+        "entry": "development/subagent/src/inbox.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/inbox.ts"
+      },
+      {
+        "id": "compat-subagent-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-index-js",
+        "entry": "development/subagent/src/index.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/continuation.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/index.ts",
+          "development/subagent/src/internal.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/index.ts"
+      },
+      {
+        "id": "compat-subagent-internal-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-internal-js",
+        "entry": "development/subagent/src/internal.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/continuation.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/index.ts",
+          "development/subagent/src/internal.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/internal.ts"
+      },
+      {
+        "id": "compat-subagent-invariant-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-invariant-js",
+        "entry": "development/subagent/src/invariant.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/invariant.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/invariant.ts"
+      },
+      {
+        "id": "compat-subagent-lifecycle-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-lifecycle-js",
+        "entry": "development/subagent/src/lifecycle.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/lifecycle.ts"
+      },
+      {
+        "id": "compat-subagent-list-children-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-list-children-js",
+        "entry": "development/subagent/src/list-children.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/projection-types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/list-children.ts"
+      },
+      {
+        "id": "compat-subagent-out-of-process-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-out-of-process-js",
+        "entry": "development/subagent/src/out-of-process.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/out-of-process.ts"
+      },
+      {
+        "id": "compat-subagent-projection-types-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-projection-types-js",
+        "entry": "development/subagent/src/projection-types.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/projection-types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/projection-types.ts"
+      },
+      {
+        "id": "compat-subagent-projection-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-projection-js",
+        "entry": "development/subagent/src/projection.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/projection.ts"
+      },
+      {
+        "id": "compat-subagent-run-settlement-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-run-settlement-js",
+        "entry": "development/subagent/src/run-settlement.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/run-settlement.ts"
+      },
+      {
+        "id": "compat-subagent-types-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-types-js",
+        "entry": "development/subagent/src/types.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/types.ts"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-in-process-driver-index-js",
+        "entry": "development/subagent-in-process-driver/src/index.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent-in-process-driver/src/index.ts",
+          "development/subagent-in-process-driver/src/structured.ts",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/continuation.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/index.ts",
+          "development/subagent/src/internal.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "development/subagent-in-process-driver/src/ruby-task-child.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent-in-process-driver/src/index.ts"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-structured-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-in-process-driver-structured-js",
+        "entry": "development/subagent-in-process-driver/src/structured.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/subagent-in-process-driver/src/structured.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent-in-process-driver/src/structured.ts"
+      },
+      {
+        "id": "compat-subagent-spawn-in-process-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-spawn-in-process-index-js",
+        "entry": "development/subagent-spawn-in-process/src/index.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm/src/adapter-failure.ts",
+          "development/llm/src/api-key.ts",
+          "development/llm/src/assembler.ts",
+          "development/llm/src/assistant-stream.ts",
+          "development/llm/src/attribution.ts",
+          "development/llm/src/brand.ts",
+          "development/llm/src/call-config.ts",
+          "development/llm/src/content.ts",
+          "development/llm/src/error.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/message.ts",
+          "development/llm/src/retry-policy.ts",
+          "development/llm/src/types.ts",
+          "development/session/src/fork.ts",
+          "development/session/src/index.ts",
+          "development/session/src/known-event-types.ts",
+          "development/session/src/opening-records.ts",
+          "development/session/src/preparation.ts",
+          "development/session/src/repair.ts",
+          "development/session/src/request-header.ts",
+          "development/session/src/request-material-types.ts",
+          "development/session/src/request-preview.ts",
+          "development/session/src/seq-ranges.ts",
+          "development/session/src/surface.ts",
+          "development/session/src/tool-history.ts",
+          "development/session/src/types.ts",
+          "development/subagent-in-process-driver/src/index.ts",
+          "development/subagent-in-process-driver/src/structured.ts",
+          "development/subagent-spawn-in-process/src/index.ts",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/continuation.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/index.ts",
+          "development/subagent/src/internal.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent-spawn-in-process/src/index.ts"
+      },
+      {
+        "id": "compat-typert-generator-analyzer-build",
+        "kind": "typescript-module",
+        "artifact": "compat-typert-generator-analyzer-js",
+        "entry": "development/typert-generator/src/analyzer.ts",
+        "typeContext": "typert-generator",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/model.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/typert-generator/package.json"
+        ],
+        "banner": "runtime/alpha3/compat/typert-generator/src/analyzer.ts"
+      },
+      {
+        "id": "compat-typert-generator-cordis-catalog-build",
+        "kind": "typescript-module",
+        "artifact": "compat-typert-generator-cordis-catalog-js",
+        "entry": "development/typert-generator/src/cordis-catalog.ts",
+        "typeContext": "typert-generator",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/typert-generator/package.json"
+        ],
+        "banner": "runtime/alpha3/compat/typert-generator/src/cordis-catalog.ts"
+      },
+      {
+        "id": "compat-typert-generator-emitter-build",
+        "kind": "typescript-module",
+        "artifact": "compat-typert-generator-emitter-js",
+        "entry": "development/typert-generator/src/emitter.ts",
+        "typeContext": "typert-generator",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/typert-generator/package.json"
+        ],
+        "banner": "runtime/alpha3/compat/typert-generator/src/emitter.ts"
+      },
+      {
+        "id": "compat-typert-generator-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-typert-generator-index-js",
+        "entry": "development/typert-generator/src/index.ts",
+        "typeContext": "typert-generator",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/typert-generator/package.json"
+        ],
+        "banner": "runtime/alpha3/compat/typert-generator/src/index.ts"
+      },
+      {
+        "id": "compat-typert-generator-model-build",
+        "kind": "typescript-module",
+        "artifact": "compat-typert-generator-model-js",
+        "entry": "development/typert-generator/src/model.ts",
+        "typeContext": "typert-generator",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/typert-generator/src/model.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/typert-generator/package.json"
+        ],
+        "banner": "runtime/alpha3/compat/typert-generator/src/model.ts"
+      },
+      {
+        "id": "compat-typert-generator-renderer-build",
+        "kind": "typescript-module",
+        "artifact": "compat-typert-generator-renderer-js",
+        "entry": "development/typert-generator/src/renderer.ts",
+        "typeContext": "typert-generator",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/typert-generator/package.json"
+        ],
+        "banner": "runtime/alpha3/compat/typert-generator/src/renderer.ts"
+      },
+      {
+        "id": "compat-typert-generator-tsdown-plugin-build",
+        "kind": "typescript-module",
+        "artifact": "compat-typert-generator-tsdown-plugin-js",
+        "entry": "development/typert-generator/src/tsdown-plugin.ts",
+        "typeContext": "typert-generator",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/tsdown-plugin.ts",
+          "development/typert-generator/src/workspace.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/typert-generator/package.json"
+        ],
+        "banner": "runtime/alpha3/compat/typert-generator/src/tsdown-plugin.ts"
+      },
+      {
+        "id": "compat-typert-generator-workspace-build",
+        "kind": "typescript-module",
+        "artifact": "compat-typert-generator-workspace-js",
+        "entry": "development/typert-generator/src/workspace.ts",
+        "typeContext": "typert-generator",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/typert-generator/package.json"
+        ],
+        "banner": "runtime/alpha3/compat/typert-generator/src/workspace.ts"
+      },
+      {
+        "id": "subagent-typert-assets-build",
+        "kind": "typescript-module",
+        "artifact": "subagent-typert-assets-generated",
+        "entry": "src/operations/subagent-typert-assets.mts",
+        "typeContext": "typert-generator",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/workspace.ts",
+          "src/operations/subagent-typert-assets.mts",
+          "src/operations/test-temp.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/typert-generator/package.json"
+        ],
+        "banner": "runtime/alpha3/src/operations/subagent-typert-assets.mts"
+      },
+      {
+        "id": "subagent-typert-host-js-build",
+        "kind": "subagent-typert",
+        "artifact": "compat-subagent-typert-host-js",
+        "entry": "development/subagent/src/index.ts",
+        "builder": "lib/operations/subagent-typert-assets.mjs",
+        "inputs": [
+          "development/subagent/package.json",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/client.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/continuation.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/index.ts",
+          "development/subagent/src/internal.ts",
+          "development/subagent/src/invariant.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "development/typert-generator/package.json",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/tsdown-plugin.ts",
+          "development/typert-generator/src/workspace.ts",
+          "src/operations/subagent-typert-assets.mts",
+          "lib/operations/subagent-typert-assets.mjs",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/index.ts"
+      },
+      {
+        "id": "subagent-typert-host-dts-build",
+        "kind": "subagent-typert",
+        "artifact": "compat-subagent-typert-host-dts",
+        "entry": "development/subagent/src/index.ts",
+        "builder": "lib/operations/subagent-typert-assets.mjs",
+        "inputs": [
+          "development/subagent/package.json",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/client.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/continuation.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/index.ts",
+          "development/subagent/src/internal.ts",
+          "development/subagent/src/invariant.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "development/typert-generator/package.json",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/tsdown-plugin.ts",
+          "development/typert-generator/src/workspace.ts",
+          "src/operations/subagent-typert-assets.mts",
+          "lib/operations/subagent-typert-assets.mjs",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/index.ts"
+      },
+      {
+        "id": "subagent-typert-remote-js-build",
+        "kind": "subagent-typert",
+        "artifact": "compat-subagent-typert-remote-client-js",
+        "entry": "development/subagent/src/index.ts",
+        "builder": "lib/operations/subagent-typert-assets.mjs",
+        "inputs": [
+          "development/subagent/package.json",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/client.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/continuation.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/index.ts",
+          "development/subagent/src/internal.ts",
+          "development/subagent/src/invariant.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "development/typert-generator/package.json",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/tsdown-plugin.ts",
+          "development/typert-generator/src/workspace.ts",
+          "src/operations/subagent-typert-assets.mts",
+          "lib/operations/subagent-typert-assets.mjs",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/index.ts"
+      },
+      {
+        "id": "subagent-typert-remote-dts-build",
+        "kind": "subagent-typert",
+        "artifact": "compat-subagent-typert-remote-client-dts",
+        "entry": "development/subagent/src/index.ts",
+        "builder": "lib/operations/subagent-typert-assets.mjs",
+        "inputs": [
+          "development/subagent/package.json",
+          "development/subagent/src/archive-admission.ts",
+          "development/subagent/src/assistant-output.ts",
+          "development/subagent/src/author-dialog-activation.ts",
+          "development/subagent/src/catalog.ts",
+          "development/subagent/src/child-agent.ts",
+          "development/subagent/src/client.ts",
+          "development/subagent/src/continuation-activation.ts",
+          "development/subagent/src/continuation-messages.ts",
+          "development/subagent/src/continuation.ts",
+          "development/subagent/src/control-types.ts",
+          "development/subagent/src/control.ts",
+          "development/subagent/src/depth.ts",
+          "development/subagent/src/descriptor.ts",
+          "development/subagent/src/error.ts",
+          "development/subagent/src/inbox.ts",
+          "development/subagent/src/index.ts",
+          "development/subagent/src/internal.ts",
+          "development/subagent/src/invariant.ts",
+          "development/subagent/src/lifecycle.ts",
+          "development/subagent/src/list-children.ts",
+          "development/subagent/src/out-of-process.ts",
+          "development/subagent/src/projection-types.ts",
+          "development/subagent/src/projection.ts",
+          "development/subagent/src/run-settlement.ts",
+          "development/subagent/src/types.ts",
+          "development/typert-generator/package.json",
+          "development/typert-generator/src/analyzer.ts",
+          "development/typert-generator/src/cordis-catalog.ts",
+          "development/typert-generator/src/emitter.ts",
+          "development/typert-generator/src/index.ts",
+          "development/typert-generator/src/model.ts",
+          "development/typert-generator/src/renderer.ts",
+          "development/typert-generator/src/tsdown-plugin.ts",
+          "development/typert-generator/src/workspace.ts",
+          "src/operations/subagent-typert-assets.mts",
+          "lib/operations/subagent-typert-assets.mjs",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "development/subagent/src/owned-ruby-task.ts"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/index.ts"
+      },
+      {
+        "id": "native-fork-host-profile-build",
+        "kind": "typescript-module",
+        "artifact": "native-fork-host-profile-generated",
+        "entry": "src/operations/native-fork-host-profile.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/operations/native-fork-host-profile.mts",
+          "src/operations/native-fork-payload-verifier.mts",
+          "src/operations/public-transaction.mts",
+          "src/operations/owned-dependency.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs"
+        ],
+        "banner": "runtime/alpha3/src/operations/native-fork-host-profile.mts"
+      },
+      {
+        "id": "native-fork-payload-verifier-build",
+        "kind": "typescript-module",
+        "artifact": "native-fork-payload-verifier-generated",
+        "entry": "src/operations/native-fork-payload-verifier.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/operations/native-fork-payload-verifier.mts",
+          "src/operations/native-fork-host-profile.mts",
+          "src/operations/public-transaction.mts",
+          "src/operations/owned-dependency.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs"
+        ],
+        "banner": "runtime/alpha3/src/operations/native-fork-payload-verifier.mts"
+      },
+      {
+        "id": "compat-subagent-owned-ruby-task-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-owned-ruby-task-js",
+        "entry": "development/subagent/src/owned-ruby-task.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "fork-compat",
+        "inputs": [
+          "development/subagent/src/owned-ruby-task.ts",
+          "src/operations/build-typescript.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/compat/subagent/src/owned-ruby-task.ts"
+      },
+      {
+        "id": "compat-subagent-in-process-driver-ruby-task-child-build",
+        "kind": "typescript-module",
+        "artifact": "compat-subagent-in-process-driver-ruby-task-child-js",
+        "entry": "development/subagent-in-process-driver/src/ruby-task-child.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "typeContext": "fork-compat",
+        "inputs": [
+          "development/subagent-in-process-driver/src/ruby-task-child.ts",
+          "src/operations/build-typescript.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/compat/subagent-in-process-driver/src/ruby-task-child.ts"
       }
     ],
     "typeScript": {
@@ -121367,6 +123920,27 @@
             ],
             "dsh-nexttavern-pi-ai/api/openai-completions": [
               "../development/pi-ai/src/api/openai-completions.ts"
+            ],
+            "@deepseek-ai/dsh-subagent": [
+              "../development/subagent/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-subagent/*": [
+              "../development/subagent/src/*.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-in-process-driver": [
+              "../development/subagent-in-process-driver/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-in-process-driver/*": [
+              "../development/subagent-in-process-driver/src/*.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-spawn-in-process": [
+              "../development/subagent-spawn-in-process/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-spawn-in-process/*": [
+              "../development/subagent-spawn-in-process/src/*.ts"
+            ],
+            "dsh-nexttavern-typert-generator-types": [
+              "../development/typert-generator/src/index.ts"
             ]
           },
           "rootDirs": [
@@ -121404,7 +123978,8 @@
               "to": "undici-types",
               "file": "build-tools/node_modules/@anthropic-ai/sdk/internal/types.d.mts"
             }
-          ]
+          ],
+          "rewriteRelativeImportExtensions": true
         },
         "fork-compat": {
           "paths": {
@@ -121431,6 +124006,24 @@
             ],
             "dsh-nexttavern-pi-ai/api/openai-completions": [
               "../development/pi-ai/src/api/openai-completions.ts"
+            ],
+            "@deepseek-ai/dsh-subagent": [
+              "../development/subagent/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-subagent/*": [
+              "../development/subagent/src/*.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-in-process-driver": [
+              "../development/subagent-in-process-driver/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-in-process-driver/*": [
+              "../development/subagent-in-process-driver/src/*.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-spawn-in-process": [
+              "../development/subagent-spawn-in-process/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-spawn-in-process/*": [
+              "../development/subagent-spawn-in-process/src/*.ts"
             ]
           },
           "rootDirs": [
@@ -121468,7 +124061,8 @@
               "to": "undici-types",
               "file": "build-tools/node_modules/@anthropic-ai/sdk/internal/types.d.mts"
             }
-          ]
+          ],
+          "rewriteRelativeImportExtensions": true
         },
         "pi-ai": {
           "paths": {
@@ -121526,7 +124120,12 @@
           "exactOptionalPropertyTypes": true
         },
         "host-fork": {
-          "rewriteRelativeImportExtensions": true
+          "rewriteRelativeImportExtensions": true,
+          "paths": {
+            "dsh-nexttavern-native-fork-host-profile-types": [
+              "../src/operations/native-fork-host-profile.mts"
+            ]
+          }
         },
         "ui-compat-client": {
           "rewriteRelativeImportExtensions": true,
@@ -121547,6 +124146,22 @@
               "../development/ui-chat/src/client/index.ts"
             ]
           }
+        },
+        "typert-generator": {
+          "paths": {
+            "typescript": [
+              "node_modules/nexttavern-typert-typescript/lib/typescript.d.ts"
+            ],
+            "dsh-nexttavern-typert-generator-types": [
+              "../development/typert-generator/src/index.ts"
+            ]
+          },
+          "rewriteRelativeImportExtensions": true
+        },
+        "public-pipeline": {
+          "allowJs": true,
+          "checkJs": false,
+          "rewriteRelativeImportExtensions": true
         }
       }
     },
@@ -121935,6 +124550,33 @@
         },
         "sourceGraph": "esbuild-metafile-input-sha256",
         "dependencyClosure": "locked-published-prompt-dependencies"
+      },
+      "subagentTypert": {
+        "schemaVersion": 1,
+        "encoding": "owned-subagent-typert-recipe-v1",
+        "packageArtifact": "compat-subagent-package-json",
+        "generatorPackageArtifact": "compat-typert-generator-package-json",
+        "generatorEntryArtifact": "compat-typert-generator-index-typescript",
+        "typeContext": "default",
+        "compilerModule": "nexttavern-typert-typescript",
+        "outputs": [
+          {
+            "role": "host-js",
+            "artifact": "compat-subagent-typert-host-js"
+          },
+          {
+            "role": "host-dts",
+            "artifact": "compat-subagent-typert-host-dts"
+          },
+          {
+            "role": "remote-js",
+            "artifact": "compat-subagent-typert-remote-client-js"
+          },
+          {
+            "role": "remote-dts",
+            "artifact": "compat-subagent-typert-remote-client-dts"
+          }
+        ]
       },
       "packages": [
         {
@@ -122849,6 +125491,10 @@
     "development/session-controller/lib/client.js",
     "development/ui-chat/lib/client.js",
     "development/ui-workspace/lib/client.js",
+    "development/subagent/lib/typert.host.js",
+    "development/subagent/lib/typert.host.d.ts",
+    "development/subagent/lib/typert.remote-client.js",
+    "development/subagent/lib/typert.remote-client.d.ts",
     "development/mvu-schema-runtime/dist/index.mjs",
     "development/mvu-schema-runtime/dist/compiler.mjs",
     "development/mvu-schema-runtime/dist/tavern-mvu-schema-compiler-worker.mjs",

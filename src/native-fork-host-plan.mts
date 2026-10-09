@@ -2,13 +2,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {createHash} from 'node:crypto'
 import {createRequire} from 'node:module'
+import type {HostForkProfileV1} from 'dsh-nexttavern-native-fork-host-profile-types'
 
-export const NATIVE_FORKS = [
-  '@deepseek-ai/dsh-llm',
-  '@deepseek-ai/dsh-session',
-  '@deepseek-ai/dsh-agent-loop',
-] as const
-export const HOST_VERSION = '0.1.7-rc.2'
+// Source types and runtime values have different owners. The canonical compiler
+// writes the operations library before these manual maintenance tools are used.
+const packagedProfile=new URL('./native-fork-host-profile.mjs',import.meta.url)
+// The same tool runs from the repository and the isolated shipped tools directory.
+const nativeProfile=await import(fs.existsSync(packagedProfile)?packagedProfile.href:
+  new URL('../../runtime/alpha3/lib/operations/native-fork-host-profile.mjs',import.meta.url).href) as
+  typeof import('dsh-nexttavern-native-fork-host-profile-types')
+export const {HOST_VERSION,NATIVE_FORKS,hostForkNames,readHostForkProfile}=nativeProfile
 
 type Manifest = {
   name?:string
@@ -19,9 +22,14 @@ type Manifest = {
   optionalDependencies?:Record<string,string>
   peerDependenciesMeta?:Record<string,{optional?:boolean}>
 }
-type ForkName = typeof NATIVE_FORKS[number]
 type Source = {directory:string,sha256:string}
-export type HostForkInput = {hostRoot:string,anchors:string[],sources:Record<ForkName,Source>}
+export type HostForkInput = {
+  hostRoot:string
+  anchors:string[]
+  sources:Record<string,Source>
+  /** Absent only for the historical three-package payload and schema 1 receipts. */
+  hostForkProfile?:HostForkProfileV1
+}
 type PlanStep = {action:'backup'|'replace'|'verify'|'remove-replacement'|'rollback',from:string,to?:string,sha256?:string}
 export type HostForkResult = {
   ok:boolean
@@ -91,6 +99,7 @@ export function packageTreeSha256(directory:string):string {
 
 /** Read-only plan. It never copies, renames, installs, or executes package code. */
 export function planNativeForkHost(input:HostForkInput):HostForkResult {
+  const members=hostForkNames(input.hostForkProfile)
   const errors:string[]=[]
   const packages:HostForkResult['packages']=[]
   const applySteps:PlanStep[]=[]
@@ -101,7 +110,7 @@ export function planNativeForkHost(input:HostForkInput):HostForkResult {
   for(const anchor of input.anchors){
     const real=fs.realpathSync(anchor)
     if(!within(hostRoot,real))errors.push(`Anchor outside host: ${anchor}`)
-    for(const name of NATIVE_FORKS)queue.push({name,anchor:real,range:HOST_VERSION,optional:false})
+    for(const name of members)queue.push({name,anchor:real,range:HOST_VERSION,optional:false})
   }
   const planned=new Set<string>()
   while(queue.length){
@@ -113,7 +122,7 @@ export function planNativeForkHost(input:HostForkInput):HostForkResult {
     let pkg:Manifest
     try {pkg=manifest(real)}catch {errors.push(`Invalid manifest: ${real}`);continue}
     if(pkg.name!==name)errors.push(`Package identity mismatch: ${name} -> ${pkg.name} at ${real}`)
-    if(NATIVE_FORKS.includes(name as ForkName)&&pkg.private===true)
+    if(members.includes(name)&&pkg.private===true)
       errors.push(`Host destination is already a private fork: ${name} at ${real}`)
     // The fixed native host packages must never cross an rc.2 boundary.
     if(name.startsWith('@deepseek-ai/dsh-') && pkg.version!==HOST_VERSION)
@@ -135,7 +144,7 @@ export function planNativeForkHost(input:HostForkInput):HostForkResult {
         optional:dependency in (pkg.optionalDependencies??{})||pkg.peerDependenciesMeta?.[dependency]?.optional===true})
     }
   }
-  for(const name of NATIVE_FORKS){
+  for(const name of members){
     const source=input.sources[name]
     if(!source){errors.push(`Missing source: ${name}`);continue}
     const directory=fs.realpathSync(source.directory)

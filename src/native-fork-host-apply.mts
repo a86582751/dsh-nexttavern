@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {randomUUID} from 'node:crypto'
-import {NATIVE_FORKS,packageTreeSha256,planNativeForkHost,type HostForkInput,type HostForkResult} from './native-fork-host-plan.mts'
+import {hostForkNames,packageTreeSha256,planNativeForkHost,type HostForkInput,type HostForkResult} from './native-fork-host-plan.mts'
 
 type Evidence={action:string,from:string,to?:string,sha256?:string}
 export type HostForkApplyResult={ok:boolean,errors:string[],applied:Evidence[],rolledBack:Evidence[],backups:string[]}
@@ -34,6 +34,7 @@ function fingerprint(directory:string,expected:string):void {
  * This offline executor does not establish interprocess exclusion.
  */
 export function applyNativeForkHost(input:HostForkInput,plan:HostForkResult):HostForkApplyResult {
+  const members=hostForkNames(input.hostForkProfile)
   const evidence:HostForkApplyResult={ok:false,errors:[],applied:[],rolledBack:[],backups:[]}
   const moved:{target:string,backup:string,oldSha:string,newSha:string}[]=[]
   try {
@@ -42,7 +43,7 @@ export function applyNativeForkHost(input:HostForkInput,plan:HostForkResult):Hos
     if(!plan.ok||!fresh.ok||JSON.stringify(fresh)!==JSON.stringify(plan))throw new Error('Host plan changed or was rejected')
     const backups=fresh.applySteps.filter(step=>step.action==='backup')
     const replacements=fresh.applySteps.filter(step=>step.action==='replace')
-    if(backups.length!==replacements.length||backups.length!==NATIVE_FORKS.length)
+    if(backups.length!==replacements.length||backups.length!==members.length)
       throw new Error('Unexpected host plan shape')
     const distinct=new Set<string>()
     for(let i=0;i<backups.length;i++){
@@ -103,15 +104,16 @@ export function applyNativeForkHost(input:HostForkInput,plan:HostForkResult):Hos
  */
 export function restoreNativeForkHost(input:HostForkInput,plan:HostForkResult,
   receipt:HostForkApplyResult):HostForkRestoreResult {
+  const members=hostForkNames(input.hostForkProfile)
   const result:HostForkRestoreResult={ok:false,errors:[],restored:[],preserved:[]}
   const items:{target:string,backup:string,oldSha:string,newSha:string}[]=[]
   try {
     const host=fs.realpathSync(input.hostRoot)
     if(!plan.ok||!receipt.ok||receipt.errors.length||receipt.rolledBack.length||
-      receipt.backups.length!==NATIVE_FORKS.length||plan.applySteps.length!==NATIVE_FORKS.length*3||
-      receipt.applied.length!==NATIVE_FORKS.length*3)throw new Error('Incomplete successful host apply receipt')
+      receipt.backups.length!==members.length||plan.applySteps.length!==members.length*3||
+      receipt.applied.length!==members.length*3)throw new Error('Incomplete successful host apply receipt')
     const distinct=new Set<string>()
-    for(let i=0;i<NATIVE_FORKS.length;i++){
+    for(let i=0;i<members.length;i++){
       const [backup,replace,verify]=plan.applySteps.slice(i*3,i*3+3) as [
         HostForkResult['applySteps'][number],HostForkResult['applySteps'][number],HostForkResult['applySteps'][number]]
       const [doneBackup,doneReplace,doneVerify]=receipt.applied.slice(i*3,i*3+3) as [
@@ -125,11 +127,11 @@ export function restoreNativeForkHost(input:HostForkInput,plan:HostForkResult,
         doneVerify.action!=='verify'||doneVerify.from!==verify.from||doneVerify.sha256!==verify.sha256||
         receipt.backups[i]!==backup.to)throw new Error('Host apply receipt differs from plan')
       const target=path.resolve(backup.from),saved=path.resolve(backup.to)
-      const plannedPackage=plan.packages.find(pkg=>pkg.name===NATIVE_FORKS[i]&&
+      const plannedPackage=plan.packages.find(pkg=>pkg.name===members[i]&&
         path.dirname(pkg.manifestPath)===target&&pkg.sha256===backup.sha256)
       if(target!==backup.from||saved!==backup.to||!inside(host,target)||!inside(host,saved)||
         target===host||saved===host||saved!==`${target}.nexttavern-before-${replace.sha256.slice(0,12)}`||
-        path.basename(target)!==NATIVE_FORKS[i]!.split('/')[1]||!plannedPackage||
+        path.basename(target)!==members[i]!.split('/')[1]||!plannedPackage||
         distinct.has(target)||distinct.has(saved))throw new Error('Invalid host restore path')
       distinct.add(target);distinct.add(saved)
       noLinkAncestors(target,host);noLinkAncestors(saved,host)

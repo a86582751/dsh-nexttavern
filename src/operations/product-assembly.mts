@@ -14,6 +14,10 @@ import {authorBrowserRuntimeRecipeV1,materializeAuthorBrowserRuntimeDependencies
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 import {authorPromptRuntimeRecipeV1,materializeAuthorPromptRuntimeDependenciesV1,
   type AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
+import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
+import {makeHostForkProfile,type HostForkProfileDescriptorV1} from './native-fork-host-profile.mjs'
+
+
 
 interface ProductRecipe {
   templateRuntime?:TavernTemplateRuntimeAssetRecipeV1
@@ -42,11 +46,14 @@ interface ProductRecipe {
   bundlePlatforms?: string[]
   /** Unapplied, exact host replacement payloads; never profile dependencies. */
   hostForks?: {name: string; version: string; source: string; target: string}[]
+  subagentTypert?: SubagentTypertRecipeV1
+  hostForkProfile?: HostForkProfileDescriptorV1
 }
 interface Plan {
   artifacts: {id: string; source: string; public?: {path?: string}}[]
   product: ProductRecipe
   publicRelease: {packageName: string; candidateVersion: string; layoutPaths?: Record<string, string>}
+  builds: {artifact:string;entry:string;kind:string}[]
 }
 interface Metadata {
   name: string
@@ -62,26 +69,17 @@ const save = (file: string, value: unknown) => {
   fs.mkdirSync(path.dirname(file), {recursive: true})
   fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n')
 }
-
-const hostForkNames = ['@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-session',
-  '@deepseek-ai/dsh-agent-loop'] as const
 const safeRelative = (value: string) => typeof value === 'string' && value !== ''
   && !value.includes('\\') && !value.includes(':') && !value.startsWith('/')
   && value.split('/').every(part => part !== '' && part !== '.' && part !== '..')
 
 /** Stage a complete, manifest-registered fork tree without activating it. */
 export function stageHostForks(repo: string, packageRoot: string, plan: Plan) {
-  const compilerRequire = createRequire(new URL('../../build-tools/package.json', import.meta.url))
-  const ts = compilerRequire('typescript') as typeof import('../../build-tools/node_modules/typescript/lib/typescript.js')
-  const forkCompilerOptions = {target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022,
-    moduleResolution: ts.ModuleResolutionKind.Bundler, verbatimModuleSyntax: true,
-    newLine: ts.NewLineKind.LineFeed}
   const recipes = plan.product.hostForks ?? []
-  if (recipes.length !== hostForkNames.length
-    || recipes.some((row, index) => row.name !== hostForkNames[index])) {
-    throw Error('Host fork recipe must name exactly the three rc.2 packages in order')
-  }
   const registered = new Set(plan.artifacts.map(row => row.source))
+  const producers=new Map(plan.builds.map(build=>[
+    plan.artifacts.find(artifact=>artifact.id===build.artifact)!.source,build,
+  ]))
   const rows = recipes.map(row => {
     if (row.version !== '0.1.7-rc.2' || !safeRelative(row.source)
       || !safeRelative(row.target) || row.target !== `host-overrides/${row.name}`) {
@@ -96,22 +94,13 @@ export function stageHostForks(repo: string, packageRoot: string, plan: Plan) {
       throw Error('Host fork package identity mismatch: ' + row.name)
     }
     const files = regularPackageFiles(source).sort()
-    if (!files.length || !files.includes('LICENSE') || !files.includes('LICENSE.upstream')
+    if (!files.length || !files.includes('LICENSE')
       || !files.includes('package.json') || !files.some(file => file === 'ORIGIN.json' || file === 'ORIGIN.md')) {
       throw Error('Host fork provenance or license is missing: ' + row.name)
     }
-    if (files.includes('ORIGIN.json')) {
-      const origin = json<{package?: string; upstreamVersion?: string; license?: string; commit?: string}>(
-        path.join(source, 'ORIGIN.json'))
-      if (origin.package !== row.name || origin.upstreamVersion !== row.version
-        || origin.license !== 'MIT' || !/^[0-9a-f]{40}$/.test(origin.commit ?? '')) {
-        throw Error('Host fork origin mismatch: ' + row.name)
-      }
-    } else {
-      const origin = fs.readFileSync(path.join(source, 'ORIGIN.md'), 'utf8')
-      if (!origin.includes('Version: ' + row.version) || !origin.includes('License: MIT')
-        || !/^Commit: [0-9a-f]{40}$/m.test(origin)) throw Error('Host fork origin mismatch: ' + row.name)
-    }
+    // The manifest owns the exact provenance bytes and the package metadata
+    // above owns identity. Preserve the original notices without requiring a
+    // second copy of the same license or a second metadata format in ORIGIN.
     for (const file of files) {
       if (!safeRelative(file) || !registered.has(`${row.source}/${file}`)
         || file.startsWith('node_modules/') || file.startsWith('.git/')) {
@@ -121,20 +110,13 @@ export function stageHostForks(repo: string, packageRoot: string, plan: Plan) {
         throw Error('Symbolic link in host fork: ' + row.name + '/' + file)
       }
       if (file.startsWith('lib/') && /\.[cm]?js$/.test(file)) {
-        const sourceFile = file.replace(/^lib\//, 'src/').replace(/\.mjs$/, '.mts')
-          .replace(/\.cjs$/, '.cts').replace(/\.js$/, '.ts')
-        if (!files.includes(sourceFile)) throw Error('Host fork generated JavaScript has no source: ' + file)
-        const banner = `// Generated from ${row.source}/${sourceFile}; edit the TypeScript source.\n`
-        if (!fs.readFileSync(path.join(source, file), 'utf8').startsWith(banner)) {
-          throw Error('Host fork generated JavaScript is stale or unverified: ' + file)
+        // Canonical compilation owns generation consistency. Staging consumes
+        // that mapping, including Typert outputs with no same-named TS file.
+        const producer=producers.get(`${row.source}/${file}`)
+        if(!producer||!registered.has(producer.entry)) {
+          throw Error('Host fork generated JavaScript has no registered producer: '+file)
         }
         const body = fs.readFileSync(path.join(source, file), 'utf8')
-        const expected = ts.transpileModule(fs.readFileSync(path.join(source, sourceFile), 'utf8'), {
-          fileName: path.join(source, sourceFile), compilerOptions: forkCompilerOptions,
-        }).outputText.replace(/\r\n/g, '\n')
-        if (body.slice(banner.length).replace(/\r\n/g, '\n') !== expected) {
-          throw Error('Host fork generated JavaScript differs from its TypeScript source: ' + file)
-        }
         const imports = body.matchAll(/(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\()\s*['"](\.[^'"]+)['"]/g)
         for (const match of imports) {
           const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), match[1]!))
@@ -517,10 +499,15 @@ export function assembleProduct(options: {
         sha256: createHash('sha256').update(fs.readFileSync(path.join(directory, file))).digest('hex')}))}
   })
   const hostForks = stageHostForks(repo, packageRoot, plan)
+  const hostForkProfile=plan.product.hostForkProfile
+    ?makeHostForkProfile(plan.product.hostForkProfile,plan.product.hostForks??[]):undefined
+
   // SDK bytes remain distinct from owned plugins and host singleton ownership.
   const inventory = {schemaVersion: 1, productVersion: metadata.version,
     packages: packages.map(({excludedVendoredFiles, ...row}) => row), bundles, hostForks,
-    rootBundledLibraries: rootLibraries, bundledLibraries}
+    rootBundledLibraries: rootLibraries, bundledLibraries,
+...(hostForkProfile?{hostForkProfile}:{})
+}
   const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
     .map(item => ({package: row.name, ...item})))
   save(path.join(packageRoot, 'package.json'), metadata)

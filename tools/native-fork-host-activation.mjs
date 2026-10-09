@@ -3,10 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { applyNativeForkHost, restoreNativeForkHost } from "./native-fork-host-apply.mjs";
-import { HOST_VERSION, NATIVE_FORKS, packageTreeSha256, planNativeForkHost } from "./native-fork-host-plan.mjs";
+import { HOST_VERSION, hostForkNames, readHostForkProfile, packageTreeSha256, planNativeForkHost } from "./native-fork-host-plan.mjs";
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const inside = (root, child) => child === root || child.startsWith(root + path.sep);
-const exactNames = [...NATIVE_FORKS];
 const regular = (file) => { const stat = fs.lstatSync(file); return stat.isFile() && !stat.isSymbolicLink(); };
 const exists = (file) => {
     try {
@@ -72,8 +71,10 @@ function payload(input) {
         throw Error('Missing regular product dependency inventory');
     const inventoryBytes = fs.readFileSync(inventoryPath);
     const inventory = JSON.parse(inventoryBytes.toString('utf8'));
+    const hostForkProfile = readHostForkProfile(inventory.hostForkProfile);
+    const exactNames = hostForkNames(hostForkProfile);
     if (!Array.isArray(inventory.hostForks) || inventory.hostForks.length !== exactNames.length)
-        throw Error('Expected exactly three host payload records');
+        throw Error(`Expected exactly ${exactNames.length} host payload records`);
     const forkRoot = path.join(packageRoot, 'host-overrides');
     const registeredPayloadFiles = inventory.hostForks.flatMap(item => {
         const row = item;
@@ -120,12 +121,14 @@ function payload(input) {
             throw Error(`Host payload package identity mismatch: ${name}`);
         sources[name] = { directory, sha256: packageTreeSha256(directory) };
     }
-    return { packageRoot, hostRoot, anchors, sources, payloadSha256: sha(inventoryBytes) };
+    return { packageRoot, hostRoot, anchors, sources, payloadSha256: sha(inventoryBytes),
+        ...(hostForkProfile ? { hostForkProfile } : {}) };
 }
 /** Read-only, exact inventory and actual Node-resolution audit. */
 export function auditHostActivation(input) {
     const verified = payload(input);
-    const hostInput = { hostRoot: verified.hostRoot, anchors: verified.anchors, sources: verified.sources };
+    const hostInput = { hostRoot: verified.hostRoot, anchors: verified.anchors, sources: verified.sources,
+        ...(verified.hostForkProfile ? { hostForkProfile: verified.hostForkProfile } : {}) };
     const plan = planNativeForkHost(hostInput);
     if (!plan.ok)
         throw Error(`Host fork plan rejected: ${plan.errors.join('; ')}`);
@@ -236,14 +239,15 @@ export function restoreHostForks(input, control) {
         if (receipt.schemaVersion !== 1 || receipt.state !== 'applied' || !receipt.apply?.ok)
             throw Error('No completed host activation receipt');
         const verified = receiptInput(receipt, input);
-        for (const name of NATIVE_FORKS) {
+        for (const name of hostForkNames(verified.hostForkProfile)) {
             const source = verified.sources[name];
             if (receipt.plan.applySteps.find(step => step.action === 'replace' && step.from === source.directory)?.sha256 !== source.sha256)
                 throw Error(`Host payload differs from receipt: ${name}`);
         }
         control.assertIdle();
         const restored = restoreNativeForkHost({ hostRoot: verified.hostRoot, anchors: verified.anchors,
-            sources: verified.sources }, receipt.plan, receipt.apply);
+            sources: verified.sources,
+            ...(verified.hostForkProfile ? { hostForkProfile: verified.hostForkProfile } : {}) }, receipt.plan, receipt.apply);
         receipt.restore = restored;
         receipt.state = restored.ok ? 'restored' : 'recovery-required';
         if (!restored.ok)
@@ -263,9 +267,10 @@ export function recoverInterruptedHostActivation(input, control) {
         if (receipt.state !== 'prepared' && receipt.state !== 'recovery-required')
             throw Error('Host activation is not interrupted');
         const verified = receiptInput(receipt, input);
-        if (!receipt.plan.ok || receipt.plan.applySteps.length !== NATIVE_FORKS.length * 3)
+        const members = hostForkNames(verified.hostForkProfile);
+        if (!receipt.plan.ok || receipt.plan.applySteps.length !== members.length * 3)
             throw Error('Invalid interrupted host plan');
-        const items = NATIVE_FORKS.map((name, index) => {
+        const items = members.map((name, index) => {
             const [backup, replace, verify] = receipt.plan.applySteps.slice(index * 3, index * 3 + 3);
             const target = path.resolve(backup.from), saved = path.resolve(backup.to ?? '');
             const source = verified.sources[name];

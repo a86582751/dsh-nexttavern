@@ -1,4 +1,12 @@
 // Generated from runtime/alpha3/src/core/roleplay-mvu-schema-assets.ts; edit the TypeScript source.
+var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExtension) || function (path, preserveJsx) {
+    if (typeof path === "string" && /^\.\.?\//.test(path)) {
+        return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function (m, tsx, d, ext, cm) {
+            return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : (d + ext + "." + cm.toLowerCase() + "js");
+        });
+    }
+    return path;
+};
 /** Resolve the schema engine from this admitted product, never a profile,
  * build-tools, card path or optional dependency discovered on the host. */
 import fs from 'node:fs';
@@ -43,8 +51,8 @@ export function createRoleplayMvuSchemaAssetOwner() {
         if (path.isAbsolute(relative) || relative === '..' || relative.startsWith('..' + path.sep)) {
             throw Error('SCHEMA_RUNTIME_ENTRY_OWNER_CHANGED');
         }
-        const bootstrap = await import(pathToFileURL(path.join(root, 'lib/operations/bundled-package-bootstrap.mjs')).href);
-        const protection = await import(pathToFileURL(path.join(root, 'lib/operations/protected-packages.mjs')).href);
+        const bootstrap = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/bundled-package-bootstrap.mjs')).href));
+        const protection = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/protected-packages.mjs')).href));
         const verify = () => {
             const identity = bootstrap.readBundleIdentity(root);
             const specs = identity.packages.filter(spec => spec.name === name);
@@ -67,25 +75,25 @@ export function createRoleplayMvuSchemaAssetOwner() {
         };
         let loaded;
         if (version === 1) {
-            const module = await import(pathToFileURL(entry).href);
+            const module = await import(__rewriteRelativeImportExtension(pathToFileURL(entry).href));
             if (closed)
                 throw Error('SCHEMA_RUNTIME_DISPOSED');
             loaded = await module.createMvuSchemaRuntime({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed) });
         }
         else if (version === 2) {
-            const module = await import(pathToFileURL(entry).href);
+            const module = await import(__rewriteRelativeImportExtension(pathToFileURL(entry).href));
             if (closed)
                 throw Error('SCHEMA_RUNTIME_DISPOSED');
             loaded = await module.createMvuSchemaRuntimeV2({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed) });
         }
         else if (version === 3) {
-            const module = await import(pathToFileURL(entry).href);
+            const module = await import(__rewriteRelativeImportExtension(pathToFileURL(entry).href));
             if (closed)
                 throw Error('SCHEMA_RUNTIME_DISPOSED');
             loaded = await module.createMvuSchemaRuntimeV3({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed) });
         }
         else {
-            const module = await import(pathToFileURL(entry).href);
+            const module = await import(__rewriteRelativeImportExtension(pathToFileURL(entry).href));
             if (closed)
                 throw Error('SCHEMA_RUNTIME_DISPOSED');
             loaded = await module.createMvuSchemaRuntimeV4({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed) });
