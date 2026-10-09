@@ -1,8 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { relative, sep, isAbsolute } from 'node:path'
-import { writeUserInfo as writeUserInfoFile } from './roleplay-userinfo.js'
+import { readEffectiveUserInfo, writeUserInfo as writeUserInfoFile } from './roleplay-userinfo.js'
 
-export { userInfoPath, readUserInfo } from './roleplay-userinfo.js'
+export { userInfoPath } from './roleplay-userinfo.js'
+
+export function readUserInfo(): Record<string, unknown> | null {
+  // Preset readers keep their recoverable read behavior while consuming the
+  // selected account profile, never catalog/receipt bookkeeping as user DATA.
+  try { return readEffectiveUserInfo() } catch { return null }
+}
 
 
 // ── 小工具 ──────────────────────────────────────────────────────────────────

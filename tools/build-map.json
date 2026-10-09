@@ -7282,6 +7282,15 @@
       "outputs": [
         "development/subagent-in-process-driver/lib/ruby-task-child.js"
       ]
+    },
+    {
+      "artifact": "roleplay-native-persona-types-js",
+      "source": "src/core/roleplay-native-persona-types.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-native-persona-types.ts",
+      "primaryOutput": "lib/core/roleplay-native-persona-types.js",
+      "outputs": [
+        "lib/core/roleplay-native-persona-types.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -14817,6 +14826,14 @@
       {
         "id": "compat-subagent-in-process-driver-ruby-task-child-js",
         "source": "development/subagent-in-process-driver/lib/ruby-task-child.js"
+      },
+      {
+        "id": "roleplay-native-persona-types-typescript",
+        "source": "src/core/roleplay-native-persona-types.ts"
+      },
+      {
+        "id": "roleplay-native-persona-types-js",
+        "source": "lib/core/roleplay-native-persona-types.js"
       }
     ],
     "builds": [
@@ -42100,7 +42117,8 @@
           "src/core/tavern-mvu-schema-fresh-selector.ts",
           "development/mvu-schema-runtime-v4/src/index.ts",
           "development/mvu-schema-runtime-v4/src/descriptor.ts",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "src/core/roleplay-native-persona-types.ts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-data.ts"
       },
@@ -45025,7 +45043,8 @@
           "src/core/tavern-mvu-schema-fresh-selector.ts",
           "development/mvu-schema-runtime-v4/src/index.ts",
           "development/mvu-schema-runtime-v4/src/descriptor.ts",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "src/core/roleplay-native-persona-types.ts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-userinfo.ts"
       },
@@ -123870,6 +123889,21 @@
           "build-tools/package-lock.json"
         ],
         "banner": "runtime/alpha3/compat/subagent-in-process-driver/src/ruby-task-child.ts"
+      },
+      {
+        "id": "roleplay-native-persona-types-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-native-persona-types-js",
+        "entry": "src/core/roleplay-native-persona-types.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/roleplay-native-persona-types.ts",
+          "build-tools/package-lock.json",
+          "build-tools/package.json",
+          "build-tools/tsconfig.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-native-persona-types.ts"
       }
     ],
     "typeScript": {
@@ -123882,7 +123916,8 @@
       "bootstrap": "runtime/alpha3/src/operations/build-typescript.mts",
       "ambientDeclarations": [
         "build-tools/node_modules/@deepseek-ai/dsh-subagent/lib/types/projection.d.ts",
-        "build-tools/node_modules/@deepseek-ai/dsh-subagent/lib/types/catalog.d.ts"
+        "build-tools/node_modules/@deepseek-ai/dsh-subagent/lib/types/catalog.d.ts",
+        "build-tools/node_modules/@deepseek-ai/dsh-agent/lib/types/types.d.ts"
       ],
       "contexts": {
         "client": {},

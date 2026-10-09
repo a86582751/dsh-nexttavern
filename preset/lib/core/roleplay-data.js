@@ -1,8 +1,18 @@
 // Generated from runtime/alpha3/src/core/roleplay-data.ts; edit the TypeScript source.
 import { createHash, randomUUID } from 'node:crypto';
 import { relative, sep, isAbsolute } from 'node:path';
-import { writeUserInfo as writeUserInfoFile } from './roleplay-userinfo.js';
-export { userInfoPath, readUserInfo } from './roleplay-userinfo.js';
+import { readEffectiveUserInfo, writeUserInfo as writeUserInfoFile } from './roleplay-userinfo.js';
+export { userInfoPath } from './roleplay-userinfo.js';
+export function readUserInfo() {
+    // Preset readers keep their recoverable read behavior while consuming the
+    // selected account profile, never catalog/receipt bookkeeping as user DATA.
+    try {
+        return readEffectiveUserInfo();
+    }
+    catch {
+        return null;
+    }
+}
 // ── 小工具 ──────────────────────────────────────────────────────────────────
 // storage-json 的 per-record 布局要求键 path-safe（/^[a-zA-Z0-9_-]+$/），
 // 冒号不可用：以双下划线分隔 branchId 与子键（session id 只含 [a-z0-9-]）。
