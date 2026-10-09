@@ -8,6 +8,7 @@ import type * as CompilerAPI from '../../build-tools/node_modules/typescript/lib
 import type {MvuSchemaRuntimeAssetRecipe} from './mvu-schema-runtime-assets.mjs'
 import type {TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
 import type {AuthorBrowserRuntimeAssetRecipeV1} from './author-browser-runtime-assets.mjs'
+import type {AuthorBrowserRuntimeAssetRecipeV3} from './author-browser-runtime-assets-v3.mjs'
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
 import type {AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
 import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
@@ -20,10 +21,11 @@ interface Recipe {
 interface CompiledRecipe extends Recipe { outputSource: string; text: string }
 export interface CompilePlan {
   builds: Recipe[]
-  artifacts: {id: string; source: string}[]
+  artifacts: {id: string; source: string; canonicalSource?: string}[]
   product?:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe;mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[];
     templateRuntime?:TavernTemplateRuntimeAssetRecipeV1;
-    authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1;authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5;
+    authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1;authorBrowserRuntimeV3?:AuthorBrowserRuntimeAssetRecipeV3;
+    authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5;
     authorPromptRuntime?:AuthorPromptRuntimeAssetRecipeV1;
     packages?:readonly {packageArtifact:string;resources?:readonly {artifact:string;path:string}[]}[]
     subagentTypert?:SubagentTypertRecipeV1;
@@ -427,19 +429,26 @@ export async function checkTavernTemplateRuntimeBuild(repo:string,plan:CompilePl
  * recipe. Strict module generation runs first, including these producers. */
 export async function checkAuthorRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
   const product=plan.product
-  if(!product||!product.authorBrowserRuntime&&!product.authorHostRuntime&&!product.authorPromptRuntime)return undefined
+  if(!product||!product.authorBrowserRuntime&&!product.authorBrowserRuntimeV3&&!product.authorHostRuntime&&!product.authorPromptRuntime)return undefined
   const packages=[]
   const componentPlan={artifacts:plan.artifacts,product:{...product,packages:product.packages??[]}}
-  for(const component of ['authorBrowserRuntime','authorHostRuntime','authorPromptRuntime'] as const) {
+  for(const component of ['authorBrowserRuntime','authorBrowserRuntimeV3','authorHostRuntime','authorPromptRuntime'] as const) {
     const recipe=product[component]
     if(!recipe)continue
-    const builderId=component==='authorBrowserRuntime'?'author-browser-runtime-assets-generated'
+    const builderId=component==='authorBrowserRuntimeV3'?'author-browser-runtime-assets-v3-generated'
+      :component==='authorBrowserRuntime'?'author-browser-runtime-assets-generated'
       :component==='authorHostRuntime'?'author-host-runtime-assets-generated':'author-prompt-runtime-assets-generated'
     const builder=plan.artifacts.find(artifact=>artifact.id===builderId)
     const metadata=plan.artifacts.find(artifact=>artifact.id===recipe.packageArtifact)
     if(!builder||!metadata)throw Error('Author component producer or package is not registered')
     const options={repo,plan:componentPlan,packageRoot:inside(repo,path.posix.dirname(metadata.source)),write}
-    if(component==='authorBrowserRuntime') {
+    if(component==='authorBrowserRuntimeV3') {
+      const lockArtifact=plan.artifacts.find(artifact=>artifact.id===recipe.lockArtifact)
+      if(!lockArtifact)throw Error('Author component dependency lock is not registered')
+      const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-browser-runtime-assets-v3.mjs')
+      packages.push(await producer.buildAuthorBrowserRuntimeAssetsV3({...options,
+        libraryRoot:inside(repo,path.posix.dirname(lockArtifact.source)+'/node_modules')}))
+    }else if(component==='authorBrowserRuntime') {
       const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-browser-runtime-assets.mjs')
       packages.push(await producer.buildAuthorBrowserRuntimeAssetsV1(options))
     }else if(component==='authorHostRuntime') {
