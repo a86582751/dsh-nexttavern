@@ -223,6 +223,9 @@ export function validatePromptVariableCatalogV1(source:TavernLoreSourceDataV1,ca
   validatePromptVariableSourceV1(source)
   const typedCatalog=catalog
   const sourceSha256=source.sourceSha256,primary=source.original.primary,entries=catalog.entries
+  const currentMembers=catalog.schemaVersion===2
+    &&Object.hasOwn(catalog.completeCatalogRef.ref,'currentNativeMembershipSha256')
+  const expectedEntryCount=currentMembers?catalog.completeCatalogRef.ref.actualCurrentEntryCount:primary.entries.length
   promptExact(catalog,['schemaVersion','encoding','sourceSha256','bookSha256','entries','invertEnabled',
     'settingsRef','completeCatalogRef','catalogSha256'])
   const {catalogSha256,...body}=catalog
@@ -231,14 +234,17 @@ export function validatePromptVariableCatalogV1(source:TavernLoreSourceDataV1,ca
     ||catalog.sourceSha256!==sourceSha256||catalog.bookSha256!==primary.bookSha256
     ||typeof catalog.invertEnabled!=='boolean'||recordSha256(body)!==catalogSha256
     ||!Array.isArray(catalog.entries)||catalog.entries.length>TAVERN_PROMPT_VARIABLE_BOUNDS_V1.entries
-    ||catalog.entries.length!==primary.entries.length)promptFail('PROMPT_VARIABLE_CATALOG_INVALID')
+    ||catalog.entries.length!==expectedEntryCount) {
+    promptFail('PROMPT_VARIABLE_CATALOG_INVALID')
+  }
   promptRef(catalog.settingsRef);promptRef(catalog.completeCatalogRef)
-  if(primary.binding==='proven-absence') {
+  if(primary.binding==='proven-absence'&&!currentMembers) {
     if(catalog.entries.length!==0)promptFail('PROMPT_VARIABLE_CATALOG_INCOMPLETE')
     return
   }
-  const rawBookEntries=primary.value.entries
-  if(!rawBookEntries||typeof rawBookEntries!=='object'||Object.keys(rawBookEntries).length!==primary.entries.length) {
+  const rawBookEntries=primary.value?.entries
+  if(!currentMembers&&(!rawBookEntries||typeof rawBookEntries!=='object'
+    ||Object.keys(rawBookEntries).length!==primary.entries.length)) {
     promptFail('PROMPT_VARIABLE_CATALOG_INCOMPLETE')
   }
   const pointers=new Set<string>(),entryIds=new Set<string>()
@@ -246,13 +252,15 @@ export function validatePromptVariableCatalogV1(source:TavernLoreSourceDataV1,ca
   for(const [index,entry] of entries.entries()) {
     promptExact(entry,['ordinal','entryId','rawEntryPointer','rawEntrySha256','title','currentSemantic',
       'currentSemanticSha256','contentPointer','content','contentSha256','decorators','provenance'])
-    const original=primary.entries[index]!
-    const key=original.entryKey,pointer=`${primary.bookPointer}/entries/${key.replace(/~/g,'~0').replace(/\//g,'~1')}`
+    const original=currentMembers?undefined:primary.entries[index]!,key=original?.entryKey,
+      pointer=currentMembers?`/currentNativeMembership/members/${index}/rawEntry`
+        :`${primary.bookPointer}/entries/${key!.replace(/~/g,'~0').replace(/\//g,'~1')}`
     if(entry.ordinal!==index||!promptHash(entry.entryId)||entryIds.has(entry.entryId)||pointers.has(entry.rawEntryPointer)
-      ||entry.rawEntryPointer!==pointer||original.ref.entryPointer!==pointer||original.ref.entryOrdinal!==index
-      ||original.ref.sessionId!==source.sessionId||original.ref.bookSha256!==primary.bookSha256
-      ||entry.rawEntrySha256!==original.ref.entrySha256||recordSha256(original.value)!==entry.rawEntrySha256
-      ||recordSha256((rawBookEntries as Record<string,unknown>)[key])!==entry.rawEntrySha256
+      ||entry.rawEntryPointer!==pointer
+      ||!currentMembers&&(original!.ref.entryPointer!==pointer||original!.ref.entryOrdinal!==index
+        ||original!.ref.sessionId!==source.sessionId||original!.ref.bookSha256!==primary.bookSha256
+        ||entry.rawEntrySha256!==original!.ref.entrySha256||recordSha256(original!.value)!==entry.rawEntrySha256
+        ||recordSha256((rawBookEntries as Record<string,unknown>)[key!])!==entry.rawEntrySha256)
       ||entry.contentPointer!==`${pointer}/content`||typeof entry.title!=='string'||Buffer.byteLength(entry.title,'utf8')>4096
       ||typeof entry.content!=='string'||schemaTextSha256(entry.content)!==entry.contentSha256) {
       promptFail('PROMPT_VARIABLE_CATALOG_ENTRY_LINK',String(index))
@@ -270,7 +278,7 @@ export function validatePromptVariableCatalogV1(source:TavernLoreSourceDataV1,ca
       if(current) {
         if(current.text!==entry.content||current.contentSha256!==entry.contentSha256
           ||recordSha256(current.origin.ref)!==current.origin.refSha256)promptFail('PROMPT_VARIABLE_CURRENT_CONTENT_LINK')
-      } else if(original.value.content!==entry.content)promptFail('PROMPT_VARIABLE_ORIGINAL_CONTENT_LINK')
+      } else if(original!.value.content!==entry.content)promptFail('PROMPT_VARIABLE_ORIGINAL_CONTENT_LINK')
     } else {
       promptExact(entry.currentSemantic,['enabled'])
       if(typeof entry.currentSemantic.enabled!=='boolean'||recordSha256(entry.currentSemantic)!==entry.currentSemanticSha256) {
@@ -283,7 +291,9 @@ export function validatePromptVariableCatalogV1(source:TavernLoreSourceDataV1,ca
         ||supplied.currentContentSha256!==entry.contentSha256||origin!==null&&!promptHash(origin)) {
         promptFail('PROMPT_VARIABLE_CURRENT_CONTENT_LINK')
       }
-      if(origin===null&&original.value.content!==entry.content)promptFail('PROMPT_VARIABLE_ORIGINAL_CONTENT_LINK')
+      // Current members have already been materialized by the journal and
+      // catalog owner; their text is not an immutable original-book ordinal.
+      if(!currentMembers&&origin===null&&original!.value.content!==entry.content)promptFail('PROMPT_VARIABLE_ORIGINAL_CONTENT_LINK')
     }
     if(entry.decorators!==null&&(!Array.isArray(entry.decorators)||entry.decorators.length>128
       ||entry.decorators.some(line=>typeof line!=='string'||!line.startsWith('@@')||line.length>4096))) {
