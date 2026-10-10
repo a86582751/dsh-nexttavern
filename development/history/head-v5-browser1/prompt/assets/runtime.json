@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "dsh-nexttavern-author-prompt-runtime-v1",
+  "version": "0.1.0",
+  "modules": {
+    "provider": "dist/index.mjs",
+    "worker": "dist/prompt-worker.mjs"
+  },
+  "dependencies": {
+    "typescript": "5.9.3",
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0"
+  },
+  "profileSha256": "18367b89a2575c2d5765f29998704c45f0ffbafdbaf21ce372c8a60137107e43"
+}

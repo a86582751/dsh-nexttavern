@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {createRequire, findPackageJSON} from 'node:module'
 import {pathToFileURL} from 'node:url'
+import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from '../core/roleplay-author-host-types-v5.js'
 import {withFileLock} from '@deepseek-ai/dsh-atomic-write'
 import {contained} from './public-transaction.mjs'
 import {prepareProtectedPackages, protectedGeneration, recoverProtectedPackages, verifyProtectedPackage,
@@ -23,11 +24,22 @@ export interface BundledBundleSpec extends BundledPackageSpec {
   /** Package-root relative directory the shipped tree lives in. */
   path: string
 }
+/** Same-name historical generations are addressed inside the pinned product,
+ * never added to npm resolution or the profile's activation roster. */
+export interface BundledHistoricalComponentSpec extends BundledPackageSpec {
+  path:string
+}
 interface BundleInventory {
   schemaVersion: 1
   productVersion: string
   packages: BundledPackageSpec[]
   bundles?: BundledBundleSpec[]
+  historicalComponents?:BundledHistoricalComponentSpec[]
+  authorRuntimeHistory?:readonly {serverPackage:string;hostPackage:string;browserPackage:string;
+    hostComponent?:string;browserComponent?:string;
+    promptPackage?:string;promptComponent?:string;
+    browserPartitionPackage?:string;
+    server:AuthorServerExecutorV4;host:AuthorHostIdentityV5}[]
 }
 interface PackageMetadata {
   name: string
@@ -155,7 +167,15 @@ export function readBundleIdentity(productRoot: string) {
       generation: protectedGeneration({name: spec.name, version: spec.version, files: spec.files}),
       bundle: true as const}
   })
-  return {productRoot, rootManifest, metadata: product, version: product.version, packages, bundles}
+  const historicalPaths=new Set<string>()
+  const historicalComponents=(inventory.historicalComponents??[]).map(spec=>{
+    if(historicalPaths.has(spec.path))throw Error('Duplicate historical component path: '+spec.path)
+    historicalPaths.add(spec.path)
+    const source=contained(productRoot,spec.path)
+    return {...spec,source,generation:protectedGeneration(spec)}
+  })
+  return {productRoot, rootManifest, metadata: product, version: product.version, packages, bundles,historicalComponents,
+    authorRuntimeHistory:inventory.authorRuntimeHistory??[]}
 }
 
 /**

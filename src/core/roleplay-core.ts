@@ -7,6 +7,7 @@ import type {
 import type { ContextSession,ContextMessage } from './roleplay-context.js'
 import { readProjectedStory,projectStoryEvent } from './roleplay-message-view.js'
 import type { InheritanceOptions } from './roleplay-inheritance-types.js'
+import type {ForkOperation} from './roleplay-worldline-types.js'
 import type { MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 import type { NativeTaskInput, HostAgent } from './roleplay-task-host-types.js'
 import type { TaskAgent } from './tavern-task-types.js'
@@ -98,6 +99,9 @@ import {createRoleplayMvuPlayer} from './roleplay-mvu-player.js'
 import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
 import {registerMvuPlayerRoutes} from './roleplay-mvu-player-routes.js'
 import {createRoleplayAuthorBrowser} from './roleplay-author-browser.js'
+import {createCanonicalAuthorChatStateV1,deriveAuthorChatBindingV1,deriveAuthorChatBindingV2}
+  from './roleplay-author-chat-state.js'
+import {createRoleplayAuthorBrowserKeyCoreV3} from './roleplay-author-browser-key-core-v3.js'
 import type {Session as NativeSession} from '@deepseek-ai/dsh-session'
 import {foldSurface,deriveEventMessage} from '@deepseek-ai/dsh-session/surface'
 import {createRoleplayMvuDerived,readMvuPrefixCanonical} from './roleplay-mvu-derived.js'
@@ -467,6 +471,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     userinfo: inputState.table('userinfo',domain.table('userinfo')),
     decision: inputState.table('decision',domain.table('decision')),
   }
+  const authorChatState=createCanonicalAuthorChatStateV1({table:T.branch})
   let programOpening:ReturnType<typeof createRoleplayProgramOpeningCoreV1>|undefined
   const phaseARowFacts=createRoleplayPhaseABranchRowFactsV1({branch:T.branch,session:id=>ctx.sessions.get(id)})
   ctx.effect(()=>()=>phaseARowFacts.dispose(),'roleplay: Phase-A row facts lifetime')
@@ -789,6 +794,67 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     withSourceLock:(id,work)=>withImportLock(id,'tavern-source-inheritance',work),
     readNativeSession:id=>mvuAncestry.readNativeObservation(id),readOpeningContext:openingContextBinding,
     captureNonNumericalOpening,assertNonNumericalOpening,captureProgramAbsenceOpening,assertProgramAbsenceOpening,
+    captureAuthorChatForkSeed:(parent,child,operationId,nativeCut)=>{
+      const program=mvuOpening.captureSchemaPromptScopes(parent)?.authorBrowser?.program
+      if(!program)return undefined
+      const binding=deriveAuthorChatBindingV1(parent,program)
+      return binding?authorChatState.freezeForkSeed({binding,childSessionId:child,operationId,
+        nativeCutSha256:recordSha256(nativeCut)}):undefined
+    },
+    applyAuthorChatForkSeed:async(seed,preparedRef,prepared,sourceCurrent)=>{
+      // A schema fork inherits the proven immutable compilation Source. Its
+      // mutable child frame is a separate currentness input, not a new program.
+      const binding={...seed.parent.binding,sessionId:prepared.childSessionId}
+      await authorChatState.applyForkSeed(seed,preparedRef,binding,{accepts:sourceCurrent})
+    },
+    captureAuthorChatForkSeedsV2:(parent,child,operationId,nativeCut)=>{
+      // Fresh/opening-only branches have no inherited Derived Program. Their
+      // separate opening flow cannot yet inherit State2 declarations/heads.
+      if(nativeCut.kind!=='native-fork'||nativeCut.seedLength===0)return undefined
+      const operation=T.branch.get(forkOperationKey(operationId)) as ForkOperation
+      if(operation.anchor.openingOnly)return undefined
+      if(!mvuOpening.hasSchemaOpening(parent))return undefined
+      // ensureParentBranch already preflighted this view outside Source's
+      // parent FIFO. The current realm has one immutable epoch Program, so
+      // its legal earlier Story cuts share these exact admitted declarations.
+      const admitted=mvuOpening.readAdmittedBrowserProgram(parent)
+      if(!admitted)return undefined
+      const {program,epochRef}=admitted,nativeCutSha256=recordSha256(nativeCut)
+      const seeds=program.declarations.flatMap(declaration=>{
+        const binding=deriveAuthorChatBindingV2(parent,program,declaration),
+          seed=authorChatState.freezeForkSeedV2({binding,childSessionId:child,operationId,nativeCutSha256,
+            declaration:{declarationId:declaration.declarationId,
+              writerIdentitySha256:declaration.writerIdentitySha256,writer:declaration.writer}})
+        return seed?[seed]:[]
+      })
+      if(!seeds.length)return undefined
+      return {schemaVersion:2,encoding:'native-author-chat-fork-seed-set-v2',
+        programRef:{epochRef,programSha256:program.programSha256},seeds}
+    },
+    applyAuthorChatForkSeedsV2:async(set,preparedRef,prepared,sourceCurrent)=>{
+      // Source owns this actual reserved child apply. Read only its frozen
+      // Derived Program DATA before Source/numerical publication exists;
+      // child preflight and parent latest cannot supply this declaration.
+      const admitted=schemaDerived?.readPreparedInheritedBrowserProgram(prepared.childSessionId,preparedRef)
+      if(!admitted||admitted.program.programSha256!==set.programRef.programSha256
+        ||admitted.epochRef.key!==set.programRef.epochRef.key
+        ||admitted.epochRef.sha256!==set.programRef.epochRef.sha256) {
+        throw Error('AUTHOR_CHAT_DECLARATION_UNAVAILABLE')
+      }
+      const retained=set.seeds.map(seed=>{
+        const declaration=admitted.program.declarations.find(row=>row.declarationId===seed.declaration.declarationId
+          &&row.writerIdentitySha256===seed.declaration.writerIdentitySha256)
+        if(!declaration)throw Error('AUTHOR_CHAT_DECLARATION_UNAVAILABLE')
+        return {seed,declaration,binding:deriveAuthorChatBindingV2(prepared.childSessionId,admitted.program,declaration)}
+      })
+      for(const {seed,declaration,binding} of retained) {
+        await authorChatState.applyForkSeedV2(seed,preparedRef,binding,declaration,{
+          // The actual prepared Program supplied membership once above.
+          // State owns seed/namespace/CAS; awaits retain Source's live cut.
+          accepts:()=>true,isCurrent:sourceCurrent,
+        })
+      }
+    },
     readNumericalSourceCapture:actualInputSourceCapture,
     readPublishedLocalEditJournal:source=>readTavernLoreEditJournalV1({branch:T.branch,source:tavernSource,
       withSourceLock:(id,work)=>withImportLock(id,'tavern-lore-edit',work)},source),
@@ -809,6 +875,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       await ensureBranch(actual)
       await mvuOpening.preflightInheritedPrompt(id)
       await mvuOpening.preflightPromptTemplate(id)
+      await mvuOpening.preflightSchema(id)
     }})
 
   const taskAgents = new Map<string, CoreAgent>()
@@ -2066,6 +2133,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     derivedBasisRequired:mvuDerived.required,
     schemaDerivedRequired:id=>T.branch.get(mvuSchemaDerivedPreparedKey(id))!==undefined
       ||T.branch.get(mvuSchemaDerivedBasisKey(id))!==undefined,
+    // Derived shares the frozen inherited DATA. Today's Source authority is
+    // collected by the current waiter outside that historical footprint.
     readSchemaDerivedGenesis:(id,currentSource)=>schemaDerived?.readGenesis(id,currentSource),
     readSchemaEditInvalidation:id=>mvuEdits.readInvalidation(id),
     branchReady:id => ensureState(id).branchReady,importActiveKey,importRecordKey,
@@ -2080,8 +2149,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const session=ctx.sessions.get(id)
       return !!session && cardWorkflows(session).some(job => job.kind === 'card-import'
         && job.execution !== 'deterministic' && ['queued','running','waiting-main'].includes(job.status))
-        || [...T.branch.entries()].some(([,record]) => record.sessionId===id && record.mode==='merge'
-          && typeof record.importId==='string' && ['staging','committing','recovery-required'].includes(String(record.status)))
+        || [...T.branch.entries()].some(([,value]) => {
+          const record=value as unknown as Partial<ImportRecord>
+          return record.sessionId===id&&record.mode==='merge'&&typeof record.importId==='string'
+            &&['staging','committing','recovery-required'].includes(String(record.status))
+        })
     },
     nativeLookup:async (identity,text) => {
       const found = await ctx.sessionController.resolveAgent(identity.sessionId)
@@ -2324,7 +2396,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       ?'MVU_PLAYER_SESSION_INACTIVE':mvuOpening.schemaPlayerEditBlockCode(id)
     return {...basis,observedNativeSeq:currentNativeSeq,kind:'schema-ready',values:structuredClone(snapshot.values),
       valuesSha256:snapshot.valuesSha256,sourceSha256:snapshot.sourceSha256,eventId:snapshot.currentHead.eventId,
-      snapshot,displayUpdates:observation!.displayUpdates,canEdit:!editBlockCode,...(editBlockCode?{editBlockCode}:{})}
+      snapshot,displayUpdates:observation!.displayUpdates,
+      ...observation!.commandDiagnostics?{commandDiagnostics:observation!.commandDiagnostics}:{},
+      canEdit:!editBlockCode,...(editBlockCode?{editBlockCode}:{})}
   }
   const completionDeps:MvuStoryCompletionDependencies={table:T.branch,state:mvuState,awaitOwnedCompletion,
     sourceCurrent:(sid,sourceSha256)=>{
@@ -2422,6 +2496,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },scope,descriptor),withSourceLock:(id,work)=>withImportLock(id,'input-management-terminal',work),
   }
   const schemaStory=mvuOpening.createSchemaStory({
+    authorChat:authorChatState,
     closingView:(lease,scope)=>inputOwner?.readClosingView(lease,scope),
     verifyConsumedScope:scope=>inputOwner?.verifyConsumedScope(scope)===true,
     verifyNative:completionDeps.verifyNative,readCanonical:completionDeps.readCanonical,
@@ -2429,29 +2504,22 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   })
   completionDeps.schema=schemaStory
   if(schemaStory)schemaDerived=createRoleplayMvuSchemaDerived({tables:T,branch:T.branch,status:T.status,
+    captureRead:(id,compute)=>inputState.captureSource(id,'schema-derived-genesis',compute),
     session:id=>ctx.sessions.get(id) as unknown as NativeSession|undefined,readSession:mvuAncestry.readSession,
     readSourceSha256:mvuOpening.readSourceSha256,readOpeningContext:openingContextBinding,
     importActiveKey,importRecordKey,withSourceLock:(id,work)=>withImportLock(id,'mvu-schema-derived',work),
     sourceInheritance:()=>tavernSourceInheritance,readSourceDescriptor:mvuOpening.readSourceDescriptor,
     history:schemaStory})
   const completion=createRoleplayMvuStoryCompletion(completionDeps)
-  const tavernMaterial=createRoleplayTavernPromptMaterialV1({branch:T.branch,inputState,
-    pendingOutputRows:readPendingStatusOutputRows,
-    source:tavernSource,edits:tavernLoreEdits,
-    withSourceLock:(id,work,signal)=>withImportLock(id,'tavern-prompt-material',work,signal),
-    includeCardStyle:id=>narrativePresets.policy(id).effective.mode!=='system',
-    authorPolicy:id=>{
-      const actual=narrativePresets.policy(id)
-      return {conversationId:actual.conversationId,effective:actual.effective,preset:actual.preset,summary:actual.summary}
-    },
-    loadTemplate:signal=>tavernTemplate.load(signal),
-    projections:()=>ctx.sessions.messageProjections,
-    inheritedTiming:(scope,source,assertOwnerFactsCurrent)=>{
+  function captureInheritedTiming(sid:string,source:import('./roleplay-tavern-lore-source-types.js').TavernLoreSourceDataV1,
+    assertOwnerFactsCurrent:()=>void) {
       if(!source.inheritance)return undefined
       assertOwnerFactsCurrent()
-      const lineage=tavernSourceInheritance.readCommittedSourceLineage(scope.session.id),current=lineage.current,
-        inheritedHistory=captureRoleplayTavernInheritedMaterialHistoryV1({sessionId:scope.session.id,table:T.branch,
-          events:()=>scope.session.snapshotEvents(),projections:()=>ctx.sessions.messageProjections,
+      const session=ctx.sessions.get(sid) as unknown as NativeSession|undefined
+      if(!session)throw Error('INPUT_MATERIAL_TIMED_NATIVE_UNAVAILABLE')
+      const lineage=tavernSourceInheritance.readCommittedSourceLineage(sid),current=lineage.current,
+        inheritedHistory=captureRoleplayTavernInheritedMaterialHistoryV1({sessionId:sid,table:T.branch,
+          events:()=>session.snapshotEvents(),projections:()=>ctx.sessions.messageProjections,
           inheritedEventCount:current.prepared.nativeCut.seedLength,
           publications:current.materialBaseline.publications,assertOwnerCurrent:assertOwnerFactsCurrent}),
         refs=new Map<string,string>()
@@ -2473,7 +2541,19 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       }
       assertCurrent()
       return {sourceLineage:lineage,inheritedHistory,assertCurrent}
+  }
+  const tavernMaterial=createRoleplayTavernPromptMaterialV1({branch:T.branch,inputState,
+    pendingOutputRows:readPendingStatusOutputRows,
+    source:tavernSource,edits:tavernLoreEdits,
+    withSourceLock:(id,work,signal)=>withImportLock(id,'tavern-prompt-material',work,signal),
+    includeCardStyle:id=>narrativePresets.policy(id).effective.mode!=='system',
+    authorPolicy:id=>{
+      const actual=narrativePresets.policy(id)
+      return {conversationId:actual.conversationId,effective:actual.effective,preset:actual.preset,summary:actual.summary}
     },
+    loadTemplate:signal=>tavernTemplate.load(signal),
+    projections:()=>ctx.sessions.messageProjections,
+    inheritedTiming:(scope,source,current)=>captureInheritedTiming(scope.session.id,source,current),
     schemaScopes:mvuOpening.captureSchemaPromptScopes,
     executeAuthorPrompt:mvuOpening.executeAuthorPrompt,
     openingPreparation:(native,scope,source)=>{
@@ -2649,6 +2729,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     const id=(input as {sessionId?:unknown})?.sessionId
     return typeof id==='string'&&mvuOpening.hasSchemaOpening(id)?mvuOpening.submitSchemaPlayer(input):mvuPlayer.submit(input)
   }},observe:observeNumericalState})
+  const authorKeyCore=createRoleplayAuthorBrowserKeyCoreV3({state:authorChatState,
+    // The service retains the original Source proof independently of its
+    // State2 DATA cut. Reuse that proof across the canonical writer's FIFO.
+    captureCurrent:async(_sid,_program,current)=>current,
+    withSourceLock:(sid,work,signal)=>withImportLock(sid,'author-chat-state',work,signal)})
   authorBrowser=createRoleplayAuthorBrowser({ctx,resolveSession:async id=>{
     const session=await resolveRoleplaySession(id)
     if(session)await ensureBranch(session)
@@ -2672,12 +2757,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         &&(choice?`${choice.root}:${choice.activeSessionId}:${choice.revision}`:sid)===selection
         &&recordSha256(nativeOwner.lookupInputStop())===stopSha256
     }
-  },captureFacts:async sid=>{
-    if(!mvuOpening.hasSchemaOpening(sid))return undefined
-    return mvuOpening.captureSchemaBrowserFacts(sid)
-  },submit:(input,current)=>mvuOpening.submitSchemaPlayer(input,current),confirm:mvuOpening.confirmSchemaPlayer})
+  },captureFacts:async sid=>mvuOpening.hasSchemaOpening(sid)?mvuOpening.captureSchemaBrowserFacts(sid):undefined,
+    mutateAuthorKey:authorKeyCore.mutate,
+    submit:(input,current)=>mvuOpening.submitSchemaPlayer(input,current),confirm:mvuOpening.confirmSchemaPlayer,})
   ctx.on('session/disposed',session=>authorBrowser?.invalidateSession(session.id),{global:true})
-  ctx.effect(()=>()=>authorBrowser?.dispose(),'roleplay: owned browser lifetime')
+  ctx.effect(()=>()=>{authorBrowser?.dispose();authorKeyCore.dispose()},'roleplay: owned browser lifetime')
   registerTavernLoreEditorRoutesV1({ctx,store:tavernLoreEdits,resolveSessionScope:async id=>{
     const session=await resolveRoleplaySession(id)
     if(!session||!storyBranchIsActive(session))return null
@@ -2837,12 +2921,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     startExportJob: (...args) => startExportJob(...args),
     svc,
   })
-
-  // ── 侧边栏 REST：读/写角色扮演状态（记忆/世界书/角色卡/设置）──────────────
-  // 供 dsh-roleplay-ui 的侧边栏面板使用；路由随 standing 挂载注册一次，
-  // 按 sessionId 解析会话并校验其预设；与 /api/session.export 同级的
-  // 认证模型（浏览器 cookie）。
-
   const { collectBranchRecords, recordVersionsFor, readRoleplayState } = createRoleplayState({
     ctx,
     T,

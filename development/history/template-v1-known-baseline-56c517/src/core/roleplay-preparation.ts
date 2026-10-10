@@ -1,0 +1,505 @@
+import { randomUUID } from 'node:crypto'
+import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
+import { keyOf, sha256, recordSha256, textOf, provenanceSeq, estimateTokens, durableSeq, stableJson, cloneRecord } from './roleplay-data.js'
+import { eventsOf, surfaceEvents, surfaceEntries, lastSeq, visibleCompactionCheckpoint, roleplayWindowCutStartIndex } from './roleplay-context.js'
+import { fenceCardContent } from './tavern-card.js'
+import { activeOpeningSource } from './roleplay-import.js'
+import { internalTaskSeqs, isInlinePending } from './tavern-tasks.js'
+import {nativeMvuAuthorRules,nativeMvuLegacyAuthorRules} from './roleplay-author-context.js'
+import type { PreparationDependencies, PreparationSession, ContextWindow, WindowMetadata, MemoryPreparation, PreparationPayload, PreparationWriteState, PreparationSnapshot } from './roleplay-preparation-types.js'
+import type { ContextMessage } from './roleplay-context.js'
+import type { TaskAgent } from './tavern-task-types.js'
+import type { HostSession } from './roleplay-task-host-types.js'
+import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
+import type {RoleplayNumericalSnapshot} from './roleplay-preparation-types.js'
+import {validateMvuSchemaNumericalSnapshot} from './roleplay-mvu-schema-story-types.js'
+import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
+
+/** Check the exact row written by Phase A, including its original input basis.
+ * A valid input credential alone cannot prove that a referenced snapshot still
+ * contains the bytes used by an already running task. */
+export function inputSnapshotReferenceCurrent(table:{get(key:string):unknown},sessionId:string,currency:InputPreparationCurrency):boolean {
+  const reference=currency.snapshot
+  if (!reference || reference.key!==keyOf(sessionId,`task-input-snapshot-${currency.preparationId}-${currency.attemptGeneration}`)
+    || !/^[a-f0-9]{64}$/.test(reference.sha256)) return false
+  const stored=table.get(reference.key) as {schemaVersion?:unknown;sessionId?:unknown;inputPreparation?:unknown} | undefined
+  const {snapshot:_reference,...basis}=currency
+  return stored?.schemaVersion===1 && stored.sessionId===sessionId
+    && recordSha256(stored.inputPreparation)===recordSha256(basis) && recordSha256(stored)===reference.sha256
+}
+
+export function createRoleplayPreparation(deps: PreparationDependencies) {
+  const { T, ctx, assertStoryBranchActive, cfg, svc, ensureBranch, userValues, selectedStatusRecord } = deps
+  function numericalStateFor(sessionId: string, payload: PreparationPayload): RoleplayNumericalSnapshot | undefined {
+    const input = payload.inputPreparation
+    const headRef=input?.source.kind==='story'?input.source.headRef:undefined
+    if (input?.source.kind !== 'story'||!headRef||!['numerical-head','schema-head'].includes(headRef.kind)) return undefined
+    const state = deps.readNumericalState?.(sessionId)
+    if (!state) throw new Error('MVU_NUMERICAL_STATE_UNAVAILABLE')
+    const frozen = structuredClone(state)
+    if(headRef.kind==='schema-head') {
+      if(frozen.schemaVersion!==2)throw Error('MVU_SCHEMA_NUMERICAL_STATE_MISMATCH')
+      const checked=validateMvuSchemaNumericalSnapshot(frozen)
+      if(checked.sessionId!==sessionId||checked.sourceSha256!==input.source.sourceSha256
+        ||checked.stateSnapshotSha256!==headRef.sha256)throw Error('MVU_SCHEMA_NUMERICAL_STATE_MISMATCH')
+      return checked
+    }
+    if(frozen.schemaVersion!==1)throw Error('MVU_NUMERICAL_STATE_MISMATCH')
+    const {stateSnapshotSha256, ...descriptor} = frozen
+    if (frozen.schemaVersion !== 1 || frozen.encoding !== 'native-mvu-state-snapshot-v1'
+      || frozen.sessionId !== sessionId || frozen.sourceSha256 !== input.source.sourceSha256
+      || frozen.headSha256 !== headRef.sha256
+      || frozen.headSha256 !== recordSha256(frozen.currentHead)
+      || frozen.valuesSha256 !== recordSha256(frozen.values)
+      || frozen.valuesSha256 !== frozen.currentHead.valuesSha256 || frozen.revision !== frozen.currentHead.revision
+      || stateSnapshotSha256 !== recordSha256(descriptor)) throw new Error('MVU_NUMERICAL_STATE_MISMATCH')
+    return frozen
+  }
+  const contextWindowKey = (branchId: string) => keyOf(branchId, 'context-window')
+  const contextWindowFor = (session: {id: string}): ContextWindow => T.branch.get(contextWindowKey(session.id)) as ContextWindow | null | undefined ?? {
+    windowNumber: 1,
+    windowId: randomUUID(),
+    previousWindowId: null,
+    branchId: session.id,
+    startSeq: -1,
+    throughSeq: -1,
+    storyTokens: 0,
+    createdAt: Date.now(),
+    rolloverCount: 0,
+  }
+  const cloneContextWindow = <T extends object | null | undefined>(record: T) => record && typeof record === 'object'
+    ? structuredClone(record)
+    : null
+  const ensureContextWindow = async (session: PreparationSession, reason = 'initial'): Promise<ContextWindow> => {
+    const key = contextWindowKey(session.id)
+    const current = T.branch.get(key) as ContextWindow | null | undefined
+    if (current) return current
+    const raw = { ...contextWindowFor(session), reason },initial=deps.rowFacts
+      ?cloneRoleplayTavernLoreDataV1(raw,16_777_216,{nodes:131072,depth:66}):raw
+    const written=deps.rowFacts?.beforeWrite(session,key,'context-window',initial)
+    await T.branch.put(key, initial)
+    written?.readback()
+    return initial
+  }
+  const rolloverContextWindow = async (session: PreparationSession, metadata: WindowMetadata = {}, options: { persist?: boolean } = {}) => {
+    const previous = await ensureContextWindow(session, 'initial')
+    const next = {
+      windowNumber: Number(previous.windowNumber || 1) + 1,
+      windowId: randomUUID(),
+      previousWindowId: previous.windowId ?? null,
+      branchId: session.id,
+      startSeq: Number.isSafeInteger(Number(metadata.startSeq)) ? Number(metadata.startSeq) : lastSeq(session),
+      throughSeq: lastSeq(session),
+      createdAt: Date.now(),
+      rolloverCount: Number(previous.rolloverCount || 0) + 1,
+      ...metadata,
+    }
+    // Callers that still need to write the surface checkpoint can request a
+    // draft first.  Publishing the boundary before the checkpoint would leave
+    // a half-created model window if append/replace fails midway through a
+    // rollover.
+    if (options.persist !== false) {
+      const stored=deps.rowFacts?cloneRoleplayTavernLoreDataV1(next,16_777_216,{nodes:131072,depth:66}):next,
+        key=contextWindowKey(session.id),written=deps.rowFacts?.beforeWrite(session,key,'context-window',stored)
+      await T.branch.put(key,stored)
+      written?.readback()
+    }
+    return cloneContextWindow(next)!
+  }
+
+  const visibleStorySurfaceSeqs = (session: PreparationSession) => {
+    const internal = internalTaskSeqs(session)
+    return surfaceEvents(session)
+    .filter((event) => (event.type === 'user/message' && event.data?.source?.kind === 'user')
+      || (event.type === 'assistant/message' && !internal.has(Number(event.seq))
+        && textOf(event.data?.message?.content).trim()
+        && !(event.data?.message?.content ?? []).some((block) => block?.type === 'tool-call' || block?.type === 'tool-result')))
+    .map((event) => Number(event.seq))
+  }
+
+  async function installRoleplayWindowCheckpoint(session: PreparationSession, previousWindow: ContextWindow, activeWindow: ContextWindow, continuityTailTokens: number, agent: TaskAgent, signal?: AbortSignal) {
+    if (!session?.append || !previousWindow || !activeWindow || previousWindow.windowId === activeWindow.windowId) return null
+    const surface = surfaceEvents(session)
+    const storySeqs = visibleStorySurfaceSeqs(session)
+    if (storySeqs.length < 2) return null
+    const tail = []
+    let used = 0
+    for (let index = storySeqs.length - 1; index >= 0; index -= 1) {
+      const event = eventsOf(session)[storySeqs[index]!]
+      const text = event?.type === 'assistant/message' ? textOf(event.data?.message?.content) : textOf(event?.data?.content)
+      const cost = estimateTokens(text)
+      if (tail.length && used + cost > continuityTailTokens) break
+      tail.push(storySeqs[index]!)
+      used += cost
+    }
+    tail.reverse()
+    const tailSeqs = new Set(tail)
+    const cutStory = storySeqs.filter((seq) => !tailSeqs.has(seq))
+    if (!cutStory.length) return null
+    const anchor = cutStory[0]
+    const end = cutStory.at(-1)!
+    const firstStoryIndex = surface.findIndex((event) => Number(event.seq) === anchor)
+    if (firstStoryIndex < 0) return null
+    const startIndex = roleplayWindowCutStartIndex(surface, firstStoryIndex)
+    const endIndex = surface.findIndex((event) => Number(event.seq) === end)
+    if (startIndex < 0 || endIndex < startIndex) return null
+    // Surface replacement provenance must cover every node in the contiguous
+    // range, including tool results and hidden plugin context nodes.
+    const cut = surface.slice(startIndex, endIndex + 1).map((event) => Number(event.seq))
+    const sourceFingerprint = recordSha256(surface.map(event => ({ seq:event.seq, type:event.type, data:event.data })))
+    const proof = await ctx.get('compaction')?.ensureWindowCheckpoint?.(agent, signal)
+    if (proof?.status !== 'ready' || proof.branchId !== session.id || !Array.isArray(proof.sourceKeys)) {
+      throw new Error('窗口检查点尚未保存，保留当前窗口；请重试')
+    }
+    signal?.throwIfAborted?.()
+    assertStoryBranchActive(session)
+    if (sourceFingerprint !== recordSha256(surfaceEvents(session).map(event => ({ seq:event.seq, type:event.type, data:event.data })))) {
+      throw new Error('保存期间窗口来源已变化，保留当前窗口；请重试')
+    }
+    const checkpoint = session.append('user/message', {
+      id: randomUUID(),
+      role: 'user',
+      content: [{ type: 'text', text: `[角色扮演上下文窗口 ${activeWindow.windowNumber}] 旧剧情已保存在只读历史。当前窗口保留最新 ${continuityTailTokens} tokens 的完整正文；需要旧事实时调用 rp_history。` }],
+      source: { kind: 'roleplay-context-window', form: 'snapshot', schemaVersion: 1,
+        checkpointGeneration: proof.generationId, checkpointSourceKeys: proof.sourceKeys,
+        checkpointSourceSeqs: proof.sourceSeqs },
+    }, {
+      surfaceOp: { op: 'replace', startSeq: cut[0]!, endSeq: end },
+      sourceEventSeqs: [...cut],
+    })
+    return { checkpointSeq: checkpoint.seq, shadowedSeqs: cut, tailSeqs: tail, usedTokens: used }
+  }
+
+  const memoryForContext = (session: HostSession) => {
+    const projection = ctx.get('compaction')?.memoryProjection
+    if (typeof projection === 'function') return projection(session)
+    const stored = T.memory.get(keyOf(session.id, 'head')) ?? null
+    if (!stored || typeof session?.header?.parentSession !== 'string') return stored
+    const seedLength = durableSeq(session.inheritedEventCount)
+    const proven = (items: unknown) => (Array.isArray(items) ? items as unknown[] : []).filter((item): item is Record<string, unknown> => {
+      if (!item || typeof item !== 'object') return false
+      const record = item as Record<string, unknown>
+      const owners = [record.sessionId, record.branchId, record.ownerSessionId]
+        .map((value) => String(value ?? '').trim())
+        .filter(Boolean)
+      if (owners.length > 0 && owners.every((owner) => owner === session.id)) return true
+      const seq = provenanceSeq(item)
+      return seedLength !== null && seq !== null && seq < seedLength
+    })
+    const checkpoint = visibleCompactionCheckpoint(session)
+    const summarySeq = [stored.summaryAtSeq, stored.summarySeq, stored.surfaceCheckpointSeq, stored.lastCompactedSeq]
+      .map(durableSeq)
+      .find((value) => value !== null) ?? null
+    // The memory head itself is updated on every Phase-B commit, so its generic
+    // `sessionId` says nothing about who owns an older copied summary.  Only
+    // summary-specific provenance may authorize it; conflicting aliases fail
+    // closed rather than laundering a parent summary into the child branch.
+    const summaryOwners = [stored.summarySessionId, stored.summaryBranchId]
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean)
+    const summaryOwnerConflict = new Set(summaryOwners).size > 1
+    const safeInheritedMarker = seedLength !== null
+      && String(stored.inheritedFrom ?? '') === String(session.header.parentSession)
+      && durableSeq(stored.inheritedAtSeedLength) === seedLength
+      && (summarySeq === null || summarySeq < seedLength)
+    const safeStoredSummary = (!summaryOwnerConflict && summaryOwners.includes(session.id))
+      || (seedLength !== null && summarySeq !== null && summarySeq < seedLength)
+      || safeInheritedMarker
+    const resolvedSummary = checkpoint?.text ?? (safeStoredSummary ? String(stored.summary ?? '') : '')
+    const resolvedSummarySeq = checkpoint?.seq ?? (safeStoredSummary ? summarySeq : null)
+    return {
+      ...stored,
+      // A lazy reader may omit the visible checkpoint, but a ledger summary is
+      // accepted only with child ownership, a pre-seed seq, or the exact durable
+      // inheritance marker written by ensureBranch. Unknown provenance fails
+      // closed instead of leaking post-fork parent facts into this branch.
+      summary: resolvedSummary,
+      surfaceCheckpointSeq: resolvedSummarySeq,
+      lastCompactedSeq: resolvedSummarySeq ?? -1,
+      archives: proven(stored.archives),
+      archiveDigests: proven(stored.archiveDigests),
+      deltas: proven(stored.deltas),
+      pendingConfirmations: proven(stored.pendingConfirmations),
+      lockedFacts: proven(stored.lockedFacts),
+      styleNotes: proven(stored.styleNotes),
+      userPrefs: proven(stored.userPrefs),
+    }
+  }
+
+  const memorySettingFields=['contextWindowTokens','continuityTailTokens','autoNotesEveryTurns','targetContextTokens','archiveTokens']
+  function memorySettingsPolicy(sessionId: string) {
+    const global=T.branch.get('memory-settings-global')
+    if(global&&global.schemaVersion!==1)throw new Error('不支持的全局记忆设置版本')
+    const local=T.branch.get(keyOf(sessionId,'settings'))
+    const defaults={contextWindowTokens:cfg.contextWindowTokens,continuityTailTokens:cfg.continuityTailTokens,
+      autoNotesEveryTurns:3,targetContextTokens:262144,archiveTokens:100000,...ctx.get('compaction')?.settingsDefaults?.()}
+    const pick=(value: unknown)=>Object.fromEntries(memorySettingFields.filter(f=>(value as Record<string, unknown> | null | undefined)?.[f]!==undefined).map(f=>[f,(value as Record<string, unknown>)[f]]))
+    const effective: Record<string, unknown>={...defaults}
+    for(const layer of [global?.settings,local] as (Record<string, unknown> | null | undefined)[])for(const f of memorySettingFields)if(Number(layer?.[f])>0)effective[f]=Number(layer![f])
+    return {schemaVersion:1,sessionId,defaults,global:{settings:pick(global?.settings),revision:recordSha256(global)},
+      session:{settings:pick(local),revision:recordSha256(local)},effective}
+  }
+  function storyWindowSettings(session: PreparationSession) {
+    const settings=svc.settings(session.id)
+    return {
+      limit:Math.max(1000,Number(settings?.contextWindowTokens)||Number(cfg.contextWindowTokens)||230000),
+      tail:Math.max(1000,Number(settings?.continuityTailTokens)||Number(cfg.continuityTailTokens)||18000),
+    }
+  }
+
+  async function buildPhaseA(session: PreparationSession, payload: PreparationPayload, st: PreparationWriteState) {
+    payload.assertInputCurrent?.()
+    assertStoryBranchActive(session)
+    const phaseAStartedAt = Date.now()
+    const branchId = session.id
+    await ensureBranch(session)
+    payload.assertInputCurrent?.()
+    // Read only committed branch state. Background notes need not finish on
+    // ordinary turns; eviction below is the sole strict notes-save barrier.
+    await svc.awaitCommitted(branchId)
+    payload.assertInputCurrent?.()
+    let memoryPreparation: MemoryPreparation = { status: 'ready' }
+    try {
+      memoryPreparation = await ctx.get('compaction')?.prepareForTurn?.(payload.agent, payload.signal) ?? memoryPreparation
+    } catch (error) {
+      if (isInlinePending(error) || payload.signal?.aborted || (error as { code?: string } | null)?.code === 'ROLEPLAY_SOURCE_CHANGED') throw error
+      memoryPreparation = { status: 'retry', branchId, reason: '当前分支持久记忆准备失败，可重试' }
+    }
+    assertStoryBranchActive(session)
+    payload.assertInputCurrent?.()
+    const userMsg = payload.messages.findLast((m) => m.role === 'user' && m.source?.kind === 'user')
+    const userText = userMsg ? textOf(userMsg.content) : ''
+    const mem = memoryForContext(session)
+    let directorNotes = ctx.get('compaction')?.directorNotes?.(session)
+
+    // 快照（不可变；worker 只读）
+    const baseRevision = lastSeq(session)
+    const currentContextWindow = await ensureContextWindow(session, 'initial')
+    const storyStartSeq = Number.isSafeInteger(currentContextWindow.startSeq)
+      ? currentContextWindow.startSeq
+      : -1
+    const storySinceWindow = surfaceEntries(session)
+      .filter((entry) => entry.seq > storyStartSeq)
+    const storySinceTokens = storySinceWindow.reduce((sum, entry) => sum + estimateTokens(entry.text), 0)
+    const windowSettings=storyWindowSettings(session)
+    const rolloverNeeded = cfg.contextWindowEnabled !== false
+      && storySinceTokens >= windowSettings.limit
+    if (!rolloverNeeded && cfg.contextWindowEnabled !== false
+      && storySinceTokens >= windowSettings.limit * 0.9) {
+      Promise.resolve(ctx.get('compaction')?.prefetchWindowCheckpoint?.(payload.agent))
+        .catch(() => ctx.logger?.warn?.('roleplay: early checkpoint save failed; window retained'))
+    }
+    let activeContextWindow = rolloverNeeded
+      ? await rolloverContextWindow(session, {
+          reason: 'roleplay-story-window-pressure',
+          // The old window is cut before this turn.  The current turn's user
+          // message is admitted into the new prompt and the continuity tail
+          // is selected from the retained downstream messages below.
+          startSeq: baseRevision,
+          previousStoryTokens: storySinceTokens,
+          continuityTailTokens: windowSettings.tail,
+        }, { persist: false })
+      : currentContextWindow
+    let didRollover = false
+    if (rolloverNeeded) {
+      try {
+        const checkpoint = await installRoleplayWindowCheckpoint(
+          session,
+          currentContextWindow,
+          activeContextWindow,
+          windowSettings.tail,
+          payload.agent, payload.signal,
+        )
+        if (checkpoint) {
+          const committedWindow = {
+            ...activeContextWindow,
+            // The continuity tail is part of the new model window.  Advance
+            // the boundary to just before its first visible story node;
+            // using the pre-rollover lastSeq here would drop the tail on the
+            // very next request.
+            startSeq: checkpoint.tailSeqs.length > 0
+              ? Number(checkpoint.tailSeqs[0]) - 1
+              : activeContextWindow.startSeq,
+            checkpointSeq: checkpoint.checkpointSeq,
+            shadowedSeqs: checkpoint.shadowedSeqs,
+            tailSeqs: checkpoint.tailSeqs,
+            continuityTokens: checkpoint.usedTokens,
+          }
+          const stored=deps.rowFacts?cloneRoleplayTavernLoreDataV1(committedWindow,16_777_216,{nodes:131072,depth:66}):committedWindow,
+            key=contextWindowKey(session.id),written=deps.rowFacts?.beforeWrite(session,key,'context-window',stored)
+          await T.branch.put(key,stored)
+          written?.readback()
+          activeContextWindow = committedWindow
+          didRollover = true
+          directorNotes = ctx.get('compaction')?.directorNotes?.(session)
+        } else {
+          activeContextWindow = currentContextWindow
+        }
+      } catch (error) {
+        activeContextWindow = currentContextWindow
+        ctx.logger?.warn?.(`roleplay: context-window checkpoint failed; keeping previous window: ${String(error)}`)
+        throw error
+      }
+    }
+    payload.assertInputCurrent?.()
+    const numericalState = numericalStateFor(branchId, payload)
+    const snapshot: PreparationSnapshot = {
+      ...(payload.inputPreparation ? {inputPreparation:payload.inputPreparation} : {}),
+      ...(numericalState ? {numericalState} : {}),
+      branchId,
+      agent: payload.agent,
+      turnId: payload.turn,
+      baseRevision,
+      lastSeq: baseRevision,
+      userMessageId: typeof userMsg?.id === 'string' ? userMsg.id : null,
+      userText,
+      cardVersion: null,
+      worldbookVersion: null,
+      memoryVersion: mem?.version ?? null,
+      contextWindow: {
+        windowNumber: activeContextWindow.windowNumber,
+        windowId: activeContextWindow.windowId,
+        previousWindowId: activeContextWindow.previousWindowId ?? null,
+          rollover: didRollover,
+      },
+    }
+
+    // Deterministic context assembly. The author already sees the selected
+    // native story window; no scene/recall model and no automatic lore lookup.
+    snapshot.memoryProjection={schemaVersion:1,branchId,mode:'direct-notes',
+      notesGenerationId:directorNotes?.generationId??null,
+      notesSourceSeqs:directorNotes?.sourceSeqs??[],windowId:activeContextWindow.windowId}
+    const visibleAnchor = (form: string, hashField: string, hash: string) => surfaceEvents(session).findLast((event) => {
+      const source = event?.type === 'user/message' ? event.data?.source : null
+      return source?.kind === 'roleplay-context'
+        && source.form === form && source.branchId === branchId && source.mode === 'full' && source[hashField] === hash
+    }) ?? null
+    const contextMessage = (form: string, source: Record<string, unknown>, body: string): ContextMessage => ({
+      id: randomUUID(), role: 'user', content: [{ type: 'text', text: body }],
+      source: { kind: 'roleplay-context', form, schemaVersion: 1, branchId, ...source },
+    })
+    const values = userValues(branchId)
+    const renderContextText = (value: unknown) => String(value ?? '')
+      .replace(/\{\{\s*(?:user|user_name)\s*\}\}/gi, values.name)
+      .replace(/\{\{\s*(?:user[_-]gender|userGender)\s*\}\}/gi, values.gender)
+    const anchors = []
+    if (numericalState) {
+      // Every numerical round owns a full base. Never refer back to a visible
+      // anchor or interpolate user macros inside deterministic JSON values.
+      const updateRules=numericalState.encoding==='native-mvu-state-snapshot-v1'
+        ?nativeMvuLegacyAuthorRules:nativeMvuAuthorRules
+      anchors.push(contextMessage('native-mvu-state', {mode: 'full',
+        sourceSha256: numericalState.sourceSha256, headSha256: numericalState.headSha256,
+        stateSnapshotSha256: numericalState.stateSnapshotSha256, revision: numericalState.revision},
+      `[原生数值状态·本轮完整版本 ${numericalState.stateSnapshotSha256}]\n${updateRules}\n完整 JSON：\n${JSON.stringify(numericalState)}`))
+    }
+    const renderedNotes = renderContextText(directorNotes?.text)
+    const notesHash = sha256(stableJson({ text: renderedNotes, sourceKeys: directorNotes?.sourceKeys ?? [], sourceSeqs: directorNotes?.sourceSeqs ?? [] }))
+    const priorNotes = visibleAnchor('director-notes', 'notesHash', notesHash)
+    anchors.push(contextMessage('director-notes', { notesHash, notesGenerationId: directorNotes?.generationId ?? null, mode: priorNotes ? 'reference' : 'full' }, priorNotes
+      ? `[导演笔记锚点·当前版本优先·引用版本 ${notesHash}]\n请读取上方标有“完整版本 ${notesHash}”的同分支完整锚点；沿用该版本，不采用较早或其他分支版本。`
+      : renderedNotes
+        ? `[导演笔记锚点·当前版本优先·完整版本 ${notesHash}]\n以下是当前分支最新已核验导演笔记；若上方存在较早锚点，以本版本为准。\n${renderedNotes}`
+        : `[导演笔记锚点·当前版本优先·完整版本 ${notesHash}]\n本分支当前没有可用导演笔记；所有较早导演笔记均已失效，不得继续采用。`))
+    const sections = []
+    if (Array.isArray(mem?.lockedFacts) && mem.lockedFacts.length) {
+      sections.push('[用户锁定的剧情事实]\n'+mem.lockedFacts.map(fact=>typeof fact==='string'?fact:String(fact?.text??'')).filter(Boolean).join('\n'))
+    }
+    sections.push('[按需查阅资料]\n当前窗口正文和已核验导演笔记由程序直接提供。你是负责写作的主代理：现有信息充分时直接创作；发现旧事件细节缺口时调用 rp_history search/read，需要世界知识时调用 rp_worldbook_search 或 rp_worldbook_list/read。自行判断查询词与是否继续读取，不要每轮例行检索，不把资料查询过程写成剧情。')
+    if (didRollover) sections.push(`[角色扮演上下文窗口]\n已进入第 ${activeContextWindow.windowNumber} 个剧情窗口。旧窗口的来源与检查点已保存；缺少细节时通过 rp_history 读取所选分支原文。`)
+    // 初始剧情：仅在故事尚未开始（还没有任何正文回复）时注入一次；
+    // 要求模型输出第一幕（原文或适度润色），而不是跳过开场直接开下一幕
+    const storyStarted = surfaceEntries(session).some((entry) => entry.kind === 'assistant')
+    if (!storyStarted) {
+      const active = activeOpeningSource(T.branch, branchId)
+      const selected = T.branch.get(keyOf(branchId, 'opening-reference')) as
+        {schemaVersion?: number; importId?: string; normalizedSha256?: string;
+          transactionId?: string; renderedText?: string; renderedSha256?: string} | undefined
+      const selectedText = selected?.schemaVersion === 1 && active
+        && selected.importId === active.importId
+        && selected.normalizedSha256 === active.normalizedSha256
+        && selected.transactionId === active.transactionId
+        && typeof selected.renderedText === 'string'
+        && sha256(selected.renderedText) === selected.renderedSha256
+        ? selected.renderedText : null
+      const openingText = selectedText ?? T.opening.get(keyOf(branchId, 'scene'))?.text
+      if (openingText) {
+        const regenerateOpening = !!(payload.agent as typeof payload.agent &
+          {programmaticGeneration?: {operationId: string} | null}).programmaticGeneration
+        sections.push(`[初始剧情]（分类写入的作者开场剧情）\n${fenceCardContent(openingText, 'opening')}\n\n【本轮要求】${regenerateOpening
+          ? '以作者原始开场为背景与风格参考，创作一段新的第一幕；不要照抄原文，不要假设玩家已经输入。'
+          : '请完整输出作者原始第一幕，不提前续写；'}围栏符号和资料说明不属于正文。`)
+      }
+    }
+
+    // Narrative display and options never substitute for the independent
+    // numerical base frozen above; maintenance updates this display separately.
+    const statusPanelRec = selectedStatusRecord(session)
+    const statusPanel = statusPanelRec?.stale ? null : statusPanelRec?.panel
+    if (statusPanel && (statusPanel.rawText || (statusPanel.fields ?? []).length || (statusPanel.options ?? []).length)) {
+      const lines = []
+      if (statusPanel.title) lines.push(`标题：${statusPanel.title}`)
+      for (const f of statusPanel.fields ?? []) {
+        lines.push(`${f.emoji ?? ''}${f.label ? f.label + '：' : ''}${f.value ?? ''}`)
+      }
+      if (statusPanel.rawText) lines.push(statusPanel.rawText)
+      if ((statusPanel.options ?? []).length) {
+        lines.push('当前选项（用户可点击填入输入框）：' + statusPanel.options.map((o) => (o.heart ? '❤️' : '') + o.label).join(' / '))
+      }
+      sections.push(`[状态栏·当前]（上一轮叙事展示，不构成原生数值状态权威；按状态栏设定在正文后单独更新）\n${lines.join('\n')}`)
+    }
+
+    const styles = (mem?.styleNotes ?? []).map((s) => `${s.heading}：${s.text}`).join('\n')
+    if (styles.trim()) sections.push('【风格笔记】\n' + styles)
+    const prefs = (mem?.userPrefs ?? []).map((p) => `${p.heading}：${p.text}`).join('\n')
+    if (prefs.trim()) sections.push('【用户偏好与边界】\n' + prefs)
+
+    let hiddenText = '[角色扮演隐藏上下文·当前版本优先（本段是后台材料，不是对话；据此创作正文，但不要在正文中复述本段或提及"世界书/记忆/状态面板"等后台概念）]\n\n' + sections.join('\n\n')
+
+    // Hidden user-role anchors do not pass through system-prompt interpolation.
+    hiddenText = renderContextText(hiddenText)
+    const stateHash = sha256(hiddenText)
+    const priorState = visibleAnchor('state', 'stateHash', stateHash)
+    anchors.push(contextMessage('state', { stateHash, mode: priorState ? 'reference' : 'full' }, priorState
+      ? `[角色扮演可变上下文锚点·当前版本优先·引用版本 ${stateHash}]\n请读取上方标有“完整版本 ${stateHash}”的同分支完整锚点；沿用该版本，不采用较早或其他分支版本。`
+      : `[角色扮演可变上下文锚点·当前版本优先·完整版本 ${stateHash}]\n${hiddenText}`))
+
+    snapshot.contextMessageRefs={schemaVersion:1,encoding:'roleplay-context-produced-message-refs-v1',
+      sessionId:session.id,turn:Number(payload.turn),refs:anchors.map(message=>({
+        form:String((message.source as {form?:unknown}).form),id:String(message.id),
+        messageSha256:nativeInputSha256(message),sourceSha256:nativeInputSha256(message.source)}))}
+
+    // 记录本轮快照与阶段 A 产出（阶段 C 提交时使用）
+    const {agent: snapshotAgent, ...durableSnapshot}=snapshot
+    const storedSnapshot={schemaVersion:1,sessionId:session.id,...cloneRecord(durableSnapshot)}
+    payload.assertInputCurrent?.()
+    if (payload.inputPreparation) {
+      const input=payload.inputPreparation
+      const attemptKey=keyOf(session.id,`task-input-snapshot-${input.preparationId}-${input.attemptGeneration}`)
+      const prior=T.branch.get(attemptKey)
+      if (prior && recordSha256(prior)!==recordSha256(storedSnapshot)) throw new Error('INPUT_SNAPSHOT_IDENTITY_CONFLICT')
+      if (!prior) {
+        // Only this actual put registers provenance. Equal historical rows
+        // retain their original owner and cannot be adopted by this process.
+        const written=deps.rowFacts?.beforeWrite(session,attemptKey,'task-input-snapshot',storedSnapshot)
+        await T.branch.put(attemptKey,storedSnapshot)
+        written?.readback()
+      }
+      payload.assertInputCurrent?.()
+    }
+    const snapshotKey=keyOf(session.id,`task-snapshot-${payload.turn}`),
+      written=deps.rowFacts?.beforeWrite(session,snapshotKey,'task-snapshot',storedSnapshot)
+    await T.branch.put(snapshotKey,storedSnapshot)
+    written?.readback()
+    payload.assertInputCurrent?.()
+    st.snapshots.set(Number(payload.turn), snapshot)
+    st.pendingScenes.set(Number(payload.turn), null)
+    st.snapshot = snapshot
+    st.pendingTurn = payload.turn
+    st.pendingScene = st.pendingScenes.get(Number(payload.turn))
+    ctx.logger?.info?.(`roleplay: context assembled in ${Date.now() - phaseAStartedAt}ms (turn ${payload.turn})`)
+
+    return anchors
+  }
+  return { memorySettingsPolicy, contextWindowKey, cloneContextWindow, buildPhaseA, storyWindowSettings, memoryForContext, contextWindowFor, memorySettingFields }
+}

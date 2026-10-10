@@ -5,12 +5,12 @@ import {readStructuredImportDataV1} from './roleplay-import-record.js'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
 import type {TavernOpeningCandidate,TavernOpeningContext} from './tavern-card.js'
 import type {ImportRecord} from './roleplay-import-types.js'
-import {createRoleplayMvuSource,readMvuSchemaCurrentAuthorSource} from './roleplay-mvu-source.js'
+import {createRoleplayMvuSource,readMvuSchemaCurrentAuthorMaterial} from './roleplay-mvu-source.js'
 import {freezeSchemaJournalData,createRoleplayMvuSchemaJournal,isAuthorHostJournalReadyV5}
   from './roleplay-mvu-schema-journal.js'
 import {validateMvuSchemaOpeningPreparation} from './roleplay-mvu-schema-opening-types.js'
 import {compileSchemaMvuInitData} from './tavern-mvu-initvar.js'
-import {cloneSchemaEnvelopeV4} from './tavern-mvu-schema-data.js'
+import {cloneSchemaEnvelopeV4,captureSchemaMaterialV4} from './tavern-mvu-schema-data.js'
 import {validateSchemaProgramV4} from './tavern-mvu-schema-program-v4.js'
 import {combinedCompilationInputForProgram} from './tavern-author-combined-data.mjs'
 import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeInitialChat,schemaScopeVisibleMessages}
@@ -20,17 +20,37 @@ import type {mvuSchemaMarkers} from 'dsh-nexttavern-session-format/mvu-schema-ma
 import type {SessionEvent} from '@deepseek-ai/dsh-session'
 import type {MvuSourceDeps,MvuSchemaAuthorSource} from './roleplay-mvu-source.js'
 import type {MvuSchemaOpeningPreparation} from './roleplay-mvu-schema-opening-types.js'
-import type {SchemaJournalReady,SchemaJournalTable,AuthorHostJournalReadyV5} from './roleplay-mvu-schema-journal.js'
+import type {SchemaJournalReady,SchemaJournalFrozenCut,SchemaJournalTable,AuthorHostJournalReadyV5}
+  from './roleplay-mvu-schema-journal.js'
 import type {SchemaAuthorCompilationInput} from './roleplay-mvu-schema-executor-types.js'
-import type {AuthorFrozenOriginalV5,AuthorOpeningPreparationV5} from './roleplay-author-host-types-v5.js'
+import type {AuthorFrozenOriginalV5,AuthorOpeningPreparationV5,AuthorOpeningPreparationV6}
+  from './roleplay-author-host-types-v5.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
-import type {RoleplayInputStateOwner,RoleplayInputStateRead} from './roleplay-input-state.js'
+import type {RoleplayInputStateOwner,RoleplayInputStateRead,RoleplayInputSourceFrameRead} from './roleplay-input-state.js'
+import {createAuthorScriptResourceReaderV1} from './roleplay-author-script-resources.js'
+import type {AuthorScriptResourceReaderV1} from './roleplay-author-script-resources.js'
+import type {CombinedSourceResourcesV6} from './tavern-author-combined-types-v6.mjs'
+
+/** Core binds the initial capture or the checked historical reconstruction to
+ * one compilation call. No new Source read or pseudo story frame is created. */
+export function captureSchemaCompilationResourcesV6(captured:Pick<MvuSchemaAuthorSource,
+  'snapshot'|'material'|'materialSha256'>):CombinedSourceResourcesV6 {
+  const {snapshot,material,materialSha256}=captured
+  return (source,pins)=>{
+    if(source.ownerSessionId!==snapshot.source.sessionId||source.importId!==snapshot.source.importId
+      ||source.sourceSha256!==snapshot.source.rawSha256||source.importRecordSha256!==snapshot.importRecordSha256
+      ||source.sourceSnapshotSha256!==snapshot.snapshotSha256||source.materialSha256!==materialSha256)
+      throw Error('AUTHOR_SCRIPT_RESOURCE_SOURCE_CHANGED')
+    return createAuthorScriptResourceReaderV1({material,snapshotSha256:snapshot.snapshotSha256,
+      snapshot:{documentSha256:snapshot.documentSha256}},pins)
+  }
+}
 
 export interface LegacySchemaFrozenOriginal {
   schemaVersion:1
   encoding:'native-mvu-schema-frozen-original-v1'
   sessionId:string
-  preparation:Exclude<MvuSchemaOpeningPreparation,AuthorOpeningPreparationV5>
+  preparation:Exclude<MvuSchemaOpeningPreparation,AuthorOpeningPreparationV5|AuthorOpeningPreparationV6>
   sourceSnapshot:MvuSchemaAuthorSource['snapshot']
   authorInput:SchemaAuthorCompilationInput
   programSha256:string
@@ -98,7 +118,7 @@ export function validateSchemaStorySourceFrame(input:SchemaStorySourceFrame):Sch
       ||typeof frame.sessionId!=='string'||!/^[a-zA-Z0-9_-]{1,128}$/.test(frame.sessionId)
       ||snapshot.schemaVersion!==1||snapshot.encoding!=='native-mvu-author-source-snapshot-v1'
       ||snapshot.source.sessionId!==frame.sessionId||!hash(snapshotSha256)||recordSha256(body)!==snapshotSha256
-      ||frame.snapshotSha256!==snapshotSha256||frame.materialSha256!==recordSha256(material)
+      ||frame.snapshotSha256!==snapshotSha256||frame.materialSha256!==captureSchemaMaterialV4(material).sha256
       ||snapshot.documentSha256!==recordSha256(material.card)
       ||!Array.isArray(material.rows)||!Array.isArray(snapshot.materialRows)
       ||material.rows.length!==snapshot.materialRows.length||material.rows.length>4096) {
@@ -157,10 +177,11 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
   // This marks only immutable DATA constructed by this factory's complete
   // parser. Version/currentness and all captured results belong to inputState.
   // It cannot recreate a Native execution or a publication lease.
-  const parsedOriginals=new WeakSet<SchemaFrozenOriginal>()
+  const parsedOriginals=new WeakMap<SchemaFrozenOriginal,RoleplayInputStateRead<SchemaFrozenOriginal>|undefined>()
   const originalOpeningCandidates=new WeakMap<SchemaFrozenOriginal,readonly TavernOpeningCandidate[]>()
   const frameReads=new WeakMap<SchemaStorySourceFrame,{original:SchemaFrozenOriginal;
-    read:RoleplayInputStateRead<SchemaStorySourceFrame>}>()
+    read:RoleplayInputSourceFrameRead<SchemaStorySourceFrame>}>()
+  const scriptResources=new WeakMap<SchemaStorySourceFrame,AuthorScriptResourceReaderV1>()
   function originalRecord(original:{sourceSnapshot:MvuSchemaAuthorSource['snapshot']}) {
     const source=original.sourceSnapshot.source
     const record=deps.readImportRecord(source.sourceRecordSessionId,source.importId)
@@ -213,28 +234,46 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     if(!same(found.initSource,preparation.initSource))fail('SCHEMA_ORIGINAL_INIT_SOURCE_UNPROVEN')
     return found.authorSource
   }
+  function readFrozenJournal(preparation:MvuSchemaOpeningPreparation,frozen:SchemaJournalFrozenCut,
+    actualEvents:readonly SessionEvent[]):SchemaJournalReady {
+    const sid=preparation.identity.sessionId
+    const records=new Map(frozen.records.map(row=>[row.key,row.record]))
+    const journal=createRoleplayMvuSchemaJournal({markers,table:{
+      get:key=>records.get(key),entries:()=>records.entries(),put:async()=>{fail('SCHEMA_SOURCE_READ_ONLY')},
+    }})
+    if(frozen.nativeCut>actualEvents.length)fail('SCHEMA_NATIVE_CUT_UNPROVEN')
+    const cut=actualEvents.slice(0,frozen.nativeCut)
+    const actual=journal.validateFrozenReady(frozen,cut)
+    if(actual.frozen.sessionId!==sid||actual.frozen.realmEpoch!==preparation.realmEpoch) {
+      fail('SCHEMA_NATIVE_CUT_UNPROVEN')
+    }
+    return actual
+  }
+  /** Recovery owns the frozen Journal fold and Original reconstruction together.
+   * The returned DATA carries no execution or publication permission. */
+  function recoverFrozenOriginal(input:MvuSchemaOpeningPreparation,frozen:SchemaJournalFrozenCut,
+    actualEvents:readonly SessionEvent[]):{ready:SchemaJournalReady;original:SchemaFrozenOriginal} {
+    try {
+      const preparation=validateMvuSchemaOpeningPreparation(input)
+      const ready=readFrozenJournal(preparation,frozen,actualEvents)
+      return {ready,original:originalFromCheckedJournal(preparation,ready,actualEvents)}
+    } catch(error) {fail(codeOf(error))}
+  }
   function readFrozenOriginal(input:MvuSchemaOpeningPreparation,ready:SchemaJournalReady,
     actualEvents:readonly SessionEvent[]):SchemaFrozenOriginal {
     try {
-      const preparation=validateMvuSchemaOpeningPreparation(input),sid=preparation.identity.sessionId
-      const records=new Map(ready.frozen.records.map(row=>[row.key,row.record]))
-      const journal=createRoleplayMvuSchemaJournal({markers,table:{
-        get:key=>records.get(key),entries:()=>records.entries(),put:async()=>{fail('SCHEMA_SOURCE_READ_ONLY')},
-      }})
-      if(ready.frozen.nativeCut>actualEvents.length)fail('SCHEMA_NATIVE_CUT_UNPROVEN')
-      const cut=actualEvents.slice(0,ready.frozen.nativeCut)
-      const actual=journal.validateFrozenReady(ready.frozen,cut)
-      if(actual.frozen.sessionId!==sid||actual.frozen.realmEpoch!==preparation.realmEpoch
-        ||!same(actual,ready))fail('SCHEMA_NATIVE_CUT_UNPROVEN')
+      const preparation=validateMvuSchemaOpeningPreparation(input)
+      const actual=readFrozenJournal(preparation,ready.frozen,actualEvents)
+      if(!same(actual,ready))fail('SCHEMA_NATIVE_CUT_UNPROVEN')
       // An external frozen input always performs its own complete recovery read.
       return originalFromCheckedJournal(preparation,actual,actualEvents)
     } catch(error) {fail(codeOf(error))}
   }
-  // Only the two owned capture/validation paths below reach this constructor.
+  // Only this owner's capture/recovery paths reach this constructor.
   // It never accepts a caller's ready/seal/token as proof of checked grammar.
   function originalFromCheckedJournal(preparation:MvuSchemaOpeningPreparation,actual:SchemaJournalReady,
     actualEvents:readonly SessionEvent[]):SchemaFrozenOriginal {
-    if(preparation.schemaVersion===5) {
+    if(preparation.schemaVersion===5||preparation.schemaVersion===6) {
       if(!isAuthorHostJournalReadyV5(actual))fail('SCHEMA_ORIGINAL_LOAD_UNPROVEN')
       return originalFromCheckedHostJournal(preparation,actual,actualEvents)
     }
@@ -299,10 +338,11 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       preparation,sourceSnapshot:author.snapshot,authorInput,programSha256:epoch.program.programSha256,
       realmEpoch:epoch.realmEpoch}
     const original=freezeSchemaJournalData({...body,originalSha256:recordSha256(body)})
-    parsedOriginals.add(original)
+    parsedOriginals.set(original,undefined)
     return original
   }
-  function originalFromCheckedHostJournal(preparation:AuthorOpeningPreparationV5,actual:AuthorHostJournalReadyV5,
+  function originalFromCheckedHostJournal(preparation:AuthorOpeningPreparationV5|AuthorOpeningPreparationV6,
+    actual:AuthorHostJournalReadyV5,
     actualEvents:readonly SessionEvent[]):AuthorFrozenOriginalV5 {
     const sid=preparation.identity.sessionId,{epoch}=actual,first=actual.steps[0]!
     const combined=epoch.program,program=combined.serverProgram!,load=epoch.server.loadFrame,frame=first.step.frame
@@ -350,17 +390,17 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     if(!same(load.scopeReadFrame,expected)||!same(frame.input.scopeReadFrame,expected)) {
       fail('SCHEMA_ORIGINAL_SCOPE_UNPROVEN')
     }
-    parsedOriginals.add(original)
+    parsedOriginals.set(original,undefined)
     return original
   }
   /** Capture and consume are one synchronous call. External/cold/fork frozen
    * inputs continue through readFrozenOriginal's complete frozen validation.
    * The central owner retains immutable Original data until its exact inputs change. */
   function captureCurrentOriginal(input:MvuSchemaOpeningPreparation,current:SchemaCurrentOriginalRead,
-    historical=false):{ready:SchemaJournalReady;original:SchemaFrozenOriginal} {
+    historical=false,cacheOriginal=true):{ready:SchemaJournalReady;original:SchemaFrozenOriginal} {
     try {
       const preparation=validateMvuSchemaOpeningPreparation(input),sid=current.sessionId
-      const journal=createRoleplayMvuSchemaJournal({markers,table:{
+      const journal=createRoleplayMvuSchemaJournal({markers,recordOwner:deps.inputState.schemaJournal,table:{
         get:key=>current.table.get(key),entries:()=>current.table.entries(),
         put:async()=>{fail('SCHEMA_SOURCE_READ_ONLY')},
       }})
@@ -368,24 +408,27 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       // fold. Historical edit cuts retain the existing raw inventory budget
       // and duplicate/future-row failure contract; no merge is introduced.
       const events=current.events
-      const ready=historical
-        ?journal.captureFrozen(sid,preparation.realmEpoch,events,journal.inventory(sid))
-        :journal.capture(sid,preparation.realmEpoch,events)
+      const ready=journal.capture(sid,preparation.realmEpoch,events,null,historical)
       if(ready.kind!=='ready')fail(ready.code)
       // Join only after the original caller's inventory and Native checks, so
       // a foreign preparation cannot change journal addresses or first errors.
       if(ready.frozen.sessionId!==preparation.identity.sessionId
         ||ready.frozen.realmEpoch!==preparation.realmEpoch)fail('SCHEMA_NATIVE_CUT_UNPROVEN')
-      const first=ready.steps[0]!,refs=[ready.epochRef,first.dispatchRef,first.completionRef],
-        identity=recordSha256({preparation:preparation.preparationSha256,refs})
-      const original=deps.inputState.captureOriginal(sid,identity,()=>{
-        // The parsed journal is current, but the Original slot also needs exact
-        // dependency reads. Future numerical output does not replace this root.
-        for(const ref of refs)current.table.get(ref.key)
-        deps.readActivePointer(sid)
-        return originalFromCheckedJournal(preparation,ready,events)
-      }).data
-      parsedOriginals.add(original)
+      let original:SchemaFrozenOriginal,originalRead:RoleplayInputStateRead<SchemaFrozenOriginal>|undefined
+      // An outer historical borrow already owns the journal and immutable
+      // import reads. It must not acquire the replaceable current Original slot.
+      if(cacheOriginal) {
+        const first=ready.steps[0]!,refs=[ready.epochRef,first.dispatchRef,first.completionRef],
+          identity=recordSha256({preparation:preparation.preparationSha256,refs})
+        originalRead=deps.inputState.captureOriginal(sid,identity,()=>{
+          // The parsed journal is current, but the Original slot also needs exact
+          // dependency reads. Future numerical output does not replace this root.
+          for(const ref of refs)current.table.get(ref.key)
+          return originalFromCheckedJournal(preparation,ready,events)
+        })
+        original=originalRead.data
+      }else original=originalFromCheckedJournal(preparation,ready,events)
+      parsedOriginals.set(original,originalRead)
       return {ready,original}
     } catch(error) {fail(codeOf(error))}
   }
@@ -394,6 +437,17 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
    * Native cut; later parent activation must not rewrite the child's program. */
   function originalFactsCurrent(original:SchemaFrozenOriginal):boolean {
     try {
+      if(parsedOriginals.has(original)) {
+        // This same read already owns the exact Import dependency and connects
+        // it to any outer capture. A dirty live read does not invalidate old
+        // historical DATA; it only requires the actual Import fallback below.
+        if(parsedOriginals.get(original)?.current())return true
+        // This factory already constructed or completely parsed the immutable
+        // Original. Only its actual ImportRecord can change; historical rows,
+        // pointer, settings and macros are captured DATA, not today's inputs.
+        originalRecord({sourceSnapshot:schemaOriginalSnapshot(original)})
+        return true
+      }
       original=freezeSchemaJournalData(original)
       const {originalSha256,...body}=original
       if(original.schemaVersion===5)return hostOriginalFactsCurrent(original,body,originalSha256)
@@ -466,7 +520,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     return originalFactsCurrent(original)
       &&same(deps.readActivePointer(original.sessionId),schemaOriginalSnapshot(original).source.pointer)
   }
-  function sameAuthor(original:SchemaFrozenOriginal,author:MvuSchemaAuthorSource):boolean {
+  function sameAuthor(original:SchemaFrozenOriginal,author:Pick<MvuSchemaAuthorSource,'snapshot'|'scripts'>):boolean {
     const snapshot=schemaOriginalSnapshot(original),current=author.snapshot.source,source=snapshot.source
     const identity=['sourceRecordSessionId','importId','rawSha256','normalizedSha256','transactionId','coverageSha256'] as const
     return same(author.scripts,schemaOriginalCompilationInput(original).scripts.map(({imports:_imports,...script})=>script))
@@ -481,14 +535,14 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     try {
       const frame=validateSchemaStorySourceFrame(input)
       if(!originalFactsCurrent(original))return false
-      const found=readMvuSchemaCurrentAuthorSource(historicalDeps(frame.snapshot,frame.material),
-        frame.sessionId,original.preparation.identity.index)
-      return found.kind==='author-source'&&sameAuthor(original,found.source)
-        &&same(found.source.snapshot,frame.snapshot)&&same(found.source.material,frame.material)
+      const found=readMvuSchemaCurrentAuthorMaterial(historicalDeps(frame.snapshot,frame.material),
+        frame.sessionId,original.preparation.identity.index,original.preparation.schemaVersion>=4)
+      return found.kind==='author-material'&&sameAuthor(original,found.source)
+        &&same(found.source.snapshot,frame.snapshot)
         &&found.source.materialSha256===frame.materialSha256
     }catch {return false}
   }
-  function captureFrameRead(input:SchemaFrozenOriginal,sessionId:string):RoleplayInputStateRead<SchemaStorySourceFrame> {
+  function captureFrameRead(input:SchemaFrozenOriginal,sessionId:string):RoleplayInputSourceFrameRead<SchemaStorySourceFrame> {
     let original=input
     if(!parsedOriginals.has(original)) {
       // Host5 projection membership must originate in the same checked epoch.
@@ -501,16 +555,20 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       if(!originalFactsCurrent(original))fail('SCHEMA_ORIGINAL_SOURCE_CHANGED')
     }
     return deps.inputState.captureSourceFrame(sessionId,original.originalSha256,()=>{
-      const found=readMvuSchemaCurrentAuthorSource(deps,sessionId,original.preparation.identity.index)
-      if(found.kind!=='author-source')fail('SCHEMA_CURRENT_MATERIAL_INVALID')
+      const found=readMvuSchemaCurrentAuthorMaterial(deps,sessionId,original.preparation.identity.index,
+        original.preparation.schemaVersion>=4)
+      if(found.kind!=='author-material')fail('SCHEMA_CURRENT_MATERIAL_INVALID')
       const author=found.source
       if(!sameAuthor(original,author)||(sessionId===original.sessionId
         &&!same(deps.readActivePointer(sessionId),schemaOriginalSnapshot(original).source.pointer))) {
         fail('SCHEMA_ORIGINAL_SOURCE_CHANGED')
       }
-      return validateSchemaStorySourceFrame({schemaVersion:1 as const,encoding:'native-mvu-schema-story-source-frame-v1' as const,
+      // The actual material producer has already completed its DATA work.
+      // This read owns Source lifetime; later envelopes consume its material.
+      const frame={schemaVersion:1 as const,encoding:'native-mvu-schema-story-source-frame-v1' as const,
         sessionId,material:author.material,materialSha256:author.materialSha256,
-        snapshot:author.snapshot,snapshotSha256:author.snapshot.snapshotSha256})
+        snapshot:author.snapshot,snapshotSha256:author.snapshot.snapshotSha256}
+      return Object.freeze(frame)
     })
   }
   function captureFrame(original:SchemaFrozenOriginal,sessionId=original.sessionId):SchemaStorySourceFrame {
@@ -523,13 +581,41 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
   function frameCurrent(original:SchemaFrozenOriginal,frame:SchemaStorySourceFrame):boolean {
     try {
       const known=frameReads.get(frame)
-      if(known?.original===original)return known.read.current()
+      // Separate factory captures can produce the same immutable Original.
+      // Its seal is the central frame's canonical key, not an execution lease.
+      if(known&&parsedOriginals.has(original)&&known.original.originalSha256===original.originalSha256) {
+        return known.read.current()
+      }
       const validated=validateSchemaStorySourceFrame(frame),read=captureFrameRead(original,validated.sessionId)
       if(!same(validated,read.data))return false
       // Caller-owned DTOs are DATA inputs, not the captured frame's identity.
       // Their comparison reads the central frame without reparsing Source.
       return read.current()
     } catch {return false}
+  }
+  /** Only this factory's actual frame registration can consume its identity.
+   * A copied DTO and equal hashes cannot reconstruct this live owner. */
+  function frameIdentityCurrent(frame:SchemaStorySourceFrame):boolean {
+    return frameReads.get(frame)?.read.identityCurrent()===true
+  }
+  function captureScriptResources(frame:SchemaStorySourceFrame):AuthorScriptResourceReaderV1 {
+    const known=frameReads.get(frame)
+    // Historical Source without Host5's checked descriptor pins has no resource
+    // profile. A copied DTO cannot establish this factory's captured identity.
+    if(!known||known.original.schemaVersion!==5)fail('AUTHOR_SCRIPT_RESOURCE_UNAVAILABLE')
+    if(!known.read.current())fail('AUTHOR_SCRIPT_RESOURCE_SOURCE_CHANGED')
+    let resources=scriptResources.get(frame)
+    if(!resources) {
+      resources=createAuthorScriptResourceReaderV1(frame,known.original.executionPlan.scripts)
+      scriptResources.set(frame,resources)
+    }
+    return resources
+  }
+  function captureOriginalCompilationResources(original:SchemaFrozenOriginal):CombinedSourceResourcesV6 {
+    if(!parsedOriginals.has(original))fail('AUTHOR_SCRIPT_RESOURCE_UNAVAILABLE')
+    const source=schemaOriginalCompilationInput(original).source
+    return captureSchemaCompilationResourcesV6({snapshot:schemaOriginalSnapshot(original),
+      material:source.material,materialSha256:source.materialSha256})
   }
   function readOriginalOpeningCandidates(original:SchemaFrozenOriginal):readonly TavernOpeningCandidate[] {
     let candidates=originalOpeningCandidates.get(original)
@@ -545,6 +631,6 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     }
     return candidates
   }
-  return {readFrozenOriginal,captureCurrentOriginal,captureFrame,originalCurrent,readOriginalOpeningCandidates,
-    originalFactsCurrent,frameCurrent,verifyFrozenFrame}
+  return {readFrozenOriginal,recoverFrozenOriginal,captureCurrentOriginal,captureFrame,originalCurrent,readOriginalOpeningCandidates,
+    originalFactsCurrent,frameCurrent,frameIdentityCurrent,verifyFrozenFrame,captureScriptResources,captureOriginalCompilationResources}
 }

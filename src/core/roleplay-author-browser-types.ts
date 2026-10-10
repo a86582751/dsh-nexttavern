@@ -3,6 +3,11 @@
 import type {BrowserBindingV1,BrowserProgramV1,BrowserRuntimeArtifactV1,
   BrowserSaveRequestV1,BrowserSnapshotV1} from './tavern-author-browser-types.mjs'
 import type {MvuPlayerEditRequest,MvuPlayerEditResponse} from './roleplay-mvu-player-types.js'
+import type {BrowserProgramV2,BrowserRuntimeArtifactV2,BrowserSnapshotV2} from './tavern-author-browser-types-v2.mjs'
+import type {MvuJsonValue} from './tavern-mvu-initvar.js'
+import type {AuthorScriptResourceRequestV1} from './roleplay-author-script-resources.js'
+import type {BrowserProgramV3,BrowserRuntimeArtifactV3,BrowserSnapshotV3,
+  BrowserOrdinaryKeyRequestV3,BrowserOrdinaryKeyReplyV3} from './tavern-author-browser-types-v3.mjs'
 
 export interface AuthorBrowserAttachmentV1 {
   readonly schemaVersion:1
@@ -12,19 +17,51 @@ export interface AuthorBrowserAttachmentV1 {
   readonly artifact:BrowserRuntimeArtifactV1
   readonly snapshot:BrowserSnapshotV1
 }
+export interface AuthorBrowserAttachmentV2 {
+  readonly schemaVersion:2
+  readonly encoding:'native-author-browser-attachment-v2'
+  readonly binding:BrowserBindingV1
+  readonly program:BrowserProgramV2
+  readonly artifact:BrowserRuntimeArtifactV2
+  readonly snapshot:BrowserSnapshotV2
+}
+export interface AuthorBrowserAttachmentV3 {
+  readonly schemaVersion:3
+  readonly encoding:'native-author-browser-attachment-v3'
+  readonly binding:BrowserBindingV1
+  readonly program:BrowserProgramV3
+  readonly artifact:BrowserRuntimeArtifactV3
+  readonly snapshot:BrowserSnapshotV3
+}
+export type AuthorBrowserAttachment=AuthorBrowserAttachmentV1|AuthorBrowserAttachmentV2|AuthorBrowserAttachmentV3
+export type AuthorBrowserSnapshot=BrowserSnapshotV1|BrowserSnapshotV2|BrowserSnapshotV3
+export type AuthorBrowserWriteProgram=BrowserProgramV2|BrowserProgramV3
 export type AuthorBrowserRequestV1=
-  |{action:'attach';sessionId:string;binding?:BrowserBindingV1}
+  {action:'attach';sessionId:string;binding?:BrowserBindingV1}
   |{action:'capture';binding:BrowserBindingV1}
   |{action:'save';binding:BrowserBindingV1;
     request:Pick<BrowserSaveRequestV1,'requestId'|'generation'|'readRevision'|'scriptIdentity'>;operation:MvuPlayerEditRequest}
   |{action:'confirm';operation:MvuPlayerEditRequest}
   |{action:'retry';operation:MvuPlayerEditRequest}
   |{action:'dispose';binding:BrowserBindingV1}
+  |{action:'read-source-resource';binding:BrowserBindingV1;request:AuthorScriptResourceRequestV1}
 export type AuthorBrowserReplyV1=
-  |{ok:true;kind:'attached';attachment:AuthorBrowserAttachmentV1}
+  {ok:true;kind:'attached';attachment:AuthorBrowserAttachmentV1|AuthorBrowserAttachmentV2}
   |{ok:true;kind:'inactive';code:string}
-  |{ok:true;kind:'snapshot';snapshot:BrowserSnapshotV1}
-  |{ok:true;kind:'saved';result:MvuPlayerEditResponse;snapshot?:BrowserSnapshotV1}
+  |{ok:true;kind:'snapshot';snapshot:BrowserSnapshotV1|BrowserSnapshotV2}
+  |{ok:true;kind:'saved';result:MvuPlayerEditResponse;snapshot?:BrowserSnapshotV1|BrowserSnapshotV2}
   |{ok:true;kind:'confirmed';result:MvuPlayerEditResponse}
   |{ok:true;kind:'disposed'}
+  |{ok:true;kind:'source-resource';value:MvuJsonValue}
   |{ok:false;code:string;error?:string}
+/** Legacy Reader transports remain explicitly V1/V2. A V3 caller consumes
+ * this full service contract rather than passing V3 to a legacy frame. */
+export type AuthorBrowserRequest=AuthorBrowserRequestV1
+  |{action:'mutate-author-key';binding:BrowserBindingV1;request:BrowserOrdinaryKeyRequestV3}
+export type AuthorBrowserReply=Exclude<AuthorBrowserReplyV1,
+  {kind:'attached'|'snapshot'|'saved'|'worldbook-mutated'|'persona-mutated'}>
+  |{ok:true;kind:'attached';attachment:AuthorBrowserAttachment}
+  |{ok:true;kind:'snapshot';snapshot:AuthorBrowserSnapshot}
+  |{ok:true;kind:'saved';result:MvuPlayerEditResponse;snapshot?:AuthorBrowserSnapshot;
+    sourceEvents?:readonly import('./tavern-author-browser-worker-protocol-v3.js').BrowserSourceEventV3[]}
+  |{ok:true;kind:'author-key-mutated';reply:BrowserOrdinaryKeyReplyV3;snapshot?:BrowserSnapshotV3}

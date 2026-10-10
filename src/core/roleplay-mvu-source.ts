@@ -1,15 +1,16 @@
 import {createHash} from 'node:crypto'
 import {recordSha256} from './roleplay-data.js'
-import {assertImportRecordIntegrity, importCoverage,readStructuredImportDataV1} from './roleplay-import-record.js'
+import {assertImportRecordIntegrity, importCoverage,type readStructuredImportDataV1} from './roleplay-import-record.js'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
 import type {ImportPointer, ImportRecord} from './roleplay-import-types.js'
 import type {OpeningCatalog, OpeningSource} from './roleplay-opening-selection.js'
 import type {TavernOpeningCandidate, TavernOpeningContext} from './tavern-card.js'
 import {selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
+import {parseMvuUpdateRegionV2} from './roleplay-mvu-update-v2.js'
 import {NATIVE_MVU_SOURCE_POLICY,isNativeMvuSourcePolicy,isNativeMvuYamlSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
-import {cloneSchemaData,schemaTextSha256} from './tavern-mvu-schema-data.js'
-import type {MvuJsonObject,SchemaMvuInitDataSource} from './tavern-mvu-initvar.js'
+import {cloneSchemaData,schemaTextSha256,captureSchemaMaterialV4} from './tavern-mvu-schema-data.js'
+import type {MvuJsonObject,SchemaMvuInitDataSource,SchemaMvuInitDataSourceV2} from './tavern-mvu-initvar.js'
 import type {MvuSchemaAuthorScript} from './tavern-mvu-schema-types.js'
 export {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSourcePolicy,isNativeMvuYamlSourcePolicy}
   from './roleplay-mvu-source-policy.js'
@@ -42,11 +43,18 @@ export interface MvuSchemaAuthorSource {
   /** Hash of this complete author descriptor; raw source bytes have their own hash. */
   authorSourceSha256:string
 }
+/** Current frame consumers need these inputs, not another complete original
+ * descriptor checksum. The actual Source read retains their live ownership. */
+export type MvuSchemaCurrentAuthorMaterial=Pick<MvuSchemaAuthorSource,
+  'snapshot'|'scripts'|'material'|'materialSha256'>
+export type MvuSchemaCurrentAuthorMaterialDecision=
+  |{kind:'author-material';source:MvuSchemaCurrentAuthorMaterial}
+  |Exclude<MvuSchemaAuthorSourceDecision,{kind:'author-source'}>
 export type MvuSchemaAuthorSourceDecision={kind:'author-source';source:MvuSchemaAuthorSource}
   |{kind:'absent'}|{kind:'unsupported';diagnostics:readonly MvuSourceDiagnostic[]}
 /** Raw initialization data only. The surrounding author card is a separate
  * schema program, so this descriptor never grants native-json permissions. */
-export type MvuSchemaOpeningInitSource=SchemaMvuInitDataSource
+export type MvuSchemaOpeningInitSource=SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2
 export interface MvuSchemaOpeningSource {
   authorSource:MvuSchemaAuthorSource
   initSource:MvuSchemaOpeningInitSource
@@ -359,8 +367,12 @@ function captureSource(deps: MvuSourceDeps, sessionId: string, selectedIndex: nu
     || record.normalizedSha256 !== pointer.normalizedSha256 || record.activation?.transactionId !== pointer.transactionId) {
     fail('SOURCE_INVALID','/source')
   }
-  try { assertImportRecordIntegrity(record) } catch { fail('SOURCE_INVALID','/source') }
-  const {decoded,provenance}=readStructuredImportDataV1(record)
+  let structured!:ReturnType<typeof readStructuredImportDataV1>
+  // Integrity already decoded this structured record. Consume its matching
+  // execution data and provenance instead of decoding the same source again.
+  try { assertImportRecordIntegrity(record,(_decoded,data)=>{structured=data!}) }
+  catch { fail('SOURCE_INVALID','/source') }
+  const {decoded,provenance}=structured
   const nativeCard=decoded.format==='json-nexttavern-v1'
   const coverage = importCoverage(record)
   if (coverage.coverage !== 1 || coverage.uncovered.length || coverage.overlaps.length
@@ -465,7 +477,10 @@ function freezeAuthorSourceData<T>(value:T):T {
   return value
 }
 
-function authorSourceOf(captured:Captured):MvuSchemaAuthorSourceDecision {
+function authorSourceOf(captured:Captured):MvuSchemaAuthorSourceDecision
+function authorSourceOf(captured:Captured,current:{executionV4:boolean}):MvuSchemaCurrentAuthorMaterialDecision
+function authorSourceOf(captured:Captured,current?:{executionV4:boolean}):
+  MvuSchemaAuthorSourceDecision|MvuSchemaCurrentAuthorMaterialDecision {
   try {
     const extension=captured.data.extensions
     if(extension===undefined)return {kind:'absent'}
@@ -497,12 +512,20 @@ function authorSourceOf(captured:Captured):MvuSchemaAuthorSourceDecision {
     // Decoder DATA belongs to this capture. Domain get() returns its shared
     // logical row, so detach each row once before freezing the derived Source.
     // The combined descriptor is not another guest execution input.
-    const material={card:captured.document,
+    const materialInput={card:captured.document,
       rows:captured.rows.map(({ref,value})=>({table:ref.table,key:ref.key,exists:ref.exists,
-        value:structuredClone(value??null)})),
+        value:current?.executionV4?value??null:structuredClone(value??null)})),
       openingContext:{...captured.context}} as unknown as MvuJsonObject
+    // Execution material is detached, budgeted, hashed and frozen by the same
+    // DATA owner that later envelopes consume. Raw/legacy Source keeps its
+    // existing read contract rather than gaining an execution admission gate.
+    const owned=current?.executionV4?captureSchemaMaterialV4(materialInput):undefined
+    const material=owned?.value??materialInput,materialSha256=owned?.sha256??recordSha256(material)
+    if(current)return {kind:'author-material',source:Object.freeze({
+      snapshot:freezeAuthorSourceData(snapshot),scripts:freezeAuthorSourceData(scripts),
+      material:owned?.value??freezeAuthorSourceData(material),materialSha256})}
     const body={schemaVersion:1 as const,encoding:'native-mvu-author-source-v1' as const,
-      snapshot,scripts,material,materialSha256:recordSha256(material)}
+      snapshot,scripts,material,materialSha256}
     return {kind:'author-source',source:freezeAuthorSourceData({...body,authorSourceSha256:recordSha256(body)})}
   } catch(error) {
     return {kind:'unsupported',diagnostics:[error instanceof SourceFailure
@@ -519,9 +542,27 @@ export function readMvuSchemaCurrentAuthorSource(deps: MvuSourceDeps, sessionId:
   catch(error) {return {kind:'unsupported',diagnostics:[error instanceof SourceFailure
     ?error.diagnostic:{code:'SOURCE_INVALID',pointer:'/source'}]}}
 }
+/** The frame owner consumes this narrower capture. Only execution-v4 frames
+ * select the material codec; inspector/original/legacy callers remain separate. */
+export function readMvuSchemaCurrentAuthorMaterial(deps:MvuSourceDeps,sessionId:string,
+  selectedIndex:number,executionV4:boolean):MvuSchemaCurrentAuthorMaterialDecision {
+  try {return authorSourceOf(captureSource(deps,sessionId,selectedIndex,true),{executionV4})}
+  catch(error) {return {kind:'unsupported',diagnostics:[error instanceof SourceFailure
+    ?error.diagnostic:{code:'SOURCE_INVALID',pointer:'/source'}]}}
+}
 export function createRoleplayMvuSource(deps: MvuSourceDeps) {
   const capture = (sessionId: string, selectedIndex: number) => captureSource(deps,sessionId,selectedIndex)
-  const classifyNative = (captured:Captured,authorSchema:boolean,candidates:readonly TavernOpeningCandidate[]) => {
+  function openingSyntax(candidate:TavernOpeningCandidate,allowUpdate:boolean):'none'|'update'|'unsupported' {
+    if(!allowUpdate)return stateSyntax(candidate.rawText)?'unsupported':'none'
+    const raw=parseMvuUpdateRegionV2(candidate.rawText,{openingText:true})
+    const rendered=parseMvuUpdateRegionV2(candidate.renderedText,{openingText:true})
+    if(raw.candidate.kind==='rejected'||rendered.candidate.kind==='rejected') {
+      fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
+    }
+    if(raw.candidate.kind!==rendered.candidate.kind)fail('MACRO_UNSUPPORTED',candidate.sourcePointer)
+    return stateSyntax(raw.outside)?'unsupported':raw.candidate.kind==='parsed'?'update':'none'
+  }
+  const classifyNative = (captured:Captured,authorSchema:boolean,candidates:readonly TavernOpeningCandidate[],allowUpdate:boolean) => {
     const {data,context,snapshot}=captured
     const helper=isObject(data.extensions)?data.extensions.tavern_helper:undefined
     if(!authorSchema&&isObject(helper)&&helper.scripts!==undefined
@@ -544,11 +585,13 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         enabled:raw.enabled!==false&&raw.disable!==true,content:raw.content,contentSha256:sha(raw.content),
         renderedContent:rendered,renderedContentSha256:sha(rendered)})
     }
-    let openingInit=false
+    let openingInit=false,openingUpdate=false
     for(const candidate of candidates) {
       if(candidate.materialization==='materialized')continue
       boundedData(candidate.rawText,'FIELD_UNSUPPORTED',candidate.sourcePointer,budget)
-      if(stateSyntax(candidate.rawText))fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
+      const syntax=openingSyntax(candidate,allowUpdate)
+      if(syntax==='unsupported')fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
+      openingUpdate=syntax==='update'
       if(openingBlocks(candidate.renderedText,candidate.sourcePointer))openingInit=true
       render(candidate.rawText,context,entries.length>0||openingInit)
     }
@@ -556,7 +599,7 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       swipes:candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText,
         ...(item.materialization?{materialization:item.materialization}:{})}))})
     if(selection.kind==='unsupported')fail('INITVAR_INVALID',selection.diagnostics[0]!.pointer)
-    return {entries,candidates,hasInit:entries.length>0||openingInit,policy:selection.policy}
+    return {entries,candidates,hasInit:entries.length>0||openingInit,policy:selection.policy,openingUpdate}
   }
   const classify = (captured: Captured, authorSchema=false,recordedInitSource?:MvuSchemaOpeningInitSource) => {
     // Schema opening initialization consumes one selected greeting. The capture
@@ -565,7 +608,8 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     const candidates=authorSchema&&!(recordedInitSource&&recordedInitSource.swipes.length>1)
       ?captured.candidates.filter(candidate=>candidate.index===captured.snapshot.selected.index)
       :captured.candidates
-    if(captured.document.spec==='nexttavern_card')return classifyNative(captured,authorSchema,candidates)
+    const allowUpdate=authorSchema&&(!recordedInitSource||recordedInitSource.schemaVersion===2)
+    if(captured.document.spec==='nexttavern_card')return classifyNative(captured,authorSchema,candidates,allowUpdate)
     const {data,context,snapshot} = captured
     // The decoder owns the complete envelope, including compatibility mirrors
     // and opaque metadata. Only supported prompt inputs and explicit numerical
@@ -628,9 +672,11 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
           renderedContent:rendered,renderedContentSha256:sha(rendered)})
       }
     }
-    let openingInit = false
+    let openingInit = false,openingUpdate=false
     for (const candidate of candidates) {
-      if (stateSyntax(candidate.rawText)) fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
+      const syntax=openingSyntax(candidate,allowUpdate)
+      if (syntax==='unsupported') fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
+      openingUpdate=syntax==='update'
       if (openingBlocks(candidate.renderedText,candidate.sourcePointer)) openingInit = true
       render(candidate.rawText,context,entries.length > 0 || openingInit)
     }
@@ -653,6 +699,9 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
         continue
       }
       if(ref.table==='rules'&&original)continue
+      // The selected raw greeting owns these commands. Its hash-bound activated
+      // opening copy is retained Source material, not a second init interpreter.
+      if(ref.table==='opening'&&original&&openingUpdate)continue
       for(const field of fields) {
         const text=value[field]
         if(typeof text!=='string')continue
@@ -665,7 +714,7 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       swipes:candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText,
         ...(item.materialization?{materialization:item.materialization}:{})}))})
     if(selection.kind==='unsupported')fail('INITVAR_INVALID',selection.diagnostics[0]!.pointer)
-    return {entries,candidates,hasInit:entries.length > 0 || openingInit,policy:selection.policy}
+    return {entries,candidates,hasInit:entries.length > 0 || openingInit,policy:selection.policy,openingUpdate}
   }
 
   const fresh = (snapshot: MvuSourceSnapshot): {proof:FreshNativeBasisProof; facts:FreshNativeBasisFacts} => {
@@ -771,9 +820,11 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     const author=authorSourceOf(captured)
     if(author.kind!=='author-source')return author
     if(!author.source.scripts.some(script=>script.enabled))return {kind:'absent' as const}
-    const {entries,candidates,policy}=classify(captured,true,recordedInitSource)
+    const {entries,candidates,policy,openingUpdate}=classify(captured,true,recordedInitSource)
     const primary=captured.snapshot.bindings.primary
-    const body={schemaVersion:1 as const,encoding:'native-mvu-schema-opening-init-source-v1' as const,
+    const version=openingUpdate?{schemaVersion:2 as const,encoding:'native-mvu-schema-opening-init-source-v2' as const}
+      :{schemaVersion:1 as const,encoding:'native-mvu-schema-opening-init-source-v1' as const}
+    const body={...version,
       grammar:isNativeMvuYamlSourcePolicy(policy)?'yaml-1.2-json-data-v1' as const:'strict-json-object-v1' as const,
       books:primary?[{identity:'embedded-primary',binding:'primary' as const,sourcePointer:primary.pointer,
         sourceSha256:primary.sha256,entries}]:[],

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "dsh-nexttavern-template-runtime-v1",
+  "version": "0.1.0",
+  "modules": {
+    "provider": "dist/index.mjs",
+    "controller": "dist/controller.mjs",
+    "worker": "dist/tavern-template-worker.mjs"
+  },
+  "dependencies": {
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "@jitl/quickjs-ffi-types": "0.32.0"
+  },
+  "policySha256": "cea021ba9a5f34840123bc4f9b5021743e813b65cdca7a18fff4a55d92b49743"
+}

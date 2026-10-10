@@ -3,10 +3,10 @@
  * same maintained replay/journal source; no lower replay plus JSON stamp can
  * mint its evidence. Source, locks and Native callbacks stay with Core. */
 import { recordSha256 } from './roleplay-data.js';
-import { createCombinedAuthorCompilerV4 } from './tavern-author-combined-compiler.mjs';
+import { createCombinedAuthorCompilerV6 } from './tavern-author-combined-compiler-v6.mjs';
 import { createRoleplayMvuSchemaReplay } from './roleplay-mvu-schema-replay.js';
-export const AUTHOR_HOST_NAME_V5 = 'dsh-nexttavern-author-host-runtime-v5';
-export const AUTHOR_HOST_VERSION_V5 = '0.5.1';
+export const AUTHOR_HOST_NAME_V5 = 'dsh-nexttavern-author-host-runtime-v5-server-candidates-v2';
+export const AUTHOR_HOST_VERSION_V5 = '0.5.2';
 const ownRoot = new URL('../', import.meta.url);
 let loadedGeneration;
 export async function createOwnedAuthorHostRuntimeV5(deps) {
@@ -20,11 +20,17 @@ export async function createOwnedAuthorHostRuntimeV5(deps) {
     loadedGeneration ??= pin.generation;
     if (deps.server.executorVersion !== 4)
         throw Error('AUTHOR_HOST_SERVER_ABI_UNSUPPORTED');
+    const candidateCompiler = deps.server.compiler;
+    if (typeof candidateCompiler.partitionCandidates !== 'function')
+        throw Error('AUTHOR_HOST_SERVER_CANDIDATES_UNAVAILABLE');
+    if (deps.browser.runtime.version !== 3)
+        throw Error('AUTHOR_HOST_BROWSER_ABI_UNSUPPORTED');
     const server = Object.freeze({ compiler: deps.server.compiler.identity,
         bridge: deps.server.bridge, libraries: deps.server.libraries, stateLoader: deps.server.stateLoader,
         runner: deps.server.runner.identity });
-    const actualCompiler = createCombinedAuthorCompilerV4({ server: deps.server.compiler,
-        browser: deps.browser, prompt: deps.prompt.compiler, implementationSha256: pin.generation });
+    const compilerDependencies = { server: candidateCompiler,
+        prompt: deps.prompt.compiler, implementationSha256: pin.generation };
+    const actualCompiler = createCombinedAuthorCompilerV6({ ...compilerDependencies, browser: deps.browser });
     const identity = Object.freeze({ id: 'native-author-host', version: 5,
         implementationSha256: recordSha256({ encoding: 'native-author-host-implementation-v5', generation: pin.generation,
             combinedCompiler: actualCompiler.identity, server, browser: { compiler: deps.browser.identity, runtime: deps.browser.runtime },
@@ -34,8 +40,8 @@ export async function createOwnedAuthorHostRuntimeV5(deps) {
     const checkCurrent = () => { if (disposed)
         throw Error('AUTHOR_HOST_RUNTIME_DISPOSED'); };
     const compiler = { identity: actualCompiler.identity,
-        compile(input, signal) { checkCurrent(); return actualCompiler.compile(input, signal); },
-        verifyProgram(program, signal) { checkCurrent(); return actualCompiler.verifyProgram(program, signal); } };
+        compile(input, signal, resources) { checkCurrent(); return actualCompiler.compile(input, signal, resources); },
+        verifyProgram(program, signal, resources) { checkCurrent(); return actualCompiler.verifyProgram(program, signal, resources); } };
     return Object.freeze({ identity, server, compiler, prompt: deps.prompt,
         createReplay(bindings) {
             checkCurrent();

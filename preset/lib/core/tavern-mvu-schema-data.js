@@ -12,15 +12,21 @@ function fail(code) { throw Error(code); }
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const executionCloneBounds = Object.freeze({ bytes: 16_777_216,
-    nodes: MVU_SCHEMA_BOUNDS.evaluationNodes, depth: MVU_SCHEMA_BOUNDS.evaluationDepth });
-const descriptorCloneBounds = Object.freeze({ bytes: 67_108_864, nodes: 524_288, depth: 96 });
+    nodes: MVU_SCHEMA_BOUNDS.evaluationNodes, depth: MVU_SCHEMA_BOUNDS.evaluationDepth,
+    arrayLength: MVU_SCHEMA_BOUNDS.arrayLength });
+const sourceMaterialBounds = Object.freeze({ bytes: 67_108_864, nodes: 524_288, depth: 96,
+    arrayLength: MVU_SCHEMA_BOUNDS.arrayLength });
+// Browser3 descriptors carry complete preorder AST tables. Their metadata
+// capacity is independent of Source material and ABI4 numerical envelopes.
+const descriptorCloneBounds = Object.freeze({ ...sourceMaterialBounds, nodes: 1_048_576, arrayLength: 131_072 });
 function cloneBudget(maxBytes, recordBounds, maximum) {
-    const depth = recordBounds?.depth ?? 64, nodes = recordBounds?.nodes ?? 64000;
+    const depth = recordBounds?.depth ?? 64, nodes = recordBounds?.nodes ?? 64000, arrayLength = recordBounds?.arrayLength ?? MVU_SCHEMA_BOUNDS.arrayLength;
     if (!Number.isSafeInteger(depth) || depth < 1 || depth > maximum.depth
         || !Number.isSafeInteger(nodes) || nodes < 1 || nodes > maximum.nodes
+        || !Number.isSafeInteger(arrayLength) || arrayLength < 1 || arrayLength > maximum.arrayLength
         || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > maximum.bytes)
         fail('SCHEMA_DATA_LIMIT');
-    return { depth, nodes };
+    return { depth, nodes, arrayLength };
 }
 const codeSourceEncoding = new Set(['native-mvu-author-compilation-input-v2', 'native-mvu-author-schema-program-v2']);
 function sourceSlot(descriptors, key) {
@@ -50,7 +56,7 @@ function authorDataSlot(key) {
     // fields remain ordinary JSON and cannot become Source material references.
     return authorDataSlots.has(key);
 }
-function clone(input, maxBytes, maxDepth, maxNodes, materials, summary) {
+function clone(input, maxBytes, maxDepth, maxNodes, materials, summary, maxArrayLength = MVU_SCHEMA_BOUNDS.arrayLength) {
     const ancestors = new Set();
     let nodes = 0, bytes = 0;
     const count = (value) => {
@@ -97,7 +103,7 @@ function clone(input, maxBytes, maxDepth, maxNodes, materials, summary) {
         let result;
         if (array) {
             const length = descriptors.length?.value;
-            if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0 || length > MVU_SCHEMA_BOUNDS.arrayLength) {
+            if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0 || length > maxArrayLength) {
                 fail('SCHEMA_ARRAY_LIMIT');
             }
             if (keys.some(key => key !== 'length' && (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= length)))
@@ -140,15 +146,15 @@ function clone(input, maxBytes, maxDepth, maxNodes, materials, summary) {
 /** Clones aliases independently. The generic signature retains the envelope's
  * declared type; callers must still validate its required fields and hashes. */
 export function cloneSchemaData(input, maxBytes, recordBounds) {
-    const { depth, nodes } = cloneBudget(maxBytes, recordBounds, executionCloneBounds);
-    return clone(input, maxBytes, depth, nodes);
+    const { depth, nodes, arrayLength } = cloneBudget(maxBytes, recordBounds, executionCloneBounds);
+    return clone(input, maxBytes, depth, nodes, undefined, undefined, arrayLength);
 }
 /** Persisted host descriptors aggregate multiple execution records. Their fixed
  * ceiling does not enlarge execution envelopes; every repeated child occurrence
  * is still traversed and charged by the same clone implementation. */
 export function cloneSchemaDescriptorData(input, maxBytes, recordBounds) {
-    const { depth, nodes } = cloneBudget(maxBytes, recordBounds, descriptorCloneBounds);
-    return clone(input, maxBytes, depth, nodes);
+    const { depth, nodes, arrayLength } = cloneBudget(maxBytes, recordBounds, descriptorCloneBounds);
+    return clone(input, maxBytes, depth, nodes, undefined, undefined, arrayLength);
 }
 // Only DATA parsed and deeply frozen by this owner can bypass another JSON
 // traversal. Neither this cache nor a material SHA grants Source/Native authority.
@@ -161,15 +167,17 @@ function freezeDataV4(input, seen = new Set()) {
         freezeDataV4(child, seen);
     Object.freeze(input);
 }
-function materialDataV4(input) {
+/** The actual Source producer uses this same bounded immutable DATA result as
+ * later envelopes. Capturing material does not establish Source permission. */
+export function captureSchemaMaterialV4(input) {
     const owned = input && typeof input === 'object' ? ownedMaterialsV4.get(input) : undefined;
     if (owned)
         return owned;
     const summary = { bytes: 0, nodes: 0 };
-    const value = clone(input, descriptorCloneBounds.bytes, descriptorCloneBounds.depth, descriptorCloneBounds.nodes, undefined, summary);
+    const value = clone(input, sourceMaterialBounds.bytes, sourceMaterialBounds.depth, sourceMaterialBounds.nodes, undefined, summary);
     if (!object(value))
         fail('SCHEMA_ROOT_OBJECT_REQUIRED');
-    const data = { ...summary, value, sha256: recordSha256(value) };
+    const data = Object.freeze({ ...summary, value, sha256: recordSha256(value) });
     freezeDataV4(value);
     if (value && typeof value === 'object')
         ownedMaterialsV4.set(value, data);
@@ -188,20 +196,20 @@ function packMaterialEnvelopeV4(input, maxBytes, recordBounds, maximum) {
             const existing = raw && typeof raw === 'object' ? identities.get(raw) : undefined;
             if (existing)
                 return existing;
-            const material = materialDataV4(raw);
+            const material = captureSchemaMaterialV4(raw);
             if (!dictionary.has(material.sha256)) {
                 bytes += material.bytes;
                 nodes += material.nodes;
-                if (bytes > descriptorCloneBounds.bytes)
+                if (bytes > sourceMaterialBounds.bytes)
                     fail('SCHEMA_DATA_BYTE_LIMIT');
-                if (nodes > descriptorCloneBounds.nodes)
+                if (nodes > sourceMaterialBounds.nodes)
                     fail('SCHEMA_DATA_NODE_LIMIT');
                 dictionary.set(material.sha256, material);
             }
             if (raw && typeof raw === 'object')
                 identities.set(raw, material.sha256);
             return material.sha256;
-        } });
+        } }, undefined, limits.arrayLength);
     return { schemaVersion: 1, encoding: 'native-mvu-private-material-envelope-v4', data,
         materials: [...dictionary.values()].map(({ sha256, value }) => ({ sha256, value })) };
 }
@@ -237,20 +245,20 @@ export function unpackSchemaEnvelopeV4(input, maxBytes, recordBounds) {
         fail('SCHEMA_MATERIAL_ENVELOPE_VERSION');
     }
     const limits = cloneBudget(maxBytes, recordBounds, executionCloneBounds);
-    const data = clone(input.data, maxBytes, limits.depth, limits.nodes);
+    const data = clone(input.data, maxBytes, limits.depth, limits.nodes, undefined, undefined, limits.arrayLength);
     const materials = new Map();
     let bytes = 0, nodes = 0;
     for (const row of input.materials) {
-        const material = materialDataV4(row.value);
+        const material = captureSchemaMaterialV4(row.value);
         if (row.sha256 !== material.sha256)
             fail('SCHEMA_MATERIAL_REFERENCE_MISMATCH');
         if (materials.has(row.sha256))
             continue;
         bytes += material.bytes;
         nodes += material.nodes;
-        if (bytes > descriptorCloneBounds.bytes)
+        if (bytes > sourceMaterialBounds.bytes)
             fail('SCHEMA_DATA_BYTE_LIMIT');
-        if (nodes > descriptorCloneBounds.nodes)
+        if (nodes > sourceMaterialBounds.nodes)
             fail('SCHEMA_DATA_NODE_LIMIT');
         materials.set(row.sha256, material.value);
     }

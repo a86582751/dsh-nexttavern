@@ -66,6 +66,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     deps.readPublishedLocalEditJournal,deps.captureMaterialPublications,deps.assertMaterialPublications,
     deps.captureNonNumericalOpening,deps.assertNonNumericalOpening,
     deps.captureProgramAbsenceOpening,deps.assertProgramAbsenceOpening,
+    deps.captureAuthorChatForkSeed,deps.applyAuthorChatForkSeed,
+    deps.captureAuthorChatForkSeedsV2,deps.applyAuthorChatForkSeedsV2,
     ...(['cards','worldbook','rules','opening','status','branch'] as const).flatMap(name=>{
       const table:TavernSourceInheritanceTableV1=deps.tables[name]
       return [table,table.get,table.entries,table.put]
@@ -342,6 +344,12 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         :{kind:'native-fork',seedLength,parentInheritedEventCount:inherited,
           prefixEncoding:'record-sha256-native-events-prefix-v1',prefixSha256:recordSha256(events.slice(0,seedLength))}
       if(nativeCut.seedLength!==seedLength)inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED')
+      const frozenAuthorChatSeed=deps.captureAuthorChatForkSeed?.(parent,child,operation.operationId,nativeCut,source)
+      if(frozenAuthorChatSeed!==undefined&&!deps.applyAuthorChatForkSeed)
+        inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
+      const frozenAuthorChatSeeds=deps.captureAuthorChatForkSeedsV2?.(parent,child,operation.operationId,nativeCut,source)
+      if(frozenAuthorChatSeeds!==undefined&&!deps.applyAuthorChatForkSeedsV2)
+        inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
       const ancestor=source.inheritance?readCommittedSourceInheritance(parent):null
       if(ancestor&&ancestor.kind!=='committed-data')inheritanceFailV1('SOURCE_INHERITANCE_MISSING')
       const inheritedLayers=ancestor?.kind==='committed-data'?ancestor.editBaseline.layers:[],
@@ -371,7 +379,9 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         parentInventory,parentInventorySha256:recordSha256(parentInventory),childPointer:{...source.original.activePointer,
           inheritedFrom:parent,sourceRecordSessionId:source.sourceRecordSessionId},editLayers:[...inheritedLayers,local],
         materialPublications,ancestors,...(frozenOpening===undefined?{}:{frozenNonNumericalOpeningV1:frozenOpening}),
-        ...(frozenProgramAbsence===undefined?{}:{frozenProgramAbsenceOpeningV1:frozenProgramAbsence})},'preparedSha256'))
+        ...(frozenProgramAbsence===undefined?{}:{frozenProgramAbsenceOpeningV1:frozenProgramAbsence}),
+        ...(frozenAuthorChatSeed===undefined?{}:{frozenAuthorChatSeedV1:frozenAuthorChatSeed}),
+        ...(frozenAuthorChatSeeds===undefined?{}:{frozenAuthorChatSeedsV2:frozenAuthorChatSeeds})},'preparedSha256'))
       assertPreparedData(p)
       assertOperation(p)
       await store.putExact('branch',tavernSourcePreparedKeyV1(child),p)
@@ -701,6 +711,20 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       await store.putExact('branch',materialRef.key,material)
       if(!inheritanceSameV1(store.inventory(sid),a.writes.map(write=>write.next)))
         inheritanceFailV1('SOURCE_INHERITANCE_CHILD_CONFLICT')
+      if(p.frozenAuthorChatSeedV1!==undefined||p.frozenAuthorChatSeedsV2!==undefined) {
+        const sourceCurrent=()=>{
+          try{assertOperation(p);assertChildNative(p,a);return true}catch{return false}
+        }
+        if(p.frozenAuthorChatSeedV1!==undefined) {
+          if(!deps.applyAuthorChatForkSeed)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
+          await deps.applyAuthorChatForkSeed(p.frozenAuthorChatSeedV1,pRef,p,sourceCurrent)
+        }
+        if(p.frozenAuthorChatSeedsV2!==undefined) {
+          if(!deps.applyAuthorChatForkSeedsV2)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
+          await deps.applyAuthorChatForkSeedsV2(p.frozenAuthorChatSeedsV2,pRef,p,sourceCurrent)
+        }
+        assertChildNative(p,a)
+      }
       const c=validateCommitInheritanceV1(sealInheritanceDataV1({schemaVersion:1,
         encoding:'native-tavern-source-inheritance-commit-v1',childSessionId:sid,preparedRef:pRef,
         applyIntentRef:inheritanceRefV1(tavernSourceApplyKeyV1(sid),a),editBaselineRef:editRef,editBaselineSlotRef:slotRef,

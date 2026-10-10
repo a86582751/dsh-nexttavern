@@ -11,11 +11,13 @@ import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 export type MvuSchemaDiagnosticV4=MvuSchemaDiagnosticV2
   | {code:'SCHEMA_SCOPE_READ_FAILED';scriptPointer:string;readCode:string}
   | {code:'STATE_ONLY_UPDATE_OPERATION_REJECTED';commandIndex:number;updateCode:string;pointer?:string}
+export type MvuSchemaDiscardedDiagnosticV4=Extract<MvuSchemaDiagnosticV2,{commandIndex:number}>
+export type MvuSchemaPhaseErrorPolicyV4='atomic-refusal'|'registered-command-policy-v1'
 export interface MvuSchemaEvaluationInputV4 {
   schemaVersion:4
   encoding:'native-mvu-author-schema-phase-input-v4'
   commandsEncoding:'native-mvu-update-operations-v2'
-  errorPolicy:'atomic-refusal'
+  errorPolicy:MvuSchemaPhaseErrorPolicyV4
   phase:MvuSchemaPhase
   base:MvuJsonObject|null
   values:MvuJsonObject
@@ -29,13 +31,21 @@ interface PhaseOutputV4 {
   schemaVersion:4
   encoding:'native-mvu-author-schema-phase-output-v4'
   commandsEncoding:'native-mvu-update-operations-v2'
-  errorPolicy:'atomic-refusal'
   executionPlanSha256:string
 }
+interface AcceptedPhaseOutputV4 {
+  kind:'accepted'
+  values:MvuJsonObject
+  commands:readonly MvuUpdateOperationV2[]
+  context:MvuJsonObject
+  registrations:number
+}
 export type MvuSchemaGuestOutputV4=PhaseOutputV4 & (
-  | {kind:'accepted';values:MvuJsonObject;commands:readonly MvuUpdateOperationV2[];
-      context:MvuJsonObject;registrations:number}
-  | {kind:'refused';diagnostics:readonly MvuSchemaDiagnosticV4[]})
+  | ({errorPolicy:'atomic-refusal'} & (AcceptedPhaseOutputV4
+      | {kind:'refused';diagnostics:readonly MvuSchemaDiagnosticV4[]}))
+  | ({errorPolicy:'registered-command-policy-v1'} & (
+      (AcceptedPhaseOutputV4 & {discarded:readonly MvuSchemaDiscardedDiagnosticV4[]})
+      | {kind:'refused';diagnostics:readonly MvuSchemaDiagnosticV4[]})))
 export interface MvuSchemaEvaluationV4 {
   schemaVersion:4
   encoding:'native-mvu-author-schema-evaluation-v4'
@@ -78,6 +88,7 @@ export interface MvuSchemaTraceInputV4 {
   requestedStep:MvuSchemaTraceRequestedStepV4
 }
 export type MvuSchemaTraceEvaluationStepV4=Omit<MvuSchemaTraceStepRecordV4,'frame'> & {frameSha256:string}
+export type MvuSchemaTraceCompactStepRecordV4=MvuSchemaTraceEvaluationStepV4
 export interface MvuSchemaTraceEvaluationV4 {
   schemaVersion:4
   encoding:'native-mvu-author-schema-trace-evaluation-v4'
@@ -90,11 +101,33 @@ export interface MvuSchemaTraceEvaluationV4 {
 }
 export type MvuSchemaTraceRunResultV4={kind:'evaluated-trace';evaluation:MvuSchemaTraceEvaluationV4}
   | {kind:'unavailable'|'cancelled';diagnostics:readonly MvuSchemaDiagnostic[]}
+export type MvuSchemaNextRunResultV4={kind:'evaluated-next';record:MvuSchemaTraceCompactStepRecordV4}
+  | {kind:'unavailable'|'cancelled';diagnostics:readonly MvuSchemaDiagnostic[]}
+/** Fresh Native phase DATA for one already-owned manual operation. The live
+ * resource keeps program, historical prefix and current material privately. */
+export interface MvuSchemaManualRequestedStepV4 {
+  eventId:string
+  frame:{ownerSessionId:string;sourceNativeCutSha256:string;input:MvuSchemaEvaluationInputV4}
+}
+export interface MvuSchemaManualRunV4 {
+  advance(step:MvuSchemaManualRequestedStepV4,signal?:AbortSignal):Promise<MvuSchemaNextRunResultV4>
+  /** Resolves only after all VM cleanup and actual Worker termination. An
+   * unknown cleanup/termination outcome rejects and cannot authorize publish. */
+  close():Promise<void>
+}
+export type MvuSchemaOpenManualRunResultV4={kind:'opened-manual-run';run:MvuSchemaManualRunV4;
+  record:MvuSchemaTraceCompactStepRecordV4}
+  | {kind:'unavailable'|'cancelled';diagnostics:readonly MvuSchemaDiagnostic[]}
 export interface MvuSchemaRunnerV4 {
   readonly identity:MvuSchemaRunnerIdentity
   evaluate(program:MvuSchemaProgramV4,input:MvuSchemaEvaluationInputV4,signal?:AbortSignal):Promise<MvuSchemaRunResultV4>
   verifyEvaluation(program:MvuSchemaProgramV4,evaluation:MvuSchemaEvaluationV4,signal?:AbortSignal):Promise<boolean>
   evaluateTrace(program:MvuSchemaProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaTraceRunResultV4>
+  /** Program comes from the compiler or Journal's first parser; this entry owns the trace's first parsing. */
+  evaluateNext?(program:MvuSchemaProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaNextRunResultV4>
+  /** Additive live-operation entry; previous protected factories keep their
+   * exact cold ABI and do not gain a live resource through stored DATA. */
+  openManualRun?(program:MvuSchemaProgramV4,input:MvuSchemaTraceInputV4,signal?:AbortSignal):Promise<MvuSchemaOpenManualRunResultV4>
   verifyTrace(program:MvuSchemaProgramV4,evaluation:MvuSchemaTraceEvaluationV4,signal?:AbortSignal):Promise<boolean>
   dispose():Promise<void>
 }

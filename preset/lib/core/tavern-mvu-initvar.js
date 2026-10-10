@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { NATIVE_MVU_SOURCE_POLICY, NATIVE_MVU_YAML_SOURCE_POLICY, isNativeMvuSourcePolicy, isNativeMvuYamlSourcePolicy, nativeMvuPayloadGrammar } from './roleplay-mvu-source-policy.js';
 import { parseMvuYamlData } from './tavern-mvu-yaml.js';
+import { parseMvuUpdateV2 } from './roleplay-mvu-update-v2.js';
 const BOUNDS = {
     inputBytes: 1048576, outputBytes: 1048576, depth: 32, descriptorDepth: 48,
     nodes: 32000, arrayLength: 4096, numberMagnitude: 9007199254740991,
@@ -479,7 +480,7 @@ function loadBooks(input, starting, seen, context) {
     }
     return { statData, dataSha256: dataHash(statData), initializedBooks: [...initialized], books };
 }
-function calculate(safe, existing, nativePolicy) {
+function calculate(safe, existing, nativePolicy, openingUpdateDeferred = false) {
     const base = existing.bookStatData;
     const context = { macros: safe.capabilities.macros, nodes: 0, cache: new Map(),
         ...(nativePolicy && isNativeMvuYamlSourcePolicy(nativePolicy) ? { yaml: true } : {}) };
@@ -488,7 +489,7 @@ function calculate(safe, existing, nativePolicy) {
     let resultBytes = Buffer.byteLength(canonical(baseline), 'utf8')
         + Buffer.byteLength(canonical(existing), 'utf8');
     for (const [index, swipe] of safe.swipes.entries()) {
-        if (swipe.materialization !== 'materialized' && /<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
+        if (!openingUpdateDeferred && swipe.materialization !== 'materialized' && /<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
             reject('OPENING_UPDATE_UNSUPPORTED', `/swipes/${index}`);
         }
         let statData = merge(jsonObject(swipe.statData, `/swipes/${index}/statData`), structuredClone(baseline.statData));
@@ -662,7 +663,8 @@ export function compileSchemaMvuInitData(input) {
         inputHash = dataHash(checked);
         exact(checked, ['schemaVersion', 'encoding', 'grammar', 'books', 'bookStatData', 'initializedBooks',
             'messageIndex', 'selectedSwipeIdentity', 'swipes', 'macros', 'initSourceSha256'], [], '');
-        if (checked.schemaVersion !== 1 || checked.encoding !== 'native-mvu-schema-opening-init-source-v1') {
+        if (!(checked.schemaVersion === 1 && checked.encoding === 'native-mvu-schema-opening-init-source-v1')
+            && !(checked.schemaVersion === 2 && checked.encoding === 'native-mvu-schema-opening-init-source-v2')) {
             reject('INPUT_VERSION', '/schemaVersion');
         }
         requireContentHash(checked, 'initSourceSha256', 'INIT_SOURCE_HASH', '/initSourceSha256');
@@ -709,6 +711,15 @@ export function compileSchemaMvuInitData(input) {
             hash(swipe.renderedSha256, `/swipes/${index}/renderedSha256`);
         }
         const source = checked;
+        let openingUpdate;
+        if (source.schemaVersion === 2) {
+            if (source.swipes.length !== 1 || source.swipes[0].identity !== source.selectedSwipeIdentity)
+                reject('FRESH_BASIS', '/swipes');
+            const candidate = parseMvuUpdateV2(source.swipes[0].renderedOpening);
+            if (candidate.kind !== 'parsed')
+                reject(candidate.kind === 'rejected' ? candidate.code : 'OPENING_UPDATE_REQUIRED', '/swipes/0');
+            openingUpdate = candidate;
+        }
         const { safe, existing } = prepareCalculationData(source);
         const selectedPolicy = selectNativeMvuInitializationPolicy(source);
         if (selectedPolicy.kind === 'unsupported')
@@ -716,7 +727,7 @@ export function compileSchemaMvuInitData(input) {
         const grammar = isNativeMvuYamlSourcePolicy(selectedPolicy.policy) ? 'yaml-1.2-json-data-v1' : 'strict-json-object-v1';
         if (grammar !== source.grammar)
             reject('INIT_GRAMMAR', '/grammar');
-        const { baseline, swipes } = calculate(safe, existing, selectedPolicy.policy);
+        const { baseline, swipes } = calculate(safe, existing, selectedPolicy.policy, source.schemaVersion === 2);
         const selected = swipes.find(swipe => swipe.identity === source.selectedSwipeIdentity);
         const initialized = {};
         for (const identity of selected.initializedBooks)
@@ -725,7 +736,7 @@ export function compileSchemaMvuInitData(input) {
         // schema runner supplies its own placeholder only at update-ended.
         const context = { initialized_lorebooks: initialized };
         const content = { kind: 'parsed', values: structuredClone(selected.statData), valuesSha256: selected.dataSha256,
-            context, baseline, swipes, initSourceSha256: source.initSourceSha256 };
+            context, baseline, swipes, initSourceSha256: source.initSourceSha256, ...(openingUpdate ? { openingUpdate } : {}) };
         try {
             finiteJson(content, '/result', undefined, BOUNDS.descriptorDepth);
         }

@@ -11,7 +11,7 @@
     "esbuildVersion": "0.24.2",
     "lock": {
       "artifact": "inventory-runtime-alpha3-build-tools-package-lock-json",
-      "sha256": "3d9f9d307eacd4f97e4694ed7fdb9833380636af1ed2fa60268e7976c567feb3"
+      "sha256": "599d76d6c944bb1523c2cdb20465f7c20a9e5556e26e4c32f748b869f14c4cfd"
     }
   },
   "graphs": {
@@ -91,7 +91,7 @@
       {
         "artifact": "tavern-author-prompt-worker-typescript",
         "path": "src/core/tavern-author-prompt-worker.mts",
-        "sha256": "6f8a77cab69c98c0237bc649ad3ed403cf6ee41b7c62777f249c47ff1c874d59"
+        "sha256": "1cb9b77757efa39dbcccaede950baf2e23e9af11fdb2d9cc037062032bc8cd6b"
       },
       {
         "artifact": "tavern-mvu-schema-data-typescript",

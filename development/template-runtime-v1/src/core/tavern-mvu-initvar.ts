@@ -4,6 +4,8 @@ import {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSource
 import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import type {NativeMvuJsonCandidate} from './roleplay-mvu-source.js'
 import {parseMvuYamlData} from './tavern-mvu-yaml.js'
+import {parseMvuUpdateV2} from './roleplay-mvu-update-v2.js'
+import type {ParsedMvuUpdateV2} from './roleplay-mvu-update-v2.js'
 
 export type MvuJsonValue = null | boolean | number | string | MvuJsonValue[] | MvuJsonObject
 export interface MvuJsonObject { [key: string]: MvuJsonValue }
@@ -114,9 +116,14 @@ export interface SchemaMvuInitDataSource {
   macros: 'none' | 'verified-identity-rendering'
   initSourceSha256: string
 }
+export interface SchemaMvuInitDataSourceV2 extends Omit<SchemaMvuInitDataSource,'schemaVersion'|'encoding'> {
+  schemaVersion:2
+  encoding:'native-mvu-schema-opening-init-source-v2'
+}
 export type SchemaMvuInitDataResult =
   | {kind: 'parsed'; values: MvuJsonObject; valuesSha256: string; context: MvuJsonObject;
-      baseline: MvuInitStateResult; swipes: MvuInitSwipePlan[]; initSourceSha256: string}
+      baseline: MvuInitStateResult; swipes: MvuInitSwipePlan[]; initSourceSha256: string;
+      openingUpdate?:ParsedMvuUpdateV2}
   | {kind: 'unsupported'; diagnostics: MvuInitDiagnostic[]; inputHash?: string}
 
 export interface MvuInitBounds {
@@ -620,7 +627,8 @@ function loadBooks(input: MvuCalculationInput, starting: MvuJsonObject, seen: st
   return {statData, dataSha256: dataHash(statData), initializedBooks: [...initialized], books}
 }
 
-function calculate(safe: MvuCalculationInput, existing: MvuInitBasis,nativePolicy?:NativeMvuSourcePolicy) {
+function calculate(safe: MvuCalculationInput, existing: MvuInitBasis,nativePolicy?:NativeMvuSourcePolicy,
+  openingUpdateDeferred=false) {
   const base = existing.bookStatData
   const context: PayloadContext = {macros: safe.capabilities.macros, nodes: 0, cache: new Map(),
     ...(nativePolicy&&isNativeMvuYamlSourcePolicy(nativePolicy)?{yaml:true}:{})}
@@ -629,7 +637,7 @@ function calculate(safe: MvuCalculationInput, existing: MvuInitBasis,nativePolic
   let resultBytes = Buffer.byteLength(canonical(baseline as unknown as MvuJsonObject), 'utf8')
     + Buffer.byteLength(canonical(existing as unknown as MvuJsonObject), 'utf8')
   for (const [index, swipe] of safe.swipes.entries()) {
-    if (swipe.materialization!=='materialized'&&/<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
+    if (!openingUpdateDeferred&&swipe.materialization!=='materialized'&&/<(?:updatevariable|updatevar|jsonpatch)\b|_\.(?:set|add|assign|delete|remove)\s*\(/i.test(swipe.rawOpening)) {
       reject('OPENING_UPDATE_UNSUPPORTED', `/swipes/${index}`)
     }
     let statData = merge(jsonObject(swipe.statData, `/swipes/${index}/statData`), structuredClone(baseline.statData))
@@ -789,7 +797,7 @@ function prepareCalculationData(input: RawCalculationData,
 
 /** Compile only raw pre-transform initialization data. Source ownership,
  * schema execution and a fresh Native publication lease are separate proofs. */
-export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource): SchemaMvuInitDataResult {
+export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2): SchemaMvuInitDataResult {
   let inputHash: string | undefined
   try {
     const checked = finiteJson(input, '', undefined, BOUNDS.descriptorDepth)
@@ -797,7 +805,8 @@ export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource): Schema
     inputHash = dataHash(checked)
     exact(checked, ['schemaVersion', 'encoding', 'grammar', 'books', 'bookStatData', 'initializedBooks',
       'messageIndex', 'selectedSwipeIdentity', 'swipes', 'macros', 'initSourceSha256'], [], '')
-    if (checked.schemaVersion !== 1 || checked.encoding !== 'native-mvu-schema-opening-init-source-v1') {
+    if (!(checked.schemaVersion === 1 && checked.encoding === 'native-mvu-schema-opening-init-source-v1')
+      && !(checked.schemaVersion === 2 && checked.encoding === 'native-mvu-schema-opening-init-source-v2')) {
       reject('INPUT_VERSION', '/schemaVersion')
     }
     requireContentHash(checked, 'initSourceSha256', 'INIT_SOURCE_HASH', '/initSourceSha256')
@@ -836,13 +845,20 @@ export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource): Schema
       hash(swipe.sourceSha256, `/swipes/${index}/sourceSha256`)
       hash(swipe.renderedSha256, `/swipes/${index}/renderedSha256`)
     }
-    const source = checked as unknown as SchemaMvuInitDataSource
+    const source = checked as unknown as SchemaMvuInitDataSource|SchemaMvuInitDataSourceV2
+    let openingUpdate:ParsedMvuUpdateV2|undefined
+    if(source.schemaVersion===2) {
+      if(source.swipes.length!==1||source.swipes[0]!.identity!==source.selectedSwipeIdentity)reject('FRESH_BASIS','/swipes')
+      const candidate=parseMvuUpdateV2(source.swipes[0]!.renderedOpening)
+      if(candidate.kind!=='parsed')reject(candidate.kind==='rejected'?candidate.code:'OPENING_UPDATE_REQUIRED','/swipes/0')
+      openingUpdate=candidate
+    }
     const {safe, existing} = prepareCalculationData(source)
     const selectedPolicy = selectNativeMvuInitializationPolicy(source)
     if (selectedPolicy.kind === 'unsupported') reject(selectedPolicy.diagnostics[0]!.code, selectedPolicy.diagnostics[0]!.pointer)
     const grammar = isNativeMvuYamlSourcePolicy(selectedPolicy.policy) ? 'yaml-1.2-json-data-v1' : 'strict-json-object-v1'
     if (grammar !== source.grammar) reject('INIT_GRAMMAR', '/grammar')
-    const {baseline, swipes} = calculate(safe, existing, selectedPolicy.policy)
+    const {baseline, swipes} = calculate(safe, existing, selectedPolicy.policy,source.schemaVersion===2)
     const selected = swipes.find(swipe => swipe.identity === source.selectedSwipeIdentity)!
     const initialized: MvuJsonObject = {}
     for (const identity of selected.initializedBooks) initialized[identity] = true
@@ -850,7 +866,7 @@ export function compileSchemaMvuInitData(input: SchemaMvuInitDataSource): Schema
     // schema runner supplies its own placeholder only at update-ended.
     const context: MvuJsonObject = {initialized_lorebooks: initialized}
     const content = {kind: 'parsed' as const, values: structuredClone(selected.statData), valuesSha256: selected.dataSha256,
-      context, baseline, swipes, initSourceSha256: source.initSourceSha256}
+      context, baseline, swipes, initSourceSha256: source.initSourceSha256,...(openingUpdate?{openingUpdate}:{})}
     try { finiteJson(content, '/result', undefined, BOUNDS.descriptorDepth) } catch (error) {
       if (error instanceof Refusal && error.code === 'BYTE_LIMIT') reject('OUTPUT_BYTE_LIMIT', '/result')
       throw error

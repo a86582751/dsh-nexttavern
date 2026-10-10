@@ -1,8 +1,11 @@
 import type {ImportTable} from './roleplay-import-types.js'
-import type {TavernLoreSourceCaptureV1,TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
+import type {TavernLoreSourceCaptureV1,TavernLoreSourceDataV1,TavernLoreSourceCounterWitnessV1}
+  from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreCurrentNativeFieldsV1,TavernLoreCurrentNativeOverlayV1,
   TavernLoreSemanticEntryV1,TavernLoreFieldSourceV1} from './tavern-lore-plan-types.mjs'
 import type {TavernSourceInheritanceRefV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {TavernLoreMembershipDataV1,TavernLoreMembershipMutationV1,TavernLoreMemberIdentityV1}
+  from './roleplay-tavern-lore-membership.js'
 
 /** Actual synchronous Source capture consumed as bounded data. It grants no
  * live currency or execution permission; the surrounding input Owner owns it. */
@@ -24,6 +27,19 @@ export interface TavernLoreEditRequestV1 {
   readonly rawEntrySha256:string
   readonly fields:TavernLoreCurrentNativeFieldsV1
 }
+/** Versioned member edits use the same source lock, journal head and recovery
+ * contract as historical field edits. UID allocation belongs to the caller. */
+export interface TavernLoreMutationRequestV2 {
+  readonly schemaVersion:2
+  readonly encoding:'tavern-lore-mutation-request-v2'
+  readonly sessionId:string
+  readonly expectedSourceSha256:string
+  readonly expectedRevision:number
+  readonly operationId:string
+  readonly mutation:TavernLoreMembershipMutationV1|{
+    kind:'fields';target:TavernLoreMemberIdentityV1;fields:TavernLoreCurrentNativeFieldsV1}
+}
+export type TavernLoreJournalRequestV2=TavernLoreEditRequestV1|TavernLoreMutationRequestV2
 export interface TavernLoreEditIdentityV1 {
   readonly schemaVersion:1
   readonly encoding:'tavern-lore-edit-original-identity-v1'
@@ -62,6 +78,19 @@ export interface TavernLoreEditEventV1 {
   readonly revision:number
   readonly eventSha256:string
 }
+export interface TavernLoreMutationEventV2 extends Omit<TavernLoreEditEventV1,'schemaVersion'|'encoding'|'request'> {
+  readonly schemaVersion:2
+  readonly encoding:'tavern-lore-mutation-event-v2'
+  readonly request:TavernLoreMutationRequestV2
+}
+/** New mutations retain their captured counter bytes for exact cold recovery.
+ * Request/receipt/head encodings and all historical event bytes remain unchanged. */
+export interface TavernLoreMutationEventV3 extends Omit<TavernLoreMutationEventV2,'schemaVersion'|'encoding'> {
+  readonly schemaVersion:3
+  readonly encoding:'tavern-lore-mutation-event-v3'
+  readonly sourceCounters:TavernLoreSourceCounterWitnessV1
+}
+export type TavernLoreJournalEventV2=TavernLoreEditEventV1|TavernLoreMutationEventV2|TavernLoreMutationEventV3
 export interface TavernLoreEditReceiptV1 {
   readonly schemaVersion:1
   readonly encoding:'tavern-lore-edit-receipt-v1'
@@ -78,6 +107,12 @@ export interface TavernLoreEditReceiptV1 {
   readonly headRef:TavernLoreEditHeadRefV1
   readonly receiptSha256:string
 }
+export interface TavernLoreMutationReceiptV2 extends Omit<TavernLoreEditReceiptV1,
+  'schemaVersion'|'encoding'|'rawEntryPointer'|'rawEntrySha256'|'fieldsSha256'> {
+  readonly schemaVersion:2
+  readonly encoding:'tavern-lore-mutation-receipt-v2'
+  readonly mutationSha256:string
+}
 export interface TavernLoreEditsDataV1 {
   readonly schemaVersion:1
   readonly encoding:'tavern-lore-edits-current-data-v1'
@@ -92,6 +127,7 @@ export interface TavernLoreEditsDataV1 {
   readonly journalRefs:readonly TavernLoreEditRefV1[]
   readonly journalSha256:string
   readonly overlay:TavernLoreCurrentNativeOverlayV1
+  readonly currentNativeMembership?:TavernLoreMembershipDataV1
   readonly inheritance?:{readonly baselineRef:TavernSourceInheritanceRefV1;
     readonly slotRef:TavernSourceInheritanceRefV1;readonly baselineSha256:string;readonly effectiveOverlaySha256:string}
   readonly dataSha256:string
@@ -105,6 +141,8 @@ export interface TavernLoreEditEditorEntryV1 {
   readonly contentText:string
   readonly fieldSources:readonly TavernLoreFieldSourceV1[]
   readonly diagnosticCodes:readonly string[]
+  readonly currentNativeMember?:{readonly identity:TavernLoreMemberIdentityV1;readonly uid:number;
+    readonly displayIndex:number;readonly rawEntrySha256:string}
 }
 export interface TavernLoreEditEditorDataV1 {
   readonly authority:'consumer-data-only'
@@ -128,7 +166,7 @@ export type TavernLoreEditFailureCodeV1='REQUEST_INVALID'|'REQUEST_DATA_INVALID'
   |'JOURNAL_IDENTITY_MISMATCH'|'JOURNAL_MISSING_EVENT'|'JOURNAL_CHAIN_INVALID'|'JOURNAL_ORPHAN_CONFLICT'
   |'JOURNAL_LIMIT'|'HEAD_CHANGED'|'PENDING_INTENT'|'OPERATION_PAYLOAD_CONFLICT'|'REVISION_MISMATCH'
   |'ENTRY_LINK_INVALID'|'FIELDS_INVALID'|'WRITE_UNKNOWN'
-  |'JOURNAL_INHERITANCE_INVALID'
+  |'JOURNAL_INHERITANCE_INVALID'|'RETRY_LOCATOR_REQUIRED'|'OPERATION_NOT_RECORDED'
 export interface TavernLoreEditDiagnosticV1 {
   readonly code:TavernLoreEditFailureCodeV1
   readonly detail?:string
@@ -148,3 +186,18 @@ export type TavernLoreEditJournalObservationV1={readonly schemaVersion:1;readonl
 export type TavernLoreEditResultV1={readonly schemaVersion:1;readonly kind:'edited-data';
   readonly receipt:TavernLoreEditReceiptV1;readonly data:TavernLoreEditsDataV1;
   readonly editor:TavernLoreEditEditorDataV1}|TavernLoreEditRefusalV1
+export type TavernLoreMutationResultV2={readonly schemaVersion:1;readonly kind:'edited-data';
+  readonly receipt:TavernLoreMutationReceiptV2;readonly data:TavernLoreEditsDataV1;
+  readonly editor:TavernLoreEditEditorDataV1}|TavernLoreEditRefusalV1
+export type TavernLoreJournalResultV2={readonly schemaVersion:1;readonly kind:'edited-data';
+  readonly receipt:TavernLoreEditReceiptV1|TavernLoreMutationReceiptV2;readonly data:TavernLoreEditsDataV1;
+  readonly editor:TavernLoreEditEditorDataV1}|TavernLoreEditRefusalV1
+
+/** Exact historical address supplied by the actual DATA owner or its receipt.
+ * It is not Source currency or execution authority. Only the journal resolves it. */
+export type TavernLoreMutationRetryLocatorV1={readonly identitySha256:string}
+  |{readonly eventRef:TavernLoreEditRefV1}
+/** An explicit historical lookup may return only the durable published receipt.
+ * It cannot construct current Source DATA from another active import. */
+export type TavernLoreMutationRetryResultV2=TavernLoreMutationResultV2|{
+  readonly schemaVersion:1;readonly kind:'edited-data';readonly receipt:TavernLoreMutationReceiptV2}

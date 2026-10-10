@@ -3,19 +3,20 @@
  * describe an attempt; they cannot recreate this private Native/Source lease. */
 import { recordSha256 } from './roleplay-data.js';
 import { pinnedCSchemaImportBindingsV1, pinnedCSchemaImportBindingsV2 } from './tavern-mvu-schema-import-policy.js';
-import { pinnedCSchemaImportBindingsV4, pinnedNativeStateLoaderImportBindingsV4, validateSchemaProgramV4, deriveOwnedStateLoaderIdentityV4 } from './tavern-mvu-schema-program-v4.js';
+import { pinnedCSchemaImportBindingsV4, pinnedNativeStateLoaderImportBindingsV4, validateSchemaProgramV4, deriveOwnedStateLoaderIdentityV4, schemaPhaseErrorPolicyForProgramV4 } from './tavern-mvu-schema-program-v4.js';
 import { validateSchemaGuestOutputForProgramV4 } from './tavern-mvu-schema-runner-v4.js';
 import { openingIntentKey } from './roleplay-opening-selection.js';
 import { mvuInitializationEventKey, mvuInitializationHeadKey } from './roleplay-mvu-initialization.js';
 import { compileSchemaMvuInitData } from './tavern-mvu-initvar.js';
 import { createRoleplayMvuSchemaAssetOwner } from './roleplay-mvu-schema-assets.js';
 import { createRoleplayAuthorHostAssetOwner } from './roleplay-author-host-assets.js';
-import { createRoleplayMvuSchemaJournal, schemaEpochExecution, schemaEpochAuthorIdentity, schemaJournalServerTailSha256, schemaJournalHostFrontierSha256 } from './roleplay-mvu-schema-journal.js';
+import { createRoleplayMvuSchemaJournal, freezeSchemaJournalData, schemaEpochExecution, schemaEpochAuthorIdentity, schemaJournalServerTailSha256, schemaJournalHostFrontierSha256 } from './roleplay-mvu-schema-journal.js';
 import { createRoleplayMvuSchemaReplay, schemaExecutionProgramSha256, schemaExecutionServerTailSha256, schemaExecutionHostFrontierSha256 } from './roleplay-mvu-schema-replay.js';
-import { deriveAuthorHostOpeningExecutionV5, sealMvuSchemaOpeningFact, validateMvuSchemaOpeningPreparation, validateMvuSchemaOpeningPlan, validateMvuSchemaOpeningIntent, verifyMvuSchemaOpeningFacts } from './roleplay-mvu-schema-opening-types.js';
+import { deriveAuthorHostOpeningExecutionV5, deriveAuthorHostOpeningExecutionV6, sealMvuSchemaOpeningFact, validateMvuSchemaOpeningPreparation, validateMvuSchemaOpeningPlan, validateMvuSchemaOpeningIntent, verifyMvuSchemaOpeningFacts } from './roleplay-mvu-schema-opening-types.js';
 import { schemaEmptyPhaseInput, schemaTraceRequestedStep, schemaRealmLoadFrame } from './roleplay-mvu-schema-executor-types.js';
 import { buildSchemaScopeReadFrame, schemaScopeSource, schemaScopeInitialChat, schemaScopeVisibleMessages } from './roleplay-mvu-schema-scope-facts.js';
 import { combinedCompilationInputForProgram } from './tavern-author-combined-data.mjs';
+import { captureSchemaCompilationResourcesV6 } from './roleplay-mvu-schema-source.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const codeOf = (error) => error instanceof Error && /^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
     ? error.message : 'SCHEMA_OPENING_EXECUTION_UNKNOWN';
@@ -121,8 +122,12 @@ export function createRoleplayMvuSchemaCore(deps) {
         try {
             const owner = scopes.get(scope.owner);
             if (!owner || !ownerCurrent(owner) || scope.incarnation !== owner.agent || scope.session !== owner.session
-                || scope.signal.aborted || !same(scope.sourceNativeCut.anchor, owner.preparation.selector.anchor)
-                || scope.sourceNativeCut.nativeCut !== owner.preparation.freshNativeBasisProof.native.observedThroughSeq + 1)
+                || scope.signal.aborted || !same(scope.sourceNativeCut.anchor, owner.preparation.selector.anchor))
+                return false;
+            const phaseIndex = owner.preparation.schemaVersion === 6
+                ? owner.preparation.phaseSelectors.findIndex(item => same(item.selector, owner.selector)) : 0;
+            if (phaseIndex < 0 || scope.sourceNativeCut.nativeCut !== owner.preparation.freshNativeBasisProof.native.observedThroughSeq + 1
+                + phaseIndex * 2)
                 return false;
             const all = events(owner.session), cut = scope.sourceNativeCut.nativeCut;
             if (boundary.dispatchMarker && (boundary.dispatchMarker.seq !== cut || !markerAt(all, boundary.dispatchMarker)))
@@ -139,7 +144,7 @@ export function createRoleplayMvuSchemaCore(deps) {
                 if (native.status !== 'committed' || native.receipt.turnStartSeq !== cut + 2 || all.length !== native.receipt.turnEndSeq + 1)
                     return false;
                 // Native reader proves the original operation/message and exact closed
-                // programmatic step. Its start must immediately follow our sole pair.
+                // programmatic step. Its start immediately follows the final phase pair.
                 return !!boundary.dispatchMarker && !!boundary.completionMarker;
             }
             const count = boundary.completionMarker ? 2 : boundary.dispatchMarker ? 1 : 0;
@@ -174,14 +179,46 @@ export function createRoleplayMvuSchemaCore(deps) {
     }
     function captureOwned(selector) {
         const owner = owners.get(selector.sessionId);
-        if (!owner?.scope || !owner.inSource || !same(owner.preparation.selector, selector) || !ownerCurrent(owner)) {
+        if (!owner?.scope || !owner.inSource || !same(owner.selector ?? owner.preparation.selector, selector) || !ownerCurrent(owner)) {
             fail('SCHEMA_OWNER_UNPROVEN');
         }
-        return owner.scope;
+        // Initialization constructs new DATA; this producer captures it before
+        // the compiler awaits. Story/player producers reuse their Source snapshots.
+        const scope = owner.scope, journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers,
+            recordOwner: deps.recordOwner });
+        const inheritedReady = scope.inheritedReady, inheritedCut = inheritedReady ? scope.inheritedCut :
+            scope.inheritedCut === null ? null : freezeSchemaJournalData(scope.inheritedCut);
+        // Capture the detached legacy cut once before closing over it. Checked
+        // producer DATA already owns its immutable cut; neither path keeps a live
+        // alias to an unparsed caller's mutable inherited record.
+        const captureJournal = scope.captureJournal ?? (() => inheritedReady
+            ? journal.captureChecked(owner.session.id, scope.realmEpoch, events(owner.session), inheritedReady)
+            : journal.capture(owner.session.id, scope.realmEpoch, events(owner.session), inheritedCut));
+        const journalCut = captureJournal();
+        if (journalCut.kind === 'blocked')
+            fail(journalCut.code);
+        // The current producer folds this exact Native cut once. Replay consumes
+        // its DATA under the existing private owner and Source lease.
+        const data = { sourceNativeCut: freezeSchemaJournalData(scope.sourceNativeCut),
+            inheritedCut, journalCut,
+            compiledProgram: owner.compiledProgram,
+            ...scope.authorInput.schemaVersion === 6 && !owner.compiledProgram
+                ? { compilationResources: captureSchemaCompilationResourcesV6(owner.author) } : {} };
+        const captured = scope.loadFrame === undefined ? { ...scope, ...data,
+            authorInput: freezeSchemaJournalData(scope.authorInput), loadFrame: undefined, requestedStep: undefined } :
+            { ...scope, ...data, authorInput: freezeSchemaJournalData(scope.authorInput), loadFrame: freezeSchemaJournalData(scope.loadFrame),
+                requestedStep: freezeSchemaJournalData(scope.requestedStep) };
+        // These process-only associations belong to the actual producer. A spread
+        // copies JSON DATA, so preserve them explicitly without putting them in it.
+        if (scope.inheritedReady)
+            Object.defineProperty(captured, 'inheritedReady', { value: scope.inheritedReady });
+        Object.defineProperty(captured, 'captureJournal', { value: captureJournal });
+        owner.scope = captured;
+        return captured;
     }
     function completeHostFrames(scope, program) {
         const owner = scopes.get(scope.owner), server = program.serverProgram;
-        if (!owner?.initialData || owner.preparation.schemaVersion !== 5 || owner.scope?.loadFrame !== undefined
+        if (!owner?.initialData || ![5, 6].includes(owner.preparation.schemaVersion) || owner.scope?.loadFrame !== undefined
             || !server || !owner.inSource || sourceLeases.get(owner.session.id) !== owner)
             fail('SCHEMA_OWNER_UNPROVEN');
         const preparation = owner.preparation, parsed = owner.initialData, cut = scope.sourceNativeCut;
@@ -192,11 +229,17 @@ export function createRoleplayMvuSchemaCore(deps) {
                 context: parsed.context, clockEpochMs: preparation.clockEpochMs, randomSeed: preparation.randomSeed, scopeReadFrame: readFrame },
             requestedStep: { eventId: preparation.selector.batchId, frame: { ...binding, input: { schemaVersion: 4,
                         encoding: 'native-mvu-author-schema-phase-input-v4', commandsEncoding: 'native-mvu-update-operations-v2',
-                        errorPolicy: 'atomic-refusal', phase: 'initialization', base: null, values: parsed.values, commands: [], context: parsed.context,
+                        errorPolicy: schemaPhaseErrorPolicyForProgramV4(server), phase: 'initialization', base: null,
+                        values: parsed.values, commands: [], context: parsed.context,
                         clockEpochMs: preparation.clockEpochMs, randomSeed: preparation.randomSeed, scopeReadFrame: readFrame } } } };
         // Publication retains this same private owner and its actual completed frames.
-        owner.scope = { ...scope, ...frames };
-        return frames;
+        const capturedFrames = freezeSchemaJournalData(frames);
+        owner.scope = { ...scope, ...capturedFrames };
+        if (scope.inheritedReady)
+            Object.defineProperty(owner.scope, 'inheritedReady', { value: scope.inheritedReady });
+        if (scope.captureJournal)
+            Object.defineProperty(owner.scope, 'captureJournal', { value: scope.captureJournal });
+        return capturedFrames;
     }
     async function captureHistoricalCut(selector) {
         const session = deps.session(selector.sessionId);
@@ -208,7 +251,7 @@ export function createRoleplayMvuSchemaCore(deps) {
         if (intent.status !== 'completed' || !plan || selector.nativeCut !== plan.execution.completionMarker.seq + 1)
             fail('SCHEMA_OPENING_NOT_COMPLETED');
         const author = authorFor(intent.preparation), all = events(session);
-        const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers });
+        const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers, recordOwner: deps.recordOwner });
         const cut = journal.capture(session.id, selector.realmEpoch, all.slice(0, selector.nativeCut));
         if (cut.kind !== 'ready')
             fail(cut.code);
@@ -218,7 +261,9 @@ export function createRoleplayMvuSchemaCore(deps) {
             fail('SCHEMA_ORIGINAL_SOURCE_CHANGED');
         if (cut.epoch.schemaVersion === 5) {
             return { authorInput: combinedCompilationInputForProgram(cut.epoch.program),
-                frozen: cut.frozen, events: all };
+                ...cut.epoch.program.schemaVersion === 6
+                    ? { compilationResources: captureSchemaCompilationResourcesV6(author) } : {},
+                ready: cut, frozen: cut.frozen, events: all };
         }
         let authorInput;
         if (program.schemaVersion === 2) {
@@ -231,18 +276,18 @@ export function createRoleplayMvuSchemaCore(deps) {
         else
             authorInput = { schemaVersion: 1, source: program.source, libraries: program.libraries, bridge: program.bridge,
                 scripts: program.scripts.map(({ javascript: _js, javascriptSha256: _hash, ...script }) => script) };
-        return { authorInput, frozen: cut.frozen, events: all };
+        return { authorInput, ready: cut, frozen: cut.frozen, events: all };
     }
     async function engine(preparation, tuple) {
         if (disposed)
             fail('SCHEMA_RUNTIME_DISPOSED');
         if (!deps.markers)
             fail('SCHEMA_NATIVE_MARKER_UNAVAILABLE');
-        const runtime = preparation.schemaVersion === 5 ? tuple
+        const runtime = preparation.schemaVersion === 5 || preparation.schemaVersion === 6 ? tuple
             ? await authorAssets.getForVerifiedHost(preparation.host, tuple)
             : await authorAssets.getDefault() : tuple ? await assets.getForVerifiedEpoch(tuple) : preparation.schemaVersion !== 1
             ? await assets.getForVerifiedEpoch(preparation.executor) : await assets.getHistoricalV1();
-        if (preparation.schemaVersion === 5 && (!hasAuthorHost(runtime) || !same(runtime.host.identity, preparation.host))) {
+        if ((preparation.schemaVersion === 5 || preparation.schemaVersion === 6) && (!hasAuthorHost(runtime) || !same(runtime.host.identity, preparation.host))) {
             fail('AUTHOR_HOST_IMPLEMENTATION_CHANGED');
         }
         if (disposed)
@@ -250,7 +295,8 @@ export function createRoleplayMvuSchemaCore(deps) {
         let replay = replays.get(runtime.implementationKey);
         if (!replay) {
             const bindings = {
-                table: deps.status, markers: deps.markers, captureOwned, checkOwned, completeHostFrames, withSourceBoundary: (scope, action) => {
+                table: deps.status, recordOwner: deps.recordOwner, markers: deps.markers,
+                captureOwned, checkOwned, completeHostFrames, withSourceBoundary: (scope, action) => {
                     const owner = scopes.get(scope.owner);
                     if (!owner)
                         fail('SCHEMA_OWNER_UNPROVEN');
@@ -276,11 +322,21 @@ export function createRoleplayMvuSchemaCore(deps) {
             const original = inputFor(source.authorSource, runtime);
             if (original.schemaVersion !== 2)
                 fail('AUTHOR_HOST_SERVER_ABI_UNSUPPORTED');
-            const execution = deriveAuthorHostOpeningExecutionV5(request.identity, runtime.host.identity);
-            const preparation = validateMvuSchemaOpeningPreparation(sealMvuSchemaOpeningFact({ schemaVersion: 5,
-                encoding: 'native-author-opening-preparation-v5', host: runtime.host.identity,
-                compilation: { schemaVersion: 4, encoding: 'native-author-combined-compilation-input-v4', original,
-                    sourceRecordSessionId: source.authorSource.snapshot.source.sourceRecordSessionId }, identity: request.identity,
+            const execution = source.initSource.schemaVersion === 2
+                ? deriveAuthorHostOpeningExecutionV6(request.identity, runtime.host.identity)
+                : deriveAuthorHostOpeningExecutionV5(request.identity, runtime.host.identity);
+            const version = source.initSource.schemaVersion === 2
+                ? { schemaVersion: 6, encoding: 'native-author-opening-preparation-v6' }
+                : { schemaVersion: 5, encoding: 'native-author-opening-preparation-v5' };
+            const preparation = validateMvuSchemaOpeningPreparation(sealMvuSchemaOpeningFact({ ...version, host: runtime.host.identity,
+                compilation: runtime.browser.runtime.version === 3
+                    ? { schemaVersion: 6, encoding: 'native-author-combined-compilation-input-v6', original,
+                        sourceRecordSessionId: source.authorSource.snapshot.source.sourceRecordSessionId }
+                    : runtime.browser.runtime.version === 2
+                        ? { schemaVersion: 5, encoding: 'native-author-combined-compilation-input-v5', original,
+                            sourceRecordSessionId: source.authorSource.snapshot.source.sourceRecordSessionId }
+                        : { schemaVersion: 4, encoding: 'native-author-combined-compilation-input-v4', original,
+                            sourceRecordSessionId: source.authorSource.snapshot.source.sourceRecordSessionId }, identity: request.identity,
                 authorSourceSha256: source.authorSource.authorSourceSha256, sourceSnapshot: source.authorSource.snapshot,
                 initSource: source.initSource, freshNativeBasisProof: source.freshNativeBasisProof, ...execution,
                 clockEpochMs: Date.now(), randomSeed: execution.realmEpoch }, 'preparationSha256'));
@@ -328,7 +384,7 @@ export function createRoleplayMvuSchemaCore(deps) {
                 const capturedScope = { owner: admitted.token, incarnation: agent, session,
                     signal: AbortSignal.any([signal, admitted.abort.signal]), realmEpoch: preparation.realmEpoch,
                     inheritedCut: null, sourceNativeCut };
-                if (preparation.schemaVersion === 5) {
+                if (preparation.schemaVersion === 5 || preparation.schemaVersion === 6) {
                     admitted.initialData = parsed;
                     admitted.scope = { ...capturedScope, authorInput: preparation.compilation };
                 }
@@ -340,15 +396,66 @@ export function createRoleplayMvuSchemaCore(deps) {
                         requestedStep: schemaTraceRequestedStep(preparation.selector.batchId, binding, schemaEmptyPhaseInput(runtime.executorVersion, 'initialization', null, parsed.values, parsed.context, preparation.clockEpochMs, preparation.randomSeed, scopeReadFrame)) };
                 }
                 admitted.replay = driver;
-                const result = await driver.execute(preparation.selector);
+                admitted.selector = preparation.selector;
+                let result = await driver.execute(preparation.selector);
                 if (result.kind !== 'completed')
                     return { kind: result.kind, code: result.code };
+                admitted.compiledProgram = result.compiledProgram;
                 if (result.output.kind !== 'accepted')
                     return { kind: 'blocked', code: 'SCHEMA_INITIALIZATION_REFUSED' };
+                const phases = [];
+                if (preparation.schemaVersion === 6) {
+                    if (!hasAuthorHost(runtime) || result.association.schemaVersion !== 5 || !parsed.openingUpdate)
+                        fail('SCHEMA_INITIAL_DATA_INVALID');
+                    phases.push({ phase: 'initialization', execution: result.association });
+                    const base = result.output.values;
+                    const firstReady = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers, recordOwner: deps.recordOwner })
+                        .capture(sid, preparation.realmEpoch, events(session));
+                    if (firstReady.kind !== 'ready')
+                        fail('SCHEMA_JOURNAL_UNPROVEN');
+                    const serverProgram = schemaEpochExecution(firstReady.epoch).program;
+                    const serverScripts = serverProgram.scripts;
+                    for (const selected of preparation.phaseSelectors.slice(1)) {
+                        if (result.kind !== 'completed' || result.output.kind !== 'accepted')
+                            fail('SCHEMA_OPENING_UPDATE_REFUSED');
+                        const previousScope = admitted.scope;
+                        if (!previousScope.loadFrame)
+                            fail('SCHEMA_OWNER_UNPROVEN');
+                        const currentEvents = events(session);
+                        const currentCut = { ...sourceNativeCut, nativeCut: currentEvents.length,
+                            nativePrefixSha256: recordSha256(currentEvents), anchor: selected.selector.anchor };
+                        const currentBinding = { ownerSessionId: sid, sourceNativeCutSha256: recordSha256(currentCut), material: admitted.author.material };
+                        const readSource = schemaScopeSource(preparation.sourceSnapshot);
+                        const load = previousScope.loadFrame;
+                        const readFrame = buildSchemaScopeReadFrame(readSource, currentBinding.sourceNativeCutSha256, serverScripts, load.scopeReadFrame.scopes.chat, schemaScopeVisibleMessages(currentEvents, deps.projectPrefix, readSource, () => sid, new Map()));
+                        const previousOutput = result.output;
+                        const commands = selected.phase === 'command-parsed' ? parsed.openingUpdate.operations : previousOutput.commands;
+                        admitted.selector = selected.selector;
+                        admitted.scope = { ...previousScope, sourceNativeCut: currentCut, requestedStep: { eventId: selected.selector.batchId,
+                                frame: { ...currentBinding, input: { schemaVersion: 4, encoding: 'native-mvu-author-schema-phase-input-v4',
+                                        commandsEncoding: 'native-mvu-update-operations-v2',
+                                        errorPolicy: schemaPhaseErrorPolicyForProgramV4(serverProgram), phase: selected.phase,
+                                        base, values: result.output.values, commands, context: result.output.context,
+                                        clockEpochMs: preparation.clockEpochMs, randomSeed: preparation.randomSeed, scopeReadFrame: readFrame } } } };
+                        if (previousScope.inheritedReady)
+                            Object.defineProperty(admitted.scope, 'inheritedReady', { value: previousScope.inheritedReady });
+                        if (previousScope.captureJournal)
+                            Object.defineProperty(admitted.scope, 'captureJournal', { value: previousScope.captureJournal });
+                        result = await driver.execute(selected.selector);
+                        if (result.kind !== 'completed')
+                            return { kind: result.kind, code: result.code };
+                        admitted.compiledProgram = result.compiledProgram;
+                        if (result.output.kind !== 'accepted')
+                            return { kind: 'blocked', code: 'SCHEMA_OPENING_UPDATE_REFUSED' };
+                        if (result.association.schemaVersion !== 5)
+                            fail('SCHEMA_JOURNAL_UNPROVEN');
+                        phases.push({ phase: selected.phase, execution: result.association });
+                    }
+                }
                 if (runtime.executorVersion === 4) {
                     // Use the actual completed epoch. A returned count or fulfilled import
                     // cannot independently authorize a state-only opening publication.
-                    const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers });
+                    const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers, recordOwner: deps.recordOwner });
                     const ready = journal.capture(sid, preparation.realmEpoch, events(session));
                     const actual = ready.kind === 'ready' ? ready.steps.at(-1) : undefined;
                     const execution = ready.kind === 'ready' ? schemaEpochExecution(ready.epoch) : undefined;
@@ -359,12 +466,14 @@ export function createRoleplayMvuSchemaCore(deps) {
                         fail('SCHEMA_JOURNAL_UNPROVEN');
                     validateSchemaGuestOutputForProgramV4(result.output, execution.program, actual.step.frame.input);
                 }
-                const version = preparation.schemaVersion === 5 && hasAuthorHost(runtime) ? { schemaVersion: 7,
-                    encoding: 'mvu-programmatic-opening-plan-v7', host: preparation.host, server: runtime.host.server }
-                    : preparation.schemaVersion === 4 ? { schemaVersion: 6, encoding: 'mvu-programmatic-opening-plan-v6',
-                        executor: preparation.executor } : preparation.schemaVersion === 3 ? { schemaVersion: 5, encoding: 'mvu-programmatic-opening-plan-v5',
-                        executor: preparation.executor } : preparation.schemaVersion === 2 ? { schemaVersion: 4, encoding: 'mvu-programmatic-opening-plan-v4',
-                        executor: preparation.executor } : { schemaVersion: 3, encoding: 'mvu-programmatic-opening-plan-v3' };
+                const version = preparation.schemaVersion === 6 && hasAuthorHost(runtime) ? { schemaVersion: 8,
+                    encoding: 'mvu-programmatic-opening-plan-v8', host: preparation.host, server: runtime.host.server, phases }
+                    : preparation.schemaVersion === 5 && hasAuthorHost(runtime) ? { schemaVersion: 7,
+                        encoding: 'mvu-programmatic-opening-plan-v7', host: preparation.host, server: runtime.host.server }
+                        : preparation.schemaVersion === 4 ? { schemaVersion: 6, encoding: 'mvu-programmatic-opening-plan-v6',
+                            executor: preparation.executor } : preparation.schemaVersion === 3 ? { schemaVersion: 5, encoding: 'mvu-programmatic-opening-plan-v5',
+                            executor: preparation.executor } : preparation.schemaVersion === 2 ? { schemaVersion: 4, encoding: 'mvu-programmatic-opening-plan-v4',
+                            executor: preparation.executor } : { schemaVersion: 3, encoding: 'mvu-programmatic-opening-plan-v3' };
                 const body = { ...version,
                     identity: preparation.identity, selectedSwipeIdentity: preparation.initSource.selectedSwipeIdentity,
                     authorSourceSha256: preparation.authorSourceSha256, sourceSnapshot: preparation.sourceSnapshot,
@@ -416,9 +525,9 @@ export function createRoleplayMvuSchemaCore(deps) {
             if (!checkOwned(scope, { stage: 'returned', dispatchMarker: live.association.dispatchMarker,
                 completionMarker: live.association.completionMarker }))
                 return false;
-            const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers });
+            const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers, recordOwner: deps.recordOwner });
             const ready = journal.capture(owner.session.id, owner.preparation.realmEpoch, events(owner.session));
-            return ready.kind === 'ready' && readyAssociation(ready, live.plan)
+            return ready.kind === 'ready' && readyAssociation(ready, live.plan, owner.initialData)
                 && recordSha256(live.output) === live.association.outputSha256;
         }
         catch {
@@ -464,7 +573,7 @@ export function createRoleplayMvuSchemaCore(deps) {
             fail('SCHEMA_OWNER_UNPROVEN');
         return withLease(owner, action);
     }
-    function readyAssociation(ready, plan) {
+    function readyAssociation(ready, plan, initial) {
         const facts = ready.steps.at(-1), association = plan.execution;
         const execution = schemaEpochExecution(ready.epoch);
         if (execution.program.schemaVersion === 2) {
@@ -475,6 +584,39 @@ export function createRoleplayMvuSchemaCore(deps) {
         if (association.schemaVersion === 5 && (ready.epoch.schemaVersion !== 5
             || !same(ready.epochRef, association.epoch) || execution.program.programSha256 !== association.serverProgramSha256))
             return false;
+        if (plan.schemaVersion === 8) {
+            if (ready.steps.length !== 4 || !initial?.openingUpdate)
+                return false;
+            const first = ready.steps[0], base = first.step.output.kind === 'accepted' ? first.step.output.values : null;
+            for (const [index, phase] of plan.phases.entries()) {
+                const step = ready.steps[index], input = step.step.frame.input, actual = phase.execution;
+                const previous = ready.steps[index - 1]?.step.output;
+                if (input.schemaVersion !== 4 || input.phase !== phase.phase || step.step.output.kind !== 'accepted'
+                    || !same(step.dispatchRef, actual.dispatch) || !same(step.completionRef, actual.completion)
+                    || !same(step.dispatchMarker, actual.dispatchMarker) || !same(step.completionMarker, actual.completionMarker)
+                    || step.dispatch.batchId !== actual.batchId || step.step.eventId !== actual.batchId
+                    || recordSha256(step.dispatch.sourceNativeCut) !== actual.sourceNativeCutSha256
+                    || step.dispatch.sourceNativeCut.sourceSnapshotSha256 !== plan.sourceSnapshot.snapshotSha256
+                    || step.dispatch.sourceNativeCut.materialSha256 !== execution.program.source.materialSha256
+                    || !same(step.step.frame.material, execution.program.source.material)
+                    || !same(step.dispatch.sourceNativeCut.anchor, actual.anchor) || recordSha256(step.step.output) !== actual.outputSha256
+                    || input.clockEpochMs !== first.step.frame.input.clockEpochMs || input.randomSeed !== first.step.frame.input.randomSeed)
+                    return false;
+                if (index === 0) {
+                    if (input.base !== null || input.commands.length || !same(input.values, initial.values) || !same(input.context, initial.context)
+                        || step.dispatch.sourceNativeCut.nativeCut !== plan.freshNativeBasisProof.native.observedThroughSeq + 1
+                        || step.dispatch.sourceNativeCut.nativePrefixSha256 !== plan.freshNativeBasisProof.native.historyVersionSha256)
+                        return false;
+                }
+                else if (!previous || previous.kind !== 'accepted' || !same(input.base, base) || !same(input.values, previous.values)
+                    || !same(input.context, previous.context) || !same(input.commands, index === 1 ? initial.openingUpdate.operations : previous.commands))
+                    return false;
+            }
+            return !!facts && facts.step.output.kind === 'accepted' && same(facts.step.output.values, plan.values)
+                && schemaEpochAuthorIdentity(ready.epoch).programSha256 === schemaExecutionProgramSha256(association)
+                && schemaJournalHostFrontierSha256(ready) === schemaExecutionHostFrontierSha256(association)
+                && schemaJournalServerTailSha256(ready) === schemaExecutionServerTailSha256(association);
+        }
         return ready.steps.length === 1 && !!facts && same(facts.dispatchRef, association.dispatch)
             && same(facts.completionRef, association.completion) && same(facts.dispatchMarker, association.dispatchMarker)
             && same(facts.completionMarker, association.completionMarker) && facts.dispatch.batchId === association.batchId
@@ -508,21 +650,22 @@ export function createRoleplayMvuSchemaCore(deps) {
             const author = authorFor(intent.preparation), parsed = compileSchemaMvuInitData(plan.initSource);
             if (parsed.kind !== 'parsed' || parsed.valuesSha256 !== plan.initialValuesSha256)
                 fail('SCHEMA_INITIAL_DATA_INVALID');
-            const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers });
+            const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers, recordOwner: deps.recordOwner });
             const cut = plan.execution.completionMarker.seq + 1, ready = journal.capture(session.id, plan.execution.realmEpoch, events(session).slice(0, cut));
-            if (ready.kind !== 'ready' || !readyAssociation(ready, plan))
+            if (ready.kind !== 'ready' || !readyAssociation(ready, plan, parsed))
                 fail('SCHEMA_JOURNAL_UNPROVEN');
             const { program, runner, loadFrame: load } = schemaEpochExecution(ready.epoch);
             const tuple = ready.epoch.schemaVersion === 5 ? ready.epoch.server.executor
                 : { compiler: program.compiler, bridge: program.bridge, libraries: program.libraries, runner };
             const { replay: driver } = await engine(intent.preparation, tuple);
             const frame = ready.steps[0].step.frame;
+            const loadCut = plan.schemaVersion === 8 ? plan.phases[0].execution.sourceNativeCutSha256 : plan.execution.sourceNativeCutSha256;
             if (!same(program.source.material, author.material) || !same(load.values, parsed.values)
                 || !same(load.context, parsed.context) || !same(frame.input.values, parsed.values) || !same(frame.input.context, parsed.context)
                 || !same(load.material, author.material) || !same(frame.material, author.material)
                 || load.ownerSessionId !== session.id || frame.ownerSessionId !== session.id
-                || load.sourceNativeCutSha256 !== plan.execution.sourceNativeCutSha256
-                || frame.sourceNativeCutSha256 !== plan.execution.sourceNativeCutSha256
+                || load.sourceNativeCutSha256 !== loadCut
+                || frame.sourceNativeCutSha256 !== loadCut
                 || load.clockEpochMs !== intent.preparation.clockEpochMs || load.randomSeed !== intent.preparation.randomSeed
                 || frame.input.clockEpochMs !== intent.preparation.clockEpochMs || frame.input.randomSeed !== intent.preparation.randomSeed)
                 fail('SCHEMA_LOAD_SOURCE_MISMATCH');

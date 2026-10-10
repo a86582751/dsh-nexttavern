@@ -469,7 +469,10 @@ export function validatePreparedInheritanceV1(raw) {
     }
     const value = sealed(raw, 'native-tavern-source-inheritance-prepared-v1', 'preparedSha256', ['origin', 'operationId', 'operationKey', 'anchorSha256', 'parentSessionId', 'childSessionId', 'nativeCut', 'parentSource',
         'parentNumericalSource', 'originalBinding', 'originalAbsenceProof', 'parentInventory', 'parentInventorySha256', 'childPointer',
-        'editLayers', 'materialPublications', 'ancestors'], ['frozenNonNumericalOpeningV1', 'frozenProgramAbsenceOpeningV1']);
+        'editLayers', 'materialPublications', 'ancestors'], [
+        'frozenNonNumericalOpeningV1', 'frozenProgramAbsenceOpeningV1', 'frozenAuthorChatSeedV1',
+        'frozenAuthorChatSeedsV2'
+    ]);
     if (value.origin !== 'core-reservation' || !inheritanceIdV1(value.operationId) || value.operationKey !== `fork-op-${value.operationId}`
         || !inheritanceIdV1(value.parentSessionId) || !inheritanceIdV1(value.childSessionId) || value.parentSessionId === value.childSessionId
         || !inheritanceHashV1(value.anchorSha256))
@@ -500,6 +503,34 @@ export function validatePreparedInheritanceV1(raw) {
         inheritanceFailV1('SOURCE_INHERITANCE_BUDGET');
     for (const ancestor of value.ancestors)
         validateLayer(ancestor);
+    if (value.frozenAuthorChatSeedV1 !== undefined) {
+        const seed = value.frozenAuthorChatSeedV1;
+        // The prepared record already covers the complete immutable seed. These
+        // joins bind that retained State1 fact to this Source reservation's cut.
+        if (seed.schemaVersion !== 1 || seed.encoding !== 'native-author-chat-fork-seed-v1'
+            || seed.operationId !== value.operationId || seed.parent.binding.sessionId !== value.parentSessionId
+            || seed.childSessionId !== value.childSessionId
+            || seed.nativeCutSha256 !== recordSha256(value.nativeCut))
+            inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
+    }
+    if (value.frozenAuthorChatSeedsV2 !== undefined) {
+        const set = value.frozenAuthorChatSeedsV2;
+        inheritanceExactV1(set, ['schemaVersion', 'encoding', 'programRef', 'seeds']);
+        inheritanceExactV1(set.programRef, ['epochRef', 'programSha256']);
+        validateInheritanceRefV1(set.programRef.epochRef);
+        if (set.schemaVersion !== 2 || set.encoding !== 'native-author-chat-fork-seed-set-v2'
+            || !inheritanceHashV1(set.programRef.programSha256) || !Array.isArray(set.seeds))
+            inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
+        // The prepared seal already covers every seed's bytes. State owns seed
+        // checksums and declaration joins; this decoder binds their Source cut.
+        const cutSha256 = recordSha256(value.nativeCut);
+        for (const seed of set.seeds) {
+            if (seed.schemaVersion !== 2 || seed.encoding !== 'native-author-chat-fork-seed-v2'
+                || seed.operationId !== value.operationId || seed.parent.binding.sessionId !== value.parentSessionId
+                || seed.childSessionId !== value.childSessionId || seed.nativeCutSha256 !== cutSha256)
+                inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
+        }
+    }
     if (Object.hasOwn(value, 'frozenNonNumericalOpeningV1') && Object.hasOwn(value, 'frozenProgramAbsenceOpeningV1'))
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID');
     if (Object.hasOwn(value, 'frozenNonNumericalOpeningV1'))

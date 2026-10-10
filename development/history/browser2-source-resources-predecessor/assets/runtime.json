@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "name": "dsh-nexttavern-author-browser-runtime-v2",
+  "version": "0.1.0",
+  "modules": {
+    "provider": "dist/index.mjs",
+    "partition": "dist/partition.mjs",
+    "ast-worker": "dist/browser-ast-worker.mjs",
+    "execution-worker": "dist/browser-execution-worker.js",
+    "child": "dist/browser-runtime-child.js",
+    "guard": "dist/browser-runtime-guard.js"
+  },
+  "dependencies": {
+    "typescript": "5.9.3",
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-ffi-types": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-asyncify": "0.32.0"
+  },
+  "wasm": {
+    "path": "assets/emscripten-module.wasm",
+    "sha256": "b790f3842eef48d154984cea48d35303b5c3c3696fedab4dc79f314bde005dba"
+  },
+  "profileSha256": "a622465c1fd98a906e7334690244dc40f1821efcf2c1cd463bceb13047085c08",
+  "capabilityContractSha256": "d49a9b5e243f9e08efc51a50787532cf5e8db36b2711af7fbfcca3e730a6da3e"
+}

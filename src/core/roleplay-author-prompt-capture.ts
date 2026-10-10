@@ -26,7 +26,8 @@ export interface AuthorPromptPreparationFactsV1 {
 
 /** The same actual Source owns both script namespaces. Project the compiled
  * Prompt members from that captured frame without another Native/table read. */
-export function produceAuthorPromptScopeFrameV1(frame:MvuScopeReadFrameV1,program:PromptProgramV1)
+export function produceAuthorPromptScopeFrameV1(frame:MvuScopeReadFrameV1,
+  program:{readonly scripts:readonly Pick<PromptProgramV1['scripts'][number],'descriptor'>[]})
   :MvuScopeReadFrameV1 {
   const {frameSha256:_old,...sourceFrame}=frame
   const body={...sourceFrame,scripts:program.scripts.map(({descriptor})=>({

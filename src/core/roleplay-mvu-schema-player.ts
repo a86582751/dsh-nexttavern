@@ -31,32 +31,65 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
   const attempted=new Set<string>()
   function makePlan(operation:MvuSchemaPlayerOperationV1,marker:SchemaNativeMarkerRef,
     currentFrame:SchemaStorySourceFrame,initialCut:SourceNativeCutFacts,clockEpochMs=0,executorVersion:1|2|3|4=1,
-    scopeReadFrame?:MvuScopeReadFrameV1,hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string}):MvuSchemaPlayerPlanV1 {
+    scopeReadFrame?:MvuScopeReadFrameV1,
+    hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string;errorPolicy?:'registered-command-policy-v1'}):MvuSchemaPlayerPlanV1 {
     if(executorVersion>=3&&!scopeReadFrame)fail('SCHEMA_SCOPE_READ_REQUIRED')
     if(hostEpoch&&executorVersion!==4)fail('SCHEMA_EXECUTOR_VERSION_MISMATCH')
-    const input=freezeMvuSchemaPlayerData({operation,marker,currentFrame,initialCut,clockEpochMs})
+    // Core supplies the actual Source and operation facts. This constructor
+    // binds those inputs; the raw plan reader owns their full parsing.
+    const input={operation,marker,currentFrame,initialCut,clockEpochMs}
     const version=executorVersion===4?{
       ...(hostEpoch?{schemaVersion:5 as const,encoding:'native-mvu-schema-player-plan-v5' as const,
-        epoch:hostEpoch.epoch,serverProgramSha256:hostEpoch.serverProgramSha256}:
+        epoch:hostEpoch.epoch,serverProgramSha256:hostEpoch.serverProgramSha256,
+        ...(hostEpoch.errorPolicy?{errorPolicy:hostEpoch.errorPolicy}:{})}:
         {schemaVersion:4 as const,encoding:'native-mvu-schema-player-plan-v4' as const}),
       executorVersion:4 as const,scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame)}:
       executorVersion===3?{schemaVersion:3 as const,encoding:'native-mvu-schema-player-plan-v3' as const,
       executorVersion:3 as const,scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame)}:
       executorVersion===2?{schemaVersion:2 as const,encoding:'native-mvu-schema-player-plan-v2' as const,executorVersion:2 as const}:
       {schemaVersion:1 as const,encoding:'native-mvu-schema-player-plan-v1' as const}
-    return validateMvuSchemaPlayerPlan(sealMvuSchemaPlayerFact({...version,...input,realmEpoch:input.operation.base.root.realmEpoch,
+    const selectors=deriveMvuSchemaPlayerSelectors(operation,marker),sid=operation.sessionId
+    if(marker.seq!==operation.request.expected.observedNativeSeq+1||initialCut.nativeCut!==marker.seq+1
+      ||initialCut.nativeCut<operation.base.schemaFrontier.nativeCut||initialCut.sessionId!==sid||initialCut.ownerSessionId!==sid
+      ||currentFrame.sessionId!==sid||initialCut.sourceSnapshotSha256!==currentFrame.snapshotSha256
+      ||initialCut.materialSha256!==currentFrame.materialSha256||!same(initialCut.anchor,selectors[0]!.anchor)
+      ||!Number.isSafeInteger(clockEpochMs)||clockEpochMs<0||Object.is(clockEpochMs,-0))fail('SCHEMA_PLAYER_RECORD_INVALID')
+    if('scopeReadFrame' in version) {
+      const read=version.scopeReadFrame!,source=currentFrame.snapshot.source
+      if(read.source.sessionId!==sid||read.source.sourceRecordSessionId!==source.sourceRecordSessionId
+        ||read.source.importId!==source.importId||read.source.rawSha256!==source.rawSha256
+        ||read.source.sourceSnapshotSha256!==currentFrame.snapshotSha256
+        ||read.sourceNativeCutSha256!==recordSha256(initialCut))fail('SCHEMA_PLAYER_RECORD_INVALID')
+    }
+    return sealMvuSchemaPlayerFact({...version,...input,realmEpoch:input.operation.base.root.realmEpoch,
       programSha256:input.operation.base.root.programSha256,randomSeed:recordSha256({operation:input.operation,marker:input.marker}),
-      selectors:deriveMvuSchemaPlayerSelectors(input.operation,input.marker)},'planSha256'))
+      selectors},'planSha256')
   }
   function read(key:string):unknown {
     const raw=deps.table.get(key)
     return raw===undefined?undefined:freezeMvuSchemaPlayerData(raw)
   }
-  async function putExact(key:string,next:unknown,prior?:unknown):Promise<void> {
-    const value=freezeMvuSchemaPlayerData(next),actual=read(key)
+  function freezeConfirmedRow(value:unknown):unknown {
+    if(value&&typeof value==='object') {
+      for(const child of Object.values(value))freezeConfirmedRow(child)
+      Object.freeze(value)
+    }
+    return value
+  }
+  async function putExact(key:string,next:unknown,prior?:unknown):Promise<unknown> {
+    // These three publication rows were produced and frozen above. Keep their
+    // identity through the write so Root can track its own rows across awaits.
+    // Persistent conflict and lost-ACK confirmation still use exact readback.
+    const value=next,actual=read(key)
     if(!same(actual,prior)&&!same(actual,value))fail('SCHEMA_PLAYER_IDENTITY_CONFLICT')
     if(!same(actual,value))try {await deps.table.put(key,value)}catch { /* Only exact readback can settle a lost write ACK. */ }
-    if(!same(read(key),value))fail('SCHEMA_PLAYER_WRITE_UNKNOWN')
+    const observed=deps.table.get(key)
+    // This exact readback is the constructor's deeply frozen publication row.
+    if(observed===value)return observed
+    if(!same(observed===undefined?undefined:freezeMvuSchemaPlayerData(observed),value))fail('SCHEMA_PLAYER_WRITE_UNKNOWN')
+    // A storage adapter may detach the row on write. Hand off its actual exact
+    // readback, rather than assuming it retained the producer's reference.
+    return freezeConfirmedRow(observed)
   }
   function checkOwner(owner:object,plan:MvuSchemaPlayerPlanV1) {
     if(!deps.ownerCurrent(owner,plan))fail('SCHEMA_PLAYER_PERMISSION_REVOKED')
@@ -94,7 +127,10 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
   async function publish(suppliedPlan:MvuSchemaPlayerPlanV1,owner:object):Promise<MvuSchemaPlayerPublication> {
     let spent=false
     try {
-      const plan=validateMvuSchemaPlayerPlan(suppliedPlan),sid=plan.operation.sessionId
+      const candidate=deps.readOwnedPlan?deps.readOwnedPlan(owner,suppliedPlan):validateMvuSchemaPlayerPlan(suppliedPlan)
+      if(!candidate)fail('SCHEMA_PLAYER_PERMISSION_REVOKED')
+      const plan=candidate
+      const sid=plan.operation.sessionId
       checkOwner(owner,plan);checkBase(plan)
       const eventId=recordSha256({encoding:'native-mvu-schema-player-event-identity-v1',planSha256:plan.planSha256})
       if(attempted.has(plan.planSha256)||read(mvuSchemaPlayerSettlementKey(sid,plan.planSha256))!==undefined
@@ -130,26 +166,34 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
         if(index===1&&mvuSchemaPlayerReducerBridge(phases[1]!).result.kind==='rejected')break
       }
       if(!lastLive)fail('SCHEMA_PLAYER_EXECUTION_UNPROVEN')
-      const event=validateMvuSchemaPlayerEvent(mvuSchemaPlayerEvent(plan,phases))
+      const producedEvent=mvuSchemaPlayerEvent(plan,phases)
+      // Core owns this live plan and its actual phases; raw callers retain the parser.
+      const event=deps.readOwnedPlan?producedEvent:validateMvuSchemaPlayerEvent(producedEvent)
       const head=mvuSchemaPlayerHead(event),settlement=mvuSchemaPlayerSettlement(event)
       const eventKey=mvuSchemaPlayerEventKey(sid,event.eventId),headKey=mvuStateCurrentHeadKey(sid)
       return await deps.withPublicationBoundary(owner,lastLive,async()=>{
+        const confirmedRows:{key:string;value:unknown}[]=[]
         function check(stage:MvuSchemaPlayerPublicationBoundary['stage']) {
-          checkOwner(owner,plan)
-          if(!deps.checkPublication(owner,lastLive!,{plan,event,head,settlement,stage}))fail('SCHEMA_PLAYER_PUBLICATION_UNPROVEN')
+          if(!deps.checkPublication(owner,lastLive!,{plan,event,head,settlement,stage,
+            confirmedRows:[...confirmedRows]}))fail('SCHEMA_PLAYER_PUBLICATION_UNPROVEN')
         }
-        check('before-event');await putExact(eventKey,event);check('after-event')
+        check('before-event')
+        confirmedRows.push({key:eventKey,value:await putExact(eventKey,event)})
+        check('after-event')
         if(event.outcome==='accepted') {
           check('before-head')
           const prior=read(headKey)
           if(!same(prior,plan.operation.base.currentHead)
             &&!(prior===undefined&&isMvuSchemaGenesisHead(plan.operation.base.currentHead)))fail('SCHEMA_PLAYER_BASE_CHANGED')
-          await putExact(headKey,head,prior);check('after-head')
+          confirmedRows.push({key:headKey,value:await putExact(headKey,head,prior)})
+          check('after-head')
         }
         check('before-settlement')
-        await putExact(mvuSchemaPlayerSettlementKey(sid,plan.planSha256),settlement)
+        const settlementKey=mvuSchemaPlayerSettlementKey(sid,plan.planSha256)
+        confirmedRows.push({key:settlementKey,value:await putExact(settlementKey,settlement)})
+        // The live owner consumes all exact readbacks here before ACK. Cold
+        // callers still enter the independent raw settlement verifier.
         check('after-settlement')
-        if(!verifySettlement(plan,settlement))fail('SCHEMA_PLAYER_SETTLEMENT_UNCONFIRMED')
         return {kind:'acknowledged',settlement}
       })
     }catch(error) {return {kind:spent?'unknown':'blocked',code:codeOf(error)}}

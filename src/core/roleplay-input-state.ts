@@ -4,6 +4,8 @@
  * These process-local reads never recreate Native admission after a restart. */
 import type {DomainChanged} from '@deepseek-ai/dsh-storage-domain'
 import {recordSha256} from './roleplay-data.js'
+import {validateSchemaJournalRecord,schemaJournalKey,schemaJournalFullStepSha256} from './roleplay-mvu-schema-journal.js'
+import type {SchemaJournalRecord,SchemaJournalRecordOwner,SchemaDispatchRecord} from './roleplay-mvu-schema-journal.js'
 
 /** Source currency excludes only the three counters published by the current
  * turn's ordinary completion. Frozen audit rows retain their complete bytes. */
@@ -17,14 +19,20 @@ function sourceMetadataSha256(value:unknown):string {
     ?roleplaySourceMetadataValue(value as Record<string,unknown>):value)
 }
 
-type Slot='schema'|'source'|'observation'|'control'|'input'|'closing'
-export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'|'card-export'
+type Slot='schema'|'source'|'author-identity'|'observation'|'control'|'input'|'closing'
+export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'|'card-export'|'reader-display-author'
+  |'author-worldbook'
+  |'schema-derived-genesis'
   |`program-opening:${number}:${boolean}`
 export interface RoleplayInputStateSession {readonly id:string}
 export interface RoleplayInputStateRead<T> {
   readonly data:T
   current():boolean
   assertCurrent():void
+}
+export interface RoleplayInputSourceFrameRead<T> extends RoleplayInputStateRead<T> {
+  /** This actual capture's author identity survives account DATA refresh. */
+  identityCurrent():boolean
 }
 export interface RoleplayInputStateScope {
   readonly session:RoleplayInputStateSession
@@ -104,6 +112,9 @@ function explanatorySuffix(suffix:string):boolean {
     ||suffix==='task-preparation'||suffix==='context-window'
     ||suffix.startsWith('task-steering-')||suffix.startsWith('maintenance-timing-')
     ||suffix.startsWith('tavern-prompt-v1-')
+    // Browser3 declarations write these canonical outputs. Source membership
+    // does not consume them; a captured key head has its own State currency.
+    ||suffix.startsWith('author-chat-head-v2-')||suffix.startsWith('author-chat-event-v2-')
     ||suffix.startsWith('program-opening-material-')
     // Reconciliation may first publish this display index while starting a
     // child input. Actual text edits use Native message-edit invalidation.
@@ -158,6 +169,43 @@ export function createRoleplayInputStateOwner(deps:{
   const programFactNamespaces=new Map<string,Set<ProgramFactRead>>()
   const programFactPrefixes=new Map<string,Set<ProgramFactRead>>()
   const sessionReaders=new Map<string,Set<Frame>>()
+  const schemaJournalRows=new Map<string,{raw:unknown;record:SchemaJournalRecord;dispatchFrameSha256?:string;
+    fullStep?:{dispatch:SchemaDispatchRecord;sha256:string}}>()
+  const decodedJournalRecords=new WeakSet<SchemaJournalRecord>()
+  function decodeJournalRecord(input:SchemaJournalRecord):SchemaJournalRecord {
+    if(disposed)throw Error('INPUT_STATE_OWNER_DISPOSED')
+    if(decodedJournalRecords.has(input))return input
+    const record=validateSchemaJournalRecord(input)
+    // Address invalidation cannot change this codec's own immutable DATA.
+    // Detached storage readback still enters the complete parser as a new row.
+    decodedJournalRecords.add(record)
+    return record
+  }
+  const schemaJournal:SchemaJournalRecordOwner={decode:decodeJournalRecord,read(key,raw) {
+    if(disposed)throw Error('INPUT_STATE_OWNER_DISPOSED')
+    if(raw===undefined){schemaJournalRows.delete(key);return}
+    const retained=schemaJournalRows.get(key)
+    if(retained&&retained.raw===raw)return retained.record
+    const record=decodeJournalRecord(raw as SchemaJournalRecord)
+    if(schemaJournalKey(record)!==key)throw Error('SCHEMA_JOURNAL_MEMBERSHIP_INVALID')
+    schemaJournalRows.set(key,{raw,record})
+    return record
+  },dispatchFrameSha256(record) {
+    const retained=schemaJournalRows.get(schemaJournalKey(record))
+    if(!retained||retained.record!==record)return
+    // Core and Host consume the same immutable row. Keep its derived frame
+    // hash with that row; replacement/deletion already invalidates the entry.
+    return retained.dispatchFrameSha256??=recordSha256(record.requestedStep.frame)
+  },fullStepSha256(completion,dispatch) {
+    const retained=schemaJournalRows.get(schemaJournalKey(completion))
+    const frame=schemaJournalRows.get(schemaJournalKey(dispatch))
+    if(!retained||retained.record!==completion||!frame||frame.record!==dispatch)return
+    // The same two immutable DATA objects have the same complete body hash.
+    // Journal still joins them to each actual Native prefix on every fold.
+    if(retained.fullStep?.dispatch!==dispatch)retained.fullStep={dispatch,
+      sha256:schemaJournalFullStepSha256(completion,dispatch)}
+    return retained.fullStep.sha256
+  }}
   const metrics={schemaCaptures:0,sourceCaptures:0,observationCaptures:0,controlCaptures:0,inputCaptures:0,closingCaptures:0,
     reusedReads:0,checkpoints:0,recordReads:0,inventoryRows:0,invalidations:0}
 
@@ -452,6 +500,48 @@ export function createRoleplayInputStateOwner(deps:{
     finally {capturing=outer;if(current(frame))connect(frame)}
   }
 
+  /** Reuse only the Domain footprint of the completed Source capture. The
+   * identity owns its subscriptions; it never keeps the replaceable DATA read
+   * as a child, reparses material, or restores an already dirty owner. */
+  function copySourceIdentityFootprint(identity:Frame,source:Frame,seen=new Set<Frame>()):void {
+    if(source.slot==='author-identity'||seen.has(source))return
+    seen.add(source)
+    for(const [index,keys,owned] of [[rowReaders,source.rows,identity.rows],
+      [activeRowReaders,source.activeRows,identity.activeRows],
+      [namespaceReaders,source.namespaces,identity.namespaces],
+      [prefixReaders,source.prefixes,identity.prefixes],
+      [sessionReaders,source.sessions,identity.sessions]] as const) {
+      for(const key of keys)if(!owned.has(key)){owned.add(key);subscribe(index,key,identity)}
+    }
+    for(const [key,sha256] of source.sourceMetadataRows)identity.sourceMetadataRows.set(key,sha256)
+    for(const child of source.children)copySourceIdentityFootprint(identity,child,seen)
+  }
+  function captureSourceFrame<T>(id:string,identity:string,compute:()=>T):RoleplayInputSourceFrameRead<T> {
+    const readout=read('source',id,'schema-frame',compute,true,identity),dataFrame=handles.get(readout)!
+    const slotKey='author-identity\0'+id+'\0schema-frame'
+    let author=slots.get(slotKey)
+    if(author&&(author.identity!==identity||!current(author))) {
+      markDirty(author);forget(author);slots.delete(slotKey);author=undefined
+    }
+    if(!author) {
+      author={slot:'author-identity',session:dataFrame.session,agent:dataFrame.agent,dirty:false,
+        rows:new Set(),activeRows:new Set(),sourceMetadataRows:new Map(),pendingVariants:new Set(),
+        programFacts:new Set(),namespaces:new Set(),prefixes:new Set(),sessions:new Set(),
+        children:new Set(),parents:new Set(),identity,scopeIdentity:dataFrame.scopeIdentity,
+        outputRows:dataFrame.outputRows}
+      frames.add(author);slots.set(slotKey,author)
+    }
+    copySourceIdentityFootprint(author,dataFrame)
+    // Invalidation flows from author identity to DATA, never the reverse.
+    dataFrame.children.add(author);author.parents.add(dataFrame)
+    const capturedIdentity=author
+    return Object.assign(readout,{identityCurrent:()=>{
+      const valid=current(capturedIdentity)
+      if(valid)connect(capturedIdentity)
+      return valid
+    }})
+  }
+
   /** Core keeps these read views for all consumers. Only reads during a
    * capture register dependencies; put/update/delete remain the Domain's own
    * ordered methods, and its change event is the single invalidation source. */
@@ -548,6 +638,7 @@ export function createRoleplayInputStateOwner(deps:{
   }
   function domainChanged(change:DomainChanged):void {
     if(disposed||change.domain!==deps.domainName)return
+    if(change.table==='status')schemaJournalRows.delete(change.key)
     const ref=address(change.table,change.key)
     const audits=new Set(programFactRows.get(ref)),subject=sessionOf(change.key)
     if(subject)for(const read of programFactNamespaces.get(namespace(change.table,subject))??[])audits.add(read)
@@ -622,7 +713,7 @@ export function createRoleplayInputStateOwner(deps:{
   function invalidateSession(id:string):void {
     // Control/Native changes revoke state and input captures. Frozen author
     // data has its own exact Domain dependencies and survives a plot edit.
-    for(const frame of sessionReaders.get(id)??[])if(frame.slot!=='source')markDirty(frame)
+    for(const frame of sessionReaders.get(id)??[])if(frame.slot!=='source'&&frame.slot!=='author-identity')markDirty(frame)
   }
   function nativeChanged(session:RoleplayInputStateSession,event:{readonly type:string}):void {
     if(event.type==='roleplay/message-edit')invalidateSession(session.id)
@@ -632,11 +723,14 @@ export function createRoleplayInputStateOwner(deps:{
   }
   function releaseSession(id:string):void {
     invalidateSession(id)
+    for(const key of schemaJournalRows.keys())if(sessionOf(key)===id)schemaJournalRows.delete(key)
     for(const [key,frame] of slots)if(frame.session.id===id){markDirty(frame);forget(frame);slots.delete(key)}
     for(const frame of [...frames])if(frame.session.id===id){markDirty(frame);forget(frame)}
   }
   function configurationChanged():void {
-    for(const frame of frames)markDirty(frame)
+    // Account configuration replaces consumed DATA, not immutable author
+    // identity. Its Domain and Native subscriptions keep their normal currency.
+    for(const frame of frames)if(frame.slot!=='author-identity')markDirty(frame)
   }
   function schemaPublished(id:string):void {
     // Historical verification can make a formerly unavailable in-memory view
@@ -646,10 +740,11 @@ export function createRoleplayInputStateOwner(deps:{
       if(frame.session.id===id&&frame.slot==='observation')markDirty(frame)
     }
   }
-  function captureInput<T>(scope:RoleplayInputStateScope,compute:()=>T):RoleplayInputStateRead<T>&{release():void} {
+  function captureActualOperation<T>(scope:RoleplayInputStateScope,identity:string,compute:()=>T)
+    :RoleplayInputStateRead<T>&{release():void} {
     scope.signal.throwIfAborted();scope.assertOwnerFactsCurrent()
     const outputRows=new Set((scope.outputRows??[]).map(row=>address(row.table,row.key)))
-    const readout=read('input',scope.session.id,'actual-input',()=>{
+    const readout=read('input',scope.session.id,identity,()=>{
       // Dynamic scope follows the real compute call, including same-session
       // Source children. Cached Source data cannot enroll a fresh opening fact.
       const outer=capturingInputSession,outerOutputs=capturingInputOutputRows
@@ -673,20 +768,36 @@ export function createRoleplayInputStateOwner(deps:{
     const readout=read('closing',id,'completion-basis',compute,false),own=handles.get(readout)
     return {...readout,release(){if(own){markDirty(own);forget(own)}}}
   }
+  function borrowHistorical<T>(id:string,compute:()=>T):RoleplayInputStateRead<T>&{release():void} {
+    // Each waiter owns its exact historical dependencies. A different cut or
+    // another waiter's release cannot replace this read through a shared slot.
+    const readout=read('schema',id,'historical-cut',compute,false),own=handles.get(readout)
+    return {...readout,release(){if(own){markDirty(own);forget(own)}}}
+  }
   return {
-    table,domainChanged,nativeChanged,configurationChanged,schemaPublished,invalidateSession,releaseSession,
-    captureInput,captureClosing,readPendingVariantFacts,readProgramAbsenceNamespaceFacts,
+    table,schemaJournal,domainChanged,nativeChanged,configurationChanged,schemaPublished,invalidateSession,releaseSession,
+    captureInput:<T>(scope:RoleplayInputStateScope,compute:()=>T)=>captureActualOperation(scope,'actual-input',compute),
+    /** Explicit author-dialogue captures share change-feed/currentness while
+     * retaining a separate operation address from the Main input owner. */
+    captureAuthorDialog:<T>(scope:RoleplayInputStateScope,operationId:string,compute:()=>T)=>
+      captureActualOperation(scope,`author-dialog:${operationId}`,compute),
+    captureClosing,borrowHistorical,readPendingVariantFacts,readProgramAbsenceNamespaceFacts,
     readProgramOpeningPreparationFacts,
     captureSchema:<T>(id:string,compute:()=>T)=>read('schema',id,'verified-history',compute,true),
     captureSource:<T>(id:string,kind:RoleplaySourceRead,compute:()=>T,
       outputs?:RoleplayInputStateScope['outputRows'])=>read('source',id,kind,compute,true,undefined,outputs),
     captureOriginal:<T>(id:string,identity:string,compute:()=>T)=>read('source',id,'schema-original',compute,true,identity),
-    captureSourceFrame:<T>(id:string,identity:string,compute:()=>T)=>read('source',id,'schema-frame',compute,true,identity),
-    captureObservation:<T>(id:string,compute:()=>T)=>read('observation',id,'input-observation',compute,true),
+    captureSourceFrame,
+    captureObservation:<T>(id:string,compute:()=>T,purpose='input-observation')=>
+      read('observation',id,purpose,compute,true),
     capturePlayerLedger:<T>(id:string,compute:()=>T)=>read('control',id,'schema-player-ledger',compute,true),
     currentSession:(id:string)=>[...(sessionReaders.get(id)??[])].some(frame=>frame.session.id===id&&current(frame)),
     diagnostics:()=>({...metrics}),
-    dispose(){disposed=true;for(const frame of [...frames]){markDirty(frame);forget(frame)}slots.clear()},
+    dispose(){
+      disposed=true
+      for(const frame of [...frames]){markDirty(frame);forget(frame)}
+      slots.clear();schemaJournalRows.clear()
+    },
   }
 }
 export type RoleplayInputStateOwner=ReturnType<typeof createRoleplayInputStateOwner>

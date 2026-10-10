@@ -37,7 +37,7 @@ export interface TavernTemplateRuntimeAssetRecipeV1 {
 export interface TavernTemplateRuntimeAssetPlanV1 {
   artifacts:readonly Artifact[]
   product:{templateRuntime?:TavernTemplateRuntimeAssetRecipeV1;
-    packages:readonly {packageArtifact:string;resources?:readonly Resource[]}[]}
+    packages:readonly {packageArtifact:string;resources?:readonly Resource[];immutableGeneration?:string}[]}
 }
 interface Metadata {
   name:string;version:string;type?:string;license?:string;main?:string;exports?:unknown;
@@ -239,16 +239,21 @@ export function assertTavernTemplateRuntimePackageV1(options:{repo:string;plan:T
     ||!sourceInputs.graphs||JSON.stringify(Object.keys(sourceInputs.graphs).sort())!==JSON.stringify(Object.keys(MODULES).sort())) {
     throw Error('TEMPLATE_ASSET_DELIVERED_SOURCE_GRAPH_INVALID')
   }
-  const resourceRows=options.plan.product.packages.find(row=>row.packageArtifact===recipe.packageArtifact)!.resources??[]
+  const packageRow=options.plan.product.packages.find(row=>row.packageArtifact===recipe.packageArtifact)!
+  const resourceRows=packageRow.resources??[]
   for(const graph of Object.values(sourceInputs.graphs)) {
     if(!Array.isArray(graph)||!graph.length||new Set(graph.map(row=>row.path)).size!==graph.length) {
       throw Error('TEMPLATE_ASSET_DELIVERED_SOURCE_GRAPH_INVALID')
     }
     for(const row of graph) {
+      // Frozen source-inputs keep the producer's logical artifact IDs. The
+      // manifest supplies the exact historical bytes at the same delivery path.
+      const delivered=resourceRows.filter(resource=>resource.path===row.path
+        &&(packageRow.immutableGeneration||resource.artifact===row.artifact))
       if(!safe(row.path)||!row.path.startsWith('src/')||!/^[a-f0-9]{64}$/.test(row.sha256)
-        ||resourceRows.filter(resource=>resource.artifact===row.artifact&&resource.path===row.path).length!==1
+        ||delivered.length!==1
         ||digest(fs.readFileSync(inside(root,row.path)))!==row.sha256
-        ||digest(fs.readFileSync(inside(options.repo,uniqueArtifact(options.plan,row.artifact).source)))!==row.sha256) {
+        ||digest(fs.readFileSync(inside(options.repo,uniqueArtifact(options.plan,delivered[0]!.artifact).source)))!==row.sha256) {
         throw Error('TEMPLATE_ASSET_DELIVERED_SOURCE_CHANGED')
       }
     }

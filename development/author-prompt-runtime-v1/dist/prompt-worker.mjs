@@ -70,7 +70,10 @@ declare const window:{addEventListener(event:'pagehide',callback:()=>void):void}
       const script=capture.scopeFrame.scripts.find(row=>row.scriptId===origin.scriptIdentity);
       if(!script)fail('SCOPE_READ_SCRIPT_UNAVAILABLE');variables=script.variables;
     }else fail('SCOPE_READ_REQUEST_INVALID');
-    if(variables.kind==='unavailable')fail(variables.code);return variables.variables;
+    if(variables.kind==='unavailable')fail(variables.code);
+    if(option.type==='chat'&&capture.authorChat&&capture.authorChat.exists)
+      return frozen({...variables.variables,[capture.authorChat.binding.key]:capture.authorChat.value});
+    return variables.variables;
   }
   function ids(value){if(!Array.isArray(value)||value.length>256)fail('PROMPT_REMOVAL_UNSUPPORTED');
     for(let i=0;i<value.length;i++)if(typeof value[i]!=='string'||!value[i])fail('PROMPT_REMOVAL_UNSUPPORTED');

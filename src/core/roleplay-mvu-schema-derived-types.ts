@@ -1,8 +1,8 @@
 /** Frozen schema inheritance is a factual baseline. None of these versioned
  * records carries a Native input capability, live lease or publication token. */
 import {recordSha256} from './roleplay-data.js'
-import {createImmutableDescriptorValidator} from './roleplay-mvu-schema-descriptor-data.js'
-import {freezeMvuSchemaStoryData,sealMvuSchemaStoryFact,validateMvuSchemaNumericalSnapshot}
+import {COMBINED_AUTHOR_DATA_BOUNDS_V6} from './tavern-author-combined-types-v6.mjs'
+import {sealMvuSchemaStoryFact,validateMvuSchemaNumericalSnapshot}
   from './roleplay-mvu-schema-story-types.js'
 import {validateMvuSchemaOpeningIntent,validateMvuSchemaOpeningEvent,validateMvuSchemaOpeningHead}
   from './roleplay-mvu-schema-opening-types.js'
@@ -12,7 +12,7 @@ import {freezeImmutableSchemaDescriptorDataV4} from './roleplay-mvu-schema-descr
 import {schemaOriginalProgramSha256,schemaOriginalSnapshot} from './roleplay-mvu-schema-source.js'
 import type {OpeningIntentV5,MvuSchemaOpeningEventV2,MvuSchemaOpeningHeadV2} from './roleplay-mvu-schema-opening-types.js'
 import type {SchemaFrozenOriginal} from './roleplay-mvu-schema-source.js'
-import type {SchemaJournalFrozenCut} from './roleplay-mvu-schema-journal.js'
+import type {SchemaJournalFrozenCut,SchemaJournalReady} from './roleplay-mvu-schema-journal.js'
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaDerivedHeadV1,MvuSchemaStoryFrontier}
   from './roleplay-mvu-schema-story-types.js'
 import type {MvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
@@ -99,6 +99,8 @@ export interface MvuSchemaDerivedGenesis {
   basisSha256:string
   original:SchemaFrozenOriginal
   inheritedCut:SchemaJournalFrozenCut
+  /** Non-enumerable read association; no persisted record/hash contains it. */
+  readonly inheritedReady?:SchemaJournalReady
   event:MvuSchemaDerivedEventV1
   head:MvuSchemaDerivedHeadV1
   snapshot:MvuSchemaNumericalSnapshotV2
@@ -112,6 +114,59 @@ const hash=(value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value
 const id=(value:unknown)=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value)
 const integer=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0&&!Object.is(value,-0)
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
+// Prefix, prepared, basis and closed table inputs are separate persisted DATA
+// records. Each new envelope pays its whole descriptor budget; Source material
+// remains under the existing material codec, and numerical execution is unchanged.
+const inheritanceBounds={nodes:COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorNodes,
+  depth:COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorDepth,
+  arrayLength:COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorArrayLength}
+const inheritanceClones=new WeakSet<object>()
+function rememberInheritanceClone<T>(value:T):T {
+  if(value&&typeof value==='object') {
+    inheritanceClones.add(value)
+    // These concrete child records were charged in full by the parent's clone.
+    // Their validators still establish their own shapes and correlations.
+    const record=value as {prefix?:object;prepared?:{prefix?:object}}
+    if(record.prefix&&typeof record.prefix==='object')inheritanceClones.add(record.prefix)
+    if(record.prepared&&typeof record.prepared==='object') {
+      inheritanceClones.add(record.prepared)
+      if(record.prepared.prefix&&typeof record.prepared.prefix==='object')inheritanceClones.add(record.prepared.prefix)
+    }
+  }
+  return value
+}
+export function freezeMvuSchemaInheritanceData<T>(input:T):T {
+  if(input&&typeof input==='object'&&inheritanceClones.has(input))return input
+  return rememberInheritanceClone(freezeImmutableSchemaDescriptorDataV4(input,67_108_864,inheritanceBounds))
+}
+export function sealMvuSchemaInheritanceFact<T extends object,K extends string>(body:T,key:K):T&Record<K,string> {
+  // Producer fields are already factual DATA. Charge the complete new record,
+  // including its checksum, once before any validator or persistence consumes it.
+  let sealed=freezeMvuSchemaInheritanceData({...body,[key]:recordSha256(body)}) as T&Record<K,string>
+  const children=body as {prefix?:object;prepared?:object}
+  for(const field of ['prefix','prepared'] as const)if(children[field]&&inheritanceClones.has(children[field]!)) {
+    sealed=retainInheritanceChild(sealed,field as keyof typeof sealed,children[field] as (typeof sealed)[keyof typeof sealed])
+  }
+  return sealed
+}
+function inheritanceValidator<T extends object>(validate:(input:T)=>T):(input:T)=>T {
+  const successes=new WeakMap<object,T>()
+  return input=>{
+    if(input&&inheritanceClones.has(input)) {
+      const prior=successes.get(input)
+      if(prior)return prior
+    }
+    const result=validate(input)
+    if(input&&inheritanceClones.has(input))successes.set(input,result)
+    successes.set(result,result)
+    return result
+  }
+}
+function retainInheritanceChild<T extends object,K extends keyof T>(bounded:T,key:K,child:T[K]):T {
+  // The whole new parent has already been charged. Preserve the concrete
+  // child's validated immutable result rather than minting another copy/cache.
+  return rememberInheritanceClone(Object.freeze({...bounded,[key]:child}))
+}
 function fail():never {throw Error('SCHEMA_DERIVED_RECORD_INVALID')}
 function exact(value:object,keys:readonly string[]) {
   if(!same(Object.keys(value).sort(),[...keys].sort()))fail()
@@ -120,12 +175,12 @@ function checksum(value:object,key:string) {
   const {[key]:digest,...body}=value as Record<string,unknown>
   if(!hash(digest)||recordSha256(body)!==digest)fail()
 }
-const validateFrozenPrefixDescriptor=createImmutableDescriptorValidator(validateFrozenPrefixUncached)
+const validateFrozenPrefixDescriptor=inheritanceValidator(validateFrozenPrefixUncached)
 export function validateMvuSchemaFrozenPrefix(input:MvuSchemaFrozenPrefixV1):MvuSchemaFrozenPrefixV1 {
   return validateFrozenPrefixDescriptor(input)
 }
 function validateFrozenPrefixUncached(input:MvuSchemaFrozenPrefixV1):MvuSchemaFrozenPrefixV1 {
-  const prefix=freezeMvuSchemaStoryData(input)
+  const prefix=freezeMvuSchemaInheritanceData(input)
   exact(prefix,['schemaVersion','encoding','sessionId','inheritedEventCount','sourceSha256','original',
     'seed','initial','journal','eventKeys','snapshot','consumed','prefixSha256'])
   checksum(prefix,'prefixSha256')
@@ -152,8 +207,10 @@ function validateFrozenPrefixUncached(input:MvuSchemaFrozenPrefixV1):MvuSchemaFr
     validateMvuSchemaOpeningEvent(prefix.seed.event)
     validateMvuSchemaOpeningHead(prefix.seed.head)
     if(prefix.inheritedEventCount!==0||initial.root.derived)fail()
-    if(prefix.original.schemaVersion===5&&(prefix.seed.intent.preparation.schemaVersion!==5
-      ||prefix.seed.event.plan.schemaVersion!==7))fail()
+    if(prefix.original.schemaVersion===5) {
+      const preparationVersion=prefix.seed.intent.preparation.schemaVersion,planVersion=prefix.seed.event.plan.schemaVersion
+      if(!(preparationVersion===5&&planVersion===7||preparationVersion===6&&planVersion===8))fail()
+    }
   }else if(prefix.seed.kind==='derived') {
     exact(prefix.seed,['kind','basisKey','basisSha256'])
     if(prefix.seed.basisKey!==mvuSchemaDerivedBasisKey(prefix.sessionId)||!hash(prefix.seed.basisSha256)
@@ -161,18 +218,18 @@ function validateFrozenPrefixUncached(input:MvuSchemaFrozenPrefixV1):MvuSchemaFr
   }else fail()
   return prefix
 }
-const validateDerivedPreparedDescriptor=createImmutableDescriptorValidator(validateDerivedPreparedUncached)
+const validateDerivedPreparedDescriptor=inheritanceValidator(validateDerivedPreparedUncached)
 export function validateMvuSchemaDerivedPrepared(input:MvuSchemaDerivedPrepared):MvuSchemaDerivedPrepared {
   return validateDerivedPreparedDescriptor(input)
 }
 function validateDerivedPreparedUncached(input:MvuSchemaDerivedPrepared):MvuSchemaDerivedPrepared {
-  const bounded=freezeImmutableSchemaDescriptorDataV4(input,16_777_216,{nodes:131_072,depth:96})
-  const prepared=bounded.schemaVersion===2?bounded:freezeMvuSchemaStoryData(bounded)
+  const bounded=freezeMvuSchemaInheritanceData(input)
+  const prefix=validateMvuSchemaFrozenPrefix(inheritanceClones.has(input.prefix)?input.prefix:bounded.prefix)
+  const prepared=retainInheritanceChild(bounded,'prefix',prefix)
   exact(prepared,['schemaVersion','encoding','operationId','anchorSha256','parentSessionId','childSessionId',
     'seedLength','parentInheritedEventCount','parentSourceSha256','prefix','preparedSha256',
     ...(prepared.schemaVersion===2?['sourcePreparedRef','parentNumericDescriptorSha256','prefixClosureRef','forkReservationBinding']:[])])
   checksum(prepared,'preparedSha256')
-  const prefix=validateMvuSchemaFrozenPrefix(prepared.prefix)
   if((prepared.schemaVersion===1?prepared.encoding!=='native-mvu-schema-derived-prepared-v1'
       :prepared.schemaVersion!==2||prepared.encoding!=='native-mvu-schema-derived-prepared-v2')
     ||![prepared.operationId,prepared.parentSessionId,prepared.childSessionId].every(id)
@@ -199,16 +256,17 @@ function validateDerivedPreparedUncached(input:MvuSchemaDerivedPrepared):MvuSche
   }
   return prepared
 }
-const validateDerivedBasisDescriptor=createImmutableDescriptorValidator(validateDerivedBasisUncached)
+const validateDerivedBasisDescriptor=inheritanceValidator(validateDerivedBasisUncached)
 export function validateMvuSchemaDerivedBasis(input:MvuSchemaDerivedBasis):MvuSchemaDerivedBasis {
   return validateDerivedBasisDescriptor(input)
 }
 function validateDerivedBasisUncached(input:MvuSchemaDerivedBasis):MvuSchemaDerivedBasis {
-  const bounded=freezeImmutableSchemaDescriptorDataV4(input,16_777_216,{nodes:131_072,depth:96})
-  const basis=bounded.schemaVersion===2?bounded:freezeMvuSchemaStoryData(bounded)
+  const bounded=freezeMvuSchemaInheritanceData(input)
+  const prepared=validateMvuSchemaDerivedPrepared(inheritanceClones.has(input.prepared)?input.prepared:bounded.prepared)
+  const basis=retainInheritanceChild(bounded,'prepared',prepared)
   exact(basis,['schemaVersion','encoding','prepared','source','basisSha256'])
   checksum(basis,'basisSha256')
-  const prepared=validateMvuSchemaDerivedPrepared(basis.prepared),source=basis.schemaVersion===2
+  const source=basis.schemaVersion===2
     ?validateMvuDerivedSourceProofUnion(basis.source):validateMvuDerivedSourceProof(basis.source)
   if((basis.schemaVersion===1?basis.encoding!=='native-mvu-schema-derived-basis-v1'
       ||prepared.schemaVersion!==1||source.schemaVersion!==1:basis.schemaVersion!==2
@@ -223,7 +281,8 @@ function validateDerivedBasisUncached(input:MvuSchemaDerivedBasis):MvuSchemaDeri
     ||imported.recordSha256!==originalSnapshot.importRecordSha256)fail()
   return basis
 }
-export function mvuSchemaDerivedGenesis(input:MvuSchemaDerivedBasis):MvuSchemaDerivedGenesis {
+export function mvuSchemaDerivedGenesis(input:MvuSchemaDerivedBasis,
+  inheritedReady?:SchemaJournalReady):MvuSchemaDerivedGenesis {
   const basis=validateMvuSchemaDerivedBasis(input),prepared=basis.prepared,sid=prepared.childSessionId
   const sourceSha256=basis.source.childSourceSha256,parent=prepared.prefix.snapshot
   const eventId=recordSha256({encoding:'native-mvu-schema-derived-event-identity-v1',sessionId:sid,basisSha256:basis.basisSha256})
@@ -243,6 +302,13 @@ export function mvuSchemaDerivedGenesis(input:MvuSchemaDerivedBasis):MvuSchemaDe
     encoding:'native-mvu-schema-state-snapshot-v2' as const,sessionId:sid,sourceSha256,root,currentHead:head,
     revision:1,headSha256:recordSha256(head),values:parent.values,valuesSha256:parent.valuesSha256,
     context:parent.context,schemaFrontier:parent.schemaFrontier},'stateSnapshotSha256'))
-  return freezeMvuSchemaStoryData({sessionId:sid,basisKey:mvuSchemaDerivedBasisKey(sid),basisSha256:basis.basisSha256,
-    original:prepared.prefix.original,inheritedCut:prepared.prefix.journal,event,head,snapshot})
+  // Genesis is a read container, not another persisted descriptor. Its validated
+  // basis and numerical facts already own the immutable data and budgets.
+  const genesis={sessionId:sid,basisKey:mvuSchemaDerivedBasisKey(sid),basisSha256:basis.basisSha256,
+    original:prepared.prefix.original,inheritedCut:prepared.prefix.journal,
+    event,head:Object.freeze(head),snapshot}
+  // Only the current Derived read owner supplies this genuine Journal result.
+  // It expires with the read container and cannot be recovered from its hashes.
+  if(inheritedReady)Object.defineProperty(genesis,'inheritedReady',{value:inheritedReady})
+  return Object.freeze(genesis)
 }

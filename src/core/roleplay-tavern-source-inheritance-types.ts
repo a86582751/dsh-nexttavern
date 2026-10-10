@@ -5,12 +5,14 @@ import type {TavernOpeningContext} from './tavern-card.js'
 import type {RoleplayInputSourceCaptureV1} from './roleplay-input-source-data.js'
 import type {TavernLoreSourceCaptureV1,TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreBookAbsenceProofV1,TavernLoreCurrentNativeOverlayV1} from './tavern-lore-plan-types.mjs'
-import type {TavernLoreEditIdentityV1,TavernLoreEditHeadV1,TavernLoreEditEventV1,
+import type {TavernLoreEditIdentityV1,TavernLoreEditHeadV1,TavernLoreJournalEventV2,
   TavernLoreEditRefV1,TavernLoreEditHeadRefV1} from './roleplay-tavern-lore-edits-types.js'
 import type {LoreEditJournalV1} from './roleplay-tavern-lore-edits-journal.js'
 import type {PromptTemplateOnlyInheritedSourceInputV2} from './roleplay-prompt-template-only-types.js'
 import type {ProgramAbsenceOpeningClosureV1} from './roleplay-program-absence-inheritance-data.js'
 import type {ProgramAbsenceInventoryV1} from './roleplay-program-absence-inventory.js'
+import type {AuthorChatForkSeedV1,AuthorChatRefV1} from './roleplay-author-chat-state-types.js'
+import type {AuthorChatForkSeedV2} from './roleplay-author-chat-state-v2-types.js'
 
 export type TavernSourceStaticTableV1='cards'|'worldbook'|'rules'|'opening'|'status'|'branch'
 export interface TavernSourceInheritanceTableV1 {
@@ -173,7 +175,7 @@ export interface TavernSourcePublishedEditLayerV1 {
   readonly headRef:TavernLoreEditHeadRefV1
   readonly journalRefs:readonly TavernLoreEditRefV1[]
   readonly journalSha256:string
-  readonly events:readonly {readonly ref:TavernLoreEditRefV1;readonly value:TavernLoreEditEventV1}[]
+  readonly events:readonly {readonly ref:TavernLoreEditRefV1;readonly value:TavernLoreJournalEventV2}[]
   readonly overlay:TavernLoreCurrentNativeOverlayV1
   readonly layerSha256:string
 }
@@ -230,6 +232,14 @@ export interface TavernSourceMaterialBaselineV1 {
   readonly publications:readonly TavernSourceMaterialPublicationV1[]
   readonly baselineSha256:string
 }
+/** State2 heads are frozen at this reservation, not reconstructed at an older
+ * Native turn. The program reference identifies inherited declaration DATA. */
+export interface FrozenAuthorChatSeedsV2 {
+  readonly schemaVersion:2
+  readonly encoding:'native-author-chat-fork-seed-set-v2'
+  readonly programRef:{readonly epochRef:AuthorChatRefV1;readonly programSha256:string}
+  readonly seeds:readonly AuthorChatForkSeedV2[]
+}
 export interface TavernSourcePreparedV1 {
   readonly schemaVersion:1
   readonly encoding:'native-tavern-source-inheritance-prepared-v1'
@@ -251,6 +261,8 @@ export interface TavernSourcePreparedV1 {
   readonly materialPublications:readonly TavernSourceMaterialPublicationV1[]
   readonly frozenNonNumericalOpeningV1?:TavernSourceFrozenNonNumericalOpeningV1
   readonly frozenProgramAbsenceOpeningV1?:TavernSourceFrozenProgramAbsenceOpeningV1
+  readonly frozenAuthorChatSeedV1?:AuthorChatForkSeedV1
+  readonly frozenAuthorChatSeedsV2?:FrozenAuthorChatSeedsV2
   readonly ancestors:readonly TavernSourceInheritanceLayerRefV1[]
   readonly preparedSha256:string
 }
@@ -350,6 +362,22 @@ export interface TavernSourceInheritanceDepsV1 {
    * Called within Source's closed read; must not recursively re-enter it. */
   readonly assertProgramAbsenceOpening?:(childSessionId:string,packet:TavernSourceFrozenProgramAbsenceOpeningV1,
     cut:TavernSourceNativeCutV1,sourceRows:TavernSourceOwnedRowFactsV1)=>TavernSourceProgramAbsenceObservationV1|void
+  /** State1's binding comes from the compiled Browser2 writer proof. Called
+   * once at the actual reservation cut while this owner's parent FIFO holds. */
+  readonly captureAuthorChatForkSeed?:(parentSessionId:string,childSessionId:string,
+    operationId:string,cut:TavernSourceNativeCutV1,source:TavernLoreSourceDataV1)=>AuthorChatForkSeedV1|undefined
+  /** Called inside reserved child apply before Source commit. Root supplies
+   * the actual prepared-ref owner; the seed alone cannot authorize a write. */
+  readonly applyAuthorChatForkSeed?:(seed:AuthorChatForkSeedV1,preparedRef:AuthorChatRefV1,
+    prepared:TavernSourcePreparedV1,sourceCurrent:()=>boolean)=>PromiseLike<unknown>
+  /** Called in the same parent FIFO as State1, after selecting the Native cut.
+   * The Core reader supplies its actual inherited Browser3 program reference. */
+  readonly captureAuthorChatForkSeedsV2?:(parentSessionId:string,childSessionId:string,
+    operationId:string,cut:TavernSourceNativeCutV1,source:TavernLoreSourceDataV1)=>FrozenAuthorChatSeedsV2|undefined
+  /** Core resolves actual child declarations from the prepared inherited
+   * program. Source holds the child FIFO until all seeds settle, then commits. */
+  readonly applyAuthorChatForkSeedsV2?:(seeds:FrozenAuthorChatSeedsV2,preparedRef:AuthorChatRefV1,
+    prepared:TavernSourcePreparedV1,sourceCurrent:()=>boolean)=>PromiseLike<unknown>
   /** Called before the parent FIFO, never from an already-locked body. */
   readonly ensureParentBranch:(sessionId:string)=>Promise<void>
 }

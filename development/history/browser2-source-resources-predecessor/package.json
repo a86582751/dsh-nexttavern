@@ -1,0 +1,13 @@
+{
+  "name": "dsh-nexttavern-author-browser-runtime-v2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fixed QuickJS Asyncify Worker, live author closures and owned DOM resource bridge",
+  "license": "GPL-3.0-only",
+  "main": "./dist/index.mjs",
+  "exports": {".": "./dist/index.mjs", "./package.json": "./package.json"},
+  "files": ["dist", "assets", "src", "LICENSE", "NOTICE.md"],
+  "dependencies": {"typescript": "5.9.3", "quickjs-emscripten-core": "0.32.0", "@jitl/quickjs-ffi-types": "0.32.0", "@jitl/quickjs-wasmfile-release-asyncify": "0.32.0"},
+  "bundleDependencies": ["typescript", "quickjs-emscripten-core", "@jitl/quickjs-ffi-types", "@jitl/quickjs-wasmfile-release-asyncify"]
+}

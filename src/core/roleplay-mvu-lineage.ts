@@ -292,7 +292,7 @@ export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
   /** Historical facts come from an actual retained Native read, never a header
    * reconstructed from a domain proof. Today's static rows belong to current;
    * original activation facts remain independently readable for both modes. */
-  function validateHistorical(input: unknown) {
+  function historicalProof(input: unknown): MvuDerivedSourceProof {
     const proof = validateMvuDerivedSourceProof(input), sid = proof.childSessionId
     sessionReady(proof.parentSessionId, sid, proof.expectedSeedLength)
     const {record, identity} = original(proof.originalImport.ownerSessionId, proof.originalImport.importId)
@@ -302,7 +302,7 @@ export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
       if ((activation.get(rowIdentity(row)) ?? null) !== row.activationSha256) fail('ACTIVATION_MISMATCH')
     }
     if (proof.materialRows.filter(row => row.activationSha256 !== null).length !== activation.size) fail('ACTIVATION_MISMATCH')
-    return {proof, activation}
+    return proof
   }
   /** The caller first verifies the actual current descendant, then walks its
    * immutable basis chain backwards. A lone proof checksum cannot establish
@@ -310,7 +310,7 @@ export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
    * generation. This helper grants no Session or Native input authority. */
   function historical(input: unknown, successorInput: unknown): boolean {
     try {
-      const {proof} = validateHistorical(input), successor = validateMvuDerivedSourceProof(successorInput)
+      const proof = historicalProof(input), successor = validateMvuDerivedSourceProof(successorInput)
       if (successor.parentSessionId !== proof.childSessionId
         || successor.parentSourceSha256 !== proof.childSourceSha256
         || successor.parentPointerSha256 !== proof.childPointerSha256
@@ -326,9 +326,12 @@ export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
       })
     } catch {return false}
   }
-  function current(input: unknown): boolean {
+  /** Currency consumes the historical owner's immutable result. Its retained
+   * original activation and Native cut are dependencies of that owner, while
+   * today's pointer, material and context belong to the current caller. */
+  function currentProof(proof: MvuDerivedSourceProof): boolean {
     try {
-      const {proof, activation} = validateHistorical(input), sid = proof.childSessionId
+      const sid = proof.childSessionId
       const active = pointer(sid), identity = proof.originalImport
       if (recordSha256(active) !== proof.childPointerSha256 || active.inheritedFrom !== proof.parentSessionId
         || active.sourceRecordSessionId !== identity.ownerSessionId || active.importId !== identity.importId
@@ -339,18 +342,21 @@ export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
       for (const [index, row] of rows.entries()) {
         const frozen = proof.materialRows[index]!
         if (row.table !== frozen.table || row.key !== frozen.childKey || row.exists !== frozen.exists
-          || row.sha256 !== frozen.sha256 || (activation.get(rowIdentity(frozen)) ?? null) !== frozen.activationSha256) return false
+          || row.sha256 !== frozen.sha256) return false
       }
-      if (proof.materialRows.filter(row => row.activationSha256 !== null).length !== activation.size) return false
       const observedContext = context(sid)
       return observedContext.bindingSha256 === proof.macroContext.childBindingSha256
         && observedContext.valuesSha256 === proof.macroContext.valuesSha256
     } catch {return false}
   }
+  function current(input: unknown): boolean {
+    try {return currentProof(historicalProof(input))} catch {return false}
+  }
   /** Denial readers still need actual Native boundaries and original activation
    * facts. This does not certify today's static Source or grant story authority. */
   function verifyDenialBindingFacts(input:unknown):boolean {
-    try {validateHistorical(input);return true} catch {return false}
+    try {historicalProof(input);return true} catch {return false}
   }
-  return {capture, current, historical, verifyDenialBindingFacts, validate: validateMvuDerivedSourceProof}
+  return {capture, current, currentProof, historical, verifyDenialBindingFacts,
+    validate: validateMvuDerivedSourceProof}
 }

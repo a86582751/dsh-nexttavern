@@ -14,7 +14,7 @@ export function freezeImmutableDescriptorData<T>(input:T,maxBytes:number,
 /** Full v4 author material belongs to the DATA owner. Non-material descriptor
  * fields keep the caller's existing byte, node and depth budget. */
 export function freezeImmutableSchemaDescriptorDataV4<T>(input:T,maxBytes:number,
-  bounds?:{nodes:number;depth:number}):T {
+  bounds?:{nodes:number;depth:number;arrayLength?:number}):T {
   const value=cloneSchemaDescriptorEnvelopeV4(input,maxBytes,bounds)
   return freezeOwnedClone(value,true)
 }

@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 3,
+  "encoding": "owned-author-browser-runtime-source-inputs-v3",
+  "name": "dsh-nexttavern-author-browser-runtime-v3-source-html-v1",
+  "version": "0.1.0",
+  "graphs": {
+    "provider": [
+      {
+        "artifact": "roleplay-data-typescript",
+        "path": "src/core/roleplay-data.ts",
+        "sha256": "822da30c42cf77f9df36da7b36b7cb04699af3afbed78f803cba5f8694bdceaf"
+      },
+      {
+        "artifact": "roleplay-userinfo-typescript",
+        "path": "src/core/roleplay-userinfo.ts",
+        "sha256": "ccd4b336fc3c92465e3817b8cd8ff52485c254ec57191f18b429d16eda2b57be"
+      },
+      {
+        "artifact": "tavern-author-browser-artifact-v3-typescript",
+        "path": "src/core/tavern-author-browser-artifact-v3.mts",
+        "sha256": "ecb90ec2191875bc7691763dfc26900621fb04181d25b19f4c4b0ffdddc5bd4b"
+      },
+      {
+        "artifact": "tavern-author-browser-budget-typescript",
+        "path": "src/core/tavern-author-browser-budget.ts",
+        "sha256": "f25ba442cc1cddf2c9d9075a9121504c015e394e1a30c76bfc88b86f92876449"
+      },
+      {
+        "artifact": "tavern-author-browser-descriptor-v2-typescript",
+        "path": "src/core/tavern-author-browser-descriptor-v2.mts",
+        "sha256": "ddcfe6c0aa37e771cb7b63d69790ade9da3bba1d92ca0897348c4c6e445c27f7"
+      },
+      {
+        "artifact": "tavern-author-browser-descriptor-v3-typescript",
+        "path": "src/core/tavern-author-browser-descriptor-v3.mts",
+        "sha256": "ead35e7193de23ad8a4e5014e901da65a9a752840460eccc5c432e30c323f9e7"
+      },
+      {
+        "artifact": "tavern-author-browser-partition-v3-typescript",
+        "path": "src/core/tavern-author-browser-partition-v3.mts",
+        "sha256": "0acc2be702d935d78dc3d55d7a9c50c3d6219d153962a78ace7eba117fb64d1e"
+      },
+      {
+        "artifact": "tavern-author-browser-profile-v3-typescript",
+        "path": "src/core/tavern-author-browser-profile-v3.mts",
+        "sha256": "c9a53e13fc8f8864ded1ee1aa2629cda8e9db873823821bf06b01797f33c9f6f"
+      },
+      {
+        "artifact": "author-browser-runtime-v3-source-html-v1-src-tavern-author-browser-provider-mts",
+        "path": "src/tavern-author-browser-provider.mts",
+        "sha256": "163c74c9e43d2adf218e573e7b3cc1ff1c11cc9ed77820b9950552236f59894e"
+      }
+    ],
+    "ast-worker": [
+      {
+        "artifact": "roleplay-data-typescript",
+        "path": "src/core/roleplay-data.ts",
+        "sha256": "822da30c42cf77f9df36da7b36b7cb04699af3afbed78f803cba5f8694bdceaf"
+      },
+      {
+        "artifact": "roleplay-userinfo-typescript",
+        "path": "src/core/roleplay-userinfo.ts",
+        "sha256": "ccd4b336fc3c92465e3817b8cd8ff52485c254ec57191f18b429d16eda2b57be"
+      },
+      {
+        "artifact": "tavern-author-browser-artifact-v3-typescript",
+        "path": "src/core/tavern-author-browser-artifact-v3.mts",
+        "sha256": "ecb90ec2191875bc7691763dfc26900621fb04181d25b19f4c4b0ffdddc5bd4b"
+      },
+      {
+        "artifact": "tavern-author-browser-ast-v3-typescript",
+        "path": "src/core/tavern-author-browser-ast-v3.mts",
+        "sha256": "b40cd9e4dbfaac7ed8315a3cd7ebed283c1eebf0480cb588691c4d2ebb070003"
+      },
+      {
+        "artifact": "tavern-author-browser-ast-worker-v3-typescript",
+        "path": "src/core/tavern-author-browser-ast-worker-v3.mts",
+        "sha256": "28cc451e0b5f89935070c1010c938f8dc93590ff468d18a342bd181f863da58d"
+      },
+      {
+        "artifact": "tavern-author-browser-compiler-v3-typescript",
+        "path": "src/core/tavern-author-browser-compiler-v3.mts",
+        "sha256": "c0d538f766a7c66e460ad051661de3ca5be292e0674496265998f00a0705f0e8"
+      },
+      {
+        "artifact": "tavern-author-browser-descriptor-v2-typescript",
+        "path": "src/core/tavern-author-browser-descriptor-v2.mts",
+        "sha256": "ddcfe6c0aa37e771cb7b63d69790ade9da3bba1d92ca0897348c4c6e445c27f7"
+      },
+      {
+        "artifact": "tavern-author-browser-descriptor-v3-typescript",
+        "path": "src/core/tavern-author-browser-descriptor-v3.mts",
+        "sha256": "ead35e7193de23ad8a4e5014e901da65a9a752840460eccc5c432e30c323f9e7"
+      },
+      {
+        "artifact": "tavern-author-browser-profile-v3-typescript",
+        "path": "src/core/tavern-author-browser-profile-v3.mts",
+        "sha256": "c9a53e13fc8f8864ded1ee1aa2629cda8e9db873823821bf06b01797f33c9f6f"
+      },
+      {
+        "artifact": "tavern-author-browser-renderer-v3-typescript",
+        "path": "src/core/tavern-author-browser-renderer-v3.ts",
+        "sha256": "6a6cf0b774709d6556719610dc3e9b5f0b5b185268c106278bf6b951d8b9d545"
+      },
+      {
+        "artifact": "tavern-author-html-compiler-v1-typescript",
+        "path": "src/core/tavern-author-html-compiler-v1.mts",
+        "sha256": "5aa05cb2c0d5bc109fe6fb0210a3cf1a2d85a4a4d170294cd0df818982fdefb9"
+      },
+      {
+        "artifact": "tavern-display-html-typescript",
+        "path": "src/core/tavern-display-html.ts",
+        "sha256": "796f6120515edce4da3af4295c2d86d71fa12f070eefda94232db748144415ed"
+      }
+    ],
+    "execution-worker": [
+      {
+        "artifact": "tavern-author-browser-adapter-v2-typescript",
+        "path": "src/core/tavern-author-browser-adapter-v2.ts",
+        "sha256": "0b931470da6071d6d72986b47f1abb44d17b0df7abf64cf613449e53b59eb699"
+      },
+      {
+        "artifact": "tavern-author-browser-adapter-v3-typescript",
+        "path": "src/core/tavern-author-browser-adapter-v3.ts",
+        "sha256": "1eb9941852863a956c6b4646fbe4deec5d25baa5c0290c21da5c8c12cf886dda"
+      },
+      {
+        "artifact": "tavern-author-browser-attachment-worker-v3-typescript",
+        "path": "src/core/tavern-author-browser-attachment-worker-v3.ts",
+        "sha256": "be4cd9f51adb891515af5eb2f0822cd1cd07098ce677f0c451738aedb8f4dfb1"
+      },
+      {
+        "artifact": "tavern-author-browser-execution-worker-v3-typescript",
+        "path": "src/core/tavern-author-browser-execution-worker-v3.ts",
+        "sha256": "b4387eb99f37a10c169a219c457a30ca8e36940ab1035b7b7a012cf9e8ec5c1f"
+      },
+      {
+        "artifact": "tavern-author-browser-page-guest-v3-typescript",
+        "path": "src/core/tavern-author-browser-page-guest-v3.ts",
+        "sha256": "78209110e1cdae61030969fb73be09510a36df4208b38f372d29b78a16f1027c"
+      },
+      {
+        "artifact": "tavern-author-browser-page-worker-v3-typescript",
+        "path": "src/core/tavern-author-browser-page-worker-v3.ts",
+        "sha256": "98997dadb50bd66233017274be151dc992700d2a737ec458afa89b6c57407cf5"
+      },
+      {
+        "artifact": "tavern-author-browser-renderer-v3-typescript",
+        "path": "src/core/tavern-author-browser-renderer-v3.ts",
+        "sha256": "6a6cf0b774709d6556719610dc3e9b5f0b5b185268c106278bf6b951d8b9d545"
+      },
+      {
+        "artifact": "tavern-author-browser-source-guest-v3-typescript",
+        "path": "src/core/tavern-author-browser-source-guest-v3.ts",
+        "sha256": "6c6a49ac3e54efd902f948b9996aed28e275595230aec50d7e8f159996d0ba3c"
+      },
+      {
+        "artifact": "tavern-display-html-typescript",
+        "path": "src/core/tavern-display-html.ts",
+        "sha256": "796f6120515edce4da3af4295c2d86d71fa12f070eefda94232db748144415ed"
+      }
+    ]
+  },
+  "bundledDependencies": {
+    "parse5/dist/common/unicode.js": "69a0a52be895d2bcf88850beead4a098c5305c0b5669d1e8a0fe26f621ea25c6",
+    "parse5/dist/common/error-codes.js": "b38ae5ac4f2a31ce2e1cfeca35cf7b89cc66736cd5be068cc433a3ccaca78be2",
+    "parse5/dist/tokenizer/preprocessor.js": "12199175a31eb461dcecefa10ce2536c69ab92cdd2a1f67da3ea20b214599ac1",
+    "parse5/dist/common/token.js": "52dac9efba3a637771818d633a5cf1df30c7913d05ff23235150c88319ea035a",
+    "entities/dist/decode-codepoint.js": "dddf76e72987697316e647f046b2755dafe16308fe83159969b3155e0ebf3beb",
+    "entities/dist/internal/decode-shared.js": "cd26388e8ec3fdc2c4b212883e9ae460a4fe6dd37d80d0dacffd6b0087171b6b",
+    "entities/dist/generated/decode-data-html.js": "1ff1226550125bb8976dd032b2dcfc37ba311863dbf9ae69b4b16922f5a38ead",
+    "entities/dist/generated/decode-data-xml.js": "e549a5fd573d540a4652c81fab6655f3418c34c1613a30ed245ca017d9a5b730",
+    "entities/dist/internal/bin-trie-flags.js": "8bb285f9ab41b9fd2525c83902c99b36e7c36da7cb7fa3be574d68f328183de5",
+    "entities/dist/decode.js": "6ce0048039ae0f9dab6e21dd1309661bcfe7e3beabfab1f15cdd61adb91e20b7",
+    "parse5/dist/common/html.js": "e6cf93f387be70ddcd4f2bec67fbeb53161094f6306d834de461ec888a9dab76",
+    "parse5/dist/tokenizer/index.js": "810ebc73056d41c9ed5e4718d0973b87bc90306ca010d0c8533ed81669f58a58",
+    "parse5/dist/parser/open-element-stack.js": "fe4b609a572c9aa06fbd45ac53632b3ad565168903f4126a6f98d5a9d1f42999",
+    "parse5/dist/parser/formatting-element-list.js": "a6e04b000b228a0bf7eba4e5462b343ec1e13dbfbe40bce913ade646bbde4461",
+    "parse5/dist/tree-adapters/default.js": "14b6408b0abb1c041e645644f977db34da280239be8a59a2eb3c9e282e89b7c4",
+    "parse5/dist/common/doctype.js": "855d8cd764782cdc73003a9847d03ed261c5158f6a6901e563ccd4d3b92c8b16",
+    "parse5/dist/common/foreign-content.js": "129a84a9d04b6050b6896de45a70e1ee468434e19bdd6486e3aef3405d137cac",
+    "parse5/dist/parser/index.js": "23eb8e0f6b45abc36132c08f067899e0e615acbe9069762ba7780a66db78e65d",
+    "entities/dist/escape.js": "880426162e6e6a1c65cb67cca4824c529c37192b51b0571927a81d33074f7302",
+    "parse5/dist/serializer/index.js": "bb11a62d05d463bf756814d89227ea889733d3808fe7ebe27cb4f607ed85a4c7",
+    "parse5/dist/index.js": "b825162aced2e79be8d68d45efb1f89ec34ed4189467195a071a0d7b694a19d4",
+    "css-tree/lib/utils/List.js": "877cc7541338d107e5b9cebe265107fbe02f60d2c6b68944b2fa4a334e9158c8",
+    "css-tree/lib/utils/create-custom-error.js": "0433bd9e75230232aab25b5d37d14351c3dfe005933841bf176d01f0e0dfd238",
+    "css-tree/lib/parser/SyntaxError.js": "db9c79b67c9766cd6f0376aadc85ae25b1694a613b34fcf7407b9351487821e0",
+    "css-tree/lib/tokenizer/types.js": "44e51dcd9d13abf655a7bcd5d9655bdaf386ec751a910d4aca9452544e8bfb81",
+    "css-tree/lib/tokenizer/char-code-definitions.js": "f184aa02202424f4b33110f3fb5f6228626eeb0cbbb9e15bcc0e33522ad28790",
+    "css-tree/lib/tokenizer/utils.js": "2c0087a12707b22eae4bc44dd338a8682838663872b2240387c5979ae76d44bb",
+    "css-tree/lib/tokenizer/names.js": "e033bb7b9a6fc4a6c4541f0e69cce456841bfbf689be4520710fa9018941f98f",
+    "css-tree/lib/tokenizer/adopt-buffer.js": "a5fdeaf3d9fb293c8f57cca9ec3aad1e66057ce646eac6d4e294032d12dcd087",
+    "css-tree/lib/tokenizer/OffsetToLocation.js": "1246bdff87c6a08ac9f9505e2758898fee39e3bf1480ef6bfbf05eb65c6f59b6",
+    "css-tree/lib/tokenizer/TokenStream.js": "9d1b0b5e157a984b2700b75a2a44b63dae4ab426186f4d94d3aff2436967d0ec",
+    "css-tree/lib/tokenizer/index.js": "51d063532994e1e1f7c0c24ac1a8ef0f213e5b97fdc5b17c1aaedfdcde4016df",
+    "css-tree/lib/parser/sequence.js": "c3930235086e8342b1c0d0808cf4bf3790114ecd7af96c851fa7c05a55517b86",
+    "css-tree/lib/parser/create.js": "b884e64b00eb8b63d398fe395a29f6b40a43a29220364864717cbba9dd670334",
+    "css-tree/lib/syntax/scope/default.js": "96dc78a97b49b02a9c4e768ad658b04cde0ccca92d46ec5a016d2b94b8df3aa7",
+    "css-tree/lib/syntax/scope/atrulePrelude.js": "a770bb485cdd853f875909466657f5fd11ec45ed65fe75983a3195f3e6e47d9c",
+    "css-tree/lib/syntax/scope/selector.js": "372306c1f32910ffbdbfa8dbe3abe550483061534b289cebca0248bfe103c15a",
+    "css-tree/lib/syntax/function/expression.js": "e1c4196e41ccc87ca37d658dcc04eb0c393bd6722ae4edc264d8e5cda6f2ef22",
+    "css-tree/lib/syntax/function/var.js": "e56be12d3341d1d4538119c0963fcb7d6dfb1692f63133983800d09026c0f48b",
+    "css-tree/lib/syntax/scope/value.js": "92c03516e7d6b36403c08421663b97e7c7a704590dd3f52589b9e32a3c4ca1c9",
+    "css-tree/lib/syntax/scope/index.js": "d86ac0998693af6e7535e7314144032da29124b7c5686b5d19b2330967f1a0a9",
+    "css-tree/lib/syntax/atrule/container.js": "8a5e4a0553fd30c76c34a25da3faf43400130b986e75f016f1f259659a3feeb9",
+    "css-tree/lib/syntax/atrule/font-face.js": "e8577c256cb18011d3cc005722e4af5f6df289cc7e3820b9bd52e0e617f4bbe3",
+    "css-tree/lib/syntax/atrule/import.js": "d1a544786ac26f55d8856c3fc9e2b408be46eba1d21ff5daf4b5aeadd396da3c",
+    "css-tree/lib/syntax/atrule/layer.js": "b5ab72fd51afc067c458618977f4e7c5bb0a770937b81f5b55b309b346deea35",
+    "css-tree/lib/syntax/atrule/media.js": "e04fa163e347946fbcafd54c1500a396041931cad8a1923fded62805e51c6a06",
+    "css-tree/lib/syntax/atrule/nest.js": "ee141ed45c843703242e32b9988bb7620f72caeae06c15fd14293bd8279973a8",
+    "css-tree/lib/syntax/atrule/page.js": "ee141ed45c843703242e32b9988bb7620f72caeae06c15fd14293bd8279973a8",
+    "css-tree/lib/syntax/atrule/scope.js": "67e42f8220965cdd89497465f0eaae540177db75e18cfaa8e47ef1a63af36893",
+    "css-tree/lib/syntax/atrule/starting-style.js": "477a913ceff8ad5516e580b2c7d3b92a757bb1f2aac194c218c74e83f8a76d25",
+    "css-tree/lib/syntax/atrule/supports.js": "771ec140c95baaf05e49f07d8db828d06aea771ab1ad84d9611bd494d8e284a9",
+    "css-tree/lib/syntax/atrule/index.js": "69ccce383380e212bf1e8ed1f693c65702ed6ca92076a399f4ea4d4f082b8aa8",
+    "css-tree/lib/syntax/pseudo/lang.js": "ce5ce349afe26732f00aacf01aef046c5d561ab79988258c276652d2afc3a0c2",
+    "css-tree/lib/syntax/pseudo/index.js": "5c4e58d049c1c13930494f4d5ffc8c05d8464b6f5c3dba88bd8dfb701936d566",
+    "css-tree/lib/syntax/node/AnPlusB.js": "174df1187617e79ef0186dbd009e76f6c7e5206f0ff2c242b44800fe4167b869",
+    "css-tree/lib/syntax/node/Atrule.js": "09dfb8efc2b6cc26a221b3157d251be4c6ef11aa00f799a7cd095c132ccab339",
+    "css-tree/lib/syntax/node/AtrulePrelude.js": "b4506828af3a5a4d98e3495d49e1ed2f3263a3a46f378d7596d3702d841bd2d4",
+    "css-tree/lib/syntax/node/AttributeSelector.js": "233e66919c3507150e603a0d56d3098d5682717afe392feb6f4487bb434c4119",
+    "css-tree/lib/syntax/node/Block.js": "81923650a615fcd8cc3086b853f536e6a325489f4bc0c6bd369a66d6c1e0c734",
+    "css-tree/lib/syntax/node/Brackets.js": "d1a39842542877540e6dfe6bca99b50490e8a2bbc79ffbf67fe29eb76f51d7fe",
+    "css-tree/lib/syntax/node/CDC.js": "4c24e5a51a454fcdf4be577c57bac647fae9fc292c73fd5757735b740650094e",
+    "css-tree/lib/syntax/node/CDO.js": "e2f5820901326cec91a473bc1ae002d49e07048a356d187d0f29ad1585a9e1e3",
+    "css-tree/lib/syntax/node/ClassSelector.js": "a06bc9dd02ea4812cfd4471ff25a057767616fa28a71408c8aabe1fddb4c2f4c",
+    "css-tree/lib/syntax/node/Combinator.js": "eb4b00e70635c7383c035d6d5992f75ac9f39152d509222b7f312ef4d4d6b5ec",
+    "css-tree/lib/syntax/node/Comment.js": "c0ef6a16f29de78890b47857c93a31a25e21a46d5b675243ab4726d764e0f38b",
+    "css-tree/lib/syntax/node/Condition.js": "c87b0e76b8f72bb43bba26b827522654a22ac720ddaacc7f1b1a111ba768bcca",
+    "css-tree/lib/utils/names.js": "53e7d8b7a84f5d437be9b18b33b4d28412d83dab3de53659cdc624c54a4b56b9",
+    "css-tree/lib/syntax/node/Declaration.js": "e374b4da8b379775addbbb94d84267b099b3dd174ad27e6ae045c1a5c569db69",
+    "css-tree/lib/syntax/node/DeclarationList.js": "07bfa453f9e72e605b000f94c6477dd4ce3e0621a2649f74aa2b6f8599bfa932",
+    "css-tree/lib/syntax/node/Dimension.js": "74762aaefbed62f292d1750e441694c7c6d85d576fdb746b7882adb705f4d26c",
+    "css-tree/lib/syntax/node/Feature.js": "2962fc95aa8b884ed5638b761865a318dc4eace4bb210665bbe9b6c87ebd6e51",
+    "css-tree/lib/syntax/node/FeatureFunction.js": "668cc9678dcb8a684efea81a029f359b0eeadac3ad959d347b209f3593550a15",
+    "css-tree/lib/syntax/node/FeatureRange.js": "948cdbcd4d42bc94acb526a2c991a219a4778d6abd66a198a0099dab2635860e",
+    "css-tree/lib/syntax/node/Function.js": "83b4204cff6071c9788ac04b5c5e6b8a911f57b83e756d5972a12055ae263d29",
+    "css-tree/lib/syntax/node/GeneralEnclosed.js": "4486d2374636933a911593afb034888fbe3539644cd198cf6e39f714ffbca4a8",
+    "css-tree/lib/syntax/node/Hash.js": "056aa0c9b6c65c09284f036b78e5134294f4055679c56b3f98402657d23d7cf2",
+    "css-tree/lib/syntax/node/Identifier.js": "d14b969e25957bfc72fb02cff0f643e290eed04f658a54f7f64cbbdd261a58f2",
+    "css-tree/lib/syntax/node/IdSelector.js": "86d4d75c9ed074da8060b1e31a5e5118fca068c25828cd69e9a6f4dab1bb9ab8",
+    "css-tree/lib/syntax/node/Layer.js": "125a2511cde6ccec92cac679b280cb198e9848671e9a7a5d2bfd0b3d8252a1fa",
+    "css-tree/lib/syntax/node/LayerList.js": "15bffd602747af6ee56a92ecedb8e6677615212a2f798941b26c89c81708953a",
+    "css-tree/lib/syntax/node/MediaQuery.js": "c6784fe7c64e7cbb5d21ff74a9d8904d5c849cddf134a6c67cd78205597e1165",
+    "css-tree/lib/syntax/node/MediaQueryList.js": "2bcb4702cafa34221a1b03d3fddb9376ca9f79a68d508b0ce1be0feabbe125e7",
+    "css-tree/lib/syntax/node/NestingSelector.js": "2d7576f97341fc196fcc7c7950f10f8d812ce542725eb65fdc8d20c6307d39d2",
+    "css-tree/lib/syntax/node/Nth.js": "a4b0a04f8f6de7349fc4e393f667c62b1cf55a5c27c9df2a3c44d83993631a74",
+    "css-tree/lib/syntax/node/Number.js": "182dd5f9e3db12f5ca71c30def5f788e23751d20787a1c74ec36e0096689227b",
+    "css-tree/lib/syntax/node/Operator.js": "20ede258409eaef827a6d9accd769a1fbfe3a1e2391d09e9ea57243e015d56b6",
+    "css-tree/lib/syntax/node/Parentheses.js": "4a1a93aa8f161d62cf6f287714ab7a7c0be9c7db0da058f4352ba21e50099af7",
+    "css-tree/lib/syntax/node/Percentage.js": "f286f1708b7cf35ca02de184b0ebd96508ac1a4dcdffeb3b472e11183eb7f7d4",
+    "css-tree/lib/syntax/node/PseudoClassSelector.js": "6c10d2b009dd8b97bcd52631682b3baedf212a54f23e487a0946b28b8c7aebe0",
+    "css-tree/lib/syntax/node/PseudoElementSelector.js": "cebd838d4e6f0d516382fed5d0b4c6e4e55490a465e293002e5d471ca4c781f3",
+    "css-tree/lib/syntax/node/Ratio.js": "b6af081d1a0c6ac1775cf21825d998dfd8b59867ceca57dff338774fb299e81b",
+    "css-tree/lib/syntax/node/Raw.js": "8ae4e8cb9dd860d8684899f34f923d2ca309de2cf75d4d4f62a4bb45e2d99346",
+    "css-tree/lib/syntax/node/Rule.js": "32072072fd78b3016e0a54f242feb350125366ae5f9f2d2a2640d5c4ae1c8cd8",
+    "css-tree/lib/syntax/node/Scope.js": "060220580f8c52e3cd9d397d24ca1d7aba72d7a9ea986072a12975bc5783913f",
+    "css-tree/lib/syntax/node/Selector.js": "8e648d3363b3137f7f27e92b9fccc753729ce0a8bad7c3b7417f6f5fce247fc1",
+    "css-tree/lib/syntax/node/SelectorList.js": "674f3f2bfda443a44a673d4092cc83fe6b4cde36f4351f2b7c76cd2bd64c526e",
+    "css-tree/lib/utils/string.js": "249c99944c31160a71df74c76c71fe3327939e84243f24d1b9f46d9abf6ea5c4",
+    "css-tree/lib/syntax/node/String.js": "d9505e97bee2866f96fef0af2ad2aa6bbf1c8b72c03f5f2e52a881a6e533055f",
+    "css-tree/lib/syntax/node/StyleSheet.js": "086ee5ab40beaed694c257b18f951a08478865060a08d67e93f607662456f71f",
+    "css-tree/lib/syntax/node/SupportsDeclaration.js": "55abee1f999074c97da8fceb4146d16677005e8de4cd5f3947858b4d792eb49b",
+    "css-tree/lib/syntax/node/TypeSelector.js": "ff416f7a83c6dd06e4d6c4436475075a0d903be049a9e9c6c096614bab7ef5ed",
+    "css-tree/lib/syntax/node/UnicodeRange.js": "5082f5ef86771478388ed14d2e187e2bf1d3e277876b10199e34c3249bb6bffd",
+    "css-tree/lib/utils/url.js": "c08cb33b48ba773ca988f8dab00c6ce0c7ae17621d8624e204a16b4510531df2",
+    "css-tree/lib/syntax/node/Url.js": "b3e6edc61f39556bbfc9576a8368f42f6c88baa0b79cc1b0e8d2c3a67d820113",
+    "css-tree/lib/syntax/node/Value.js": "bb1d1a21555903d949fabeaebdbc76e822dce3b1cdf7251a2c5c9977ba21b644",
+    "css-tree/lib/syntax/node/WhiteSpace.js": "b1648391876a49698683a96141c1b3c6f37cf175fee7b7315cf64a7958d8b16c",
+    "css-tree/lib/syntax/node/index-parse.js": "9942360e65b1944f39d69279e7b67e6786258864c98eba1c7e508dade7c54fc7",
+    "css-tree/lib/syntax/config/parser.js": "81f0e01cffe0f898df7d0732cb181bdecc4d89ac8ff85b3519e57b8ae39d5c0f",
+    "css-tree/lib/parser/index.js": "77afa9b1c7f2e7f0edfec0c380add7e796e14493d3ae5b8347dbbc3b4be3dce5",
+    "css-tree/lib/walker/create.js": "aa632d55bec88636a4a2f964e7dfb075993c1e0589eeebffa0b0327351af0f84",
+    "css-tree/lib/syntax/node/index.js": "52198aa0f3528be20118093694f0687d285d45306725de92964e5e26aec5a57c",
+    "css-tree/lib/syntax/config/walker.js": "130ec32c1207d4578698afa275666729fde45b49cb9a99de22de70a7c6bac619",
+    "css-tree/lib/walker/index.js": "3748b2f25341b73ad353ba2cab4c553cba6d7c071c55326f67426e8054d84146",
+    "@jitl/quickjs-ffi-types/dist/index.mjs": "5b6ccfe50a0d0066411135c66964b0c15c05167f5324df2e8066493da807efbe",
+    "quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs": "9601ad84160a56f1321e1ed67910a3b79a4e29312f11de129e6f94a5b3e17b9a",
+    "quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs": "b423c720a9deef215b404e4ee212533bcef9de785a11f44aacf1ad8266ae6769",
+    "quickjs-emscripten-core/dist/module-ES6BEMUI.mjs": "289a200ab91f855ed79f75147eb674b81cea7adf032f9344bd8b29ff5e7a7d43",
+    "quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs": "c8cec04532f68af9aa436ad117defdc686d36a1670691d98cea9263345ba7b2b",
+    "quickjs-emscripten-core/dist/index.mjs": "5f7a507ca71ffbff0ec0bad88a9c38f717d34fd8ab9222b58deacc9de5644a3e",
+    "@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.mjs": "f4ef5718b2796e14bbc8f3247943e5cd401d83942de3c97b0cb52648afbafc47",
+    "@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.browser.mjs": "cbbd7eff0bc4a0fbe669e470bd19f4030ce0994bc2c663ead4a86a45d54cd3d0",
+    "@jitl/quickjs-wasmfile-release-asyncify/dist/index.mjs": "d54bf8c54927de2bbcbce7e306ca582f66324607e1a0275e1ede04f8860f3165"
+  }
+}

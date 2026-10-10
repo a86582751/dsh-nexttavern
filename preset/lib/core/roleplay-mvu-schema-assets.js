@@ -17,6 +17,7 @@ import { deriveOwnedStateLoaderIdentityV4 } from './tavern-mvu-schema-program-v4
 import { recordSha256 } from './roleplay-data.js';
 import { validateSchemaExecutorIdentityTuple } from './roleplay-mvu-schema-executor-types.js';
 const packageName = 'dsh-nexttavern-mvu-schema-runtime';
+const policyPackageName = packageName + '-v4-server-candidates-v2';
 const sameDirectory = (left, right) => left.protocol === 'file:'
     && fs.realpathSync(fileURLToPath(left)) === right;
 function productRoot(name, packageVersion) {
@@ -38,8 +39,7 @@ function productRoot(name, packageVersion) {
 export function createRoleplayMvuSchemaAssetOwner() {
     let closed = false;
     const runtimes = new Map();
-    async function load(version) {
-        const name = version === 1 ? packageName : packageName + '-v' + version;
+    async function load(version, name) {
         const packageVersion = version === 4 ? '0.4.0' : '0.3.0';
         const root = productRoot(name, packageVersion), require = createRequire(path.join(root, 'package.json'));
         const metadataPath = fs.realpathSync(require.resolve(name + '/package.json'));
@@ -65,13 +65,17 @@ export function createRoleplayMvuSchemaAssetOwner() {
             protection.verifyProtectedPackage(owned, spec);
             return { name, version: packageVersion, files: structuredClone(spec.files), generation: spec.generation };
         };
-        verify();
+        const inventory = verify();
         if (closed)
             throw Error('SCHEMA_RUNTIME_DISPOSED');
         const verifyOwnedPackage = (fixed) => {
+            if (closed)
+                throw Error('SCHEMA_RUNTIME_DISPOSED');
             if (!sameDirectory(fixed, owned))
                 throw Error('SCHEMA_RUNTIME_PACKAGE_OWNER_CHANGED');
-            return verify();
+            // Admission owns the fixed inventory for this lifecycle. The immutable
+            // provider still checks actual files before loading or executing workers.
+            return inventory;
         };
         let loaded;
         if (version === 1) {
@@ -96,7 +100,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
             const module = await import(__rewriteRelativeImportExtension(pathToFileURL(entry).href));
             if (closed)
                 throw Error('SCHEMA_RUNTIME_DISPOSED');
-            loaded = await module.createMvuSchemaRuntimeV4({ verifyOwnedPackage: fixed => verifyOwnedPackage(fixed) });
+            loaded = await module.createMvuSchemaRuntimeV4({ verifyOwnedPackage });
         }
         if (closed) {
             await loaded.dispose();
@@ -124,6 +128,16 @@ export function createRoleplayMvuSchemaAssetOwner() {
         // before selecting a runner; a union never enables implicit wire upgrade.
         const executor = { executorVersion: version, implementationKey: recordSha256(tuple),
             compiler: { identity: loaded.compiler.identity,
+                // Preserve the admitted compiler's actual optional surface, including
+                // historical candidate generations; older executors expose no method.
+                ...(version === 4 && 'partitionCandidates' in loaded.compiler ? {
+                    async partitionCandidates(input, signal) {
+                        if (closed)
+                            throw Error('SCHEMA_RUNTIME_DISPOSED');
+                        return loaded.compiler
+                            .partitionCandidates(input, signal);
+                    },
+                } : {}),
                 async compile(input, signal) {
                     if (closed)
                         throw Error('SCHEMA_RUNTIME_DISPOSED');
@@ -156,6 +170,24 @@ export function createRoleplayMvuSchemaAssetOwner() {
                 }, dispose: () => loaded.compiler.dispose() }, libraries: loaded.libraries, bridge: loaded.bridge,
             ...(version === 4 ? { stateLoader: loaded.stateLoader } : {}),
             runner: { identity: loaded.runner.identity,
+                openManualRun: version === 4 && loaded.runner.openManualRun
+                    ? async (program, input, signal) => {
+                        if (closed)
+                            throw Error('SCHEMA_RUNTIME_DISPOSED');
+                        if (input.schemaVersion !== 4 || program.schemaVersion !== 2) {
+                            return { kind: 'unavailable', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
+                        }
+                        return loaded.runner.openManualRun(program, input, signal);
+                    } : undefined,
+                evaluateNext: version === 4 && loaded.runner.evaluateNext
+                    ? async (program, input, signal) => {
+                        if (closed)
+                            throw Error('SCHEMA_RUNTIME_DISPOSED');
+                        if (input.schemaVersion !== 4 || program.schemaVersion !== 2) {
+                            return { kind: 'unavailable', diagnostics: [{ code: 'SCHEMA_EXECUTOR_VERSION_MISMATCH' }] };
+                        }
+                        return loaded.runner.evaluateNext(program, input, signal);
+                    } : undefined,
                 async evaluateTrace(program, input, signal) {
                     if (closed)
                         throw Error('SCHEMA_RUNTIME_DISPOSED');
@@ -186,20 +218,19 @@ export function createRoleplayMvuSchemaAssetOwner() {
                         return loaded.runner.verifyTrace(program, evaluation, signal);
                     return false;
                 } }, dispose: () => loaded.dispose() };
-        return { version, runtime: loaded, executor, verify: () => { verify(); } };
+        return { version, runtime: loaded, executor };
     }
-    async function admitted(version) {
+    async function admitted(version, name = version === 4 ? policyPackageName : version === 1 ? packageName : packageName + '-v' + version) {
         if (closed)
             throw Error('SCHEMA_RUNTIME_DISPOSED');
-        let pending = runtimes.get(version);
+        let pending = runtimes.get(name);
         if (!pending) {
-            pending = load(version).catch(error => { runtimes.delete(version); throw error; });
-            runtimes.set(version, pending);
+            pending = load(version, name).catch(error => { runtimes.delete(name); throw error; });
+            runtimes.set(name, pending);
         }
         const actual = await pending;
         if (closed)
             throw Error('SCHEMA_RUNTIME_DISPOSED');
-        actual.verify();
         return actual;
     }
     return {
@@ -223,7 +254,17 @@ export function createRoleplayMvuSchemaAssetOwner() {
                 const verified = validateSchemaExecutorIdentityTuple(tuple);
                 const version = verified.runner.version;
                 const implementationKey = recordSha256(verified);
-                const actual = (await admitted(version)).executor;
+                let name;
+                if (version === 4) {
+                    const root = productRoot(policyPackageName, '0.4.0');
+                    const bootstrap = await import(__rewriteRelativeImportExtension(pathToFileURL(path.join(root, 'lib/operations/bundled-package-bootstrap.mjs')).href));
+                    const entry = bootstrap.readBundleIdentity(root).authorRuntimeHistory.find(row => recordSha256({
+                        compiler: row.server.compiler, bridge: row.server.bridge, libraries: row.server.libraries,
+                        runner: row.server.runner
+                    }) === implementationKey);
+                    name = entry?.serverPackage;
+                }
+                const actual = (await admitted(version, name)).executor;
                 if (actual.implementationKey !== implementationKey)
                     throw Error('SCHEMA_HISTORY_EXECUTOR_UNAVAILABLE');
                 return actual;

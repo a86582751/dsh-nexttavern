@@ -18,7 +18,11 @@ function overlayForLayer(layer:Pick<TavernSourcePublishedEditLayerV1,
   'ownerSessionId'|'identitySha256'|'head'|'headRef'|'journalSha256'|'events'>):TavernLoreCurrentNativeOverlayV1 {
   const edited=new Map<string,{rawEntrySha256:string;fields:TavernLoreCurrentNativeFieldsV1;events:TavernLoreEditRefV1[]}>()
   for(const {value:event,ref:eventRef} of layer.events) {
-    const request=event.request,previous=edited.get(request.rawEntryPointer)
+    // Membership events remain in the frozen publication sequence. Their
+    // materialization belongs to the same member fold as the child's locals.
+    const request=event.request
+    if('mutation' in request)continue
+    const previous=edited.get(request.rawEntryPointer)
     if(previous&&previous.rawEntrySha256!==request.rawEntrySha256)inheritanceFailV1('SOURCE_INHERITANCE_JOURNAL_INVALID')
     edited.set(request.rawEntryPointer,{rawEntrySha256:request.rawEntrySha256,
       fields:{...previous?.fields,...request.fields},events:[...(previous?.events??[]),eventRef]})

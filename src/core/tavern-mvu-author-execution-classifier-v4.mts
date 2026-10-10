@@ -8,7 +8,8 @@ import {fixedStateLoaderDependency, FIXED_STATE_LOADER_POLICY_SHA256}
 import type {AstSpanV1, AuthorExecutionPlanV1, ExecutionPlanScriptV1,
   ExecutorSelectionHintV1,
   FixedStateDependencyV1, LoaderImportSiteV1, PlannerOwnedDependenciesV1,
-  RawAuthorScriptV4, ScriptAstCoverageV1} from './tavern-mvu-author-execution-types-v4.mjs'
+  RawAuthorScriptV4, ScriptAstCoverageV1, WorkerSchemaAstBudgetFailureV4}
+  from './tavern-mvu-author-execution-types-v4.mjs'
 
 const HASH = /^[0-9a-f]{64}$/
 const C23_A_ORDER = [
@@ -45,13 +46,21 @@ function checkerFor(file: ts.SourceFile, source: string): ts.TypeChecker {
   }
   return ts.createProgram([file.fileName], options, host).getTypeChecker()
 }
-function parse(script: RawAuthorScriptV4) {
+function parse(script: RawAuthorScriptV4, candidate = false) {
+  let budgetFailure: WorkerSchemaAstBudgetFailureV4 | undefined
+  const exceedBudget = (code: WorkerSchemaAstBudgetFailureV4) => {
+    if (!candidate) reject(code)
+    budgetFailure ??= code
+  }
+  // Candidate discovery shares this one AST/checker with its actual owner.
+  // MVU execution limits do not claim an otherwise valid Browser script;
+  // its first budget failure is retained for a later schema/native claim.
   const scanner = ts.createScanner(ts.ScriptTarget.ES2023, false, ts.LanguageVariant.Standard, script.source)
   let tokens = 0, brackets = 0
   for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-    if (++tokens > MVU_SCHEMA_BOUNDS.syntaxTokens) reject('EXECUTION_AST_TOKEN_LIMIT')
+    if (++tokens > MVU_SCHEMA_BOUNDS.syntaxTokens) exceedBudget('EXECUTION_AST_TOKEN_LIMIT')
     if ([ts.SyntaxKind.OpenBraceToken, ts.SyntaxKind.OpenParenToken, ts.SyntaxKind.OpenBracketToken].includes(token)) {
-      if (++brackets > MVU_SCHEMA_BOUNDS.syntaxDepth) reject('EXECUTION_AST_DEPTH_LIMIT')
+      if (++brackets > MVU_SCHEMA_BOUNDS.syntaxDepth) exceedBudget('EXECUTION_AST_DEPTH_LIMIT')
     } else if ([ts.SyntaxKind.CloseBraceToken, ts.SyntaxKind.CloseParenToken,
       ts.SyntaxKind.CloseBracketToken].includes(token)) brackets = Math.max(0, brackets - 1)
   }
@@ -61,10 +70,10 @@ function parse(script: RawAuthorScriptV4) {
   if (diagnostics.length) reject('EXECUTION_TYPESCRIPT_SYNTAX')
   let nodeCount = 0
   walk(file, (_node, depth) => {
-    if (depth > MVU_SCHEMA_BOUNDS.syntaxDepth) reject('EXECUTION_AST_DEPTH_LIMIT')
-    if (++nodeCount > MVU_SCHEMA_BOUNDS.syntaxTokens) reject('EXECUTION_AST_NODE_LIMIT')
+    if (depth > MVU_SCHEMA_BOUNDS.syntaxDepth) exceedBudget('EXECUTION_AST_DEPTH_LIMIT')
+    if (++nodeCount > MVU_SCHEMA_BOUNDS.syntaxTokens) exceedBudget('EXECUTION_AST_NODE_LIMIT')
   })
-  return {file, nodeCount, checker: checkerFor(file, script.source)}
+  return {file, nodeCount, checker: checkerFor(file, script.source), budgetFailure}
 }
 function coverage(file: ts.SourceFile, sourceSha256: string, nodeCount: number): ScriptAstCoverageV1 {
   return {encoding: 'native-mvu-complete-script-ast-coverage-v1', sourceSha256,
@@ -247,7 +256,7 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
     || !HASH.test(implementation.implementationSha256)) throw Error('EXECUTION_OWNED_LOADER_IDENTITY')
   const retainedImplementation = freezeData({...implementation})
   const privateOwned = {...owned, stateLoaderImplementation: retainedImplementation}
-  const classify = (script: RawAuthorScriptV4, ordinal: number): ExecutionPlanScriptV1 => {
+  const classify = (script: RawAuthorScriptV4, ordinal: number, candidate = false): ExecutionPlanScriptV1 => {
     const base = {ordinal, identity: script.identity, pointer: script.pointer, enabled: script.enabled,
       sourceSha256: script.sourceSha256, rawDescriptorSha256: recordSha256(script)}
     const refused = (codes: readonly string[]): ExecutionPlanScriptV1 => ({...base,
@@ -259,7 +268,7 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
       if (Buffer.byteLength(script.source, 'utf8') > MVU_SCHEMA_BOUNDS.sourceBytes) reject('EXECUTION_SOURCE_BYTE_LIMIT')
       if (!script.enabled) return {...base, classification: 'disabled', disposition: 'disabled',
         coverage: null, loaderImports: [], diagnosticCodes: [], evidence: 'disabled-source-retained'}
-      const parsed = parse(script), complete = coverage(parsed.file, script.sourceSha256, parsed.nodeCount)
+      const parsed = parse(script, candidate)
       const localEvidence = privateOwned.localBrowserAuditEvidence?.find(item => item.localOnly
         && item.sourceSha256 === script.sourceSha256)
       if (localEvidence) {
@@ -296,23 +305,27 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
         if (ts.isIdentifier(node) && ['window', 'parent', 'document', 'setTimeout'].includes(node.text)
           && !parsed.checker.getSymbolAtLocation(node)) browserHost = true
       })
-      if ((stateLiteralImport || stateArrayImport) && schemaReference) {
-        reject('EXECUTION_MIXED_SCHEMA_AND_STATE_LOADER_UNSUPPORTED')
-      }
       // Schema import-only scripts must not be mistaken for a state loader.
       // Native recognition is attempted only for a real fixed state import or
       // its linked const-array loop; every remaining statement is still checked.
       if (stateLiteralImport || stateArrayImport) {
+        if (parsed.budgetFailure) reject(parsed.budgetFailure)
+        if (schemaReference) reject('EXECUTION_MIXED_SCHEMA_AND_STATE_LOADER_UNSUPPORTED')
         const sites = loaderRecognizer(parsed.file, parsed.checker, privateOwned)
         if (sites) return {...base, classification: 'native-state-loader', disposition: 'native-owned',
-          coverage: complete, loaderImports: sites, diagnosticCodes: [], evidence: 'complete-loader-ast'}
+          coverage: coverage(parsed.file, script.sourceSha256, parsed.nodeCount),
+          loaderImports: sites, diagnosticCodes: [], evidence: 'complete-loader-ast'}
         reject(browserHost ? 'EXECUTION_BROWSER_BOOTSTRAP_DEFERRED_AST_UNPROVEN'
           : 'EXECUTION_STATE_LOADER_COMPLETE_SHAPE_UNSUPPORTED')
       }
-      if (browserHost) reject('EXECUTION_BROWSER_SCRIPT_DEFERRED_AST_UNPROVEN')
+      // Candidate admission asks the worker's canonical schema owner whether
+      // this AST is claimed before its gates can reject ordinary browser code.
+      if (browserHost && !candidate) reject('EXECUTION_BROWSER_SCRIPT_DEFERRED_AST_UNPROVEN')
       const schema = privateOwned.admitSchemaAst?.({script, ordinal,
-        sourceFile: parsed.file, checker: parsed.checker})
+        sourceFile: parsed.file, checker: parsed.checker,
+        ...parsed.budgetFailure ? {budgetFailure: parsed.budgetFailure} : {}})
       if (schema?.kind === 'accepted-schema') {
+        const complete = coverage(parsed.file, script.sourceSha256, parsed.nodeCount)
         if (schema.admittedSourceSha256 !== script.sourceSha256
           || recordSha256(schema.statementSpans) !== recordSha256(complete.statementSpans)) {
           reject('EXECUTION_SCHEMA_AST_COVERAGE_MISMATCH')
@@ -326,8 +339,34 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
         ? 'EXECUTION_AST_DEPTH_LIMIT' : 'EXECUTION_CLASSIFICATION_FAILED'])
     }
   }
+  // The worker retains classify results and accepted JS together. Assembly
+  // consumes those rows without reparsing/recompiling the accepted Source.
+  const assemblePlan = (rows: readonly ExecutionPlanScriptV1[]): AuthorExecutionPlanV1 => {
+    const enabledFamilies = new Set(rows.filter(row => row.enabled
+      && row.classification === 'native-state-loader').flatMap(row =>
+      row.loaderImports.flatMap(site => site.dependencies.map(item => item.group))))
+    // Unsupported/deferred rows already cannot obtain execution authority.
+    // Fully recognized native rows also cannot silently combine different
+    // researched state dialects into one Program/owned Native initializer.
+    if (enabledFamilies.size > 1) throw Error('EXECUTION_PROGRAM_MULTIPLE_STATE_FAMILIES_UNSUPPORTED')
+    const count = (classification: ExecutionPlanScriptV1['classification']) =>
+      rows.filter(row => row.enabled && row.classification === classification).length
+    const body = {schemaVersion: 1 as const, encoding: 'native-mvu-author-execution-plan-v1' as const,
+      classifier: {id: 'owned-author-ast-classifier' as const, version: 1 as const,
+        typescriptVersion: '5.9.3' as const}, dependencyPolicySha256: FIXED_STATE_LOADER_POLICY_SHA256,
+      scripts: rows, summary: {enabledServerSchema: count('server-schema'),
+        enabledNativeLoaders: count('native-state-loader'),
+        enabledBrowserDeferred: count('browser-bootstrap') + count('browser-script'),
+        unsupportedEnabled: count('unsupported')},
+      zeroRegistrationPolicy: 'forbid-if-any-enabled-server-schema' as const,
+      rawExecutionPolicy: 'execute-only-server-schema' as const,
+      containsLocalAuditEvidence: rows.some(row => row.evidence === 'local-audit-only')}
+    return freezeData({...body, executionPlanSha256: recordSha256(body)})
+  }
   return Object.freeze({
-    classify,
+    classify: (script: RawAuthorScriptV4, ordinal: number) => classify(script, ordinal),
+    classifyCandidate: (script: RawAuthorScriptV4, ordinal: number) => classify(script, ordinal, true),
+    assemblePlan,
     /** Keep fresh schema-only inputs on executor3. An enabled fixed dependency
      * selects the independent executor4 candidate without admitting the whole
      * script. Actual loader effects never result from this hint or fulfilled
@@ -339,27 +378,7 @@ export function createAuthorExecutionPlannerV1(owned: PlannerOwnedDependenciesV1
         || new Set(scripts.map(script => script.pointer)).size !== scripts.length) {
         throw Error('EXECUTION_DUPLICATE_RAW_SCRIPT_DESCRIPTOR')
       }
-      const rows = scripts.map(classify)
-      const enabledFamilies = new Set(rows.filter(row => row.enabled
-        && row.classification === 'native-state-loader').flatMap(row =>
-        row.loaderImports.flatMap(site => site.dependencies.map(item => item.group))))
-      // Unsupported/deferred rows already cannot obtain execution authority.
-      // Fully recognized native rows also cannot silently combine different
-      // researched state dialects into one Program/owned Native initializer.
-      if (enabledFamilies.size > 1) throw Error('EXECUTION_PROGRAM_MULTIPLE_STATE_FAMILIES_UNSUPPORTED')
-      const count = (classification: ExecutionPlanScriptV1['classification']) =>
-        rows.filter(row => row.enabled && row.classification === classification).length
-      const body = {schemaVersion: 1 as const, encoding: 'native-mvu-author-execution-plan-v1' as const,
-        classifier: {id: 'owned-author-ast-classifier' as const, version: 1 as const,
-          typescriptVersion: '5.9.3' as const}, dependencyPolicySha256: FIXED_STATE_LOADER_POLICY_SHA256,
-        scripts: rows, summary: {enabledServerSchema: count('server-schema'),
-          enabledNativeLoaders: count('native-state-loader'),
-          enabledBrowserDeferred: count('browser-bootstrap') + count('browser-script'),
-          unsupportedEnabled: count('unsupported')},
-        zeroRegistrationPolicy: 'forbid-if-any-enabled-server-schema' as const,
-        rawExecutionPolicy: 'execute-only-server-schema' as const,
-        containsLocalAuditEvidence: rows.some(row => row.evidence === 'local-audit-only')}
-      return freezeData({...body, executionPlanSha256: recordSha256(body)})
+      return assemblePlan(scripts.map((script, ordinal) => classify(script, ordinal)))
     },
   })
 }

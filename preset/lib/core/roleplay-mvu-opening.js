@@ -140,7 +140,8 @@ export function createRoleplayMvuOpening(deps) {
         }
     }
     const schemaCore = deps.schema ? createRoleplayMvuSchemaCore({ ...deps.schema, branch: deps.tables.branch,
-        status: deps.tables.status, source, session: id => deps.session(id),
+        status: deps.tables.status, recordOwner: deps.inputState.schemaJournal, source,
+        session: id => deps.session(id),
         withSourceLock: deps.withSourceLock, projectPrefix: events => deps.messageEdits.projectPrefix(events),
         nativeRead: (identity, turn) => native.read(identity, turn) }) : undefined;
     let schemaSelection;
@@ -156,6 +157,7 @@ export function createRoleplayMvuOpening(deps) {
             protectedRuntime: schemaCore.protectedRuntime, withSourceLock: deps.withSourceLock };
         schemaStory ??= createRoleplayMvuSchemaStoryCore({ ...completion, ...common, inputState: deps.inputState,
             manualPendingCode: (id) => schemaPlayer?.pendingCode(id),
+            captureManualLedger: (id) => schemaPlayer?.captureLedger(id),
             manualEditBlockCode: (id) => schemaPlayer?.editBlockCode(id),
             derivedRequired: deps.schemaDerivedRequired, readDerivedGenesis: deps.readSchemaDerivedGenesis,
             readEditInvalidation: deps.readSchemaEditInvalidation,
@@ -576,6 +578,7 @@ export function createRoleplayMvuOpening(deps) {
         readAuthorSource: source.readAuthorSource, authorSourceCurrent: source.authorSourceCurrent,
         createSchemaSelection, hasSchemaOpening, readSchemaInitialization,
         createSchemaStory, readSchemaSnapshot: (id) => schemaStory?.readSnapshot(id),
+        readAdmittedBrowserProgram: (id) => schemaStory?.readAdmittedBrowserProgram(id),
         readSchemaObservation: (id) => schemaStory?.readSchemaObservation(id),
         captureSchemaPromptScopes: (id) => schemaStory?.capturePromptScopes(id),
         executeAuthorPrompt: (...args) => {

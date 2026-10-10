@@ -1,7 +1,8 @@
 /** Owns the bounded table inputs of one successful schema prefix validation.
  * The closed reader can replay facts; it cannot publish or create a hot owner. */
 import {recordSha256} from './roleplay-data.js'
-import {freezeImmutableSchemaDescriptorDataV4} from './roleplay-mvu-schema-descriptor-data.js'
+import {freezeMvuSchemaInheritanceData} from './roleplay-mvu-schema-derived-types.js'
+import {createImmutableDescriptorValidator} from './roleplay-mvu-schema-descriptor-data.js'
 
 interface Table {
   get(key:string):unknown
@@ -34,7 +35,7 @@ function exact(value:unknown,fields:readonly string[]):asserts value is Record<s
     ||!same(Object.keys(value).sort(),[...fields].sort()))fail()
 }
 function data<T>(input:T):T {
-  return freezeImmutableSchemaDescriptorDataV4(input,67_108_864,{nodes:524_288,depth:96})
+  return freezeMvuSchemaInheritanceData(input)
 }
 function enumerationKey(table:'branch'|'status',value:string):boolean {
   return table==='branch'
@@ -43,11 +44,18 @@ function enumerationKey(table:'branch'|'status',value:string):boolean {
 }
 export function validateMvuSchemaPrefixInputClosureV1(raw:unknown,
   expected:MvuSchemaPrefixInputBindingV1):MvuSchemaPrefixInputClosureV1 {
+  const value=validateClosureDescriptor(raw as MvuSchemaPrefixInputClosureV1)
+  if(!same(value.binding,expected))fail()
+  return value
+}
+const validateClosureDescriptor=createImmutableDescriptorValidator(validateClosureUncached)
+function validateClosureUncached(raw:MvuSchemaPrefixInputClosureV1):MvuSchemaPrefixInputClosureV1 {
   const value=data(raw)
   exact(value,['schemaVersion','encoding','authority','binding','tables','closureSha256'])
   exact(value.binding,['sessionId','inheritedEventCount','nativeCut','nativePrefixSha256','sourceSha256','prefixSha256'])
+  const expected=value.binding
   if(value.schemaVersion!==1||value.encoding!=='native-mvu-schema-prefix-input-closure-v1'
-    ||value.authority!=='consumer-data-only'||!same(value.binding,expected)||!hash(value.closureSha256)
+    ||value.authority!=='consumer-data-only'||!hash(value.closureSha256)
     ||!key(expected.sessionId)||![expected.inheritedEventCount,expected.nativeCut].every(v=>Number.isSafeInteger(v)&&v>=0)
     ||expected.inheritedEventCount>=expected.nativeCut
     ||![expected.nativePrefixSha256,expected.sourceSha256,expected.prefixSha256].every(hash)
@@ -99,11 +107,15 @@ export function createRoleplayMvuSchemaPrefixInputs(tables:{branch:Table;status:
       const entries=()=>[...live.entries()].filter(([key])=>key.startsWith(`${binding.sessionId}__`)
         &&enumerationKey(name,key))
       function remember(keyValue:string,value:unknown):unknown {
-        const copied=value===undefined?null:data(value)
-        const row=data({key:keyValue,exists:value!==undefined,sha256:value===undefined?'missing':recordSha256(copied),value:copied})
+        const sha256=value===undefined?'missing':recordSha256(value),previous=rows.get(keyValue)
+        if(previous) {
+          if(previous.sha256!==sha256||previous.exists!==(value!==undefined))fail('SCHEMA_FROZEN_INPUT_CHANGED')
+          return value
+        }
+        // One detached row per (table,key). Its new envelope pays for its value
+        // once; the final closure independently pays for the complete record.
+        const row=data({key:keyValue,exists:value!==undefined,sha256,value:value===undefined?null:value})
         if(!key(keyValue)||!keyValue.includes('__')||rows.size>=16_384&&!rows.has(keyValue))fail()
-        const previous=rows.get(keyValue)
-        if(previous&&!same(previous,row))fail('SCHEMA_FROZEN_INPUT_CHANGED')
         rows.set(keyValue,row)
         return value
       }

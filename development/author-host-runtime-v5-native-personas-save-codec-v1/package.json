@@ -1,0 +1,20 @@
+{
+  "name": "dsh-nexttavern-author-host-runtime-v5-native-personas-save-codec-v1",
+  "version": "0.5.2",
+  "private": true,
+  "type": "module",
+  "description": "Owned complete author compilation and Host5 execution journal over the real server ABI4",
+  "license": "GPL-3.0-only",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "assets",
+    "LICENSE",
+    "NOTICE.md"
+  ]
+}

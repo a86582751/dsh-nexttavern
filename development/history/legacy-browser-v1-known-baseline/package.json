@@ -1,0 +1,16 @@
+{
+  "name": "dsh-nexttavern-author-browser-runtime-v1",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Independent bounded author browser AST compiler and isolated DOM/snapshot/player bridge; no Source or Native authority",
+  "license": "GPL-3.0-only",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "assets", "src", "LICENSE", "NOTICE.md"],
+  "dependencies": {"typescript": "5.9.3"},
+  "bundleDependencies": ["typescript"]
+}

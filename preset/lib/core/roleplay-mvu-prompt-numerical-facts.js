@@ -373,10 +373,13 @@ function programOpening(input) {
         || !equal(Object.keys(row.closureRef).sort(), ['fieldPointer', 'key', 'recordSha256', 'table'])) {
         fail('PROMPT_NUMERICAL_PROGRAM_PACKET_REF_INVALID');
     }
-    return frozenFacts({ kind: 'program-opening', ownerSessionId: sid, numericalSourceSha256: genesis.sourceSha256,
+    const publication = { kind: 'program-opening', ownerSessionId: sid, numericalSourceSha256: genesis.sourceSha256,
         canonical, nativeEventRecordSha256: row.nativeEventRecordSha256, genesis, snapshot, source: plan.source, basis: plan.basis,
         native, openingSettlement: event.openingSettlement, originalPacketRefs: refs, originalPackets: { seed, input: packet, plan: planRecord, intent },
-        archiveProvenance: row.closureRef, resultSnapshotSha256: snapshot.stateSnapshotSha256 });
+        archiveProvenance: row.closureRef, resultSnapshotSha256: snapshot.stateSnapshotSha256 };
+    // Packet members already carry their immutable public types. Reapplying the
+    // recursive mapped type to the inferred full version union exceeds TS depth.
+    return frozenFacts(publication);
 }
 /** Pure packet validation reused by the scope consumer. This function neither
  * reads historical rows nor treats the serialized archive ref as currency. */

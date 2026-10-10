@@ -20,6 +20,17 @@ export interface TavernLoreSourceRowDataV1 {
   /** null represents an absent row only; exists is the actual table fact. */
   readonly value: Readonly<Record<string, unknown>> | null
 }
+/** Exact values and own-property presence of Source's counter projection.
+ * The immutable journal event seals this DATA; it grants no live permission. */
+export interface TavernLoreSourceCounterWitnessV1 {
+  readonly schemaVersion:1
+  readonly encoding:'tavern-lore-source-counter-witness-v1'
+  readonly rows:readonly {
+    readonly table:'branch'
+    readonly key:string
+    readonly counters:Readonly<Partial<Record<'lastTurn'|'lastSeq'|'surfaceTokens',unknown>>>
+  }[]
+}
 export interface TavernLoreRawEntryDataV1 {
   readonly ref: LegacyRawEntryDataRefV1
   /** Object keys stay distinct from the legacy projection's ordinal. */

@@ -1,4 +1,4 @@
-/** Local, unapplied proposal. A plan classifies bytes; it grants no Source,
+/** A plan classifies bytes; it grants no Source,
  * Native publication, state-ready, persistence, or zero-registration authority.
  * Existing executor 1–3 input/program records remain schemaVersion: 1. */
 import type {
@@ -60,6 +60,40 @@ export interface ExecutionPlanScriptV1 {
   readonly evidence: 'complete-loader-ast' | 'trusted-schema-worker'
     | 'local-audit-only' | 'disabled-source-retained' | 'none'
 }
+export interface RegisteredCommandPolicyBindingV1 {
+  readonly scriptOrdinal:number
+  readonly scriptIdentity:string
+  readonly sourceSpan:AstSpanV1
+  readonly specifier:string
+  readonly importKind:'named'|'namespace'|'dynamic-namespace'
+  readonly importedName:'registerMvuSchema'|'*'
+  readonly localName:string|null
+  readonly policy:'stagedog-command-discard-v1'
+}
+/** The protected compiler records real import sites, not the script's allowed
+ * import inventory. The distinct lowered export owns each live registration. */
+export interface RegisteredCommandPolicyProfileV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-mvu-registered-command-policy-profile-v1'
+  readonly errorPolicy:'registered-command-policy-v1'
+  readonly bindings:readonly RegisteredCommandPolicyBindingV1[]
+  readonly profileSha256:string
+}
+export interface InitializationWriteBindingV1 {
+  readonly scriptOrdinal:number
+  readonly scriptIdentity:string
+  readonly sourceSha256:string
+  readonly sourceSpan:AstSpanV1
+  readonly capability:'insert-or-assign-chat-stat-data-v1'
+}
+/** Only an actual helper call opts its script into initialization writes.
+ * Absence preserves the retained module bindings and execution-plan bytes. */
+export interface InitializationWriteProfileV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-mvu-chat-initialization-write-profile-v1'
+  readonly bindings:readonly InitializationWriteBindingV1[]
+  readonly profileSha256:string
+}
 export interface AuthorExecutionPlanV1 {
   readonly schemaVersion: 1
   readonly encoding: 'native-mvu-author-execution-plan-v1'
@@ -82,6 +116,9 @@ export interface AuthorExecutionPlanV1 {
   /** Public program validation must refuse local audit evidence. This flag is
    * descriptive, never a capability or production admission result. */
   readonly containsLocalAuditEvidence: boolean
+  /** Absent in retained atomic plans; no historical shape or hash is upgraded. */
+  readonly commandPolicyProfile?:RegisteredCommandPolicyProfileV1
+  readonly initializationWriteProfile?:InitializationWriteProfileV1
   readonly executionPlanSha256: string
 }
 export interface MvuSchemaCompilationInputV4 {
@@ -120,11 +157,16 @@ export interface MvuSchemaProgramV4 extends Omit<MvuSchemaCompilationInputV4,
   readonly executionPlan: AuthorExecutionPlanV1
   readonly programSha256: string
 }
+export type WorkerSchemaAstBudgetFailureV4 = 'EXECUTION_AST_TOKEN_LIMIT'
+  | 'EXECUTION_AST_DEPTH_LIMIT' | 'EXECUTION_AST_NODE_LIMIT'
 export interface WorkerSchemaAstAdmissionRequest {
   readonly script: RawAuthorScriptV4
   readonly ordinal: number
   readonly sourceFile: ts.SourceFile
   readonly checker: ts.TypeChecker
+  /** Candidate parsing retains the first existing MVU execution budget
+   * failure. The private schema owner consumes it only after actual intent. */
+  readonly budgetFailure?: WorkerSchemaAstBudgetFailureV4
 }
 export type WorkerSchemaAstAdmissionResult = {
   readonly kind: 'accepted-schema'

@@ -189,14 +189,15 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     }
   }
   const schemaCore=deps.schema?createRoleplayMvuSchemaCore({...deps.schema,branch:deps.tables.branch,
-    status:deps.tables.status,source,session:id=>deps.session(id) as unknown as Session|undefined,
+    status:deps.tables.status,recordOwner:deps.inputState.schemaJournal,source,
+    session:id=>deps.session(id) as unknown as Session|undefined,
     withSourceLock:deps.withSourceLock,projectPrefix:events=>deps.messageEdits.projectPrefix(events),
     nativeRead:(identity,turn)=>native.read(identity,turn)}):undefined
   let schemaSelection:SchemaOpeningSelectionAdapter|undefined
   let schemaStory:ReturnType<typeof createRoleplayMvuSchemaStoryCore>|undefined
   let schemaPlayer:ReturnType<typeof createRoleplayMvuSchemaPlayerCore>|undefined
   function createSchemaStory(completion:Pick<MvuSchemaStoryCoreDeps,'closingView'|'verifyNative'|'verifyConsumedScope'|'readCanonical'
-    |'readConsumedCanonical'|'awaitOwnedCompletion'>) {
+    |'readConsumedCanonical'|'awaitOwnedCompletion'|'authorChat'>) {
     if(!schemaCore||!deps.schema)return undefined
     const schemaSource=createRoleplayMvuSchemaSource({...sourceDeps,inputState:deps.inputState},
       deps.schema.markers,events=>deps.messageEdits.projectPrefix(events))
@@ -206,6 +207,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock}
     schemaStory??=createRoleplayMvuSchemaStoryCore({...completion,...common,inputState:deps.inputState,
       manualPendingCode:(id:string)=>schemaPlayer?.pendingCode(id),
+      captureManualLedger:(id:string)=>schemaPlayer?.captureLedger(id),
       manualEditBlockCode:(id:string)=>schemaPlayer?.editBlockCode(id),
       derivedRequired:deps.schemaDerivedRequired,readDerivedGenesis:deps.readSchemaDerivedGenesis,
       readEditInvalidation:deps.readSchemaEditInvalidation,
@@ -552,6 +554,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     readAuthorSource:source.readAuthorSource,authorSourceCurrent:source.authorSourceCurrent,
     createSchemaSelection,hasSchemaOpening,readSchemaInitialization,
     createSchemaStory,readSchemaSnapshot:(id:string)=>schemaStory?.readSnapshot(id),
+    readAdmittedBrowserProgram:(id:string)=>schemaStory?.readAdmittedBrowserProgram(id),
     readSchemaObservation:(id:string)=>schemaStory?.readSchemaObservation(id),
     captureSchemaPromptScopes:(id:string)=>schemaStory?.capturePromptScopes(id),
     executeAuthorPrompt:(...args:Parameters<NonNullable<typeof schemaStory>['executePrompt']>)=>{

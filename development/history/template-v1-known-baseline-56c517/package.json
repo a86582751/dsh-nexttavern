@@ -1,0 +1,24 @@
+{
+  "name": "dsh-nexttavern-template-runtime-v1",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Independent bounded read-only Tavern template component; no Source, MVU or Native authority",
+  "license": "GPL-3.0-only",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "assets", "src", "LICENSE", "NOTICE.md"],
+  "dependencies": {
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "@jitl/quickjs-ffi-types": "0.32.0"
+  },
+  "bundleDependencies": [
+    "quickjs-emscripten-core",
+    "@jitl/quickjs-wasmfile-release-sync",
+    "@jitl/quickjs-ffi-types"
+  ]
+}

@@ -59,6 +59,7 @@ export interface MvuSchemaPlayerPlanV3 extends Omit<MvuSchemaPlayerPlanLegacyV1,
 }
 export interface MvuSchemaPlayerPlanV4 extends Omit<MvuSchemaPlayerPlanV3,'schemaVersion'|'encoding'|'executorVersion'> {
   schemaVersion:4;encoding:'native-mvu-schema-player-plan-v4';executorVersion:4
+  errorPolicy?:'registered-command-policy-v1'
 }
 /** Host5's Combined identity does not change manual phase ABI4. */
 export interface MvuSchemaPlayerPlanV5 extends Omit<MvuSchemaPlayerPlanV4,'schemaVersion'|'encoding'> {
@@ -113,12 +114,16 @@ export type MvuSchemaPlayerLive=Extract<SchemaExecutionResult,{kind:'completed'}
 export interface MvuSchemaPlayerPublicationBoundary {
   plan:MvuSchemaPlayerPlanV1;event:MvuSchemaPlayerEventV1;head:MvuSchemaNumericalHead
   settlement:MvuSchemaPlayerSettlementV1
+  /** This publisher's exact readbacks, frozen before the live owner consumes them. */
+  confirmedRows:readonly {key:string;value:unknown}[]
   stage:'before-event'|'after-event'|'before-head'|'after-head'|'before-settlement'|'after-settlement'
 }
 export interface MvuSchemaPlayerDeps {
   table:{get(key:string):unknown;put(key:string,value:unknown):Promise<unknown>}
   readReady(plan:MvuSchemaPlayerPlanV1):{kind:'ready';snapshot:MvuSchemaNumericalSnapshotV2}|{kind:'blocked';code:string}
   ownerCurrent(owner:object,plan:MvuSchemaPlayerPlanV1):boolean
+  /** Core returns the private owner's actual plan; a rejected owner cannot fall back to raw parsing. */
+  readOwnedPlan?(owner:object,suppliedPlan:MvuSchemaPlayerPlanV1):MvuSchemaPlayerPlanV1|undefined
   executePhase(plan:MvuSchemaPlayerPlanV1,phase:MvuSchemaPlayerPhase,input:SchemaEvaluationInput,
     owner:object):Promise<SchemaExecutionResult>
   withPublicationBoundary<T>(owner:object,lastLive:MvuSchemaPlayerLive,action:()=>Promise<T>):Promise<T>
@@ -203,7 +208,9 @@ export function validateMvuSchemaPlayerPlan(input:MvuSchemaPlayerPlanV1):MvuSche
     'initialCut','clockEpochMs','randomSeed','selectors','planSha256',
     ...(plan.schemaVersion>=2?['executorVersion']:[]),
     ...(plan.schemaVersion>=3?['scopeReadFrame']:[]),
-    ...(plan.schemaVersion===5?['epoch','serverProgramSha256']:[])])
+    ...(plan.schemaVersion===5?['epoch','serverProgramSha256']:[]),
+    ...(plan.schemaVersion>=4&&'errorPolicy' in plan?['errorPolicy']:[])])
+  if('errorPolicy' in plan&&plan.errorPolicy!=='registered-command-policy-v1')fail()
   fact(plan,'planSha256')
   const op=validateMvuSchemaPlayerOperation(plan.operation),cut=validateSchemaSourceCut(plan.initialCut)
   validateSchemaStorySourceFrame(plan.currentFrame);marker(plan.marker)
@@ -300,7 +307,8 @@ export function mvuSchemaPlayerPhaseInput(plan:MvuSchemaPlayerPlanV1,index:numbe
     if(!schemaScopeReadFactsEqual(read,plan.scopeReadFrame))fail()
     const version=plan.schemaVersion===5?4:plan.schemaVersion
     const input=schemaEmptyPhaseInput(version,MVU_SCHEMA_PLAYER_PHASES[index]!,
-      plan.operation.base.values,values,context,plan.clockEpochMs,plan.randomSeed,read)
+      plan.operation.base.values,values,context,plan.clockEpochMs,plan.randomSeed,read,
+      plan.schemaVersion===4||plan.schemaVersion===5?plan.errorPolicy:undefined)
     return freezeMvuSchemaStoryData(version===4?validateSchemaEvaluationInputV4(input):validateSchemaEvaluationInputV3(input))
   }
   return freezeMvuSchemaStoryData(schemaEmptyPhaseInput(plan.schemaVersion,MVU_SCHEMA_PLAYER_PHASES[index]!,
@@ -363,6 +371,9 @@ export function mvuSchemaPlayerEvent(plan:MvuSchemaPlayerPlanV1,phases:readonly 
 }
 export function validateMvuSchemaPlayerEvent(input:MvuSchemaPlayerEventV1):MvuSchemaPlayerEventV1 {
   const event=freezeMvuSchemaStoryData(input),plan=validateMvuSchemaPlayerPlan(event.plan)
+  return playerEventForParsedPlan(event,plan)
+}
+function playerEventForParsedPlan(event:MvuSchemaPlayerEventV1,plan:MvuSchemaPlayerPlanV1):MvuSchemaPlayerEventV1 {
   exact(event,['schemaVersion','encoding','sessionId','sourceSha256','eventId','plan','phases','reducer','commandRefusal',
     'outcome','refusal','values','valuesSha256','context','frontier','eventSha256'])
   fact(event,'eventSha256')
@@ -380,7 +391,9 @@ export function validateMvuSchemaPlayerEvent(input:MvuSchemaPlayerEventV1):MvuSc
       ||(phase.output.kind==='refused'||phase.output.commands.length>0)&&index!==event.phases.length-1)fail()
   }
   if(event.reducer?.result.kind==='rejected'&&event.phases.length!==2)fail()
-  if(!same(event,mvuSchemaPlayerEvent(plan,event.phases)))fail()
+  // fact() checked the stored body; the constructor seals the canonical body
+  // with this parsed plan. Consume those hashes without hashing both again.
+  if(event.eventSha256!==mvuSchemaPlayerEvent(plan,event.phases).eventSha256)fail()
   return event
 }
 export function mvuSchemaPlayerHead(event:MvuSchemaPlayerEventV1):MvuSchemaNumericalHead {
@@ -402,12 +415,18 @@ export function mvuSchemaPlayerSettlement(event:MvuSchemaPlayerEventV1):MvuSchem
 }
 export function validateMvuSchemaPlayerSettlement(input:MvuSchemaPlayerSettlementV1,event:MvuSchemaPlayerEventV1):MvuSchemaPlayerSettlementV1 {
   const value=freezeMvuSchemaStoryData(input)
-  if(!same(value,mvuSchemaPlayerSettlement(validateMvuSchemaPlayerEvent(event))))fail()
+  return playerSettlementForParsedEvent(value,validateMvuSchemaPlayerEvent(event))
+}
+function playerSettlementForParsedEvent(value:MvuSchemaPlayerSettlementV1,event:MvuSchemaPlayerEventV1):MvuSchemaPlayerSettlementV1 {
+  if(!same(value,mvuSchemaPlayerSettlement(event)))fail()
   return value
 }
 export function makeMvuSchemaPlayerCompletion(plan:MvuSchemaPlayerPlanV1,settlement:MvuSchemaPlayerSettlementV1):MvuSchemaPlayerCompletionV1 {
-  plan=validateMvuSchemaPlayerPlan(plan)
-  settlement=freezeMvuSchemaStoryData(settlement)
+  settlement=playerSettlementForParsedPlan(settlement,plan)
+  return playerCompletionFromParsedFacts(plan,settlement)
+}
+function playerSettlementForParsedPlan(input:MvuSchemaPlayerSettlementV1,plan:MvuSchemaPlayerPlanV1):MvuSchemaPlayerSettlementV1 {
+  const settlement=freezeMvuSchemaStoryData(input)
   exact(settlement,['schemaVersion','encoding','sessionId','sourceSha256','planSha256','operationSha256','marker',
     'outcome','event','result','settlementSha256']);fact(settlement,'settlementSha256')
   exact(settlement.event,['key','sha256'])
@@ -435,6 +454,10 @@ export function makeMvuSchemaPlayerCompletion(plan:MvuSchemaPlayerPlanV1,settlem
       ||head.valuesSha256===op.base.valuesSha256)fail()
   }else if(!same(head,op.base.currentHead)||settlement.result.valuesSha256!==op.base.valuesSha256
     ||settlement.outcome==='refused'&&settlement.result.contextSha256!==recordSha256(op.base.context))fail()
+  return settlement
+}
+function playerCompletionFromParsedFacts(plan:MvuSchemaPlayerPlanV1,settlement:MvuSchemaPlayerSettlementV1):MvuSchemaPlayerCompletionV1 {
+  const op=plan.operation
   return sealMvuSchemaStoryFact({schemaVersion:1 as const,encoding:'native-mvu-schema-player-complete-v1' as const,
     sessionId:op.sessionId,operationId:op.operationId,operation:{key:mvuSchemaPlayerOperationKey(op.sessionId,op.operationId),
       sha256:op.operationSha256},marker:plan.marker,planSha256:plan.planSha256,
@@ -444,7 +467,13 @@ export function makeMvuSchemaPlayerCompletion(plan:MvuSchemaPlayerPlanV1,settlem
 export function validateMvuSchemaPlayerCompletion(input:MvuSchemaPlayerCompletionV1,plan:MvuSchemaPlayerPlanV1,
   settlement:MvuSchemaPlayerSettlementV1):MvuSchemaPlayerCompletionV1 {
   const value=freezeMvuSchemaStoryData(input)
-  if(!same(value,makeMvuSchemaPlayerCompletion(plan,settlement)))fail()
+  plan=validateMvuSchemaPlayerPlan(plan)
+  settlement=playerSettlementForParsedPlan(settlement,plan)
+  return playerCompletionForParsedFacts(value,plan,settlement)
+}
+function playerCompletionForParsedFacts(value:MvuSchemaPlayerCompletionV1,plan:MvuSchemaPlayerPlanV1,
+  settlement:MvuSchemaPlayerSettlementV1):MvuSchemaPlayerCompletionV1 {
+  if(!same(value,playerCompletionFromParsedFacts(plan,settlement)))fail()
   return value
 }
 export function makeMvuSchemaPlayerRefusal(op:MvuSchemaPlayerOperationV1,code:string):MvuSchemaPlayerRefusalV1 {
@@ -475,9 +504,8 @@ export function readMvuSchemaPlayerPlanFacts(branch:{get(key:string):unknown},_s
   if(!same(plan.operation,operation)||!same(plan.marker,{seq:actualMarker.seq,sha256:recordSha256(actualMarker)})
     ||plan.initialCut.nativeCut>actualEvents.length
     ||plan.initialCut.nativePrefixSha256!==recordSha256(actualEvents.slice(0,plan.initialCut.nativeCut)))fail()
-  if(!same(branch.get(mvuSchemaPlayerOperationKey(sid,opid)),operation)
-    ||!same(branch.get(mvuSchemaPlayerPlanKey(sid,opid)),plan)
-    ||branch.get(mvuSchemaPlayerRefusalKey(sid,opid))!==undefined)fail()
+  // This entire Domain read is synchronous. Reuse its parsed operation and
+  // plan after the Native join; no writer has run between these facts.
   return {operation,plan,marker:actualMarker}
 }
 
@@ -486,14 +514,37 @@ export function readMvuSchemaPlayerPlanFacts(branch:{get(key:string):unknown},_s
 export function readMvuSchemaPlayerCompletedFacts(branch:{get(key:string):unknown},status:{get(key:string):unknown},
   suppliedOperation:MvuSchemaPlayerOperationV1,actualEvents:readonly SessionEvent[]) {
   const {operation,plan,marker:actualMarker}=readMvuSchemaPlayerPlanFacts(branch,status,suppliedOperation,actualEvents)
-  const sid=operation.sessionId,opid=operation.operationId
+  const sid=operation.sessionId
   const eventId=recordSha256({encoding:'native-mvu-schema-player-event-identity-v1',planSha256:plan.planSha256})
-  const event=validateMvuSchemaPlayerEvent(status.get(mvuSchemaPlayerEventKey(sid,eventId)) as MvuSchemaPlayerEventV1)
-  if(!same(event.plan,plan))fail()
+  const storedEvent=freezeMvuSchemaStoryData(status.get(mvuSchemaPlayerEventKey(sid,eventId)) as MvuSchemaPlayerEventV1)
+  const event=playerEventForParsedPlan(storedEvent,plan)
+  return completedPlayerFacts({operation,plan,marker:actualMarker},event,branch,status)
+}
+/** InputState retains this actual persistent read for both the pending-state
+ * projection and current Story fold. It grants no execution/publication lease. */
+export interface MvuSchemaPlayerLedger {
+  readonly code?:string
+  readonly completedByEventKey:ReadonlyMap<string,ReturnType<typeof readMvuSchemaPlayerCompletedFacts>>
+}
+/** Core's synchronous history inventory already parsed this actual status
+ * event. Join it to the independently read branch plan and durable closure;
+ * these DATA facts do not grant execution or publication permission. */
+export function joinMvuSchemaPlayerCompletedEvent(branch:{get(key:string):unknown},status:{get(key:string):unknown},
+  event:MvuSchemaPlayerEventV1,actualEvents:readonly SessionEvent[]) {
+  const facts=readMvuSchemaPlayerPlanFacts(branch,status,event.plan.operation,actualEvents)
+  // Both complete parsers established their plan checksum in this read.
+  if(event.plan.planSha256!==facts.plan.planSha256)fail()
+  return completedPlayerFacts(facts,event,branch,status)
+}
+function completedPlayerFacts(facts:ReturnType<typeof readMvuSchemaPlayerPlanFacts>,event:MvuSchemaPlayerEventV1,
+  branch:{get(key:string):unknown},status:{get(key:string):unknown}) {
+  const {operation,plan,marker:actualMarker}=facts,sid=operation.sessionId,opid=operation.operationId
   const storedSettlement=status.get(mvuSchemaPlayerSettlementKey(sid,plan.planSha256)) as MvuSchemaPlayerSettlementV1
-  const settlement=validateMvuSchemaPlayerSettlement(storedSettlement,event)
+  // The event's parser and actual-plan join already ran in this same read.
+  // The settlement's canonical link supplies the completion's event facts.
+  const settlement=playerSettlementForParsedEvent(freezeMvuSchemaStoryData(storedSettlement),event)
   const storedCompletion=branch.get(mvuSchemaPlayerCompletionKey(sid,opid)) as MvuSchemaPlayerCompletionV1
-  const completion=validateMvuSchemaPlayerCompletion(storedCompletion,plan,settlement)
+  const completion=playerCompletionForParsedFacts(freezeMvuSchemaStoryData(storedCompletion),plan,settlement)
   const body={schemaVersion:2 as const,encoding:'native-mvu-schema-state-snapshot-v2' as const,
     sessionId:sid,sourceSha256:operation.base.sourceSha256,root:operation.base.root,currentHead:settlement.result.head,
     revision:settlement.result.revision,headSha256:settlement.result.headSha256,values:event.values,

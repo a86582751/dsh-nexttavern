@@ -3,6 +3,7 @@
 import type {RawAuthorScriptV4} from './tavern-mvu-author-execution-types-v4.mjs'
 import type {BrowserProgramSourceLocatorV1} from './tavern-author-browser-types.mjs'
 import type {MvuScopeReadFrameV1,MvuScopeVariablesV1} from './tavern-mvu-scope-read-types.js'
+import type {AuthorChatCaptureV1} from './roleplay-author-chat-state-types.js'
 
 export interface PromptCapturedMessageV1 {
   readonly index:number
@@ -29,6 +30,8 @@ export interface PromptCaptureV1 {
   readonly randomSeed:string
   readonly messages:readonly PromptCapturedMessageV1[]
   readonly scopeFrame:MvuScopeReadFrameV1
+  /** State1 supplies this separate namespace; MVU provenance stays intact. */
+  readonly authorChat?:AuthorChatCaptureV1
   readonly captureSha256:string
 }
 export interface PromptRawScriptV1 {readonly ordinal:number;readonly descriptor:RawAuthorScriptV4}

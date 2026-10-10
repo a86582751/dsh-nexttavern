@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "encoding": "owned-author-browser-runtime-source-inputs-v1",
+  "name": "dsh-nexttavern-author-browser-runtime-v1",
+  "version": "0.1.0",
+  "graphs": {
+    "provider": [
+      {
+        "artifact": "tavern-author-browser-descriptor-typescript",
+        "path": "src/core/tavern-author-browser-descriptor.mts",
+        "sha256": "1f6bb52ce16a1c27a0f53248d203e193d0b0ca9f7c16fc056e214ac0ffb7c669"
+      },
+      {
+        "artifact": "tavern-author-browser-provider-typescript",
+        "path": "src/tavern-author-browser-provider.mts",
+        "sha256": "44b7b96a67039b11ca1bf3b4d74275733f6e090f44924aaa8255235749701fac"
+      }
+    ],
+    "partition": [
+      {
+        "artifact": "roleplay-data-typescript",
+        "path": "src/core/roleplay-data.ts",
+        "sha256": "16683dea5487a51cff7c4dc1c5bde6226cc608c131f9930cf4cac361d5a48714"
+      },
+      {
+        "artifact": "roleplay-userinfo-typescript",
+        "path": "src/core/roleplay-userinfo.ts",
+        "sha256": "62fec850e195c8a7129e28b7afb90b1a26d3cce42c671f5cba58e69659eaaf79"
+      },
+      {
+        "artifact": "tavern-author-browser-artifact-typescript",
+        "path": "src/core/tavern-author-browser-artifact.mts",
+        "sha256": "cb94efaebff49e065ca3054669848dc4552fd995977e82a8bd762dbf036de65a"
+      },
+      {
+        "artifact": "tavern-author-browser-budget-typescript",
+        "path": "src/core/tavern-author-browser-budget.ts",
+        "sha256": "f25ba442cc1cddf2c9d9075a9121504c015e394e1a30c76bfc88b86f92876449"
+      },
+      {
+        "artifact": "tavern-author-browser-descriptor-typescript",
+        "path": "src/core/tavern-author-browser-descriptor.mts",
+        "sha256": "1f6bb52ce16a1c27a0f53248d203e193d0b0ca9f7c16fc056e214ac0ffb7c669"
+      },
+      {
+        "artifact": "tavern-author-browser-partition-typescript",
+        "path": "src/core/tavern-author-browser-partition.mts",
+        "sha256": "cd5fb9933479e5626fe3f938e4a7858e0b4fa3da9f5559dc6c5b74cc23e1bb80"
+      },
+      {
+        "artifact": "tavern-author-browser-profile-typescript",
+        "path": "src/core/tavern-author-browser-profile.mts",
+        "sha256": "3695bc29ac1eccb66f3bdf2eb0d4fa6bce8b9163262ff7998650ca77a6ebacec"
+      }
+    ],
+    "ast-worker": [
+      {
+        "artifact": "roleplay-data-typescript",
+        "path": "src/core/roleplay-data.ts",
+        "sha256": "16683dea5487a51cff7c4dc1c5bde6226cc608c131f9930cf4cac361d5a48714"
+      },
+      {
+        "artifact": "roleplay-userinfo-typescript",
+        "path": "src/core/roleplay-userinfo.ts",
+        "sha256": "62fec850e195c8a7129e28b7afb90b1a26d3cce42c671f5cba58e69659eaaf79"
+      },
+      {
+        "artifact": "tavern-author-browser-artifact-typescript",
+        "path": "src/core/tavern-author-browser-artifact.mts",
+        "sha256": "cb94efaebff49e065ca3054669848dc4552fd995977e82a8bd762dbf036de65a"
+      },
+      {
+        "artifact": "tavern-author-browser-ast-worker-typescript",
+        "path": "src/core/tavern-author-browser-ast-worker.mts",
+        "sha256": "ba6ab9de1e901b9d6393f7ead6b0b15a97bbb043c189b842801a3855e9b04f8e"
+      },
+      {
+        "artifact": "tavern-author-browser-compiler-typescript",
+        "path": "src/core/tavern-author-browser-compiler.mts",
+        "sha256": "8c2c11720d97702f05e3f0afcf55c8c9c8486f810d9555a25319f7065d0adf3a"
+      },
+      {
+        "artifact": "tavern-author-browser-descriptor-typescript",
+        "path": "src/core/tavern-author-browser-descriptor.mts",
+        "sha256": "1f6bb52ce16a1c27a0f53248d203e193d0b0ca9f7c16fc056e214ac0ffb7c669"
+      },
+      {
+        "artifact": "tavern-author-browser-profile-typescript",
+        "path": "src/core/tavern-author-browser-profile.mts",
+        "sha256": "3695bc29ac1eccb66f3bdf2eb0d4fa6bce8b9163262ff7998650ca77a6ebacec"
+      }
+    ],
+    "child": [
+      {
+        "artifact": "tavern-author-browser-budget-typescript",
+        "path": "src/core/tavern-author-browser-budget.ts",
+        "sha256": "f25ba442cc1cddf2c9d9075a9121504c015e394e1a30c76bfc88b86f92876449"
+      },
+      {
+        "artifact": "tavern-author-browser-child-entry-typescript",
+        "path": "src/core/tavern-author-browser-child-entry.ts",
+        "sha256": "2cf08c7657b3bfd3a9a4da1dba09981dcfd65020b0f456c487415d0602196397"
+      },
+      {
+        "artifact": "tavern-author-browser-child-typescript",
+        "path": "src/core/tavern-author-browser-child.ts",
+        "sha256": "25c953a28dcb5b0e7100c6b90400dd5f853e04d93e82f42294399d7e720101e8"
+      }
+    ],
+    "guard": [
+      {
+        "artifact": "tavern-author-browser-guard-entry-typescript",
+        "path": "src/core/tavern-author-browser-guard-entry.ts",
+        "sha256": "9d5e738eeeed0c15a2ec55eea1719a8957e57ba519528e2dd619d71ccc666afb"
+      }
+    ]
+  }
+}

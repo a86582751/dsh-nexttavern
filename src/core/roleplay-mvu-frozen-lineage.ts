@@ -185,27 +185,31 @@ export function createRoleplayMvuFrozenLineage(deps:MvuFrozenLineageDeps) {
     const proof=validateMvuFrozenDerivedSourceProofV2(raw),current=owner().readCommittedStaticSourceInheritance(proof.childSessionId),
       expected=capture(proof.childSessionId,frozenInheritanceRefV1(current.prepared))
     if(!same(proof,expected))fail('FROZEN_SOURCE_COMMIT_CHANGED')
-    return {proof,current}
+    return proof
   }
-  function current(raw:unknown):boolean {
+  /** The frozen transaction was established by historicalProof. Current
+   * callers consume only today's numerical Source dependencies here. */
+  function currentProof(proof:MvuDerivedSourceProofV2):boolean {
     try {
-      const {proof}=historicalProof(raw)
       return recordSha256(deps.readSourceDescriptor(proof.childSessionId))===proof.childSourceSha256
         &&deps.readSourceSha256(proof.childSessionId)===proof.childSourceSha256
     }catch {return false}
   }
+  function current(raw:unknown):boolean {
+    try {return currentProof(historicalProof(raw))}catch {return false}
+  }
   function historical(priorRaw:unknown,successorRaw:unknown):boolean {
     try {
       const successor=historicalProof(successorRaw),prior=validateMvuDerivedSourceProofUnion(priorRaw)
-      if(successor.proof.parentSessionId!==prior.childSessionId
-        ||successor.proof.parentSourceSha256!==prior.childSourceSha256
-        ||successor.proof.parentPointerSha256!==prior.childPointerSha256
-        ||!same(successor.proof.originalImport,prior.originalImport)
-        ||!same(successor.proof.macroContext.valuesSha256,prior.macroContext.valuesSha256)
-        ||successor.proof.macroContext.parentBindingSha256!==prior.macroContext.childBindingSha256)return false
+      if(successor.parentSessionId!==prior.childSessionId
+        ||successor.parentSourceSha256!==prior.childSourceSha256
+        ||successor.parentPointerSha256!==prior.childPointerSha256
+        ||!same(successor.originalImport,prior.originalImport)
+        ||!same(successor.macroContext.valuesSha256,prior.macroContext.valuesSha256)
+        ||successor.macroContext.parentBindingSha256!==prior.macroContext.childBindingSha256)return false
       if(prior.schemaVersion===1&&!old.verifyDenialBindingFacts(prior))return false
       if(prior.schemaVersion===2)historicalProof(prior)
-      const rows=new Map(successor.proof.materialRows.map(row=>[`${row.table}:${row.parentKey}`,row]))
+      const rows=new Map(successor.materialRows.map(row=>[`${row.table}:${row.parentKey}`,row]))
       return prior.materialRows.length===rows.size&&prior.materialRows.every(row=>{
         const next=rows.get(`${row.table}:${row.childKey}`)
         return !!next&&next.exists===row.exists&&next.parentValueSha256===(prior.schemaVersion===1
@@ -240,6 +244,6 @@ export function createRoleplayMvuFrozenLineage(deps:MvuFrozenLineageDeps) {
     }catch {return false}
   }
   const denial=(raw:unknown)=>{try {historicalProof(raw);return true}catch{return false}}
-  return {prepared,capture,current,historical,historicalPrepared,verifyDenialBindingFacts:denial,
+  return {prepared,capture,current,currentProof,historical,historicalPrepared,verifyDenialBindingFacts:denial,
     validate:validateMvuFrozenDerivedSourceProofV2}
 }

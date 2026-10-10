@@ -7,7 +7,12 @@ import { inheritanceDataV1, inheritanceExactV1, inheritanceFailV1, inheritanceFr
 function overlayForLayer(layer) {
     const edited = new Map();
     for (const { value: event, ref: eventRef } of layer.events) {
-        const request = event.request, previous = edited.get(request.rawEntryPointer);
+        // Membership events remain in the frozen publication sequence. Their
+        // materialization belongs to the same member fold as the child's locals.
+        const request = event.request;
+        if ('mutation' in request)
+            continue;
+        const previous = edited.get(request.rawEntryPointer);
         if (previous && previous.rawEntrySha256 !== request.rawEntrySha256)
             inheritanceFailV1('SOURCE_INHERITANCE_JOURNAL_INVALID');
         edited.set(request.rawEntryPointer, { rawEntrySha256: request.rawEntrySha256,

@@ -42,12 +42,12 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
   function makePlan<V extends 1|2|3|4>(scope:InputCompletionScope,canonical:MvuSchemaStoryCanonical,base:MvuSchemaNumericalSnapshotV2,
     currentFrame:SchemaStorySourceFrame,realmEpoch:string,programSha256:string,initialCut:SourceNativeCutFacts,
     clockEpochMs:number,executorVersion:V,scopeReadFrame:MvuScopeReadFrameV1|undefined,
-    hostEpoch:{epoch:SchemaJournalRef;serverProgramSha256:string}|undefined):
+    hostEpoch:{epoch:SchemaJournalRef;serverProgramSha256:string;errorPolicy?:'registered-command-policy-v1'}|undefined):
     V extends 4?MvuSchemaStoryPlanV5|MvuSchemaStoryPlanV6:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2
   function makePlan<V extends 1|2|3|4=1>(scope:InputCompletionScope,canonical:MvuSchemaStoryCanonical,base:MvuSchemaNumericalSnapshotV2,
     currentFrame:SchemaStorySourceFrame,realmEpoch:string,programSha256:string,initialCut:SourceNativeCutFacts,
     clockEpochMs=0,executorVersion:V=1 as V,scopeReadFrame?:MvuScopeReadFrameV1,
-    hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string}):
+    hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string;errorPolicy?:'registered-command-policy-v1'}):
     V extends 4?MvuSchemaStoryPlanV5|MvuSchemaStoryPlanV6:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2 {
     const input=freezeMvuSchemaStoryData({scope,canonical,base,currentFrame,realmEpoch,programSha256,initialCut,clockEpochMs})
     scope=input.scope;canonical=input.canonical;base=input.base;currentFrame=input.currentFrame
@@ -64,7 +64,8 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
       base:validateMvuSchemaNumericalSnapshot(base),candidate:parseMvuUpdateV2(canonical.narrative),...suffix}):executorVersion===4?
       freezeMvuSchemaStoryData({
         ...(hostEpoch?{schemaVersion:6 as const,encoding:'native-mvu-schema-story-plan-v6' as const,
-          epoch:hostEpoch.epoch,serverProgramSha256:hostEpoch.serverProgramSha256}:
+          epoch:hostEpoch.epoch,serverProgramSha256:hostEpoch.serverProgramSha256,
+          ...(hostEpoch.errorPolicy?{errorPolicy:hostEpoch.errorPolicy}:{})}:
           {schemaVersion:5 as const,encoding:'native-mvu-schema-story-plan-v5' as const}),
         executorVersion:4 as const,scope,canonical,base:validateMvuSchemaNumericalSnapshot(base),
         candidate:parseMvuUpdateV2(canonical.narrative),scopeReadFrame:validateMvuScopeReadFrameV1(scopeReadFrame),...suffix}):

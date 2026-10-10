@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "encoding": "owned-template-component-source-inputs-v1",
+  "name": "dsh-nexttavern-template-runtime-v1",
+  "version": "0.1.0",
+  "graphs": {
+    "provider": [
+      {
+        "artifact": "roleplay-data-typescript",
+        "path": "src/core/roleplay-data.ts",
+        "sha256": "16683dea5487a51cff7c4dc1c5bde6226cc608c131f9930cf4cac361d5a48714"
+      },
+      {
+        "artifact": "roleplay-userinfo-typescript",
+        "path": "src/core/roleplay-userinfo.ts",
+        "sha256": "62fec850e195c8a7129e28b7afb90b1a26d3cce42c671f5cba58e69659eaaf79"
+      },
+      {
+        "artifact": "tavern-mvu-schema-data-typescript",
+        "path": "src/core/tavern-mvu-schema-data.ts",
+        "sha256": "e76ddc0150474a51c1eab2e42855f68389dfb365b8478cb387a9c57e155eb94f"
+      },
+      {
+        "artifact": "tavern-mvu-schema-types-typescript",
+        "path": "src/core/tavern-mvu-schema-types.ts",
+        "sha256": "e79ac7e90e7dca64749bf5d16a6a41f6f9892c6a8cc1af1379d7f03263ccf6d9"
+      },
+      {
+        "artifact": "tavern-template-assets-typescript",
+        "path": "src/core/tavern-template-assets.mts",
+        "sha256": "730aff5da80a043a867ad03cb316ffbb2f60efe5b6f8162e7780821cf25cae07"
+      },
+      {
+        "artifact": "tavern-template-controller-typescript",
+        "path": "src/core/tavern-template-controller.mts",
+        "sha256": "232de5f0251fe42016939e5263481b3ce0366170c22f6355f4271de4b4855b1d"
+      },
+      {
+        "artifact": "tavern-template-data-typescript",
+        "path": "src/core/tavern-template-data.mts",
+        "sha256": "cca898feb309585ba206a0cecc80a10e765748ec5ef807ea606918eba4296019"
+      },
+      {
+        "artifact": "tavern-template-descriptor-typescript",
+        "path": "src/core/tavern-template-descriptor.mts",
+        "sha256": "41dd54f09580e91ec4654268d230e2775ee49ae78b3ac76ad95ff00520687721"
+      },
+      {
+        "artifact": "tavern-template-injection-data-typescript",
+        "path": "src/core/tavern-template-injection-data.mts",
+        "sha256": "e61eacb1aae6fd0402f5b25f25e426d630932b2d3f8839ee7b39db71afaac3b4"
+      },
+      {
+        "artifact": "tavern-template-provider-typescript",
+        "path": "src/core/tavern-template-provider.mts",
+        "sha256": "7e86d1afa252634b98b9b04296aaf3979d42c4c0bf9fcf23b520238da72ae26e"
+      }
+    ],
+    "controller": [
+      {
+        "artifact": "roleplay-data-typescript",
+        "path": "src/core/roleplay-data.ts",
+        "sha256": "16683dea5487a51cff7c4dc1c5bde6226cc608c131f9930cf4cac361d5a48714"
+      },
+      {
+        "artifact": "roleplay-userinfo-typescript",
+        "path": "src/core/roleplay-userinfo.ts",
+        "sha256": "62fec850e195c8a7129e28b7afb90b1a26d3cce42c671f5cba58e69659eaaf79"
+      },
+      {
+        "artifact": "tavern-mvu-schema-data-typescript",
+        "path": "src/core/tavern-mvu-schema-data.ts",
+        "sha256": "e76ddc0150474a51c1eab2e42855f68389dfb365b8478cb387a9c57e155eb94f"
+      },
+      {
+        "artifact": "tavern-mvu-schema-types-typescript",
+        "path": "src/core/tavern-mvu-schema-types.ts",
+        "sha256": "e79ac7e90e7dca64749bf5d16a6a41f6f9892c6a8cc1af1379d7f03263ccf6d9"
+      },
+      {
+        "artifact": "tavern-template-controller-typescript",
+        "path": "src/core/tavern-template-controller.mts",
+        "sha256": "232de5f0251fe42016939e5263481b3ce0366170c22f6355f4271de4b4855b1d"
+      },
+      {
+        "artifact": "tavern-template-data-typescript",
+        "path": "src/core/tavern-template-data.mts",
+        "sha256": "cca898feb309585ba206a0cecc80a10e765748ec5ef807ea606918eba4296019"
+      },
+      {
+        "artifact": "tavern-template-injection-data-typescript",
+        "path": "src/core/tavern-template-injection-data.mts",
+        "sha256": "e61eacb1aae6fd0402f5b25f25e426d630932b2d3f8839ee7b39db71afaac3b4"
+      }
+    ],
+    "worker": [
+      {
+        "artifact": "roleplay-data-typescript",
+        "path": "src/core/roleplay-data.ts",
+        "sha256": "16683dea5487a51cff7c4dc1c5bde6226cc608c131f9930cf4cac361d5a48714"
+      },
+      {
+        "artifact": "roleplay-userinfo-typescript",
+        "path": "src/core/roleplay-userinfo.ts",
+        "sha256": "62fec850e195c8a7129e28b7afb90b1a26d3cce42c671f5cba58e69659eaaf79"
+      },
+      {
+        "artifact": "tavern-mvu-schema-data-typescript",
+        "path": "src/core/tavern-mvu-schema-data.ts",
+        "sha256": "e76ddc0150474a51c1eab2e42855f68389dfb365b8478cb387a9c57e155eb94f"
+      },
+      {
+        "artifact": "tavern-mvu-schema-types-typescript",
+        "path": "src/core/tavern-mvu-schema-types.ts",
+        "sha256": "e79ac7e90e7dca64749bf5d16a6a41f6f9892c6a8cc1af1379d7f03263ccf6d9"
+      },
+      {
+        "artifact": "tavern-template-compiler-typescript",
+        "path": "src/core/tavern-template-compiler.mts",
+        "sha256": "fe56633130826ba823daa270c8dc29f4e3cc16d8e9bcc8464bc6812f03eabacf"
+      },
+      {
+        "artifact": "tavern-template-data-typescript",
+        "path": "src/core/tavern-template-data.mts",
+        "sha256": "cca898feb309585ba206a0cecc80a10e765748ec5ef807ea606918eba4296019"
+      },
+      {
+        "artifact": "tavern-template-descriptor-typescript",
+        "path": "src/core/tavern-template-descriptor.mts",
+        "sha256": "41dd54f09580e91ec4654268d230e2775ee49ae78b3ac76ad95ff00520687721"
+      },
+      {
+        "artifact": "tavern-template-injection-data-typescript",
+        "path": "src/core/tavern-template-injection-data.mts",
+        "sha256": "e61eacb1aae6fd0402f5b25f25e426d630932b2d3f8839ee7b39db71afaac3b4"
+      },
+      {
+        "artifact": "tavern-template-injection-guest-typescript",
+        "path": "src/core/tavern-template-injection-guest.mts",
+        "sha256": "32d178665d2a1e4e0a3a7d4fdcbcdceafeadd1d146f29296a250b666c7df3f6b"
+      },
+      {
+        "artifact": "tavern-template-worker-typescript",
+        "path": "src/core/tavern-template-worker.mts",
+        "sha256": "5640286bd03c4dcc7f5801c7d10ba4bd5e89ce1c49c6e232dbb44d8b10c323bb"
+      }
+    ]
+  }
+}

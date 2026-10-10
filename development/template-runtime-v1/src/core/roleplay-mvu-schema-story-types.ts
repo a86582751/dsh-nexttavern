@@ -131,6 +131,7 @@ export interface MvuSchemaStoryPlanV5 extends Omit<MvuSchemaStoryPlanV4,'schemaV
   schemaVersion:5
   encoding:'native-mvu-schema-story-plan-v5'
   executorVersion:4
+  errorPolicy?:'registered-command-policy-v1'
 }
 /** Host5 keeps Combined as the root identity; phase execution remains ABI4. */
 export interface MvuSchemaStoryPlanV6 extends Omit<MvuSchemaStoryPlanV5,'schemaVersion'|'encoding'> {
@@ -324,7 +325,8 @@ export function validateMvuSchemaStoryPlan<T extends MvuSchemaStoryPlan>(input:T
     'programSha256','initialCut','clockEpochMs','randomSeed','selectors','planSha256',
     ...(value.schemaVersion>=3?['executorVersion']:[]),
     ...(value.schemaVersion>=4?['scopeReadFrame']:[]),
-    ...(value.schemaVersion===6?['epoch','serverProgramSha256']:[])])
+    ...(value.schemaVersion===6?['epoch','serverProgramSha256']:[])],value.schemaVersion>=5?['errorPolicy']:[])
+  if('errorPolicy' in value&&value.errorPolicy!=='registered-command-policy-v1')fail()
   fact(value,'planSha256');validateMvuSchemaNumericalSnapshot(value.base)
   validateSchemaStorySourceFrame(value.currentFrame)
   const scope=value.scope,currency=scope.currency,receipt=scope.receipt,canonical=value.canonical,frame=value.currentFrame
@@ -422,9 +424,9 @@ export function mvuSchemaStoryPhaseInput(plan:MvuSchemaStoryPlan,index:number,
         values=bridge.result.values
       } else values=accepted.values
     }
-    if(plan.schemaVersion>=5)return freezeMvuSchemaStoryData(validateSchemaEvaluationInputV4({schemaVersion:4,
+    if(plan.schemaVersion===5||plan.schemaVersion===6)return freezeMvuSchemaStoryData(validateSchemaEvaluationInputV4({schemaVersion:4,
       encoding:'native-mvu-author-schema-phase-input-v4',commandsEncoding:'native-mvu-update-operations-v2',
-      errorPolicy:'atomic-refusal',phase:MVU_SCHEMA_STORY_PHASES[index]!,base:plan.base.values,
+      errorPolicy:plan.errorPolicy??'atomic-refusal',phase:MVU_SCHEMA_STORY_PHASES[index]!,base:plan.base.values,
       values,commands,context,scopeReadFrame:read,clockEpochMs:plan.clockEpochMs,randomSeed:plan.randomSeed}))
     return freezeMvuSchemaStoryData(validateSchemaEvaluationInputV3({schemaVersion:3,
       encoding:'native-mvu-author-schema-phase-input-v3',commandsEncoding:'native-mvu-update-operations-v2',

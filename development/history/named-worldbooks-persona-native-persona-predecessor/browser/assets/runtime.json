@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "name": "dsh-nexttavern-author-browser-runtime-v2-named-worldbooks-persona-v1",
+  "version": "0.1.0",
+  "modules": {
+    "provider": "dist/index.mjs",
+    "partition": "dist/partition.mjs",
+    "ast-worker": "dist/browser-ast-worker.mjs",
+    "execution-worker": "dist/browser-execution-worker.js",
+    "child": "dist/browser-runtime-child.js",
+    "guard": "dist/browser-runtime-guard.js"
+  },
+  "dependencies": {
+    "typescript": "5.9.3",
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-ffi-types": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-asyncify": "0.32.0"
+  },
+  "wasm": {
+    "path": "assets/emscripten-module.wasm",
+    "sha256": "b790f3842eef48d154984cea48d35303b5c3c3696fedab4dc79f314bde005dba"
+  },
+  "profileSha256": "460c4205233dad55013c86b37c1c96a002c2bb7ee1118c1f88b283495df2dfcc",
+  "capabilityContractSha256": "26d641a433501639a67b46c006cb90a49c1d52fb922f6f31c3595944c0e6e75b"
+}

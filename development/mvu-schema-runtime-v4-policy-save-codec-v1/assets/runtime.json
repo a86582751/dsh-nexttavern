@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "name": "dsh-nexttavern-mvu-schema-runtime-v4-policy-save-codec-v1",
+  "version": "0.4.0",
+  "modules": {
+    "provider": "dist/index.mjs",
+    "compiler": "dist/compiler.mjs",
+    "compiler-worker": "dist/tavern-mvu-schema-compiler-worker.mjs",
+    "runner": "dist/runner.mjs",
+    "runner-worker": "dist/tavern-mvu-schema-worker.mjs"
+  },
+  "guests": [
+    {
+      "kind": "zod",
+      "packageName": "zod",
+      "version": "4.4.3",
+      "globalName": "z",
+      "path": "assets/zod-4.4.3.js",
+      "sha256": "91ab8819b443ba593a897f2b127bf87ba324d21d2579c3fdff6a4e4bb1e1ae4c",
+      "licensePath": "assets/LICENSE.zod-4.4.3"
+    },
+    {
+      "kind": "lodash",
+      "packageName": "lodash",
+      "version": "4.18.1",
+      "globalName": "_",
+      "path": "assets/lodash-4.18.1.js",
+      "sha256": "a8d7e6291ad80256f976ace90824a71018d2f706992c9107b20bdced97bee27b",
+      "licensePath": "assets/LICENSE.lodash-4.18.1"
+    }
+  ],
+  "dependencies": {
+    "typescript": "5.9.3",
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "@jitl/quickjs-ffi-types": "0.32.0"
+  }
+}

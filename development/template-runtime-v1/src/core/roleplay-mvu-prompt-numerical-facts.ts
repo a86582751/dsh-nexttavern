@@ -243,7 +243,7 @@ export interface MvuPromptProgramOpeningPublicationV1 {
   readonly native:Immutable<VerifiedMvuProgramGenesis['programEvent']['native']>
   readonly openingSettlement:Immutable<VerifiedMvuProgramGenesis['programEvent']['openingSettlement']>
   readonly originalPacketRefs:MvuPromptProgramOpeningRefsV1
-  readonly originalPackets:Immutable<MvuPromptValidatedProgramOpeningInputV1['packets']>
+  readonly originalPackets:MvuPromptValidatedProgramOpeningInputV1['packets']
   readonly archiveProvenance:MvuPromptRowRefV1
   readonly resultSnapshotSha256:string
 }
@@ -540,7 +540,8 @@ function programRowRef(ref:MvuPromptRowRefV1,table:MvuPromptRowRefV1['table'],ke
 /** This is a bounded data join. The actual callback has already proved the
  * frozen prepared row, original Native cut and exact current message version. */
 function programOpening(input:MvuPromptValidatedProgramOpeningInputV1):MvuPromptProgramOpeningPublicationV1 {
-  const row=frozenFacts(input),genesis=validateProgramMvuGenesisFactsV1(row.genesis.programEvent,row.genesis.programHead),
+  const row=frozenFacts<unknown>(input) as MvuPromptValidatedProgramOpeningInputV1,
+    genesis=validateProgramMvuGenesisFactsV1(row.genesis.programEvent,row.genesis.programHead),
     event=genesis.programEvent,head=genesis.programHead,plan=event.plan,
     seed=validateProgramOpeningSeedV1(row.packets.seed),packet=validateProgramOpeningInputV1(row.packets.input,seed),
     planRecord=validateProgramOpeningPlanRecordV1(row.packets.plan,seed,packet),
@@ -592,10 +593,13 @@ function programOpening(input:MvuPromptValidatedProgramOpeningInputV1):MvuPrompt
     ||!equal(Object.keys(row.closureRef).sort(),['fieldPointer','key','recordSha256','table'])) {
     fail('PROMPT_NUMERICAL_PROGRAM_PACKET_REF_INVALID')
   }
-  return frozenFacts({kind:'program-opening' as const,ownerSessionId:sid,numericalSourceSha256:genesis.sourceSha256,
+  const publication={kind:'program-opening' as const,ownerSessionId:sid,numericalSourceSha256:genesis.sourceSha256,
     canonical,nativeEventRecordSha256:row.nativeEventRecordSha256,genesis,snapshot,source:plan.source,basis:plan.basis,
     native,openingSettlement:event.openingSettlement,originalPacketRefs:refs,originalPackets:{seed,input:packet,plan:planRecord,intent},
-    archiveProvenance:row.closureRef,resultSnapshotSha256:snapshot.stateSnapshotSha256})
+    archiveProvenance:row.closureRef,resultSnapshotSha256:snapshot.stateSnapshotSha256}
+  // Packet members already carry their immutable public types. Reapplying the
+  // recursive mapped type to the inferred full version union exceeds TS depth.
+  return frozenFacts<unknown>(publication) as MvuPromptProgramOpeningPublicationV1
 }
 /** Pure packet validation reused by the scope consumer. This function neither
  * reads historical rows nor treats the serialized archive ref as currency. */

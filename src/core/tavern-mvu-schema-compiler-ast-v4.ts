@@ -3,8 +3,10 @@
  * register/validate every enabled schema path, with no loader fallback. */
 import ts from 'typescript'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
+import {C_SCHEMA_IMPORT_POLICY_V4} from './tavern-mvu-schema-program-v4.js'
 import type {MvuSchemaDiagnostic} from './tavern-mvu-schema-types.js'
-import type {MvuSchemaCompilationInputV4, RawAuthorScriptV4}
+import type {MvuSchemaCompilationInputV4, RawAuthorScriptV4,RegisteredCommandPolicyBindingV1,
+  InitializationWriteBindingV1}
   from './tavern-mvu-author-execution-types-v4.mjs'
 
 export class SchemaAstRefusalV4 extends Error {
@@ -36,7 +38,7 @@ function symbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
 /** Only compile-bound bridge imports or this script's free owned facade can
  * supply the syntactic registration intent. A similarly named object method
  * or local fake function alone does not make arbitrary source schema code. */
-function hasRegistrationIntent(script: RawAuthorScriptV4, file: ts.SourceFile, checker: ts.TypeChecker): boolean {
+export function hasRegistrationIntentV4(script: RawAuthorScriptV4, file: ts.SourceFile, checker: ts.TypeChecker): boolean {
   const bridgeSpecifiers = new Set(script.imports.filter(item => item.kind === 'schema-bridge').map(item => item.specifier))
   const receivers = new Set<ts.Symbol>(), functions = new Set<ts.Symbol>(), nodes: ts.Node[] = []
   const pending: ts.Node[] = [file]
@@ -106,7 +108,9 @@ function hasRegistrationIntent(script: RawAuthorScriptV4, file: ts.SourceFile, c
 
 export function compileSchemaAstV4(script: RawAuthorScriptV4,
   input: Pick<MvuSchemaCompilationInputV4,'bridge'|'libraries'>,
-  file: ts.SourceFile, checker: ts.TypeChecker): {kind: 'schema'; javascript: string}
+  file: ts.SourceFile, checker: ts.TypeChecker,ordinal:number): {
+    kind: 'schema'; javascript: string;commandPolicyBindings:readonly RegisteredCommandPolicyBindingV1[];
+    initializationWriteBindings:readonly InitializationWriteBindingV1[]}
     | {kind: 'not-schema'} {
   if (ts.version !== '5.9.3' || input.bridge.version !== 4 || file.text !== script.source) {
     fail('MVU_SCHEMA_V4_AST_IDENTITY', script, file)
@@ -115,12 +119,56 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
     const bindings = new Map(script.imports.map(item => [item.specifier, item]))
     const libraries = new Map(input.libraries.map(item => [item.kind, item.bundleSha256]))
     const redirects = new Map<ts.Node, string>()
+    const commandPolicyBindings:RegisteredCommandPolicyBindingV1[]=[]
+    const initializationWriteBindings:InitializationWriteBindingV1[]=[]
+    const literalName=(name:ts.PropertyName)=>ts.isIdentifier(name)||ts.isStringLiteral(name)?name.text:undefined
+    const initializationWrite=(call:ts.CallExpression)=>{
+      const payload=call.arguments[0],option=call.arguments[1]
+      const field=payload&&ts.isObjectLiteralExpression(payload)&&payload.properties.length===1
+        ?payload.properties[0]:undefined
+      const type=option&&ts.isObjectLiteralExpression(option)&&option.properties.length===1
+        ?option.properties[0]:undefined
+      if(call.arguments.length!==2||call.typeArguments?.length||call.questionDotToken
+        ||!field||!(ts.isPropertyAssignment(field)||ts.isShorthandPropertyAssignment(field))
+        ||literalName(field.name)!=='stat_data'
+        ||ts.isShorthandPropertyAssignment(field)&&field.objectAssignmentInitializer
+        ||!type||!ts.isPropertyAssignment(type)||literalName(type.name)!=='type'
+        ||!ts.isStringLiteral(type.initializer)||type.initializer.text!=='chat') {
+        fail('MVU_SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED',script,file,call)
+      }
+      initializationWriteBindings.push({scriptOrdinal:ordinal,scriptIdentity:script.identity,
+        sourceSha256:script.sourceSha256,sourceSpan:{start:call.getStart(file),end:call.end},
+        capability:'insert-or-assign-chat-stat-data-v1'})
+    }
+    const policyBinding=(specifier:string,node:ts.Node,
+      fields:Pick<RegisteredCommandPolicyBindingV1,'importKind'|'importedName'|'localName'>)=>{
+      commandPolicyBindings.push({scriptOrdinal:ordinal,scriptIdentity:script.identity,
+        sourceSpan:{start:node.getStart(file),end:node.end},specifier,...fields,policy:'stagedog-command-discard-v1'})
+    }
     const rewriteSpecifier = (literal: ts.StringLiteralLike, node: ts.Node) => {
       const binding = bindings.get(literal.text)
       if (!binding) fail('MVU_SCHEMA_IMPORT_UNBOUND', script, file, node)
       if (binding.kind === 'native-state-loader') fail('MVU_SCHEMA_V4_MIXED_NATIVE_IMPORT', script, file, node)
       const expected = binding.kind === 'schema-bridge' ? input.bridge.implementationSha256 : libraries.get(binding.kind)
       if (!expected || expected !== binding.implementationSha256) fail('MVU_SCHEMA_IMPORT_IDENTITY', script, file, node)
+      if(binding.kind==='schema-bridge'&&C_SCHEMA_IMPORT_POLICY_V4.entries.includes(literal.text)) {
+        const before=commandPolicyBindings.length
+        if(ts.isImportDeclaration(node)&&!node.importClause?.isTypeOnly) {
+          const imported=node.importClause?.namedBindings
+          if(imported&&ts.isNamespaceImport(imported))policyBinding(literal.text,imported,
+            {importKind:'namespace',importedName:'*',localName:imported.name.text})
+          else if(imported&&ts.isNamedImports(imported))for(const entry of imported.elements) {
+            if(!entry.isTypeOnly&&(entry.propertyName??entry.name).text==='registerMvuSchema') {
+              policyBinding(literal.text,entry,{importKind:'named',importedName:'registerMvuSchema',localName:entry.name.text})
+            }
+          }
+        }else if(ts.isCallExpression(node)&&node.expression.kind===ts.SyntaxKind.ImportKeyword) {
+          policyBinding(literal.text,node,{importKind:'dynamic-namespace',importedName:'*',localName:null})
+        }
+        // A bare import or re-export does not supply this script a registration
+        // binding. Its free/global registerMvuSchema remains the atomic facade.
+        if(commandPolicyBindings.length>before)return 'nexttavern:stagedog-schema-bridge'
+      }
       return `nexttavern:${binding.kind}`
     }
     // The planner already bounded scanner/parser/binder work before invoking
@@ -147,6 +195,19 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
         redirects.set(literal, rewriteSpecifier(literal, node))
       }
       if (ts.isImportTypeNode(node)) fail('MVU_SCHEMA_IMPORT_TYPE_UNSUPPORTED', script, file, node)
+      if(ts.isIdentifier(node)&&node.text==='insertOrAssignVariables'&&!isNameOnly(node)
+        &&!checker.getSymbolAtLocation(node)) {
+        const parent=node.parent
+        if(ts.isCallExpression(parent)&&parent.expression===node)initializationWrite(parent)
+        else if(!ts.isTypeOfExpression(parent)||parent.expression!==node) {
+          fail('MVU_SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED',script,file,node)
+        }
+      }
+      if(ts.isPropertyAccessExpression(node)&&node.name.text==='insertOrAssignVariables'
+        &&ts.isIdentifier(node.expression)&&node.expression.text==='globalThis'
+        &&!checker.getSymbolAtLocation(node.expression)) {
+        fail('MVU_SCHEMA_INITIALIZATION_WRITE_UNSUPPORTED',script,file,node)
+      }
       if (ts.isMetaProperty(node) || node.kind === ts.SyntaxKind.WithStatement) fail('MVU_SCHEMA_HOST_ACCESS', script, file, node)
       const ownGlobal = ts.isIdentifier(node) && node.text === 'globalThis'
       if (ts.isIdentifier(node) && !isNameOnly(node) && hostNames.has(node.text) && !ownGlobal
@@ -163,7 +224,7 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
       }
       ts.forEachChild(node, child => {pending.push({node: child, depth: depth + 1})})
     }
-    if (!hasRegistrationIntent(script, file, checker)) return {kind: 'not-schema'}
+    if (!hasRegistrationIntentV4(script, file, checker)) return {kind: 'not-schema'}
     const transformer: ts.TransformerFactory<ts.SourceFile> = context => {
       const visit: ts.Visitor = node => {
         const redirect = redirects.get(node)
@@ -181,7 +242,9 @@ export function compileSchemaAstV4(script: RawAuthorScriptV4,
     if (result.diagnostics?.some(item => item.category === ts.DiagnosticCategory.Error)) {
       fail('MVU_SCHEMA_TYPESCRIPT_TRANSPILE', script, file)
     }
-    return {kind: 'schema', javascript: result.outputText}
+    commandPolicyBindings.sort((left,right)=>left.sourceSpan.start-right.sourceSpan.start)
+    initializationWriteBindings.sort((left,right)=>left.sourceSpan.start-right.sourceSpan.start)
+    return {kind: 'schema', javascript: result.outputText,commandPolicyBindings,initializationWriteBindings}
   } catch (error) {
     if (error instanceof RangeError) fail('MVU_SCHEMA_SYNTAX_DEPTH_LIMIT', script, file)
     throw error

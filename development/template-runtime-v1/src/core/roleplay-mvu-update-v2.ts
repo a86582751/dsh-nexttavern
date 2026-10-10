@@ -240,10 +240,14 @@ function command(type:string,path:string[],args:MvuJsonValue[]):MvuLegacyCommand
   return {type,path,args:args.map(value=>clone(value))}
 }
 const markup=/<\/?\s*(?:UpdateVariable|JSONPatch|json_patch|Analyze|Analysis)\b/i
+const updateMarkup=/<\/?\s*(?:UpdateVariable|JSONPatch|json_patch)\b/i
 const invocation=/\b_\s*\.\s*[a-zA-Z]+\s*\(/
-function bodyOf(narrative:string):string|undefined {
+function bodyOf(narrative:string,region?:{outside?:string;openingText?:true}):string|undefined {
   if(typeof narrative!=='string')reject('NARRATIVE_TYPE')
   if(Buffer.byteLength(narrative,'utf8')>B.dataBytes)reject('NARRATIVE_BYTE_LIMIT')
+  // Source greetings may contain literal analysis text without declaring an
+  // update. Story protocol parsing still requires its complete container.
+  if(region?.openingText&&!updateMarkup.test(narrative)&&!invocation.test(narrative))return
   if(!markup.test(narrative)) {
     if(invocation.test(narrative))reject('UPDATE_CONTAINER_REQUIRED')
     return
@@ -265,6 +269,7 @@ function bodyOf(narrative:string):string|undefined {
   if(Buffer.byteLength(block,'utf8')>B.blockBytes)reject('UPDATE_BLOCK_BYTE_LIMIT')
   const outside=narrative.slice(0,start)+narrative.slice(end)
   if(markup.test(outside)||invocation.test(outside))reject('STRAY_UPDATE_MARKUP')
+  if(region)region.outside=outside
   let body=block.slice(16,-17).trim()
   if(body.startsWith('<Analyze>')) {
     const close=body.indexOf('</Analyze>')
@@ -498,13 +503,19 @@ function applyLegacy(root:MvuJsonObject,cmd:MvuLegacyCommandV2):MvuJsonObject {
   } else reject('DELETE_TARGET_NOT_COLLECTION',path)
   return root
 }
-export function parseMvuUpdateV2(narrative:string):MvuUpdateCandidateV2 {
+/** The Source classifier consumes only the remainder of this same parsed
+ * container. It cannot exempt unrelated state syntax elsewhere in the card. */
+export function parseMvuUpdateRegionV2(narrative:string,options?:{openingText:true}):
+  {candidate:MvuUpdateCandidateV2;outside:string} {
   try {
-    const body=bodyOf(narrative)
-    if(body===undefined)return {kind:'no-update',...version}
+    const region:{outside?:string;openingText?:true}={...options},body=bodyOf(narrative,region)
+    if(body===undefined)return {candidate:{kind:'no-update',...version},outside:narrative}
     const operations=operationPackage(operationsOf(body)),descriptor={...policy,operations}
-    return {kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)}
-  } catch(error){return rejected(error)}
+    return {candidate:{kind:'parsed',...descriptor,candidateSha256:recordSha256(descriptor)},outside:region.outside!}
+  } catch(error){return {candidate:rejected(error),outside:narrative}}
+}
+export function parseMvuUpdateV2(narrative:string):MvuUpdateCandidateV2 {
+  return parseMvuUpdateRegionV2(narrative).candidate
 }
 export function reduceMvuUpdateOperationsV2(baseValues:MvuJsonObject,
   rawOperations:readonly unknown[]):PreparedMvuUpdateV2|MvuUpdateRejectionV2 {

@@ -98,8 +98,9 @@ export function readAuthorCoreDataV1(record:ImportRecord|null|undefined,rules:Re
   return {kind:'legacy-projection' as const,text:spanText(record,independent)};
 }
 export const assertImportRecordIntegrity = (record: ImportRecord,
-  onDecoded?:(decoded:DecodedTavernCard|undefined)=>void) => {
+  onDecoded?:(decoded:DecodedTavernCard|undefined,data?:ReturnType<typeof readStructuredImportDataV1>)=>void) => {
   let structuredDecoded:DecodedTavernCard|undefined;
+  let structuredData:ReturnType<typeof readStructuredImportDataV1>|undefined;
   if (!record || typeof record !== 'object')
     throw new Error('导入记录损坏或不存在');
   const structured = (record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1')
@@ -153,7 +154,8 @@ export const assertImportRecordIntegrity = (record: ImportRecord,
       if(bytes.toString('base64')!==envelope.base64||bytes.length!==record.sourceBytes||sha256(bytes)!==record.rawSha256)
         throw new Error('结构化原件哈希或大小校验失败');
     }
-    const {decoded,provenance}=readStructuredImportDataV1(record);
+    structuredData=readStructuredImportDataV1(record);
+    const {decoded,provenance}=structuredData;
     structuredDecoded=decoded;
     if(decoded.format!==envelope.format||(envelope.schemaVersion===2
       ?provenance.executionSha256!==envelope.executionSha256||provenance.executionBytes!==envelope.executionBytes
@@ -201,7 +203,7 @@ export const assertImportRecordIntegrity = (record: ImportRecord,
   if (record.lines.some((line, index) => line !== expectedLines[index]))
     throw new Error('导入记录行内容与规范化原文不一致');
   if (record.assignmentProof !== undefined) assertDeterministicAssignmentProof(record,structuredDecoded);
-  onDecoded?.(structuredDecoded);
+  onDecoded?.(structuredDecoded,structuredData);
   return true;
 };
 // Activation adds a materialization hash to each assignment. The deterministic
