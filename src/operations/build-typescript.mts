@@ -7,16 +7,17 @@ import { fileURLToPath,pathToFileURL } from 'node:url'
 import type * as CompilerAPI from '../../build-tools/node_modules/typescript/lib/typescript.js'
 import type {MvuSchemaRuntimeAssetRecipe} from './mvu-schema-runtime-assets.mjs'
 import type {TavernTemplateRuntimeAssetRecipeV1} from './tavern-template-runtime-assets.mjs'
-import type {AuthorBrowserRuntimeAssetRecipeV1} from './author-browser-runtime-assets.mjs'
+import type {AuthorBrowserRuntimeAssetRecipeV1,AuthorBrowserRuntimeAssetRecipeV2} from './author-browser-runtime-assets.mjs'
 import type {AuthorBrowserRuntimeAssetRecipeV3} from './author-browser-runtime-assets-v3.mjs'
 import type {AuthorHostRuntimeAssetRecipeV5} from './author-host-runtime-assets.mjs'
+import type {HistoricalRuntimeAssetRebuildV1} from './runtime-asset-source-scope.mjs'
 import type {AuthorPromptRuntimeAssetRecipeV1} from './author-prompt-runtime-assets.mjs'
 import type {SubagentTypertRecipeV1} from './subagent-typert-assets.mjs'
 interface Recipe {
   id: string; kind: string; artifact: string; entry: string; inputs: string[]
   outputSource?: string; text?: string; typeContext?: string; banner?: string
   declarationArtifact?: string; declarationOutputSource?: string; declarationText?: string
-  compatibilityEntry?: true
+  compatibilityEntry?:true
 }
 interface CompiledRecipe extends Recipe { outputSource: string; text: string }
 export interface CompilePlan {
@@ -24,12 +25,13 @@ export interface CompilePlan {
   artifacts: {id: string; source: string; canonicalSource?: string}[]
   product?:{mvuSchemaRuntime?:MvuSchemaRuntimeAssetRecipe;mvuSchemaRuntimes?:readonly MvuSchemaRuntimeAssetRecipe[];
     templateRuntime?:TavernTemplateRuntimeAssetRecipeV1;
-    authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1;authorBrowserRuntimeV3?:AuthorBrowserRuntimeAssetRecipeV3;
+    authorBrowserRuntime?:AuthorBrowserRuntimeAssetRecipeV1;authorBrowserRuntimeV2?:AuthorBrowserRuntimeAssetRecipeV2;
+    authorBrowserRuntimeV3?:AuthorBrowserRuntimeAssetRecipeV3;
     authorHostRuntime?:AuthorHostRuntimeAssetRecipeV5;
+    historicalRuntimeRebuilds?:readonly HistoricalRuntimeAssetRebuildV1[];
     authorPromptRuntime?:AuthorPromptRuntimeAssetRecipeV1;
-    packages?:readonly {packageArtifact:string;resources?:readonly {artifact:string;path:string}[]}[]
     subagentTypert?:SubagentTypertRecipeV1;
-  }
+    packages?:readonly {packageArtifact:string;resources?:readonly {artifact:string;path:string}[];immutableGeneration?:string}[]}
   typeScript: {
     config: string; declarationPackages: string[]; ambientDeclarations?: string[]
     contexts?: Record<string, {
@@ -37,9 +39,8 @@ export interface CompilePlan {
       paths?: Record<string, string[]>
       rewriteRelativeImportExtensions?: true
       exactOptionalPropertyTypes?: true
+      allowJs?:true;checkJs?:false
       declarationFallbacks?: {file: string; sha256: string; from: string[]; to: string}[]
-      allowJs?: true
-      checkJs?: false
     }>
   }
 }
@@ -71,6 +72,16 @@ const validateArtifactIds = (plan: CompilePlan) => {
   }
 }
 
+/** Frozen package directories are delivered as admitted bytes. A resource that
+ * points to shared runtime output does not transfer that output's ownership. */
+export function immutablePackageOutputArtifacts(plan: CompilePlan): Set<string> {
+  const sources = new Map(plan.artifacts.map(artifact => [artifact.id, artifact.source]))
+  const prefixes = (plan.product?.packages ?? []).filter(row => row.immutableGeneration)
+    .map(row => path.posix.dirname(sources.get(row.packageArtifact)!) + '/')
+  return new Set(plan.artifacts.filter(artifact => prefixes.some(prefix => artifact.source.startsWith(prefix)))
+    .map(artifact => artifact.id))
+}
+
 export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entries?: readonly string[]): Compilation {
   // Audit/install/rollback import this module without developer dependencies.
   // The public projection supplies its own mapped plan and root; resolve the
@@ -82,11 +93,12 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
   const require = createRequire(inside(repo, compilerPackage + '/package.json'))
   const ts = require('typescript') as typeof CompilerAPI
   const recipes = plan.builds.filter(build => build.kind === 'typescript-module')
+  const immutableOutputs = immutablePackageOutputArtifacts(plan)
   // Entry selection limits Program roots. The complete recipe table still
   // owns every dependency and destination reached by that actual Program.
   const entryPaths = entries === undefined ? undefined : new Set(entries.map(entry => path.resolve(repo, entry)))
-  const requestedRecipes = entryPaths === undefined ? recipes
-    : recipes.filter(recipe => entryPaths.has(path.resolve(repo, recipe.entry)))
+  const requestedRecipes = recipes.filter(recipe => !immutableOutputs.has(recipe.artifact)
+    && (entryPaths === undefined || entryPaths.has(path.resolve(repo, recipe.entry))))
   const lock = readJson<PackageLock>(inside(repo, compilerPackage + '/package-lock.json'))
   const declarationRoots = plan.typeScript.declarationPackages.map(directory => {
     inside(repo,directory)
@@ -393,6 +405,9 @@ export async function checkMvuSchemaRuntimeBuild(repo:string,plan:CompilePlan,wr
   if(!recipes.length)return undefined
   const packages=[]
   for(const recipe of recipes) {
+    // Historical resources are copied with their exact generation by assembly;
+    // rebuilding relocated source would change the admitted identity.
+    if(recipe.immutableGeneration)continue
     const metadata=plan.artifacts.find(artifact=>artifact.id===recipe.packageArtifact)
     if(!metadata)throw Error('Schema runtime package is not registered')
     const prefix=path.posix.dirname(metadata.source)
@@ -413,6 +428,8 @@ export async function checkMvuSchemaRuntimeBuild(repo:string,plan:CompilePlan,wr
  * and generated-module ownership remains with the same compiler program. */
 export async function checkTavernTemplateRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
   if(!plan.product?.templateRuntime)return undefined
+  if(plan.product.packages?.find(row=>row.packageArtifact===plan.product!.templateRuntime!.packageArtifact)
+    ?.immutableGeneration)return undefined
   const rows=plan.artifacts.filter(artifact=>artifact.id==='tavern-template-runtime-assets-generated')
   if(rows.length!==1)throw Error('Template runtime builder must have one registered output')
   const {buildTavernTemplateRuntimeAssetsV1}=await import(pathToFileURL(inside(repo,rows[0]!.source)).href) as
@@ -429,14 +446,16 @@ export async function checkTavernTemplateRuntimeBuild(repo:string,plan:CompilePl
  * recipe. Strict module generation runs first, including these producers. */
 export async function checkAuthorRuntimeBuild(repo:string,plan:CompilePlan,write=false) {
   const product=plan.product
-  if(!product||!product.authorBrowserRuntime&&!product.authorBrowserRuntimeV3&&!product.authorHostRuntime&&!product.authorPromptRuntime)return undefined
+  if(!product||!product.authorBrowserRuntime&&!product.authorBrowserRuntimeV2&&!product.authorBrowserRuntimeV3
+    &&!product.authorHostRuntime&&!product.authorPromptRuntime)return undefined
   const packages=[]
   const componentPlan={artifacts:plan.artifacts,product:{...product,packages:product.packages??[]}}
-  for(const component of ['authorBrowserRuntime','authorBrowserRuntimeV3','authorHostRuntime','authorPromptRuntime'] as const) {
+  for(const component of ['authorBrowserRuntime','authorBrowserRuntimeV2','authorBrowserRuntimeV3','authorHostRuntime','authorPromptRuntime'] as const) {
     const recipe=product[component]
     if(!recipe)continue
+    if(product.packages?.find(row=>row.packageArtifact===recipe.packageArtifact)?.immutableGeneration)continue
     const builderId=component==='authorBrowserRuntimeV3'?'author-browser-runtime-assets-v3-generated'
-      :component==='authorBrowserRuntime'?'author-browser-runtime-assets-generated'
+      :component==='authorBrowserRuntime'||component==='authorBrowserRuntimeV2'?'author-browser-runtime-assets-generated'
       :component==='authorHostRuntime'?'author-host-runtime-assets-generated':'author-prompt-runtime-assets-generated'
     const builder=plan.artifacts.find(artifact=>artifact.id===builderId)
     const metadata=plan.artifacts.find(artifact=>artifact.id===recipe.packageArtifact)
@@ -448,9 +467,14 @@ export async function checkAuthorRuntimeBuild(repo:string,plan:CompilePlan,write
       const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-browser-runtime-assets-v3.mjs')
       packages.push(await producer.buildAuthorBrowserRuntimeAssetsV3({...options,
         libraryRoot:inside(repo,path.posix.dirname(lockArtifact.source)+'/node_modules')}))
-    }else if(component==='authorBrowserRuntime') {
+    }else if(component==='authorBrowserRuntime'||component==='authorBrowserRuntimeV2') {
       const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-browser-runtime-assets.mjs')
-      packages.push(await producer.buildAuthorBrowserRuntimeAssetsV1(options))
+      if(component==='authorBrowserRuntimeV2') {
+        const lockArtifact=plan.artifacts.find(artifact=>artifact.id===recipe.lockArtifact)
+        if(!lockArtifact)throw Error('Author component dependency lock is not registered')
+        packages.push(await producer.buildAuthorBrowserRuntimeAssetsV2({...options,
+          libraryRoot:inside(repo,path.posix.dirname(lockArtifact.source)+'/node_modules')}))
+      }else packages.push(await producer.buildAuthorBrowserRuntimeAssetsV1(options))
     }else if(component==='authorHostRuntime') {
       const producer=await import(pathToFileURL(inside(repo,builder.source)).href) as typeof import('./author-host-runtime-assets.mjs')
       packages.push(await producer.buildAuthorHostRuntimeAssetsV5(options))
