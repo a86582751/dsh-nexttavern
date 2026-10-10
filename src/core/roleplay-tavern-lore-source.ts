@@ -19,7 +19,7 @@ import type {TavernLoreBookAbsenceProofV1} from './tavern-lore-plan-types.mjs'
 import type {TavernLoreSourceDepsV1, TavernLoreSourceDataV1, TavernLoreSourceRowDataV1,
   TavernLoreRawEntryDataV1, TavernLoreSourcePrimaryV1, TavernLoreContributionInputV1, TavernLoreSourceCaptureV1,
   TavernLoreSourceFailureCodeV1, TavernLoreSourceOutsideCodeV1,
-  TavernLoreSourceDiagnosticV1} from './roleplay-tavern-lore-source-types.js'
+  TavernLoreSourceDiagnosticV1,TavernLoreSourceCounterWitnessV1} from './roleplay-tavern-lore-source-types.js'
 export type * from './roleplay-tavern-lore-source-types.js'
 
 export const TAVERN_LORE_SOURCE_BOUNDS_V1 = Object.freeze({...TAVERN_LORE_DATA_BOUNDS_V1,rows:4096})
@@ -427,6 +427,57 @@ export function createRoleplayTavernLoreSourceV1(deps:TavernLoreSourceDepsV1) {
   }
   return {capture,current,captureCurrent}
 }
+
+const SOURCE_COUNTER_FIELDS_V1=['lastTurn','lastSeq','surfaceTokens'] as const
+function sourceMetadataRow(sessionId:string,row:TavernLoreSourceRowDataV1):boolean {
+  return row.ref.table==='branch'&&row.ref.key===`${sessionId}__meta`&&row.value!==null
+}
+/** Capture the actual rows handled by this owner's currency projection.
+ * Missing counter properties stay missing; no request/session default invents them. */
+export function captureTavernLoreSourceCounterWitnessV1(source:TavernLoreSourceDataV1):TavernLoreSourceCounterWitnessV1 {
+  const rows=source.current.rows.filter(row=>sourceMetadataRow(source.sessionId,row)).map(row=>({
+    table:'branch' as const,key:row.ref.key,
+    counters:Object.fromEntries(SOURCE_COUNTER_FIELDS_V1.filter(key=>Object.hasOwn(row.value!,key))
+      .map(key=>[key,row.value![key]])),
+  }))
+  return freeze({schemaVersion:1,encoding:'tavern-lore-source-counter-witness-v1',rows})
+}
+/** The journal has already admitted bounded JSON. Source owns this persisted
+ * witness's shape and the precise metadata fields it may reconstruct. */
+export function parseTavernLoreSourceCounterWitnessV1(raw:unknown):TavernLoreSourceCounterWitnessV1 {
+  const pointer='/source/counterWitness'
+  if(!isObject(raw)||raw.schemaVersion!==1||raw.encoding!=='tavern-lore-source-counter-witness-v1'
+    ||!Array.isArray(raw.rows))fail('DATA_INVALID',pointer)
+  exactKeys(raw,['schemaVersion','encoding','rows'],'DATA_INVALID',pointer)
+  for(const row of raw.rows) {
+    if(!isObject(row)||row.table!=='branch'||typeof row.key!=='string'||!isObject(row.counters)) {
+      fail('DATA_INVALID',pointer)
+    }
+    exactKeys(row,['table','key','counters'],'DATA_INVALID',pointer)
+    exactKeys(row.counters,SOURCE_COUNTER_FIELDS_V1,'DATA_INVALID',pointer)
+  }
+  return freeze(raw as unknown as TavernLoreSourceCounterWitnessV1)
+}
+/** Reconstruct only the actual projected rows, then prove the complete original
+ * audit SHA. Every other fresh Source field/ref remains in that comparison. */
+export function restoreTavernLoreSourceCounterWitnessV1(source:TavernLoreSourceDataV1,
+  witness:TavernLoreSourceCounterWitnessV1,expectedSourceSha256:string):TavernLoreSourceDataV1|null {
+  const watched=source.current.rows.filter(row=>sourceMetadataRow(source.sessionId,row))
+  if(witness.rows.length!==watched.length)return null
+  const counters=new Map(witness.rows.map(row=>[`${row.table}:${row.key}`,row.counters]))
+  if(watched.some(row=>!counters.has(`${row.ref.table}:${row.ref.key}`)))return null
+  const rows=source.current.rows.map(row=>{
+    if(!sourceMetadataRow(source.sessionId,row))return row
+    const value={...roleplaySourceMetadataValue(row.value!),
+      ...counters.get(`${row.ref.table}:${row.ref.key}`)!}
+    return {ref:{...row.ref,sha256:recordSha256(value)},value}
+  })
+  const {sourceSha256,...body}=source,current={...body.current,rows,materialSha256:recordSha256(rows)},
+    restored={...body,current},actualSha256=recordSha256(restored)
+  if(actualSha256!==expectedSourceSha256)return null
+  return freeze({...restored,sourceSha256:actualSha256})
+}
+
 
 /** One deterministic currency projection. Frozen Source/audit bytes retain
  * the full original meta and sourceSha; only these three normal Native

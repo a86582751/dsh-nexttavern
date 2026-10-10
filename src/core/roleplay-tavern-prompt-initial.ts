@@ -34,6 +34,12 @@ export const TAVERN_PROMPT_INITIAL_NATIVE_POLICY_V1=promptFreeze({schemaVersion:
   initialWorkOwner:'prepareRoleplayTavernPromptVariablesV1',
   runtimeModelRequests:{normal:0,retry:0,fallback:0}})
 export const TAVERN_PROMPT_INITIAL_NATIVE_POLICY_SHA256_V1=recordSha256(TAVERN_PROMPT_INITIAL_NATIVE_POLICY_V1)
+/** The optional journal directory changes current order, not the archive or
+ * fixed initial-variable selector. Historical captures keep their old policy. */
+export const TAVERN_PROMPT_INITIAL_MEMBERSHIP_POLICY_V1=promptFreeze({...TAVERN_PROMPT_INITIAL_NATIVE_POLICY_V1,
+  encoding:'owned-native-prompt-initial-membership-feature-policy-v1',
+  catalogPolicy:'complete-current-journal-membership-order-with-original-or-event-incarnation-v1'})
+export const TAVERN_PROMPT_INITIAL_MEMBERSHIP_POLICY_SHA256_V1=recordSha256(TAVERN_PROMPT_INITIAL_MEMBERSHIP_POLICY_V1)
 
 export class TavernPromptInitialCatalogFailureV1 extends Error {
   constructor(readonly code:string,readonly pointer:string='/'){super(code);this.name='TavernPromptInitialCatalogFailureV1'}
@@ -82,7 +88,8 @@ function verifySourcePlan(source:TavernLoreSourceDataV1,plan:TavernLorePlanV1):v
     ...(source.inheritance?{inheritance:source.inheritance}:{}),
     ...(primary.binding==='proven-absence'?{bookPresence:'proven-absence',absenceProof:primary.absenceProof}:{})}
   if(recordSha256(actual)!==recordSha256(expected)||recordSha256(plan.rawBook)!==primary.bookSha256
-    ||recordSha256(plan.rawBook)!==recordSha256(primary.value)||plan.entries.length!==primary.entries.length) {
+    ||recordSha256(plan.rawBook)!==recordSha256(primary.value)
+    ||plan.entries.length!==(plan.currentNativeMembership?.members.length??primary.entries.length)) {
     fail('PROMPT_INITIAL_PLAN_SOURCE_MISMATCH')
   }
 }
@@ -109,14 +116,17 @@ export function captureRoleplayTavernInitialCatalogV1(input:TavernPromptInitialC
   assertCurrent()
   const source=cloneRoleplayTavernLoreDataV1(ownValue(input,'source')) as TavernLoreSourceDataV1
   const plan=cloneRoleplayTavernLoreDataV1(ownValue(input,'plan')) as TavernLorePlanV1
-  if(source.original.primary.entries.length>TAVERN_PROMPT_VARIABLE_BOUNDS_V1.entries) {
+  if(plan.entries.length>TAVERN_PROMPT_VARIABLE_BOUNDS_V1.entries) {
     fail('PROMPT_INITIAL_CATALOG_ENTRY_LIMIT',source.original.primary.bookPointer+'/entries')
   }
   verifySourcePlan(source,plan)
   // Core has already compiled this Source and owns its currentness. Initial
   // variables consume only comment, current content/decorators and enabled;
   // Lore matching diagnostics do not determine their selection eligibility.
-  const policySha256=TAVERN_PROMPT_INITIAL_NATIVE_POLICY_SHA256_V1
+  const membership=plan.currentNativeMembership
+  const policySha256=membership?TAVERN_PROMPT_INITIAL_MEMBERSHIP_POLICY_SHA256_V1
+    :TAVERN_PROMPT_INITIAL_NATIVE_POLICY_SHA256_V1
+  const originalEntries=membership?new Map(source.original.primary.entries.map(row=>[row.ref.entryPointer,row] as const)):undefined
   const versionSha256=recordSha256({sourceSha256:source.sourceSha256,planSha256:plan.planSha256,policySha256})
   const ownerId=source.sessionId+'/prompt-initial-source'
   const settingsRef=ref(ownerId,policySha256,{schemaVersion:1,encoding:'owned-native-prompt-initial-settings-ref-v1',
@@ -128,22 +138,35 @@ export function captureRoleplayTavernInitialCatalogV1(input:TavernPromptInitialC
     originalBookSha256:source.original.primary.bookSha256,currentMaterialSha256:source.current.materialSha256,
     currentMembershipSha256:source.current.membershipSha256,
     currentNativeOverlaySha256:plan.currentNativeOverlaySha256??null,
-    actualPrimaryEntryCount:source.original.primary.entries.length,policySha256})
+    actualPrimaryEntryCount:source.original.primary.entries.length,policySha256,
+    ...(membership?{currentNativeMembershipSha256:plan.currentNativeMembershipSha256!,actualCurrentEntryCount:plan.entries.length}:{})})
   const receiptEntries:TavernPromptInitialCatalogEntryReceiptV1[]=[]
   const entries:TavernPromptVariableCatalogEntryV2[]=plan.entries.map((entry,ordinal)=>{
     assertCurrent()
-    const original=source.original.primary.entries[ordinal]!
-    if(entry.ordinal!==ordinal||entry.sourceKey!==original.entryKey||entry.sourcePointer!==original.ref.entryPointer
-      ||entry.rawEntrySha256!==original.ref.entrySha256)fail('PROMPT_INITIAL_ENTRY_PLAN_LINK',entry.sourcePointer)
-    const raw=original.value,semantic={enabled:initialEnabled(raw,entry)}
+    const member=membership?.members[ordinal],identity=entry.currentNativeMember?.identity
+    const original=member?identity?.kind==='original'?originalEntries!.get(identity.rawEntryPointer):undefined
+      :source.original.primary.entries[ordinal]
+    if(!member) {
+      if(!original||entry.ordinal!==ordinal||entry.sourceKey!==original.entryKey
+        ||entry.sourcePointer!==original.ref.entryPointer||entry.rawEntrySha256!==original.ref.entrySha256) {
+        fail('PROMPT_INITIAL_ENTRY_PLAN_LINK',entry.sourcePointer)
+      }
+    }else if(identity?.kind==='original'&&(!original||original.ref.entrySha256!==entry.rawEntrySha256)) {
+      fail('PROMPT_INITIAL_ENTRY_PLAN_LINK',entry.sourcePointer)
+    }
+    const raw=member?.rawEntry??original!.value,semantic={enabled:initialEnabled(raw,entry)}
     const resolved=resolveTavernLoreContentTextV1(plan,entry.sourcePointer+'/content')
-    if(typeof raw.content!=='string')fail('PROMPT_INITIAL_ORIGINAL_CONTENT_UNAVAILABLE',entry.sourcePointer+'/content')
+    if(!member&&typeof raw.content!=='string')fail('PROMPT_INITIAL_ORIGINAL_CONTENT_UNAVAILABLE',entry.sourcePointer+'/content')
+    const originalAddress=original?.ref.entryPointer??null
+    const memberProvenance:MvuJsonObject=member
+      ?{originalAddress,currentNativeMember:entry.currentNativeMember! as unknown as MvuJsonObject}:{}
     const currentSemanticSha256=recordSha256(semantic)
     const provenance=ref(ownerId,versionSha256,{schemaVersion:2,encoding:'owned-source-prompt-initial-entry-ref-v2',
       sourceSha256:source.sourceSha256,compilerPlanSha256:plan.planSha256,entryId:entry.entryId,
       rawEntryPointer:entry.sourcePointer,rawEntrySha256:entry.rawEntrySha256,
       entryPlanSha256:entry.entryPlanSha256,currentSemanticSha256,
-      currentContentSha256:resolved.contentSha256,currentNativeOriginSha256:resolved.currentNativeOrigin?.refSha256??null})
+      currentContentSha256:resolved.contentSha256,currentNativeOriginSha256:resolved.currentNativeOrigin?.refSha256??null,
+      ...memberProvenance})
     const row:TavernPromptVariableCatalogEntryV2={ordinal,entryId:entry.entryId,
       rawEntryPointer:entry.sourcePointer,rawEntrySha256:entry.rawEntrySha256,title:title(raw,entry.sourcePointer),
       currentSemantic:semantic,currentSemanticSha256,contentPointer:resolved.pointer,content:resolved.text,
@@ -153,9 +176,11 @@ export function captureRoleplayTavernInitialCatalogV1(input:TavernPromptInitialC
       rawEntrySha256:entry.rawEntrySha256,upstreamUid:entry.upstreamUid,disposition:entry.disposition,
       entryPlanSha256:entry.entryPlanSha256,title:row.title,titlePolicy:'fixed-character-book-comment-or-empty-v1',
       metadata:(['comment','name','id','decorators'] as const).map(field=>metadata(raw,entry.sourcePointer,field)),
-      originalContentSha256:schemaTextSha256(raw.content),currentContentSha256:resolved.contentSha256,
+      originalContentSha256:typeof original?.value.content==='string'?schemaTextSha256(original.value.content):null,
+      currentContentSha256:resolved.contentSha256,
       currentSemanticSha256,currentContentOrigin:resolved.origin,
       currentNativeOriginSha256:resolved.currentNativeOrigin?.refSha256??null,
+      ...(member?{originalAddress,currentNativeMember:entry.currentNativeMember!}:{}),
       decoratorPolicy:'fixed-importer-no-preparsed-inline-current-content-v1',initialEnabled:selected.enabled,
       initialSelected:selected.selected,initialBodySha256:schemaTextSha256(selected.body)})
     return row
@@ -169,7 +194,8 @@ export function captureRoleplayTavernInitialCatalogV1(input:TavernPromptInitialC
     sourceSha256:source.sourceSha256,rawSourceSha256:source.original.rawSha256,
     originalBookSha256:source.original.primary.bookSha256,compilerPlanSha256:plan.planSha256,
     currentNativeOverlaySha256:plan.currentNativeOverlaySha256??null,catalogSha256:catalog.catalogSha256,policySha256,
-    completeOriginalEntryCount:entries.length,
+    completeOriginalEntryCount:source.original.primary.entries.length,
+    ...(membership?{completeCurrentEntryCount:entries.length,currentNativeMembershipSha256:plan.currentNativeMembershipSha256!}:{}),
     selectedInitialEntryIds:receiptEntries.filter(row=>row.initialSelected).map(row=>row.entryId),
     entries:receiptEntries,loreDiagnosticsSha256:plan.diagnosticsSha256}
   const receipt={...receiptBody,receiptSha256:recordSha256(receiptBody)}

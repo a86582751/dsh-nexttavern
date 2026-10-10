@@ -72,7 +72,8 @@ export interface PromptOpeningGreetingFactsV1 {
 }
 export interface PromptOpeningRawEntryBindingV1 {
   readonly ordinal:number
-  readonly entryId:string
+  /** Null only when current membership has deleted this immutable original. */
+  readonly entryId:string|null
   readonly sourceKey:string
   readonly sourcePointer:string
   readonly rawEntrySha256:string
@@ -81,7 +82,8 @@ export interface PromptOpeningRawEntryBindingV1 {
   readonly enabled:boolean
   readonly renderedContent:string|null
   readonly identityRendering:PromptOpeningIdentityRenderingV1|null
-  readonly effectivePromptContentSha256:string
+  /** Current prompt audit only; deleted originals have no effective content. */
+  readonly effectivePromptContentSha256:string|null
 }
 export interface PromptOpeningRawInitBindingV1 {
   readonly domain:'immutable-raw-embedded-primary-and-complete-original-greetings'

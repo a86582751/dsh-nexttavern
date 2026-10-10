@@ -7830,6 +7830,16 @@
         "lib/core/tavern-author-browser-native-scene-v3.js",
         "preset/lib/core/tavern-author-browser-native-scene-v3.js"
       ]
+    },
+    {
+      "artifact": "roleplay-author-worldbook-core-js",
+      "source": "src/core/roleplay-author-worldbook-core.ts",
+      "banner": "runtime/alpha3/src/core/roleplay-author-worldbook-core.ts",
+      "primaryOutput": "lib/core/roleplay-author-worldbook-core.js",
+      "outputs": [
+        "lib/core/roleplay-author-worldbook-core.js",
+        "preset/lib/core/roleplay-author-worldbook-core.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -39388,6 +39398,16 @@
         "id": "tavern-author-browser-native-scene-v3-js",
         "source": "lib/core/tavern-author-browser-native-scene-v3.js",
         "canonicalSource": "runtime/alpha3/lib/core/tavern-author-browser-native-scene-v3.js"
+      },
+      {
+        "id": "roleplay-author-worldbook-core-typescript",
+        "source": "src/core/roleplay-author-worldbook-core.ts",
+        "canonicalSource": "runtime/alpha3/src/core/roleplay-author-worldbook-core.ts"
+      },
+      {
+        "id": "roleplay-author-worldbook-core-js",
+        "source": "lib/core/roleplay-author-worldbook-core.js",
+        "canonicalSource": "runtime/alpha3/lib/core/roleplay-author-worldbook-core.js"
       }
     ],
     "publicRelease": {
@@ -154891,6 +154911,34 @@
           "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-browser-native-scene-v3.ts"
+      },
+      {
+        "id": "roleplay-author-worldbook-core-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-author-worldbook-core-js",
+        "entry": "src/core/roleplay-author-worldbook-core.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "build-tools/package-lock.json",
+          "build-tools/package.json",
+          "build-tools/tsconfig.json",
+          "src/core/roleplay-author-worldbook-core.ts",
+          "src/core/roleplay-author-worldbook-data.ts",
+          "src/core/roleplay-data.ts",
+          "src/core/roleplay-input-state.ts",
+          "src/core/roleplay-tavern-current-overlay.ts",
+          "src/core/roleplay-tavern-lore-edits-types.ts",
+          "src/core/roleplay-tavern-lore-edits.ts",
+          "src/core/roleplay-tavern-lore-membership.ts",
+          "src/core/roleplay-tavern-lore-source-types.ts",
+          "src/core/tavern-author-browser-types-v2.mts",
+          "src/core/tavern-lore-compiler.mts",
+          "src/core/tavern-lore-plan-types.mts",
+          "src/core/tavern-mvu-initvar.ts",
+          "src/core/tavern-named-worldbook-data.ts",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-author-worldbook-core.ts"
       }
     ],
     "typeScript": {

@@ -115,10 +115,14 @@ function projectPassiveLegacyRead(captured, tables, sessionId) {
     const sourceProjectionSha256 = recordSha256(body);
     const entries = compilation.plan.entries.map(entry => {
         const semantic = { ...ST_LORE_ENTRY_DEFAULTS_V1, ...entry.semanticOverrides };
-        const raw = source.original.primary.entries.find(row => row.ref.entryPointer === entry.sourcePointer);
+        // Membership entries address the published current directory. Its compiler
+        // already owns the row; that address cannot be looked up in the raw archive.
+        const raw = entry.currentNativeMember
+            ? compilation.plan.currentNativeMembership.members[entry.ordinal].rawEntry
+            : source.original.primary.entries.find(row => row.ref.entryPointer === entry.sourcePointer)?.value;
         if (!raw)
             fail('LEGACY_READ_SOURCE_ENTRY_UNPROVEN');
-        return passiveLegacyEntrySummary({ id: entry.entryId, name: String(raw.value.name ?? raw.value.comment ?? entry.entryId),
+        return passiveLegacyEntrySummary({ id: entry.entryId, name: String(raw.name ?? raw.comment ?? entry.entryId),
             keywords: semantic.primaryKeys, enabled: semantic.enabled, alwaysOn: semantic.constant,
             priority: semantic.order, version: entry.entryPlanSha256,
             sourcePointer: entry.sourcePointer, nativeManaged: true });

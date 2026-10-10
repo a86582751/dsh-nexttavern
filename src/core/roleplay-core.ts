@@ -99,6 +99,7 @@ import {createRoleplayMvuPlayer} from './roleplay-mvu-player.js'
 import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
 import {registerMvuPlayerRoutes} from './roleplay-mvu-player-routes.js'
 import {createRoleplayAuthorBrowser} from './roleplay-author-browser.js'
+import {createRoleplayAuthorWorldbookCoreV1} from './roleplay-author-worldbook-core.js'
 import {createCanonicalAuthorChatStateV1,deriveAuthorChatBindingV1,deriveAuthorChatBindingV2}
   from './roleplay-author-chat-state.js'
 import {createRoleplayAuthorBrowserKeyCoreV3} from './roleplay-author-browser-key-core-v3.js'
@@ -118,7 +119,8 @@ import type {MvuStoryCompletionDependencies} from './roleplay-mvu-story.js'
 import {prepareInputManagementReceipt,verifyInputManagementReceipt} from './roleplay-input-management.js'
 import {createRoleplayInputPreparation} from './roleplay-input-preparation.js'
 import {createRoleplayInputStateOwner} from './roleplay-input-state.js'
-import {onUserInfoChanged} from './roleplay-userinfo.js'
+import {onUserInfoChanged,readNativePersonas,mutateNativePersona,retryNativePersona}
+  from './roleplay-userinfo.js'
 import {createRoleplayTavernLoreSourceV1} from './roleplay-tavern-lore-source.js'
 import {createRoleplayTavernLoreEditsV1} from './roleplay-tavern-lore-edits.js'
 import {captureRoleplayTavernLoreExportDataV1} from './roleplay-tavern-lore-export.js'
@@ -790,6 +792,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     readSourceInheritance:id=>tavernSourceInheritance.readCommittedSourceInheritance(id)})
   const tavernLoreEdits=createRoleplayTavernLoreEditsV1({branch:T.branch,source:tavernSource,
     withSourceLock:(id,work)=>withImportLock(id,'tavern-lore-edit',work)})
+  const authorWorldbooks=createRoleplayAuthorWorldbookCoreV1({source:tavernSource,edits:tavernLoreEdits,
+    captureRead:(id,compute)=>inputState.captureSource(id,'author-worldbook',compute),
+    withSourceLock:(id,work)=>withImportLock(id,'author-worldbook-read',work)})
   const tavernSourceInheritance=createRoleplayTavernSourceInheritanceV1({tables:T,source:tavernSource,
     withSourceLock:(id,work)=>withImportLock(id,'tavern-source-inheritance',work),
     readNativeSession:id=>mvuAncestry.readNativeObservation(id),readOpeningContext:openingContextBinding,
@@ -2729,6 +2734,33 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     const id=(input as {sessionId?:unknown})?.sessionId
     return typeof id==='string'&&mvuOpening.hasSchemaOpening(id)?mvuOpening.submitSchemaPlayer(input):mvuPlayer.submit(input)
   }},observe:observeNumericalState})
+  async function captureOwnedBrowserFacts(sid:string) {
+    if(!mvuOpening.hasSchemaOpening(sid))return undefined
+    const facts=await mvuOpening.captureSchemaBrowserFacts(sid)
+    if(!facts||facts.program.schemaVersion===1||facts.data.schemaVersion===1)return facts
+    const book=facts.program.requiredCapabilities.includes('owned-named-worldbooks')
+      ?await authorWorldbooks.capture(sid):undefined
+    if(!facts.current()||book&&!book.current())throw Error('SCHEMA_BROWSER_FACTS_CHANGED')
+    let worldbook:Omit<import('./roleplay-author-worldbook-data.js').AuthorNamedWorldbookDataV2,'members'>|undefined
+    if(book) {const {members:_,...data}=book.data;worldbook=data}
+    const personas=facts.program.requiredCapabilities.includes('owned-native-personas')?readNativePersonas():undefined
+    const selected=personas?.profiles.find(profile=>profile.avatar_id===personas.selectedId)
+    // Userinfo's process event dirties the same captured InputState frame.
+    // The Native catalog is not mirrored into a Session table or rechecked by
+    // every consumer; only this owner supplies its effective DTO projection.
+    const enrich=<T extends import('./roleplay-author-browser.js').AuthorBrowserCapturedFactsV2
+      |import('./roleplay-author-browser.js').AuthorBrowserCapturedFactsV3>(captured:T):T=>({...captured,
+      ...book?{worldbook:book.data}:{},
+      data:{...captured.data,...worldbook?{worldbook}:{},...personas?{personas,
+        persona:{...captured.data.persona,avatar:selected?.avatar_id??null}}:{}},
+      current:()=>captured.current()&&(!book||book.current())})
+    // Story's producer pairs each program with its matching snapshot/artifact.
+    // Select that pair before adding the captured account catalog.
+    return facts.program.schemaVersion===3
+      ?enrich(facts as import('./roleplay-author-browser.js').AuthorBrowserCapturedFactsV3)
+      :enrich(facts as import('./roleplay-author-browser.js').AuthorBrowserCapturedFactsV2)
+  }
+
   const authorKeyCore=createRoleplayAuthorBrowserKeyCoreV3({state:authorChatState,
     // The service retains the original Source proof independently of its
     // State2 DATA cut. Reuse that proof across the canonical writer's FIFO.
@@ -2757,8 +2789,21 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         &&(choice?`${choice.root}:${choice.activeSessionId}:${choice.revision}`:sid)===selection
         &&recordSha256(nativeOwner.lookupInputStop())===stopSha256
     }
-  },captureFacts:async sid=>mvuOpening.hasSchemaOpening(sid)?mvuOpening.captureSchemaBrowserFacts(sid):undefined,
+  },captureFacts:captureOwnedBrowserFacts,
     mutateAuthorKey:authorKeyCore.mutate,
+    mutateWorldbook:(sid,_program,request,basis,current,signal)=>authorWorldbooks.mutate(sid,request,basis,current,signal),
+    retryWorldbook:authorWorldbooks.retry,
+    mutatePersona:(sid,program,request,current,signal)=>{
+      signal.throwIfAborted()
+      return mutateNativePersona({schemaVersion:1,encoding:'native-account-persona-operation-v1',
+        operationId:request.operationId,expectedDataSha256:request.expectedDataSha256,
+        origin:{kind:'author-script',sessionId:sid,scriptIdentity:request.scriptIdentity,programSha256:program.programSha256},
+        mutation:request.mutation},()=>!signal.aborted&&current())
+    },
+    retryPersona:(sid,operationId,current,signal)=>{
+      signal.throwIfAborted()
+      return retryNativePersona(operationId,()=>!signal.aborted&&current(),sid)
+    },
     submit:(input,current)=>mvuOpening.submitSchemaPlayer(input,current),confirm:mvuOpening.confirmSchemaPlayer,})
   ctx.on('session/disposed',session=>authorBrowser?.invalidateSession(session.id),{global:true})
   ctx.effect(()=>()=>{authorBrowser?.dispose();authorKeyCore.dispose()},'roleplay: owned browser lifetime')

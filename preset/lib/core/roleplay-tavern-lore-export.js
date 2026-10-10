@@ -28,7 +28,8 @@ export function captureRoleplayTavernLoreExportDataV1(deps, sessionId) {
         ...(data.inheritance ? { inheritance: data.inheritance } : {}),
         ...(source.inheritance ? { sourceInheritance: source.inheritance } : {}) };
     const materials = editor.entries.flatMap(entry => {
-        const entrySource = { ...provenance, rawEntryPointer: entry.rawEntryPointer, rawEntrySha256: entry.rawEntrySha256 }, { content: _contentReference, ...fields } = entry.semantic;
+        const entrySource = { ...provenance, rawEntryPointer: entry.rawEntryPointer, rawEntrySha256: entry.rawEntrySha256,
+            ...(entry.currentNativeMember ? { currentNativeMember: entry.currentNativeMember } : {}) }, { content: _contentReference, ...fields } = entry.semantic;
         return [{ label: `当前结构化世界书正文: ${entry.entryId}`, text: entry.contentText, source: entrySource },
             { label: `当前结构化世界书字段与来源: ${entry.entryId}`,
                 text: '```json\n' + stableJson({ role: 'current-structured-lore', entryId: entry.entryId, disposition: entry.disposition,

@@ -1,15 +1,19 @@
 /** Persisted schema/hash ownership for the independent append-only lore editor.
  * Historical edit SourceSHA is a CAS read basis, never current permission. */
 import {recordSha256,sha256} from './roleplay-data.js'
+import {captureTavernLoreSourceCounterWitnessV1,parseTavernLoreSourceCounterWitnessV1}
+  from './roleplay-tavern-lore-source.js'
 import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {cloneRoleplayTavernLoreDataV1,TavernLoreDataFailureV1} from './roleplay-tavern-lore-data.js'
 import {compileTavernLoreBookV1,validateTavernLoreAbsentSourceReferenceV1} from './tavern-lore-compiler.mjs'
 import type {TavernLoreCompilationInputV1,TavernLoreCurrentNativeOverlayV1,
   TavernLoreCurrentNativeFieldsV1} from './tavern-lore-plan-types.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
+import type {TavernLoreMembershipDataV1,TavernLoreMemberIdentityV1} from './roleplay-tavern-lore-membership.js'
 import type {TavernLoreEditIdentityV1,TavernLoreEditHeadV1,TavernLoreEditEventV1,
   TavernLoreEditRequestV1,TavernLoreEditRefV1,TavernLoreEditHeadRefV1,
-  TavernLoreEditReceiptV1,TavernLoreEditDiagnosticV1} from './roleplay-tavern-lore-edits-types.js'
+  TavernLoreEditReceiptV1,TavernLoreEditDiagnosticV1,TavernLoreMutationRequestV2,TavernLoreJournalRequestV2,
+  TavernLoreJournalEventV2,TavernLoreMutationReceiptV2,TavernLoreMutationRetryLocatorV1} from './roleplay-tavern-lore-edits-types.js'
 
 export const TAVERN_LORE_EDITS_BOUNDS_V1=Object.freeze({events:256,journalBytes:8_388_608,
   requestBytes:1_048_576,recordBytes:1_114_112,dataBytes:16_777_216,nodes:131_072,depth:66})
@@ -57,6 +61,54 @@ export function requestData(raw:unknown):TavernLoreEditRequestV1 {
     ||/[\x00-\x1f]/.test(value.rawEntryPointer)||!object(value.fields)||!Object.keys(value.fields).length)fail('REQUEST_INVALID')
   return value as unknown as TavernLoreEditRequestV1
 }
+function memberIdentity(value:unknown):asserts value is TavernLoreMemberIdentityV1 {
+  if(!object(value))fail('REQUEST_INVALID')
+  if(value.kind==='original') {
+    exact(value,['kind','rawEntryPointer','rawEntrySha256'],'REQUEST_INVALID')
+    if(typeof value.rawEntryPointer!=='string'||!value.rawEntryPointer.startsWith('/')
+      ||!hash(value.rawEntrySha256))fail('REQUEST_INVALID')
+  }else if(value.kind==='introduced') {
+    exact(value,['kind','eventRef','ordinal'],'REQUEST_INVALID')
+    if(!object(value.eventRef))fail('REQUEST_INVALID')
+    exact(value.eventRef,['key','sha256'],'REQUEST_INVALID')
+    if(typeof value.eventRef.key!=='string'||!hash(value.eventRef.sha256)
+      ||typeof value.ordinal!=='number'||!Number.isSafeInteger(value.ordinal)||value.ordinal<0)fail('REQUEST_INVALID')
+  }else fail('REQUEST_INVALID')
+}
+export function mutationRequestData(raw:unknown):TavernLoreMutationRequestV2 {
+  const value=strictData(raw,TAVERN_LORE_EDITS_BOUNDS_V1.requestBytes)
+  if(!object(value))fail('REQUEST_INVALID')
+  exact(value,['schemaVersion','encoding','sessionId','expectedSourceSha256','expectedRevision','operationId','mutation'],
+    'REQUEST_INVALID')
+  sessionId(value.sessionId);sessionId(value.operationId)
+  if(value.schemaVersion!==2||value.encoding!=='tavern-lore-mutation-request-v2'
+    ||!hash(value.expectedSourceSha256)||typeof value.expectedRevision!=='number'
+    ||!Number.isSafeInteger(value.expectedRevision)||value.expectedRevision<0
+    ||value.expectedRevision>TAVERN_LORE_EDITS_BOUNDS_V1.events||!object(value.mutation))fail('REQUEST_INVALID')
+  const mutation=value.mutation
+  if(mutation.kind==='fields') {
+    exact(mutation,['kind','target','fields'],'REQUEST_INVALID');memberIdentity(mutation.target)
+    if(!object(mutation.fields)||!Object.keys(mutation.fields).length)fail('REQUEST_INVALID')
+  }else if(mutation.kind==='remove') {
+    exact(mutation,['kind','targets'],'REQUEST_INVALID')
+    // Empty Helper calls still publish their own exact operation/receipt.
+    if(!Array.isArray(mutation.targets))fail('REQUEST_INVALID')
+    for(const target of mutation.targets)memberIdentity(target)
+  }else if(mutation.kind==='append'||mutation.kind==='replace') {
+    exact(mutation,['kind','entries'],'REQUEST_INVALID')
+    if(!Array.isArray(mutation.entries))fail('REQUEST_INVALID')
+    for(const entry of mutation.entries) {
+      if(!object(entry))fail('REQUEST_INVALID')
+      exact(entry,['uid','displayIndex','rawEntry',...(mutation.kind==='replace'&&'identity' in entry?['identity']:[])],
+        'REQUEST_INVALID')
+      if(typeof entry.uid!=='number'||!Number.isSafeInteger(entry.uid)
+        ||typeof entry.displayIndex!=='number'||!Number.isSafeInteger(entry.displayIndex)||entry.displayIndex<0
+        ||!object(entry.rawEntry))fail('REQUEST_INVALID')
+      if('identity' in entry)memberIdentity(entry.identity)
+    }
+  }else fail('REQUEST_INVALID')
+  return value as unknown as TavernLoreMutationRequestV2
+}
 export function identityOf(source:TavernLoreSourceDataV1):TavernLoreEditIdentityV1 {
   if(!object(source)||source.schemaVersion!==1||source.encoding!=='tavern-lore-current-source-data-v1'
     ||source.authority!=='consumer-data-only'||!hash(source.sourceSha256))fail('SOURCE_IDENTITY_INVALID')
@@ -92,6 +144,27 @@ export function identityOf(source:TavernLoreSourceDataV1):TavernLoreEditIdentity
 export const namespace=(identitySha256:string)=>`tavern_loreedit_v1__${identitySha256}__`
 export const headKey=(identitySha256:string)=>`${namespace(identitySha256)}head`
 export const eventKey=(identitySha256:string,operationId:string)=>`${namespace(identitySha256)}event__${sha256(operationId)}`
+
+/** The address/key grammar has one owner. Clients retain this DATA verbatim;
+ * they never derive namespaces from bindings, program hashes or operation IDs. */
+export function mutationRetryLocatorDataV1(raw:TavernLoreMutationRetryLocatorV1,operationId:string):{
+  readonly identitySha256:string;readonly eventRef?:TavernLoreEditRefV1} {
+  if(!object(raw))fail('REQUEST_INVALID')
+  if('identitySha256' in raw) {
+    exact(raw,['identitySha256'],'REQUEST_INVALID')
+    if(!hash(raw.identitySha256))fail('REQUEST_INVALID')
+    return {identitySha256:raw.identitySha256}
+  }
+  exact(raw,['eventRef'],'REQUEST_INVALID')
+  const ref=raw.eventRef
+  if(!object(ref))fail('REQUEST_INVALID')
+  exact(ref,['key','sha256'],'REQUEST_INVALID')
+  if(typeof ref.key!=='string'||!hash(ref.sha256))fail('REQUEST_INVALID')
+  const match=/^tavern_loreedit_v1__([a-f0-9]{64})__event__[a-f0-9]{64}$/.exec(ref.key)
+  if(!match||ref.key!==eventKey(match[1]!,operationId))fail('REQUEST_INVALID')
+  return {identitySha256:match[1]!,eventRef:{key:ref.key,sha256:ref.sha256}}
+}
+
 export const rowRef=(key:string,value:unknown):TavernLoreEditRefV1=>({key,sha256:recordSha256(value)})
 export const headRef=(head:TavernLoreEditHeadV1,exists:boolean):TavernLoreEditHeadRefV1=>({
   key:headKey(head.identitySha256),exists,sha256:exists?recordSha256(head):'missing'})
@@ -125,20 +198,34 @@ export function parseHead(raw:unknown,identity:TavernLoreEditIdentityV1):TavernL
   if((value.revision===0)!==(value.lastEvent===null))fail('JOURNAL_CHAIN_INVALID')
   return freeze(value as unknown as TavernLoreEditHeadV1)
 }
-export function eventFrom(request:TavernLoreEditRequestV1,baseHead:TavernLoreEditHeadV1,exists:boolean):TavernLoreEditEventV1 {
-  const body={schemaVersion:1 as const,encoding:'tavern-lore-edit-event-v1' as const,state:'prepared' as const,
+export function eventFrom(request:TavernLoreJournalRequestV2,baseHead:TavernLoreEditHeadV1,exists:boolean,
+  source?:TavernLoreSourceDataV1):TavernLoreJournalEventV2 {
+  if('mutation' in request&&!source)fail('SOURCE_UNAVAILABLE')
+  const version='mutation' in request
+    ?{schemaVersion:3 as const,encoding:'tavern-lore-mutation-event-v3' as const,
+      sourceCounters:captureTavernLoreSourceCounterWitnessV1(source!)}
+    :{schemaVersion:1 as const,encoding:'tavern-lore-edit-event-v1' as const}
+  const body={...version,state:'prepared' as const,
     identity:baseHead.identity,identitySha256:baseHead.identitySha256,request,payloadSha256:recordSha256(request),
     baseHead,baseHeadRowSha256:exists?recordSha256(baseHead):'missing',revision:baseHead.revision+1}
-  return freeze({...body,eventSha256:recordSha256(body)})
+  return freeze({...body,eventSha256:recordSha256(body)}) as TavernLoreJournalEventV2
 }
-export function parseEvent(raw:unknown,key:string,identity:TavernLoreEditIdentityV1):TavernLoreEditEventV1 {
+export function parseEvent(raw:unknown,key:string,identity:TavernLoreEditIdentityV1):TavernLoreJournalEventV2 {
   const value=strictData(raw,TAVERN_LORE_EDITS_BOUNDS_V1.recordBytes)
   if(!object(value))fail('JOURNAL_SCHEMA_INVALID')
   exact(value,['schemaVersion','encoding','state','identity','identitySha256','request','payloadSha256','baseHead',
-    'baseHeadRowSha256','revision','eventSha256'],'JOURNAL_SCHEMA_INVALID')
-  if(value.schemaVersion!==1||value.encoding!=='tavern-lore-edit-event-v1'||value.state!=='prepared')fail('JOURNAL_SCHEMA_INVALID')
+    'baseHeadRowSha256','revision','eventSha256',...value.schemaVersion===3?['sourceCounters']:[]],'JOURNAL_SCHEMA_INVALID')
+  if(!(value.schemaVersion===1&&value.encoding==='tavern-lore-edit-event-v1'
+    ||value.schemaVersion===2&&value.encoding==='tavern-lore-mutation-event-v2'
+    ||value.schemaVersion===3&&value.encoding==='tavern-lore-mutation-event-v3')
+    ||value.state!=='prepared')fail('JOURNAL_SCHEMA_INVALID')
+  if(value.schemaVersion===3) {
+    try {parseTavernLoreSourceCounterWitnessV1(value.sourceCounters)}
+    catch {fail('JOURNAL_SCHEMA_INVALID')}
+  }
   if(!same(value.identity,identity)||value.identitySha256!==recordSha256(identity))fail('JOURNAL_IDENTITY_MISMATCH')
-  const request=requestData(value.request),baseHead=parseHead(value.baseHead,identity)
+  const request=value.schemaVersion===1?requestData(value.request):mutationRequestData(value.request),
+    baseHead=parseHead(value.baseHead,identity)
   if(key!==eventKey(baseHead.identitySha256,request.operationId)||request.sessionId!==identity.sessionId
     ||value.payloadSha256!==recordSha256(request)||!hash(value.eventSha256))fail('JOURNAL_HASH_INVALID')
   if(typeof value.revision!=='number'||!Number.isSafeInteger(value.revision)
@@ -147,16 +234,17 @@ export function parseEvent(raw:unknown,key:string,identity:TavernLoreEditIdentit
     ||value.baseHeadRowSha256!==(baseHead.revision===0?'missing':recordSha256(baseHead)))fail('JOURNAL_CHAIN_INVALID')
   const {eventSha256,...body}=value
   if(recordSha256(body)!==eventSha256)fail('JOURNAL_HASH_INVALID')
-  return freeze({...value,request,baseHead} as unknown as TavernLoreEditEventV1)
+  return freeze({...value,request,baseHead} as unknown as TavernLoreJournalEventV2)
 }
-export function nextHead(event:TavernLoreEditEventV1):TavernLoreEditHeadV1 {
+export function nextHead(event:TavernLoreJournalEventV2):TavernLoreEditHeadV1 {
   const eventRef=rowRef(eventKey(event.identitySha256,event.request.operationId),event)
   return sealHead({schemaVersion:1,encoding:'tavern-lore-edit-head-v1',identity:event.identity,
     identitySha256:event.identitySha256,revision:event.revision,lastEvent:eventRef,
     chainSha256:recordSha256({schemaVersion:1,encoding:'tavern-lore-edit-chain-link-v1',
       identitySha256:event.identitySha256,previousChainSha256:event.baseHead.chainSha256,eventRef})})
 }
-export function compilerInput(source:TavernLoreSourceDataV1,overlay:TavernLoreCurrentNativeOverlayV1):TavernLoreCompilationInputV1 {
+export function compilerInput(source:TavernLoreSourceDataV1,overlay:TavernLoreCurrentNativeOverlayV1,
+  membership?:TavernLoreMembershipDataV1):TavernLoreCompilationInputV1 {
   const original=source.original
   return {schemaVersion:1,encoding:'st-character-book-compilation-input-v1',book:original.primary.value as TavernLoreCompilationInputV1['book'],
     source:{schemaVersion:1,encoding:'st-character-book-source-reference-v1',ownerSessionId:source.sessionId,
@@ -168,7 +256,8 @@ export function compilerInput(source:TavernLoreSourceDataV1,overlay:TavernLoreCu
         :original.decodedFormat.endsWith('v3')?'ccv3-character-book':'ccv2-character-book',
       ...(source.inheritance?{inheritance:source.inheritance}:{}),
       ...(original.primary.binding==='proven-absence'
-        ?{bookPresence:'proven-absence' as const,absenceProof:original.primary.absenceProof}:{})},currentNativeOverlay:overlay}
+        ?{bookPresence:'proven-absence' as const,absenceProof:original.primary.absenceProof}:{})},currentNativeOverlay:overlay,
+    ...(membership?{currentNativeMembership:membership}:{})}
 }
 export function validateFields(source:TavernLoreSourceDataV1,request:TavernLoreEditRequestV1):void {
   const matches=source.original.primary.entries.filter(entry=>entry.ref.entryPointer===request.rawEntryPointer)
@@ -183,12 +272,18 @@ export function validateFields(source:TavernLoreSourceDataV1,request:TavernLoreE
       origin:{kind:'append-only-lore-overlay',ref,refSha256:recordSha256(ref)}}]}))
   if(result.kind!=='compiled')fail('FIELDS_INVALID',result.diagnostics[0]?.code)
 }
-export function receiptOf(event:TavernLoreEditEventV1):TavernLoreEditReceiptV1 {
-  const request=event.request,body={schemaVersion:1 as const,encoding:'tavern-lore-edit-receipt-v1' as const,
-    authority:'consumer-data-only' as const,identitySha256:event.identitySha256,operationId:request.operationId,
+export function receiptOf(event:Exclude<TavernLoreJournalEventV2,{schemaVersion:1}>):TavernLoreMutationReceiptV2
+export function receiptOf(event:TavernLoreJournalEventV2):TavernLoreEditReceiptV1|TavernLoreMutationReceiptV2
+export function receiptOf(event:TavernLoreJournalEventV2):TavernLoreEditReceiptV1|TavernLoreMutationReceiptV2 {
+  const request=event.request,common={authority:'consumer-data-only' as const,
+    identitySha256:event.identitySha256,operationId:request.operationId,
     payloadSha256:event.payloadSha256,revision:event.revision,editSourceSha256:request.expectedSourceSha256,
-    rawEntryPointer:request.rawEntryPointer,rawEntrySha256:request.rawEntrySha256,fieldsSha256:recordSha256(request.fields),
     eventRef:rowRef(eventKey(event.identitySha256,request.operationId),event),headRef:headRef(nextHead(event),true)}
+  const body='mutation' in request
+    ?{...common,schemaVersion:2 as const,encoding:'tavern-lore-mutation-receipt-v2' as const,
+      mutationSha256:recordSha256(request.mutation)}
+    :{...common,schemaVersion:1 as const,encoding:'tavern-lore-edit-receipt-v1' as const,
+      rawEntryPointer:request.rawEntryPointer,rawEntrySha256:request.rawEntrySha256,fieldsSha256:recordSha256(request.fields)}
   return freeze({...body,receiptSha256:recordSha256(body)})
 }
 export type EditAccumulationV1={fields:TavernLoreCurrentNativeFieldsV1;events:TavernLoreEditRefV1[];rawEntrySha256:string}

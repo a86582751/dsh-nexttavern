@@ -45,6 +45,7 @@ function bindingBody(body:Omit<PromptOpeningSourceProofV1,'bindingSha256'|'proof
 }
 function validateInitialization(initialization:PromptOpeningInitializationV1,proof:PromptOpeningSourceProofV1):void {
   const value=initialization,bindings=value.bindings
+  const membership=proof.program.book.currentNativeMembershipSha256!==undefined
   exact(value,value.kind==='absent'
     ?['kind','reason','markerCount','data','calculation','dataSha256','calculationSha256','inputBindingSha256',
       'bindings','grammarPolicy','schemaExecution','calculationPolicy']
@@ -61,7 +62,7 @@ function validateInitialization(initialization:PromptOpeningInitializationV1,pro
     ||!Array.isArray(bindings.greetingFacts)||bindings.greetingFacts.length>4096
     ||recordSha256(bindings.rawBook)!==bindings.rawBookSha256
     ||bindings.rawBookSha256!==proof.program.book.rawBookSha256
-    ||bindings.rawEntries.length!==proof.program.bookEntries.length)openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/bindings')
+    ||!membership&&bindings.rawEntries.length!==proof.program.bookEntries.length)openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/bindings')
   const rawBook=bindings.rawBook,rawContainer=rawBook?.entries
   const actualEntries=Array.isArray(rawContainer)?rawContainer.map((entry,index)=>[String(index),entry] as const)
     :openingSourceObject(rawContainer)?Object.entries(rawContainer):[]
@@ -79,10 +80,14 @@ function validateInitialization(initialization:PromptOpeningInitializationV1,pro
       programEntry=proof.program.bookEntries.find(item=>item.originalAddress===entry.sourcePointer)
     if(!openingSourceObject(original)||!actual||actual[0]!==entry.sourceKey||!same(actual[1],original)
       ||entry.ordinal!==index||!same(original,actual[1])||recordSha256(original)!==entry.rawEntrySha256
-      ||!programEntry||programEntry.entryId!==entry.entryId||programEntry.sourceKey!==entry.sourceKey
-      ||programEntry.rawEntrySha256!==entry.rawEntrySha256||programEntry.original.text!==original.content
-      ||programEntry.effective.textSha256!==entry.effectivePromptContentSha256
-      ||typeof original.content!=='string'||!hash(entry.effectivePromptContentSha256)
+      ||(membership
+        ?entry.entryId!==(programEntry?.entryId??null)
+          ||entry.effectivePromptContentSha256!==(programEntry?.effective.textSha256??null)
+        :!programEntry||programEntry.entryId!==entry.entryId||programEntry.sourceKey!==entry.sourceKey
+          ||programEntry.effective.textSha256!==entry.effectivePromptContentSha256
+          ||!hash(entry.effectivePromptContentSha256))
+      ||programEntry&&(programEntry.rawEntrySha256!==entry.rawEntrySha256||programEntry.original?.text!==original.content)
+      ||typeof original.content!=='string'
       ||entry.sourcePointer!=='/data/character_book/entries/'+entry.sourceKey.replace(/~/g,'~0').replace(/\//g,'~1')
       ||entry.isInitVar!==String(original.comment??'').toLowerCase().includes('[initvar]')
       ||entry.enabled!==(original.enabled!==false&&original.disable!==true)) {

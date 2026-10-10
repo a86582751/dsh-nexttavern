@@ -4,17 +4,23 @@ import {createBrowserRuntimeFrameV3} from '../core/tavern-author-browser-frame-v
 import type {AuthorBrowserReply,AuthorBrowserRequest} from '../core/roleplay-author-browser-types.js';
 import type {BrowserBindingV1,BrowserHostBridgeV1,BrowserRenderV1,BrowserSaveReplyV1,BrowserSnapshotV1}
     from '../core/tavern-author-browser-types.mjs';
-import type {BrowserHostBridgeV2,BrowserSnapshotV2} from '../core/tavern-author-browser-types-v2.mjs';
+import type {BrowserHostBridgeV2,BrowserSnapshotV2,
+  BrowserWorldbookMutationRequestV2,BrowserPersonaMutationRequestV2} from '../core/tavern-author-browser-types-v2.mjs'
 import type {BrowserHostBridgeV3,BrowserSnapshotV3,BrowserOrdinaryKeyRequestV3}
     from '../core/tavern-author-browser-types-v3.mjs';
-import {createAuthorBrowserPendingStore,terminalBrowserReceipt} from './author-browser-pending.js';
-import type {AuthorBrowserPendingV1} from './author-browser-pending.js';
+import {createAuthorBrowserPendingStore,terminalBrowserReceipt,worldbookPendingRetryLocator,
+    worldbookPendingBlocksNamespace}
+    from './author-browser-pending.js';
+import type {AuthorBrowserPendingV1,AuthorBrowserWorldbookPendingV2,AuthorBrowserPersonaPendingV1}
+    from './author-browser-pending.js';
 import type {AuthorScriptResourceRequestV1} from '../core/roleplay-author-script-resources.js';
 
 export interface AuthorBrowserStatus {
     kind: 'loading' | 'inactive' | 'starting' | 'ready' | 'pending' | 'failed';
     code?: string;
     pending?: AuthorBrowserPendingV1;
+    worldbooks?: AuthorBrowserWorldbookPendingV2[];
+    personas?: AuthorBrowserPersonaPendingV1[];
 }
 export type AuthorBrowserTransport = (request: AuthorBrowserRequest, signal?: AbortSignal) => Promise<AuthorBrowserReply>;
 export const authorBrowserTransport: AuthorBrowserTransport = async (request, signal) => {
@@ -60,8 +66,15 @@ export function createAuthorBrowserSession(options: {
     let render: BrowserRenderV1 | undefined, revision = 0;
     let refreshing: Promise<void> | undefined, refreshAgain = false;
     let checking: Promise<void> | undefined;
+    let lastStatus: AuthorBrowserStatus = {kind: 'loading'};
+    const worldbookChecks = new Map<string, Promise<void>>();
+    const personaChecks = new Map<string, Promise<void>>();
     const current = () => active && options.current();
-    const notify = (value: AuthorBrowserStatus) => {if (current()) options.status(value);};
+    const notify = (value: AuthorBrowserStatus) => {
+        if (!current()) return;
+        lastStatus = {...value, worldbooks: store.readWorldbooks(options.sessionId), personas: store.readPersonas(options.sessionId)};
+        options.status(lastStatus);
+    };
     const release = (old: BrowserBindingV1) => {
         void transport({action: 'dispose', binding: old}).catch(() => {});
     };
@@ -146,8 +159,63 @@ export function createAuthorBrowserSession(options: {
             if(reply.kind!=='source-resource')throw Error('AUTHOR_SCRIPT_RESOURCE_UNAVAILABLE');
             return reply.value;
         },
+        async mutateWorldbook(target:BrowserBindingV1,request:BrowserWorldbookMutationRequestV2,signal:AbortSignal) {
+            // Associate this dispatch with the parent's actual captured DATA,
+            // before persisting its address and sending the mutation.
+            const book = captured && 'worldbook' in captured ? captured.worldbook : undefined;
+            if (!current() || realm !== owner || !sameBinding(binding, target)) throw Error('BROWSER_GENERATION_REVOKED');
+            if (!book || book.schemaVersion !== 2 || book.dataSha256 !== request.expectedDataSha256) {
+                throw Error('AUTHOR_WORLDBOOK_STALE_BASE');
+            }
+            const envelope = store.beginWorldbook(target, request, book.identitySha256);
+            notify(lastStatus);
+            try {
+                const reply=await transport({action:'mutate-worldbook',binding:target,request},signal);
+                if(reply.kind!=='worldbook-mutated')throw Error('AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN');
+                store.recordWorldbook(envelope, reply.reply.result);
+                notify(lastStatus);
+                if(reply.reply.snapshot&&current()&&realm===owner&&sameBinding(binding,target)) {
+                    captured=reply.reply.snapshot;
+                }
+                // Preserve a committed receipt even when Core has revoked its
+                // continuation. Frame owns termination; this bridge never heals it.
+                return reply.reply;
+            } catch (error) {
+                const code = error instanceof Error ? error.message : 'AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN';
+                store.recordWorldbook(envelope, undefined, code);
+                notify(lastStatus);
+                throw error;
+            }
+        },
+        async mutatePersona(target:BrowserBindingV1,request:BrowserPersonaMutationRequestV2,_signal:AbortSignal) {
+            const envelope=store.beginPersona(target,request);
+            notify(lastStatus);
+            try {
+                // An admitted account write must still finish its receipt when
+                // the Reader or original Worker disappears before the ACK.
+                const reply=await transport({action:'mutate-persona',binding:target,request});
+                if(reply.kind!=='persona-mutated')throw Error('NATIVE_PERSONA_MUTATION_ACK_UNKNOWN');
+                store.recordPersona(envelope,reply.reply.result);
+                notify(lastStatus);
+                if(reply.reply.snapshot&&current()&&realm===owner&&sameBinding(binding,target)) {
+                    captured=reply.reply.snapshot;
+                }
+                return reply.reply;
+            } catch(error) {
+                store.recordPersona(envelope,undefined,
+                    error instanceof Error?error.message:'NATIVE_PERSONA_MUTATION_ACK_UNKNOWN');
+                // Unknown writes cannot continue the old author's callback or
+                // admit another realm. Manual recovery only looks up a receipt.
+                if(current()&&realm===owner&&sameBinding(binding,target))revoke();
+                notify({kind:'pending'});
+                throw error;
+            }
+        },
     });
     async function refreshOnce() {
+        if(store.readPersonas(options.sessionId).some(value=>value.state!=='terminal')) {
+            notify({kind:'pending'});return;
+        }
         const pending = store.read(options.sessionId);
         if (!frame && pending && pending.state !== 'terminal') {
             notify({kind: 'pending', pending});return;
@@ -161,6 +229,17 @@ export function createAuthorBrowserSession(options: {
         if (reply.kind === 'inactive') {revoke();notify({kind: 'inactive', code: reply.code});return;}
         if (reply.kind !== 'attached') throw Error('BROWSER_ATTACHMENT_UNAVAILABLE');
         const attachment = reply.attachment;
+        const book = 'worldbook' in attachment.snapshot ? attachment.snapshot.worldbook : undefined;
+        const identitySha256 = book?.schemaVersion === 2 ? book.identitySha256 : undefined;
+        if (store.readWorldbooks(options.sessionId).some(value =>
+            worldbookPendingBlocksNamespace(value, identitySha256))) {
+            // Capture current namespace DATA before deciding whether it may
+            // mount. A's pending intent remains visible while B can proceed.
+            const previous = binding;
+            revoke();
+            if (!previous || !sameBinding(previous, attachment.binding)) release(attachment.binding);
+            notify({kind: 'pending'});return;
+        }
         if (sameBinding(binding, attachment.binding) && frame) {
             captured = attachment.snapshot;
             frame.publishSnapshot(attachment.snapshot);
@@ -270,8 +349,65 @@ export function createAuthorBrowserSession(options: {
         })().finally(() => {checking = undefined;});
         return checking;
     }
+    function retryWorldbook(operationId: string): Promise<void> {
+        const checking = worldbookChecks.get(operationId);
+        if (checking) return checking;
+        const work = (async () => {
+            const envelope = store.readWorldbooks(options.sessionId).find(value => value.operationId === operationId);
+            if (!envelope || envelope.state === 'terminal') return;
+            try {
+                // Core selects the current Native owner and its existing intent.
+                // Neither the stored binding nor a lost author callback is resumed.
+                const locator = worldbookPendingRetryLocator(envelope);
+                const reply = await transport({action: 'retry-worldbook', sessionId: options.sessionId, operationId,
+                    ...locator ? {locator} : {}});
+                if (reply.kind !== 'worldbook-retried') throw Error('AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN');
+                const code = reply.result.kind === 'refused'
+                    && reply.result.diagnostics.some(value => value.code === 'OPERATION_NOT_RECORDED')
+                    ? 'AUTHOR_WORLDBOOK_OPERATION_NOT_RECORDED' : undefined;
+                store.recordWorldbook(envelope, reply.result, code);
+                if (current() && sameBinding(binding, envelope.binding)) revoke();
+                notify(frame ? lastStatus : {kind: 'failed', code: 'BROWSER_GENERATION_REVOKED'});
+            } catch (error) {
+                store.recordWorldbook(envelope, undefined,
+                    error instanceof Error ? error.message : 'AUTHOR_WORLDBOOK_MUTATION_ACK_UNKNOWN');
+                notify(lastStatus);
+            }
+        })().finally(() => {worldbookChecks.delete(operationId);});
+        worldbookChecks.set(operationId, work);
+        return work;
+    }
+    function retryPersona(operationId:string):Promise<void> {
+        const checking=personaChecks.get(operationId);
+        if(checking)return checking;
+        const work=(async()=>{
+            const envelope=store.readPersonas(options.sessionId).find(value=>value.operationId===operationId);
+            if(!envelope||envelope.state==='terminal')return;
+            try {
+                const reply=await transport({action:'retry-persona',sessionId:options.sessionId,operationId});
+                if(reply.kind!=='persona-retried')throw Error('NATIVE_PERSONA_MUTATION_ACK_UNKNOWN');
+                store.recordPersona(envelope,reply.result);
+                if(current()&&sameBinding(binding,envelope.binding))revoke();
+                notify(frame?lastStatus:{kind:'failed',code:'BROWSER_GENERATION_REVOKED'});
+            } catch(error) {
+                store.recordPersona(envelope,undefined,
+                    error instanceof Error?error.message:'NATIVE_PERSONA_MUTATION_ACK_UNKNOWN');
+                notify(lastStatus);
+            }
+        })().finally(()=>{personaChecks.delete(operationId);});
+        personaChecks.set(operationId,work);
+        return work;
+    }
+
     return {
         start: () => confirm(), refresh, confirm: () => confirm(), retry: () => confirm(true),
+        retryWorldbook,
+        retryPersona,
+        async showCurrentPageWithLegacyUnknown(operationId: string) {
+            store.releaseLegacyWorldbook(operationId, options.sessionId);
+            notify(lastStatus);
+            await refresh();
+        },
         hasFrame: () => !!frame,
         render(value: Omit<BrowserRenderV1, 'renderRevision'>) {
             render = {...value, renderRevision: ++revision};frame?.render(render);

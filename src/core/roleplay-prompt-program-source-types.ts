@@ -5,7 +5,7 @@ import type {TavernLoreSourceDataV1,TavernLoreSourceRowDataV1}
   from './roleplay-tavern-lore-source-types.js'
 import type {PromptTemplateOnlyFieldV1,PromptTemplateOnlySegmentV1}
   from './roleplay-prompt-template-only-types.js'
-import type {TavernLoreEntryPlanV1,TavernLoreCurrentNativeOriginV1}
+import type {TavernLoreEntryPlanV1,TavernLoreCurrentNativeOriginV1,TavernLoreCurrentNativeMemberReferenceV1}
   from './tavern-lore-plan-types.mjs'
 import type {captureRoleplayTavernPromptSourceV1} from './roleplay-tavern-prompt-source.js'
 import type {TavernLoreEditsDataV1} from './roleplay-tavern-lore-edits-types.js'
@@ -102,16 +102,18 @@ export interface PromptProgramBookEntryV1 {
   readonly entryId:string
   readonly ordinal:number
   readonly sourceKey:string
-  readonly originalAddress:string
+  /** Null for an introduced event incarnation; never a synthetic archive path. */
+  readonly originalAddress:string|null
   readonly rawEntrySha256:string
   readonly contentPointer:string
   readonly disposition:TavernLoreEntryPlanV1['disposition']
   readonly promptEligibility:'requires-actual-selection-and-protected-runtime'|'disabled-never-execute'|'ineligible-never-execute'
   readonly numericalInitialization:'not-authorized'
-  readonly original:PromptProgramTextV1
+  readonly original:PromptProgramTextV1|null
   readonly effective:PromptProgramTextV1
-  readonly origin:'original-character-book'|'current-native-origin'
+  readonly origin:'original-character-book'|'current-native-origin'|'current-native-membership'
   readonly currentNativeOrigin:TavernLoreCurrentNativeOriginV1|null
+  readonly currentNativeMember?:TavernLoreCurrentNativeMemberReferenceV1
   readonly currentProjection:{readonly row:TavernLoreSourceRowDataV1['ref'];readonly fieldPointer:'/content';
     readonly original:PromptProgramTextV1;readonly effective:PromptProgramTextV1;
     readonly assignment:PromptProgramAssignmentOriginV1;readonly provenance:'actual-compiler-linked-current-row'}|null
@@ -121,7 +123,7 @@ export interface PromptProgramBookEntryV1 {
   readonly originalProjectionAssignments:readonly PromptProgramAssignmentOriginV1[]
 }
 export interface PromptProgramExcludedLeafV1 {
-  readonly domain:'original-document'|'current-row'|'current-overlay'
+  readonly domain:'original-document'|'current-row'|'current-overlay'|'current-membership'
   readonly row:TavernLoreSourceRowDataV1['ref']|null
   readonly pointer:string
   readonly kind:'property-key'|'string'|'non-string'
@@ -166,10 +168,11 @@ export interface PromptProgramSourceInventoryV1 {
   readonly bookEntries:readonly PromptProgramBookEntryV1[]
   readonly book:{readonly pointer:string;readonly rawBookSha256:string;readonly bookDisposition:string;
     readonly compilationSha256:string;readonly planSha256:string;readonly semanticPlanBindingSha256:string;
-    readonly currentNativeOverlaySha256:string|null}
+    readonly currentNativeOverlaySha256:string|null;readonly currentNativeMembershipSha256?:string}
   readonly currentRows:readonly TavernLoreSourceRowDataV1['ref'][]
   readonly editing:{readonly dataSha256:string;readonly revision:number;readonly headRef:TavernLoreEditsDataV1['headRef'];
-    readonly journalRefs:TavernLoreEditsDataV1['journalRefs'];readonly effectiveOverlaySha256:string}
+    readonly journalRefs:TavernLoreEditsDataV1['journalRefs'];readonly effectiveOverlaySha256:string;
+    readonly effectiveMembershipSha256?:string}
   readonly unauthorized:readonly PromptProgramExcludedLeafV1[]
   readonly unauthorizedSha256:string
   readonly authorityLimits:{readonly numericalInitialization:'not-authorized';readonly schemaScripts:'not-authorized';

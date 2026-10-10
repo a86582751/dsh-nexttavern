@@ -34,6 +34,17 @@ export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V1=Object.freeze({...PROMPT
   projection:'exact-portable-author-body-and-current-owned-row; normalized-assignment-receipt-separate',
   book:'actual-recomputed-entry-content-with-archive-only-ordinal-receipts; no-canonical-row-duplication'})
 export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256=recordSha256(NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V1)
+/** Current journal members retain archive provenance only for original
+ * incarnations. An introduced member starts at its actual published event. */
+export const PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1=Object.freeze({...PROMPT_PROGRAM_SOURCE_POLICY_V1,
+  encoding:'native-author-prompt-program-source-membership-policy-v1',
+  book:'actual-current-journal-membership-order; immutable-original-or-introduced-event-incarnation; current-content-only'})
+export const PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256=recordSha256(PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1)
+export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1=Object.freeze({...NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_V1,
+  encoding:'native-nexttavern-author-prompt-program-source-membership-policy-v1',
+  book:PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1.book})
+export const NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256=
+  recordSha256(NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_V1)
 class ProgramSourceFailure extends Error {
   constructor(readonly code:PromptProgramSourceCodeV1,readonly pointer:string) {super(code)}
 }
@@ -131,14 +142,17 @@ function validateText(text:PromptProgramTextV1,pointer:string):void {
 function validateInventory(input:unknown):PromptProgramSourceInventoryV1 {
   const value=clone(input)
   const native=object(value)&&object(value.importTuple)&&value.importTuple.format==='json-nexttavern-v1'
+  const membership=object(value)&&object(value.book)&&Object.hasOwn(value.book,'currentNativeMembershipSha256')
+  const policySha256=membership?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
+    :PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
+    :native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_POLICY_SHA256
   const keys=['schemaVersion','encoding','authority','policySha256','sessionId','includeCardStyle','importTuple',
     'sourceCurrentIdentitySha256','authorFields','authorGroups','assignments','bookEntries','book','currentRows',
     'editing','unauthorized','unauthorizedSha256','authorityLimits','bindingSha256','audit','inventorySha256']
   if(!object(value)||Object.keys(value).length!==keys.length||Object.keys(value).some(key=>!keys.includes(key))
     ||value.schemaVersion!==1||value.encoding!==(native?'native-nexttavern-author-prompt-program-source-inventory-v1'
       :'native-author-prompt-program-source-inventory-v1')
-    ||value.authority!=='consumer-data-only'||value.policySha256!==(native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256
-      :PROMPT_PROGRAM_SOURCE_POLICY_SHA256)
+    ||value.authority!=='consumer-data-only'||value.policySha256!==policySha256
     ||typeof value.sessionId!=='string'||typeof value.includeCardStyle!=='boolean'
     ||!Array.isArray(value.authorFields)||(!native&&value.authorFields.length!==6)||!Array.isArray(value.authorGroups)
     ||!Array.isArray(value.bookEntries)||value.authorGroups.length>PROMPT_PROGRAM_SOURCE_POLICY_V1.groups
@@ -201,7 +215,10 @@ function validateInventory(input:unknown):PromptProgramSourceInventoryV1 {
     if(end!==group.original.utf16Length)fail('PROGRAM_INVENTORY_INVALID','/authorGroups/partition')
   }
   for(const entry of data.bookEntries) {
-    validateText(entry.original,entry.contentPointer);validateText(entry.effective,entry.contentPointer)
+    if(entry.currentNativeMember) {
+      if(entry.original!==null)validateText(entry.original,entry.originalAddress!+'/content')
+    }else validateText(entry.original!,entry.contentPointer)
+    validateText(entry.effective,entry.contentPointer)
     if(entry.currentProjection) {
       const pointer=entry.currentProjection.row.table+':'+entry.currentProjection.row.key+':/content'
       validateText(entry.currentProjection.original,pointer);validateText(entry.currentProjection.effective,pointer)
@@ -281,8 +298,10 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     const {source,record,decoded}=captured
     const mapping=mapPromptProgramAuthorOriginsV1({decoded,record,source})
     const compilation=validateTavernLoreCompilationV1(captured.compilation),plan=compilation.plan
+    const membership=plan.currentNativeMembership
     if(plan.source.sourceSnapshotSha256!==source.sourceSha256||plan.rawBookSha256!==source.original.primary.bookSha256
-      ||!same(plan.rawBook,source.original.primary.value)||plan.entries.length!==source.original.primary.entries.length) {
+      ||!same(plan.rawBook,source.original.primary.value)
+      ||plan.entries.length!==(membership?.members.length??source.original.primary.entries.length)) {
       fail('PROGRAM_COMPILATION_UNPROVEN','/compilation')
     }
     const sourceIdentitySha256=captured.currentIdentitySha256
@@ -304,12 +323,16 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
       linkedBookRows.set(overlay.rawEntry.entryPointer,overlay.row)
     }
     const bookEntries:PromptProgramBookEntryV1[]=plan.entries.map(entry=>{
-      const original=rawEntries.get(entry.sourcePointer)
-      if(!original||original.ref.entrySha256!==entry.rawEntrySha256||original.ref.entryOrdinal!==entry.ordinal
-        ||typeof original.value.content!=='string')fail('PROGRAM_COMPILATION_UNPROVEN',entry.sourcePointer)
+      const identity=entry.currentNativeMember?.identity
+      const originalAddress=identity?identity.kind==='original'?identity.rawEntryPointer:null:entry.sourcePointer
+      const original=originalAddress===null?undefined:rawEntries.get(originalAddress)
+      if(originalAddress!==null&&(!original||original.ref.entrySha256!==entry.rawEntrySha256
+        ||!membership&&(original.ref.entryOrdinal!==entry.ordinal||typeof original.value.content!=='string'))) {
+        fail('PROGRAM_COMPILATION_UNPROVEN',entry.sourcePointer)
+      }
       const pointer=entry.sourcePointer+'/content',effective=resolveTavernLoreContentTextV1(plan,pointer)
-      const assignment=bookAssignments.get(entry.sourcePointer),originalAssignments=assignment?[assignment]:[]
-      const linked=linkedBookRows.get(entry.sourcePointer)
+      const assignment=originalAddress===null?undefined:bookAssignments.get(originalAddress),originalAssignments=assignment?[assignment]:[]
+      const linked=originalAddress===null?undefined:linkedBookRows.get(originalAddress)
       let currentProjection:PromptProgramBookEntryV1['currentProjection']=null
       if(assignment?.assignment.target==='worldbook') {
         if(!linked?.value||typeof linked.value.content!=='string'
@@ -320,19 +343,22 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
           original:textInventory(spanText(record,assignment.assignment.sourceSpans),at),
           effective:textInventory(linked.value.content,at),assignment,provenance:'actual-compiler-linked-current-row'}
       }
-      return {entryId:entry.entryId,ordinal:entry.ordinal,sourceKey:entry.sourceKey,originalAddress:entry.sourcePointer,
+      return {entryId:entry.entryId,ordinal:entry.ordinal,sourceKey:entry.sourceKey,originalAddress,
         rawEntrySha256:entry.rawEntrySha256,contentPointer:pointer,disposition:entry.disposition,
         promptEligibility:entry.disposition==='disabled'?'disabled-never-execute'
           :entry.disposition==='retained-ineligible'||plan.bookDisposition!=='eligible-semantic-data'
             ?'ineligible-never-execute':'requires-actual-selection-and-protected-runtime',
-        numericalInitialization:'not-authorized',original:textInventory(original.value.content,pointer),
+        numericalInitialization:'not-authorized',original:typeof original?.value.content==='string'?textInventory(original.value.content,
+          membership?originalAddress!+'/content':pointer):null,
         effective:textInventory(effective.text,pointer),origin:effective.origin,
-        currentNativeOrigin:effective.currentNativeOrigin??null,currentProjection,entryPlanSha256:entry.entryPlanSha256,
+        currentNativeOrigin:effective.currentNativeOrigin??null,
+        ...(entry.currentNativeMember?{currentNativeMember:entry.currentNativeMember}:{}),
+        currentProjection,entryPlanSha256:entry.entryPlanSha256,
         fieldSources:entry.fieldSources,fieldSourcesSha256:recordSha256(entry.fieldSources),
         originalProjectionAssignments:originalAssignments}
     })
     const rawAuthorized=new Set(authorFields.filter(field=>field.raw!==null).map(field=>field.originalPointer))
-    for(const entry of bookEntries)rawAuthorized.add(entry.contentPointer)
+    for(const entry of bookEntries)if(entry.originalAddress!==null)rawAuthorized.add(entry.originalAddress+'/content')
     const unauthorized:PromptProgramExcludedLeafV1[]=[]
     deniedLeaves(decoded.document,{domain:'original-document',row:null,pointer:'',authorized:rawAuthorized},unauthorized)
     const authorizedRows=new Map<string,{ref:TavernLoreSourceRowDataV1['ref'];fields:Set<string>}>()
@@ -354,24 +380,31 @@ export function createRoleplayPromptProgramSourceV1(deps:PromptProgramSourceDeps
     }
     const overlay=plan.currentNativeOverlay
     if(overlay) {
-      const authorized=new Set(overlay.entries.flatMap((entry,index)=>Object.hasOwn(entry.fields,'content')
+      const authorized=new Set(overlay.entries.flatMap((entry,index)=>!membership&&Object.hasOwn(entry.fields,'content')
         ?[`/entries/${index}/fields/content`]:[]))
       deniedLeaves(overlay,{domain:'current-overlay',row:null,pointer:'',authorized},unauthorized)
+    }
+    if(membership) {
+      const authorized=new Set(membership.members.map((_,index)=>`/members/${index}/rawEntry/content`))
+      deniedLeaves(membership,{domain:'current-membership',row:null,pointer:'',authorized},unauthorized)
     }
     const importTuple=promptProgramSourceImportTupleV1(source,record)
     const native=decoded.format==='json-nexttavern-v1'
     const body={schemaVersion:1 as const,encoding:'native-author-prompt-program-source-inventory-v1' as const,
-      authority:'consumer-data-only' as const,policySha256:native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256
-        :PROMPT_PROGRAM_SOURCE_POLICY_SHA256,sessionId,includeCardStyle,
+      authority:'consumer-data-only' as const,policySha256:membership
+        ?native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_MEMBERSHIP_POLICY_SHA256
+        :native?NEXTTAVERN_PROMPT_PROGRAM_SOURCE_POLICY_SHA256:PROMPT_PROGRAM_SOURCE_POLICY_SHA256,sessionId,includeCardStyle,
       importTuple,sourceCurrentIdentitySha256:sourceIdentitySha256,authorFields,authorGroups,
       assignments:mapping.assignmentInventory,bookEntries,
       book:{pointer:plan.source.bookPointer,rawBookSha256:plan.rawBookSha256,bookDisposition:plan.bookDisposition,
         compilationSha256:recordSha256(compilation),planSha256:plan.planSha256,
         semanticPlanBindingSha256:semanticPlanBinding(compilation,sourceIdentitySha256),
-        currentNativeOverlaySha256:plan.currentNativeOverlaySha256??null},
+        currentNativeOverlaySha256:plan.currentNativeOverlaySha256??null,
+        ...(membership?{currentNativeMembershipSha256:plan.currentNativeMembershipSha256!}:{})},
       currentRows:source.current.rows.map(row=>row.ref),editing:{dataSha256:captured.edits.dataSha256,
         revision:captured.edits.revision,headRef:captured.edits.headRef,journalRefs:captured.edits.journalRefs,
-        effectiveOverlaySha256:recordSha256(plan.currentNativeOverlay??null)},unauthorized,
+        effectiveOverlaySha256:recordSha256(plan.currentNativeOverlay??null),
+        ...(membership?{effectiveMembershipSha256:plan.currentNativeMembershipSha256!}:{})},unauthorized,
       unauthorizedSha256:recordSha256(unauthorized),authorityLimits:{numericalInitialization:'not-authorized' as const,
         schemaScripts:'not-authorized' as const,nativeInput:'not-authorized' as const,protectedExecution:'not-authorized' as const,
         tokenizer:'delimiter-partition-only-not-AST-effect-or-success-proof' as const},

@@ -49,7 +49,18 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
     rules.core=legacy!.contributions.coreData.text
     if(legacy!.contributions.coreData.kind==='legacy-edited-unsplit')rules.coreOrigin='legacy-edited-unsplit'
     for(const key of legacy!.linkedRowKeys)skip.add(key)
-    if(book) {
+    if(observed.data.currentNativeMembership) {
+      // Current order/membership comes from the published journal. Original
+      // object keys and removed entries remain in the complete inert archive.
+      const entries=observed.data.currentNativeMembership.members.map(member=>{
+        const entry=materializeTavernLoreEntryFieldsV1(member.rawEntry,{displayIndex:member.displayIndex})
+        // Helper's numeric UID may project a retained textual native id. The
+        // Native document keeps that author metadata; only missing ids use UID.
+        if(!Object.hasOwn(entry,'id'))entry.id=member.uid
+        return entry
+      })
+      book={...book??{},entries}
+    }else if(book) {
       const edits=new Map(observed.data.overlay.entries.map(entry=>[entry.rawEntryPointer,entry.fields]))
       const source=captured.source.original.primary
       if(source.binding==='primary')for(const entry of source.entries) {

@@ -5,11 +5,92 @@ import { recordSha256 } from './roleplay-data.js';
 import { compileTavernLoreBookV1, resolveTavernLoreContentTextV1 } from './tavern-lore-compiler.mjs';
 import { ST_LORE_ENTRY_DEFAULTS_V1 } from './tavern-lore-fixed-profile.mjs';
 import { composeRoleplayTavernCurrentOverlayV1 } from './roleplay-tavern-current-overlay.js';
+import { foldTavernLorePublishedMembershipV2 } from './roleplay-tavern-lore-membership.js';
 import { validateFrozenSourceEditBaselineV1, validateInheritanceEditSlotV1 } from './roleplay-tavern-source-edit-baseline.js';
 import { tavernSourceEditSlotKeyV1 } from './roleplay-tavern-source-inheritance-data.js';
-import { TAVERN_LORE_EDITS_BOUNDS_V1, fail, freeze, strictData, same, identityOf, namespace, headKey, eventKey, rowRef, headRef, genesis, parseHead, parseEvent, nextHead, validateFields, compilerInput, LoreEditFailureV1 } from './roleplay-tavern-lore-edits-data.js';
+import { TAVERN_LORE_EDITS_BOUNDS_V1, fail, freeze, strictData, same, identityOf, namespace, headKey, eventKey, rowRef, headRef, genesis, parseHead, parseEvent, nextHead, validateFields, compilerInput, LoreEditFailureV1, object, mutationRetryLocatorDataV1 } from './roleplay-tavern-lore-edits-data.js';
 export const journalReferencesShaV1 = (refs, inherited) => recordSha256(inherited ? { local: refs, inherited: { baselineRef: inherited.baselineRef, slotRef: inherited.slotRef,
         baselineSha256: inherited.baseline.baselineSha256 } } : refs);
+/** The same exact published-chain fold serves live Source and receipt lookup.
+ * Only the live writer additionally needs full membership and Source fields. */
+function readPublishedChainV1(identity, head, readEvent) {
+    const reversed = [], seen = new Set();
+    let link = head.lastEvent;
+    while (link) {
+        if (seen.has(link.key) || reversed.length >= TAVERN_LORE_EDITS_BOUNDS_V1.events)
+            fail('JOURNAL_CHAIN_INVALID');
+        seen.add(link.key);
+        const event = readEvent(link.key);
+        if (!event)
+            fail('JOURNAL_MISSING_EVENT');
+        if (link.sha256 !== recordSha256(event))
+            fail('JOURNAL_HASH_INVALID');
+        reversed.push(event);
+        link = event.baseHead.lastEvent;
+    }
+    const published = reversed.reverse();
+    let expected = genesis(identity);
+    for (const event of published) {
+        if (!same(event.baseHead, expected)
+            || event.baseHeadRowSha256 !== (expected.revision === 0 ? 'missing' : recordSha256(expected)))
+            fail('JOURNAL_CHAIN_INVALID');
+        expected = nextHead(event);
+    }
+    if (!same(expected, head) || published.length !== head.revision)
+        fail('JOURNAL_CHAIN_INVALID');
+    return { published, seen };
+}
+/** Read only the explicitly addressed operation and its actual published chain.
+ * No Source from another import is substituted, and no namespace discovery runs. */
+export function readMutationOperationV1(deps, sid, operationId, locator) {
+    const address = mutationRetryLocatorDataV1(locator, operationId), key = eventKey(address.identitySha256, operationId), rawEvent = deps.branch.get(key), rawHead = deps.branch.get(headKey(address.identitySha256));
+    if (rawEvent === undefined && rawHead === undefined) {
+        // A prior canonical event reference proves an intent once existed. Absence
+        // now is missing evidence, never permission to erase that recovery record.
+        if (address.eventRef)
+            fail('JOURNAL_MISSING_EVENT');
+        return { kind: 'not-recorded' };
+    }
+    const rawIdentity = (rawEvent ?? rawHead);
+    if (!object(rawIdentity) || !object(rawIdentity.identity))
+        fail('JOURNAL_SCHEMA_INVALID');
+    const identity = rawIdentity.identity;
+    if (identity.sessionId !== sid || recordSha256(identity) !== address.identitySha256)
+        fail('JOURNAL_IDENTITY_MISMATCH');
+    const head = rawHead === undefined ? genesis(identity) : parseHead(rawHead, identity), events = new Map();
+    const target = rawEvent === undefined ? undefined : parseEvent(rawEvent, key, identity);
+    if (target)
+        events.set(key, target);
+    if (address.eventRef) {
+        if (!target)
+            fail('JOURNAL_MISSING_EVENT');
+        if (recordSha256(target) !== address.eventRef.sha256)
+            fail('JOURNAL_HASH_INVALID');
+    }
+    if (target?.schemaVersion === 1)
+        fail('REQUEST_INVALID');
+    // This exact immutable intent is still based on the actual head. Returning
+    // its recovery address needs no reparse of the historical Source or prefix.
+    if (target && same(target.baseHead, head) && target.baseHeadRowSha256 === headRef(head, rawHead !== undefined).sha256
+        && target.revision === head.revision + 1)
+        return { kind: 'pending', event: target };
+    const { seen } = readPublishedChainV1(identity, head, eventKey => {
+        const cached = events.get(eventKey);
+        if (cached)
+            return cached;
+        const raw = deps.branch.get(eventKey);
+        if (raw === undefined)
+            return undefined;
+        const event = parseEvent(raw, eventKey, identity);
+        events.set(eventKey, event);
+        return event;
+    });
+    if (!target)
+        return { kind: 'not-recorded' };
+    if (seen.has(key))
+        return { kind: 'published', event: target };
+    fail('JOURNAL_ORPHAN_CONFLICT');
+}
 /** Existing live consumers retain the Source checkpoint after the complete
  * namespace parser. Owned synchronous input capture uses that parser directly. */
 export function readJournal(deps, source, assertCapturedSourceCurrent) {
@@ -103,33 +184,11 @@ export function readJournalData(deps, source) {
     for (const [key, value] of values)
         if (key !== headKey(identitySha256)) {
             const event = parseEvent(value, key, identity);
-            validateFields(source, event.request);
+            if (event.schemaVersion === 1)
+                validateFields(source, event.request);
             events.set(key, event);
         }
-    const reversed = [], seen = new Set();
-    let link = head.lastEvent;
-    while (link) {
-        if (seen.has(link.key) || reversed.length >= TAVERN_LORE_EDITS_BOUNDS_V1.events)
-            fail('JOURNAL_CHAIN_INVALID');
-        seen.add(link.key);
-        const event = events.get(link.key);
-        if (!event)
-            fail('JOURNAL_MISSING_EVENT');
-        if (link.sha256 !== recordSha256(event))
-            fail('JOURNAL_HASH_INVALID');
-        reversed.push(event);
-        link = event.baseHead.lastEvent;
-    }
-    const published = reversed.reverse();
-    let expected = genesis(identity);
-    for (const event of published) {
-        if (!same(event.baseHead, expected)
-            || event.baseHeadRowSha256 !== (expected.revision === 0 ? 'missing' : recordSha256(expected)))
-            fail('JOURNAL_CHAIN_INVALID');
-        expected = nextHead(event);
-    }
-    if (!same(expected, head) || published.length !== head.revision)
-        fail('JOURNAL_CHAIN_INVALID');
+    const { published, seen } = readPublishedChainV1(identity, head, key => events.get(key));
     const extras = [...events].filter(([key]) => !seen.has(key)).map(([, event]) => event);
     if (extras.length > 1)
         fail('JOURNAL_ORPHAN_CONFLICT');
@@ -142,7 +201,7 @@ export function readJournalData(deps, source) {
 }
 /** Validate the exact planned namespace and consumer envelope before intent
  * append. These are prospective hashes, never returned as live publication. */
-export function plannedPublication(source, journal, event) {
+export function plannedPublication(source, journal, event, editorBaseOverlay) {
     const key = eventKey(event.identitySha256, event.request.operationId), events = new Map(journal.events);
     if (events.has(key) || events.size >= TAVERN_LORE_EDITS_BOUNDS_V1.events)
         fail('JOURNAL_LIMIT');
@@ -153,17 +212,20 @@ export function plannedPublication(source, journal, event) {
         .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
     const result = { ...journal, head, headRef: headRef(head, true), events, published: [...journal.published, event],
         pending: null, refs, refsSha256: journalReferencesShaV1(refs, journal.inherited) };
-    publishedData(source, result);
+    publishedData(source, result, editorBaseOverlay);
     return result;
 }
 /** Published journal fields are author DATA. Reading them does not need the
  * semantic editor plan, which has its own compiler output contract. */
-export function publishedJournalData(source, journal) {
+export function publishedJournalData(source, journal, legacy) {
     if (journal.pending)
         fail('PENDING_INTENT');
     const edited = new Map();
     for (const event of journal.published) {
-        const { request } = event, previous = edited.get(request.rawEntryPointer);
+        const { request } = event;
+        if ('mutation' in request)
+            continue;
+        const previous = edited.get(request.rawEntryPointer);
         const ref = rowRef(eventKey(event.identitySha256, request.operationId), event);
         edited.set(request.rawEntryPointer, { rawEntrySha256: request.rawEntrySha256,
             fields: { ...previous?.fields, ...request.fields }, events: [...(previous?.events ?? []), ref] });
@@ -195,10 +257,24 @@ export function publishedJournalData(source, journal) {
     const overlay = { schemaVersion: 1,
         encoding: 'st-character-book-current-native-overlay-v1', entries: journal.inherited
             ? [...effective].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, entry]) => entry) : entries };
+    const rows = [...(journal.inherited?.baseline.layers.flatMap(layer => layer.events.map(row => ({
+            eventRef: row.ref, request: row.value.request
+        }))) ?? []), ...journal.published.map(event => ({
+            eventRef: rowRef(eventKey(event.identitySha256, event.request.operationId), event), request: event.request
+        }))];
+    let currentNativeMembership;
+    try {
+        currentNativeMembership = foldTavernLorePublishedMembershipV2(source, rows, legacy);
+    }
+    catch (error) {
+        fail(error instanceof Error && error.message === 'TAVERN_LORE_MEMBER_TARGET_MISSING'
+            ? 'ENTRY_LINK_INVALID' : 'FIELDS_INVALID', error instanceof Error ? error.message : undefined);
+    }
     const body = { schemaVersion: 1, encoding: 'tavern-lore-edits-current-data-v1',
         authority: 'consumer-data-only', sessionId: source.sessionId, source, identity: journal.identity,
         identitySha256: journal.identitySha256, revision: journal.head.revision, head: journal.head,
-        headRef: journal.headRef, journalRefs, journalSha256, overlay, ...journal.inherited ? { inheritance: {
+        headRef: journal.headRef, journalRefs, journalSha256, overlay,
+        ...(currentNativeMembership ? { currentNativeMembership } : {}), ...journal.inherited ? { inheritance: {
                 baselineRef: journal.inherited.baselineRef, slotRef: journal.inherited.slotRef,
                 baselineSha256: journal.inherited.baseline.baselineSha256,
                 effectiveOverlaySha256: recordSha256(journal.inherited.baseline.effectiveOverlay)
@@ -206,11 +282,11 @@ export function publishedJournalData(source, journal) {
     return freeze({ ...body, dataSha256: recordSha256(body) });
 }
 export function publishedData(source, journal, editorBaseOverlay) {
-    const data = publishedJournalData(source, journal);
+    const data = publishedJournalData(source, journal, editorBaseOverlay);
     // Only the editor view includes actual pre-existing legacy differences.
     // The journal data/encodings remain append-only fields, so the prompt owner
     // applies its own same baseline exactly once and retains original receipts.
-    const editorOverlay = editorBaseOverlay ? composeRoleplayTavernCurrentOverlayV1(editorBaseOverlay, data.overlay) : data.overlay, compiled = compileTavernLoreBookV1(compilerInput(source, editorOverlay));
+    const editorOverlay = editorBaseOverlay ? composeRoleplayTavernCurrentOverlayV1(editorBaseOverlay, data.overlay) : data.overlay, compiled = compileTavernLoreBookV1(compilerInput(source, editorOverlay, data.currentNativeMembership));
     if (compiled.kind !== 'compiled')
         fail('FIELDS_INVALID', compiled.diagnostics[0]?.code);
     const editor = { authority: 'consumer-data-only', sessionId: source.sessionId,
@@ -219,7 +295,8 @@ export function publishedData(source, journal, editorBaseOverlay) {
             rawEntrySha256: entry.rawEntrySha256, disposition: entry.disposition,
             semantic: { ...ST_LORE_ENTRY_DEFAULTS_V1, displayIndex: entry.ordinal, ...entry.semanticOverrides },
             contentText: resolveTavernLoreContentTextV1(compiled.plan, `${entry.sourcePointer}/content`).text,
-            fieldSources: entry.fieldSources, diagnosticCodes: entry.diagnosticIndexes.map(index => compiled.diagnostics[index].code) })) };
+            fieldSources: entry.fieldSources, diagnosticCodes: entry.diagnosticIndexes.map(index => compiled.diagnostics[index].code),
+            ...(entry.currentNativeMember ? { currentNativeMember: entry.currentNativeMember } : {}) })) };
     // These are owner outputs. Raw requests, journal records and compiler inputs
     // keep their admission budgets; combining their results is not another input.
     return freeze({ data, editor });

@@ -3,6 +3,7 @@
 import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {ImportPointer,ImportRecord} from './roleplay-import-types.js'
 import type {TavernSourceInheritanceDescriptorV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {TavernLoreMembershipDataV1,TavernLoreMemberIdentityV1} from './roleplay-tavern-lore-membership.js'
 
 /** An absence is a fact about one complete verified document and activation,
  * never a synthetic character_book archive or a Source/Native capability. */
@@ -57,6 +58,8 @@ export interface TavernLoreCompilationInputV1 {
   readonly source:TavernLoreSourceReferenceV1
   readonly book:MvuJsonObject|null
   readonly currentNativeOverlay?:TavernLoreCurrentNativeOverlayV1
+  /** The one lore journal already materialized these members and field edits. */
+  readonly currentNativeMembership?:TavernLoreMembershipDataV1
 }
 /** The live owner verifies the concrete ref schema against its current row or
  * append-only event/head. A ref and its hash here are consumer data only. */
@@ -172,6 +175,9 @@ export interface TavernLoreEntryPlanV1 {
   readonly sourceKey:string
   readonly sourcePointer:string
   readonly rawEntrySha256:string
+  /** Original entries retain their archive link hash above. Introduced entries
+   * have only a current DATA hash; neither this ref nor its UID is a lease. */
+  readonly currentNativeMember?:TavernLoreCurrentNativeMemberReferenceV1
   readonly upstreamUid:{readonly origin:'explicit'|'ordinal-fallback'|'invalid';readonly value:string|number|null}
   readonly disposition:'eligible-semantic-data'|'disabled'|'retained-ineligible'
   /** Missing controls come only from the fixed convertCharacterBook profile.
@@ -183,6 +189,12 @@ export interface TavernLoreEntryPlanV1 {
   readonly retainedDeclarations:TavernLoreRetainedDeclarationsV1
   readonly diagnosticIndexes:readonly number[]
   readonly entryPlanSha256:string
+}
+export interface TavernLoreCurrentNativeMemberReferenceV1 {
+  readonly identity:TavernLoreMemberIdentityV1
+  readonly uid:number
+  readonly displayIndex:number
+  readonly rawEntrySha256:string
 }
 export interface TavernLoreDiagnosticV1 {
   readonly schemaVersion:1
@@ -199,7 +211,8 @@ export interface TavernLorePlanV1 {
   readonly encoding:'st-character-book-semantic-plan-inputs-v1'
   readonly authority:'consumer-data-only'
   readonly compiler:{readonly id:'owned-st-character-book-compiler';readonly version:1;
-    readonly upstreamCommit:string;readonly semanticProfileSha256:string;readonly currentNativeOverlayProfileSha256?:string}
+    readonly upstreamCommit:string;readonly semanticProfileSha256:string;readonly currentNativeOverlayProfileSha256?:string;
+    readonly currentNativeMembershipProfileSha256?:string}
   readonly source:TavernLoreSourceReferenceV1
   readonly sourceReferenceSha256:string
   readonly bookId:string
@@ -212,8 +225,11 @@ export interface TavernLorePlanV1 {
     readonly absenceProofSha256:string;readonly bookPointer:'/data/character_book';readonly rawBookValue:null}
   readonly currentNativeOverlay?:TavernLoreCurrentNativeOverlayV1
   readonly currentNativeOverlaySha256?:string
+  readonly currentNativeMembership?:TavernLoreMembershipDataV1
+  readonly currentNativeMembershipSha256?:string
   readonly bookDisposition:'eligible-semantic-data'|'retained-ineligible'
-  readonly collection:{readonly kind:'source-array'|'source-object'|'object-retained-unsupported'|'proven-absent-book';readonly count:number}
+  readonly collection:{readonly kind:'source-array'|'source-object'|'object-retained-unsupported'|'proven-absent-book'
+    |'current-native-membership';readonly count:number}
   readonly bookMetadata:readonly TavernLoreMetadataReferenceV1[]
   readonly declaredBookSettings:{readonly disposition:'not-applied-by-fixed-importer';
     readonly scanDepth?:number;readonly tokenBudget?:number;readonly recursiveScanning?:boolean}

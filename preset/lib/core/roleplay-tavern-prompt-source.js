@@ -51,7 +51,8 @@ function assemblePromptSourceData(captured, edited, sessionId, includeCardStyle,
             ...(source.original.primary.binding === 'proven-absence'
                 ? { bookPresence: 'proven-absence', absenceProof: source.original.primary.absenceProof } : {}) },
         book: source.original.primary.value,
-        currentNativeOverlay: overlay });
+        currentNativeOverlay: overlay,
+        ...(edited.currentNativeMembership ? { currentNativeMembership: edited.currentNativeMembership } : {}) });
     if (compilation.kind !== 'compiled')
         fail(compilation.diagnostics[0]?.code ?? 'INPUT_MATERIAL_LORE_COMPILATION_REFUSED');
     const suppressRawEntryPointers = first.overlays.filter(item => item.kind === 'constant-current-overlay-missing')

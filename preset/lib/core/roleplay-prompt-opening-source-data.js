@@ -7,6 +7,7 @@ import { compileSchemaMvuInitData, selectNativeMvuInitializationPolicy } from '.
 import { isNativeMvuYamlSourcePolicy } from './roleplay-mvu-source-policy.js';
 import { assertMvuLiteralSourceTextV1, assertMvuNonSchemaSourceExtensionsV1 } from './roleplay-mvu-source.js';
 import { spanText, sourceDescriptor } from './roleplay-import-record.js';
+import { segmentPromptTemplateOnlyFieldV1, PromptTemplateOnlyRefusalV1 } from './roleplay-prompt-template-only-data.js';
 export const PROMPT_OPENING_SOURCE_POLICY_V1 = Object.freeze({ schemaVersion: 1,
     encoding: 'native-prompt-opening-source-policy-v1', source: 'actual-own-root-or-committed-reserved-fresh-cut0',
     prompt: 'six-author-fields-and-actual-recomputed-book-content; protected-selection-and-renderer-separate',
@@ -59,7 +60,14 @@ export function openingSourceObject(value) {
 export function promptOpeningInitializationInputBindingV1(program, data, grammarPolicy, bindings) {
     return recordSha256({ encoding: 'immutable-raw-opening-init-input-binding-v1', importTuple: program.importTuple,
         data, grammarPolicy, bindings: { ...bindings,
-            rawEntries: bindings.rawEntries.map(({ effectivePromptContentSha256: _, ...entry }) => entry) } });
+            rawEntries: bindings.rawEntries.map(({ effectivePromptContentSha256: _, ...entry }) => {
+                if (program.book.currentNativeMembershipSha256 === undefined)
+                    return entry;
+                // Current-member audit fields disappear when an original is deleted;
+                // immutable archive initialization does not depend on that catalog.
+                const { entryId: __, ...original } = entry;
+                return original;
+            }) } });
 }
 const same = (left, right) => recordSha256(left) === recordSha256(right);
 const escape = (key) => key.replace(/~/g, '~0').replace(/\//g, '~1');
@@ -88,12 +96,29 @@ function literal(text, context, pointer) {
     }
 }
 function programText(text, context, pointer) {
-    if (text.tokenization !== 'complete-UTF16-partition' || !text.segments) {
-        openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE', pointer);
+    const body = typeof text === 'string' ? text : text.text;
+    let segments;
+    if (typeof text === 'string') {
+        // Deleted originals still occur in immutable import projections. Partition
+        // their archive text without inventing a current compiler entry identity.
+        try {
+            segments = segmentPromptTemplateOnlyFieldV1(text, pointer);
+        }
+        catch (error) {
+            if (!(error instanceof PromptTemplateOnlyRefusalV1))
+                throw error;
+            return openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE', pointer);
+        }
     }
-    for (const segment of text.segments)
+    else {
+        if (text.tokenization !== 'complete-UTF16-partition' || !text.segments) {
+            openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE', pointer);
+        }
+        segments = text.segments;
+    }
+    for (const segment of segments)
         if (segment.kind === 'literal')
-            literal(text.text.slice(segment.start, segment.end), context, pointer);
+            literal(body.slice(segment.start, segment.end), context, pointer);
     // The other spans are inventory only. Root supplies the actual protected
     // renderer and its readonly variable/helper permissions; no JS is evaluated.
 }
@@ -186,13 +211,15 @@ export function readPromptOpeningGreetingFactsV1(candidate, context) {
 export function calculatePromptOpeningRawInitV1(input) {
     const { source, decoded, record, program, candidates, selectedIndex, context } = input, primary = source.original.primary;
     const byEntry = new Map(program.bookEntries.map(entry => [entry.originalAddress, entry]));
+    const membership = program.book.currentNativeMembershipSha256 !== undefined;
     const rawEntries = [], initEntries = [];
     let macros = false;
     for (const raw of primary.entries) {
         const entry = byEntry.get(raw.ref.entryPointer), value = raw.value, pointer = raw.ref.entryPointer;
-        if (!entry || entry.rawEntrySha256 !== raw.ref.entrySha256 || typeof value.content !== 'string'
-            || value.comment !== undefined && typeof value.comment !== 'string')
+        if (!membership && (!entry || !entry.original || entry.rawEntrySha256 !== raw.ref.entrySha256)
+            || typeof value.content !== 'string' || value.comment !== undefined && typeof value.comment !== 'string') {
             openingSourceFail('OPENING_SOURCE_IMPORT_UNPROVEN', pointer);
+        }
         const comment = String(value.comment ?? ''), isInitVar = comment.toLowerCase().includes('[initvar]');
         const enabled = value.enabled !== false && value.disable !== true;
         let rendering = null;
@@ -209,16 +236,23 @@ export function calculatePromptOpeningRawInitV1(input) {
                 renderedContentSha256: sha256(rendering.text) });
         }
         else {
-            programText(entry.original, context, pointer + '/content');
-            programText(entry.effective, context, pointer + '/content/current');
+            programText(entry?.original ?? value.content, context, pointer + '/content');
+            if (entry)
+                programText(entry.effective, context, pointer + '/content/current');
         }
-        if (isInitVar)
+        if (isInitVar && entry)
             rawDataSyntax(entry.effective.text, pointer + '/content/current');
-        rawEntries.push({ ordinal: raw.ref.entryOrdinal, entryId: entry.entryId, sourceKey: entry.sourceKey,
+        rawEntries.push({ ordinal: raw.ref.entryOrdinal, entryId: entry?.entryId ?? null, sourceKey: raw.entryKey,
             sourcePointer: pointer, rawEntrySha256: raw.ref.entrySha256, original: value, isInitVar, enabled,
             renderedContent: rendering?.text ?? null, identityRendering: rendering?.facts ?? null,
-            effectivePromptContentSha256: entry.effective.textSha256 });
+            effectivePromptContentSha256: entry?.effective.textSha256 ?? null });
     }
+    // Introduced current text remains ordinary prompt data. It is never added to
+    // immutable raw InitVar entries or granted their calculator syntax scope.
+    for (const entry of program.bookEntries)
+        if (entry.originalAddress === null) {
+            programText(entry.effective, context, entry.contentPointer + '/current');
+        }
     const greetingFacts = candidates.map(candidate => readPromptOpeningGreetingFactsV1(candidate, context));
     macros ||= greetingFacts.some(greeting => greeting.identityRendering.used);
     const books = primary.binding === 'primary'
@@ -267,8 +301,8 @@ function inspectPromptOpeningWholeSourceV1(input) {
         return openingSourceFail('OPENING_SOURCE_STATE_SYNTAX_UNSUPPORTED', '/data/extensions');
     }
     const rawSpecial = new Set(program.authorFields.map(field => field.originalPointer));
-    for (const entry of program.bookEntries)
-        rawSpecial.add(entry.contentPointer);
+    for (const entry of bindings.rawEntries)
+        rawSpecial.add(entry.sourcePointer + '/content');
     for (const greeting of bindings.greetingFacts)
         rawSpecial.add(greeting.sourcePointer);
     for (const entry of bindings.rawEntries)
@@ -321,12 +355,17 @@ function inspectPromptOpeningWholeSourceV1(input) {
                     // Use the already-proved complete piece partition, not a matched EJS
                     // substring. Each peripheral literal still receives the strict guard.
                     const field = program.authorFields.find(field => field.originalPointer === part.originalPointer);
+                    const archived = part.kind === 'worldbook-content'
+                        ? bindings.rawEntries.find(entry => entry.sourcePointer + '/content' === part.originalPointer) : undefined;
                     const owner = part.kind === 'author-field' ? (native ? field?.raw : field?.normalized)
-                        : program.bookEntries.find(entry => entry.contentPointer === part.originalPointer)?.original;
-                    if (!owner)
+                        : program.bookEntries.find(entry => entry.originalAddress !== null
+                            && entry.originalAddress + '/content' === part.originalPointer)?.original
+                            ?? archived?.original.content;
+                    if (owner === undefined || owner === null)
                         openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE', group.groupId);
                     programText(owner, context, part.originalPointer);
-                    if (part.kind === 'worldbook-content' && text !== owner.text.replace(/\r\n?/g, '\n') + '\n') {
+                    const originalText = typeof owner === 'string' ? owner : owner.text;
+                    if (part.kind === 'worldbook-content' && text !== originalText.replace(/\r\n?/g, '\n') + '\n') {
                         openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE', group.groupId);
                     }
                 }
@@ -337,13 +376,14 @@ function inspectPromptOpeningWholeSourceV1(input) {
     }
     for (const entry of program.bookEntries)
         if (entry.currentProjection) {
-            if (initByPointer.has(entry.originalAddress))
+            const init = entry.originalAddress === null ? undefined : initByPointer.get(entry.originalAddress);
+            if (init)
                 rawDataSyntax(entry.currentProjection.effective.text, entry.contentPointer + '/current-row');
             else
                 programText(entry.currentProjection.effective, context, entry.contentPointer + '/current-row');
             allow(entry.currentProjection.row.table, entry.currentProjection.row.key, '/content');
-            if (initByPointer.has(entry.originalAddress)) {
-                const current = source.current.rows.find(row => same(row.ref, entry.currentProjection.row))?.value, original = initByPointer.get(entry.originalAddress).original, assignment = entry.currentProjection.assignment.assignment;
+            if (init) {
+                const current = source.current.rows.find(row => same(row.ref, entry.currentProjection.row))?.value, original = init.original, assignment = entry.currentProjection.assignment.assignment;
                 if (current?.name === assignment.name)
                     allow(entry.currentProjection.row.table, entry.currentProjection.row.key, '/name');
                 const tavern = current?.tavern, metadata = openingSourceObject(tavern) ? tavern.sourceMetadata : undefined;
@@ -352,6 +392,31 @@ function inspectPromptOpeningWholeSourceV1(input) {
                 }
             }
         }
+    if (!native && program.book.currentNativeMembershipSha256 !== undefined) {
+        // A deleted journal member can retain its original legacy projection.
+        // Importer-owned sourceIndex identifies the archive row; no entry
+        // classification or current prompt contribution is reconstructed here.
+        const assignments = new Map(program.assignments.filter(item => item.assignment.target === 'worldbook')
+            .map(item => [source.sessionId + '__' + item.assignment.id, item.assignment]));
+        for (const row of source.current.rows) {
+            if (row.ref.table !== 'worldbook' || !row.value)
+                continue;
+            const assignment = assignments.get(row.ref.key), value = row.value, tavern = value.tavern;
+            if (!assignment || !openingSourceObject(tavern))
+                continue;
+            const original = bindings.rawEntries[tavern.sourceIndex];
+            if (!original || original.entryId !== null)
+                continue;
+            if (value.content === spanText(record, assignment.sourceSpans))
+                allow('worldbook', row.ref.key, '/content');
+            if (value.name === assignment.name)
+                allow('worldbook', row.ref.key, '/name');
+            const metadata = tavern.sourceMetadata;
+            if (openingSourceObject(metadata) && metadata.comment === original.original.comment) {
+                allow('worldbook', row.ref.key, '/tavern/sourceMetadata/comment');
+            }
+        }
+    }
     const openingAssignments = record.assignments.filter(assignment => assignment.target === 'opening');
     const opening = source.current.rows.find(row => row.ref.table === 'opening' && row.ref.key === source.sessionId + '__scene');
     if (!native && opening?.value && openingAssignments.length && opening.value.importId === record.importId

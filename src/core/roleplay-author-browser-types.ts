@@ -3,7 +3,11 @@
 import type {BrowserBindingV1,BrowserProgramV1,BrowserRuntimeArtifactV1,
   BrowserSaveRequestV1,BrowserSnapshotV1} from './tavern-author-browser-types.mjs'
 import type {MvuPlayerEditRequest,MvuPlayerEditResponse} from './roleplay-mvu-player-types.js'
-import type {BrowserProgramV2,BrowserRuntimeArtifactV2,BrowserSnapshotV2} from './tavern-author-browser-types-v2.mjs'
+import type {BrowserProgramV2,BrowserRuntimeArtifactV2,
+  BrowserSnapshotV2,BrowserWorldbookMutationRequestV2,
+  BrowserWorldbookMutationReplyV2,BrowserPersonaMutationRequestV2,
+  BrowserPersonaMutationReplyV2} from './tavern-author-browser-types-v2.mjs'
+import type {TavernLoreMutationRetryLocatorV1} from './roleplay-tavern-lore-edits-types.js'
 import type {MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {AuthorScriptResourceRequestV1} from './roleplay-author-script-resources.js'
 import type {BrowserProgramV3,BrowserRuntimeArtifactV3,BrowserSnapshotV3,
@@ -36,6 +40,10 @@ export interface AuthorBrowserAttachmentV3 {
 export type AuthorBrowserAttachment=AuthorBrowserAttachmentV1|AuthorBrowserAttachmentV2|AuthorBrowserAttachmentV3
 export type AuthorBrowserSnapshot=BrowserSnapshotV1|BrowserSnapshotV2|BrowserSnapshotV3
 export type AuthorBrowserWriteProgram=BrowserProgramV2|BrowserProgramV3
+export type AuthorBrowserWorldbookMutationReply=Omit<BrowserWorldbookMutationReplyV2,'snapshot'>
+  &{readonly snapshot?:BrowserSnapshotV2|BrowserSnapshotV3}
+export type AuthorBrowserPersonaMutationReply=Omit<BrowserPersonaMutationReplyV2,'snapshot'>
+  &{readonly snapshot?:BrowserSnapshotV2|BrowserSnapshotV3}
 export type AuthorBrowserRequestV1=
   {action:'attach';sessionId:string;binding?:BrowserBindingV1}
   |{action:'capture';binding:BrowserBindingV1}
@@ -45,6 +53,10 @@ export type AuthorBrowserRequestV1=
   |{action:'retry';operation:MvuPlayerEditRequest}
   |{action:'dispose';binding:BrowserBindingV1}
   |{action:'read-source-resource';binding:BrowserBindingV1;request:AuthorScriptResourceRequestV1}
+  |{action:'mutate-worldbook';binding:BrowserBindingV1;request:BrowserWorldbookMutationRequestV2}
+  |{action:'retry-worldbook';sessionId:string;operationId:string;locator?:TavernLoreMutationRetryLocatorV1}
+  |{action:'mutate-persona';binding:BrowserBindingV1;request:BrowserPersonaMutationRequestV2}
+  |{action:'retry-persona';sessionId:string;operationId:string}
 export type AuthorBrowserReplyV1=
   {ok:true;kind:'attached';attachment:AuthorBrowserAttachmentV1|AuthorBrowserAttachmentV2}
   |{ok:true;kind:'inactive';code:string}
@@ -54,6 +66,10 @@ export type AuthorBrowserReplyV1=
   |{ok:true;kind:'disposed'}
   |{ok:true;kind:'source-resource';value:MvuJsonValue}
   |{ok:false;code:string;error?:string}
+  |{ok:true;kind:'worldbook-mutated';reply:BrowserWorldbookMutationReplyV2}
+  |{ok:true;kind:'worldbook-retried';result:BrowserWorldbookMutationReplyV2['result']}
+  |{ok:true;kind:'persona-mutated';reply:BrowserPersonaMutationReplyV2}
+  |{ok:true;kind:'persona-retried';result:BrowserPersonaMutationReplyV2['result']}
 /** Legacy Reader transports remain explicitly V1/V2. A V3 caller consumes
  * this full service contract rather than passing V3 to a legacy frame. */
 export type AuthorBrowserRequest=AuthorBrowserRequestV1
@@ -65,3 +81,5 @@ export type AuthorBrowserReply=Exclude<AuthorBrowserReplyV1,
   |{ok:true;kind:'saved';result:MvuPlayerEditResponse;snapshot?:AuthorBrowserSnapshot;
     sourceEvents?:readonly import('./tavern-author-browser-worker-protocol-v3.js').BrowserSourceEventV3[]}
   |{ok:true;kind:'author-key-mutated';reply:BrowserOrdinaryKeyReplyV3;snapshot?:BrowserSnapshotV3}
+  |{ok:true;kind:'worldbook-mutated';reply:AuthorBrowserWorldbookMutationReply}
+  |{ok:true;kind:'persona-mutated';reply:AuthorBrowserPersonaMutationReply}

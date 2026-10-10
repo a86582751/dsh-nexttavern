@@ -1,5 +1,6 @@
 import type {MvuJsonValue} from './tavern-mvu-initvar.js'
-import type {TavernLorePlanV1,TavernLoreDiagnosticV1,TavernLoreEntryPlanV1} from './tavern-lore-plan-types.mjs'
+import type {TavernLorePlanV1,TavernLoreDiagnosticV1,TavernLoreEntryPlanV1,
+  TavernLoreCurrentNativeMemberReferenceV1} from './tavern-lore-plan-types.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernPromptVariableCatalogV1} from './roleplay-tavern-prompt-variables-types.js'
 
@@ -30,11 +31,15 @@ export interface TavernPromptInitialCatalogEntryReceiptV1 {
   readonly title:string
   readonly titlePolicy:'fixed-character-book-comment-or-empty-v1'
   readonly metadata:readonly TavernPromptInitialMetadataReadV1[]
-  readonly originalContentSha256:string
+  readonly originalContentSha256:string|null
   readonly currentContentSha256:string
   readonly currentSemanticSha256:string
-  readonly currentContentOrigin:'original-character-book'|'current-native-origin'
+  readonly currentContentOrigin:'original-character-book'|'current-native-origin'|'current-native-membership'
   readonly currentNativeOriginSha256:string|null
+  /** Present only for current journal membership. Introduced entries have no
+   * immutable original address; their incarnation is the actual event ref. */
+  readonly currentNativeMember?:TavernLoreCurrentNativeMemberReferenceV1
+  readonly originalAddress?:string|null
   readonly decoratorPolicy:'fixed-importer-no-preparsed-inline-current-content-v1'
   readonly initialEnabled:boolean
   readonly initialSelected:boolean
@@ -53,6 +58,8 @@ export interface TavernPromptInitialCatalogLegacyReceiptV1 {
   readonly catalogSha256:string
   readonly policySha256:string
   readonly completeOriginalEntryCount:number
+  readonly completeCurrentEntryCount?:number
+  readonly currentNativeMembershipSha256?:string
   readonly selectedInitialEntryIds:readonly string[]
   readonly entries:readonly TavernPromptInitialCatalogEntryReceiptV1[]
   readonly diagnostics:readonly TavernLoreDiagnosticV1[]

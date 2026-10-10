@@ -104,14 +104,22 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     `native-primary-${plan.bookId}`
   const lore:TavernTemplateLoreBindingV1[]=entries.map(entry=>{
     const projection=catalogOutput.entries.find(item=>item.entryId===entry.entryId)!
-    const original=source.original.primary.entries.find(item=>item.ref.entryPointer===entry.sourcePointer)
-    if(!original||original.ref.entrySha256!==entry.rawEntrySha256)fail('INPUT_MATERIAL_RENDER_ENTRY_UNPROVEN')
+    let entryData:Record<string,unknown>
+    if(entry.currentNativeMember) {
+      // The current directory owns titles as well as content. Its addresses
+      // are distinct from immutable original entry addresses.
+      entryData=plan.currentNativeMembership!.members[entry.ordinal]!.rawEntry
+    }else {
+      const original=source.original.primary.entries.find(item=>item.ref.entryPointer===entry.sourcePointer)
+      if(!original||original.ref.entrySha256!==entry.rawEntrySha256)fail('INPUT_MATERIAL_RENDER_ENTRY_UNPROVEN')
+      entryData=original.value
+    }
     const uid=entry.upstreamUid.origin==='explicit'?Number(entry.upstreamUid.value):Number.NaN,
       semantic=semantics.get(entry.entryId)!
     return {key:entry.entryId,bookId:plan.bookId,entryId:entry.entryId,sourcePointer:projection.sourcePointer,
       sourceSnapshotSha256:source.sourceSha256,content:projection.outputText,contentSha256:projection.outputSha256,
       activationAllowed:semantic.enabled&&entry.disposition==='eligible-semantic-data',
-      lookup:{world,title:typeof original.value.comment==='string'?original.value.comment:'',
+      lookup:{world,title:typeof entryData.comment==='string'?entryData.comment:'',
         uid:Number.isSafeInteger(uid)&&uid>=0?uid:null},
       ...projection.deferredDiagnostics.length?{readDiagnostic:{code:projection.deferredDiagnostics[0]!.code,
         projectionSha256:projection.projectionSha256}}:{}}
