@@ -1,27 +1,41 @@
 import {createBrowserRuntimeFrameV1} from '../core/tavern-author-browser-frame.js';
-import type {AuthorBrowserReplyV1,AuthorBrowserRequestV1} from '../core/roleplay-author-browser-types.js';
+import {createBrowserRuntimeFrameV2} from '../core/tavern-author-browser-frame-v2.js';
+import {createBrowserRuntimeFrameV3} from '../core/tavern-author-browser-frame-v3.js';
+import type {AuthorBrowserReply,AuthorBrowserRequest} from '../core/roleplay-author-browser-types.js';
 import type {BrowserBindingV1,BrowserHostBridgeV1,BrowserRenderV1,BrowserSaveReplyV1,BrowserSnapshotV1}
     from '../core/tavern-author-browser-types.mjs';
-import {createAuthorBrowserPendingStore,terminalBrowserReceipt}
-    from './author-browser-pending.js';
+import type {BrowserHostBridgeV2,BrowserSnapshotV2} from '../core/tavern-author-browser-types-v2.mjs';
+import type {BrowserHostBridgeV3,BrowserSnapshotV3,BrowserOrdinaryKeyRequestV3}
+    from '../core/tavern-author-browser-types-v3.mjs';
+import {createAuthorBrowserPendingStore,terminalBrowserReceipt} from './author-browser-pending.js';
 import type {AuthorBrowserPendingV1} from './author-browser-pending.js';
+import type {AuthorScriptResourceRequestV1} from '../core/roleplay-author-script-resources.js';
 
 export interface AuthorBrowserStatus {
     kind: 'loading' | 'inactive' | 'starting' | 'ready' | 'pending' | 'failed';
     code?: string;
     pending?: AuthorBrowserPendingV1;
 }
-export type AuthorBrowserTransport = (request: AuthorBrowserRequestV1, signal?: AbortSignal) => Promise<AuthorBrowserReplyV1>;
+export type AuthorBrowserTransport = (request: AuthorBrowserRequest, signal?: AbortSignal) => Promise<AuthorBrowserReply>;
 export const authorBrowserTransport: AuthorBrowserTransport = async (request, signal) => {
     const response = await fetch('/api/roleplay/author-browser', {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(request), signal,
     });
-    const reply = await response.json() as AuthorBrowserReplyV1;
+    const reply = await response.json() as AuthorBrowserReply;
     if (!response.ok || !reply.ok) throw Error(reply.ok ? 'BROWSER_TRANSPORT_FAILED' : reply.code);
     return reply;
 };
 const sameBinding = (a: BrowserBindingV1 | undefined, b: BrowserBindingV1) =>
     a?.generation === b.generation && a.browserSessionId === b.browserSessionId;
+
+type Snapshot=BrowserSnapshotV1|BrowserSnapshotV2|BrowserSnapshotV3;
+type SaveReply=Omit<BrowserSaveReplyV1,'snapshot'>&{snapshot:Snapshot;
+    sourceEvents?:readonly import('../core/tavern-author-browser-worker-protocol-v3.js').BrowserSourceEventV3[]};
+interface ReaderBrowserFrame {
+    started:Promise<void>;
+    publishSnapshot(value:Snapshot):void;render(value:BrowserRenderV1):void;
+    publishSaveConfirmation(value:SaveReply):void;dispose():void;
+}
 
 /** A Reader owns one live parent realm. Core owns its binding and captured
  * DATA; the durable pending operation survives this object's disposal. */
@@ -33,15 +47,15 @@ export function createAuthorBrowserSession(options: {
     transport?: AuthorBrowserTransport;
     storage?: Pick<Storage, 'getItem' | 'setItem'>;
 }) {
-    const transport = async (request: AuthorBrowserRequestV1, signal?: AbortSignal) => {
+    const transport = async (request: AuthorBrowserRequest, signal?: AbortSignal) => {
         const reply = await (options.transport ?? authorBrowserTransport)(request, signal);
         if (!reply.ok) throw Error(reply.code);
         return reply;
     };
     const store = createAuthorBrowserPendingStore(options.storage ?? localStorage);
     let active = true, ready = false, binding: BrowserBindingV1 | undefined;
-    let frame: ReturnType<typeof createBrowserRuntimeFrameV1> | undefined;
-    let realm: object | undefined, captured: BrowserSnapshotV1 | undefined;
+    let frame: ReaderBrowserFrame | undefined;
+    let realm: object | undefined, captured: Snapshot | undefined;
     const operationRealms = new Map<string, object>();
     let render: BrowserRenderV1 | undefined, revision = 0;
     let refreshing: Promise<void> | undefined, refreshAgain = false;
@@ -58,7 +72,7 @@ export function createAuthorBrowserSession(options: {
         binding = undefined;
     };
     async function installReceipt(envelope: AuthorBrowserPendingV1, result: Parameters<typeof store.record>[1],
-        snapshot?: BrowserSaveReplyV1['snapshot']) {
+        snapshot?: Snapshot) {
         const next = store.record(envelope, result);
         if (!current()) return;
         if (!frame && next.state !== 'terminal') notify({kind: 'pending', pending: next, code: result?.code});
@@ -76,8 +90,8 @@ export function createAuthorBrowserSession(options: {
         notify(next.state === 'terminal' ? {kind: ready ? 'ready' : 'starting'}
             : {kind: 'pending', pending: next, code: result.code});
     }
-    const createHost = (owner: object): BrowserHostBridgeV1 => ({
-        async capture(target, signal) {
+    const createHost = (owner: object) => ({
+        async capture(target:BrowserBindingV1, signal:AbortSignal):Promise<Snapshot> {
             // Attach already returned an actual Core capture. Reuse that cut
             // for the initial frame handshake rather than performing two reads.
             if (realm === owner && sameBinding(binding, target) && captured) return captured;
@@ -85,7 +99,7 @@ export function createAuthorBrowserSession(options: {
             if (reply.kind !== 'snapshot') throw Error('BROWSER_SNAPSHOT_UNAVAILABLE');
             return reply.snapshot;
         },
-        async save(target, request) {
+        async save(target:BrowserBindingV1, request:Parameters<BrowserHostBridgeV1['save']>[1]):Promise<SaveReply> {
             const envelope = store.begin(target, request);
             operationRealms.clear();
             operationRealms.set(envelope.operation.operationId, owner);
@@ -109,7 +123,8 @@ export function createAuthorBrowserSession(options: {
                 notify(next.state === 'terminal' ? {kind: ready ? 'ready' : 'starting'}
                     : {kind: 'pending', pending: next, code: reply.result.code});
                 return {requestId: request.requestId, generation: request.generation,
-                    result: reply.result, snapshot: reply.snapshot};
+                    result: reply.result, snapshot: reply.snapshot,
+                    ...reply.sourceEvents?{sourceEvents:reply.sourceEvents}:{}};
             } catch (error) {
                 // A receipt written before revocation must remain terminal.
                 const existing = store.read(target.sessionId);
@@ -119,6 +134,17 @@ export function createAuthorBrowserSession(options: {
                 }
                 throw error;
             }
+        },
+        async mutateAuthorKey(target:BrowserBindingV1,request:BrowserOrdinaryKeyRequestV3,signal:AbortSignal) {
+            const reply=await transport({action:'mutate-author-key',binding:target,request},signal);
+            if(reply.kind!=='author-key-mutated')throw Error('AUTHOR_CHAT_WRITE_ACK_UNKNOWN');
+            if(reply.snapshot&&current()&&realm===owner&&sameBinding(binding,target))captured=reply.snapshot;
+            return {...reply.reply,...reply.snapshot?{snapshot:reply.snapshot}:{}};
+        },
+        async readSourceResource(target:BrowserBindingV1,request:AuthorScriptResourceRequestV1,signal:AbortSignal) {
+            const reply=await transport({action:'read-source-resource',binding:target,request},signal);
+            if(reply.kind!=='source-resource')throw Error('AUTHOR_SCRIPT_RESOURCE_UNAVAILABLE');
+            return reply.value;
         },
     });
     async function refreshOnce() {
@@ -152,21 +178,32 @@ export function createAuthorBrowserSession(options: {
         options.container.append(outer);
         const realmBinding = binding;
         notify({kind: 'starting'});
-        const controller = createBrowserRuntimeFrameV1(outer, attachment.artifact, realmBinding, attachment.program, createHost(realmOwner), {
+        const controllerOptions = {
             current: () => current() && realm === realmOwner && sameBinding(binding, realmBinding),
-            layout: () => {}, diagnostic: code => {
+            layout: () => {}, diagnostic: (code:string) => {
                 if (!current() || realm !== realmOwner) return;
                 const pending = store.read(options.sessionId);
                 notify(pending && pending.state !== 'terminal' ? {kind: 'pending', pending, code}
                     : {kind: ready ? 'ready' : 'starting', code});
             },
-            failed: code => {
+            failed: (code:string) => {
                 if (!current() || realm !== realmOwner) return;
                 frame = undefined;realm = undefined;ready = false;
                 options.container.replaceChildren();
                 notify({kind: 'failed', code});
             }, startupDeadlineMs: 15000,
-        });
+        };
+        const host=createHost(realmOwner);
+        // The attachment schema selects both implementation and captured
+        // projection together. The shared Reader controller never mixes them.
+        const controller:ReaderBrowserFrame = attachment.schemaVersion===3
+            ? createBrowserRuntimeFrameV3(outer,attachment.artifact,realmBinding,attachment.program,
+                host as BrowserHostBridgeV3,controllerOptions) as ReaderBrowserFrame
+            : attachment.schemaVersion===2
+            ? createBrowserRuntimeFrameV2(outer,attachment.artifact,realmBinding,attachment.program,
+                host as BrowserHostBridgeV2,controllerOptions) as ReaderBrowserFrame
+            : createBrowserRuntimeFrameV1(outer,attachment.artifact,realmBinding,attachment.program,
+                host as BrowserHostBridgeV1,controllerOptions) as ReaderBrowserFrame;
         frame = controller;
         controller.publishSnapshot(attachment.snapshot);
         if (render) controller.render(render);

@@ -7800,6 +7800,36 @@
         "lib/core/tavern-author-combined-types-v6.mjs",
         "preset/lib/core/tavern-author-combined-types-v6.mjs"
       ]
+    },
+    {
+      "artifact": "tavern-author-browser-frame-v3-js",
+      "source": "src/core/tavern-author-browser-frame-v3.ts",
+      "banner": "runtime/alpha3/src/core/tavern-author-browser-frame-v3.ts",
+      "primaryOutput": "lib/core/tavern-author-browser-frame-v3.js",
+      "outputs": [
+        "lib/core/tavern-author-browser-frame-v3.js",
+        "preset/lib/core/tavern-author-browser-frame-v3.js"
+      ]
+    },
+    {
+      "artifact": "tavern-author-browser-frame-native-v3-js",
+      "source": "src/core/tavern-author-browser-frame-native-v3.ts",
+      "banner": "runtime/alpha3/src/core/tavern-author-browser-frame-native-v3.ts",
+      "primaryOutput": "lib/core/tavern-author-browser-frame-native-v3.js",
+      "outputs": [
+        "lib/core/tavern-author-browser-frame-native-v3.js",
+        "preset/lib/core/tavern-author-browser-frame-native-v3.js"
+      ]
+    },
+    {
+      "artifact": "tavern-author-browser-native-scene-v3-js",
+      "source": "src/core/tavern-author-browser-native-scene-v3.ts",
+      "banner": "runtime/alpha3/src/core/tavern-author-browser-native-scene-v3.ts",
+      "primaryOutput": "lib/core/tavern-author-browser-native-scene-v3.js",
+      "outputs": [
+        "lib/core/tavern-author-browser-native-scene-v3.js",
+        "preset/lib/core/tavern-author-browser-native-scene-v3.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -39328,6 +39358,36 @@
         "id": "template-known-baseline-ff4be0e9a30c179be496",
         "source": "development/history/template-v1-known-baseline-56c517/vendor/@jitl/quickjs-ffi-types/dist/index.mjs",
         "canonicalSource": "runtime/alpha3/history/template-v1-known-baseline-56c517/vendor/@jitl/quickjs-ffi-types/dist/index.mjs"
+      },
+      {
+        "id": "tavern-author-browser-frame-v3-typescript",
+        "source": "src/core/tavern-author-browser-frame-v3.ts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-author-browser-frame-v3.ts"
+      },
+      {
+        "id": "tavern-author-browser-frame-v3-js",
+        "source": "lib/core/tavern-author-browser-frame-v3.js",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-author-browser-frame-v3.js"
+      },
+      {
+        "id": "tavern-author-browser-frame-native-v3-typescript",
+        "source": "src/core/tavern-author-browser-frame-native-v3.ts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-author-browser-frame-native-v3.ts"
+      },
+      {
+        "id": "tavern-author-browser-frame-native-v3-js",
+        "source": "lib/core/tavern-author-browser-frame-native-v3.js",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-author-browser-frame-native-v3.js"
+      },
+      {
+        "id": "tavern-author-browser-native-scene-v3-typescript",
+        "source": "src/core/tavern-author-browser-native-scene-v3.ts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-author-browser-native-scene-v3.ts"
+      },
+      {
+        "id": "tavern-author-browser-native-scene-v3-js",
+        "source": "lib/core/tavern-author-browser-native-scene-v3.js",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-author-browser-native-scene-v3.js"
       }
     ],
     "publicRelease": {
@@ -154786,6 +154846,51 @@
           "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-combined-types-v6.mts"
+      },
+      {
+        "id": "tavern-author-browser-frame-v3-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-author-browser-frame-v3-js",
+        "entry": "src/core/tavern-author-browser-frame-v3.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/tavern-author-browser-frame-v3.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-author-browser-frame-v3.ts"
+      },
+      {
+        "id": "tavern-author-browser-frame-native-v3-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-author-browser-frame-native-v3-js",
+        "entry": "src/core/tavern-author-browser-frame-native-v3.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/tavern-author-browser-frame-native-v3.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-author-browser-frame-native-v3.ts"
+      },
+      {
+        "id": "tavern-author-browser-native-scene-v3-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-author-browser-native-scene-v3-js",
+        "entry": "src/core/tavern-author-browser-native-scene-v3.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/tavern-author-browser-native-scene-v3.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-author-browser-native-scene-v3.ts"
       }
     ],
     "typeScript": {
