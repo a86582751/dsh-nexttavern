@@ -1,10 +1,12 @@
 import {decodeTaskRecord} from './tavern-task-primitives.js'
+import type {AuthorDialogPromptV1,AuthorDialogNativeCompletionV1} from './roleplay-author-dialog.js'
 
 export interface TaskSession {id: string}
 export interface TaskAgent {session?: TaskSession; options?: {subagentDepth?: unknown; provider?: string; model?: string; reasoningEffort?: unknown}}
 export interface TaskRoute {provider: string; model: string; reasoningEffort?: unknown}
 export type TaskStatus = 'queued' | 'running' | 'waiting-main' | 'completed' | 'failed' | 'cancelled' | 'stale'
 export interface StoredTask {
+  authorDialogCompletion?:AuthorDialogNativeCompletionV1
   schemaVersion: 1
   id: string
   sessionId: string
@@ -44,6 +46,7 @@ export interface TaskSelection {
   policyRevision?: unknown
 }
 export interface TaskSpec<S, A> {
+  authorDialog?:AuthorDialogPromptV1
   session: S
   agent?: A
   kind: string
