@@ -546,6 +546,9 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
     // A retained receipt is historical when its import source has changed, even
     // if the numerical head/native receipt still matches this frozen plan.
     if (!sourceCurrent(intent)) return blockedProjection(intent, 'SOURCE_CHANGED')
+    // Plain completion records the original append. A later author edit does
+    // not undo it; current Native permissions retain their own version check.
+    if (intent.schemaVersion === 4 && intent.mode === 'plain') return intent
     if(intent.schemaVersion===6) {
       if(!runtimeCurrent(intent))return blockedProjection(intent,'PROMPT_TEMPLATE_RUNTIME_REQUIRED')
       const native=nativeReady(intent)
@@ -556,7 +559,6 @@ export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
       const native = nativeReady(intent)
       if (native.kind !== 'ready') return blockedProjection(intent,native.code)
       if (!sameRecord(native.receipt,intent.nativeReceipt)) return blockedProjection(intent,'INITIALIZATION_RECEIPT_INVALID')
-      if (intent.mode === 'plain') return intent
     }
     const observed = ready(intent)
     if (observed.kind !== 'ready') return blockedProjection(intent, observed.code)

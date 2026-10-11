@@ -418,18 +418,11 @@ export function createRoleplayMvuOpening(deps) {
                     headRef: { kind: 'numerical-head', sha256: recordSha256(readiness.head) } } : management(readiness.code);
             }
             if (selectedIntent.mode === 'plain' && selectedIntent.absenceScopeProof) {
-                const candidate = catalog.candidates.find(item => item.index === selectedIntent.index);
-                if (!candidate)
-                    return management('OPENING_SOURCE_CHANGED');
-                // Re-run only the deterministic absence proof. Native-json's original
-                // fresh basis is not recreated after its own committed opening.
-                const actual = source.produce({ catalog, candidate });
-                const receipt = callbacks.readNativeOpening(selectedIntent);
-                if (actual.kind === 'legacy-v2' && same(actual.absenceScopeProof, selectedIntent.absenceScopeProof)
-                    && receipt.kind === 'ready' && same(receipt.receipt, selectedIntent.nativeReceipt)) {
-                    return { kind: 'story', sourceSha256, absenceScopeRef: { kind: 'plain-absence',
-                            sha256: recordSha256({ absence: actual.absenceScopeProof.proofSha256, native: receipt.receipt }) } };
-                }
+                // Selection owns the completed receipt and Source currency. Author
+                // edits supply current prose through history; they do not undo this
+                // plain opening or initialize numerical state.
+                return { kind: 'story', sourceSha256, absenceScopeRef: { kind: 'plain-absence',
+                        sha256: recordSha256({ absence: selectedIntent.absenceScopeProof.proofSha256, native: selectedIntent.nativeReceipt }) } };
             }
             return management('OPENING_AUTHORITY_UNPROVEN');
         }
@@ -532,13 +525,12 @@ export function createRoleplayMvuOpening(deps) {
             }
         },
         preflightPromptTemplate: async (sessionId, signal) => {
-            // Import and plain MD inputs legitimately precede an activated card.
-            // Only absence skips preflight; malformed active sources still fail.
-            if (deps.tables.branch.get(deps.importActiveKey(sessionId)) === undefined)
-                return;
-            const catalog = deps.catalog(sessionId), intent = readIntent(sessionId, catalog.source.importId);
+            // The v6 owner preflights only its own intent. Completed semantic MD
+            // imports have no structured envelope and remain valid legacy inputs.
+            const pointer = deps.tables.branch.get(deps.importActiveKey(sessionId)), intent = pointer?.importId ? readIntent(sessionId, pointer.importId) : undefined;
             if (intent?.schemaVersion !== 6)
                 return;
+            deps.catalog(sessionId);
             const checked = validatePromptTemplateOnlyOpeningIntentV6(intent);
             await preflightPromptTemplateRuntime(checked.promptTemplateSourceProof, signal);
         },
@@ -595,12 +587,12 @@ export function createRoleplayMvuOpening(deps) {
                 const catalog = deps.catalog(id), intent = deps.readOpeningIntent?.(catalog.source);
                 if (intent?.schemaVersion !== 4 || intent.status !== 'completed' || intent.mode !== 'plain' || !intent.absenceScopeProof)
                     return undefined;
-                const proof = structuredClone(intent.absenceScopeProof), opening = callbacks.readNativeOpening(intent);
-                if (opening.kind !== 'ready' || !source.current(proof.sourceSnapshot))
+                const proof = structuredClone(intent.absenceScopeProof), opening = intent.nativeReceipt;
+                if (!opening || !source.current(proof.sourceSnapshot))
                     return undefined;
                 const data = { schemaVersion: 1, encoding: 'native-plain-prompt-scope-facts-v1',
                     authority: 'consumer-data-only', sessionId: id, sourceSha256: observation.sourceSha256,
-                    absenceScopeRef: observation.absenceScopeRef, absenceScopeProof: proof, nativeOpening: opening.receipt };
+                    absenceScopeRef: observation.absenceScopeRef, absenceScopeProof: proof, nativeOpening: opening };
                 // This is the existing completed opening's factual absence proof. The
                 // prompt adapter must declare its own empty namespace policy; copying
                 // this record never grants a schema guest or a Native execution cut.
