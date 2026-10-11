@@ -1,0 +1,33 @@
+{
+  "name": "dsh-nexttavern-author-browser-runtime-v3-script-resources-v1",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser3 current script-resource compiler and actual Asyncify execution Worker",
+  "license": "GPL-3.0-only",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "assets",
+    "src",
+    "LICENSE",
+    "NOTICE.md",
+    "licenses"
+  ],
+  "dependencies": {
+    "typescript": "5.9.3",
+    "quickjs-emscripten-core": "0.32.0",
+    "@jitl/quickjs-ffi-types": "0.32.0",
+    "@jitl/quickjs-wasmfile-release-asyncify": "0.32.0"
+  },
+  "bundleDependencies": [
+    "typescript",
+    "quickjs-emscripten-core",
+    "@jitl/quickjs-ffi-types",
+    "@jitl/quickjs-wasmfile-release-asyncify"
+  ]
+}

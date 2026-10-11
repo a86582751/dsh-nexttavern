@@ -10997,7 +10997,6 @@
         "compiler"
       ],
       "inputs": [
-        "plugin-owned-packages-fixture",
         "compat-session-format-src-index-ts",
         "compat-session-format-lib-index-js",
         "compat-session-format-src-projection-ts",
@@ -11303,7 +11302,6 @@
         "public-transaction-typescript",
         "test-temp-helper-typescript",
         "status-template-public-ui-typescript",
-        "roleplay-core-process-storage-fixture",
         "tavern-loop-test",
         "roleplay-opening-material-typescript",
         "roleplay-program-copy-span-typescript",
@@ -15910,7 +15908,6 @@
         "compiler"
       ],
       "inputs": [
-        "plugin-owned-packages-fixture",
         "compat-session-format-src-index-ts",
         "compat-session-format-lib-index-js",
         "compat-session-format-src-projection-ts",
@@ -16217,7 +16214,6 @@
         "test-temp-helper-typescript",
         "status-template-public-ui-typescript",
         "phase-a-memory-contract",
-        "roleplay-core-process-storage-fixture",
         "roleplay-opening-material-typescript",
         "roleplay-program-copy-span-typescript",
         "roleplay-program-genesis-data-typescript",
@@ -18483,8 +18479,6 @@
         "public-transaction-typescript",
         "test-temp-helper-typescript",
         "status-template-public-ui-typescript",
-        "plugin-owned-packages-fixture",
-        "roleplay-core-process-storage-fixture",
         "worldline-fork-e2e",
         "roleplay-opening-material-typescript",
         "roleplay-program-copy-span-typescript",
@@ -25048,6 +25042,172 @@
       },
       "args": [],
       "heavy": true,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:author-state2-process",
+      "action": "test",
+      "modules": [
+        "status",
+        "branches",
+        "reader"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "cache": true,
+      "timeoutMs": 1510000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:runtime-asset-historical-source-rebuild",
+      "action": "test",
+      "modules": [
+        "operations"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "heavy": true,
+      "cache": true,
+      "timeoutMs": 120000,
+      "effects": {
+        "build": true,
+        "network": false,
+        "service": false
+      },
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:author-browser-generation-owner",
+      "action": "test",
+      "modules": [
+        "status",
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "inputs": [],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-author-browser-source-guest-v3",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "inputs": [],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-author-browser-attachment-worker-v3",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "inputs": [],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-author-browser-native-events-v3",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "inputs": [],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-author-browser-renderer-v3",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "inputs": [],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]

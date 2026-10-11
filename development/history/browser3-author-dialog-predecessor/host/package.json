@@ -1,0 +1,20 @@
+{
+  "name": "dsh-nexttavern-author-host-runtime-v5-server-candidates-v2",
+  "version": "0.5.2",
+  "private": true,
+  "type": "module",
+  "description": "Owned Host5 with actual server candidate routing and complete Browser3 admission",
+  "license": "GPL-3.0-only",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "assets",
+    "LICENSE",
+    "NOTICE.md"
+  ]
+}
