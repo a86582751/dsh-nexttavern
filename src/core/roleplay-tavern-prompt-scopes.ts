@@ -126,8 +126,7 @@ function factBinding(scope:TavernPromptVariableScopeFactV1):TavernTemplateScopeB
 
 /** The actual Core suppliers already audited and froze these packets inside
  * InputState. This adapter only joins that DATA to the captured Source. */
-function programAbsenceData(data:TavernProgramAbsencePromptScopeDataV1,source:TavernLoreSourceDataV1,
-  currentIdentitySha256:string)
+function programAbsenceData(data:TavernProgramAbsencePromptScopeDataV1,source:TavernLoreSourceDataV1)
   :TavernProgramAbsencePromptScopeDataV1 {
   const proof=data.input.source,original=proof.source,tuple=proof.program.importTuple
   if(data.sessionId!==source.sessionId||original.sessionId!==source.sessionId
@@ -138,8 +137,7 @@ function programAbsenceData(data:TavernProgramAbsencePromptScopeDataV1,source:Ta
     ||tuple.ownerSessionId!==source.sessionId||tuple.sourceRecordSessionId!==source.sourceRecordSessionId
     ||tuple.normalizer!==source.normalizer||tuple.format!==source.original.decodedFormat
     ||tuple.importRecordRef.sha256!==source.original.importRecordRef.sha256
-    ||tuple.documentSha256!==source.original.documentSha256||tuple.dataSha256!==source.original.dataSha256
-    ||proof.program.sourceCurrentIdentitySha256!==currentIdentitySha256) {
+    ||tuple.documentSha256!==source.original.documentSha256||tuple.dataSha256!==source.original.dataSha256) {
     fail('INPUT_MATERIAL_PROGRAM_ABSENCE_SCOPE_SOURCE_MISMATCH')
   }
   return data
@@ -390,7 +388,9 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       stateSnapshotSha256=programInheritedAbsence.stableDomainSha256
       evidence.push(programInheritedAbsence)
     }else if(input.plain.data.encoding==='native-program-opening-absence-scope-read-data-v1') {
-      programAbsence=programAbsenceData(input.plain.data,source,input.currentIdentitySha256)
+      // Completed opening DATA retains its historical author projection.
+      // InputState separately captures and owns today's editable author rows.
+      programAbsence=programAbsenceData(input.plain.data,source)
       // This is readonly scope data identity, never an MVU snapshot/head.
       stateSnapshotSha256=programAbsence.factsSha256
       evidence.push(programAbsence)
