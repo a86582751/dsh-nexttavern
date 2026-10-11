@@ -19,6 +19,7 @@ import {createAuthorBrowserPendingStore,terminalBrowserReceipt,worldbookPendingR
 import type {AuthorBrowserPendingV1,AuthorBrowserWorldbookPendingV2,AuthorBrowserPersonaPendingV1}
     from './author-browser-pending.js';
 import type {AuthorScriptResourceRequestV1} from '../core/roleplay-author-script-resources.js';
+import {scopeReaderCss} from './reader-rendering.js';
 
 export interface AuthorBrowserStatus {
     kind: 'loading' | 'inactive' | 'starting' | 'ready' | 'pending' | 'failed';
@@ -48,6 +49,11 @@ interface ReaderBrowserFrame {
     invokeGeneration?(value:BrowserGenerationInvocationV2):Promise<BrowserGenerationResultV2>;
     generationCallbacks?():Promise<readonly BrowserCallbackRegistrationV3[]>;
     invokeGenerationV3?(value:BrowserGenerationInvocationV3,signal:AbortSignal):Promise<BrowserGenerationResultV3>;
+}
+function renderReaderFrame(frame:ReaderBrowserFrame,value:BrowserRenderV1):void {
+    // V3's outer document also contains private Source carriers. Reader CSS
+    // belongs to its content container, while each carrier keeps its own CSS.
+    frame.render(frame.invokeGenerationV3?{...value,css:scopeReaderCss(value.css)}:value);
 }
 
 /** A Reader owns one live parent realm. Core owns its binding and captured
@@ -349,7 +355,7 @@ export function createAuthorBrowserSession(options: {
                 host as BrowserHostBridgeV1,controllerOptions) as ReaderBrowserFrame;
         frame = controller;
         controller.publishSnapshot(attachment.snapshot);
-        if (render) controller.render(render);
+        if (render) renderReaderFrame(controller,render);
         controller.started.then(() => {
             if (current() && frame === controller) {
                 ready = true;
@@ -473,7 +479,7 @@ export function createAuthorBrowserSession(options: {
         },
         hasFrame: () => !!frame,
         render(value: Omit<BrowserRenderV1, 'renderRevision'>) {
-            render = {...value, renderRevision: ++revision};frame?.render(render);
+            render = {...value, renderRevision: ++revision};if(frame)renderReaderFrame(frame,render);
         },
         dispose() {if (!active) return;active = false;revoke();},
     };

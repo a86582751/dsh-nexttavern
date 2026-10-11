@@ -44998,7 +44998,10 @@
           "src/status-template.ts",
           "src/ui/author-browser-pending.ts",
           "src/ui/author-browser-session.ts",
-          "src/core/roleplay-author-browser-generation-types.ts"
+          "src/core/roleplay-author-browser-generation-types.ts",
+          "src/ui/reader-rendering.ts",
+          "src/ui/reader-regex.ts",
+          "src/ui/status-rendering.ts"
         ],
         "banner": "runtime/alpha3/src/ui/author-browser-session.ts"
       },

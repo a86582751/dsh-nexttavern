@@ -98,6 +98,10 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
   const worker=new Worker(workerURL,{type:'module'})
   let active=true,latest:BrowserSnapshotV3|undefined,initialized=false,entry:EntryClock|undefined
   let scene:ReturnType<typeof createBrowserNativeSceneV3>|undefined
+  let readerRoot:HTMLElement|undefined,readerStyle:HTMLStyleElement|undefined
+  let pendingRender:BrowserRenderV1|undefined,renderRevision=0,layoutFrame:number|undefined
+  let readerResize:ResizeObserver|undefined,readerMutation:MutationObserver|undefined
+  const readerRows=new Map<string,{node:HTMLElement;kind:'user'|'narrator';content:string}>()
   let generationSequence=0
   const registrationRequests=new Map<number,{resolve:(rows:readonly BrowserCallbackRegistrationV3[])=>void;reject:(error:Error)=>void}>()
   const generationRequests=new Map<string,{invocation:BrowserGenerationInvocationV3;
@@ -106,6 +110,55 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
   const started=new Promise<void>((yes,no)=>{resolveStarted=yes;rejectStarted=no})
   const disposed=new Promise<void>(yes=>{resolveDisposed=yes})
   const current=()=>active&&options.current()
+  function scheduleLayout():void {
+    if(!current()||layoutFrame!==undefined)return
+    layoutFrame=view.requestAnimationFrame(()=>{
+      layoutFrame=undefined
+      if(!current()||!readerRoot)return
+      const body=readerRoot.ownerDocument.body,top=body.getBoundingClientRect().top
+      // Content bounds can shrink; body.scrollHeight includes the current
+      // iframe viewport and would retain a previous, taller history page.
+      const height=Math.ceil(Array.from(body.children).reduce((height,element)=>
+        Math.max(height,element.getBoundingClientRect().bottom-top),0))
+      outer.style.height=height+'px'
+      options.layout({height,renderRevision})
+    })
+  }
+  function renderReader(value:BrowserRenderV1):void {
+    if(!current())return
+    if(!readerRoot||!readerStyle){pendingRender=value;return}
+    renderRevision=value.renderRevision
+    const css=value.css+'\nhtml,body{margin:0;overflow:hidden}'+
+      '.rp-reader-view{min-height:0;overflow:visible;display:block}'
+    if(readerStyle.textContent!==css)readerStyle.textContent=css
+    const document=readerRoot.ownerDocument,next=new Set(value.parts.map(part=>part.key))
+    // Remove rows leaving the selected history before ordering retained rows,
+    // so clipping an older prefix does not reattach unchanged media nodes.
+    for(const [key,row] of readerRows)if(!next.has(key)){row.node.remove();readerRows.delete(key)}
+    let cursor=readerRoot.firstChild
+    for(const part of value.parts) {
+      const content=part.kind==='user'?part.text:part.html
+      let row=readerRows.get(part.key)
+      if(!row) {
+        const node=document.createElement('section')
+        node.className='rp-reader-message';node.dataset.readerKey=part.key
+        row={node,kind:part.kind,content:''};readerRows.set(part.key,row)
+      }
+      if(!row.node.firstChild||row.kind!==part.kind||row.content!==content) {
+        const body=document.createElement(part.kind==='user'?'p':'div')
+        body.className=part.kind==='user'?'rp-user-line':'rp-reader-narrative'
+        if(part.kind==='user')body.textContent='◈ 你：'+part.text
+        else body.innerHTML=part.html // The trusted Reader owns HTML sanitization.
+        row.node.replaceChildren(body);row.node.dataset.kind=part.kind==='user'?'user':'assistant'
+        row.kind=part.kind;row.content=content
+      }
+      // Moving an unchanged subtree can reload media. Only insert when its
+      // actual position differs, including a history prepend or branch change.
+      if(row.node!==cursor)readerRoot.insertBefore(row.node,cursor)
+      cursor=row.node.nextSibling
+    }
+    scheduleLayout()
+  }
   const gestures=createBrowserGenerationGesturesV3(program,current,()=>view.navigator.userActivation.isActive)
   const send=(message:BrowserWorkerInputV3)=>{if(current())worker.postMessage(message)}
   let bootTimer=view.setTimeout(()=>fail('BROWSER3_WORKER_DEADLINE'),options.startupDeadlineMs)
@@ -121,6 +174,9 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
   function dispose():void {
     if(!active)return
     active=false;abort.abort();view.clearTimeout(bootTimer);view.clearTimeout(entry?.timer)
+    readerResize?.disconnect();readerMutation?.disconnect()
+    if(layoutFrame!==undefined)view.cancelAnimationFrame(layoutFrame)
+    layoutFrame=undefined;pendingRender=undefined;readerRows.clear();readerRoot=undefined;readerStyle=undefined
     // Main termination remains independent of a busy or suspended guest. It
     // does not imply graceful VM disposal; Main still frees its own resources.
     gestures.dispose()
@@ -245,6 +301,14 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     if(!current()||scene)return
     const document=outer.contentDocument!
     document.open();document.write(BROWSER_NATIVE_INERT_SHELL_V3);document.close()
+    readerStyle=document.createElement('style');document.head.append(readerStyle)
+    const viewport=document.createElement('div');viewport.className='rp-reader-view'
+    readerRoot=document.createElement('div');readerRoot.className='rp-reader'
+    viewport.append(readerRoot);document.body.append(viewport)
+    readerResize=new ResizeObserver(scheduleLayout);readerResize.observe(document.body)
+    readerMutation=new MutationObserver(scheduleLayout)
+    readerMutation.observe(document.body,{childList:true,subtree:true,attributes:true,characterData:true})
+    if(pendingRender){const value=pendingRender;pendingRender=undefined;renderReader(value)}
     scene=createBrowserNativeSceneV3({program,schedulerWindow:view,onCallback:deliver,
       prepareCallback:gestures.prepare,onPageClosed:gestures.closePage,
       observeNativeEvent:program.generationDeclarationId?gestures.observe:undefined,
@@ -253,7 +317,9 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
       async createCarrierDocument(script,contextId,signal) {
         const iframe=document.createElement('iframe')
         iframe.title='作者脚本 '+script.ordinal;iframe.dataset.browserCarrier=contextId
-        iframe.style.cssText='display:block;width:100%;height:100%;min-height:600px;border:0'
+        // A viewport-relative carrier height would grow with the outer chat
+        // height. Keep the existing 600px carrier viewport independent of it.
+        iframe.style.cssText='display:block;width:100%;height:600px;border:0'
         iframe.setAttribute('sandbox','allow-same-origin allow-forms')
         const carrierDocument=await new Promise<Document>((resolve,reject)=>{
           const finish=()=>{iframe.removeEventListener('load',done);signal.removeEventListener('abort',cancel)}
@@ -299,6 +365,6 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     publishSnapshot(value){if(!current())return;latest=value;if(initialized)send({type:'snapshot',snapshot:value});else initialize()},
     publishSaveConfirmation(value){if(value.snapshot)this.publishSnapshot(value.snapshot)},
     publishSourceEvent(event){send({type:'source-event',event})},
-    render(value){options.layout({height:outer.clientHeight,renderRevision:value.renderRevision})},
+    render:renderReader,
   }
 }
