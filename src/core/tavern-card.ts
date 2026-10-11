@@ -654,6 +654,95 @@ export function compileTavernExtensionInventoryV3(decoded: DecodedTavernCard): T
   return {schemaVersion:3,sourceSha256:decoded.sourceSha256,entries}
 }
 
+export interface TavernExtensionBindingV1 {
+  readonly field: string
+  readonly sourcePointer: string
+  readonly valueSha256: string
+  readonly disposition: 'matched-source' | 'declared-configuration' | 'missing-target' | 'ambiguous-target'
+  readonly targetPointer?: string
+  readonly targetObjectPointer?: string
+}
+export interface TavernExtensionBindingsV1 {
+  readonly schemaVersion: 1
+  readonly sourceSha256: string
+  readonly key: 'chaoshen_jixieshi'
+  readonly entries: readonly TavernExtensionBindingV1[]
+}
+
+/** Source relations describe the captured card, never permission to run its UI or loader. */
+export function compileTavernExtensionBindingsV1(decoded: DecodedTavernCard): TavernExtensionBindingsV1 | undefined {
+  const extensions = decoded.data.extensions
+  if (!object(extensions) || !object(extensions.chaoshen_jixieshi)) return undefined
+  const declaration = extensions.chaoshen_jixieshi
+  const root = decoded.document.data === decoded.data ? '/data' : ''
+  const declarationPointer = `${root}/extensions/chaoshen_jixieshi`
+  const bookPointer = `${root}/character_book`
+  const book = decoded.data.character_book
+  const bookMetadata = object(book) && object(book.extensions) ? book.extensions : undefined
+  const helper = extensions.tavern_helper
+  const scripts = object(helper) && Array.isArray(helper.scripts) ? helper.scripts : undefined
+  const regexes = Array.isArray(extensions.regex_scripts) ? extensions.regex_scripts : undefined
+  const bookEntries = object(book) && Array.isArray(book.entries) ? book.entries : undefined
+  const names = ['embedded_worldbook_id','embedded_worldbook_version','opening_protocol','opening_mode',
+    'ui_panel_version','ui_panel_id','ui_mode','ui_source','mvu_protocol_version','mvu_loader_id',
+    'mvu_remote_ref','mvu_remote_fallback','mvu_commit','mvu_initvar_id'] as const
+  const entries: TavernExtensionBindingV1[] = []
+  const loaderIndices = typeof declaration.mvu_loader_id === 'string' && scripts
+    ? scripts.flatMap((script, index) => object(script) && script.id === declaration.mvu_loader_id ? [index] : [])
+    : []
+  for (const field of names) {
+    const value = declaration[field]
+    if (typeof value !== 'string') continue
+    const base = {field,sourcePointer:`${declarationPointer}/${field}`,valueSha256:digest(value)}
+    let targets: {pointer:string;objectPointer:string}[] | undefined
+    if (field === 'embedded_worldbook_id' || field === 'embedded_worldbook_version') {
+      const property = field === 'embedded_worldbook_id' ? 'worldbook_id' : 'worldbook_version'
+      targets = bookMetadata?.[property] === value
+        ? [{pointer:`${bookPointer}/extensions/${property}`,objectPointer:bookPointer}] : []
+    } else if (field === 'ui_panel_id') {
+      targets = regexes?.flatMap((regex, index) => object(regex) && regex.id === value
+        ? [{pointer:`${root}/extensions/regex_scripts/${index}/id`,
+          objectPointer:`${root}/extensions/regex_scripts/${index}`}] : []) ?? []
+    } else if (field === 'mvu_loader_id') {
+      targets = loaderIndices.map(index => ({pointer:`${root}/extensions/tavern_helper/scripts/${index}/id`,
+        objectPointer:`${root}/extensions/tavern_helper/scripts/${index}`}))
+    } else if (field === 'mvu_remote_ref' || field === 'mvu_remote_fallback' || field === 'mvu_commit') {
+      // A duplicated loader ID cannot lend an apparently unique scalar from one of its scripts.
+      if (loaderIndices.length > 1) {
+        entries.push({...base,disposition:'ambiguous-target'})
+        continue
+      }
+      targets = []
+      if (loaderIndices.length === 1) {
+        const index = loaderIndices[0]!, loader = scripts![index] as Record<string, unknown>
+        const data = loader.data
+        const suffix = field === 'mvu_commit' ? 'commit' : field === 'mvu_remote_ref' ? 'sources/0' : 'sources/1'
+        let targetValue: unknown
+        if (object(data)) {
+          if (field === 'mvu_commit') targetValue = data.commit
+          else if (Array.isArray(data.sources)) targetValue = data.sources[field === 'mvu_remote_ref' ? 0 : 1]
+        }
+        if (targetValue === value) targets.push({
+          pointer:`${root}/extensions/tavern_helper/scripts/${index}/data/${suffix}`,
+          objectPointer:`${root}/extensions/tavern_helper/scripts/${index}`,
+        })
+      }
+    } else if (field === 'mvu_initvar_id') {
+      targets = bookEntries?.flatMap((entry, index) => object(entry) && object(entry.extensions)
+        && entry.extensions.stable_id === value ? [{pointer:`${bookPointer}/entries/${index}/extensions/stable_id`,
+          objectPointer:`${bookPointer}/entries/${index}`}] : []) ?? []
+    }
+    let disposition: TavernExtensionBindingV1['disposition']
+    if (targets === undefined) disposition = 'declared-configuration'
+    else if (targets.length === 0) disposition = 'missing-target'
+    else if (targets.length > 1) disposition = 'ambiguous-target'
+    else disposition = 'matched-source'
+    entries.push({...base,disposition,
+      ...(targets?.length === 1 ? {targetPointer:targets[0]!.pointer,targetObjectPointer:targets[0]!.objectPointer} : {})})
+  }
+  return {schemaVersion:1,sourceSha256:decoded.sourceSha256,key:'chaoshen_jixieshi',entries}
+}
+
 export type TavernCapabilityStatus = 'interpreted' | 'preserved-unexecuted'
   | 'missing-external-resource' | 'requires-optional-analysis'
 export interface TavernCapabilityEntry {
