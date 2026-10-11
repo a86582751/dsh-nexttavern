@@ -93,6 +93,7 @@ import { createMemoryRetrievalPanel, MEMORY_RETRIEVAL_CSS } from './memory-retri
 import { createCardAdaptationPanel, CARD_ADAPTATION_CSS } from './card-adaptation-panel.js'
 import { createReaderView } from './reader-view.js'
 import { createStatusSurface } from './status-surface.js'
+import { createSessionBgm, createSessionBgmControls } from './session-bgm.js'
 import { createToastController, confirmWithDialog } from './message-actions.js'
 export { createToastController, confirmWithDialog } from './message-actions.js'
 import { createMessageActionComponents } from './message-actions.js'
@@ -132,6 +133,13 @@ export function apply(ctx: ClientContext) {
   const React = require('react')
   const slots = ctx.get('slots')
   const mainSelection = ctx.get('uiSession').adapter.current
+  const sessionBgm = createSessionBgm()
+  ctx.effect(() => () => sessionBgm.dispose(), 'roleplay-ui: session background music')
+  const uploadFile = async (sessionId: string, file: Blob, name: string) => {
+    const result = await ctx.fileUpload.upload(sessionId, file, name)
+    if (!result.ok) throw new Error('文件上传未完成，请重试')
+    return result.value
+  }
   const navigation = ctx.get('uiWorkspace')
   const sessionsService = ctx.get('sessions')
   const workspacesService = ctx.get('workspaces')
@@ -389,11 +397,7 @@ export function apply(ctx: ClientContext) {
           jsonFetch,
           toast,
           confirmWithDialog,
-          uploadFile: async (sessionId, file, name) => {
-            const result = await ctx.fileUpload.upload(sessionId, file, name)
-            if (!result.ok) throw new Error('文件上传未完成，请重试')
-            return result.value
-          },
+          uploadFile,
           btn
         })
 
@@ -724,6 +728,7 @@ export function apply(ctx: ClientContext) {
     }
 
     // ── 状态栏悬浮窗（仅 roleplay 会话；可最小化）────────────────────────────
+    const SessionBgmControls = createSessionBgmControls({React, player: sessionBgm, jsonFetch, uploadFile})
     const { decisionSeat, StatusOverlay } = createStatusSurface(
       {
         React,
@@ -732,6 +737,7 @@ export function apply(ctx: ClientContext) {
         isRoleplaySession,
         useTavernActivity,
         BackgroundNotesBanner,
+        onStateAccepted: state => sessionBgm.acceptSource(state),
         fetchState,
         stateVersion,
         subscribeState,
@@ -802,6 +808,9 @@ export function apply(ctx: ClientContext) {
             null,
             React.createElement(StatusOverlay, { key: overlaySessionId ?? 'no-session', sessionId: overlaySessionId }),
             overlaySessionId && isRoleplaySession(overlaySessionId)
+              ? React.createElement(SessionBgmControls, {key: `bgm:${overlaySessionId}`, sessionId: overlaySessionId})
+              : null,
+            overlaySessionId && isRoleplaySession(overlaySessionId)
 
 
 
@@ -824,6 +833,7 @@ export function apply(ctx: ClientContext) {
     const onMainSelection = () => {
       const sid = resolveActiveSessionId()
       if (sid === lastSessionId) return
+      sessionBgm.setSession(sid)
       lastSessionId = sid
       if (sid) syncImmersive(sid)
       else document.body.classList.remove('rp-immersive')

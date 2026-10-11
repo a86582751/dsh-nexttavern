@@ -35,6 +35,7 @@ interface SurfaceDependencies {
     runMaintenance(id: string, action: string): Promise<unknown>;
     toast(text: string): void;
     jsonFetch?<T>(url:string,init?:RequestInit):Promise<T>
+    onStateAccepted?(state: StatusSurfaceState): void;
 }
 
 export function createStatusSurface({
@@ -52,7 +53,8 @@ React,
      readImmersive,
      runMaintenance,
      toast,
-     jsonFetch
+     jsonFetch,
+     onStateAccepted
 }: SurfaceDependencies) {
     const { DecisionCard, decisionSeat } = createDecisionSeat({ React, createRoot, resolveActiveSessionId, toast });
     const ChatOpeningCard = createChatOpeningCard({React,toast,invalidateState,
@@ -340,6 +342,7 @@ React,
                         return;
                     }
                     if (d?.preset === 'roleplay') applyImmersive(readImmersive());
+                    onStateAccepted?.(d);
                     loadFailureRef.current = { at: 0, message: '' };
                     setLoading(false);
                     setState(d);

@@ -2,6 +2,15 @@
   "schemaVersion": 3,
   "modules": [
     {
+      "artifact": "session-bgm",
+      "source": "src/ui/session-bgm.ts",
+      "banner": "runtime/alpha3/src/ui/session-bgm.ts",
+      "primaryOutput": "lib/ui/session-bgm.js",
+      "outputs": [
+        "lib/ui/session-bgm.js"
+      ]
+    },
+    {
       "artifact": "activity-view",
       "source": "src/ui/activity-view.ts",
       "banner": "runtime/alpha3/src/ui/activity-view.ts",
@@ -7900,6 +7909,16 @@
   ],
   "compilerPlan": {
     "artifacts": [
+      {
+        "id": "session-bgm",
+        "source": "lib/ui/session-bgm.js",
+        "canonicalSource": "runtime/alpha3/lib/ui/session-bgm.js"
+      },
+      {
+        "id": "session-bgm-typescript",
+        "source": "src/ui/session-bgm.ts",
+        "canonicalSource": "runtime/alpha3/src/ui/session-bgm.ts"
+      },
       {
         "id": "activity-view",
         "source": "lib/ui/activity-view.js",
@@ -44128,6 +44147,22 @@
     },
     "builds": [
       {
+        "id": "session-bgm-js",
+        "kind": "typescript-module",
+        "artifact": "session-bgm",
+        "entry": "src/ui/session-bgm.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/ui/panel-state.ts",
+          "src/ui/session-bgm.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/src/ui/session-bgm.ts"
+      },
+      {
         "id": "activity-view-js",
         "kind": "typescript-module",
         "artifact": "activity-view",
@@ -44739,6 +44774,9 @@
         "entry": "src/ui/author-browser-session.ts",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
         "inputs": [
+          "src/ui/reader-rendering.ts",
+          "src/ui/reader-regex.ts",
+          "src/ui/status-rendering.ts",
           "build-tools/package-lock.json",
           "build-tools/package.json",
           "build-tools/tsconfig.json",
@@ -44998,10 +45036,7 @@
           "src/status-template.ts",
           "src/ui/author-browser-pending.ts",
           "src/ui/author-browser-session.ts",
-          "src/core/roleplay-author-browser-generation-types.ts",
-          "src/ui/reader-rendering.ts",
-          "src/ui/reader-regex.ts",
-          "src/ui/status-rendering.ts"
+          "src/core/roleplay-author-browser-generation-types.ts"
         ],
         "banner": "runtime/alpha3/src/ui/author-browser-session.ts"
       },
@@ -128383,6 +128418,7 @@
         "entry": "src/ui/client.ts",
         "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
         "inputs": [
+          "src/ui/session-bgm.ts",
           "build-tools/package-lock.json",
           "build-tools/package.json",
           "build-tools/tsconfig.json",

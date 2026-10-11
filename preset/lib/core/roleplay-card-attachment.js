@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { extname, isAbsolute, join, relative, sep } from 'node:path';
+import { TAVERN_LIBRARY_LIMITS } from './tavern-library.js';
 import { libraryStableId, safeLibraryName } from './tavern-library-input.js';
 import { CARD_LIMITS } from './tavern-card.js';
 import { sha256, recordSha256 } from './roleplay-data.js';
@@ -10,6 +11,12 @@ const PREFIX = 'tavern_card_attachment__';
 const TYPES = Object.freeze({
     '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown', '.txt': 'text/plain',
 });
+const CARD_POLICY = Object.freeze({ prefix: PREFIX, types: TYPES,
+    bytes: CARD_LIMITS.bytes, sourceKind: 'native-attachment-import', defaultName: '角色卡' });
+const MUSIC_POLICY = Object.freeze({ prefix: 'tavern_music_attachment__',
+    types: Object.freeze({ '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+        '.m4a': 'audio/mp4', '.flac': 'audio/flac', '.webm': 'audio/webm' }),
+    bytes: TAVERN_LIBRARY_LIMITS.bytes, sourceKind: 'native-music-attachment-import', defaultName: '音乐' });
 // Factories sharing a Host table also share admission serialization. Separate
 // processes must retain the Host's single-writer contract; this is not a lease.
 const locks = new WeakMap();
@@ -30,7 +37,7 @@ function selectorOf(value) {
         fail('selector 仅接受 receiptId');
     return { receiptId: identifier(source.receiptId, 'receiptId') };
 }
-function fileOf(value) {
+function fileOf(value, policy) {
     const source = object(value);
     if (Object.keys(source).length !== 3 || !['attachmentId', 'name', 'bytes'].every(key => Object.hasOwn(source, key))) {
         fail('原生文件引用字段无效');
@@ -40,10 +47,10 @@ function fileOf(value) {
         fail('原件 SHA-256 无效');
     if (typeof name !== 'string' || !name || name.trim() !== name || /[\x00-\x1f\x7f<>:"/\\|?*]/.test(name)
         || /[. ]$/.test(name) || /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name)
-        || Buffer.byteLength(name, 'utf8') > 255 || !TYPES[extname(name).toLowerCase()]) {
+        || Buffer.byteLength(name, 'utf8') > 255 || !policy.types[extname(name).toLowerCase()]) {
         fail('原件名称或扩展名无效');
     }
-    if (!Number.isSafeInteger(bytes) || Number(bytes) < 1 || Number(bytes) > CARD_LIMITS.bytes)
+    if (!Number.isSafeInteger(bytes) || Number(bytes) < 1 || Number(bytes) > policy.bytes)
         fail('原件大小超出限制');
     return Object.freeze({ attachmentId, name, bytes: Number(bytes) });
 }
@@ -62,20 +69,20 @@ function authorizationOf(row) {
     return sha256(JSON.stringify([row.schemaVersion, row.sessionId, row.requestId, row.workspaceRoot,
         row.workspaceHash, identity, row.file.attachmentId, row.file.name, row.file.bytes]));
 }
-function sourceOf(row) {
+function sourceOf(row, policy) {
     if (row.schemaVersion === 2)
         return { sessionId: row.sessionId, kind: 'native-chat-attachment-import', requestId: row.requestId,
             attachmentId: row.file.attachmentId, intentMessageId: row.chatProof.intent.messageId,
             sourceMessageId: row.chatProof.source.messageId, proofSha256: row.chatProof.proofSha256 };
-    return { sessionId: row.sessionId, kind: 'native-attachment-import', requestId: row.requestId,
+    return { sessionId: row.sessionId, kind: policy.sourceKind, requestId: row.requestId,
         receiptId: row.receiptId, attachmentId: row.file.attachmentId };
 }
-function archiveName(file) {
+function archiveName(file, policy) {
     const extension = extname(file.name).toLowerCase();
     const stem = file.name.slice(0, -extension.length).normalize('NFC').slice(0, 150).trim().replace(/[. ]+$/, '');
-    return safeLibraryName(`${stem || '角色卡'}${extension}`);
+    return safeLibraryName(`${stem || policy.defaultName}${extension}`);
 }
-function admissionOf(value, expected, chatProof) {
+function admissionOf(value, expected, policy, chatProof) {
     const record = object(value);
     const fields = ['schemaVersion', 'sessionId', 'requestId', 'workspaceRoot', 'workspaceHash',
         chatProof ? 'chatProof' : 'receiptId', 'file', 'authorizationSha256', 'state', 'resourceId'];
@@ -86,7 +93,7 @@ function admissionOf(value, expected, chatProof) {
         if (record[field] !== value)
             fail('requestId 已绑定不同会话、工作区或 receipt');
     }
-    const file = fileOf(record.file);
+    const file = fileOf(record.file, policy);
     if (chatProof) {
         const stored = validateChatCardProof(record.chatProof);
         if (stored.sessionId !== expected.sessionId || stored.requestId !== expected.requestId
@@ -122,7 +129,7 @@ async function serialized(table, key, work) {
     }
 }
 /** Authorize native bytes once, archive them, and leave activation to the existing workflow. */
-export function createCardAttachmentSources({ T, libraryFor, fileUploads, attachments }) {
+function createAttachmentSources({ T, libraryFor, fileUploads, attachments }, policy) {
     async function materializeSource(session, actualAgent, selector, requestedId, chat) {
         const receiptId = chat ? undefined : selectorOf(selector).receiptId;
         const requestId = identifier(requestedId, 'requestId');
@@ -142,7 +149,7 @@ export function createCardAttachmentSources({ T, libraryFor, fileUploads, attach
             ...(receiptId === undefined ? {} : { receiptId }) };
         // The key deliberately excludes cwd: a changed workspace must conflict with
         // the existing authorization instead of silently creating another source.
-        const key = `${PREFIX}${sha256(JSON.stringify([session.id, requestId]))}`;
+        const key = `${policy.prefix}${sha256(JSON.stringify([session.id, requestId]))}`;
         return serialized(T.branch, key, async () => {
             const assertContext = () => {
                 chat?.assertCurrent();
@@ -156,12 +163,12 @@ export function createCardAttachmentSources({ T, libraryFor, fileUploads, attach
             let row;
             const previous = T.branch.get(key);
             if (previous !== undefined && previous !== null)
-                row = admissionOf(previous, expected, chat?.proof);
+                row = admissionOf(previous, expected, policy, chat?.proof);
             else {
                 const resolved = chat ? chat.proof.file : fileUploads.resolve(agent, receiptId);
                 if (resolved === undefined)
                     fail('文件未上传到当前会话或 receipt 已失效');
-                const file = fileOf(resolved);
+                const file = fileOf(resolved, policy);
                 const identity = chat ? { schemaVersion: 2, ...expected, file, chatProof: chat.proof }
                     : { schemaVersion: 1, ...expected, file, receiptId: receiptId };
                 row = { ...identity, authorizationSha256: authorizationOf(identity), state: 'admitted' };
@@ -176,11 +183,11 @@ export function createCardAttachmentSources({ T, libraryFor, fileUploads, attach
                 const metadata = library.metadata(resourceId);
                 const extension = extname(row.file.name).toLowerCase();
                 const pathPart = relative(join(workspaceRoot, 'tavern-library', 'objects'), metadata.path);
-                const source = sourceOf(row);
+                const source = sourceOf(row, policy);
                 const sources = metadata.sources ?? [metadata.source];
                 if (metadata.id !== libraryStableId(workspaceHash, row.file.attachmentId.slice(7))
                     || metadata.workspaceHash !== workspaceHash || metadata.fullSha256 !== row.file.attachmentId.slice(7)
-                    || metadata.bytes !== row.file.bytes || metadata.type !== TYPES[extension]
+                    || metadata.bytes !== row.file.bytes || metadata.type !== policy.types[extension]
                     || extname(metadata.path).toLowerCase() !== extension || isAbsolute(pathPart)
                     || pathPart === '..' || pathPart.startsWith(`..${sep}`)
                     || !sources.some(item => Object.entries(source).every(([key, value]) => item[key] === value))) {
@@ -199,7 +206,7 @@ export function createCardAttachmentSources({ T, libraryFor, fileUploads, attach
                 if (!(chunk instanceof Uint8Array))
                     fail('原件读取流不是字节');
                 count += chunk.byteLength;
-                if (count > CARD_LIMITS.bytes || count > row.file.bytes)
+                if (count > policy.bytes || count > row.file.bytes)
                     fail('原件读取大小超出限制或授权值');
                 const copy = Buffer.from(chunk);
                 chunks.push(copy);
@@ -209,11 +216,11 @@ export function createCardAttachmentSources({ T, libraryFor, fileUploads, attach
             if (count !== row.file.bytes || digest.digest('hex') !== row.file.attachmentId.slice(7)) {
                 fail('原件完整 SHA-256 或大小不匹配');
             }
-            const reread = admissionOf(T.branch.get(key), expected, chat?.proof);
+            const reread = admissionOf(T.branch.get(key), expected, policy, chat?.proof);
             if (reread.authorizationSha256 !== row.authorizationSha256 || reread.state !== 'admitted')
                 fail('准入记录在读取期间变化');
-            const resource = await library.archive({ name: archiveName(row.file), type: TYPES[extname(row.file.name).toLowerCase()],
-                bytes: Buffer.concat(chunks, count), source: sourceOf(row) });
+            const resource = await library.archive({ name: archiveName(row.file, policy), type: policy.types[extname(row.file.name).toLowerCase()],
+                bytes: Buffer.concat(chunks, count), source: sourceOf(row, policy) });
             // If this final write fails, the same source is safely re-archived and
             // deduplicated on retry; an archive receipt is never card activation.
             const result = verifiedResult(resource.id);
@@ -233,7 +240,7 @@ export function createCardAttachmentSources({ T, libraryFor, fileUploads, attach
     }
     function readChatProof(session, requestId) {
         identifier(requestId, 'requestId');
-        const key = `${PREFIX}${sha256(JSON.stringify([session.id, requestId]))}`;
+        const key = `${policy.prefix}${sha256(JSON.stringify([session.id, requestId]))}`;
         const value = T.branch.get(key);
         if (value === undefined || value === null)
             return null;
@@ -241,7 +248,7 @@ export function createCardAttachmentSources({ T, libraryFor, fileUploads, attach
             return null;
         const proof = validateChatCardProof(object(value).chatProof);
         const workspaceRoot = realpathSync(session.header.cwd);
-        const row = admissionOf(value, { sessionId: session.id, requestId, workspaceRoot, workspaceHash: sha256(workspaceRoot) }, proof);
+        const row = admissionOf(value, { sessionId: session.id, requestId, workspaceRoot, workspaceHash: sha256(workspaceRoot) }, policy, proof);
         if (row.schemaVersion !== 2)
             return null;
         return structuredClone(row.chatProof);
@@ -250,16 +257,16 @@ export function createCardAttachmentSources({ T, libraryFor, fileUploads, attach
         const proof = readChatProof(session, requestId);
         if (!proof)
             return null;
-        const key = `${PREFIX}${sha256(JSON.stringify([session.id, requestId]))}`;
+        const key = `${policy.prefix}${sha256(JSON.stringify([session.id, requestId]))}`;
         const row = object(T.branch.get(key));
         if (row.state !== 'archived')
             return null;
         const library = libraryFor(session);
         const metadata = library.archivalIdentity?.(row.resourceId) ?? library.metadata(row.resourceId);
-        const source = sourceOf(row);
+        const source = sourceOf(row, policy);
         const sources = metadata.sources;
         if (metadata.fullSha256 !== proof.file.attachmentId.slice(7) || metadata.bytes !== proof.file.bytes
-            || metadata.workspaceHash !== row.workspaceHash || metadata.type !== TYPES[extname(row.file.name).toLowerCase()]
+            || metadata.workspaceHash !== row.workspaceHash || metadata.type !== policy.types[extname(row.file.name).toLowerCase()]
             || metadata.id !== libraryStableId(row.workspaceHash, proof.file.attachmentId.slice(7))
             || !sources.some(item => Object.entries(source).every(([key, value]) => item[key] === value)))
             fail('聊天原件归档已变化');
@@ -268,4 +275,12 @@ export function createCardAttachmentSources({ T, libraryFor, fileUploads, attach
         return chatCardProjection(row.chatProof);
     }
     return { materialize, materializeChat, readChatProof, readChatProvenance };
+}
+export function createCardAttachmentSources(dependencies) {
+    return createAttachmentSources(dependencies, CARD_POLICY);
+}
+/** Explicit native audio uploads only; no card activation or chat discovery. */
+export function createMusicAttachmentSources(dependencies) {
+    const { materialize } = createAttachmentSources(dependencies, MUSIC_POLICY);
+    return { materialize };
 }

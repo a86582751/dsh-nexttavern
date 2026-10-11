@@ -1,6 +1,14 @@
 {
   "artifacts": [
     {
+      "id": "session-bgm",
+      "source": "lib/ui/session-bgm.js"
+    },
+    {
+      "id": "session-bgm-typescript",
+      "source": "src/ui/session-bgm.ts"
+    },
+    {
       "id": "activity-view",
       "source": "lib/ui/activity-view.js"
     },
@@ -28518,6 +28526,21 @@
   ],
   "builds": [
     {
+      "id": "session-bgm-js",
+      "kind": "typescript-module",
+      "artifact": "session-bgm",
+      "entry": "src/ui/session-bgm.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/panel-state.ts",
+        "src/ui/session-bgm.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
       "id": "activity-view-js",
       "kind": "typescript-module",
       "artifact": "activity-view",
@@ -29129,6 +29152,9 @@
       "entry": "src/ui/author-browser-session.ts",
       "builder": "tools/build-modules.mjs",
       "inputs": [
+        "src/ui/reader-rendering.ts",
+        "src/ui/reader-regex.ts",
+        "src/ui/status-rendering.ts",
         "build-tools/package-lock.json",
         "build-tools/package.json",
         "build-tools/tsconfig.json",
@@ -113125,6 +113151,7 @@
       "entry": "src/ui/client.ts",
       "builder": "tools/build-modules.mjs",
       "inputs": [
+        "src/ui/session-bgm.ts",
         "build-tools/package-lock.json",
         "build-tools/package.json",
         "build-tools/tsconfig.json",

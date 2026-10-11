@@ -2,12 +2,14 @@
 import { randomUUID } from 'node:crypto';
 import { taskPhaseMessage, taskValidationFailure, isInlinePending } from './tavern-tasks.js';
 import { decodeTavernCard } from './tavern-card.js';
-import { createCardAttachmentSources } from './roleplay-card-attachment.js';
+import { createCardAttachmentSources, createMusicAttachmentSources } from './roleplay-card-attachment.js';
 import { jsonResponse } from './roleplay-state.js';
 import { assertWorkspaceSession } from './roleplay-context.js';
 import { assertSteeringAgent } from './roleplay-task-tools.js';
 export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow, resumeCardWorkflows, cardWorkflows, cardWorkflowKey, tavernTasks, taskAgents, libraryFor, migrateResources }) {
     const attachmentSources = createCardAttachmentSources({ T, libraryFor,
+        fileUploads: ctx.fileUploads, attachments: ctx.attachments });
+    const musicSources = createMusicAttachmentSources({ T, libraryFor,
         fileUploads: ctx.fileUploads, attachments: ctx.attachments });
     const latestChildJobs = () => {
         const latest = new Map();
@@ -114,6 +116,25 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
                 return jsonResponse(400, { ok: false, error: String(error.message) });
             }
         } }), 'roleplay: persistent jobs route');
+    ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered',
+        path: '/api/roleplay/music', methods: ['POST'], fetch: async (request) => {
+            try {
+                const body = await request.json();
+                const session = await resolveRoleplaySession(body.sessionId);
+                if (!session)
+                    return jsonResponse(404, { ok: false, error: '角色扮演会话不存在' });
+                assertWorkspaceSession(session);
+                const found = await ctx.sessionController.resolveAgent(session.id);
+                if (!found?.agent)
+                    return jsonResponse(409, { ok: false, error: '当前会话代理尚未就绪' });
+                const { resourceId } = await musicSources.materialize(session, found.agent, body.attachment, body.requestId);
+                return jsonResponse(200, { ok: true, resource: libraryFor(session).metadata(resourceId) });
+            }
+            catch (error) {
+                return jsonResponse(400, { ok: false, error: String(error.message) });
+            }
+        },
+    }), 'roleplay: explicit music upload route');
     const resourceRoutes = [
         ['/api/roleplay/resources', async (session) => { const lib = await migrateResources(session); return jsonResponse(200, { ok: true, resources: lib.list(), pending: lib.pending() }); }],
         ['/api/roleplay/resource', async (session, url) => {
