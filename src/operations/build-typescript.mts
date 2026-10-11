@@ -168,6 +168,18 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
         ? {allowJs:true,checkJs:false,outDir:inside(repo,'artifacts/test-temp/compiler-memory-output')} : {}),
     }
     const host = ts.createCompilerHost(options)
+    const resolveRealpath = host.realpath!
+    const realpaths = new Map<string,string>()
+    // preserveSymlinks makes strict diagnostics and emit query the same
+    // declaration path repeatedly. Inputs stay fixed within this Program;
+    // retain that physical-path result, not TypeScript's redirect decision.
+    host.realpath = file => {
+      const cached = realpaths.get(file)
+      if (cached !== undefined) return cached
+      const resolved = resolveRealpath.call(host,file)
+      realpaths.set(file,resolved)
+      return resolved
+    }
     const fallbacks = plan.typeScript.contexts?.[context]?.declarationFallbacks ?? []
     for (const fallback of fallbacks) {
       const source = inside(repo, fallback.file)
