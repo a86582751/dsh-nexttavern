@@ -22,6 +22,7 @@ project license:
 - The upload dependency is the formal fork a86582751/dsh-file-upload, based on HongMing-Huang/dsh-file-upload 0.4.3, commit 79759cb31c9971706cb9a5fc71d30053f1b498c3. Copyright (c) 2026 HongMing-Huang, MIT. Its package preserves the original license and modification notice.
 - Optional anydoc is the formal fork a86582751/dsh-plugin-anydoc, based on beancookie/dsh-plugin-anydoc commit 3af159ed06f62f3d2c61ab21c6a2475c71efbfa4. Upstream declares MIT in README but supplies no separate copyright notice. The fork records that fact and includes MIT terms without inventing a copyright statement.
 - Optional @huiliyi37/dsh-office@0.2.2 is obtained from its author's npm publication under Apache-2.0. Its dependencies retain their own licenses. It is not copied into this tarball.
+- The inert Source music parser bundles TypeScript 5.9.3 (Apache-2.0; copyright (c) Microsoft Corporation, all rights reserved), parse5 8.0.1 (MIT), and entities 8.1.0 (BSD-2-Clause). Their terms are preserved in licenses/TypeScript-Apache-2.0.txt, licenses/TypeScript-ThirdPartyNoticeText.txt, licenses/parse5-LICENSE, and licenses/entities-LICENSE.
 
 Formal forks preserve upstream histories, fixed inputs, deltas and rebuild instructions. They are not upstream-authored releases or endorsements. Fork distribution does not guarantee DSH directory acceptance; submission must disclose the full installation requirements.
 

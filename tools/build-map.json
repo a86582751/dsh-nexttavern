@@ -2,6 +2,15 @@
   "schemaVersion": 3,
   "modules": [
     {
+      "artifact": "roleplay-source-music-parser-js",
+      "source": "src/core/roleplay-source-music-parser.mts",
+      "banner": "runtime/alpha3/src/core/roleplay-source-music-parser.mts",
+      "primaryOutput": "lib/core/roleplay-source-music-parser.mjs",
+      "outputs": [
+        "lib/core/roleplay-source-music-parser.mjs"
+      ]
+    },
+    {
       "artifact": "session-bgm",
       "source": "src/ui/session-bgm.ts",
       "banner": "runtime/alpha3/src/ui/session-bgm.ts",
@@ -7909,6 +7918,36 @@
   ],
   "compilerPlan": {
     "artifacts": [
+      {
+        "id": "source-music-license-TypeScript-Apache-2.0.txt",
+        "source": "licenses/TypeScript-Apache-2.0.txt",
+        "canonicalSource": "release/public/licenses/TypeScript-Apache-2.0.txt"
+      },
+      {
+        "id": "source-music-license-TypeScript-ThirdPartyNoticeText.txt",
+        "source": "licenses/TypeScript-ThirdPartyNoticeText.txt",
+        "canonicalSource": "release/public/licenses/TypeScript-ThirdPartyNoticeText.txt"
+      },
+      {
+        "id": "source-music-license-parse5-LICENSE",
+        "source": "licenses/parse5-LICENSE",
+        "canonicalSource": "release/public/licenses/parse5-LICENSE"
+      },
+      {
+        "id": "source-music-license-entities-LICENSE",
+        "source": "licenses/entities-LICENSE",
+        "canonicalSource": "release/public/licenses/entities-LICENSE"
+      },
+      {
+        "id": "roleplay-source-music-parser-typescript",
+        "source": "src/core/roleplay-source-music-parser.mts",
+        "canonicalSource": "runtime/alpha3/src/core/roleplay-source-music-parser.mts"
+      },
+      {
+        "id": "roleplay-source-music-parser-js",
+        "source": "lib/core/roleplay-source-music-parser.mjs",
+        "canonicalSource": "runtime/alpha3/lib/core/roleplay-source-music-parser.mjs"
+      },
       {
         "id": "session-bgm",
         "source": "lib/ui/session-bgm.js",
@@ -44146,6 +44185,27 @@
       ]
     },
     "builds": [
+      {
+        "id": "roleplay-source-music-parser-build",
+        "kind": "typescript-module",
+        "artifact": "roleplay-source-music-parser-js",
+        "entry": "src/core/roleplay-source-music-parser.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "bundledDependencies": [
+          "parse5",
+          "typescript",
+          "entities"
+        ],
+        "inputs": [
+          "src/core/roleplay-source-music-parser.mts",
+          "src/operations/build-typescript.mts",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json"
+        ],
+        "banner": "runtime/alpha3/src/core/roleplay-source-music-parser.mts"
+      },
       {
         "id": "session-bgm-js",
         "kind": "typescript-module",

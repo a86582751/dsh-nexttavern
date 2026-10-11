@@ -62,6 +62,9 @@
       ],
       "dsh-nexttavern-mvu-schema-runtime-v4/*": [
         "../development/mvu-schema-runtime-v4/src/*.ts"
+      ],
+      "parse5": [
+        "./node_modules/parse5/dist/index.d.ts"
       ]
     },
     "newLine": "lf"
