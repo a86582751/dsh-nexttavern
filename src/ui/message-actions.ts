@@ -269,7 +269,7 @@ export function createMessageActionComponents({
             onChange: (event: ReactAPI.ChangeEvent<HTMLTextAreaElement>) => setText(event.target.value),
             onKeyDown: (event: ReactAPI.KeyboardEvent<HTMLTextAreaElement>) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && ready)
-                    onSave(text.trim());
+                    onSave(text);
             },
         }), React.createElement('div', {
             className: 'dsh-rp-edit-buttons'
@@ -280,14 +280,14 @@ export function createMessageActionComponents({
             : '保存只修改当前 Agent 回复，不调用模型'), React.createElement('button', {
             type: 'button', className: 'dsh-rp-edit-action', disabled: busy, onClick: onClose
         }, '取消'), React.createElement('button', {
-            type: 'button', className: 'dsh-rp-edit-action', disabled: !ready, onClick: () => onSave(text.trim())
+            type: 'button', className: 'dsh-rp-edit-action', disabled: !ready, onClick: () => onSave(text)
         }, '保存'), allowSend
             ? React.createElement('button', {
                 type: 'button',
                 className: 'dsh-rp-edit-action',
                 'data-primary': 'true',
                 disabled: !ready,
-                onClick: () => onSend!(text.trim())
+                onClick: () => onSend!(text)
             }, '发送')
             : null)));
     }
@@ -550,7 +550,7 @@ export function createMessageActionComponents({
             });
         }, {
             disabled: busy || recoveryAvailable || !group || members.length <= 1
-        }), actionIconButton('导出小说稿', ICONS.download, () => runCommand(sessionId, '/export-novel llm'))), editor);
+        }), actionIconButton('导出小说稿', ICONS.download, () => runCommand(sessionId, '/export-novel'))), editor);
     }
     return {
         ICONS, actionIconButton, MessageEditor, useRoleplayState, UserActions, AssistantActions

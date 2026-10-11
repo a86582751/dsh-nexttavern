@@ -684,8 +684,8 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
               const session = await resolveRoleplaySession(body?.sessionId)
               if (!session) return jsonResponse(404, { ok: false, error: '角色扮演会话不存在或无法恢复' })
               assertStoryBranchActive(session)
-              const text = String(body?.text ?? '').trim()
-              if (!text) return jsonResponse(400, { ok: false, error: '消息不能为空' })
+              const text = String(body?.text ?? '')
+              if (!text.trim()) return jsonResponse(400, { ok: false, error: '消息不能为空' })
               if (text.length > 1_000_000) return jsonResponse(413, { ok: false, error: '消息超过 1,000,000 字符' })
               if (body?.role === 'assistant') {
                 const messageId = String(body?.messageId ?? '')
