@@ -518,11 +518,12 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       catch{return false}
     },
     preflightPromptTemplate:async(sessionId:string,signal?:AbortSignal)=>{
-      // Import and plain MD inputs legitimately precede an activated card.
-      // Only absence skips preflight; malformed active sources still fail.
-      if(deps.tables.branch.get(deps.importActiveKey(sessionId))===undefined)return
-      const catalog=deps.catalog(sessionId),intent=readIntent(sessionId,catalog.source.importId)
+      // The v6 owner preflights only its own intent. Completed semantic MD
+      // imports have no structured envelope and remain valid legacy inputs.
+      const pointer=deps.tables.branch.get(deps.importActiveKey(sessionId)) as {importId?:string}|undefined,
+        intent=pointer?.importId?readIntent(sessionId,pointer.importId):undefined
       if(intent?.schemaVersion!==6)return
+      deps.catalog(sessionId)
       const checked=validatePromptTemplateOnlyOpeningIntentV6(intent)
       await preflightPromptTemplateRuntime(checked.promptTemplateSourceProof,signal)
     },
