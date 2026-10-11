@@ -7,7 +7,7 @@ import { simpleTool } from './roleplay-task-tools.js'
 import type { TaskToolExecution } from './roleplay-task-tools-types.js'
 import type { AuthoringInput, AuthoringDependencies, DraftDependencies, DraftInput, DraftRegex } from './roleplay-authoring-types.js'
 import { SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1 } from './roleplay-tavern-legacy-write-target-types.js'
-import {INDEPENDENT_AUTHOR_CORE_V1} from './roleplay-import-record.js'
+import {INDEPENDENT_AUTHOR_CORE_V1,authorRuleEditV1} from './roleplay-import-record.js'
 
 export function registerCardAuthoring({ctx, T, svc, RULE_TEXT_FIELDS, sessionOf,beforeWrite,mutateSource,
   checkLegacyWorldbookWriteTargets}: AuthoringDependencies) {
@@ -66,6 +66,7 @@ export function registerCardAuthoring({ctx, T, svc, RULE_TEXT_FIELDS, sessionOf,
       }
       await svc.setRules(session.id,{...prev,...acceptedRules,
         ...(Object.hasOwn(acceptedRules,'core')?{coreOwnership:INDEPENDENT_AUTHOR_CORE_V1}:{}),
+        editedFrom:authorRuleEditV1(prev,Object.keys(acceptedRules),'native-tool',atSeq),
         verified:false,source:'authored-by-agent'},atSeq)
       written.push({ target: 'rules' })
     }

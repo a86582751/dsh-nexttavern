@@ -1,7 +1,7 @@
 /** Freeze portable author DATA, never old import/job/Native execution rights. */
 import {keyOf,cloneRecord,recordSha256} from './roleplay-data.js'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
-import {readStructuredImportDataV1} from './roleplay-import-record.js'
+import {readStructuredImportDataV1,spanText} from './roleplay-import-record.js'
 import {portableNextTavernAuthorFields,isNextTavernCardDocument,nextTavernCardSourceIdV1,
   NEXTTAVERN_ST_MACRO_FIELDS,isNativeTavernCardDocument,readNativeNextTavernAuthorExtensionV1,
   readTavernCardArchiveV1,mergeNativeTavernCardExportV1} from './nexttavern-card.js'
@@ -45,7 +45,9 @@ export function captureNextTavernAuthorDataV1(deps:AuthorDataDependencies,id:str
     'rules','status','opening','settings'])delete extra[field]
   const skip=new Set<string>()
   let book=cloneRecord(decoded?.data.character_book) as NextTavernCardData['character_book']
-  const rules=authorFields(T.rules.get(keyOf(id,'spec')))
+  const ruleRow=T.rules.get(keyOf(id,'spec')) as Record<string,unknown>|undefined
+  const rules=authorFields(ruleRow)
+  const editedRuleFields=(ruleRow?.editedFrom as {ruleFields?:string[]}|undefined)?.ruleFields??[]
   let journalDataSha256:string|undefined
   if(captured.kind==='captured-data') {
     const {observed,legacy}=deps.edits.observeJournalDataWithLegacyData(captured,{suppressBookConstants:true})
@@ -53,6 +55,18 @@ export function captureNextTavernAuthorDataV1(deps:AuthorDataDependencies,id:str
     journalDataSha256=observed.data.dataSha256
     rules.core=legacy!.contributions.coreData.text
     if(legacy!.contributions.coreData.kind==='legacy-edited-unsplit')rules.coreOrigin='legacy-edited-unsplit'
+    if(!native&&decoded&&original) {
+      // Legacy spans include normalized line separators. Unchanged ST fields
+      // retain their physical author bytes in portable DATA; current edits keep
+      // their literal text. Explicit core ownership also preserves same-value edits.
+      if(legacy!.contributions.coreData.kind==='legacy-projection')rules.core=String(decoded.data.scenario??'')
+      for(const [rule,field,target] of [['style','mes_example','rule-style'],
+        ['narrative','system_prompt','rule-narrative'],['reply','post_history_instructions','rule-reply']] as const) {
+        const spans=original.assignments.filter(assignment=>assignment.target===target)
+          .flatMap(assignment=>assignment.sourceSpans).sort((left,right)=>left.startLine-right.startLine)
+        if(!editedRuleFields.includes(rule)&&rules[rule]===spanText(original,spans))rules[rule]=String(decoded.data[field]??'')
+      }
+    }
     for(const key of legacy!.linkedRowKeys)skip.add(key)
     if(observed.data.currentNativeMembership) {
       // Current order/membership comes from the published journal. Original
@@ -120,8 +134,15 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
     ?cloneRecord(native.data.opening.catalog) as {rawText:string;label?:string;[key:string]:unknown}[]
     :decoded?compileTavernOpeningCandidates(decoded).map(candidate=>({label:candidate.label,
       rawText:candidate.rawText,sourcePointer:candidate.sourcePointer})):undefined
-  const currentTemplate=String(object(scene)
+  let currentTemplate=String(object(scene)
     ?scene.text??native?.data.opening?.text??'':native?.data.opening?.text??'')
+  if(!native&&decoded&&original&&object(scene)&&scene.importId===original.importId) {
+    const spans=original.assignments.filter(assignment=>assignment.target==='opening')
+      .flatMap(assignment=>assignment.sourceSpans).sort((left,right)=>left.startLine-right.startLine)
+    // The unselected scene is an import projection, while the portable template
+    // retains author bytes. Selected prose below remains owned by its Native read.
+    if(currentTemplate===spanText(original,spans))currentTemplate=String(decoded.data.first_mes??'')
+  }
   // Selected prose has its own current text. Keep the author template available
   // for another player without adding it again on a fresh JSON roundtrip.
   if(native&&catalog&&selected.kind==='ready'&&selected.text!==currentTemplate
@@ -129,7 +150,7 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
     catalog=[{label:'原主开场',rawText:currentTemplate,sourcePointer:'/data/opening/text'},...catalog]
   }
   const opening=scene===undefined&&selected.kind==='none'?undefined:{...authorFields(scene),
-    text:selected.kind==='ready'?selected.text:String(object(scene)?scene.text??'':''),
+    text:selected.kind==='ready'?selected.text:currentTemplate,
     materialization:selected.kind==='ready'?'materialized':native?.data.opening?.materialization
       ??(object(scene)?scene.materialization:undefined)??'template',
     ...(catalog!==undefined?{catalog}:{}),

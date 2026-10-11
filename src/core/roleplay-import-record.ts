@@ -1,6 +1,6 @@
 // Frozen import evidence and source-span validation. No table writes, workflow
 // state or import locks live here; validation remains usable by export/readback.
-import { sha256, cloneRecord, stableJson } from './roleplay-data.js';
+import { sha256, cloneRecord, stableJson, recordSha256 } from './roleplay-data.js';
 import { readCardSource, decodeTavernCard, readTavernExecutionCard, projectTavernCard, projectTavernCardCompact,
   compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1,
   compileTavernExtensionInventoryV3,
@@ -77,6 +77,14 @@ export const projectStructuredImport = (record: ImportRecord, decoded: DecodedTa
   throw new Error('结构化导入投影版本不匹配');
 };
 export const INDEPENDENT_AUTHOR_CORE_V1=Object.freeze({schemaVersion:1,kind:'independent-author-core'});
+/** Rule writes retain field intent even when a saved value equals its import
+ * projection. Later saves of another field must not erase that author intent. */
+export function authorRuleEditV1(previous:Record<string,unknown>,fields:readonly string[],
+  source:string,seq:number,repairId?:string) {
+  const prior=previous.editedFrom as {ruleFields?:string[]}|undefined;
+  return {sha256:recordSha256(previous),source,seq,...repairId?{repairId}:{},
+    ruleFields:[...new Set([...(prior?.ruleFields??[]),...fields])]};
+}
 export const hasIndependentAuthorCoreV1=(rules:Record<string,unknown>)=>{
   const marker=rules.coreOwnership as {schemaVersion?:unknown;kind?:unknown}|undefined;
   return marker?.schemaVersion===1&&marker.kind==='independent-author-core';
