@@ -105,6 +105,8 @@ export interface TurnProcessChatData {
   readonly answerAnchorSeq: number | null
   readonly maintenanceStartSeq: number | null
   readonly answerStep: number | null
+  /** The existing Roleplay phase owns the answer, including an unloaded original. */
+  readonly roleplayAnswer?: true
   readonly inlineReasoning: boolean
   readonly messageCount: number
   readonly toolCallCount: number

@@ -139,6 +139,7 @@ function processSpec(state: TurnProcessState, turn: TurnLocation): TurnProcessSp
     toolCallCount: state.toolCallCount,
     subagentCount: state.subagentCount,
   }
+  const answerIdentity = state.roleplayPhase === undefined ? {} : {roleplayAnswer: true as const}
   if (answer === null) {
     return {
       turn: turn.turn,
@@ -148,6 +149,7 @@ function processSpec(state: TurnProcessState, turn: TurnLocation): TurnProcessSp
       answerStep: null,
       maintenanceStartSeq: null,
       inlineReasoning: false,
+      ...answerIdentity,
       ...counts,
     }
   }
@@ -170,6 +172,7 @@ function processSpec(state: TurnProcessState, turn: TurnLocation): TurnProcessSp
     answerStep: answer.step,
     maintenanceStartSeq,
     inlineReasoning,
+    ...answerIdentity,
     ...counts,
   }
 }

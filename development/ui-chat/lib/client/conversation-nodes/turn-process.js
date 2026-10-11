@@ -102,6 +102,7 @@ function processSpec(state, turn) {
         toolCallCount: state.toolCallCount,
         subagentCount: state.subagentCount,
     };
+    const answerIdentity = state.roleplayPhase === undefined ? {} : { roleplayAnswer: true };
     if (answer === null) {
         return {
             turn: turn.turn,
@@ -111,6 +112,7 @@ function processSpec(state, turn) {
             answerStep: null,
             maintenanceStartSeq: null,
             inlineReasoning: false,
+            ...answerIdentity,
             ...counts,
         };
     }
@@ -128,6 +130,7 @@ function processSpec(state, turn) {
         answerStep: answer.step,
         maintenanceStartSeq,
         inlineReasoning,
+        ...answerIdentity,
         ...counts,
     };
 }

@@ -67,6 +67,7 @@ export function sameTurnNavigationItem(
   if (left === undefined || right === undefined) return left === right
   return left.turn === right.turn && left.anchorKey === right.anchorKey
     && left.prompt === right.prompt && left.response === right.response
+    && left.responseFromTurnAnswer === right.responseFromTurnAnswer
 }
 
 /**
@@ -87,11 +88,34 @@ export function turnNavigationItem(
   const user = loaded.find(node => node.kind === 'user')
   const anchor = user ?? loaded[0]
   if (anchor === undefined) return undefined
-  const response = loaded.findLast(node => responseText(node) !== '')
+  // Turn data survives a partial window even when its process view has no
+  // loaded Location. The rail consumes that existing answer owner directly.
+  const location = anchor.location
+  const owner = location.kind === 'turn' || location.kind === 'step' ? location.turn : undefined
+  const process = owner?.data.get('turn-process')
+  const responseFromTurnAnswer = process?.roleplayAnswer === true
+  let response: string
+  if (responseFromTurnAnswer) {
+    const tail = owner?.data.get('turn-tail')
+    if (tail !== undefined) {
+      response = tail.closing === null ? '' : preview(
+        tail.closing.blocks.flatMap(block => block.kind === 'text' ? [block.text] : []),
+        RESPONSE_PREVIEW_LIMIT,
+      )
+    } else {
+      const answer = loaded.find(node => node.kind === 'assistant-step'
+        && node.anchorSeq === process.answerAnchorSeq)
+      response = answer === undefined ? '' : responseText(answer)
+    }
+  } else {
+    const latest = loaded.findLast(node => responseText(node) !== '')
+    response = latest === undefined ? '' : responseText(latest)
+  }
   return {
     turn,
     anchorKey: anchor.key,
     prompt: user === undefined ? '' : promptText(user),
-    response: response === undefined ? '' : responseText(response),
+    response,
+    ...responseFromTurnAnswer ? {responseFromTurnAnswer: true as const} : {},
   }
 }

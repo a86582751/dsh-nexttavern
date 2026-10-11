@@ -4,7 +4,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-llm-retry/types'
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
-import { deriveTurnTokenUsage } from '@deepseek-ai/dsh-token-meter/client'
+import { deriveTurnTokenUsage } from 'dsh-nexttavern-token-meter/client'
 import type {
   AssistantChatData, FinalAssistantChatData, TurnTailChatData,
 } from '../contract/chat-nodes.ts'

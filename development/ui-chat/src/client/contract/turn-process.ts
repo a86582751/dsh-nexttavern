@@ -8,6 +8,8 @@ export interface TurnProcessSpec {
   readonly processStartSeq: number
   readonly answerAnchorSeq: number | null
   readonly answerStep: number | null
+  /** The existing Roleplay phase owns the answer, including an unloaded original. */
+  readonly roleplayAnswer?: true
   /** Verified after-story marker; later process rows belong to the same disclosure. */
   readonly maintenanceStartSeq: number | null
   readonly inlineReasoning: boolean
@@ -47,6 +49,7 @@ export function sameTurnProcessSpec(left: TurnProcessSpec, right: TurnProcessSpe
     && left.processStartSeq === right.processStartSeq
     && left.answerAnchorSeq === right.answerAnchorSeq
     && left.answerStep === right.answerStep
+    && left.roleplayAnswer === right.roleplayAnswer
     && left.maintenanceStartSeq === right.maintenanceStartSeq
     && left.inlineReasoning === right.inlineReasoning
     && left.messageCount === right.messageCount

@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/compat/ui-chat/src/client/conversation-nodes/turn-tail.ts; edit the TypeScript source.
-import { deriveTurnTokenUsage } from '@deepseek-ai/dsh-token-meter/client';
+import { deriveTurnTokenUsage } from 'dsh-nexttavern-token-meter/client';
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from "./common.js";
 import { phaseFromMatches, roleplayPhase, roleplayStory } from "./roleplay-story.js";
 function isSessionEvent(event) {

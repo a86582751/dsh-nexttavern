@@ -37,8 +37,8 @@ function outlineEntries(outline) {
 /**
  * Merge the host outline with the loaded rail items into the full ladder.
  * A turn present in both sides keeps the loaded anchor, taking an outline
- * preview only where the window's own is empty (a mid-Turn window head, or a
- * turn whose loaded nodes carry no text); turns on one side only pass
+ * preview only where the window's own is empty and no known Turn answer owns
+ * that empty value; turns on one side only pass
  * through. Result ascends by turn.
  * @param loaded - loaded-window rail items (timeline order).
  * @param outline - `turnOutline` projection value, treated as wire data.
@@ -62,7 +62,7 @@ export function mergeTurnRailItems(loaded, outline) {
         byTurn.set(item.turn, {
             turn: item.turn,
             prompt: item.prompt !== '' ? item.prompt : preview?.prompt ?? '',
-            response: item.response !== '' ? item.response : preview?.response ?? '',
+            response: item.responseFromTurnAnswer || item.response !== '' ? item.response : preview?.response ?? '',
             anchor: { kind: 'loaded', key: item.anchorKey },
         });
     }

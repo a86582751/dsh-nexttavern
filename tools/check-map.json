@@ -39603,7 +39603,8 @@
         "src/core/tavern-mvu-schema-fresh-selector.ts",
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
-        "src/operations/build-typescript.mts"
+        "src/operations/build-typescript.mts",
+        "development/token-meter/src/turn-usage.ts"
       ]
     },
     {
@@ -40876,7 +40877,9 @@
         "development/ui-chat/src/client/contract/store.ts",
         "development/ui-chat/src/client/model/conversation-context.ts",
         "src/operations/build-typescript.mts",
-        "build-tools/tsconfig.json"
+        "build-tools/tsconfig.json",
+        "development/token-meter/lib/client.js",
+        "development/token-meter/lib/turn-usage.js"
       ],
       "browser": {
         "moduleId": "dsh-nexttavern-ui-chat",
@@ -40888,7 +40891,8 @@
           "react/jsx-runtime"
         ],
         "inlineArtifactImports": {
-          "dsh-nexttavern-session-format/projection": "compat-session-format-lib-projection-js"
+          "dsh-nexttavern-session-format/projection": "compat-session-format-lib-projection-js",
+          "dsh-nexttavern-token-meter/client": "compat-token-meter-client-js"
         },
         "minifyWhitespace": true
       }

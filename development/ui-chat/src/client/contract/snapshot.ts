@@ -58,6 +58,8 @@ export interface TurnNavigationItem {
   readonly prompt: string
   /** Bounded assistant-response preview; empty until the Turn answers. */
   readonly response: string
+  /** A known Turn answer may be empty while its original lies outside the loaded window. */
+  readonly responseFromTurnAnswer?: true
 }
 
 /** Stable live navigation projection of the loaded Turns. */

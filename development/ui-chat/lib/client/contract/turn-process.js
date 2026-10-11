@@ -23,6 +23,7 @@ export function sameTurnProcessSpec(left, right) {
         && left.processStartSeq === right.processStartSeq
         && left.answerAnchorSeq === right.answerAnchorSeq
         && left.answerStep === right.answerStep
+        && left.roleplayAnswer === right.roleplayAnswer
         && left.maintenanceStartSeq === right.maintenanceStartSeq
         && left.inlineReasoning === right.inlineReasoning
         && left.messageCount === right.messageCount

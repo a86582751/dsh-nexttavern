@@ -55347,7 +55347,8 @@
           "src/core/tavern-mvu-schema-fresh-selector.ts",
           "development/mvu-schema-runtime-v4/src/index.ts",
           "development/mvu-schema-runtime-v4/src/descriptor.ts",
-          "src/operations/build-typescript.mts"
+          "src/operations/build-typescript.mts",
+          "development/token-meter/src/turn-usage.ts"
         ],
         "banner": "runtime/alpha3/compat/token-meter/src/client.ts"
       },
@@ -160530,6 +160531,9 @@
             ],
             "@deepseek-ai/dsh-client-ui-chat/client": [
               "../development/ui-chat/src/client/index.ts"
+            ],
+            "dsh-nexttavern-token-meter/client": [
+              "../development/token-meter/src/client.ts"
             ]
           }
         },
