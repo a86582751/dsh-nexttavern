@@ -7,6 +7,7 @@ import {currentSessionMessageProjections} from './catalog.js'
 import {MVU_PLAYER_EDIT_EVENT, assertMvuPlayerEditEvent,assertMvuPlayerMarkerBoundary} from './mvu-player-marker.js'
 import {MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT,
   assertMvuSchemaMarkerEvent, assertMvuSchemaHistory, assertMvuSchemaEventVocabulary} from './mvu-schema-marker.js'
+import {AUTHOR_INJECTION_CLEANUP_EVENT,assertAuthorInjectionCleanup} from './author-injection-cleanup.js'
 
 export * from '@deepseek-ai/dsh-session-persistence'
 
@@ -33,6 +34,10 @@ export const validateStoredEvents: typeof validateOfficialEvents = (meta, events
       events[index] = adoptSessionEvent(event)
     } else if (event.type === MVU_SCHEMA_DISPATCH_EVENT || event.type === MVU_SCHEMA_COMPLETION_EVENT) {
       assertMvuSchemaMarkerEvent(event)
+      events[index] = adoptSessionEvent(event)
+    } else if (event.type === AUTHOR_INJECTION_CLEANUP_EVENT) {
+      if (event.ignorable) throw Error('AUTHOR_INJECTION_CLEANUP_NOT_IGNORABLE')
+      assertAuthorInjectionCleanup(event.data)
       events[index] = adoptSessionEvent(event)
     } else {
       // The upstream routine validates records, not seq continuity; the backend

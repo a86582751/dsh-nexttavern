@@ -10,6 +10,7 @@ import { assertReleasedV4Header, releasedV4SessionFormatCodec, restoreReleasedV4
 import { MESSAGE_EDIT_EVENT, assertMessageEdit, messageEditProjection } from './projection.js';
 import { MVU_PLAYER_EDIT_EVENT, assertMvuPlayerEditEvent, assertMvuPlayerMarkerBoundary } from './mvu-player-marker.js';
 import { MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT, assertMvuSchemaHistory, assertMvuSchemaEventVocabulary } from './mvu-schema-marker.js';
+import { AUTHOR_INJECTION_CLEANUP_EVENT, assertAuthorInjectionCleanup } from './author-injection-cleanup.js';
 export { SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format';
 // Historical official sessions use the host's child-aware migration. Private
 // alpha.6 edit logs are deliberately unsupported; new edits are V4 only.
@@ -17,7 +18,7 @@ export { createSessionFormatCatalogWithChildren } from '@deepseek-ai/dsh-session
 export const currentSessionMessageProjections = [...officialProjections, messageEditProjection];
 export const knownSessionEventTypes = new Set([
     ...KNOWN_SESSION_EVENT_TYPES, MESSAGE_EDIT_EVENT, MVU_PLAYER_EDIT_EVENT,
-    MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT,
+    MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT, AUTHOR_INJECTION_CLEANUP_EVENT,
 ]);
 function restore(artifact) {
     // Reject reserved unknowns before the official unknown-ignorable contract
@@ -25,9 +26,15 @@ function restore(artifact) {
     for (const event of artifact.events)
         assertMvuSchemaEventVocabulary(event.type);
     const restored = restoreReleasedV4Artifact(artifact, knownSessionEventTypes);
-    for (const event of restored.events)
+    for (const event of restored.events) {
         if (event.type === MESSAGE_EDIT_EVENT)
             assertMessageEdit(event.data);
+        else if (event.type === AUTHOR_INJECTION_CLEANUP_EVENT) {
+            if (event.ignorable === true)
+                throw Error('AUTHOR_INJECTION_CLEANUP_NOT_IGNORABLE');
+            assertAuthorInjectionCleanup(event.data);
+        }
+    }
     for (const event of restored.events)
         if (event.type === MVU_PLAYER_EDIT_EVENT) {
             assertMvuPlayerEditEvent(event);

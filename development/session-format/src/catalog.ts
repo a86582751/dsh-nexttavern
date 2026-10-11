@@ -13,6 +13,7 @@ import {MESSAGE_EDIT_EVENT, assertMessageEdit, messageEditProjection} from './pr
 import {MVU_PLAYER_EDIT_EVENT, assertMvuPlayerEditEvent,assertMvuPlayerMarkerBoundary} from './mvu-player-marker.js'
 import {MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT,
   assertMvuSchemaHistory, assertMvuSchemaEventVocabulary} from './mvu-schema-marker.js'
+import {AUTHOR_INJECTION_CLEANUP_EVENT, assertAuthorInjectionCleanup} from './author-injection-cleanup.js'
 
 export {SessionFormatUnsupportedMigrationError} from '@deepseek-ai/dsh-session-format'
 // Historical official sessions use the host's child-aware migration. Private
@@ -21,7 +22,7 @@ export {createSessionFormatCatalogWithChildren} from '@deepseek-ai/dsh-session-f
 export const currentSessionMessageProjections = [...officialProjections, messageEditProjection]
 export const knownSessionEventTypes: ReadonlySet<string> = new Set([
   ...KNOWN_SESSION_EVENT_TYPES, MESSAGE_EDIT_EVENT, MVU_PLAYER_EDIT_EVENT,
-  MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT,
+  MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT, AUTHOR_INJECTION_CLEANUP_EVENT,
 ])
 
 function restore(artifact: SessionFormatArtifact): SessionFormatArtifact {
@@ -29,7 +30,13 @@ function restore(artifact: SessionFormatArtifact): SessionFormatArtifact {
   // can skip them. Other upstream ignorable vocabulary keeps its old behavior.
   for (const event of artifact.events) assertMvuSchemaEventVocabulary(event.type)
   const restored = restoreReleasedV4Artifact(artifact, knownSessionEventTypes)
-  for (const event of restored.events) if (event.type === MESSAGE_EDIT_EVENT) assertMessageEdit(event.data)
+  for (const event of restored.events) {
+    if (event.type === MESSAGE_EDIT_EVENT) assertMessageEdit(event.data)
+    else if (event.type === AUTHOR_INJECTION_CLEANUP_EVENT) {
+      if (event.ignorable === true) throw Error('AUTHOR_INJECTION_CLEANUP_NOT_IGNORABLE')
+      assertAuthorInjectionCleanup(event.data)
+    }
+  }
   for (const event of restored.events) if (event.type === MVU_PLAYER_EDIT_EVENT) {
     assertMvuPlayerEditEvent(event as unknown as SessionEvent)
     assertMvuPlayerMarkerBoundary(restored.events.slice(0,event.seq+1) as unknown as SessionEvent[])
