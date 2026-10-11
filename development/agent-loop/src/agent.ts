@@ -2341,10 +2341,6 @@ export class ReactLoopAgent implements Agent {
     // A route's system replacement bit is not additive system-at-depth support.
     // Missing exact-route capability refuses each required insertion before writes.
     const capability=preparedCall?.requestMaterialText
-    if(capability?.schemaVersion!==1||![capability.user,capability.assistant,capability.systemAtDepth]
-      .includes('role-and-position')){
-      this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
-    }
     for(const insertion of [...plan.insertions,...(plan.anchoredInsertions??[])]){
       const support=insertion.requestedRole==='system'?capability?.systemAtDepth:capability?.[insertion.requestedRole]
       if(capability?.schemaVersion!==1||support!=='role-and-position'){
