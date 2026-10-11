@@ -36,6 +36,18 @@ export interface TavernCanonicalChatClockCaptureV1 {
   readonly scanRows:readonly {id:string;role:'user'|'assistant';messageSha256:string;text:string}[]
   assertCurrent():void
 }
+export interface TavernReadonlyAuthorDialogChatClockV1 extends Omit<TavernCanonicalChatClockV1,
+  'schemaVersion'|'encoding'|'selectedSha256'|'policy'> {
+  readonly schemaVersion:2
+  readonly encoding:'native-readonly-author-dialog-chat-clock-v1'
+  readonly policy:'actual-completed-canonical-prose-without-request-selection-v1'
+}
+export interface TavernReadonlyAuthorDialogChatClockCaptureV1 {
+  readonly data:TavernReadonlyAuthorDialogChatClockV1
+  readonly scanRows:TavernCanonicalChatClockCaptureV1['scanRows']
+  readonly selected:{readonly messages:NativeMaterialSelectedBaseV1['messages'];readonly sha256:string}
+  assertCurrent():void
+}
 function fail(code='INPUT_MATERIAL_CHAT_CLOCK_UNPROVEN'):never {throw Error(code)}
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const hash=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)
@@ -54,7 +66,7 @@ function selectedRows(view:StorySession,events:readonly SessionEvent[],
       ||message.role!==row.role||seen.has(message.id)||sha256(textOf(message.content))!==sha256(row.text))fail()
     seen.add(message.id)
     return {ref:{seq:row.seq,id:message.id,role:row.role,messageSha256:nativeInputSha256(message),textSha256:sha256(row.text)},
-      text:row.text}
+      text:row.text,message:message as NativeMaterialSelectedBaseV1['messages'][number]['message']}
   })
 }
 /** This is the registered Native pure projection over actual prefix bytes,
@@ -66,7 +78,30 @@ export function readTavernCanonicalChatRowsAtCutV1(sessionId:string,events:reado
   const prefix=events.slice(0,nativeCut),surface=foldSurface(prefix,projections),
     messageAt=(event:SessionEvent)=>deriveEventMessage(event,surface.projectedMessages),
     view={id:sessionId,events:prefix,surface,deriveEventMessage:messageAt} as unknown as StorySession
-  return selectedRows(view,prefix,messageAt)
+  return selectedRows(view,prefix,messageAt).map(({ref,text})=>({ref,text}))
+}
+/** A read-only dialog has a real Native prefix, with no selected Main request
+ * or pending player input. Keep that distinction in its versioned clock. */
+export function captureReadonlyAuthorDialogChatClockV1(input:{
+  readonly session:Session;readonly projections:readonly SessionMessageProjection[];assertOwnerCurrent():void
+}):TavernReadonlyAuthorDialogChatClockCaptureV1 {
+  input.assertOwnerCurrent()
+  const events=input.session.snapshotEvents(),surface=foldSurface(events,input.projections),
+    messageAt=(event:SessionEvent)=>deriveEventMessage(event,surface.projectedMessages),
+    view={id:input.session.id,events,surface,deriveEventMessage:messageAt} as unknown as StorySession,
+    rows=selectedRows(view,events,messageAt),refs=rows.map(row=>row.ref)
+  const body={schemaVersion:2 as const,encoding:'native-readonly-author-dialog-chat-clock-v1' as const,
+    authority:'consumer-data-only' as const,policy:'actual-completed-canonical-prose-without-request-selection-v1' as const,
+    sessionId:input.session.id,nativeCut:events.length,nativePrefixSha256:nativeInputSha256(events),
+    rows:refs,pendingRows:[],chatIndex:rows.length,membershipSha256:recordSha256(refs)}
+  const data=freeze({...body,clockSha256:recordSha256(body)}),
+    messages=cloneRoleplayTavernLoreDataV1(rows.map(({ref,message})=>({origin:'surface' as const,eventSeq:ref.seq,id:ref.id,
+      role:ref.role,messageSha256:ref.messageSha256,message})),8_388_608),
+    cut={schemaVersion:1,encoding:'native-author-dialog-readonly-message-cut-v1',authority:'consumer-data-only',
+      sessionId:input.session.id,nativeCut:events.length,nativePrefixSha256:data.nativePrefixSha256,messages}
+  return {data,selected:freeze({messages,sha256:recordSha256(cut)}),
+    scanRows:freeze(rows.map(({ref,text})=>({id:ref.id,role:ref.role,messageSha256:ref.messageSha256,text}))),
+    assertCurrent:input.assertOwnerCurrent}
 }
 export function captureTavernCanonicalChatClockV1(input:{
   readonly session:Session;readonly selected:NativeMaterialSelectedBaseV1;readonly assertOwnerCurrent:()=>void

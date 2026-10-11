@@ -73,7 +73,7 @@ export function createBrowserSourceFrameOwnerV3(options = {}) {
     }
     function create(carrier) {
         const element = carrier.document.createElement('iframe');
-        element.setAttribute('sandbox', 'allow-same-origin');
+        element.setAttribute('sandbox', 'allow-same-origin allow-forms');
         const frame = Object.freeze({ frameId: -nextHandle + 1, carrierIdentity: carrier.carrierIdentity, carrierPageId: carrier.pageId });
         const state = { frame, carrier, element, reference: undefined,
             routes: new Set(), listeners: new Map(), location: { src: '', srcdoc: '' }, active: true };

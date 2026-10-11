@@ -166,11 +166,27 @@ export function createBrowserCompilerV3(artifact:BrowserRuntimeArtifactV3) {
         requiredCapabilities:proof?.capabilities??[],declarations:own,mediaSources:proof?.media.map(row=>row.value)??[],
         sourcePagePlans:plans.filter(plan=>proof?.pageMounts.some(id=>parsedPages.get(id)===plan.parsed)).map(plan=>plan.pagePlanSha256)})
     }
+    const generators=result.proofs.filter(proof=>proof.capabilities.includes('owned-generate-raw-gesture'))
+    let generationDeclarationId:string|null=null
+    for(const proof of generators) {
+      const own=proof.keys.map(key=>declarationsByKey.get(key)!).filter(row=>
+        row.writer.originalOrdinal===proof.unit.ordinal&&row.writer.scriptIdentity===proof.unit.identity
+        &&(row.writer.page===null?proof.unit.pageId===null
+          :proof.unit.pageId!==null&&row.writer.page.inlineOrdinal===proof.unit.inlineOrdinal
+            &&row.writer.page.htmlSha256===parsedPages.get(proof.unit.pageId)!.origin.htmlSha256))
+      if(own.length!==1)diagnostics.push({code:proof.keys.length===0
+        ?'BROWSER3_GENERATION_WRITER_UNPROVEN':'BROWSER3_GENERATION_KEY_UNPROVEN',
+        ordinal:proof.unit.ordinal,pointer:proof.unit.pointer})
+      else if(generationDeclarationId&&generationDeclarationId!==own[0]!.declarationId)
+        diagnostics.push({code:'BROWSER3_GENERATION_WRITER_UNPROVEN',ordinal:proof.unit.ordinal,pointer:proof.unit.pointer})
+      else generationDeclarationId=own[0]!.declarationId
+    }
     if(diagnostics.length)return {kind:'refused',diagnostics}
     const body:Omit<BrowserProgramV3,'programSha256'>={schemaVersion:3,encoding:'native-author-browser-program-v3',
       authority:'compiled-program-data-only',source:input.source,compiler:identity,profile:BROWSER_PROFILE_V3,
       runtime:artifact.identity,capabilityContract:BROWSER_CAPABILITY_CONTRACT_V3,scripts:compiled,sourcePages:plans,
-      declarations,requiredCapabilities:sorted([...compiled.flatMap(row=>row.requiredCapabilities),...plans.flatMap(row=>row.requiredCapabilities)])}
+      declarations,generationDeclarationId,
+      requiredCapabilities:sorted([...compiled.flatMap(row=>row.requiredCapabilities),...plans.flatMap(row=>row.requiredCapabilities)])}
     if(Buffer.byteLength(JSON.stringify(body),'utf8')>BROWSER_BOUNDS_V3.programBytes)
       return {kind:'refused',diagnostics:[{code:'BROWSER3_PROGRAM_BYTE_LIMIT'}]}
     return {kind:'compiled',program:{...body,programSha256:recordSha256(body)}}

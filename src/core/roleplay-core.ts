@@ -103,6 +103,8 @@ import {createRoleplayAuthorWorldbookCoreV1} from './roleplay-author-worldbook-c
 import {createCanonicalAuthorChatStateV1,deriveAuthorChatBindingV1,deriveAuthorChatBindingV2}
   from './roleplay-author-chat-state.js'
 import {createRoleplayAuthorBrowserKeyCoreV3} from './roleplay-author-browser-key-core-v3.js'
+import {createRoleplayAuthorBrowserDialogCoreV1} from './roleplay-author-browser-dialog-core.js'
+import {createRoleplayAuthorDialogContentV1} from './roleplay-author-dialog-content.js'
 import type {Session as NativeSession} from '@deepseek-ai/dsh-session'
 import {foldSurface,deriveEventMessage} from '@deepseek-ai/dsh-session/surface'
 import {createRoleplayMvuDerived,readMvuPrefixCanonical} from './roleplay-mvu-derived.js'
@@ -216,6 +218,7 @@ export const inject = [
   'agentLoop',
   'agents',
   'nexttavernMessageEdits',
+  'nexttavernAuthorInjectionCleanupMarkers',
   'nexttavernMvuPlayerMarkers',
   'sessionPersistence',
   'sessionQuery',
@@ -939,6 +942,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     tavernTasks,
     resolveCurrentCardImport,
     nativeTask,
+    requestAuthorDialog,
+    readCompletedAuthorDialog,
     resumeMemoryWork,
     resumeStatusMaintenance,
   } = createRoleplayTaskHost({
@@ -2561,6 +2566,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     inheritedTiming:(scope,source,current)=>captureInheritedTiming(scope.session.id,source,current),
     schemaScopes:mvuOpening.captureSchemaPromptScopes,
     executeAuthorPrompt:mvuOpening.executeAuthorPrompt,
+    executeAuthorBrowser:(sid,program,capture,facts,signal)=>{
+      if(!authorBrowser)throw Error('BROWSER_GENERATION_READER_UNAVAILABLE')
+      return authorBrowser.invokeGeneration(sid,program,capture,facts,signal)
+    },
     openingPreparation:(native,scope,source)=>{
       if(!programOpening)throw Error('PROGRAM_OPENING_OWNER_UNAVAILABLE')
       return programOpening.openingPreparation(native,scope,source)
@@ -2734,6 +2743,31 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     const id=(input as {sessionId?:unknown})?.sessionId
     return typeof id==='string'&&mvuOpening.hasSchemaOpening(id)?mvuOpening.submitSchemaPlayer(input):mvuPlayer.submit(input)
   }},observe:observeNumericalState})
+  const authorDialogContent=createRoleplayAuthorDialogContentV1({inputState,branch:T.branch,
+    source:tavernSource,edits:tavernLoreEdits,session:id=>ctx.sessions.get(id) as unknown as NativeSession|undefined,
+    projections:()=>ctx.sessions.messageProjections,schemaScopes:mvuOpening.captureSchemaPromptScopes,
+    captureAuthorChat:binding=>authorChatState.capture(binding),
+    preflight:async(sid,signal)=>{
+      await mvuOpening.preflightSchema(sid,signal)
+    },
+    includeCardStyle:id=>narrativePresets.policy(id).effective.mode!=='system',
+    withSourceLock:(id,work,signal)=>withImportLock(id,'author-dialog-content',work,signal),
+    loadTemplate:signal=>tavernTemplate.load(signal),inheritedTiming:captureInheritedTiming})
+  const authorDialogCore=createRoleplayAuthorBrowserDialogCoreV1({state:authorChatState,
+    capturePrompt:authorDialogContent.capturePrompt,
+    requestTask:async(sid,prompt,current,signal)=>{
+      const session=ctx.sessions.get(sid)
+      if(!session)throw Error('AUTHOR_DIALOG_SESSION_INACTIVE')
+      return requestAuthorDialog({session,prompt,current,signal})
+    },completedTask:(sid,program,request)=>{
+      const session=ctx.sessions.get(sid),binding=deriveAuthorChatBindingV1(sid,program)
+      return session&&binding?readCompletedAuthorDialog(session,binding,request.task):undefined
+    },captureCurrent:async(sid,program,current)=>{
+      const facts=await mvuOpening.captureSchemaBrowserFacts(sid)
+      if(!facts||facts.program.schemaVersion!==2||facts.program.programSha256!==program.programSha256)
+        throw Error('AUTHOR_DIALOG_SOURCE_CHANGED')
+      return ()=>current()&&facts.current()
+    },withSourceLock:(id,work,signal)=>withImportLock(id,'author-chat-state',work,signal)})
   async function captureOwnedBrowserFacts(sid:string) {
     if(!mvuOpening.hasSchemaOpening(sid))return undefined
     const facts=await mvuOpening.captureSchemaBrowserFacts(sid)
@@ -2790,6 +2824,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
         &&recordSha256(nativeOwner.lookupInputStop())===stopSha256
     }
   },captureFacts:captureOwnedBrowserFacts,
+  cleanupPrompts:record=>{
+    const session=ctx.sessions.get(record.sessionId)
+    if(session)ctx.nexttavernAuthorInjectionCleanupMarkers.append(session as unknown as NativeSession,record)
+  },
     mutateAuthorKey:authorKeyCore.mutate,
     mutateWorldbook:(sid,_program,request,basis,current,signal)=>authorWorldbooks.mutate(sid,request,basis,current,signal),
     retryWorldbook:authorWorldbooks.retry,
@@ -2804,9 +2842,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       signal.throwIfAborted()
       return retryNativePersona(operationId,()=>!signal.aborted&&current(),sid)
     },
-    submit:(input,current)=>mvuOpening.submitSchemaPlayer(input,current),confirm:mvuOpening.confirmSchemaPlayer,})
+    submit:(input,current)=>mvuOpening.submitSchemaPlayer(input,current),confirm:mvuOpening.confirmSchemaPlayer,
+    generateRaw:authorDialogCore.generateRaw,updateAuthorChat:authorDialogCore.updateAuthorChat,
+    releaseOwner:authorDialogCore.releaseOwner})
   ctx.on('session/disposed',session=>authorBrowser?.invalidateSession(session.id),{global:true})
-  ctx.effect(()=>()=>{authorBrowser?.dispose();authorKeyCore.dispose()},'roleplay: owned browser lifetime')
+  ctx.effect(()=>()=>{authorBrowser?.dispose();authorDialogCore.dispose();authorKeyCore.dispose()},'roleplay: owned browser lifetime')
   registerTavernLoreEditorRoutesV1({ctx,store:tavernLoreEdits,resolveSessionScope:async id=>{
     const session=await resolveRoleplaySession(id)
     if(!session||!storyBranchIsActive(session))return null

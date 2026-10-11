@@ -25,6 +25,12 @@ export type {TavernActualProgramAbsencePromptScopesV1,TavernProgramAbsencePrompt
 import type {PromptTemplateOnlyScopeFactsV1,PromptInheritedScopeFactsV2}
   from './roleplay-prompt-template-only-types.js'
 import type {AuthorPromptPreparationFactsV1} from './roleplay-author-prompt-capture.js'
+import type {AuthorBrowserPreparationFactsV2,AuthorBrowserPreparationFactsV3} from './roleplay-author-browser-generation-types.js'
+import type {AuthorChatCaptureV1} from './roleplay-author-chat-state-types.js'
+import type {AuthorChatCaptureV2} from './roleplay-author-chat-state-v2-types.js'
+
+/** Readonly dialogue captures a real prefix without a Main selection lease. */
+type TavernPromptSelectedMessagesV1=Pick<NativeMaterialSelectedBaseV1,'messages'|'sha256'>
 
 export const TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'native-readonly-prompt-scope-adapter-policy-v1',
@@ -80,6 +86,10 @@ export interface TavernActualSchemaPromptScopesV1 {
   /** Supplemental DATA from the same completed Source/Native capture. Old
    * scope-frame and readData hashes keep their original body and policy. */
   readonly authorPrompt?:AuthorPromptPreparationFactsV1
+  readonly authorBrowser?:AuthorBrowserPreparationFactsV2
+  /** Main captures all declared ordinary values alongside the same Native
+   * scope frame. These readonly facts do not themselves inject any content. */
+  readonly authorBrowserV3?:AuthorBrowserPreparationFactsV3
 }
 export interface TavernActualPlainPromptScopesV1 {
   readonly data:{readonly schemaVersion:1;readonly encoding:'native-plain-prompt-scope-facts-v1';
@@ -156,7 +166,7 @@ function programInheritedAbsenceData(data:TavernProgramInheritedAbsencePromptSco
  * id/seq/operation overlap strictly; absence from this cut proves no deletion.
  * Root's current closure separately reads the original Native span/edits. */
 function programAbsenceMessageJoins(data:Pick<TavernProgramAbsencePromptScopeDataV1,'seed'|'input'|'absenceDomain'>,
-  selected:NativeMaterialSelectedBaseV1,inherited=false)
+  selected:TavernPromptSelectedMessagesV1,inherited=false)
   :ReadonlyMap<NativeMaterialSelectedBaseV1['messages'][number],unknown> {
   const native=data.absenceDomain.nativeFacts,seen=new Set<string>(),
     joined=new Map<NativeMaterialSelectedBaseV1['messages'][number],unknown>()
@@ -216,7 +226,7 @@ function joinProgramInheritedNumericalSource(data:MvuPromptInheritedNumericalFac
 }
 /** All related visible outputs are checked, even those outside the story
  * filter. Only the actual terminal/copy publication gains message variables. */
-function programInheritedMessageJoins(programs:readonly MvuPromptProgramOpeningPublicationV1[],selected:NativeMaterialSelectedBaseV1) {
+function programInheritedMessageJoins(programs:readonly MvuPromptProgramOpeningPublicationV1[],selected:TavernPromptSelectedMessagesV1) {
   const joined=new Map<NativeMaterialSelectedBaseV1['messages'][number],MvuPromptProgramOpeningPublicationV1>(),
     seen=new Set<string>()
   for(const publication of programs)for(const row of selected.messages) {
@@ -263,7 +273,7 @@ function programInheritedMessageJoins(programs:readonly MvuPromptProgramOpeningP
 /** InputState's actual opening supplier owns seed/input/basis/plan auditing.
  * Consumption joins the captured Source and exact selected cut once. */
 function pendingOpeningData(input:TavernActualPendingOpeningPromptScopesV1,
-  source:TavernLoreSourceDataV1,selected:NativeMaterialSelectedBaseV1,
+  source:TavernLoreSourceDataV1,selected:TavernPromptSelectedMessagesV1,
   currentIdentitySha256:string):TavernPendingOpeningPromptScopeDataV1 {
   if(!input.current())fail('INPUT_MATERIAL_OPENING_SCOPES_CHANGED')
   const data=input.data,proof=data.input.source,original=proof.source,imported=proof.program.importTuple
@@ -283,12 +293,15 @@ function pendingOpeningData(input:TavernActualPendingOpeningPromptScopesV1,
   return data
 }
 export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSourceDataV1;currentIdentitySha256:string;
-  selected:NativeMaterialSelectedBaseV1;schema?:TavernActualSchemaPromptScopesV1;
+  selected:TavernPromptSelectedMessagesV1;schema?:TavernActualSchemaPromptScopesV1;
   plain?:TavernActualNonnumericalPromptScopesV1;numerical?:TavernActualNumericalPromptScopesV1;
   opening?:TavernActualPendingOpeningPromptScopesV1;
+  authorChat?:AuthorChatCaptureV1|AuthorChatCaptureV2;
+  authorDialogScopes?:MvuScopeReadFrameV1;
   isStoryMessage(row:NativeMaterialSelectedBaseV1['messages'][number]):boolean;
   assertOwnerCurrent():void;scriptId?:string}) {
   const {source,selected}=input,storyRows=selected.messages.filter(input.isStoryMessage),owner=`${source.sessionId}:prompt-scope`
+  const authorChat=input.authorChat
   input.assertOwnerCurrent()
   if([input.schema,input.numerical,input.plain,input.opening].filter(value=>value!==undefined).length>1) {
     fail('INPUT_MATERIAL_SCOPE_AUTHORITY_CONFLICT')
@@ -309,13 +322,14 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     evidence.push(opening)
   }else if(input.schema) {
     if(!input.schema.current())fail('INPUT_MATERIAL_SCHEMA_SCOPES_CHANGED')
-    frame=validateMvuScopeReadFrameV1(input.schema.data.frame)
+    frame=validateMvuScopeReadFrameV1(input.authorDialogScopes??input.schema.data.frame)
     const identity=frame.source
     if(identity.sessionId!==source.sessionId||identity.sourceRecordSessionId!==source.sourceRecordSessionId
       ||identity.importId!==source.original.activePointer.importId||identity.rawSha256!==source.original.rawSha256)
       fail('INPUT_MATERIAL_SCHEMA_SCOPE_SOURCE_MISMATCH')
     stateSnapshotSha256=input.schema.data.basis.numericalSnapshotSha256
     evidence.push(cloneRoleplayTavernLoreDataV1(input.schema.data,8_388_608))
+    if(authorChat)evidence.push(authorChat)
   }else if(input.numerical) {
     // The numerical producer has already replayed and frozen these facts.
     // InputState owns their subscriptions and all later invalidation.
@@ -448,9 +462,13 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
   }
   const available=(scope:TavernPromptVariableScopeFactV1['scope'],variables:MvuScopeVariablesV1)=>{
     if(variables.kind!=='available'){missing(scope,variables.code);return}
-    const values=cloneRoleplayTavernLoreDataV1(variables.variables,1_048_576),provenance=ref(`${owner}:${scope}`,
-      recordSha256(variables.provenance),{schemaVersion:1,encoding:'actual-mvu-prompt-scope-adapter-ref-v1',
-        sourceIdentity:frame!.source,scope,variablesSha256:variables.variablesSha256,origin:variables.provenance})
+    const overlay=scope==='chat'&&authorChat?.exists?authorChat:null,
+      values=cloneRoleplayTavernLoreDataV1(overlay
+        ?{...variables.variables,[overlay.binding.key]:overlay.value}:variables.variables,1_048_576),
+      provenance=ref(`${owner}:${scope}`,overlay?recordSha256({mvu:variables.provenance,authorChat:overlay.captureSha256})
+        :recordSha256(variables.provenance),{schemaVersion:1,encoding:'actual-mvu-prompt-scope-adapter-ref-v1',
+        sourceIdentity:frame!.source,scope,variablesSha256:variables.variablesSha256,origin:variables.provenance,
+        ...overlay?{authorChat:overlay}:{}})
     scopes.push({scope,fact:{kind:'values',values,valuesSha256:recordSha256(values),provenance}})
   }
   const numericalValues=(snapshotSha256:string,origin:unknown,scope:'chat'|'message')=>{
@@ -531,6 +549,13 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
         sourceSha256:source.sourceSha256,policySha256:recordSha256(policy),
         snapshotSha256:stateSnapshotSha256,origin,valuesSha256:recordSha256(values)})
     scopes.push({scope:'cache',fact:{kind:'values',values,valuesSha256:recordSha256(values),provenance}})
+  }
+  if(authorChat?.exists) {
+    // The explicit dialogue capture owns current author chat outside historical
+    // MVU message publication. Cache consumes that same chat projection.
+    const chat=scopes.find(row=>row.scope==='chat')!
+    const prior=scopes.findIndex(row=>row.scope==='cache'),cache={scope:'cache' as const,fact:chat.fact}
+    if(prior<0)scopes.push(cache);else scopes[prior]=cache
   }
   const messages:TavernPromptMessageVariablesFactV1[]=storyRows.map((row,index)=>{
     if(nativeInputSha256(row.message)!==row.messageSha256)fail('INPUT_MATERIAL_SCOPE_MESSAGE_HASH_CHANGED')

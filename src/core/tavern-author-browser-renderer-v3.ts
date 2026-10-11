@@ -16,6 +16,7 @@ export const BROWSER_NATIVE_METHODS_V3:Readonly<Record<NativeHandleKindV3,readon
     'querySelector','querySelectorAll','addEventListener','removeEventListener'],
   node:['appendChild','removeChild','insertBefore','replaceChild','append','prepend','replaceChildren','replaceWith',
     'after','before','remove','cloneNode','setAttribute','getAttribute','hasAttribute','removeAttribute','querySelector','querySelectorAll',
+    'attachShadow','getElementById',
     'closest','contains','focus','blur','click','dispatchEvent','getBoundingClientRect','setPointerCapture',
     'releasePointerCapture','getContext','createSVGPoint','getScreenCTM','toDataURL','decode','addEventListener','removeEventListener'],
   style:['setProperty','removeProperty','getPropertyValue','getPropertyPriority','item'],
@@ -66,7 +67,7 @@ const inertStyleType='application/x-owned-browser-stylesheet'
 /** Guest expando handling consumes these same native owner fields. CSSStyle
  * and dataset are dynamic resources; their property space remains native. */
 export const BROWSER_NATIVE_PROPERTIES_V3:Readonly<Record<NativeHandleKindV3,readonly string[]>>=Object.freeze({
-  document:['documentElement','head','body','readyState','compatMode','baseURI','defaultView','currentScript','activeElement'],
+  document:['documentElement','head','body','readyState','compatMode','baseURI','hidden','defaultView','currentScript','activeElement'],
   node:[...new Set([...nodeReads,...nodeWrites,'style','dataset','classList','ownerDocument','innerHTML',
     'children','childNodes','firstChild','lastChild','nextSibling','previousSibling','nextElementSibling','offsetParent',
     'parentNode','parentElement','content'])],
@@ -111,9 +112,12 @@ export interface BrowserPageRendererOptionsV3 {
   /** Trusted carrier bootstrap, independent of parsed Source page admission.
    * Original text is inert natively and executes only in the Worker realm. */
   readonly carrierScript?:{readonly javascript:string;readonly identity:string;
+    readonly mediaSources?:readonly string[];
     readonly captured:(reference:NativeHandleV3)=>void}
   readonly pageId:string
   readonly onCallback?:(delivery:NativeCallbackDeliveryV3)=>void
+  /** Main-only capture hook, before any Source listener; the Event stays Native. */
+  readonly onNativeEvent?:(event:Event)=>void
   readonly onPromiseSettlement?:(settlement:NativePromiseSettlementV3)=>void
   /** Resolves an already admitted resource to actual owned bytes/URL. */
   readonly resolveResource?:(resource:BrowserPageResourceV3)=>string
@@ -143,6 +147,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   const sourceStyles=new Map(plan.parsed.styles.filter(style=>style.kind==='stylesheet').map(style=>[style.nodeId,style]))
   const sourceImportNodes=new Set(plan.parsed.resources.filter(resource=>resource.kind==='css-import').map(resource=>resource.nodeId))
   const listeners=new Set<NativeListener>(),propertyListeners=new WeakMap<object,Map<string,NativeListener>>()
+  const shadowRoots=new Set<ShadowRoot>()
   const callbackReferences=new Map<number,OwnedNativeCallbackV3>(),callbackObjects=new WeakSet<object>()
   const timers=new Map<number,{native:number;mode:'timeout'|'interval'|'raf'}>()
   const observers=new Set<MutationObserver|ResizeObserver>(),media=new Set<HTMLImageElement|HTMLMediaElement>()
@@ -349,7 +354,11 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(objectURLs.has(value)||generatedMedia.has(value))return value
     const existing=resolvedResources.get(value);if(existing)return existing
     const resource=plan.resources.find(row=>row.value===value)
-    if(!resource)throw Error('BROWSER3_RESOURCE_UNAVAILABLE')
+    if(!resource) {
+      // Carrier scripts can preload compiled literal media without an HTML page.
+      if(options.carrierScript?.mediaSources?.includes(value))return value
+      throw Error('BROWSER3_RESOURCE_UNAVAILABLE')
+    }
     const resolved=options.resolveResource?.(resource)??resource.value
     resolvedResources.set(value,resolved);resolvedResources.set(resolved,resolved)
     return resolved
@@ -366,7 +375,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     dropTags:new Set(),safeAttributes,tagCase:'upper',rejectActiveTags:true,styleText:value=>css(value),
     styleAttribute:value=>css(value),urlAttribute:(element,name,value)=>
       resourceUrl(value,name==='src'&&element instanceof view.HTMLImageElement)}
-  function setHtml(target:Element,value:string):void {
+  function setHtml(target:Element|ShadowRoot,value:string):void {
     const template=doc.createElement('template');template.innerHTML=value
     sanitizeFragment(template.content)
     for(const child of Array.from(template.content.childNodes))own(child)
@@ -400,7 +409,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(register&&clone instanceof view.HTMLTemplateElement)own(clone.content,false)
     return register?own(clone,false):clone
   }
-  function ownedHtml(target:Element):string {
+  function ownedHtml(target:Element|ShadowRoot):string {
     const holder=doc.createElement('div')
     for(const child of Array.from(target.childNodes))if(ownedNodes.has(child))holder.appendChild(cloneOwned(child,true,false))
     return holder.innerHTML
@@ -597,6 +606,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
       if(key==='readyState')return readyState
       if(key==='compatMode')return plan.parsed.document.mode==='quirks'?'BackCompat':'CSS1Compat'
       if(key==='baseURI')return doc.baseURI
+      if(key==='hidden')return doc.hidden
       if(key==='defaultView')return {tag:'page-window',pageId}
       if(key==='activeElement')return encode(doc.activeElement)
       throw Error('BROWSER3_DOM_PROPERTY_UNSUPPORTED')
@@ -717,6 +727,18 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
         .find(node=>visibleNode(node)&&node.id===String(args[0]))??null)
       return encode(selected(doc,args[0],method==='querySelectorAll'))
     }
+    // The real shadow root shares this owner's node lifetime, while native
+    // root lookup preserves its boundary instead of querying the document.
+    if(method==='attachShadow') {
+      const root=own(target.attachShadow(args[0])) as ShadowRoot
+      shadowRoots.add(root)
+      for(const type of shadowEvents)root.addEventListener(type,observeShadowEvent,true)
+      return encode(root)
+    }
+    if(method==='getElementById') {
+      const node=target.getElementById(String(args[0]))
+      return encode(node&&visibleNode(node)?node:null)
+    }
     if(method==='querySelector'||method==='querySelectorAll')return encode(selected(target,args[0],method==='querySelectorAll'))
     if(method==='getAttribute'&&scriptAttributes.has(target))return scriptAttributes.get(target)!.get(String(args[0]))??null
     if(method==='getAttribute'&&styleAttributes.has(target)&&args[0]==='type')return styleAttributes.get(target)!.get('type')??null
@@ -820,6 +842,16 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(event.type==='submit'||event.composedPath().some(node=>node instanceof view.HTMLAnchorElement))event.preventDefault()
   }
   options.externalFrames?.registerDocument?.(documentHandle,node=>encode(node))
+  const generationEvents=['click','keydown','keyup','submit'] as const
+  const shadowEvents=options.onNativeEvent?generationEvents:['click','submit'] as const
+  const observeShadowEvent=(event:Event)=>{
+    // Native form submits can expose composed=true while their actual path
+    // stops at the ShadowRoot. Only a document path delegates to that owner.
+    if(event.composedPath().includes(doc))return
+    if(event.type==='click'||event.type==='submit')preventNavigation(event)
+    options.onNativeEvent?.(event)
+  }
+  if(options.onNativeEvent)for(const type of generationEvents)doc.addEventListener(type,options.onNativeEvent,true)
   doc.addEventListener('submit',preventNavigation,true);doc.addEventListener('click',preventNavigation,true)
   if(options.carrierScript) {
     logicalHtml=own(shellHtml,false) as Element
@@ -946,6 +978,9 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
       if(shellHtml.parentNode!==doc)doc.appendChild(shellHtml)
       shellHtml.append(shellHead,shellBody);shellHead.appendChild(trustedHead);shellBody.appendChild(trustedBody)
       doc.removeEventListener('submit',preventNavigation,true);doc.removeEventListener('click',preventNavigation,true)
+      if(options.onNativeEvent)for(const type of generationEvents)doc.removeEventListener(type,options.onNativeEvent,true)
+      for(const root of shadowRoots)for(const type of shadowEvents)root.removeEventListener(type,observeShadowEvent,true)
+      shadowRoots.clear()
       disposal=Promise.resolve(resources());return disposal
     },
   }

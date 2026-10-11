@@ -3,6 +3,8 @@
  * these records, decides whether its result may enter the injection registry. */
 import type {BrowserBindingV1} from './tavern-author-browser-types.mjs'
 import type {BrowserSnapshotV2,BrowserProgramV2} from './tavern-author-browser-types-v2.mjs'
+import type {BrowserSnapshotV3,BrowserProgramV3,BrowserWriterOriginV3} from './tavern-author-browser-types-v3.mjs'
+import type {AuthorInjectionResourceV1} from 'dsh-nexttavern-session-format/author-injection-cleanup'
 import type {AuthorPromptOpeningFactsV1} from './roleplay-author-prompt-capture.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 
@@ -67,3 +69,59 @@ export type BrowserGenerationResultV2={
   readonly invocationId:string
   readonly diagnostics:readonly PromptDiagnosticV1[]
 }
+
+/** One Main capture includes every declared ordinary key. These values are
+ * readonly callback input; only the author's callback produces injection text. */
+export interface AuthorBrowserPreparationFactsV3 extends Omit<AuthorBrowserPreparationFactsV2,
+  'program'|'authorChat'> {
+  readonly program:BrowserProgramV3
+  readonly authorChats:BrowserSnapshotV3['authorChats']
+}
+/** Array order is the guest registry's actual order, including eventMakeFirst.
+ * The origin identifies the registration's admitted Source unit, not an
+ * arbitrary callback function's lexical birthplace. */
+export interface BrowserCallbackRegistrationV3 extends BrowserWriterOriginV3 {
+  readonly callbackId:string
+  readonly resource:BrowserPromptResourceV3
+}
+export interface BrowserPromptResourceV3 extends AuthorInjectionResourceV1 {
+  readonly pageId:string
+}
+export type BrowserPromptCleanupRequestV3={readonly resource:BrowserPromptResourceV3}&(
+  |{readonly kind:'remove-ids';readonly ids:readonly string[]}
+  |{readonly kind:'resource-closed'})
+export type BrowserEffectV3=BrowserWriterOriginV3&{
+  readonly callbackId:string;readonly resource:BrowserPromptResourceV3
+}&(
+  |{readonly kind:'inject';readonly prompts:readonly AuthorPromptInjectionV1[];readonly once:boolean}
+  |{readonly kind:'remove';readonly ids:readonly string[]})
+export interface BrowserGenerationInvocationV3 extends Omit<BrowserGenerationInvocationV2,
+  'schemaVersion'|'encoding'|'registrations'|'snapshot'> {
+  readonly schemaVersion:3
+  readonly encoding:'native-author-browser-generation-invocation-v3'
+  readonly registrations:readonly BrowserCallbackRegistrationV3[]
+  readonly snapshot:BrowserSnapshotV3
+}
+export interface BrowserGenerationOutputV3 extends Omit<BrowserGenerationOutputV2,
+  'schemaVersion'|'encoding'|'effects'|'cleanupRemovals'> {
+  readonly schemaVersion:3
+  readonly encoding:'native-author-browser-generation-output-v3'
+  readonly effects:readonly BrowserEffectV3[]
+  readonly cleanupRemovals:readonly (BrowserWriterOriginV3&{readonly ids:readonly string[]})[]
+}
+export type BrowserGenerationResultV3={
+  readonly kind:'executed'
+  readonly binding:BrowserBindingV1
+  readonly invocationId:string
+  readonly output:BrowserGenerationOutputV3
+}|{
+  readonly kind:'refused'|'cancelled'
+  readonly binding:BrowserBindingV1
+  readonly invocationId:string
+  readonly diagnostics:readonly PromptDiagnosticV1[]
+}
+export type AuthorBrowserPreparationFacts=AuthorBrowserPreparationFactsV2|AuthorBrowserPreparationFactsV3
+export type BrowserCallbackRegistration=BrowserCallbackRegistrationV2|BrowserCallbackRegistrationV3
+export type BrowserGenerationInvocation=BrowserGenerationInvocationV2|BrowserGenerationInvocationV3
+export type BrowserGenerationOutput=BrowserGenerationOutputV2|BrowserGenerationOutputV3
+export type BrowserGenerationResult=BrowserGenerationResultV2|BrowserGenerationResultV3

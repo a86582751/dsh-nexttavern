@@ -114,8 +114,10 @@ export function captureRoleplayTavernInitialCatalogV1(input:TavernPromptInitialC
   }
   assertion.call(input)
   assertCurrent()
-  const source=cloneRoleplayTavernLoreDataV1(ownValue(input,'source')) as TavernLoreSourceDataV1
-  const plan=cloneRoleplayTavernLoreDataV1(ownValue(input,'plan')) as TavernLorePlanV1
+  // Source and compilation own these immutable inputs. This consumer builds
+  // a new catalog; re-cloning their complete archives would charge them again.
+  const source=ownValue(input,'source') as TavernLoreSourceDataV1
+  const plan=ownValue(input,'plan') as TavernLorePlanV1
   if(plan.entries.length>TAVERN_PROMPT_VARIABLE_BOUNDS_V1.entries) {
     fail('PROMPT_INITIAL_CATALOG_ENTRY_LIMIT',source.original.primary.bookPointer+'/entries')
   }

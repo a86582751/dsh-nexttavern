@@ -50,7 +50,7 @@ export interface BrowserSourceFrameOwnerOptionsV3 {
   readonly onCallback?:(delivery:NativeCallbackDeliveryV3)=>void
   readonly onFrameClosed?:(frame:BrowserNativeSourceFrameV3,pageId:string|undefined)=>void
   readonly rendererOptions?:(frame:BrowserNativeSourceFrameV3,pageId:string,plan:BrowserSourcePagePlanV3)=>
-    Pick<BrowserPageRendererOptionsV3,'onCallback'|'onPromiseSettlement'|'resolveResource'|'schedulerWindow'>
+    Pick<BrowserPageRendererOptionsV3,'onCallback'|'onNativeEvent'|'onPromiseSettlement'|'resolveResource'|'schedulerWindow'>
 }
 const undef={tag:'undefined'} as const
 export const BROWSER_NATIVE_INERT_SHELL_V3='<!doctype html><html><head><meta http-equiv="Content-Security-Policy" '+
@@ -107,7 +107,7 @@ export function createBrowserSourceFrameOwnerV3(options:BrowserSourceFrameOwnerO
   }
   function create(carrier:Carrier):NativeHandleV3 {
     const element=carrier.document.createElement('iframe')
-    element.setAttribute('sandbox','allow-same-origin')
+    element.setAttribute('sandbox','allow-same-origin allow-forms')
     const frame=Object.freeze({frameId:-nextHandle+1,carrierIdentity:carrier.carrierIdentity,carrierPageId:carrier.pageId})
     const state:FrameState={frame,carrier,element,reference:undefined as unknown as NativeHandleV3,
       routes:new Set(),listeners:new Map(),location:{src:'',srcdoc:''},active:true}

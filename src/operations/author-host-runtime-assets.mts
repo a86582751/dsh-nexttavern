@@ -21,7 +21,8 @@ const supportedPackageNames=['dsh-nexttavern-author-host-runtime-v5','dsh-nextta
   'dsh-nexttavern-author-host-runtime-v5-source-html-v1',
   'dsh-nexttavern-author-host-runtime-v5-source-html-checked-journal-v1',
   'dsh-nexttavern-author-host-runtime-v5-server-candidates-v1',
-  'dsh-nexttavern-author-host-runtime-v5-server-candidates-v2']
+  'dsh-nexttavern-author-host-runtime-v5-server-candidates-v2',
+  'dsh-nexttavern-author-host-runtime-v5-author-dialog-v1']
 const providerOutput='dist/index.mjs',sourceInputOutput='assets/source-inputs.json'
 interface Artifact {id:string;source:string;canonicalSource?:string}
 interface Resource {artifact:string;path:string}
@@ -87,8 +88,9 @@ export async function buildAuthorHostRuntimeAssetsV5(options:{repo:string;plan:A
   const metadataBytes=fs.readFileSync(inside(repo,packageArtifact.source))
   const metadata=JSON.parse(metadataBytes.toString('utf8')) as {name:string;version:string;main:string;
     exports:Record<string,string>;dependencies?:Record<string,string>;bundleDependencies?:readonly string[]}
-  const packageName=metadata.name,packageVersion=metadata.version
-  if(!supportedPackageNames.includes(packageName)||packageVersion!=='0.5.2'||metadata.main!=='./'+providerOutput
+  const packageName=metadata.name,packageVersion=metadata.version,
+    expectedVersion=packageName==='dsh-nexttavern-author-host-runtime-v5-author-dialog-v1'?'0.6.0':'0.5.2'
+  if(!supportedPackageNames.includes(packageName)||packageVersion!==expectedVersion||metadata.main!=='./'+providerOutput
     ||metadata.exports['.']!=='./'+providerOutput||metadata.exports['./package.json']!=='./package.json'
     ||Object.keys(metadata.dependencies??{}).length!==0||(metadata.bundleDependencies??[]).length!==0) {
     throw Error('AUTHOR_HOST_ASSET_PACKAGE_INVALID')

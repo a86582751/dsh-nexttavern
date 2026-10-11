@@ -34,14 +34,14 @@ import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeInitialChat,schem
   schemaScopeReadFactsEqual,schemaScopeEmpty,schemaScopeReowner} from './roleplay-mvu-schema-scope-facts.js'
 import type {BrowserSnapshotV1,BrowserChatMessageSnapshotV1} from './tavern-author-browser-types.mjs'
 import type {BrowserSnapshotV2,BrowserRuntimeArtifactV2} from './tavern-author-browser-types-v2.mjs'
-import type {BrowserSnapshotV3,BrowserRuntimeArtifactV3} from './tavern-author-browser-types-v3.mjs'
+import type {BrowserSnapshotV3,BrowserRuntimeArtifactV3,BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
 import type {NativeBrowserCharacterV1} from './roleplay-native-persona-types.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import {deriveAuthorChatBindingV1,deriveAuthorChatBindingV2} from './roleplay-author-chat-state.js'
 import type {CanonicalAuthorChatStateV1} from './roleplay-author-chat-state.js'
 import {produceAuthorPromptScopeFrameV1} from './roleplay-author-prompt-capture.js'
 import type {AuthorPromptPreparationFactsV1} from './roleplay-author-prompt-capture.js'
-import type {AuthorBrowserPreparationFactsV2} from './roleplay-author-browser-generation-types.js'
+import type {AuthorBrowserPreparationFactsV2,AuthorBrowserPreparationFactsV3} from './roleplay-author-browser-generation-types.js'
 import type {PromptProgramV1,PromptCaptureV1,PromptCapturedMessageV1} from './tavern-author-prompt-types.mjs'
 import type {MvuScopeVariablesV1,MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 import {readMvuSchemaInheritedStoryFacts,verifyMvuSchemaInheritedOpeningFacts}
@@ -1008,7 +1008,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     // A later own pending input or interrupted provider attempt does not change
     // these already captured variable reads. Native's material owner validates
     // their selected message versions and its evolving request cut separately.
-    const current=()=>viewCurrent(view)
+    let declared:ReturnType<typeof captureDeclaredChatKeys>=[]
+    const current=()=>viewCurrent(view)&&declared.every(row=>row.capture.current())
     if(!current())return undefined
     let authorPrompt:AuthorPromptPreparationFactsV1|undefined,authorBrowser:AuthorBrowserPreparationFactsV2|undefined
     const ready=view.history.ready
@@ -1030,7 +1031,27 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
           persona:{name:context.user,...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},authorChat}
       }
     }
-    return {data,current,...authorPrompt?{authorPrompt}:{},...authorBrowser?{authorBrowser}:{}}
+    const browser=isAuthorHostJournalReadyV5(ready)?ready.epoch.program.browserProgram:undefined
+    let authorBrowserV3:AuthorBrowserPreparationFactsV3|undefined
+    if(browser?.schemaVersion===3) {
+      declared=captureDeclaredChatKeys(sid,browser)
+      const context=view.frame.material.openingContext as {user:string;user_gender?:string}
+      authorBrowserV3={program:browser,opening:captureAuthorOpening(view,frame,events),
+        scopes:produceAuthorPromptScopeFrameV1(frame,browser),
+        basis:{materialSha256:view.frame.materialSha256,numericalSnapshotSha256:view.history.snapshot.stateSnapshotSha256},
+        numerical:browserNumericalSnapshot(view,events.length),
+        persona:{name:context.user,...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},
+        authorChats:declared.map(row=>({declarationId:row.declarationId,capture:row.capture.data}))}
+    }
+    return {data,current,...authorPrompt?{authorPrompt}:{},...authorBrowser?{authorBrowser}:{},
+      ...authorBrowserV3?{authorBrowserV3}:{}}
+  }
+  function captureDeclaredChatKeys(sid:string,program:BrowserProgramV3) {
+    return program.declarations.map(declaration=>{
+      if(!deps.authorChat)fail('AUTHOR_CHAT_STATE_UNAVAILABLE')
+      return {declarationId:declaration.declarationId,
+        capture:deps.authorChat.captureWithCurrencyV2(deriveAuthorChatBindingV2(sid,program,declaration))}
+    })
   }
   function browserNumericalSnapshot(view:View,nativeCut:number):BrowserSnapshotV2['numerical'] {
     const snapshot=view.history.snapshot,sid=view.session.id,
@@ -1134,11 +1155,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const character:NativeBrowserCharacterV1={sourceId:frame.snapshot.source.importId,
       name:String(native.name),...typeof native.avatar==='string'?{avatar:native.avatar}:{}}
     if(program.schemaVersion===3) {
-      const owned=program.declarations.map(declaration=>{
-        if(!deps.authorChat)fail('AUTHOR_CHAT_STATE_UNAVAILABLE')
-        return {declarationId:declaration.declarationId,
-          capture:deps.authorChat.captureWithCurrencyV2(deriveAuthorChatBindingV2(sid,program,declaration))}
-      })
+      const owned=captureDeclaredChatKeys(sid,program)
       const dataV3:Omit<BrowserSnapshotV3,'generation'|'readRevision'>={...data,
         schemaVersion:3,encoding:'native-author-browser-snapshot-v3',messages:capturedMessages,
         persona:{name:context.user,...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},character,

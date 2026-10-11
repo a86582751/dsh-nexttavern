@@ -7,12 +7,17 @@ import type {BrowserBindingV1,BrowserProgramV1,BrowserRuntimeArtifactV1,
 import type {MvuPlayerEditResponse} from './roleplay-mvu-player-types.js'
 import type {AuthorBrowserRequest,AuthorBrowserReply,AuthorBrowserSnapshot,
   AuthorBrowserWriteProgram} from './roleplay-author-browser-types.js'
-import type {BrowserProgramV2,BrowserRuntimeArtifactV2,
-  BrowserSnapshotV2,BrowserWorldbookMutationRequestV2,
-  BrowserWorldbookMutationReplyV2,BrowserPersonaMutationRequestV2,
-  BrowserPersonaMutationReplyV2} from './tavern-author-browser-types-v2.mjs'
+import type {BrowserProgramV2,BrowserRuntimeArtifactV2,BrowserSnapshotV2,
+  BrowserGenerateRawRequestV2,BrowserAuthorChatRequestV2,BrowserGeneratedTaskV2,
+  BrowserWorldbookMutationRequestV2,BrowserWorldbookMutationReplyV2,
+  BrowserPersonaMutationRequestV2,BrowserPersonaMutationReplyV2} from './tavern-author-browser-types-v2.mjs'
 import type {AuthorNamedWorldbookData} from './roleplay-author-worldbook-data.js'
 import type {TavernLoreMutationRetryLocatorV1} from './roleplay-tavern-lore-edits-types.js'
+import type {PromptCaptureV1} from './tavern-author-prompt-types.mjs'
+import type {AuthorChatCaptureV1} from './roleplay-author-chat-state-types.js'
+import type {AuthorBrowserPreparationFacts} from './roleplay-author-browser-generation-types.js'
+import type {AuthorInjectionCleanupV1} from 'dsh-nexttavern-session-format/author-injection-cleanup'
+import {createRoleplayAuthorBrowserGeneration} from './roleplay-author-browser-generation.js'
 import type {AuthorScriptResourceReaderV1} from './roleplay-author-script-resources.js'
 import type {BrowserProgramV3,BrowserRuntimeArtifactV3,BrowserSnapshotV3,
   BrowserOrdinaryKeyRequestV3,BrowserOrdinaryKeyReplyV3} from './tavern-author-browser-types-v3.mjs'
@@ -48,11 +53,14 @@ interface Dependencies {
   captureFacts(sid:string):Promise<AuthorBrowserCapturedFacts|undefined>
   submit(input:unknown,current:()=>boolean):Promise<MvuPlayerEditResponse>
   confirm(input:unknown):Promise<MvuPlayerEditResponse>
+  generateRaw?(sid:string,program:BrowserProgramV2|BrowserProgramV3,request:BrowserGenerateRawRequestV2,
+    current:()=>boolean,signal:AbortSignal):Promise<BrowserGeneratedTaskV2>
+  updateAuthorChat?(sid:string,program:BrowserProgramV2,request:BrowserAuthorChatRequestV2,
+    current:()=>boolean,signal:AbortSignal):Promise<AuthorChatCaptureV1>
   /** The retained attachment supplies its admitted program and actual Source
    * lifetime. Production Core must connect the canonical key Core here. */
   mutateAuthorKey?(sid:string,program:BrowserProgramV3,request:BrowserOrdinaryKeyRequestV3,
     sourceCurrent:()=>boolean,signal:AbortSignal):Promise<BrowserOrdinaryKeyReplyV3>
-
   mutateWorldbook?(sid:string,program:AuthorBrowserWriteProgram,request:BrowserWorldbookMutationRequestV2,
     basis:AuthorNamedWorldbookData,originalOwnerCurrent:()=>boolean,signal:AbortSignal):
       Promise<Omit<BrowserWorldbookMutationReplyV2,'snapshot'>>
@@ -63,7 +71,8 @@ interface Dependencies {
     originalOwnerCurrent:()=>boolean,signal:AbortSignal):BrowserPersonaMutationReplyV2['result']
   retryPersona?(sid:string,operationId:string,current:()=>boolean,signal:AbortSignal):
     BrowserPersonaMutationReplyV2['result']
-
+  releaseOwner?(current:()=>boolean):void
+  cleanupPrompts?(record:AuthorInjectionCleanupV1):void
 }
 interface Attachment {
   readonly binding:BrowserBindingV1
@@ -72,14 +81,16 @@ interface Attachment {
   resources?:AuthorScriptResourceReaderV1
   /** The original Native lifecycle can never be replaced by a fresh capture. */
   readonly ownerCurrent:()=>boolean
+  sourceLifetime?:()=>boolean
   facts:AuthorBrowserCapturedFacts
   current():boolean
   readRevision:number
+  generationQueue?:ReturnType<typeof createRoleplayAuthorBrowserGeneration>
 }
 /** A page executes as its captured carrier. Only that carrier's admitted mount
  * joins page requirements to these Native writers; unrelated pages grant none. */
 function scriptCapability(program:AuthorBrowserWriteProgram,identity:string,
-  capability:'owned-native-personas'|'owned-named-worldbooks'|'owned-script-source-resources'):boolean {
+  capability:'owned-native-personas'|'owned-named-worldbooks'|'owned-script-source-resources'|'owned-generate-raw-gesture'):boolean {
   if(program.schemaVersion===2)return program.scripts.some(script=>
     script.descriptor.identity===identity&&script.requiredCapabilities.includes(capability))
   const script=program.scripts.find(row=>row.descriptor.identity===identity)
@@ -101,7 +112,15 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
   let disposed=false
   const fail=(code:string):never=>{throw Error(code)}
   const revoke=(value:Attachment)=>{
+    if(value.program.schemaVersion===3&&value.generationQueue?.hasProducedPrompts()) {
+      deps.cleanupPrompts?.({schemaVersion:1,encoding:'native-author-injection-cleanup-v1',
+        sessionId:value.binding.sessionId,programSha256:value.program.programSha256,kind:'resource-closed',
+        resource:{browserSessionId:value.binding.browserSessionId,generation:value.binding.generation}})
+    }
     attachments.delete(value.binding.browserSessionId)
+    value.generationQueue?.dispose()
+    deps.releaseOwner?.(value.current)
+    if(value.sourceLifetime)deps.releaseOwner?.(value.sourceLifetime)
   }
   function retained(binding:BrowserBindingV1):Attachment {
     const value=attachments.get(binding.browserSessionId)
@@ -141,8 +160,9 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
   }
   function originalSourceLifetime(value:Attachment):(()=>boolean)|undefined {
     if(value.program.schemaVersion!==3||!('sourceCurrent' in value.facts))return undefined
+    if(value.sourceLifetime)return value.sourceLifetime
     const facts=value.facts
-    return ()=>!disposed&&attachments.get(value.binding.browserSessionId)===value
+    return value.sourceLifetime=()=>!disposed&&attachments.get(value.binding.browserSessionId)===value
       &&value.ownerCurrent()&&facts.sourceCurrent()
   }
   async function handleCurrent(input:AuthorBrowserRequest,signal:AbortSignal):Promise<AuthorBrowserReply> {
@@ -204,6 +224,8 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
           current:()=>!disposed&&value!==undefined&&attachments.get(binding.browserSessionId)===value
             &&value.ownerCurrent()&&value.facts.current()}
         attachments.set(binding.browserSessionId,value)
+        if(facts.program.schemaVersion!==1)value.generationQueue=createRoleplayAuthorBrowserGeneration({
+          binding,program:facts.program,current:value.current})
       }
       const attachment={binding:value.binding,program:value.program,artifact:value.artifact,snapshot:project(value,facts)}
       return {ok:true,kind:'attached',attachment:value.program.schemaVersion===3
@@ -213,6 +235,27 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         :{schemaVersion:1,encoding:'native-author-browser-attachment-v1',...attachment}} as AuthorBrowserReply
     }
     const value=retained(input.binding)
+    if(input.action==='cleanup-prompts') {
+      const program=value.program,request=input.request,resource=request.resource
+      if(program.schemaVersion!==3||!deps.cleanupPrompts
+        ||!program.requiredCapabilities.includes('owned-prompt-effects'))
+        return {ok:false,code:'BROWSER_PROMPT_CLEANUP_UNAVAILABLE'}
+      if(resource.browserSessionId!==value.binding.browserSessionId||resource.generation!==value.binding.generation)
+        return {ok:false,code:'BROWSER_ATTACHMENT_REVOKED'}
+      // Admission, Native append, and resource retirement share this short
+      // synchronous owner cut. Main waits outside it; its old capture is
+      // invalidated by the existing Native feed before a late result publishes.
+      const sourceCurrent=originalSourceLifetime(value)
+      const removesPrompts=request.kind==='remove-ids'?request.ids.length>0:
+        value.generationQueue?.hasProducedPrompts()===true
+      if(removesPrompts)deps.cleanupPrompts({schemaVersion:1,encoding:'native-author-injection-cleanup-v1',
+        sessionId:value.binding.sessionId,programSha256:program.programSha256,...request})
+      if(request.kind==='resource-closed')value.generationQueue?.retireResource(resource.pageId)
+      // A Native append is already accepted even if the Source disappears
+      // while fresh DATA is being captured, just like an author-key receipt.
+      if(removesPrompts)try {await adoptCommittedFacts(value,sourceCurrent)}catch {}
+      return {ok:true,kind:'prompts-cleaned'}
+    }
     if(input.action==='mutate-author-key') {
       if(value.program.schemaVersion!==3||!('sourceCurrent' in value.facts)||!deps.mutateAuthorKey)
         return {ok:false,code:'AUTHOR_CHAT_DECLARATION_UNAVAILABLE'}
@@ -276,6 +319,38 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
       return {ok:true,kind:'source-resource',value:value.resources.read(input.request)}
     }
     if(input.action==='capture')return {ok:true,kind:'snapshot',snapshot:await snapshot(value)}
+    if(input.action==='generation-wait') {
+      if(!value.generationQueue)return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
+      const invocation=await value.generationQueue.wait(input.binding,input.registrations,signal)
+      return {ok:true,kind:'generation-invocation',invocation}
+    }
+    if(input.action==='generation-complete') {
+      if(!sameBinding(input.binding,input.result.binding)||!value.generationQueue)
+        return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
+      value.generationQueue.complete(input.result)
+      return {ok:true,kind:'generation-acknowledged'}
+    }
+    if(input.action==='generate-raw'||input.action==='update-author-chat') {
+      const program=value.program
+      if(program.schemaVersion===1||program.schemaVersion===3&&input.action!=='generate-raw')
+        return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
+      const script=program.scripts.find(row=>row.descriptor.identity===input.request.scriptIdentity),
+        required=input.action==='generate-raw'?'owned-generate-raw-gesture':'owned-chat-key-update'
+      const admitted=program.schemaVersion===3
+        ?scriptCapability(program,input.request.scriptIdentity,'owned-generate-raw-gesture')
+        :script?.requiredCapabilities.includes(required)
+      if(!admitted)return {ok:false,code:'BROWSER_AUTHOR_REQUEST_INVALID'}
+      if(input.action==='generate-raw') {
+        if(!deps.generateRaw)return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
+        const current=program.schemaVersion===3?originalSourceLifetime(value):value.current
+        if(!current)return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
+        return {ok:true,kind:'generated',result:await deps.generateRaw(
+          session.id,program,input.request,current,signal)}
+      }
+      if(program.schemaVersion!==2||!deps.updateAuthorChat)return {ok:false,code:'BROWSER_GENERATION_UNAVAILABLE'}
+      return {ok:true,kind:'author-chat-updated',capture:await deps.updateAuthorChat(
+        session.id,program,input.request,value.current,signal)}
+    }
     if(input.action!=='save')return {ok:false,code:'BROWSER_REQUEST_INVALID'}
     const request=input.request,operation=input.operation
     const canSave=value.program.schemaVersion===3
@@ -311,7 +386,10 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
     const key=binding.browserSessionId,previous=actionQueues.get(key)??Promise.resolve()
     // A self-authored intent dirties the old facts until its actual receipt is
     // adopted. Bound reads and writes wait together, then use retained() once.
+    // Long generation calls only wait for admission: holding their queue would
+    // prevent the callback's own RPC or completion from ever being delivered.
     const result=previous.then(()=>handleCurrent(input,signal))
+    if(input.action==='generation-wait'||input.action==='generation-complete'||input.action==='generate-raw')return result
     const settled=result.then(()=>{},()=>{})
     actionQueues.set(key,settled)
     void settled.then(()=>{if(actionQueues.get(key)===settled)actionQueues.delete(key)})
@@ -324,8 +402,9 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
         if(Buffer.byteLength(text,'utf8')>2*1048576)return jsonResponse(413,{ok:false,code:'MVU_PLAYER_DATA_LIMIT'})
         let input:AuthorBrowserRequest
         try{input=JSON.parse(text)}catch{return jsonResponse(400,{ok:false,code:'BROWSER_REQUEST_INVALID'})}
-        if(!input||!['attach','capture','save','confirm','retry','dispose','read-source-resource',
-          'mutate-worldbook','retry-worldbook','mutate-persona','retry-persona','mutate-author-key'].includes(input.action)) {
+        if(!input||!['attach','capture','save','confirm','retry','dispose','generation-wait','generation-complete',
+          'generate-raw','update-author-chat','read-source-resource','mutate-worldbook','retry-worldbook',
+          'mutate-persona','retry-persona','mutate-author-key','cleanup-prompts'].includes(input.action)) {
           return jsonResponse(400,{ok:false,code:'BROWSER_REQUEST_INVALID'})
         }
         const result=await handle(input,request.signal)
@@ -335,7 +414,29 @@ export function createRoleplayAuthorBrowser(deps:Dependencies) {
   const invalidateSession=(sid:string)=>{
     for(const value of attachments.values())if(value.binding.sessionId===sid)revoke(value)
   }
-  return {handle,invalidateSession,dispose:()=>{
+  async function invokeGeneration(sid:string,program:BrowserProgramV2|BrowserProgramV3,capture:PromptCaptureV1,
+    facts:AuthorBrowserPreparationFacts,signal:AbortSignal) {
+    const value=[...attachments.values()].find(row=>row.binding.sessionId===sid
+      &&row.program.programSha256===program.programSha256&&row.current()&&row.generationQueue?.hasReader())
+    if(!value?.generationQueue)return fail('BROWSER_GENERATION_READER_UNAVAILABLE')
+    const common={
+      generation:value.binding.generation,readRevision:++value.readRevision,
+      basis:{sessionId:sid,sourceSnapshotSha256:capture.sourceSnapshotSha256,...facts.basis,
+        nativeCut:capture.nativeCut,nativePrefixSha256:capture.nativePrefixSha256},
+      scopeFrame:facts.scopes,messages:capture.messages,numerical:facts.numerical,
+      persona:facts.persona,
+      ...value.facts.data.schemaVersion!==1&&value.facts.data.personas
+        ?{personas:value.facts.data.personas}: {},
+      ...value.facts.data.schemaVersion!==1&&value.facts.data.character
+        ?{character:value.facts.data.character}: {},
+      ...value.facts.data.schemaVersion!==1&&value.facts.data.worldbook
+        ?{worldbook:value.facts.data.worldbook}:{}}
+    const snapshot:BrowserSnapshotV2|BrowserSnapshotV3='authorChats' in facts
+      ?{...common,schemaVersion:3,encoding:'native-author-browser-snapshot-v3',authorChats:facts.authorChats}
+      :{...common,schemaVersion:2,encoding:'native-author-browser-snapshot-v2',authorChat:facts.authorChat}
+    return value.generationQueue.invoke({attemptId:capture.attemptId,capture,snapshot},signal)
+  }
+  return {handle,invokeGeneration,invalidateSession,dispose:()=>{
     disposed=true;for(const value of attachments.values())revoke(value)
   }}
 }

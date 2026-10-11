@@ -243,6 +243,7 @@ function pendingOpeningData(input, source, selected, currentIdentitySha256) {
 }
 export function captureRoleplayTavernPromptScopesV1(input) {
     const { source, selected } = input, storyRows = selected.messages.filter(input.isStoryMessage), owner = `${source.sessionId}:prompt-scope`;
+    const authorChat = input.authorChat;
     input.assertOwnerCurrent();
     if ([input.schema, input.numerical, input.plain, input.opening].filter(value => value !== undefined).length > 1) {
         fail('INPUT_MATERIAL_SCOPE_AUTHORITY_CONFLICT');
@@ -257,13 +258,15 @@ export function captureRoleplayTavernPromptScopesV1(input) {
     else if (input.schema) {
         if (!input.schema.current())
             fail('INPUT_MATERIAL_SCHEMA_SCOPES_CHANGED');
-        frame = validateMvuScopeReadFrameV1(input.schema.data.frame);
+        frame = validateMvuScopeReadFrameV1(input.authorDialogScopes ?? input.schema.data.frame);
         const identity = frame.source;
         if (identity.sessionId !== source.sessionId || identity.sourceRecordSessionId !== source.sourceRecordSessionId
             || identity.importId !== source.original.activePointer.importId || identity.rawSha256 !== source.original.rawSha256)
             fail('INPUT_MATERIAL_SCHEMA_SCOPE_SOURCE_MISMATCH');
         stateSnapshotSha256 = input.schema.data.basis.numericalSnapshotSha256;
         evidence.push(cloneRoleplayTavernLoreDataV1(input.schema.data, 8_388_608));
+        if (authorChat)
+            evidence.push(authorChat);
     }
     else if (input.numerical) {
         // The numerical producer has already replayed and frozen these facts.
@@ -409,8 +412,11 @@ export function captureRoleplayTavernPromptScopesV1(input) {
             missing(scope, variables.code);
             return;
         }
-        const values = cloneRoleplayTavernLoreDataV1(variables.variables, 1_048_576), provenance = ref(`${owner}:${scope}`, recordSha256(variables.provenance), { schemaVersion: 1, encoding: 'actual-mvu-prompt-scope-adapter-ref-v1',
-            sourceIdentity: frame.source, scope, variablesSha256: variables.variablesSha256, origin: variables.provenance });
+        const overlay = scope === 'chat' && authorChat?.exists ? authorChat : null, values = cloneRoleplayTavernLoreDataV1(overlay
+            ? { ...variables.variables, [overlay.binding.key]: overlay.value } : variables.variables, 1_048_576), provenance = ref(`${owner}:${scope}`, overlay ? recordSha256({ mvu: variables.provenance, authorChat: overlay.captureSha256 })
+            : recordSha256(variables.provenance), { schemaVersion: 1, encoding: 'actual-mvu-prompt-scope-adapter-ref-v1',
+            sourceIdentity: frame.source, scope, variablesSha256: variables.variablesSha256, origin: variables.provenance,
+            ...overlay ? { authorChat: overlay } : {} });
         scopes.push({ scope, fact: { kind: 'values', values, valuesSha256: recordSha256(values), provenance } });
     };
     const numericalValues = (snapshotSha256, origin, scope) => {
@@ -500,6 +506,16 @@ export function captureRoleplayTavernPromptScopesV1(input) {
             snapshotSha256: stateSnapshotSha256, origin, valuesSha256: recordSha256(values)
         });
         scopes.push({ scope: 'cache', fact: { kind: 'values', values, valuesSha256: recordSha256(values), provenance } });
+    }
+    if (authorChat?.exists) {
+        // The explicit dialogue capture owns current author chat outside historical
+        // MVU message publication. Cache consumes that same chat projection.
+        const chat = scopes.find(row => row.scope === 'chat');
+        const prior = scopes.findIndex(row => row.scope === 'cache'), cache = { scope: 'cache', fact: chat.fact };
+        if (prior < 0)
+            scopes.push(cache);
+        else
+            scopes[prior] = cache;
     }
     const messages = storyRows.map((row, index) => {
         if (nativeInputSha256(row.message) !== row.messageSha256)

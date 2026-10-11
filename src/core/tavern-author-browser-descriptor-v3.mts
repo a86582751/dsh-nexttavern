@@ -4,8 +4,8 @@ import {createHash} from 'node:crypto'
 import {AUTHOR_BROWSER_RUNTIME_PINS_V2,AUTHOR_BROWSER_WASM_V2,AUTHOR_BROWSER_WASM_SHA256_V2,
   AUTHOR_BROWSER_ASYNCIFY_INTEGRITY_V2} from './tavern-author-browser-descriptor-v2.mjs'
 
-export const AUTHOR_BROWSER_RUNTIME_NAME_V3='dsh-nexttavern-author-browser-runtime-v3-script-resources-v1'
-export const AUTHOR_BROWSER_RUNTIME_VERSION_V3='0.1.0'
+export const AUTHOR_BROWSER_RUNTIME_NAME_V3='dsh-nexttavern-author-browser-runtime-v3-author-dialog-v1'
+export const AUTHOR_BROWSER_RUNTIME_VERSION_V3='0.2.0'
 export const AUTHOR_BROWSER_RUNTIME_PINS_V3=AUTHOR_BROWSER_RUNTIME_PINS_V2
 export const AUTHOR_BROWSER_RUNTIME_DESCRIPTOR_V3='assets/runtime.json'
 export const AUTHOR_BROWSER_SOURCE_INPUTS_V3='assets/source-inputs.json'

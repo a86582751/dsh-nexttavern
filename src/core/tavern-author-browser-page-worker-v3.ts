@@ -1,7 +1,7 @@
 /** Shared-Actor page execution and resource lifetime owner. Source admission,
  * attachment permissions and durable writes belong to the enclosing Worker. */
 import type {BrowserActorV3,BrowserPrimitiveV3,BrowserPromiseResultV3} from './tavern-author-browser-adapter-v3.js'
-import type {BrowserSourcePagePlanV3} from './tavern-author-browser-types-v3.mjs'
+import type {BrowserSourcePagePlanV3,BrowserWriterOriginV3} from './tavern-author-browser-types-v3.mjs'
 import type {BrowserPageApplyResultV3,NativeHandleV3,NativeRequestV3,
   NativeReplyV3} from './tavern-author-browser-native-types-v3.js'
 
@@ -29,6 +29,7 @@ export interface BrowserPageTransportV3<Frame extends object> {
  * method from inside actor.enter. Handles stay private to the trusted guest. */
 export interface BrowserPageGuestControllerV3 {
   setCurrentScript(node:NativeHandleV3|null):Promise<void>|void
+  setSourceScriptOrigin?(origin:BrowserWriterOriginV3['page']):Promise<void>|void
   dispatchLifecycle(type:BrowserPageLifecycleV3):Promise<void>|void
   /** Synchronous handle release only; called inside an idle Actor entry. */
   disposeHandles():void
@@ -223,10 +224,13 @@ export class BrowserPageWorkerV3<Frame extends object=object> {
       const node=await session.getParsedNodeHandle(ack.boundary.nodeId,signal)
       if(!this.live(page))return
       await page.controller!.setCurrentScript(node)
+      await page.controller!.setSourceScriptOrigin?.({htmlSha256:page.plan.origin.htmlSha256,
+        inlineOrdinal:script.inlineOrdinal,javascriptSha256:script.javascriptSha256})
       try {
         if(this.live(page))await actor.runSource(page.context,script.javascript,
           `source-page-${page.pageId}-classic-${script.inlineOrdinal}.js`)
       }finally {
+        if(this.live(page))await page.controller!.setSourceScriptOrigin?.(null)
         if(this.live(page))await page.controller!.setCurrentScript(null)
       }
       if(!this.live(page))return

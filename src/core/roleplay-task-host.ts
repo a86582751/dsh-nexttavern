@@ -5,7 +5,10 @@ import { createModelPolicy, createTavernTasks, selectedMainRoute, isInlinePendin
   from './tavern-tasks.js'
 import type { ModelRoute } from './tavern-model-policy.js'
 import type {StoredTask} from './tavern-task-types.js'
-import type { HostSession, HostAgent, HostSource, NativeTaskInput, TaskHostDependencies } from './roleplay-task-host-types.js'
+import type { HostSession, HostAgent, HostSource, NativeTaskInput, TaskHostDependencies,
+  AuthorDialogRequestV1 } from './roleplay-task-host-types.js'
+import type {AuthorChatBindingV1,AuthorDialogTaskRefV1} from './roleplay-author-chat-state-types.js'
+import type {AuthorDialogResultV1,AuthorDialogPromptV1} from './roleplay-author-dialog.js'
 import type {ImportSession,ImportExec,OwnedCardImportWorkflow} from './roleplay-import-types.js'
 import type {CardWorkflowJob} from './roleplay-card-workflow-types.js'
 
@@ -15,11 +18,14 @@ export function createRoleplayTaskHost({
   inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,currentTaskClaim,assertCardWorkflow,
 }:TaskHostDependencies) {
   const continuationTimers=new Set<ReturnType<typeof setTimeout>>()
+  const authorDialogOwners=new Map<string,{session:HostSession;agent:HostAgent;
+    prompt:AuthorDialogRequestV1['prompt'];current:()=>boolean}>()
   let disposed=false
   ctx.effect(()=>()=>{
     disposed=true
     for(const timer of continuationTimers)clearTimeout(timer)
     continuationTimers.clear()
+    authorDialogOwners.clear()
   },'roleplay: task host continuation lifetime')
   const sameModelRoute=(a: Partial<Pick<ModelRoute, 'provider' | 'model'>> | null | undefined,b: Partial<Pick<ModelRoute, 'provider' | 'model'>> | null | undefined)=>Boolean(a?.provider&&a?.model&&a.provider===b?.provider&&a.model===b?.model)
   const canonicalModelRoute=async (selection: ModelRoute)=>{if(!ctx.llm?.resolveModelInfo)return selection
@@ -70,6 +76,13 @@ export function createRoleplayTaskHost({
   function taskSourceCurrent(session:HostSession,job:StoredTask,historical=false) {
       if(disposed||ctx.sessions.get(session.id)!==session)return false
       const source=job.source as HostSource
+      if(job.kind==='author-dialog') {
+        const owner=authorDialogOwners.get(job.id),declared=source.authorDialog
+        return !!owner&&owner.session===session&&taskAgents.get(session.id)===owner.agent
+          &&declared?.operationId===owner.prompt.operationId
+          &&declared.promptPlanSha256===owner.prompt.promptSha256
+          &&recordSha256(declared.binding)===recordSha256(owner.prompt.binding)&&owner.current()
+      }
       const currencyCurrent=historical ? inputHistoricalCurrencyCurrent : inputCurrencyCurrent
       // Reject stale prepared work before projecting the active branch's
       // history; cold task polling must not spend that scan on expired currency.
@@ -92,12 +105,65 @@ export function createRoleplayTaskHost({
     isCurrent:(session,job) => taskSourceCurrent(session,job),
     isHistoricalResultCurrent:(session,job) => taskSourceCurrent(session,job,true),
     canPublishResult:(session,job,fromNativeResult) => {
+      if(job.kind==='author-dialog')return taskSourceCurrent(session,job)
       const source=job.source as HostSource
       if (!source.inputPreparation) return true
       return taskSourceCurrent(session,job) || (job.status==='completed' || fromNativeResult && job.background===true
         && job.kind==='memory' && job.input?.taskStage==='background-notes') && taskSourceCurrent(session,job,true)
     },
   })
+  async function requestAuthorDialog(input:AuthorDialogRequestV1):Promise<AuthorDialogResultV1> {
+    const {session,prompt,signal}=input
+    signal?.throwIfAborted()
+    if(disposed||ctx.sessions.get(session.id)!==session||prompt.binding.sessionId!==session.id||!input.current())
+      throw Error('AUTHOR_DIALOG_OWNER_CHANGED')
+    let main=input.agent??taskAgents.get(session.id)
+    if(!main)main=(await ctx.sessionController.resolveAgent?.(session.id))?.agent
+    signal?.throwIfAborted()
+    if(!main||disposed||ctx.sessions.get(session.id)!==session||!input.current())throw Error('AUTHOR_DIALOG_OWNER_CHANGED')
+    taskAgents.set(session.id,main)
+    const source:HostSource={authorDialog:{binding:prompt.binding,operationId:prompt.operationId,
+      promptPlanSha256:prompt.promptSha256}},requestKey={operationId:prompt.operationId,promptPlanSha256:prompt.promptSha256},
+      id=taskHash({sessionId:session.id,kind:'author-dialog',source,input:requestKey}),
+      owner={session,agent:main,prompt,current:input.current}
+    authorDialogOwners.set(id,owner)
+    let completed:StoredTask|undefined
+    try {
+      const text=await tavernTasks.request({session,agent:main,kind:'author-dialog',source,
+        input:{taskStage:'author-dialog-submit',authorDialog:prompt},authorDialog:prompt,requestKey,
+        background:true,format:'text',tools:[],signal,timeoutMs:input.timeoutMs,maxTokens:input.maxTokens,
+        validate:value=>{
+          if(typeof value!=='string'||!value.trim())throw Error('AUTHOR_DIALOG_RESULT_EMPTY')
+          return value
+        },onResult:job=>{completed=job},
+      })
+      signal?.throwIfAborted()
+      if(typeof text!=='string'||!completed?.generation||typeof completed.resultHash!=='string')
+        throw Error('AUTHOR_DIALOG_COMPLETED_TASK_MISSING')
+      const result=readCompletedAuthorDialog(session,prompt.binding,{taskId:completed.id,
+        generation:completed.generation,resultSha256:completed.resultHash})
+      if(!result)throw Error('AUTHOR_DIALOG_COMPLETED_TASK_MISSING')
+      return result
+    }finally{if(authorDialogOwners.get(id)===owner)authorDialogOwners.delete(id)}
+  }
+  function readCompletedAuthorDialog(session:HostSession,binding:AuthorChatBindingV1,
+    reference:AuthorDialogTaskRefV1):AuthorDialogResultV1|undefined {
+    if(disposed||ctx.sessions.get(session.id)!==session||binding.sessionId!==session.id)return undefined
+    const job=T.branch.get('tavern_job__'+reference.taskId) as StoredTask|undefined,
+      completion=job?.authorDialogCompletion,source=(job?.source as HostSource|undefined)?.authorDialog,
+      frozenPrompt=job?.input?.authorDialog as AuthorDialogPromptV1|undefined
+    if(job?.sessionId!==session.id||job.id!==reference.taskId||job.kind!=='author-dialog'
+      ||job.status!=='completed'||job.generation!==reference.generation||job.resultHash!==reference.resultSha256
+      ||typeof job.result!=='string'||!completion||completion.schemaVersion!==1
+      ||completion.encoding!=='native-author-dialog-completion-v1'||completion.taskId!==job.id
+      ||completion.generation!==job.generation||completion.childSessionId!==job.childSessionId
+      ||completion.resultSha256!==job.resultHash||completion.promptPlanSha256!==source?.promptPlanSha256
+      ||!source||recordSha256(source.binding)!==recordSha256(binding)
+      ||!frozenPrompt||frozenPrompt.promptSha256!==completion.promptPlanSha256)return undefined
+    return {schemaVersion:1,encoding:'native-author-dialog-result-v1',authority:'consumer-data-only',
+      binding,revision:frozenPrompt.revision,operationId:source.operationId,
+      promptSha256:source.promptPlanSha256,task:reference,text:job.result}
+  }
   function resolveCurrentCardImport(session:ImportSession,exec:ImportExec):OwnedCardImportWorkflow|undefined {
     const actual=exec.agent as HostAgent|undefined
     if(!actual?.session)return undefined
@@ -219,5 +285,7 @@ export function createRoleplayTaskHost({
     if(result?.state==='completed'&&result.publicationState==='published'){job.state='completed';job.error=null;job.finishedAt=Date.now()}
     else {job.state='failed';job.error='状态结果尚未发布，可重试'}
   }
-  return {sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask, resumeMemoryWork, resumeStatusMaintenance}
+  return {sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster,
+    characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask,
+    requestAuthorDialog,readCompletedAuthorDialog,resumeMemoryWork,resumeStatusMaintenance}
 }

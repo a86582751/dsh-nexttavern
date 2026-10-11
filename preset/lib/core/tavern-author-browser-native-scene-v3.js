@@ -9,15 +9,24 @@ export function createBrowserNativeSceneV3(options) {
     const publishedFrameReferences = new Set();
     const pagePlans = new Map(options.program.sourcePages.map(plan => [plan.pagePlanSha256, plan]));
     let active = true, disposal;
-    const frames = createBrowserSourceFrameOwnerV3({ onCallback: options.onCallback,
+    const prepareCallback = (delivery) => {
+        const pageId = delivery.callback.pageId, identity = carriers.get(pageId)?.scriptIdentity ?? pages.get(pageId)?.carrierIdentity;
+        return identity && options.prepareCallback ? options.prepareCallback(delivery, identity) : delivery;
+    };
+    const emitCallback = (delivery) => options.onCallback(prepareCallback(delivery));
+    const frames = createBrowserSourceFrameOwnerV3({ onCallback: emitCallback,
         onFrameClosed: (frame, pageId) => {
             frameTokens.delete(frame.frameId);
-            if (pageId)
+            if (pageId) {
                 pages.delete(pageId);
+                options.onPageClosed?.(pageId);
+            }
             if (active)
                 options.onFrameClosed(frame.frameId);
-        }, rendererOptions: () => ({ schedulerWindow: options.schedulerWindow,
-            onCallback: options.onCallback, onPromiseSettlement: options.onSettlement,
+        }, rendererOptions: (_frame, pageId, plan) => ({ schedulerWindow: options.schedulerWindow,
+            onNativeEvent: options.observeNativeEvent
+                ? event => options.observeNativeEvent(event, pageId, plan.origin.carrier.identity) : undefined,
+            onCallback: emitCallback, onPromiseSettlement: options.onSettlement,
             resolveResource: options.resolveResource }) });
     function remember(value, facts) {
         if (!value || typeof value !== 'object')
@@ -56,14 +65,16 @@ export function createBrowserNativeSceneV3(options) {
             // fabricated parsed Source candidate and carries no admission hashes.
             const renderer = createBrowserPageRendererV3({ document: source.document, pageId: contextId,
                 schedulerWindow: options.schedulerWindow,
+                onNativeEvent: options.observeNativeEvent
+                    ? event => options.observeNativeEvent(event, contextId, script.descriptor.identity) : undefined,
                 plan: { parsed: { document: { documentNodeId: 0, mode: 'no-quirks', nodes: [] },
                         steps: [], scripts: [], styles: [], resources: [] }, resources: options.program.sourcePages.flatMap(plan => plan.resources) },
-                carrierScript: { javascript: script.javascript, identity: script.descriptor.identity,
+                carrierScript: { javascript: script.javascript, identity: script.descriptor.identity, mediaSources: script.mediaSources,
                     captured: reference => { scriptReference = reference; } },
                 externalFrames: frames.forCarrier({ document: source.document, pageId: contextId,
-                    carrierIdentity: script.descriptor.identity }), onCallback: options.onCallback,
+                    carrierIdentity: script.descriptor.identity }), onCallback: emitCallback,
                 onPromiseSettlement: options.onSettlement, resolveResource: options.resolveResource });
-            carriers.set(contextId, { source, renderer });
+            carriers.set(contextId, { source, renderer, scriptIdentity: script.descriptor.identity });
             return { document: renderer.getDocumentHandle(), script: scriptReference };
         }
         catch (error) {
@@ -76,6 +87,7 @@ export function createBrowserNativeSceneV3(options) {
         if (!carrier)
             return;
         carriers.delete(contextId);
+        options.onPageClosed?.(contextId);
         try {
             await carrier.renderer.dispose();
         }
@@ -104,12 +116,13 @@ export function createBrowserNativeSceneV3(options) {
             if (owner.carrierIdentity !== plan.origin.carrier.identity || !carriers.has(owner.parentPageId))
                 throw Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN');
             const session = await frames.transport.mount(frame, input.pageId, plan, abort.signal);
-            pages.set(input.pageId, { frame, session });
+            pages.set(input.pageId, { frame, session, carrierIdentity: owner.carrierIdentity });
         }
         else if (input.op === 'page-dispose') {
             const page = pages.get(input.pageId);
             if (page) {
                 pages.delete(input.pageId);
+                options.onPageClosed?.(input.pageId);
                 await frames.transport.dispose(page.frame, input.pageId);
             }
         }
@@ -136,7 +149,10 @@ export function createBrowserNativeSceneV3(options) {
         // cross the Worker port; nativeEvent is an in-process gesture hook.
         if (input.op === 'native') {
             const reply = value;
-            value = { ...reply, ...reply.callbacks ? { callbacks: reply.callbacks.map(({ nativeEvent: _, ...callback }) => callback) } : {} };
+            value = { ...reply, ...reply.callbacks ? { callbacks: reply.callbacks.map(delivery => {
+                        const { nativeEvent: _, ...callback } = prepareCallback(delivery);
+                        return callback;
+                    }) } : {} };
         }
         const facts = [];
         if (input.op === 'native')

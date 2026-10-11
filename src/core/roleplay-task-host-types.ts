@@ -4,6 +4,8 @@ import type { TaskAgent, TaskOptions, TaskSpec } from './tavern-task-types.js'
 import type { StatusRecord } from './roleplay-status-types.js'
 import type { AuthorTables, AuthorDependency } from './roleplay-author-context-types.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
+import type {AuthorChatBindingV1} from './roleplay-author-chat-state-types.js'
+import type {AuthorDialogPromptV1} from './roleplay-author-dialog.js'
 
 export interface HostSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & {parentSession?: string}
@@ -29,6 +31,7 @@ export interface HostTable {
 }
 export interface HostTables {branch: HostTable; cards: HostTable}
 export interface HostSource {
+  authorDialog?:{binding:AuthorChatBindingV1;operationId:string;promptPlanSha256:string}
   inputPreparation?: InputPreparationCurrency
   preparationId?: string
   hashKind?: string
@@ -38,6 +41,16 @@ export interface HostSource {
   events?: {seq: number; hash: string}[]
   fixedHash?: string
   dependencies?: readonly AuthorDependency[]
+}
+export interface AuthorDialogRequestV1 {
+  session:HostSession
+  agent?:HostAgent
+  prompt:AuthorDialogPromptV1
+  signal?:AbortSignal
+  /** Root's actual pending Browser/Core operation lifetime. Never deserialized. */
+  current():boolean
+  timeoutMs?:number
+  maxTokens?:number
 }
 export interface MaintenanceJob {
   kind: string

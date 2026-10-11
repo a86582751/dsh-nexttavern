@@ -1,13 +1,18 @@
 import {createBrowserRuntimeFrameV1} from '../core/tavern-author-browser-frame.js';
 import {createBrowserRuntimeFrameV2} from '../core/tavern-author-browser-frame-v2.js';
 import {createBrowserRuntimeFrameV3} from '../core/tavern-author-browser-frame-v3.js';
+import type {BrowserFrameHostV3} from '../core/tavern-author-browser-frame-v3.js';
 import type {AuthorBrowserReply,AuthorBrowserRequest} from '../core/roleplay-author-browser-types.js';
 import type {BrowserBindingV1,BrowserHostBridgeV1,BrowserRenderV1,BrowserSaveReplyV1,BrowserSnapshotV1}
     from '../core/tavern-author-browser-types.mjs';
-import type {BrowserHostBridgeV2,BrowserSnapshotV2,
-  BrowserWorldbookMutationRequestV2,BrowserPersonaMutationRequestV2} from '../core/tavern-author-browser-types-v2.mjs'
-import type {BrowserHostBridgeV3,BrowserSnapshotV3,BrowserOrdinaryKeyRequestV3}
+import type {BrowserHostBridgeV2,BrowserSnapshotV2,BrowserSaveReplyV2,BrowserGenerateRawRequestV2,
+    BrowserAuthorChatRequestV2,BrowserWorldbookMutationRequestV2,BrowserPersonaMutationRequestV2}
+    from '../core/tavern-author-browser-types-v2.mjs';
+import type {BrowserSnapshotV3,BrowserOrdinaryKeyRequestV3}
     from '../core/tavern-author-browser-types-v3.mjs';
+import type {BrowserCallbackRegistrationV2,BrowserGenerationInvocationV2,BrowserGenerationResultV2,
+    BrowserCallbackRegistrationV3,BrowserGenerationInvocationV3,BrowserGenerationResultV3,BrowserPromptCleanupRequestV3}
+    from '../core/roleplay-author-browser-generation-types.js';
 import {createAuthorBrowserPendingStore,terminalBrowserReceipt,worldbookPendingRetryLocator,
     worldbookPendingBlocksNamespace}
     from './author-browser-pending.js';
@@ -33,14 +38,16 @@ export const authorBrowserTransport: AuthorBrowserTransport = async (request, si
 };
 const sameBinding = (a: BrowserBindingV1 | undefined, b: BrowserBindingV1) =>
     a?.generation === b.generation && a.browserSessionId === b.browserSessionId;
-
 type Snapshot=BrowserSnapshotV1|BrowserSnapshotV2|BrowserSnapshotV3;
 type SaveReply=Omit<BrowserSaveReplyV1,'snapshot'>&{snapshot:Snapshot;
     sourceEvents?:readonly import('../core/tavern-author-browser-worker-protocol-v3.js').BrowserSourceEventV3[]};
 interface ReaderBrowserFrame {
-    started:Promise<void>;
+    started:Promise<void>;registrations?:readonly BrowserCallbackRegistrationV2[];
     publishSnapshot(value:Snapshot):void;render(value:BrowserRenderV1):void;
     publishSaveConfirmation(value:SaveReply):void;dispose():void;
+    invokeGeneration?(value:BrowserGenerationInvocationV2):Promise<BrowserGenerationResultV2>;
+    generationCallbacks?():Promise<readonly BrowserCallbackRegistrationV3[]>;
+    invokeGenerationV3?(value:BrowserGenerationInvocationV3,signal:AbortSignal):Promise<BrowserGenerationResultV3>;
 }
 
 /** A Reader owns one live parent realm. Core owns its binding and captured
@@ -62,6 +69,7 @@ export function createAuthorBrowserSession(options: {
     let active = true, ready = false, binding: BrowserBindingV1 | undefined;
     let frame: ReaderBrowserFrame | undefined;
     let realm: object | undefined, captured: Snapshot | undefined;
+    let generationWait:AbortController|undefined;
     const operationRealms = new Map<string, object>();
     let render: BrowserRenderV1 | undefined, revision = 0;
     let refreshing: Promise<void> | undefined, refreshAgain = false;
@@ -79,9 +87,11 @@ export function createAuthorBrowserSession(options: {
         void transport({action: 'dispose', binding: old}).catch(() => {});
     };
     const revoke = () => {
+        generationWait?.abort();generationWait=undefined;
+        const frameClosesBinding=Boolean(frame?.invokeGenerationV3);
         frame?.dispose();frame = undefined;ready = false;realm = undefined;captured = undefined;
         options.container.replaceChildren();
-        if (binding) release(binding);
+        if (binding&&!frameClosesBinding) release(binding);
         binding = undefined;
     };
     async function installReceipt(envelope: AuthorBrowserPendingV1, result: Parameters<typeof store.record>[1],
@@ -104,6 +114,14 @@ export function createAuthorBrowserSession(options: {
             : {kind: 'pending', pending: next, code: result.code});
     }
     const createHost = (owner: object) => ({
+        async cleanupPrompts(target:BrowserBindingV1,request:BrowserPromptCleanupRequestV3) {
+            const reply=await transport({action:'cleanup-prompts',binding:target,request});
+            if(reply.kind!=='prompts-cleaned')throw Error('BROWSER_PROMPT_CLEANUP_UNCONFIRMED');
+        },
+        async closeBinding(target:BrowserBindingV1) {
+            const reply=await transport({action:'dispose',binding:target});
+            if(reply.kind!=='disposed')throw Error('BROWSER_PROMPT_CLEANUP_UNCONFIRMED');
+        },
         async capture(target:BrowserBindingV1, signal:AbortSignal):Promise<Snapshot> {
             // Attach already returned an actual Core capture. Reuse that cut
             // for the initial frame handshake rather than performing two reads.
@@ -153,6 +171,16 @@ export function createAuthorBrowserSession(options: {
             if(reply.kind!=='author-key-mutated')throw Error('AUTHOR_CHAT_WRITE_ACK_UNKNOWN');
             if(reply.snapshot&&current()&&realm===owner&&sameBinding(binding,target))captured=reply.snapshot;
             return {...reply.reply,...reply.snapshot?{snapshot:reply.snapshot}:{}};
+        },
+        async generateRaw(target:BrowserBindingV1,request:BrowserGenerateRawRequestV2,signal:AbortSignal) {
+            const reply=await transport({action:'generate-raw',binding:target,request},signal);
+            if(reply.kind!=='generated')throw Error('BROWSER_NATIVE_TASK_UNAVAILABLE');
+            return reply.result;
+        },
+        async updateAuthorChat(target:BrowserBindingV1,request:BrowserAuthorChatRequestV2,signal:AbortSignal) {
+            const reply=await transport({action:'update-author-chat',binding:target,request},signal);
+            if(reply.kind!=='author-chat-updated')throw Error('BROWSER_AUTHOR_CHAT_UPDATE_FAILED');
+            return reply.capture;
         },
         async readSourceResource(target:BrowserBindingV1,request:AuthorScriptResourceRequestV1,signal:AbortSignal) {
             const reply=await transport({action:'read-source-resource',binding:target,request},signal);
@@ -212,6 +240,41 @@ export function createAuthorBrowserSession(options: {
             }
         },
     });
+    async function generationLoop(owner:object,controller:ReaderBrowserFrame,target:BrowserBindingV1) {
+        const waiting=new AbortController();generationWait?.abort();generationWait=waiting;
+        try {
+            while(current()&&realm===owner&&frame===controller&&!waiting.signal.aborted) {
+                const registrations=controller.generationCallbacks?await controller.generationCallbacks():controller.registrations??[];
+                if(!current()||realm!==owner||waiting.signal.aborted)return;
+                let reply:AuthorBrowserReply;
+                try {reply=await transport({action:'generation-wait',binding:target,registrations},waiting.signal);}
+                catch(error) {
+                    if(controller.generationCallbacks&&error instanceof Error
+                        &&error.message==='BROWSER_GENERATION_RESOURCE_RETIRED')continue;
+                    throw error;
+                }
+                if(reply.kind!=='generation-invocation')return;
+                const result=reply.invocation.schemaVersion===3
+                    ?await controller.invokeGenerationV3!(reply.invocation,waiting.signal)
+                    :await controller.invokeGeneration!(reply.invocation);
+                if(!current()||realm!==owner||frame!==controller||waiting.signal.aborted)return;
+                if(result.kind==='cancelled'&&result.diagnostics[0]?.code==='BROWSER_GENERATION_RESOURCE_RETIRED')continue;
+                try {await transport({action:'generation-complete',binding:target,result},waiting.signal);}
+                catch(error) {
+                    // Core can retire the page after handing off its challenge
+                    // but before this Frame registers the Worker invocation.
+                    // Its obsolete completion stays refused; the Reader waits
+                    // for the next preparation using the current page registry.
+                    if(reply.invocation.schemaVersion===3&&error instanceof Error
+                        &&error.message==='BROWSER_GENERATION_INVOCATION_REVOKED')continue;
+                    throw error;
+                }
+            }
+        }catch(error) {
+            if(!waiting.signal.aborted&&current()&&realm===owner)
+                notify({kind:'ready',code:error instanceof Error?error.message:'BROWSER_GENERATION_WAIT_FAILED'});
+        }finally{if(generationWait===waiting)generationWait=undefined;}
+    }
     async function refreshOnce() {
         if(store.readPersonas(options.sessionId).some(value=>value.state!=='terminal')) {
             notify({kind:'pending'});return;
@@ -267,6 +330,7 @@ export function createAuthorBrowserSession(options: {
             },
             failed: (code:string) => {
                 if (!current() || realm !== realmOwner) return;
+                generationWait?.abort();generationWait=undefined;
                 frame = undefined;realm = undefined;ready = false;
                 options.container.replaceChildren();
                 notify({kind: 'failed', code});
@@ -277,7 +341,7 @@ export function createAuthorBrowserSession(options: {
         // projection together. The shared Reader controller never mixes them.
         const controller:ReaderBrowserFrame = attachment.schemaVersion===3
             ? createBrowserRuntimeFrameV3(outer,attachment.artifact,realmBinding,attachment.program,
-                host as BrowserHostBridgeV3,controllerOptions) as ReaderBrowserFrame
+                host as BrowserFrameHostV3,controllerOptions) as ReaderBrowserFrame
             : attachment.schemaVersion===2
             ? createBrowserRuntimeFrameV2(outer,attachment.artifact,realmBinding,attachment.program,
                 host as BrowserHostBridgeV2,controllerOptions) as ReaderBrowserFrame
@@ -291,6 +355,7 @@ export function createAuthorBrowserSession(options: {
                 ready = true;
                 const pending = store.read(options.sessionId);
                 notify(pending && pending.state !== 'terminal' ? {kind: 'pending', pending} : {kind: 'ready'});
+                if(controller.invokeGeneration||controller.invokeGenerationV3)void generationLoop(realmOwner,controller,realmBinding);
             }
         }).catch(error => {
             if (current() && frame === controller) {
@@ -398,11 +463,9 @@ export function createAuthorBrowserSession(options: {
         personaChecks.set(operationId,work);
         return work;
     }
-
     return {
         start: () => confirm(), refresh, confirm: () => confirm(), retry: () => confirm(true),
-        retryWorldbook,
-        retryPersona,
+        retryWorldbook,retryPersona,
         async showCurrentPageWithLegacyUnknown(operationId: string) {
             store.releaseLegacyWorldbook(operationId, options.sessionId);
             notify(lastStatus);

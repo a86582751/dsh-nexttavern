@@ -13,6 +13,7 @@ import type {BrowserCapabilityV2,BrowserCompiledScriptV2,BrowserAstCoverageV2,Br
 import type {SourceHtmlInputV1,HtmlParsedCandidateV1,SourcePageOriginV1} from './tavern-author-html-types-v1.mjs'
 import type {MvuPlayerEditResponse} from './roleplay-mvu-player-types.js'
 import type {BrowserSourceEventV3} from './tavern-author-browser-worker-protocol-v3.js'
+import type {BrowserPromptCleanupRequestV3} from './roleplay-author-browser-generation-types.js'
 
 export type BrowserCapabilityV3=BrowserCapabilityV2|'owned-source-html-page'
   |'owned-synchronous-page-events'|'owned-page-canvas-svg'|'owned-page-audio'
@@ -136,12 +137,15 @@ export interface BrowserProgramV3 {
   readonly authority:'compiled-program-data-only'
   readonly source:BrowserProgramSourceLocatorV1
   readonly compiler:BrowserCompilerIdentityV3
-  readonly profile:{readonly id:'nexttavern-browser-source-html';readonly version:3;readonly sha256:string}
+  readonly profile:{readonly id:'nexttavern-browser-source-html';readonly version:3|4;readonly sha256:string}
   readonly runtime:BrowserRuntimeIdentityV3
   readonly capabilityContract:BrowserCapabilityContractV3
   readonly scripts:readonly BrowserCompiledScriptV3[]
   readonly sourcePages:readonly BrowserSourcePagePlanV3[]
   readonly declarations:readonly BrowserDeclaredChatKeyV3[]
+  /** Only the new generation profile associates its single admitted ordinary
+   * writer with explicit dialogue. Historical profiles have no such grant. */
+  readonly generationDeclarationId?:string|null
   readonly requiredCapabilities:readonly BrowserCapabilityV3[]
   readonly programSha256:string
 }
@@ -201,6 +205,7 @@ export interface BrowserHostBridgeV3 extends Pick<BrowserHostBridgeV2,'readSourc
   save(binding:BrowserBindingV1,request:BrowserSaveRequestV1,signal:AbortSignal):Promise<BrowserSaveReplyV3>
   mutateAuthorKey(binding:BrowserBindingV1,request:BrowserOrdinaryKeyRequestV3,
     signal:AbortSignal):Promise<BrowserOrdinaryKeyReplyV3&{readonly snapshot?:BrowserSnapshotV3}>
+  cleanupPrompts?(binding:BrowserBindingV1,request:BrowserPromptCleanupRequestV3,signal:AbortSignal):Promise<void>
   generateRaw?(binding:BrowserBindingV1,request:BrowserGenerateRawRequestV2,
     signal:AbortSignal):Promise<BrowserGeneratedTaskV2>
   updateAuthorChat?(binding:BrowserBindingV1,request:BrowserAuthorChatRequestV2,

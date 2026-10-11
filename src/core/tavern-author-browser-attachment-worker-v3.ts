@@ -10,6 +10,8 @@ import {browserSourceGuestBootstrapV3} from './tavern-author-browser-source-gues
 import type {BrowserProgramV3,BrowserSnapshotV3,BrowserCompiledScriptV3,BrowserSourcePagePlanV3}
   from './tavern-author-browser-types-v3.mjs'
 import type {BrowserBindingV1} from './tavern-author-browser-types.mjs'
+import type {BrowserCallbackRegistrationV3,BrowserGenerationInvocationV3}
+  from './roleplay-author-browser-generation-types.js'
 import type {NativeHandleV3,NativeRequestV3,NativeWireValueV3,
   NativeCallbackDeliveryV3,NativePromiseSettlementV3,NativeReplyV3} from './tavern-author-browser-native-types-v3.js'
 
@@ -110,11 +112,16 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       })
       context.setProp(context.global,'__ownedSourceNotifyV3',notify);notify.dispose()
     })
+    const program=this.options.program
+    const generation=program.generationDeclarationId
+      ?program.declarations.find(row=>row.declarationId===program.generationDeclarationId):undefined
     const controller=await actor.capture(context,'('+browserSourceGuestBootstrapV3.toString()+')('+JSON.stringify({
-      snapshot:this.options.snapshot,binding:this.options.binding,operationPrefix:this.options.operationPrefix})+')')
+      snapshot:this.options.snapshot,binding:this.options.binding,operationPrefix:this.options.operationPrefix,
+      generationWriterIdentity:generation?.writer.scriptIdentity})+')')
     const methods:Record<string,any>={}
     await actor.enter(()=>{
-      for(const name of ['createFacade','installFacade','registerPage','snapshot','event','retirePage','destroy'])
+      for(const name of ['createFacade','installFacade','registerPage','snapshot','event','retirePage','destroy',
+        'setScriptOrigin','getGenerationRegistrations','invokeGeneration','cancelGeneration'])
         methods[name]=context.getProp(controller,name)
       this.nativeRegistry=context.getProp(controller,'nativeRegistry')
     })
@@ -132,18 +139,20 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     })
     if(this.active)await this.pages.drain()
   }
-  private async sourceFacade(context:any,script:BrowserCompiledScriptV3,pageId:string):Promise<void> {
+  private async sourceFacade(context:any,script:BrowserCompiledScriptV3,pageId:string,updateChatKey:string|null,
+    sourcePage?:BrowserSourcePagePlanV3):Promise<void> {
     const {actor}=this.options,source=actor.parent
     let creator:any
     await actor.enter(()=>{creator=source.newString(JSON.stringify({scriptIdentity:script.descriptor.identity,
-      descriptorSha256:script.descriptorSha256,pageId,originalOrdinal:script.ordinal}))})
+      descriptorSha256:script.descriptorSha256,pageId,originalOrdinal:script.ordinal,updateChatKey,
+      ...sourcePage?{sourcePage:{htmlSha256:sourcePage.origin.htmlSha256}}:{}}))})
     let facade:any
     try {facade=await actor.captureCall(source,this.sourceMethods!.createFacade,[creator])}
     finally {creator.dispose()}
     await actor.call(source,this.sourceMethods!.installFacade,[facade,context.global])
   }
   private async bootstrap(context:any,id:string,parent:any,document:NativeHandleV3,
-    script:BrowserCompiledScriptV3):Promise<GuestController> {
+    script:BrowserCompiledScriptV3,updateChatKey:string|null=null,sourcePage?:BrowserSourcePagePlanV3):Promise<GuestController> {
     const {actor}=this.options
     await actor.enter(()=>{
       context.setProp(context.global,'parent',parent.global)
@@ -178,9 +187,12 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     let name:any
     await actor.enter(()=>{name=actor.parent.newString(id)})
     try {await actor.call(actor.parent,this.sourceMethods!.registerPage,[name,captured])}finally {name.dispose()}
-    await this.sourceFacade(context,script,id)
+    await this.sourceFacade(context,script,id,updateChatKey,sourcePage)
     const controller:GuestController={context,methods,
       setCurrentScript:node=>this.primitive(context,methods.setCurrentScript,node),
+      setSourceScriptOrigin:page=>this.primitive(actor.parent,this.sourceMethods!.setScriptOrigin,{pageId:id,
+        origin:page?{originalOrdinal:script.ordinal,scriptIdentity:script.descriptor.identity,
+          descriptorSha256:script.descriptorSha256,page}:null}),
       dispatchLifecycle:type=>this.primitive(context,methods.dispatchLifecycle,{type}),
       disposeHandles:()=>{for(const method of Object.values(methods))method.dispose()},
     }
@@ -232,7 +244,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
   private async bootstrapPage(page:BrowserPageBootstrapV3<Frame>):Promise<GuestController> {
     await this.retirePending()
     const script=this.options.program.scripts.find(row=>row.descriptor.identity===page.plan.origin.carrier.identity)!
-    const controller=await this.bootstrap(page.context,page.pageId,page.parentContext,page.document,script)
+    const controller=await this.bootstrap(page.context,page.pageId,page.parentContext,page.document,script,null,page.plan)
     const parent=[...this.controllers.values()].find(row=>row.context===page.parentContext)!
     let reference:any
     await this.options.actor.enter(()=>{reference=parent.context.newString(JSON.stringify(this.options.frameReference(page.frame)))})
@@ -249,7 +261,11 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       const id='carrier-'+script.ordinal,context=await actor.createPage(id)
       const native=await this.options.createCarrier(script,id,this.abort.signal)
       this.carriers.set(script.descriptor.identity,{context,id,native})
-      const controller=await this.bootstrap(context,id,context,native.document,script)
+      // The compiler owns a direct updater's single key. Inline callbacks
+      // have no retained unit owner, so their shared facade receives no key.
+      const ordinaryKeys=script.declarations.filter(row=>row.kind==='ordinary-source-key').map(row=>row.key)
+      const updateChatKey=ordinaryKeys.length===1?ordinaryKeys[0]!:null
+      const controller=await this.bootstrap(context,id,context,native.document,script,updateChatKey)
       await native.setDocumentState('loading',this.abort.signal)
       await controller.setCurrentScript(native.script)
       try {await this.pages.enterOriginal(context,script.javascript,
@@ -324,6 +340,21 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     await this.retirePending()
     await this.primitive(this.options.actor.parent,this.sourceMethods!.event,event,true)
     if(this.active)await this.pages.drain()
+  }
+  async generationCallbacks():Promise<readonly BrowserCallbackRegistrationV3[]> {
+    if(!this.active)throw Error('BROWSER3_ATTACHMENT_CLOSED')
+    await this.retirePending()
+    const result=await this.pages.call(this.options.actor.parent,this.sourceMethods!.getGenerationRegistrations)
+    return JSON.parse(String(result)) as readonly BrowserCallbackRegistrationV3[]
+  }
+  async invokeGeneration(invocation:BrowserGenerationInvocationV3):Promise<void> {
+    if(!this.active)throw Error('BROWSER3_ATTACHMENT_CLOSED')
+    await this.retirePending()
+    await this.primitive(this.options.actor.parent,this.sourceMethods!.invokeGeneration,invocation,true)
+    if(this.active)await this.pages.drain()
+  }
+  async cancelGeneration(invocationId:string):Promise<void> {
+    if(this.active)await this.primitive(this.options.actor.parent,this.sourceMethods!.cancelGeneration,{invocationId},true)
   }
   dispose():Promise<void> {
     if(this.disposal)return this.disposal

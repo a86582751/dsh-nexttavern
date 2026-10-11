@@ -643,7 +643,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   }
   function scalarProperty(kind:BrowserFacadeKindV3,name:string):boolean {
     const scalar:Partial<Record<BrowserFacadeKindV3,readonly string[]>>={
-      node:['id','className','textContent','innerHTML','innerText','src','width','height','alt','value','hidden','disabled',
+      node:['id','className','textContent','innerHTML','innerText','src','width','height','alt','loading','value','hidden','disabled',
         'checked','scrollTop','scrollHeight','clientWidth','clientHeight','offsetWidth','offsetHeight','isConnected','nodeType',
         'tagName','type','title','placeholder','href','download','open','selectionStart','selectionEnd','naturalWidth','naturalHeight'],
       event:['type','key','code','keyCode','button','buttons','clientX','clientY','pageX','pageY','pointerId','ctrlKey','shiftKey',
@@ -1817,7 +1817,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   function sourceDictionary(name:string,keys:readonly string[]):Atom {
     let result=sourceDictionaries.get(name)
     if(!result){result=atom('object',{fields:new Map(),written:new Set(),snapshot:true});sourceDictionaries.set(name,result)
-      for(const key of keys){add(field(result,key),one(guest));result.written!.add(key)}}
+      for(const key of keys){add(field(result,key),one(name==='events'&&key==='GENERATION_AFTER_COMMANDS'?literal(key):guest))
+        result.written!.add(key)}}
     return result
   }
   const sourceAsyncResults=new Map<ts.Node,Map<string,Atom>>()
@@ -2093,6 +2094,62 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       else {state.keys.add(name);state.caps.add('owned-declared-key-mutation')}
     }
   }
+  const updaterUnits=new Map<UnitState,ts.Node>()
+  function update(args:readonly Value[],fn:Atom,state:UnitState,node:ts.Node):void {
+    // The runtime's updater key belongs to its direct carrier facade. Inline
+    // callbacks and borrowed foreign facades do not have this key binding.
+    if(state.input.pageId!==null){
+      report(state,'BROWSER3_CHAT_UPDATE_INLINE_UNSUPPORTED',node);return
+    }
+    if(fn.receiver?.realm!==state.input.realm){
+      report(state,'BROWSER3_CHAT_UPDATE_OWNER_UNPROVEN',node);return
+    }
+    options(args,state,node)
+    const callbacks=args[0]?choiceValues(args[0],node):new Set<Atom>()
+    const keys=new Set<string>()
+    const fail=()=>report(state,'BROWSER3_CHAT_UPDATE_KEY_UNPROVEN',node)
+    const unwrap=(expression:ts.Expression):ts.Expression=>{
+      while(ts.isParenthesizedExpression(expression))expression=expression.expression
+      return expression
+    }
+    if(!callbacks.size){fail();return}
+    for(const callback of callbacks){
+      const declaration=callback.fn,parameter=declaration?.parameters[0]
+      if(callback.kind!=='function'||!declaration?.body||!parameter||!ts.isIdentifier(parameter.name)){
+        fail();return
+      }
+      const returns:(ts.Expression|undefined)[]=[]
+      if(!ts.isBlock(declaration.body))returns.push(declaration.body)
+      else {
+        const visit=(part:ts.Node):void=>{
+          if(part!==declaration.body&&callable(part))return
+          if(ts.isReturnStatement(part))returns.push(part.expression)
+          ts.forEachChild(part,visit)
+        }
+        visit(declaration.body)
+      }
+      if(!returns.length){fail();return}
+      for(const returned of returns){
+        const result=returned&&unwrap(returned)
+        if(!result||!ts.isObjectLiteralExpression(result)||result.properties.length!==2){fail();return}
+        const spread=result.properties.find(ts.isSpreadAssignment)
+        const replacement=result.properties.find(ts.isPropertyAssignment)
+        const original=spread&&unwrap(spread.expression)
+        if(!original||!ts.isIdentifier(original)
+          ||lookup(scopes.get(original)!,original.text)!==callback.params![0]||!replacement){fail();return}
+        const selected=ts.isComputedPropertyName(replacement.name)?strings(replacement.name.expression)
+          :ts.isIdentifier(replacement.name)||ts.isStringLiteralLike(replacement.name)
+            ?new Set([replacement.name.text]):undefined
+        if(selected?.size!==1){fail();return}
+        const name=[...selected][0]!
+        if(!name||['stat_data','__proto__','constructor','prototype'].includes(name)){fail();return}
+        keys.add(name)
+      }
+    }
+    if(keys.size!==1){fail();return}
+    state.keys.add([...keys][0]!);state.caps.add('owned-declared-key-mutation')
+    updaterUnits.set(state,node)
+  }
   function mountSources(items:Value):Value {
     const sources:Value=new Set()
     for(const item of items){
@@ -2205,7 +2262,12 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     for(const [fn,args] of nativeCalls.get(node)??[]){
         if(fn.nativeName==='insertOrAssignVariables')insertion(args,state,node)
+        else if(fn.nativeName==='updateVariablesWith')update(args,fn,state,node)
         else state.caps.add(fn.operation!.capability)
+        if(['eventOn','eventOnce','eventMakeFirst'].includes(fn.nativeName!)) {
+          const events=args[0]?names(args[0]):undefined
+          if(events?.has('GENERATION_AFTER_COMMANDS'))state.caps.add('owned-generation-callbacks')
+        }
         // Script DATA comes from the captured Source reader at runtime. Keep
         // that transport with this caller's proof, including finite aliases.
         if(fn.nativeName==='getAllVariables'||fn.nativeName==='getVariables'
@@ -2259,6 +2321,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       }
     }
   }
+  // A direct facade supplies one updater key for this unit; insertion-only
+  // carriers retain their existing multi-key contract.
+  for(const [state,node] of updaterUnits)if(state.keys.size!==1)
+    report(state,'BROWSER3_CHAT_UPDATE_KEY_UNPROVEN',node)
   // Diagnostic capture observes the final cells only. It neither revisits the
   // original AST nor adds readers, propagation, permissions, or source payloads.
   const textEvidence=(text:string):BrowserTextEvidenceV3=>({codeUnits:text.length,

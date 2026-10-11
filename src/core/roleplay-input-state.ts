@@ -716,7 +716,7 @@ export function createRoleplayInputStateOwner(deps:{
     for(const frame of sessionReaders.get(id)??[])if(frame.slot!=='source'&&frame.slot!=='author-identity')markDirty(frame)
   }
   function nativeChanged(session:RoleplayInputStateSession,event:{readonly type:string}):void {
-    if(event.type==='roleplay/message-edit')invalidateSession(session.id)
+    if(event.type==='roleplay/message-edit'||event.type==='roleplay/author-injection-cleanup')invalidateSession(session.id)
     if(event.type==='compaction/end')for(const frame of sessionReaders.get(session.id)??[]) {
       if(frame.slot==='input')markDirty(frame)
     }

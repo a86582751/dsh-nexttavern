@@ -61,6 +61,7 @@ export type CoreContext = {
   nexttavernMessageEdits: WorldlineMessageEdits
   nexttavernMvuPlayerMarkers:typeof import('dsh-nexttavern-session-format/mvu-player-marker').mvuPlayerMarkers
   nexttavernMvuSchemaMarkers:typeof import('dsh-nexttavern-session-format/mvu-schema-marker').mvuSchemaMarkers
+  nexttavernAuthorInjectionCleanupMarkers:typeof import('dsh-nexttavern-session-format/author-injection-cleanup').authorInjectionCleanupMarkers
   userQuestions: {ask(input:{agent:NonNullable<import('./roleplay-task-tools-types.js').TaskToolExecution['agent']>;signal?:AbortSignal;questions:{id:string;question:string;header?:string;detail?:string;options?:{label:string;description:string}[]}[]}):Promise<{answers:{id:string;selected:string[];custom?:string}[]}>}
   sessions: {get(id: string): CoreSession | undefined; flush(session: BranchSession): Promise<boolean>;
     readonly messageProjections:readonly import('@deepseek-ai/dsh-session').SessionMessageProjection[]}

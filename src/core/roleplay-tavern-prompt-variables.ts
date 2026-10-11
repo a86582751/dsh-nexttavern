@@ -25,8 +25,12 @@ function validateRead(read:TavernPromptVariableReadV1):void {
 export async function prepareRoleplayTavernPromptVariablesV1(raw:unknown,producer:TavernPromptVariableProducerV1)
   :Promise<TavernPromptVariableResultV1> {
   try {
-    const input=cloneRoleplayTavernLoreDataV1(raw,TAVERN_PROMPT_VARIABLE_BOUNDS_V1.inputBytes,
-      {nodes:131072,depth:66}) as TavernPromptVariableInputV1
+    // Core supplies the Source owner's frozen data and the initial producer's
+    // frozen catalog. Detach the remaining per-attempt input without charging
+    // those accepted subtrees to another aggregate input budget.
+    const {source,catalog,...perAttempt}=raw as TavernPromptVariableInputV1
+    const input:TavernPromptVariableInputV1={...cloneRoleplayTavernLoreDataV1(perAttempt,
+      TAVERN_PROMPT_VARIABLE_BOUNDS_V1.inputBytes,{nodes:131072,depth:66}),source,catalog}
     // Keep the readonly element type while Array.isArray validates the same
     // detached array; its mutable-any[] predicate otherwise erases row types.
     const scopeRows=input.scopes

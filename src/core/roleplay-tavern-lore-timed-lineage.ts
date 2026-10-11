@@ -11,6 +11,7 @@ import {readTavernTimedPublicationV1,replayTavernTimedPublicationV1,applyTavernT
   from './roleplay-tavern-lore-timed-history.js'
 import {readTavernCanonicalChatRowsAtCutV1,verifyTavernCanonicalChatClockV1} from './roleplay-tavern-chat-clock.js'
 import type {TavernCanonicalChatClockCaptureV1} from './roleplay-tavern-chat-clock.js'
+import type {TavernReadonlyAuthorDialogChatClockCaptureV1} from './roleplay-tavern-chat-clock.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernSourceInheritanceOwnerV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernLoreCompilationV1,TavernLoreEntryPlanV1} from './tavern-lore-plan-types.mjs'
@@ -47,7 +48,7 @@ interface Dependencies {
   readonly ownHistory:ReturnType<typeof captureRoleplayTavernMaterialHistoryV1>
   readonly inheritedHistory?:ReturnType<typeof captureRoleplayTavernInheritedMaterialHistoryV1>
   readonly sourceLineage?:ReturnType<TavernSourceInheritanceOwnerV1['readCommittedSourceLineage']>
-  readonly clock:TavernCanonicalChatClockCaptureV1
+  readonly clock:TavernCanonicalChatClockCaptureV1|TavernReadonlyAuthorDialogChatClockCaptureV1
   readonly projections:readonly SessionMessageProjection[]
   readonly assertOwnerCurrent:()=>void
   readonly assertSourceLineageCurrent:()=>void

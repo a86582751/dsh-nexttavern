@@ -23,15 +23,20 @@ interface Options {
   createCarrierDocument(script:BrowserCompiledScriptV3,contextId:string,signal:AbortSignal):
     Promise<BrowserNativeCarrierDocumentV3>
   readonly onCallback:(delivery:NativeCallbackDeliveryV3)=>void
+  readonly prepareCallback?:(delivery:NativeCallbackDeliveryV3,scriptIdentity:string)=>NativeCallbackDeliveryV3
+  readonly observeNativeEvent?:(event:Event,pageId:string,scriptIdentity:string)=>void
+  readonly onPageClosed?:(pageId:string)=>void
   readonly onSettlement:(settlement:NativePromiseSettlementV3)=>void
   readonly onFrameClosed:(frameId:number)=>void
   readonly resolveResource?:(resource:BrowserPageResourceV3)=>string
 }
 interface Carrier {
+  readonly scriptIdentity:string
   readonly source:BrowserNativeCarrierDocumentV3
   readonly renderer:BrowserPageRendererV3
 }
 interface Page {
+  readonly carrierIdentity:string
   readonly frame:BrowserNativeSourceFrameV3
   readonly session:BrowserPageNativeSessionV3
 }
@@ -46,13 +51,20 @@ export function createBrowserNativeSceneV3(options:Options) {
   const publishedFrameReferences=new Set<string>()
   const pagePlans=new Map(options.program.sourcePages.map(plan=>[plan.pagePlanSha256,plan]))
   let active=true,disposal:Promise<void>|undefined
-  const frames=createBrowserSourceFrameOwnerV3({onCallback:options.onCallback,
+  const prepareCallback=(delivery:NativeCallbackDeliveryV3)=>{
+    const pageId=delivery.callback.pageId,identity=carriers.get(pageId)?.scriptIdentity??pages.get(pageId)?.carrierIdentity
+    return identity&&options.prepareCallback?options.prepareCallback(delivery,identity):delivery
+  }
+  const emitCallback=(delivery:NativeCallbackDeliveryV3)=>options.onCallback(prepareCallback(delivery))
+  const frames=createBrowserSourceFrameOwnerV3({onCallback:emitCallback,
     onFrameClosed:(frame,pageId)=>{
       frameTokens.delete(frame.frameId)
-      if(pageId)pages.delete(pageId)
+      if(pageId){pages.delete(pageId);options.onPageClosed?.(pageId)}
       if(active)options.onFrameClosed(frame.frameId)
-    },rendererOptions:()=>({schedulerWindow:options.schedulerWindow,
-      onCallback:options.onCallback,onPromiseSettlement:options.onSettlement,
+    },rendererOptions:(_frame,pageId,plan)=>({schedulerWindow:options.schedulerWindow,
+      onNativeEvent:options.observeNativeEvent
+        ?event=>options.observeNativeEvent!(event,pageId,plan.origin.carrier.identity):undefined,
+      onCallback:emitCallback,onPromiseSettlement:options.onSettlement,
       resolveResource:options.resolveResource})})
   function remember(value:unknown,facts:BrowserNativeFrameFactV3[]):void {
     if(!value||typeof value!=='object')return
@@ -83,14 +95,16 @@ export function createBrowserNativeSceneV3(options:Options) {
       // fabricated parsed Source candidate and carries no admission hashes.
       const renderer=createBrowserPageRendererV3({document:source.document,pageId:contextId,
         schedulerWindow:options.schedulerWindow,
+        onNativeEvent:options.observeNativeEvent
+          ?event=>options.observeNativeEvent!(event,contextId,script.descriptor.identity):undefined,
         plan:{parsed:{document:{documentNodeId:0,mode:'no-quirks',nodes:[]},
           steps:[],scripts:[],styles:[],resources:[]},resources:options.program.sourcePages.flatMap(plan=>plan.resources)},
-        carrierScript:{javascript:script.javascript,identity:script.descriptor.identity,
+        carrierScript:{javascript:script.javascript,identity:script.descriptor.identity,mediaSources:script.mediaSources,
           captured:reference=>{scriptReference=reference}},
         externalFrames:frames.forCarrier({document:source.document,pageId:contextId,
-          carrierIdentity:script.descriptor.identity}),onCallback:options.onCallback,
+          carrierIdentity:script.descriptor.identity}),onCallback:emitCallback,
         onPromiseSettlement:options.onSettlement,resolveResource:options.resolveResource})
-      carriers.set(contextId,{source,renderer})
+      carriers.set(contextId,{source,renderer,scriptIdentity:script.descriptor.identity})
       return {document:renderer.getDocumentHandle(),script:scriptReference}
     }catch(error) {await source.dispose();throw error}
   }
@@ -98,6 +112,7 @@ export function createBrowserNativeSceneV3(options:Options) {
     const carrier=carriers.get(contextId)
     if(!carrier)return
     carriers.delete(contextId)
+    options.onPageClosed?.(contextId)
     try {await carrier.renderer.dispose()}
     finally {await carrier.source.dispose()}
   }
@@ -118,10 +133,10 @@ export function createBrowserNativeSceneV3(options:Options) {
       if(owner.carrierIdentity!==plan.origin.carrier.identity||!carriers.has(owner.parentPageId))
         throw Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN')
       const session=await frames.transport.mount(frame,input.pageId,plan,abort.signal)
-      pages.set(input.pageId,{frame,session})
+      pages.set(input.pageId,{frame,session,carrierIdentity:owner.carrierIdentity})
     }else if(input.op==='page-dispose') {
       const page=pages.get(input.pageId)
-      if(page) {pages.delete(input.pageId);await frames.transport.dispose(page.frame,input.pageId)}
+      if(page) {pages.delete(input.pageId);options.onPageClosed?.(input.pageId);await frames.transport.dispose(page.frame,input.pageId)}
     }else if(input.op==='frame-location')frames.recordLocation(frameTokens.get(input.frameId)!,input.location)
     else if(input.op==='page-loaded')frames.frameLoaded(frameTokens.get(input.frameId)!,input.pageId)
     else {
@@ -137,7 +152,10 @@ export function createBrowserNativeSceneV3(options:Options) {
     // cross the Worker port; nativeEvent is an in-process gesture hook.
     if(input.op==='native') {
       const reply=value as NativeReplyV3
-      value={...reply,...reply.callbacks?{callbacks:reply.callbacks.map(({nativeEvent:_,...callback})=>callback)}:{}}
+      value={...reply,...reply.callbacks?{callbacks:reply.callbacks.map(delivery=>{
+        const {nativeEvent:_,...callback}=prepareCallback(delivery)
+        return callback
+      })}:{}}
     }
     const facts:BrowserNativeFrameFactV3[]=[]
     if(input.op==='native')remember((value as NativeReplyV3).value,facts)

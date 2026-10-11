@@ -10,6 +10,7 @@ export function browserPageGuestBootstrapV3(config:any) {
   delete global.__ownedPageRegistryV3
   const metadata=registry?.metadata??new WeakMap<object,any>(),proxies=registry?.proxies??new Map<string,any>()
   const callbacks=new Map<number,Function>(),callbackIds=new WeakMap<Function,number>()
+  const callbackOrigins=new WeakMap<Function,any>()
   const promises=new Map<number,{promise:Promise<any>;resolve:(value:any)=>void;reject:(error:any)=>void}>()
   const lifecycle=new Map<any,Map<string,{fn:Function;capture:boolean;once:boolean}[]>>()
   const properties=new Map<any,Map<string,Function>>()
@@ -19,8 +20,13 @@ export function browserPageGuestBootstrapV3(config:any) {
   const registrations=new Map<number,{target:any;type:string;fn:Function;capture:boolean}>()
   const localPreferences=new Map<string,string>(),sessionPreferences=new Map<string,string>()
   let sequence=0,currentScript:any=null,active=true
+  function rememberOrigin(fn:Function):void {
+    const origin=registry?.sourceOrigin(config.pageId)
+    if(origin&&!callbackOrigins.has(fn))callbackOrigins.set(fn,origin)
+  }
 
   function callback(fn:Function):any {
+    rememberOrigin(fn)
     let id=callbackIds.get(fn)
     if(id===undefined){id=++sequence;callbackIds.set(fn,id);callbacks.set(id,fn)}
     // Registration belongs to this native resource owner, even when fn's
@@ -63,6 +69,7 @@ export function browserPageGuestBootstrapV3(config:any) {
   }
   function listen(target:any,type:string,fn:Function,options:any):void {
     if(typeof fn!=='function')return
+    rememberOrigin(fn)
     const capture=typeof options==='boolean'?options:options?.capture===true
     const group=lifecycle.get(target)??new Map();lifecycle.set(target,group)
     const rows=group.get(type)??[];group.set(type,rows)
@@ -74,9 +81,11 @@ export function browserPageGuestBootstrapV3(config:any) {
     if(rows)for(let index=rows.length-1;index>=0;index--)
       if(rows[index]!.fn===fn&&rows[index]!.capture===capture)rows.splice(index,1)
   }
-  function invoke(fn:Function,receiver:any,args:any[]):void {
+  function invoke(fn:Function,receiver:any,args:any[],delivery?:any):void {
     try {
-      const result=Reflect.apply(fn,receiver,args)
+      const run=()=>Reflect.apply(fn,receiver,args)
+      const invoke=()=>registry?registry.withInvocation(config.pageId,delivery,run):run()
+      const result=registry?registry.withSourceOrigin(config.pageId,callbackOrigins.get(fn),invoke):invoke()
       // Browser event dispatch does not await returned author Promises. The
       // normal Worker job pump handles their continuations and rejections.
       if(result&&typeof result.then==='function')Promise.resolve(result).catch(error=>
@@ -231,7 +240,7 @@ export function browserPageGuestBootstrapV3(config:any) {
     key:(index:number)=>[...preferences.keys()][index]??null,get length(){return preferences.size}})
   define('localStorage',storage(localPreferences));define('sessionStorage',storage(sessionPreferences))
 
-  function deliverOne(delivery:any):void {
+  function deliverOneCurrent(delivery:any):void {
     const fn=callbacks.get(delivery.callback.callbackId)
     if(!fn)return
     const receiver=delivery.receiver===undefined?global:decode(delivery.receiver)
@@ -253,7 +262,15 @@ export function browserPageGuestBootstrapV3(config:any) {
       registrations.delete(delivery.registration.listenerId)
       rpc({op:'consume-listener',listenerId:delivery.registration.listenerId})
     }
-    invoke(fn,receiver,delivery.args.map(decode))
+    invoke(fn,receiver,delivery.args.map(decode),delivery)
+  }
+  function deliverOne(delivery:any):void {
+    try {deliverOneCurrent(delivery)}
+    finally {
+      // A listener can have been removed while this Main delivery was queued.
+      // It still returns its unused credential to the original Main owner.
+      if(delivery.generation)notify(stringify({type:'generation-invocation-ended',gestureId:delivery.generation.gestureId}))
+    }
   }
   function deliverBatch(deliveries:any[]):void {
     try {for(const delivery of deliveries)deliverOne(delivery)}
@@ -265,6 +282,7 @@ export function browserPageGuestBootstrapV3(config:any) {
 
   return {
     ready(fn:Function,jquery:Function) {
+      rememberOrigin(fn)
       // The page owns parser readiness. Source keeps the real callback and
       // creator-bound $; neither is serialized or executed in the Main realm.
       const run=()=>{if(active)invoke(fn,document,[jquery])}

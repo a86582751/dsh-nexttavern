@@ -70,6 +70,12 @@ export interface NativeCallbackDeliveryV3 {
    * event's currentTarget resets. Windows remain actual guest-global values. */
   readonly receiver?:NativeWireValueV3
   readonly resourceKind:'native-event'|'resource'|'timer'|'raf'|'observer'
+  /** Main minted this private invocation credential from its actual Event.
+   * It is not exposed on the guest Event or retained as a recent gesture. */
+  readonly generation?:{
+    readonly gestureId:string
+    readonly scriptIdentity:string
+  }
   readonly registration?:{
     readonly listenerId:number
     readonly type:string

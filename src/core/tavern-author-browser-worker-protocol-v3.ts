@@ -2,6 +2,8 @@
  * actual Main resource owner; their serialized IDs grant no author authority. */
 import type {BrowserBindingV1} from './tavern-author-browser-types.mjs'
 import type {BrowserProgramV3,BrowserSnapshotV3} from './tavern-author-browser-types-v3.mjs'
+import type {BrowserGenerationInvocationV3,BrowserGenerationResultV3,BrowserCallbackRegistrationV3}
+  from './roleplay-author-browser-generation-types.js'
 import type {NativeHandleV3,NativeRequestV3,NativeCallbackDeliveryV3,NativePromiseSettlementV3}
   from './tavern-author-browser-native-types-v3.js'
 
@@ -41,10 +43,18 @@ export type BrowserWorkerInputV3=
     readonly frames?:readonly BrowserNativeFrameFactV3[]}
   |{readonly type:'snapshot';readonly snapshot:BrowserSnapshotV3}
   |{readonly type:'source-event';readonly event:BrowserSourceEventV3}
+  |{readonly type:'generation-registrations-request';readonly id:number}
+  |{readonly type:'generation-invocation';readonly invocation:BrowserGenerationInvocationV3}
+  |{readonly type:'generation-cancel';readonly invocationId:string}
   |{readonly type:'callback';readonly delivery:NativeCallbackDeliveryV3}
   |{readonly type:'settlement';readonly settlement:NativePromiseSettlementV3}
   |{readonly type:'frame-closed';readonly frameId:number}
   |{readonly type:'dispose'}
+
+export type BrowserGenerationWorkerReplyV3=
+  |{readonly type:'generation-registrations-result';readonly id:number;
+    readonly registrations?:readonly BrowserCallbackRegistrationV3[];readonly error?:string}
+  |{readonly type:'generation-result-v3';readonly result:BrowserGenerationResultV3}
 
 export interface BrowserWorkerRpcV3 {
   readonly type:'rpc'

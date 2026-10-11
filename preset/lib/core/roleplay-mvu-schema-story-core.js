@@ -1001,7 +1001,8 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         // A later own pending input or interrupted provider attempt does not change
         // these already captured variable reads. Native's material owner validates
         // their selected message versions and its evolving request cut separately.
-        const current = () => viewCurrent(view);
+        let declared = [];
+        const current = () => viewCurrent(view) && declared.every(row => row.capture.current());
         if (!current())
             return undefined;
         let authorPrompt, authorBrowser;
@@ -1022,7 +1023,28 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                     persona: { name: context.user, ...context.user_gender !== undefined ? { gender: context.user_gender } : {}, avatar: null }, authorChat };
             }
         }
-        return { data, current, ...authorPrompt ? { authorPrompt } : {}, ...authorBrowser ? { authorBrowser } : {} };
+        const browser = isAuthorHostJournalReadyV5(ready) ? ready.epoch.program.browserProgram : undefined;
+        let authorBrowserV3;
+        if (browser?.schemaVersion === 3) {
+            declared = captureDeclaredChatKeys(sid, browser);
+            const context = view.frame.material.openingContext;
+            authorBrowserV3 = { program: browser, opening: captureAuthorOpening(view, frame, events),
+                scopes: produceAuthorPromptScopeFrameV1(frame, browser),
+                basis: { materialSha256: view.frame.materialSha256, numericalSnapshotSha256: view.history.snapshot.stateSnapshotSha256 },
+                numerical: browserNumericalSnapshot(view, events.length),
+                persona: { name: context.user, ...context.user_gender !== undefined ? { gender: context.user_gender } : {}, avatar: null },
+                authorChats: declared.map(row => ({ declarationId: row.declarationId, capture: row.capture.data })) };
+        }
+        return { data, current, ...authorPrompt ? { authorPrompt } : {}, ...authorBrowser ? { authorBrowser } : {},
+            ...authorBrowserV3 ? { authorBrowserV3 } : {} };
+    }
+    function captureDeclaredChatKeys(sid, program) {
+        return program.declarations.map(declaration => {
+            if (!deps.authorChat)
+                fail('AUTHOR_CHAT_STATE_UNAVAILABLE');
+            return { declarationId: declaration.declarationId,
+                capture: deps.authorChat.captureWithCurrencyV2(deriveAuthorChatBindingV2(sid, program, declaration)) };
+        });
     }
     function browserNumericalSnapshot(view, nativeCut) {
         const snapshot = view.history.snapshot, sid = view.session.id, editBlockCode = (deps.manualEditBlockCode ?? deps.manualPendingCode)?.(sid);
@@ -1139,12 +1161,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         const character = { sourceId: frame.snapshot.source.importId,
             name: String(native.name), ...typeof native.avatar === 'string' ? { avatar: native.avatar } : {} };
         if (program.schemaVersion === 3) {
-            const owned = program.declarations.map(declaration => {
-                if (!deps.authorChat)
-                    fail('AUTHOR_CHAT_STATE_UNAVAILABLE');
-                return { declarationId: declaration.declarationId,
-                    capture: deps.authorChat.captureWithCurrencyV2(deriveAuthorChatBindingV2(sid, program, declaration)) };
-            });
+            const owned = captureDeclaredChatKeys(sid, program);
             const dataV3 = { ...data,
                 schemaVersion: 3, encoding: 'native-author-browser-snapshot-v3', messages: capturedMessages,
                 persona: { name: context.user, ...context.user_gender !== undefined ? { gender: context.user_gender } : {}, avatar: null }, character,
