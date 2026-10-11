@@ -1,7 +1,7 @@
 import type * as ReactAPI from 'react'
 import {fetchRoleplayText} from './panel-state.js'
 
-export interface SessionAudioResource { id: string; name: string; type: string }
+export interface SessionAudioResource { id: string; name: string; type: string; url?:string }
 export interface SessionBgmState {
   sessionId: string | null
   resource: SessionAudioResource | null
@@ -80,8 +80,8 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
         selected.preload = 'none'
         selected.loop = true
         selected.volume = state.volume
-        selected.src = '/api/roleplay/download?sessionId=' + encodeURIComponent(state.sessionId)
-          + '&resourceId=' + encodeURIComponent(resource.id)
+        selected.src = resource.url??('/api/roleplay/download?sessionId=' + encodeURIComponent(state.sessionId)
+          + '&resourceId=' + encodeURIComponent(resource.id))
         const onPause = () => {
           if (selected.paused) publish({playback: 'paused'})
         }
@@ -152,10 +152,54 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
     const [uploading, setUploading] = React.useState(false)
     const [uploadError, setUploadError] = React.useState('')
     const [uploadMessage, setUploadMessage] = React.useState('')
+    const [sourceCatalog, setSourceCatalog] = React.useState<{sourceHash: string | null;
+      candidates: {candidateId: string; name: string; storage:'embedded'|'remote'}[]} | null>(null)
+    const [sourceLoading, setSourceLoading] = React.useState(false)
+    const [sourceError, setSourceError] = React.useState('')
+    const [sourceArchiving, setSourceArchiving] = React.useState(false)
+    const sourceRequest = React.useRef(0)
+    const sourceSelectionRequest = React.useRef(0)
     const request = React.useRef(0)
     const uploadRequest = React.useRef(0)
     const pendingUpload = React.useRef<{file: File; requestId: string; receiptId?: string} | null>(null)
-    React.useEffect(() => () => {request.current++; uploadRequest.current++}, [sessionId])
+    React.useEffect(() => () => {
+      request.current++; uploadRequest.current++; sourceRequest.current++; sourceSelectionRequest.current++
+    }, [sessionId])
+    const refreshSource = async () => {
+      const ticket = ++sourceRequest.current
+      setSourceLoading(true)
+      setSourceError('')
+      try {
+        const value = await jsonFetch<{sourceHash: string | null; candidates: {candidateId: string; name: string; storage:'embedded'|'remote'}[]}>(
+          '/api/roleplay/source-music?sessionId=' + encodeURIComponent(sessionId))
+        if (ticket === sourceRequest.current) setSourceCatalog(value)
+      } catch (failure) {
+        if (ticket === sourceRequest.current) setSourceError('无法读取角色卡音乐：' + messageOf(failure))
+      } finally {
+        if (ticket === sourceRequest.current) setSourceLoading(false)
+      }
+    }
+    const archiveSource = async (candidateId: string) => {
+      if (!sourceCatalog?.sourceHash) return
+      const ticket = ++sourceSelectionRequest.current
+      setSourceArchiving(true)
+      setSourceError('')
+      try {
+        const value = await jsonFetch<{resource: SessionAudioResource}>('/api/roleplay/source-music', {
+          method: 'POST', headers: {'content-type': 'application/json'}, signal: AbortSignal.timeout(15000),
+          body: JSON.stringify({sessionId, sourceHash: sourceCatalog.sourceHash, candidateId}),
+        })
+        if (ticket === sourceSelectionRequest.current) {
+          player.select(value.resource)
+          setUploadMessage(value.resource.url?'已选择角色卡网链音乐，请点击播放。':'角色卡音乐已入库，请点击播放。')
+          if(!value.resource.url)await refresh()
+        }
+      } catch (failure) {
+        if (ticket === sourceSelectionRequest.current) setSourceError('角色卡音乐选择失败：' + messageOf(failure))
+      } finally {
+        if (ticket === sourceSelectionRequest.current) setSourceArchiving(false)
+      }
+    }
     const refresh = async () => {
       const ticket = ++request.current
       setLoading(true)
@@ -216,7 +260,9 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
     return h('section', {
       'aria-label': '会话背景音乐',
       style: {position: 'fixed', bottom: 16, left: 16, zIndex: 1050, width: expanded ? 280 : 'auto',
-        maxWidth: 'calc(100vw - 32px)', padding: expanded ? 12 : 0,
+        boxSizing: 'border-box',
+        maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto',
+        padding: expanded ? 12 : 0,
         border: '1px solid var(--dsw-alias-border-l2, #ccc)', borderRadius: 12,
         background: 'var(--dsw-alias-bg-layer-1, #fffaf6)', color: 'var(--dsw-alias-label-primary, #413a3d)',
         boxShadow: '0 3px 16px #0002'},
@@ -231,7 +277,7 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
     h('div', {style: {display: 'flex', gap: 8, flexWrap: 'wrap'}},
       h('button', {type: 'button', className: 'dsh-rp-btn', onClick: () => {
         setChoosing(!choosing)
-        if (!choosing) void refresh()
+        if (!choosing) {void refresh(); void refreshSource()}
       }, 'aria-expanded': choosing}, choosing ? '收起选择' : '选择音乐'),
       h('button', {type: 'button', className: 'dsh-rp-btn',
         disabled: !state.resource || state.playback === 'playing' || state.playback === 'starting',
@@ -246,6 +292,17 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
         }, style: {flex: 1, minWidth: 0}})),
     state.error ? h('div', {role: 'alert', style: {marginTop: 8}}, state.error) : null,
     choosing ? h('div', {style: {marginTop: 8}},
+      h('strong', null, '角色卡内音乐'),
+      h('button', {type: 'button', className: 'dsh-rp-btn', disabled: sourceLoading || sourceArchiving,
+        onClick: () => {void refreshSource()}}, sourceLoading ? '读取中…' : '刷新角色卡音乐'),
+      sourceError ? h('div', {role: 'alert'}, sourceError) : null,
+      sourceCatalog?.candidates.length === 0 ? h('p', null, '当前角色卡没有可选择的音频。') : null,
+      h('div', {style: {maxHeight: '35vh', overflowY: 'auto'}},
+      sourceCatalog?.candidates.map(candidate => h('button', {key: candidate.candidateId, type: 'button',
+        className: 'dsh-rp-btn', disabled: sourceArchiving || sourceLoading,
+        style: {display: 'block', width: '100%', boxSizing: 'border-box', margin: '4px 0 0'},
+        onClick: () => {void archiveSource(candidate.candidateId)}},
+      sourceArchiving ? '音乐选择中…' : (candidate.storage==='remote'?'选择网链音乐 · ':'入库并选择 · ') + candidate.name))),
       h('label', {style: {display: 'block', marginBottom: 8}}, uploading ? '音乐入库中…' : '上传音乐',
         h('input', {type: 'file', accept: '.mp3,.wav,.ogg,.m4a,.flac,.webm,audio/*', disabled: uploading,
           'aria-label': '上传背景音乐', style: {display: 'block', width: '100%', marginTop: 4},
