@@ -446,6 +446,22 @@
   ],
   "tasks": [
     {
+      "id": "test:roleplay-source-music.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import",
+        "status"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
       "id": "test:plugin-profile-context.test.mts",
       "action": "test",
       "modules": [

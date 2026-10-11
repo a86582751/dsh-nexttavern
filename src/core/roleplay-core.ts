@@ -12,7 +12,9 @@ import type { MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 import type { NativeTaskInput, HostAgent } from './roleplay-task-host-types.js'
 import type { TaskAgent } from './tavern-task-types.js'
 import type { ImportRecord,CardImportDependencies,ImportSession } from './roleplay-import-types.js'
-import {captureNextTavernCardExportV1} from './roleplay-native-card-export.js'
+import {captureNextTavernCardExportV1,captureNextTavernAuthorDataV1} from './roleplay-native-card-export.js'
+import {createSourceMusicV1} from './roleplay-source-music.js'
+import {registerSourceMusicRoutesV1} from './roleplay-source-music-routes.js'
 import {decodeTavernCard} from './tavern-card.js'
 import type {NextTavernCardExportDocument} from './nexttavern-card.js'
 import type {TavernLoreSourceCaptureV1} from './roleplay-tavern-lore-source-types.js'
@@ -239,8 +241,8 @@ export const inject = [
 ]
 
 const DEFAULT_CONFIG = {
-  workerProvider: null as string | null,
-  workerModel: null as string | null,
+  workerProvider: 'deepseek-official' as string | null,
+  workerModel: 'deepseek-flash' as string | null,
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
@@ -928,6 +930,13 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return () => clearInterval(timer)
   }, 'roleplay: daily exchange rate refresh')
   const { libraryFor, resourceName, archiveImported, migrateResources } = createResourceBridge({ T })
+  const sourceMusic=createSourceMusicV1({libraryFor,read:session=>{
+    const current=captureNextTavernAuthorDataV1({tables:T,source:tavernSource,edits:tavernLoreEdits},session.id)
+    if(current.captured.kind==='outside-declared-domain'&&current.captured.code==='ACTIVE_SOURCE_MISSING')return null
+    if(!current.sourceHash||!current.original)throw Error('当前角色卡的音频来源尚不可读取。')
+    return {sourceHash:current.sourceHash,importId:current.original.importId,data:current.data}
+  }})
+  ctx.effect(()=>()=>sourceMusic.dispose(),'roleplay: Source music catalog lifecycle')
   const {
     sameModelRoute,
     canonicalModelRoute,
@@ -3210,6 +3219,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     libraryFor,
     migrateResources,
   })
+  registerSourceMusicRoutesV1({ctx,resolveRoleplaySession,music:sourceMusic,
+    withSourceLock:(id,work)=>withImportLock(id,'source-music',work)})
   registerSettingsRoutes({
     ctx,
     T,

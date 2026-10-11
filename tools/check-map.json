@@ -25,6 +25,22 @@
       "source": "lib/core/roleplay-source-music-parser.mjs"
     },
     {
+      "id": "roleplay-source-music-js",
+      "source": "lib/core/roleplay-source-music.js"
+    },
+    {
+      "id": "roleplay-source-music-typescript",
+      "source": "src/core/roleplay-source-music.ts"
+    },
+    {
+      "id": "roleplay-source-music-routes-js",
+      "source": "lib/core/roleplay-source-music-routes.js"
+    },
+    {
+      "id": "roleplay-source-music-routes-typescript",
+      "source": "src/core/roleplay-source-music-routes.ts"
+    },
+    {
       "id": "session-bgm",
       "source": "lib/ui/session-bgm.js"
     },
@@ -28565,6 +28581,35 @@
         "src/operations/build-typescript.mts",
         "lib/operations/build-typescript.mjs",
         "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "roleplay-source-music-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-source-music-js",
+      "entry": "src/core/roleplay-source-music.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-source-music-parser.mts",
+        "src/core/roleplay-source-music.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "roleplay-source-music-routes-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-source-music-routes-js",
+      "entry": "src/core/roleplay-source-music-routes.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-source-music-routes.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
@@ -67853,6 +67898,9 @@
       "entry": "src/core/roleplay-core.ts",
       "builder": "tools/build-modules.mjs",
       "inputs": [
+        "src/core/roleplay-source-music-parser.mts",
+        "src/core/roleplay-source-music.ts",
+        "src/core/roleplay-source-music-routes.ts",
         "build-tools/package-lock.json",
         "build-tools/package.json",
         "build-tools/tsconfig.json",

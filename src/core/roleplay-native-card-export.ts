@@ -14,17 +14,21 @@ import type {NativeCardOpeningExportReadV1} from './roleplay-card-export-opening
 import type {ImportRecord,ImportPointer} from './roleplay-import-types.js'
 
 interface Table {get(key:string):unknown;entries():Iterable<[string,unknown]>}
-interface Dependencies {
+interface AuthorDataDependencies {
   readonly tables:Record<'cards'|'worldbook'|'rules'|'status'|'opening'|'branch',Table>
   readonly source:{capture(id:string):TavernLoreSourceCaptureV1}
   readonly edits:Pick<ReturnType<typeof createRoleplayTavernLoreEditsV1>,'observeJournalDataWithLegacyData'>
+}
+interface Dependencies extends AuthorDataDependencies {
   readonly readOpening:(capture:TavernLoreSourceCaptureV1)=>NativeCardOpeningExportReadV1
   readonly readTransport:(record:ImportRecord)=>NextTavernCardExportDocument
 }
 const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value)
 const authorFields=(value:unknown)=>object(value)?portableNextTavernAuthorFields(value):{}
 
-export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextTavernCardExportDocument {
+/** Current author DATA has one composition owner. Media discovery uses this
+ * read without export transport, archive traversal or selected-opening rights. */
+export function captureNextTavernAuthorDataV1(deps:AuthorDataDependencies,id:string) {
   const {tables:T}=deps,prefix=id+'__',captured=deps.source.capture(id)
   if(captured.kind==='refused')throw Error(captured.diagnostics[0]?.code??'CARD_EXPORT_SOURCE_FAILED')
   if(captured.kind==='outside-declared-domain'
@@ -34,7 +38,6 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
   const decoded=captured.kind==='captured-data'?captured.contributionInput.rawDecoded:original?.sourceEnvelope
     ?readStructuredImportDataV1(original).decoded:undefined
   const native=decoded&&isNextTavernCardDocument(decoded.document)?decoded.document:undefined
-  const transport=original?.sourceEnvelope?.schemaVersion===2?deps.readTransport(original):decoded?.document
   // Keep open author fields in DATA while runtime text has one canonical home.
   const extra=cloneRecord(decoded?.data??{}) as Record<string,unknown>
   for(const field of ['name','description','personality','scenario','mes_example','system_prompt',
@@ -43,9 +46,11 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
   const skip=new Set<string>()
   let book=cloneRecord(decoded?.data.character_book) as NextTavernCardData['character_book']
   const rules=authorFields(T.rules.get(keyOf(id,'spec')))
+  let journalDataSha256:string|undefined
   if(captured.kind==='captured-data') {
     const {observed,legacy}=deps.edits.observeJournalDataWithLegacyData(captured,{suppressBookConstants:true})
     if(observed.kind==='refused')throw Error(observed.diagnostics[0]?.detail??observed.diagnostics[0]?.code)
+    journalDataSha256=observed.data.dataSha256
     rules.core=legacy!.contributions.coreData.text
     if(legacy!.contributions.coreData.kind==='legacy-edited-unsplit')rules.coreOrigin='legacy-edited-unsplit'
     for(const key of legacy!.linkedRowKeys)skip.add(key)
@@ -87,6 +92,27 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
       }).map(([,value])=>authorFields(value) as NextTavernAuthorRow)
   }
   const cards=rows(T.cards,'card'),worldbook=rows(T.worldbook,'worldbook')
+  const authorOpening=T.opening.get(keyOf(id,'scene'))??native?.data.opening
+  const data:NextTavernCardData={...extra,name:native?native.data.name
+    :String(cards.find(card=>card.kind!=='user')?.name??decoded?.data.name??'角色卡'),
+    ...!native&&decoded?{compatibility:{...object(extra.compatibility)?extra.compatibility:{},sillytavernMacroFields:Object.fromEntries(
+      NEXTTAVERN_ST_MACRO_FIELDS.filter(field=>typeof decoded.data[field]==='string').map(field=>[field,decoded.data[field] as string]))}}:{},
+    cards,worldbook,rules,...book!==undefined?{character_book:book}:{},
+    ...authorOpening!==undefined?{opening:authorFields(authorOpening) as {text:string}}:{},
+    ...T.status.get(keyOf(id,'spec'))!==undefined?{status:authorFields(T.status.get(keyOf(id,'spec'))) as {text:string}}:{},
+    ...T.branch.get(keyOf(id,'settings'))!==undefined
+      ?{settings:authorFields(T.branch.get(keyOf(id,'settings')))}:{}}
+  // Source and journal already seal author edits. Hash only their small identity
+  // tuple; discovery must not stringify another complete embedded card.
+  const sourceHash=captured.kind==='captured-data'
+    ?recordSha256([captured.currentIdentitySha256,journalDataSha256]):undefined
+  return {captured,original,decoded,native,data,sourceHash}
+}
+
+export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextTavernCardExportDocument {
+  const {tables:T}=deps,prefix=id+'__'
+  const {captured,original,decoded,native,data:authorData}=captureNextTavernAuthorDataV1(deps,id)
+  const transport=original?.sourceEnvelope?.schemaVersion===2?deps.readTransport(original):decoded?.document
   const selected=deps.readOpening(captured)
   if(selected.kind==='blocked')throw Error(selected.code)
   const scene=T.opening.get(keyOf(id,'scene'))
@@ -109,14 +135,9 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
     ...(catalog!==undefined?{catalog}:{}),
     ...(selected.kind==='ready'?{selection:{production:selected.source.production,
       authorSelection:cloneRecord(selected.source.selected)}}:{})}
-  const data:NextTavernCardData={...extra,name:native?native.data.name
-    :String(cards.find(card=>card.kind!=='user')?.name??decoded?.data.name??'角色卡'),
-    ...!native&&decoded?{compatibility:{...object(extra.compatibility)?extra.compatibility:{},sillytavernMacroFields:Object.fromEntries(
-      NEXTTAVERN_ST_MACRO_FIELDS.filter(field=>typeof decoded.data[field]==='string').map(field=>[field,decoded.data[field] as string]))}}:{},
-    cards,worldbook,rules,...book!==undefined?{character_book:book}:{},
-    ...T.status.get(keyOf(id,'spec'))!==undefined?{status:authorFields(T.status.get(keyOf(id,'spec'))) as {text:string}}:{},
-    ...opening?{opening}:{},...T.branch.get(keyOf(id,'settings'))!==undefined
-      ?{settings:authorFields(T.branch.get(keyOf(id,'settings')))}:{}}
+  const {opening:_authorOpening,status,settings,...base}=authorData
+  const data:NextTavernCardData={...base,...status!==undefined?{status}:{},
+    ...opening?{opening}:{},...settings!==undefined?{settings}:{}}
   const archive=cloneRecord(native&&transport?readTavernCardArchiveV1(transport):native?.archive??{})
   const documents:unknown[]=cloneRecord(archive.documents??[]),classifiedSources:unknown[]=cloneRecord(archive.classifiedSources??[])
   const records=new Map<string,ImportRecord>(original?[[original.importId,original]]:[])
@@ -158,7 +179,7 @@ export function captureNextTavernCardExportV1(deps:Dependencies,id:string):NextT
     archive:{...archive,...documents.length||archive.documents!==undefined?{documents:unique(documents)}:{},
       ...classifiedSources.length||archive.classifiedSources!==undefined?{classifiedSources:unique(classifiedSources)}:{}}}
   if(isNativeTavernCardDocument(transport)) {
-    data.name=String(cards.find(card=>card.kind!=='user')?.name??transport.data.name)
+    data.name=String(data.cards.find(card=>card.kind!=='user')?.name??transport.data.name)
     return mergeNativeTavernCardExportV1(transport,result)
   }
   return result
