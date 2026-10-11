@@ -300,6 +300,16 @@ export function createAuthorBrowserSession(options: {
         const attachment = reply.attachment;
         const book = 'worldbook' in attachment.snapshot ? attachment.snapshot.worldbook : undefined;
         const identitySha256 = book?.schemaVersion === 2 ? book.identitySha256 : undefined;
+        if (sameBinding(binding, attachment.binding) && frame) {
+            // A current realm may still be awaiting its own writer's ACK.
+            // Pending records block replacement realms, not this live binding.
+            captured = attachment.snapshot;
+            frame.publishSnapshot(attachment.snapshot);
+            const activePending = store.read(options.sessionId);
+            notify(activePending && activePending.state !== 'terminal' ? {kind: 'pending', pending: activePending}
+                : {kind: ready ? 'ready' : 'starting'});
+            return;
+        }
         if (store.readWorldbooks(options.sessionId).some(value =>
             worldbookPendingBlocksNamespace(value, identitySha256))) {
             // Capture current namespace DATA before deciding whether it may
@@ -308,14 +318,6 @@ export function createAuthorBrowserSession(options: {
             revoke();
             if (!previous || !sameBinding(previous, attachment.binding)) release(attachment.binding);
             notify({kind: 'pending'});return;
-        }
-        if (sameBinding(binding, attachment.binding) && frame) {
-            captured = attachment.snapshot;
-            frame.publishSnapshot(attachment.snapshot);
-            const activePending = store.read(options.sessionId);
-            notify(activePending && activePending.state !== 'terminal' ? {kind: 'pending', pending: activePending}
-                : {kind: ready ? 'ready' : 'starting'});
-            return;
         }
         if (!sameBinding(binding, attachment.binding)) revoke();
         else {frame?.dispose();frame = undefined;ready = false;options.container.replaceChildren();}
