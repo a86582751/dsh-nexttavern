@@ -42,6 +42,7 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
     const job=kind==='novel-export'?await novelExports.begin(session,
       mode==='organized'?await modelPolicy.resolve(session,kind,agent):undefined,{mode})
       :await beginCardWorkflow(session,kind,sourceFile,agent,requestId,undefined,mode)
+    if(job.status==='completed')return job
     if(job.execution==='deterministic'){
       if(kind==='novel-export')return novelExports.drive(session,job.id,agent)
       if(['queued','running','waiting-main'].includes(job.status)) await resumeCardWorkflows(session,agent)
