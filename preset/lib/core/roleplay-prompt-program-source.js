@@ -7,7 +7,7 @@ import { captureRoleplayTavernPromptSourceV1, captureRoleplayTavernPromptSourceD
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 import { validateTavernLoreCompilationV1, resolveTavernLoreContentTextV1 } from './tavern-lore-compiler.mjs';
 import { mapPromptProgramAuthorOriginsV1 } from './roleplay-prompt-template-only-origins.js';
-import { PROMPT_TEMPLATE_ONLY_FIELDS_V1, PromptTemplateOnlyRefusalV1, segmentPromptTemplateOnlyFieldV1 } from './roleplay-prompt-template-only-data.js';
+import { PROMPT_TEMPLATE_ONLY_FIELDS_V1, PromptTemplateOnlyRefusalV1, partitionPromptTemplateOnlyTextV1 } from './roleplay-prompt-template-only-data.js';
 export const PROMPT_PROGRAM_SOURCE_POLICY_V1 = Object.freeze({ schemaVersion: 1,
     encoding: 'native-author-prompt-program-source-policy-v1', authority: 'consumer-data-only',
     fields: PROMPT_TEMPLATE_ONLY_FIELDS_V1, book: 'actual-recomputed-entry-content-only-with-original-address-and-current-origins',
@@ -73,7 +73,7 @@ function textInventory(text, pointer) {
     const base = { text, textSha256: sha256(text), utf16Length: text.length, authority: 'none',
         execution: 'not-authorized' };
     try {
-        const segments = segmentPromptTemplateOnlyFieldV1(text, pointer);
+        const segments = partitionPromptTemplateOnlyTextV1(text, pointer);
         return { ...base, tokenization: 'complete-UTF16-partition', segments, segmentsSha256: recordSha256(segments),
             tokenizerDiagnostic: null };
     }

@@ -6,7 +6,7 @@ import {compileSchemaMvuInitData,selectNativeMvuInitializationPolicy} from './ta
 import {isNativeMvuYamlSourcePolicy} from './roleplay-mvu-source-policy.js'
 import {assertMvuLiteralSourceTextV1,assertMvuNonSchemaSourceExtensionsV1} from './roleplay-mvu-source.js'
 import {spanText,sourceDescriptor} from './roleplay-import-record.js'
-import {segmentPromptTemplateOnlyFieldV1,PromptTemplateOnlyRefusalV1} from './roleplay-prompt-template-only-data.js'
+import {partitionPromptTemplateOnlyTextV1,PromptTemplateOnlyRefusalV1} from './roleplay-prompt-template-only-data.js'
 import type {DecodedTavernCard,TavernOpeningContext,TavernOpeningCandidate} from './tavern-card.js'
 import type {ImportRecord} from './roleplay-import-types.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
@@ -87,13 +87,13 @@ function literal(text:string,context:TavernOpeningContext,pointer:string):void {
   catch {return openingSourceFail(initSyntax(text)?'OPENING_SOURCE_INITVAR_OUTSIDE_BINDING'
     :'OPENING_SOURCE_STATE_SYNTAX_UNSUPPORTED',pointer)}
 }
-function programText(text:PromptProgramTextV1|string,context:TavernOpeningContext,pointer:string):void {
+function programText(text:PromptProgramTextV1|string,pointer:string):void {
   const body=typeof text==='string'?text:text.text
-  let segments:ReturnType<typeof segmentPromptTemplateOnlyFieldV1>
+  let segments:ReturnType<typeof partitionPromptTemplateOnlyTextV1>
   if(typeof text==='string') {
     // Deleted originals still occur in immutable import projections. Partition
     // their archive text without inventing a current compiler entry identity.
-    try {segments=segmentPromptTemplateOnlyFieldV1(text,pointer)}
+    try {segments=partitionPromptTemplateOnlyTextV1(text,pointer)}
     catch(error) {
       if(!(error instanceof PromptTemplateOnlyRefusalV1))throw error
       return openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE',pointer)
@@ -104,7 +104,13 @@ function programText(text:PromptProgramTextV1|string,context:TavernOpeningContex
     }
     segments=text.segments
   }
-  for(const segment of segments)if(segment.kind==='literal')literal(body.slice(segment.start,segment.end),context,pointer)
+  for(const segment of segments)if(segment.kind==='literal') {
+    const part=body.slice(segment.start,segment.end)
+    if(initSyntax(part))openingSourceFail('OPENING_SOURCE_INITVAR_OUTSIDE_BINDING',pointer)
+    rawDataSyntax(part,pointer)
+  }
+  // Prompt macros belong to the actual frozen macro owner. The old literal
+  // identity renderer remains responsible for greetings and unknown metadata.
   // The other spans are inventory only. Root supplies the actual protected
   // renderer and its readonly variable/helper permissions; no JS is evaluated.
 }
@@ -215,8 +221,8 @@ export function calculatePromptOpeningRawInitV1(input:{source:TavernLoreSourceDa
         content:value.content,contentSha256:sha256(value.content),renderedContent:rendering.text,
         renderedContentSha256:sha256(rendering.text)})
     }else {
-      programText(entry?.original??value.content,context,pointer+'/content')
-      if(entry)programText(entry.effective,context,pointer+'/content/current')
+      programText(entry?.original??value.content,pointer+'/content')
+      if(entry)programText(entry.effective,pointer+'/content/current')
     }
     if(isInitVar&&entry)rawDataSyntax(entry.effective.text,pointer+'/content/current')
     rawEntries.push({ordinal:raw.ref.entryOrdinal,entryId:entry?.entryId??null,sourceKey:raw.entryKey,
@@ -227,7 +233,7 @@ export function calculatePromptOpeningRawInitV1(input:{source:TavernLoreSourceDa
   // Introduced current text remains ordinary prompt data. It is never added to
   // immutable raw InitVar entries or granted their calculator syntax scope.
   for(const entry of program.bookEntries)if(entry.originalAddress===null) {
-    programText(entry.effective,context,entry.contentPointer+'/current')
+    programText(entry.effective,entry.contentPointer+'/current')
   }
   const greetingFacts=candidates.map(candidate=>readPromptOpeningGreetingFactsV1(candidate,context))
   macros||=greetingFacts.some(greeting=>greeting.identityRendering.used)
@@ -298,8 +304,8 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
   // archive and open metadata are portable values, never interpreter input.
   if(!native)walk(decoded.document,'',rawSpecial)
   for(const field of program.authorFields) {
-    if(field.raw)programText(field.raw,context,field.originalPointer)
-    if(field.normalized)programText(field.normalized,context,field.originalPointer+'/normalized')
+    if(field.raw)programText(field.raw,field.originalPointer)
+    if(field.normalized)programText(field.normalized,field.originalPointer+'/normalized')
   }
   const currentSpecial=new Map<string,Set<string>>()
   const allow=(table:string,key:string,pointer:string)=>{
@@ -321,19 +327,19 @@ function inspectPromptOpeningWholeSourceV1(input:{source:TavernLoreSourceDataV1;
             &&entry.originalAddress+'/content'===part.originalPointer)?.original
             ??(archived?.original.content as string|undefined)
         if(owner===undefined||owner===null)openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE',group.groupId)
-        programText(owner,context,part.originalPointer)
+        programText(owner,part.originalPointer)
         const originalText=typeof owner==='string'?owner:owner.text
         if(part.kind==='worldbook-content'&&text!==originalText.replace(/\r\n?/g,'\n')+'\n') {
           openingSourceFail('OPENING_SOURCE_CURRENT_ORIGIN_UNAVAILABLE',group.groupId)
         }
       }
-    }else programText(group.effective,context,group.groupId)
+    }else programText(group.effective,group.groupId)
     allow(group.row.table,group.row.key,group.fieldPointer)
   }
   for(const entry of program.bookEntries)if(entry.currentProjection) {
     const init=entry.originalAddress===null?undefined:initByPointer.get(entry.originalAddress)
     if(init)rawDataSyntax(entry.currentProjection.effective.text,entry.contentPointer+'/current-row')
-    else programText(entry.currentProjection.effective,context,entry.contentPointer+'/current-row')
+    else programText(entry.currentProjection.effective,entry.contentPointer+'/current-row')
     allow(entry.currentProjection.row.table,entry.currentProjection.row.key,'/content')
     if(init) {
       const current=source.current.rows.find(row=>same(row.ref,entry.currentProjection!.row))?.value,

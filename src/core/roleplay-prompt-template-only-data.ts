@@ -54,6 +54,11 @@ export function segmentPromptTemplateOnlyFieldV1(text:string,pointer:string):rea
   if(typeof text!=='string'||text.length>TEMPLATE_LIMITS_V1.sourceChars) {
     promptTemplateOnlyFail('PROMPT_TEMPLATE_BUDGET',pointer)
   }
+  return partitionPromptTemplateOnlyTextV1(text,pointer)
+}
+/** Inert inventory partitioning does not admit a VM request. Program Source
+ * owns its proof budget; the old NoBook field admission above retains its cap. */
+export function partitionPromptTemplateOnlyTextV1(text:string,pointer:string):readonly PromptTemplateOnlySegmentV1[] {
   const result:PromptTemplateOnlySegmentV1[]=[]
   let cursor=0
   while(cursor<text.length) {
