@@ -324,6 +324,12 @@ export interface TavernSourceFrozenRefV1 {
 }
 export type TavernSourceInheritancePreparationV1={readonly kind:'legacy-unchanged'}
   |{readonly kind:'prepared-data';readonly disposition:'created'|'replayed';readonly frozenRef:TavernSourceFrozenRefV1}
+/** Invocation-local declarations are prepared outside the Source FIFO; heads
+ * are still frozen by the returned synchronous capture inside that FIFO. */
+export type TavernSourceAuthorChatForkSeedCaptureV2=(cut:TavernSourceNativeCutV1,
+  source:TavernLoreSourceDataV1)=>FrozenAuthorChatSeedsV2|undefined
+export type TavernSourcePrepareAuthorChatForkSeedsV2=()=>Promise<
+  TavernSourceAuthorChatForkSeedCaptureV2|undefined>
 export type TavernSourceInheritanceReadV1={readonly kind:'committed-data';readonly data:TavernSourceInheritanceDescriptorV1;
   readonly originalAbsenceProof:TavernLoreBookAbsenceProofV1|null;
   readonly editBaseline:TavernSourceEditBaselineV1;readonly materialBaseline:TavernSourceMaterialBaselineV1}
@@ -430,7 +436,8 @@ export interface TavernSourceCommittedLineageV1 {
   readonly ancestors:readonly TavernSourceStaticTransactionV1[]
 }
 export interface TavernSourceInheritanceOwnerV1 {
-  prepareSourceInheritance(operation:ForkOperation,reservation:ForkReservation):Promise<TavernSourceInheritancePreparationV1>
+  prepareSourceInheritance(operation:ForkOperation,reservation:ForkReservation,
+    prepareAuthorChatForkSeedsV2?:TavernSourcePrepareAuthorChatForkSeedsV2):Promise<TavernSourceInheritancePreparationV1>
   readPreparedFrozenSourceRef(childSessionId:string):TavernSourceFrozenRefV1
   readPreparedSourceInheritance(childSessionId:string):TavernSourcePreparedV1
   readCommittedStaticSourceInheritance(childSessionId:string):TavernSourceStaticTransactionV1

@@ -66,6 +66,7 @@ import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlan,MvuSchemaStoryPhase
   MvuSchemaStoryLive,MvuSchemaStoryPublicationBoundary} from './roleplay-mvu-schema-story-types.js'
 import type {MvuSchemaDerivedGenesis,MvuSchemaFrozenPrefixV1,MvuSchemaPrefixSeed}
   from './roleplay-mvu-schema-derived-types.js'
+import type {MvuSchemaForkCapture} from './roleplay-mvu-schema-derived.js'
 import type {SchemaJournalFrozenCut} from './roleplay-mvu-schema-journal.js'
 import type {WorldlineMessageEdits} from './roleplay-worldline-types.js'
 import type {MvuInheritedMessageEditProtocol} from './roleplay-mvu-prefix-facts.js'
@@ -680,7 +681,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     genesis:MvuSchemaDerivedGenesis|undefined,closure:MvuSchemaPrefixInputClosureV1):boolean {
     return recoverFrozenForkPrefix(prefix,events,genesis,closure)!==undefined
   }
-  async function captureForkPrefix(sid:string,nativeCut:number):Promise<MvuSchemaFrozenPrefixV1> {
+  async function captureForkPrefix(sid:string,nativeCut:number):Promise<MvuSchemaForkCapture> {
     const session=deps.session(sid)
     if(!session||!currentSession(session)||!Number.isSafeInteger(nativeCut)||nativeCut<1
       ||nativeCut>all(session).length)fail('SCHEMA_DERIVED_PARENT_UNPROVEN')
@@ -701,7 +702,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(!verifyForkPrefix(prefix,all(session).slice(0,nativeCut),initial)) {
       fail('SCHEMA_DERIVED_HISTORY_UNPROVEN')
     }
-    return prefix
+    const ready=history.ready
+    if(isAuthorHostJournalReadyV5(ready)&&ready.epoch.program.browserProgram?.schemaVersion===3) {
+      return {prefix,browserProgram:{program:ready.epoch.program.browserProgram,epochRef:ready.epochRef}}
+    }
+    return {prefix}
   }
   function readDataCurrent(view:SchemaReadData):boolean {
     return !disposed&&deps.session(view.session.id)===view.session&&deps.agent(view.session)===view.agent
@@ -954,19 +959,6 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   function readSnapshot(sid:string):MvuSchemaNumericalSnapshotV2|undefined {
     const view=views.get(sid)
     return view&&viewCurrent(view)?structuredClone(view.history.snapshot):undefined
-  }
-  /** The admitted current realm owns one immutable epoch Program. Legal
-   * earlier Story cuts in that realm retain this same Program; cross-Source
-   * reactivation/old-realm selection is not supplied by this reader. It only
-   * consumes the existing preflight view, without replay or a new lease. */
-  function readAdmittedBrowserProgram(sid:string) {
-    const view=views.get(sid)
-    if(!view||!viewCurrent(view))fail('SCHEMA_BROWSER_FACTS_UNPROVEN')
-    const ready=view.history.ready
-    if(!isAuthorHostJournalReadyV5(ready))return undefined
-    const program=ready.epoch.program.browserProgram
-    if(program?.schemaVersion!==3)return undefined
-    return Object.freeze({program,epochRef:ready.epochRef})
   }
   function readSchemaObservation(sid:string):{snapshot:MvuSchemaNumericalSnapshotV2;
     displayUpdates:readonly MvuAcceptedDisplayUpdate[];
@@ -1367,7 +1359,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       return view.history.consumed.get(plan.planSha256)===recordSha256({terminal,event,settlement})
     } catch {return false}
   }
-  return {preflight,adoptPublishedPlayer,observation,readSnapshot,readAdmittedBrowserProgram,readSchemaObservation,capturePromptScopes,executePrompt,captureBrowserFacts,
+  return {preflight,adoptPublishedPlayer,observation,readSnapshot,readSchemaObservation,capturePromptScopes,executePrompt,captureBrowserFacts,
     readEditBasis,captureManualBasis,captureHistoricalCut,borrowHistoricalCut,
     captureForkPrefix,recoverForkPrefix,verifyForkPrefix,captureFrozenForkPrefix,recoverFrozenForkPrefix,verifyFrozenForkPrefix,
     prepareCompletion,releaseClosing,verifyConsumed,

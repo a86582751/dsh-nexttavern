@@ -570,7 +570,6 @@ export function createRoleplayMvuOpening(deps) {
         readAuthorSource: source.readAuthorSource, authorSourceCurrent: source.authorSourceCurrent,
         createSchemaSelection, hasSchemaOpening, readSchemaInitialization,
         createSchemaStory, readSchemaSnapshot: (id) => schemaStory?.readSnapshot(id),
-        readAdmittedBrowserProgram: (id) => schemaStory?.readAdmittedBrowserProgram(id),
         readSchemaObservation: (id) => schemaStory?.readSchemaObservation(id),
         captureSchemaPromptScopes: (id) => schemaStory?.capturePromptScopes(id),
         executeAuthorPrompt: (...args) => {

@@ -11,7 +11,7 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
     assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget,
     locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey,
     requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText,
-    prepareDerivedBasis,numericalForkBlockCode} = deps
+    prepareWorldlineInheritance,numericalForkBlockCode} = deps
   const readOperation=(key: string)=>cloneBranchRecord(T.branch.get(key)) as StoredBranchOperation | undefined
   const updateOperation=(key: string,work: (current: StoredBranchOperation | undefined) => object)=>T.branch.update(key,current=>work(current as StoredBranchOperation | undefined)) as PromiseLike<StoredBranchOperation>
   async function publishWorldlineSelection(operation: StoredBranchOperation,child: BranchRouteSession) {
@@ -157,8 +157,7 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
                 reservedId=childSessionId
                 const reservedOperation={...operation,anchor:{...operation.anchor,expectedSeedLength:seedLength}},
                   reservation={sourceSessionId,childSessionId,seedLength}
-                const sourcePrepared=await deps.sourceInheritance?.prepareSourceInheritance(reservedOperation,reservation)
-                await prepareDerivedBasis?.(reservedOperation,reservation)
+                const sourcePrepared=await prepareWorldlineInheritance?.(reservedOperation,reservation)
                 // Only a newly captured pair must still agree across the two
                 // parent FIFO phases. Replay never refreshes a frozen package.
                 if(sourcePrepared?.kind==='prepared-data'&&sourcePrepared.disposition==='created')

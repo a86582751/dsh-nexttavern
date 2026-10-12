@@ -23,6 +23,10 @@ import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
 
 interface Table {get(key:string):unknown;put(key:string,value:unknown):Promise<unknown>;entries():Iterable<[string,unknown]>}
 type DerivedSession=Pick<Session,'id'|'snapshotEvents'|'inheritedEventCount'>
+export interface MvuSchemaForkCapture {
+  readonly prefix:MvuSchemaFrozenPrefixV1
+  readonly browserProgram?:Readonly<{program:BrowserProgramV3;epochRef:SchemaJournalReady['epochRef']}>
+}
 export interface MvuSchemaDerivedDeps extends MvuLineageDeps {
   branch:Table
   status:Table
@@ -34,7 +38,7 @@ export interface MvuSchemaDerivedDeps extends MvuLineageDeps {
   sourceInheritance?:MvuFrozenLineageDeps['sourceInheritance']
   readSourceDescriptor?:MvuFrozenLineageDeps['readSourceDescriptor']
   history:{
-    captureForkPrefix(sid:string,nativeCut:number):Promise<MvuSchemaFrozenPrefixV1>
+    captureForkPrefix(sid:string,nativeCut:number):Promise<MvuSchemaForkCapture>
     recoverForkPrefix(prefix:MvuSchemaFrozenPrefixV1,events:readonly SessionEvent[],
       initial?:MvuSchemaDerivedGenesis):SchemaJournalReady|undefined
     recoverFrozenForkPrefix?(prefix:MvuSchemaFrozenPrefixV1,events:readonly SessionEvent[],
@@ -197,7 +201,16 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       return captured.genesis
     }catch {return undefined}
   }
-  async function prepare(operation:ForkOperation,reservation:ForkReservation):Promise<void> {
+  async function capture(operation:ForkOperation,reservation:ForkReservation):Promise<MvuSchemaForkCapture|undefined> {
+    if(disposed)fail('SCHEMA_DERIVED_OWNER_DISPOSED')
+    if(operation.anchor.openingOnly||reservation.seedLength===0)return
+    if(deps.branch.get(mvuSchemaDerivedPreparedKey(reservation.childSessionId))!==undefined)return
+    // One historical replay supplies both Source declarations and numerical
+    // inheritance. The reservation coordinator captures before Source locking.
+    return deps.history.captureForkPrefix(reservation.sourceSessionId,reservation.seedLength)
+  }
+  async function prepare(operation:ForkOperation,reservation:ForkReservation,
+    capture:MvuSchemaForkCapture|undefined):Promise<void> {
     if(disposed)fail('SCHEMA_DERIVED_OWNER_DISPOSED')
     if(operation.anchor.openingOnly||reservation.seedLength===0)return
     const existing=deps.branch.get(mvuSchemaDerivedPreparedKey(reservation.childSessionId))
@@ -215,9 +228,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       })
       return
     }
-    // A read-only replay has no Source lock or publication owner. Capture the
-    // actual, unchanged parent facts under the one lock after it returns.
-    const frozen=await deps.history.captureForkPrefix(reservation.sourceSessionId,reservation.seedLength)
+    const frozen=capture!.prefix
     await deps.withSourceLock(reservation.sourceSessionId,async()=>{
       if(disposed)fail('SCHEMA_DERIVED_OWNER_DISPOSED')
       const parent=deps.session(reservation.sourceSessionId)
@@ -317,7 +328,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       }catch {fail('SCHEMA_DERIVED_READY_UNCONFIRMED')}
     })
   }
-  return {prepare,commit,readGenesis,readPreparedInheritedBrowserProgram,
+  return {capture,prepare,commit,readGenesis,readPreparedInheritedBrowserProgram,
     required:(sid:string)=>deps.branch.get(mvuSchemaDerivedPreparedKey(sid))!==undefined
       ||deps.branch.get(mvuSchemaDerivedBasisKey(sid))!==undefined,
     dispose():void {disposed=true;reservations.clear()}}

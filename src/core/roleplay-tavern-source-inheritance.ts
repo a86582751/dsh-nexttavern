@@ -28,6 +28,8 @@ import type {TavernSourceInheritanceDepsV1,TavernSourceInheritanceOwnerV1,Tavern
   TavernSourceStaticRowV1,TavernSourceInheritanceTableV1,TavernSourceProgramAbsenceObservationV1}
   from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernSourceStaticTransactionV1,TavernSourceEditBaselineV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {TavernSourcePrepareAuthorChatForkSeedsV2,TavernSourceAuthorChatForkSeedCaptureV2}
+  from './roleplay-tavern-source-inheritance-types.js'
 
 interface SourceClosedStateV1 extends TavernSourceStaticTransactionV1 {
   readonly edit:TavernSourceEditBaselineV1
@@ -307,7 +309,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       })
     }
   }
-  async function prepareSourceInheritance(operation:ForkOperation,reservation:ForkReservation) {
+  async function prepareSourceInheritance(operation:ForkOperation,reservation:ForkReservation,
+    prepareAuthorChatForkSeedsV2?:TavernSourcePrepareAuthorChatForkSeedsV2) {
     const {sourceSessionId:parent,childSessionId:child,seedLength}=reservation
     if(operation.anchor.sourceSessionId!==parent||parent===child||!Number.isSafeInteger(seedLength)||seedLength<0)
       inheritanceFailV1('SOURCE_INHERITANCE_OPERATION_CHANGED')
@@ -321,6 +324,11 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       return {kind:'prepared-data' as const,disposition:'replayed' as const,frozenRef:frozenInheritanceRefV1(p)}
     }
     await deps.ensureParentBranch(parent)
+    // Historical replay may acquire its own Source lock. Prepare declarations
+    // before this FIFO, then freeze reservation-time heads in the body below.
+    const captureAuthorChatSeedsV2:TavernSourceAuthorChatForkSeedCaptureV2|undefined=prepareAuthorChatForkSeedsV2
+      ?await prepareAuthorChatForkSeedsV2()
+      :(cut,source)=>deps.captureAuthorChatForkSeedsV2?.(parent,child,operation.operationId,cut,source)
     return deps.withSourceLock(parent,async()=>{
       // A second reservation may have waited for the same parent lock.
       if(branch.get(tavernSourcePreparedKeyV1(child))!==undefined) {
@@ -347,7 +355,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       const frozenAuthorChatSeed=deps.captureAuthorChatForkSeed?.(parent,child,operation.operationId,nativeCut,source)
       if(frozenAuthorChatSeed!==undefined&&!deps.applyAuthorChatForkSeed)
         inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
-      const frozenAuthorChatSeeds=deps.captureAuthorChatForkSeedsV2?.(parent,child,operation.operationId,nativeCut,source)
+      const frozenAuthorChatSeeds=captureAuthorChatSeedsV2?.(nativeCut,source)
       if(frozenAuthorChatSeeds!==undefined&&!deps.applyAuthorChatForkSeedsV2)
         inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
       const ancestor=source.inheritance?readCommittedSourceInheritance(parent):null

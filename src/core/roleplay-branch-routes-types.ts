@@ -2,7 +2,7 @@ import type {ConnectionFetchRoute} from '@deepseek-ai/dsh-client-connection'
 import type { createRoleplayWorldlines } from './roleplay-worldlines.js'
 import type { BranchSession, ForkOperation, RegistrationResult } from './roleplay-worldline-types.js'
 import type { createConversationCatalog } from './tavern-conversations.js'
-import type {TavernSourceInheritanceOwnerV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {TavernSourceInheritanceOwnerV1,TavernSourceInheritancePreparationV1} from './roleplay-tavern-source-inheritance-types.js'
 
 export interface BranchRouteSession extends BranchSession {
   header?: NonNullable<BranchSession['header']> & {cwd?: string}
@@ -78,9 +78,10 @@ export interface BranchRoutesDependencies extends Pick<Worldlines,
   }}
   resolveRoleplaySession(id: string | null | undefined): Promise<BranchRouteSession | null | undefined>
   cloneBranchRecord<T>(value: T): T
-  /** Freeze numerical prefix facts inside the Native reservation callback,
-   * before child publication; never hold a Source lock across forkPrepared. */
-  prepareDerivedBasis?(operation: StoredBranchOperation, reservation: ForkReservation): Promise<void>
+  /** Coordinate Source and numerical inheritance for the actual reservation.
+   * Historical replay remains outside Source's FIFO and Native forkPrepared. */
+  prepareWorldlineInheritance?(operation: StoredBranchOperation, reservation: ForkReservation)
+    :Promise<TavernSourceInheritancePreparationV1>
   /** Refuse before any Native child/reservation or plain-branch fallback. */
   numericalForkBlockCode?(sessionId:string):string|undefined
   generateProgramOpening?(input:{sessionId:string;operation:StoredBranchOperation;messageId:string;instruction:string})

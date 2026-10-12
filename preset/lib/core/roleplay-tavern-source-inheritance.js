@@ -291,7 +291,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps) {
             });
         }
     }
-    async function prepareSourceInheritance(operation, reservation) {
+    async function prepareSourceInheritance(operation, reservation, prepareAuthorChatForkSeedsV2) {
         const { sourceSessionId: parent, childSessionId: child, seedLength } = reservation;
         if (operation.anchor.sourceSessionId !== parent || parent === child || !Number.isSafeInteger(seedLength) || seedLength < 0)
             inheritanceFailV1('SOURCE_INHERITANCE_OPERATION_CHANGED');
@@ -305,6 +305,11 @@ export function createRoleplayTavernSourceInheritanceV1(deps) {
             return { kind: 'prepared-data', disposition: 'replayed', frozenRef: frozenInheritanceRefV1(p) };
         }
         await deps.ensureParentBranch(parent);
+        // Historical replay may acquire its own Source lock. Prepare declarations
+        // before this FIFO, then freeze reservation-time heads in the body below.
+        const captureAuthorChatSeedsV2 = prepareAuthorChatForkSeedsV2
+            ? await prepareAuthorChatForkSeedsV2()
+            : (cut, source) => deps.captureAuthorChatForkSeedsV2?.(parent, child, operation.operationId, cut, source);
         return deps.withSourceLock(parent, async () => {
             // A second reservation may have waited for the same parent lock.
             if (branch.get(tavernSourcePreparedKeyV1(child)) !== undefined) {
@@ -333,7 +338,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps) {
             const frozenAuthorChatSeed = deps.captureAuthorChatForkSeed?.(parent, child, operation.operationId, nativeCut, source);
             if (frozenAuthorChatSeed !== undefined && !deps.applyAuthorChatForkSeed)
                 inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED');
-            const frozenAuthorChatSeeds = deps.captureAuthorChatForkSeedsV2?.(parent, child, operation.operationId, nativeCut, source);
+            const frozenAuthorChatSeeds = captureAuthorChatSeedsV2?.(nativeCut, source);
             if (frozenAuthorChatSeeds !== undefined && !deps.applyAuthorChatForkSeedsV2)
                 inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED');
             const ancestor = source.inheritance ? readCommittedSourceInheritance(parent) : null;

@@ -644,7 +644,11 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
         if (!verifyForkPrefix(prefix, all(session).slice(0, nativeCut), initial)) {
             fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
         }
-        return prefix;
+        const ready = history.ready;
+        if (isAuthorHostJournalReadyV5(ready) && ready.epoch.program.browserProgram?.schemaVersion === 3) {
+            return { prefix, browserProgram: { program: ready.epoch.program.browserProgram, epochRef: ready.epochRef } };
+        }
+        return { prefix };
     }
     function readDataCurrent(view) {
         return !disposed && deps.session(view.session.id) === view.session && deps.agent(view.session) === view.agent;
@@ -951,22 +955,6 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
     function readSnapshot(sid) {
         const view = views.get(sid);
         return view && viewCurrent(view) ? structuredClone(view.history.snapshot) : undefined;
-    }
-    /** The admitted current realm owns one immutable epoch Program. Legal
-     * earlier Story cuts in that realm retain this same Program; cross-Source
-     * reactivation/old-realm selection is not supplied by this reader. It only
-     * consumes the existing preflight view, without replay or a new lease. */
-    function readAdmittedBrowserProgram(sid) {
-        const view = views.get(sid);
-        if (!view || !viewCurrent(view))
-            fail('SCHEMA_BROWSER_FACTS_UNPROVEN');
-        const ready = view.history.ready;
-        if (!isAuthorHostJournalReadyV5(ready))
-            return undefined;
-        const program = ready.epoch.program.browserProgram;
-        if (program?.schemaVersion !== 3)
-            return undefined;
-        return Object.freeze({ program, epochRef: ready.epochRef });
     }
     function readSchemaObservation(sid) {
         const view = views.get(sid), history = view && viewCurrent(view) ? view.history : undefined;
@@ -1410,7 +1398,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             return false;
         }
     }
-    return { preflight, adoptPublishedPlayer, observation, readSnapshot, readAdmittedBrowserProgram, readSchemaObservation, capturePromptScopes, executePrompt, captureBrowserFacts,
+    return { preflight, adoptPublishedPlayer, observation, readSnapshot, readSchemaObservation, capturePromptScopes, executePrompt, captureBrowserFacts,
         readEditBasis, captureManualBasis, captureHistoricalCut, borrowHistoricalCut,
         captureForkPrefix, recoverForkPrefix, verifyForkPrefix, captureFrozenForkPrefix, recoverFrozenForkPrefix, verifyFrozenForkPrefix,
         prepareCompletion, releaseClosing, verifyConsumed,
