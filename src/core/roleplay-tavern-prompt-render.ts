@@ -238,6 +238,13 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
       return output.entries.map((projection,index)=>{
         assertTavernPromptProjectionReadyV1(projection)
         return {entryId:placements[index]!.entryId,inputSha256:placements[index]!.effectiveContentSha256,
+      if(!deps.rules.length) {
+        ownerCheckpoint()
+        // The evaluator owns the text/hash pair. With no regex rules there
+        // is no transformation to execute or projection receipt to publish.
+        return placements.map(item=>({entryId:item.entryId,inputSha256:item.effectiveContentSha256,
+          text:item.text,outputSha256:item.effectiveContentSha256}))
+      }
           text:projection.outputText,outputSha256:projection.outputSha256}
       })
     },audit:()=>freeze({schemaVersion:1,encoding:'native-tavern-render-chain-audit-v1',authority:'consumer-data-only',
