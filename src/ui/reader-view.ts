@@ -21,7 +21,11 @@ interface ReaderNode extends Record<string, unknown> {
     location?: {turn?: {start?: {time?: number;};end?: {time?: number;};};};
 }
 interface TurnMeta {usage: unknown;runMs: number | null;tokensPerSecond: number;}
-interface ReaderPart {kind: 'user' | 'narrator';text: string;time: number;seq?: number;messageId?: string;failedTurn?: number;usage?: unknown;turnMeta?: TurnMeta | null;transient?: boolean;streamKey?: string;}
+interface ReaderPart {
+    kind: 'user' | 'narrator';text: string;time: number;
+    seq?: number;messageId?: string;turn?: number;failedTurn?: number;
+    usage?: unknown;turnMeta?: TurnMeta | null;transient?: boolean;streamKey?: string;
+}
 interface HistoryAnchor {
     sessionId: string | null;key: string | null;top: number;headKey: string | null | undefined;count: number;
     resetIfMissing?: boolean;
@@ -29,7 +33,7 @@ interface HistoryAnchor {
 interface ReaderState extends StateReply {
     activity?: ActivityState;
     rules?: {beauty?: {regexRules?: ReaderRule[];css?: string;js?: string;};};
-    surfaceNodes?: {seq?: number;}[];
+    surfaceNodes?: {seq?: number;turn?: number;}[];
     failedTurnRecoveryByTurn?: Record<string, unknown>;
     // Reader consumes only these display fields; numerical snapshots and
     // server execution contracts belong to the state producer.
@@ -234,7 +238,9 @@ React,
         const nodes: ReaderNode[] = Array.isArray(chat?.order) && chat?.nodes && typeof chat.nodes.get === 'function'
             ? chat.order.map((key) => chat.nodes!.get(key)).filter((node): node is ReaderNode => !!node && node.visibility !== 'hidden')
             : (normalizeConversationNodes(snapshot) as ReaderNode[]).filter((node) => node && node.visibility !== 'hidden');
-        const surfaceSeqs = new Set((state?.surfaceNodes ?? []).map((entry) => Number(entry?.seq)).filter(Number.isSafeInteger));
+        const surfaceNodesBySeq = new Map((state?.surfaceNodes ?? [])
+            .map(entry => [Number(entry?.seq), entry] as const)
+            .filter(([seq]) => Number.isSafeInteger(seq)));
         const turnMetaByMessageId = new Map<string, TurnMeta>();
         for (const node of nodes) {
             if (node?.kind !== 'turn-tail') continue;
@@ -263,7 +269,7 @@ React,
             // server-authoritative surface sequence.
             if (kind === 'assistant-step' && node?.data?.status && node.data.status !== 'settled') return false;
             const seq = readerNodeSeq(node);
-            if (seq === null || !surfaceSeqs.has(seq) || selectedNodeSeqs.has(seq)) return false;
+            if (seq === null || !surfaceNodesBySeq.has(seq) || selectedNodeSeqs.has(seq)) return false;
             selectedNodeSeqs.add(seq);
             return true;
         });
@@ -299,6 +305,7 @@ React,
                     text,
                     seq,
                     messageId,
+                    turn: surfaceNodesBySeq.get(seq)!.turn,
                     time: readerTime(node),
 
                     usage: node.data?.usage,
@@ -408,7 +415,7 @@ React,
 
                     allNodeCount: nodes.length,
 
-                    surfaceSeqs: [...surfaceSeqs].slice(-12),
+                    surfaceSeqs: [...surfaceNodesBySeq.keys()].slice(-12),
 
                     snapshotType: typeof snapshot,
 
@@ -625,7 +632,9 @@ React,
                         { sessionId, messageId: undefined, turn: part.failedTurn, text: part.text }
                     )
                     : React.createElement(UserActions, { sessionId, seq: part.seq, text: part.text })
-                : React.createElement(AssistantActions, { sessionId, messageId: part.messageId, text: part.text });
+                : React.createElement(AssistantActions, {
+                    sessionId, messageId: part.messageId, turn: part.turn, text: part.text,
+                });
             const usage = usageTokens(part.turnMeta?.usage ?? part.usage);
             const meta = [
                 usage !== null ? `用量 ${usage.toLocaleString()} tok` : '',
