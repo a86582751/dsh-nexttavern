@@ -156,8 +156,8 @@ function readProgramGeneratedNativeFactsV1(input:Omit<ProgramGeneratedNativeObse
     return readGeneratedProjectionFactsV1(input,inspected)
   }catch{return unknown('PROGRAM_GENERATED_FACTS_INVALID')}
 }
-/** Original bytes establish the receipt. An inherited current carrier may
- * project a later edit while retaining that exact historical publication. */
+/** Original bytes establish the receipt. Current sessions and inherited
+ * carriers may project later edits without changing that publication. */
 function readGeneratedProjectionFactsV1(input:Omit<ProgramGeneratedNativeObservationReadInputV1,'assertCurrent'>
   |ProgramInheritedGeneratedPublicationReadInputV1,
   inspected:Extract<NativeOpeningGenerationInspectionV1,{kind:'complete'}>,
@@ -183,7 +183,7 @@ function readGeneratedProjectionFactsV1(input:Omit<ProgramGeneratedNativeObserva
         ||events.filter(candidate=>messageIdOf(candidate)===output.messageId).length!==1
         ||nodes.filter(seq=>Number(seq)===output.eventRef.seq).length!==1
         ||mode!=='retained-publication'&&deletedMessageIds!.includes(output.messageId)
-        ||mode!=='current-carrier-original'&&(messageEdits.latest(coreEvents,output.eventRef.seq)!==null
+        ||mode==='retained-publication'&&(messageEdits.latest(coreEvents,output.eventRef.seq)!==null
           ||nativeInputSha256(observation.deriveEventMessage(event))!==output.messageSha256)) {
         return unknown('PROGRAM_GENERATED_ORIGINAL_OUTPUT_CHANGED')
       }
