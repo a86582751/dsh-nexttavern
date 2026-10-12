@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/dsh-http-proxy",
+  "upstreamPackage": "@deepseek-ai/dsh-http-proxy",
+  "upstreamVersion": "0.1.7-rc.2",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "license": "MIT",
+  "files": [
+    {
+      "upstream": "packages/util/http-proxy/src/index.ts",
+      "upstreamSha256": "065a1154dd85977e4549ff692554b1d5c002a835ba30ce15a02d210e8f9678b6",
+      "source": "src/index.ts"
+    },
+    {
+      "upstream": "packages/util/http-proxy/src/install.ts",
+      "upstreamSha256": "acf606d8cdbee7364c3c55dbae025e3fa1c2a4d81b708d071e57562546894427",
+      "source": "src/install.ts"
+    },
+    {
+      "upstream": "packages/util/http-proxy/src/policy.ts",
+      "upstreamSha256": "4827eabf9fac440298fa38e1bdc4189bafa9a7d98852a25848d62b03ecc6aacf",
+      "source": "src/policy.ts"
+    },
+    {
+      "upstream": "packages/util/http-proxy/package.json",
+      "upstreamSha256": "3dcdfb6dccaec841142a7a1fa1de146e33b978a1fce59957111d6f08da542d22",
+      "source": "package.json"
+    },
+    {
+      "upstream": "LICENSE",
+      "upstreamSha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+      "source": "LICENSE.upstream"
+    }
+  ],
+  "changes": [
+    "Generated .js import paths and maintained same-name library identity",
+    "Use HTTP/1.1 in both process-policy Agent constructors so Node built-in fetch preserves response headers and decodes Brotli bodies"
+  ],
+  "formalForkSynchronized": false
+}

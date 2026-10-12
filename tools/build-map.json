@@ -7932,6 +7932,33 @@
       "outputs": [
         "development/author-browser-runtime-v3-author-dialog-v1/lib/tavern-author-browser-provider.mjs"
       ]
+    },
+    {
+      "artifact": "compat-http-proxy-index-js",
+      "source": "development/http-proxy/src/index.ts",
+      "banner": "runtime/alpha3/compat/http-proxy/src/index.ts",
+      "primaryOutput": "development/http-proxy/lib/index.js",
+      "outputs": [
+        "development/http-proxy/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-http-proxy-install-js",
+      "source": "development/http-proxy/src/install.ts",
+      "banner": "runtime/alpha3/compat/http-proxy/src/install.ts",
+      "primaryOutput": "development/http-proxy/lib/install.js",
+      "outputs": [
+        "development/http-proxy/lib/install.js"
+      ]
+    },
+    {
+      "artifact": "compat-http-proxy-policy-js",
+      "source": "development/http-proxy/src/policy.ts",
+      "banner": "runtime/alpha3/compat/http-proxy/src/policy.ts",
+      "primaryOutput": "development/http-proxy/lib/policy.js",
+      "outputs": [
+        "development/http-proxy/lib/policy.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -43205,6 +43232,66 @@
         "id": "author-host-runtime-v5-author-dialog-v1-package-json",
         "source": "development/author-host-runtime-v5-author-dialog-v1/package.json",
         "canonicalSource": "runtime/alpha3/compat/author-host-runtime-v5-author-dialog-v1/package.json"
+      },
+      {
+        "id": "compat-http-proxy-index-ts",
+        "source": "development/http-proxy/src/index.ts",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/src/index.ts"
+      },
+      {
+        "id": "compat-http-proxy-index-js",
+        "source": "development/http-proxy/lib/index.js",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/lib/index.js"
+      },
+      {
+        "id": "compat-http-proxy-install-ts",
+        "source": "development/http-proxy/src/install.ts",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/src/install.ts"
+      },
+      {
+        "id": "compat-http-proxy-install-js",
+        "source": "development/http-proxy/lib/install.js",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/lib/install.js"
+      },
+      {
+        "id": "compat-http-proxy-policy-ts",
+        "source": "development/http-proxy/src/policy.ts",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/src/policy.ts"
+      },
+      {
+        "id": "compat-http-proxy-policy-js",
+        "source": "development/http-proxy/lib/policy.js",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/lib/policy.js"
+      },
+      {
+        "id": "compat-http-proxy-package-json",
+        "source": "development/http-proxy/package.json",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/package.json"
+      },
+      {
+        "id": "compat-http-proxy-readme-md",
+        "source": "development/http-proxy/README.md",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/README.md"
+      },
+      {
+        "id": "compat-http-proxy-license",
+        "source": "development/http-proxy/LICENSE",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/LICENSE"
+      },
+      {
+        "id": "compat-http-proxy-license-upstream",
+        "source": "development/http-proxy/LICENSE.upstream",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/LICENSE.upstream"
+      },
+      {
+        "id": "compat-http-proxy-notice",
+        "source": "development/http-proxy/NOTICE",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/NOTICE"
+      },
+      {
+        "id": "compat-http-proxy-origin-json",
+        "source": "development/http-proxy/ORIGIN.json",
+        "canonicalSource": "runtime/alpha3/compat/http-proxy/ORIGIN.json"
       }
     ],
     "publicRelease": {
@@ -160255,6 +160342,63 @@
           "lib/operations/build-typescript.mjs"
         ],
         "banner": "runtime/alpha3/compat/author-browser-runtime-v3-author-dialog-v1/src/tavern-author-browser-provider.mts"
+      },
+      {
+        "id": "compat-http-proxy-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-http-proxy-index-js",
+        "entry": "development/http-proxy/src/index.ts",
+        "typeContext": "http-proxy-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/http-proxy/src/index.ts",
+          "development/http-proxy/src/install.ts",
+          "development/http-proxy/src/policy.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/http-proxy/src/index.ts"
+      },
+      {
+        "id": "compat-http-proxy-install-build",
+        "kind": "typescript-module",
+        "artifact": "compat-http-proxy-install-js",
+        "entry": "development/http-proxy/src/install.ts",
+        "typeContext": "http-proxy-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/http-proxy/src/index.ts",
+          "development/http-proxy/src/install.ts",
+          "development/http-proxy/src/policy.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/http-proxy/src/install.ts"
+      },
+      {
+        "id": "compat-http-proxy-policy-build",
+        "kind": "typescript-module",
+        "artifact": "compat-http-proxy-policy-js",
+        "entry": "development/http-proxy/src/policy.ts",
+        "typeContext": "http-proxy-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/http-proxy/src/index.ts",
+          "development/http-proxy/src/install.ts",
+          "development/http-proxy/src/policy.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/http-proxy/src/policy.ts"
       }
     ],
     "typeScript": {
@@ -160650,6 +160794,14 @@
             "build-tools/node_modules/@deepseek-ai/dsh-subagent/lib/types/catalog.d.ts",
             "src/core/tavern-author-html-parser-declarations.d.ts"
           ]
+        },
+        "http-proxy-compat": {
+          "paths": {
+            "undici": [
+              "./node_modules/undici-http-proxy"
+            ]
+          },
+          "rewriteRelativeImportExtensions": true
         }
       }
     },
