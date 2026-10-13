@@ -4,13 +4,15 @@
 
 **简体中文** · [English](README.en.md)
 
-> **便携安装修复预发行：[0.2.9-rc.2](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2)。** 若 Windows 一键安装提示找不到 pnpm，请下载本预发行安装器并使用新目录。它自带私有包管理器，支持中文和空格的可写路径；无需另装全局 pnpm。正式 npm latest 仍为 0.2.9。
+> **最新安装修复：0.2.9-rc.3。** [GitHub 最新发行](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.3) 修复四项安装／启动问题，并支持配置慢模型的首响应等待时间。下方便携安装器和归档使用 rc.3；npm latest 仍为 0.2.9。
 
 > **0.2.9 — Distribution & Installation Fix。** 这是基于 0.2.8 的安装分发补丁：预置第三方 SDK 依赖，修复首次安装及私有组件重新链接时的构建脚本许可问题。正式来源为 [npm `dsh-nexttavern`](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9) 和 [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)，支持 Harness `0.1.7-rc.2`／web／Session V4。开发请读[重建指南](CONTRIBUTING.md)。
 
 > **从 0.2.5 等旧宿主版本迁移，请使用新目录。** 先在旧环境导出角色卡或小说，再安装 0.2.9；旧会话不兼容，小说稿不保存完整会话状态。0.2.8 → 0.2.9 延续同一宿主与会话线，更新步骤见[更新、卸载与回滚](#更新卸载与回滚)。
 
 抱歉让大家久等了。0.3 希望兼容更广泛的 SillyTavern 社区卡，包括 MVU 变量、EJS、RUBY 与前端美化；要让它们接入自有状态、结构化事件和恢复机制，难度比预期更大，我们正在加速推进。这次 0.2.9 先把安装分发和第三方依赖兼容的坑补上，角色扮演功能继续沿用 0.2.8，上述更广泛的兼容仍在开发。感谢大家继续反馈、陪我们把它打磨好。
+
+0.3 开发进度（2026-10-03）：确定性导入、部分 MVU 状态与恢复路径已有验证；当前先补齐开场选择与初始化、各状态协议的编辑／分支／重开和关键操作，再推进依赖这些合同的动态模板与前端。完整兼容验收尚未完成，这些开发结果尚未包含在 0.2.9 正式包中。
 
 **让角色独立推演，让世界随你的选择展开。**
 
@@ -50,13 +52,13 @@ npm install -g @deepseek-ai/dsh@0.1.7-rc.2
 
 ### Windows
 
-希望由安装器准备便携运行时与快捷方式，可下载 [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe)。Windows on ARM 使用 [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe)。从 0.2.5 迁移时选择新的安装目录；完整步骤、未签名提示与验证范围见 [Windows 一键安装指南](INSTALL-WINDOWS.md)。
+希望由安装器准备便携运行时与快捷方式，可下载 [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.exe)。Windows on ARM 使用 [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup-arm64.exe)。从 0.2.5 迁移时选择新的安装目录；完整步骤、未签名提示与验证范围见 [Windows 一键安装指南](INSTALL-WINDOWS.md)。
 
 两端安装器准备便携宿主后，也通过官方 `plugin add` 安装已校验的归档；不再向宿主重放旧兼容补丁。安装失败时保留未完成回执，重新运行可以恢复本安装器拥有的工作。
 
 ### Linux
 
-[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从 0.2.5 迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
+[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.sh) 准备便携 Node.js、安装目录及启动／停止入口，面向 x86_64 与 aarch64（glibc），不需要 root 或系统包管理器。从 0.2.5 迁移时使用新的 `--root`；完整步骤与验证范围见 [Linux 一键安装指南](INSTALL-LINUX.md)。
 
 ### 安装与模型费用
 
@@ -253,6 +255,27 @@ flowchart TD
 
 **人物各自推演之外，模型也可以分工。** 你可以让正文、后台记忆、读卡、状态与导出任务使用适合的模型，也可以统一跟随主模型；模型设置支持全局默认和当前会话覆盖。
 
+### 慢速本地聊天模型的首响应等待
+
+如果本地聊天模型生成首个响应较慢，可在现有角色扮演预设中为 `roleplay-core` 的配置设置可选项 `firstResponseTimeoutMs`；默认值是 **90000 毫秒（90 秒）**。例如把它设为 `600000` 可等待最多 10 分钟。此项只延长现有请求等待首个响应的时间；`workerMaxTokens` 是输出 token 上限，不是时间设置。
+
+配置应放在当前产品配置 `addons[id=preset-roleplay].config.plugins[id=nexttavern-roleplay-composition].config.patches[id=roleplay-core].config` 中，不要放在产品根 `config`。下面只展示要编辑的 composition 子行，不是可替换 profile 的完整配置；官方补丁会整体替换该行的 `config`，请保留已有的全部值并只增加需要的字段：
+
+```yaml
+# 编辑 addons[id=preset-roleplay].config.plugins 中已有的 composition 子行
+- id: nexttavern-roleplay-composition
+  name: dsh-nexttavern-presets/composition
+  config:
+    patches:
+      - id: roleplay-core
+        name: './lib/core/roleplay-core.js'
+        config:
+          # 保留此处已有的所有 roleplay-core 值
+          firstResponseTimeoutMs: 600000
+```
+
+新配置由新的 preset revision 使用；已有会话仍固定使用已挂载的 revision，确认设置时请新建会话。作者分享的一次 27B 本地模型试验使用了 96k 上下文并启用 reasoning；这只是单次经验，不是所有模型的最低要求。`windowTokens` 应符合所选模型实际支持的上下文长度，reasoning 选项依模型而异。
+
 <details>
 <summary>查看多模型协同设置</summary>
 
@@ -368,23 +391,23 @@ flowchart TD
 
 ## 下载
 
-**架构说完，下面是取用与维护这一版需要的材料。** 先看这一版发布了哪些文件。
+**候选文档提示：** 下方链接预备指向 0.2.9-rc.3 资产，公开发行前不可用；当前 GitHub 最新发行仍为 0.2.9-rc.2。发布后请核对对应 Release 的文件与校验值。
 
-- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-nexttavern.tgz)，含统一插件、预构建 UI、源码、preset、参考卡、随包组件、CLI 和可选公网鉴权源包。
-- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-debug.tgz)。
-- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
+- [主包 dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/dsh-nexttavern.tgz)，含统一插件、预构建 UI、源码、preset、参考卡、随包组件、CLI 和可选公网鉴权源包。
+- [独立 dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/dsh-debug.tgz)。
+- [公网鉴权插件 dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/dsh-auth-webserver.tgz)，安装步骤见[手机电脑公网访问指南](PUBLIC-ACCESS.md)。
 
 一键安装器：
 
-- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe)（Windows x64）
-- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe)（Windows on ARM）
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/nexttavern-setup.tgz)（安装器的 npm 归档）
+- [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.exe)（Windows x64）
+- [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup-arm64.exe)（Windows on ARM）
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.sh)（Linux，x86_64 / aarch64）
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/nexttavern-setup.tgz)（安装器的 npm 归档）
 
 校验与来源：
 
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/provenance.json)
-- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)。npm 包名为 `dsh-nexttavern`，通过官方 `dsh plugin --profile web add dsh-nexttavern` 安装。
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/SHA256SUMS) 与 [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/provenance.json)
+- [版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.3)。npm 包名为 `dsh-nexttavern`，通过官方 `dsh plugin --profile web add dsh-nexttavern` 安装。
 
 ## 安装
 
@@ -403,7 +426,7 @@ dsh web --host 127.0.0.1 --port 3510
 
 浏览器中选择刚建的工作区，配置自己的模型供应商，新建会话时选“角色扮演模式”。后续启动仍须使用同一个 `DSH_HOME`，再运行最后一条命令。
 
-也可以从 [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9) 下载主包，与 `SHA256SUMS` 核对后，以本地归档替代 npm 包名：
+也可以从 [v0.2.9-rc.3 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.3) 下载主包，与 `SHA256SUMS` 核对后，以本地归档替代 npm 包名：
 
 ```powershell
 dsh plugin --profile web add ./dsh-nexttavern.tgz

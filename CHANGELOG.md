@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.9-rc.3 — 安装与就绪修复 — 2026-10-13
+
+GitHub latest 与当前便携安装器／归档下载路径使用 rc.3，npm latest 仍为 0.2.9。
+
+- #12：启动和缓存判断允许 npm 生成的 `.bin/pnpm` 符号链接，继续检查其 `.bin` 目录位于本安装目录内。#13：由 `lstat` 判断文件类型，使 Android 共享文件系统上的普通硬链接仍按普通文件处理；不要求 pnpm 改为复制安装。
+- #14：就绪等待默认延长至 **600 秒**，可用正整数毫秒环境变量 `NEXTTAVERN_READY_TIMEOUT_MS` 覆盖。期限到达时若进程仍存活，保留进程和回执，下一次启动可继续等待；停止操作不依赖这个环境变量。进程真实退出或初始化错误仍走现有清理流程。
+- #15：启动探测使用日志中最新的登录 token，完成官方登录跳转和 cookie 鉴权后才初始化工作区；不再因旧 token 或正常的 303 响应误报未就绪。清理旧日志后也能继续等待。
+- 感谢 [FuRongJun-1999](https://github.com/FuRongJun-1999) 的 PR #10：为本地慢响应模型提供可选 `firstResponseTimeoutMs`，默认仍是 **90 秒**。设置位置与完整配置保留要求见 README 的[首响应等待说明](README.md#慢速本地聊天模型的首响应等待)。覆盖值只延长现有付费请求等待，不增加请求、重试或缓存工作；成本影响限于更长的供应商执行时间。
+- 本地 Linux suite 与 Windows 定点 runner 已通过；Windows 另有真实 HTTP 303-cookie-200 探测。Linux 的 tiny native metadata fixture 不是发行安装包或完整 Harness；未据此宣称真实 Linux／ARM64 设备或完整 Harness 安装通过。该批次确定性改动及 PR #10 新增运行时模型请求正常／重试／回退为 **0 / 0 / 0**。
+
+English: 0.2.9-rc.3 addresses four installation/readiness reports (#12–#15) and adds PR #10's optional first-response wait for slow local chat models (90 seconds by default). Targeted Linux and Windows checks passed; real Linux/ARM64 device coverage remains unverified. GitHub latest and portable download links use rc.3. npm latest remains 0.2.9.
+
+## 0.2.9-rc.2 — GitHub Latest & Issue #5 Closeout — 2026-10-03
+
+- 将已核验的 0.2.9-rc.2 设为 GitHub latest，首页模板、中英 README 与所有当前便携安装器／归档下载链接统一到该版本，避免下载旧安装器。npm latest 按用户选择保持 0.2.9。
+- Windows 缺少 pnpm 的安装问题已修复，#5 回复并按已解决关闭；#7 沿用此前说明与关闭结果。
+- 原发行 tag、资产、哈希与安装器保持不变；复用已通过的代码与资产检查，官网发布按本次 head 重新读回。
+
+English: 0.2.9-rc.2 is now the latest GitHub release. Current portable installer/archive links and the homepage point to it. npm latest remains 0.2.9. Issue #5 is resolved and closed; release asset bytes are unchanged.
+
 ## 0.2.9-rc.2 — Portable Package Manager Fix — 2026-10-03
 
 - 修复 Windows 全新便携安装在官方 `plugin add` 子进程中找不到 pnpm 的问题：随包锁定私有 pnpm，为安装及后续启动传递正确 PATH。缓存回执存在但私有命令丢失时，重试会补齐依赖。

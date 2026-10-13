@@ -4,13 +4,15 @@
 
 [简体中文](README.md) · **English**
 
-> **Portable installer fix prerelease: [0.2.9-rc.2](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2).** If the Windows installer cannot find pnpm, use this installer in a fresh directory. It includes a private package manager and supports writable paths containing spaces or Chinese characters, without a global pnpm installation. The stable npm latest remains 0.2.9.
+> **Latest installation fix: 0.2.9-rc.3.** The [latest GitHub release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.3) fixes four installation/startup issues and adds a configurable first-response wait for slow models. Portable installer and archive links below use rc.3; npm latest remains 0.2.9.
 
 > **0.2.9 — Distribution & Installation Fix.** This installation patch builds on 0.2.8: bundled third-party SDK dependencies fix build-script permission failures during first installation and private-component relinking. Official sources are [npm `dsh-nexttavern`](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9) and the [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9). The supported host remains Harness `0.1.7-rc.2` / web / Session V4. See the [contributor guide](CONTRIBUTING.md) for development.
 
 > **Migrating from 0.2.5 or another old host requires fresh directories.** Export character cards or novels before installing 0.2.9; old sessions are incompatible and novels lack full session state. 0.2.8 → 0.2.9 keeps the same host and session line; see [update, uninstall and rollback](#update-uninstall-and-rollback).
 
 Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, structured events and recovery mechanisms has proved harder than expected, and work is accelerating. This 0.2.9 patch fixes distribution, installation and third-party dependency compatibility; roleplay features continue from 0.2.8, and the broader compatibility work remains in development. Thank you for helping us improve it with your feedback.
+
+0.3 development update (2026-10-03): deterministic imports and selected MVU state and recovery paths have been verified. Work now focuses on opening selection and initialization, edit/branch/reopen behavior for each state protocol, and key player operations before advancing the dynamic templates and frontend that depend on those contracts. Full compatibility acceptance is still incomplete; these development results are not included in the official 0.2.9 package.
 
 **Let your characters think for themselves, and let the world unfold from your choices.**
 
@@ -50,11 +52,11 @@ Run `dsh web --host 127.0.0.1`, open the address printed in the terminal, config
 
 ### Windows
 
-For portable runtimes and shortcuts, download [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe), or [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe) on Windows on ARM. Choose a new root when moving from 0.2.5. See the [Windows guide](INSTALL-WINDOWS.md) (Chinese) for steps, unsigned-program prompts and verification limits.
+For portable runtimes and shortcuts, download [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.exe), or [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup-arm64.exe) on Windows on ARM. Choose a new root when moving from 0.2.5. See the [Windows guide](INSTALL-WINDOWS.md) (Chinese) for steps, unsigned-program prompts and verification limits.
 
 ### Linux
 
-[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh) prepares portable Node.js and launchers for x86_64 and aarch64 (glibc), without root or a system package manager. Use a fresh `--root` when moving from 0.2.5. See the [Linux guide](INSTALL-LINUX.md) (Chinese).
+[NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.sh) prepares portable Node.js and launchers for x86_64 and aarch64 (glibc), without root or a system package manager. Use a fresh `--root` when moving from 0.2.5. See the [Linux guide](INSTALL-LINUX.md) (Chinese).
 
 ### Installation and model costs
 
@@ -225,6 +227,27 @@ Background subagents no longer appear in the conversation list, and draft saving
 
 **Beyond per-character reasoning, models can also divide the work.** Prose, background memory, card reading, status and export tasks can each use a fitting model, or all follow the main model; model settings support a global default and per-session overrides.
 
+### First-response wait for slow local chat models
+
+If a local chat model takes longer to produce its first response, you can set the optional `firstResponseTimeoutMs` value in the existing roleplay preset's `roleplay-core` configuration. Its default is **90,000 ms (90 seconds)**; `600000` allows up to ten minutes. This extends the wait on the existing request. `workerMaxTokens` limits output tokens; it is not a time setting.
+
+Put the value at `addons[id=preset-roleplay].config.plugins[id=nexttavern-roleplay-composition].config.patches[id=roleplay-core].config`, not at the product's root `config`. The YAML below is only the composition child row to edit, not a replacement profile. The official patch replaces that row's entire `config`, so preserve every existing value and add only the field you need:
+
+```yaml
+# Edit the existing composition child row under addons[id=preset-roleplay].config.plugins
+- id: nexttavern-roleplay-composition
+  name: dsh-nexttavern-presets/composition
+  config:
+    patches:
+      - id: roleplay-core
+        name: './lib/core/roleplay-core.js'
+        config:
+          # Keep all existing roleplay-core values here
+          firstResponseTimeoutMs: 600000
+```
+
+The new setting is consumed by a new preset revision; existing sessions keep their mounted revision, so test it in a new session. One contributor's 27B local-model run used a 96k context and reasoning enabled; that is a single experiment, not a universal minimum. Set `windowTokens` to the context length the selected model actually supports; reasoning options vary by model.
+
 ## Status bar and decision card
 
 **Action suggestions appear only in the standalone decision card**, never duplicated into the status bar or the prose tail. Legacy action areas inside old cards are hidden, and the original card is left untouched.
@@ -305,13 +328,15 @@ flowchart TD
 
 ## Downloads
 
-- [Main package dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-nexttavern.tgz) — unified plugin, prebuilt UI, sources, preset, reference cards, bundled components, CLI and the optional public-access auth source package.
-- [Standalone dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-debug.tgz).
-- [Public-access plugin dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/dsh-auth-webserver.tgz), see the [public access guide](PUBLIC-ACCESS.md) (Chinese).
+**Candidate-doc notice:** The links below are prepared for 0.2.9-rc.3 assets and will not work until that release is published. The current latest GitHub release is still 0.2.9-rc.2.
 
-Installers: [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.exe) (Windows x64) · [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup-arm64.exe) (Windows on ARM) · [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/NextTavern-Setup.sh) (Linux x86_64 / aarch64).
+- [Main package dsh-nexttavern.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/dsh-nexttavern.tgz) — unified plugin, prebuilt UI, sources, preset, reference cards, bundled components, CLI and the optional public-access auth source package.
+- [Standalone dsh-debug.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/dsh-debug.tgz).
+- [Public-access plugin dsh-auth-webserver.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/dsh-auth-webserver.tgz), see the [public access guide](PUBLIC-ACCESS.md) (Chinese).
 
-Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
+Installers: [NextTavern-Setup.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.exe) (Windows x64) · [NextTavern-Setup-arm64.exe](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup-arm64.exe) (Windows on ARM) · [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.sh) (Linux x86_64 / aarch64).
+
+Verification: [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/SHA256SUMS) and [provenance.json](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/provenance.json). The npm package is `dsh-nexttavern`; install it with `dsh plugin --profile web add dsh-nexttavern`.
 
 ## Manual install
 
@@ -330,7 +355,7 @@ dsh web --host 127.0.0.1 --port 3510
 
 Select the new workspace in the browser, configure your provider and pick the roleplay preset for a new session. For later starts, set the same `DSH_HOME` and run the last command.
 
-Alternatively download the main archive from [v0.2.9](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9), verify it against `SHA256SUMS`, then replace the npm package name with its local archive:
+Alternatively download the main archive from [v0.2.9-rc.3](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.3), verify it against `SHA256SUMS`, then replace the npm package name with its local archive:
 
 ```powershell
 dsh plugin --profile web add ./dsh-nexttavern.tgz
