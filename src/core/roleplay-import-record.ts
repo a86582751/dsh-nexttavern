@@ -3,7 +3,7 @@
 import { sha256, cloneRecord, stableJson, recordSha256 } from './roleplay-data.js';
 import { readCardSource, decodeTavernCard, readTavernExecutionCard, projectTavernCard, projectTavernCardCompact,
   compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1,
-  compileTavernExtensionInventoryV3, compileTavernExtensionBindingsV1,
+  compileTavernExtensionInventoryV3, compileTavernExtensionBindingsV1, compileTavernCardAgentSourceIndexV1,
   compileTavernCapabilityReport } from './tavern-card.js';
 import type { DecodedTavernCard } from './tavern-card.js';
 import {projectNextTavernCard} from './nexttavern-card.js';
@@ -477,9 +477,13 @@ export const validateAssignmentIdentities = (assignments: readonly ImportAssignm
 export const importSummary = (record: ImportRecord,authorRules?:Record<string,unknown>) => {
   let authorCoreData:ReturnType<typeof readAuthorCoreDataV1>|undefined;
   let extensionBindings:ReturnType<typeof compileTavernExtensionBindingsV1>;
+  let cardAgentSourceIndex:ReturnType<typeof compileTavernCardAgentSourceIndexV1>;
   assertImportRecordIntegrity(record,decoded=>{
     if(authorRules)authorCoreData=readAuthorCoreDataV1(record,authorRules,decoded);
-    if(decoded)extensionBindings=compileTavernExtensionBindingsV1(decoded);
+    if(decoded) {
+      extensionBindings=compileTavernExtensionBindingsV1(decoded);
+      cardAgentSourceIndex=compileTavernCardAgentSourceIndexV1(decoded);
+    }
   });
   const coverage = importCoverage(record);
   const extensionEntries = record.extensionInventory?.entries ?? [];
@@ -501,6 +505,7 @@ export const importSummary = (record: ImportRecord,authorRules?:Record<string,un
   return {
     ...(authorCoreData?{authorCoreData}:{}),
     ...(extensionBindings?{extensionBindings}:{}),
+    ...(cardAgentSourceIndex?{cardAgentSourceIndex}:{}),
     importId: record.importId,
     sourceFile: record.sourceFile,
     mode: record.mode ?? 'replace',

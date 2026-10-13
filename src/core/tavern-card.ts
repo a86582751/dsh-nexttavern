@@ -743,6 +743,72 @@ export function compileTavernExtensionBindingsV1(decoded: DecodedTavernCard): Ta
   return {schemaVersion:1,sourceSha256:decoded.sourceSha256,key:'chaoshen_jixieshi',entries}
 }
 
+export interface TavernCardAgentSourceIndexEntryV1 {
+  readonly kind: 'greeting' | 'worldbook'
+  readonly index: number
+  readonly sourcePointer: string
+  readonly idSha256?: string
+  readonly nameSha256?: string
+  readonly disposition: 'standard-opening' | 'missing-standard-opening' | 'local-snapshot-name-match'
+    | 'external-book-reference' | 'invalid-reference'
+  readonly targetPointer?: string
+  readonly targetObjectPointer?: string
+  readonly targetSha256?: string
+  readonly externalBindingPointer?: string
+}
+export interface TavernCardAgentSourceIndexV1 {
+  readonly schemaVersion: 1
+  readonly key: 'card_agent'
+  readonly protocol: 'dream-creator-editor-index-v1'
+  readonly sourceSha256: string
+  readonly sourcePointer: string
+  readonly bindingIdSha256?: string
+  readonly entries: readonly TavernCardAgentSourceIndexEntryV1[]
+}
+
+/** The editor index describes source relations, not runtime IDs or loaded external books. */
+export function compileTavernCardAgentSourceIndexV1(decoded: DecodedTavernCard): TavernCardAgentSourceIndexV1 | undefined {
+  const extensions = decoded.data.extensions
+  if (!object(extensions) || !object(extensions.card_agent)) return undefined
+  const declaration = extensions.card_agent
+  const root = decoded.document.data === decoded.data ? '/data' : ''
+  const sourcePointer = `${root}/extensions/card_agent`
+  const bookPointer = `${root}/character_book`, book = decoded.data.character_book
+  const bookName = object(book) && typeof book.name === 'string' ? book.name : undefined
+  const externalName = typeof extensions.world === 'string' ? extensions.world : undefined
+  // A worldbook-only index needs no opening parse; candidates retain their original ordinals.
+  const openings = Array.isArray(declaration.greetings) && declaration.greetings.length
+    ? compileTavernOpeningCandidates(decoded) : []
+  const entries: TavernCardAgentSourceIndexEntryV1[] = []
+  const references = [['greeting', declaration.greetings], ['worldbook', declaration.worldbooks]] as const
+  for (const [kind, values] of references) {
+    if (!Array.isArray(values)) continue
+    for (const [index, reference] of values.entries()) {
+      const origin = {kind, index, sourcePointer: `${sourcePointer}/${kind}s/${index}`}
+      if (!object(reference) || typeof reference.id !== 'string' || typeof reference.name !== 'string') {
+        entries.push({...origin, disposition: 'invalid-reference'})
+        continue
+      }
+      const named = {...origin, idSha256: digest(reference.id), nameSha256: digest(reference.name)}
+      if (kind === 'greeting') {
+        const target = openings.find(candidate => candidate.index === index)
+        entries.push({...named, disposition: target ? 'standard-opening' : 'missing-standard-opening',
+          ...(target ? {targetPointer: target.sourcePointer, targetSha256: target.sourceSha256} : {})})
+      } else {
+        const local = bookName === reference.name
+        // Only /name matches. Neither the snapshot nor extensions.world proves external content was read.
+        entries.push({...named, disposition: local ? 'local-snapshot-name-match' : 'external-book-reference',
+          ...(local ? {targetPointer: `${bookPointer}/name`, targetObjectPointer: bookPointer,
+            targetSha256: digest(reference.name)} : {}),
+          ...(externalName === reference.name ? {externalBindingPointer: `${root}/extensions/world`} : {})})
+      }
+    }
+  }
+  return {schemaVersion: 1, key: 'card_agent', protocol: 'dream-creator-editor-index-v1',
+    sourceSha256: decoded.sourceSha256, sourcePointer,
+    ...(typeof declaration.binding_id === 'string' ? {bindingIdSha256: digest(declaration.binding_id)} : {}), entries}
+}
+
 export type TavernCapabilityStatus = 'interpreted' | 'preserved-unexecuted'
   | 'missing-external-resource' | 'requires-optional-analysis'
 export interface TavernCapabilityEntry {
