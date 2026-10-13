@@ -1,6 +1,6 @@
 /** Exact Source inheritance storage. Writes settle before the Source FIFO can
  * be released; an error after put is accepted only after exact actual readback. */
-import {recordSha256,sha256} from './roleplay-data.js'
+import {recordSha256,sha256,cloneRecord} from './roleplay-data.js'
 import {types} from 'node:util'
 import {inheritanceDataV1,inheritanceDataSha256V1,inheritanceFailV1,inheritanceSameV1,inheritanceObjectV1,
   inheritanceRefV1,sealInheritanceDataV1,validateStaticInventoryV1,validateNumericalCaptureV1,
@@ -11,6 +11,13 @@ import {validateFrozenPromptScopeRecordV1,validateFrozenNonNumericalOpeningV1,ta
 import {validateTavernSourceProgramAbsenceOpeningRecordV1,validateFrozenProgramAbsenceOpeningV1,
   assertFrozenProgramAbsenceOpeningCutV1,tavernSourceProgramAbsenceOpeningKeyV1,validatePreparedInheritanceV1}
   from './roleplay-tavern-source-inheritance-data.js'
+import {tavernSourceOwnedRecordKeysV1,tavernSourcePreparedKeyV1,tavernSourceApplyKeyV1,
+  tavernSourceCommitKeyV1,tavernSourceReadyKeyV1,tavernSourceEditBaselineKeyV1,tavernSourceMaterialBaselineKeyV1,
+  tavernSourceMigrationKeyV1,tavernSourceEditSlotKeyV1,validateApplyInheritanceV1,validateCommitInheritanceV1,
+  validateReadyInheritanceV1,validateTavernSourceLegacyMigrationRecordV1,validateTavernSourceMaterialBaselineV1}
+  from './roleplay-tavern-source-inheritance-data.js'
+import {validateFrozenSourceEditBaselineV1,validateInheritanceEditSlotV1} from './roleplay-tavern-source-edit-baseline.js'
+import {cloneRoleplayTavernLoreImportRecordV1,TavernLoreDataFailureV1} from './roleplay-tavern-lore-data.js'
 import {validateProgramAbsenceOpeningClosureV1} from './roleplay-program-absence-inheritance-data.js'
 import type {ProgramAbsenceOpeningClosureV1} from './roleplay-program-absence-inheritance-data.js'
 import type {TavernSourceInheritanceDepsV1,TavernSourceStaticRowV1,TavernSourceStaticTableV1,
@@ -19,16 +26,15 @@ import type {TavernSourceInheritanceDepsV1,TavernSourceStaticRowV1,TavernSourceS
   from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernSourceFrozenNonNumericalOpeningCaptureV1,TavernSourceFrozenNonNumericalOpeningV1,
   TavernSourceNativeCutV1,TavernSourceFrozenProgramAbsenceOpeningV1} from './roleplay-tavern-source-inheritance-types.js'
-import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
+import type {TavernLoreSourceDataV1,TavernLoreSourceCaptureV1} from './roleplay-tavern-lore-source-types.js'
+import type {RoleplayInputSourceCaptureV1} from './roleplay-input-source-data.js'
 import type {ImportPointer} from './roleplay-import-types.js'
 import type {TavernLoreDataBudgetV1} from './roleplay-tavern-lore-data.js'
 
 export interface TavernSourceReadBudgetV1 {
-  bytes:number
-  nodes:number
   readonly refs:Map<string,{sha256:string;value:unknown}>
 }
-export function sourceReadBudgetV1():TavernSourceReadBudgetV1 {return {bytes:0,nodes:0,refs:new Map()}}
+export function sourceReadBudgetV1():TavernSourceReadBudgetV1 {return {refs:new Map()}}
 type NativeDecodeKindV1='archive'|'prepared'
 type NativeDecodePlanV1=
   |{readonly kind:'scalar';readonly value:null|boolean|number|string}
@@ -302,20 +308,12 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
     if(entry.pureDataSha===undefined)entry.pureDataSha=recordSha256(value)
     return entry.pureDataSha
   }
-  function chargeReadV1(budget:TavernSourceReadBudgetV1,key:string,value:unknown) {
+  function observeReadV1(budget:TavernSourceReadBudgetV1,key:string,value:unknown) {
     const sha256=readOwnedShaV1(key,value),previous=budget.refs.get(key)
     if(previous) {
       if(previous.sha256!==sha256)inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED',key)
       return previous.value
     }
-    budget.bytes+=Buffer.byteLength(JSON.stringify(value),'utf8')
-    const pending:unknown[]=[value]
-    while(pending.length) {
-      const item=pending.pop();budget.nodes++
-      if(budget.nodes>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.chainNodes)inheritanceFailV1('SOURCE_INHERITANCE_BUDGET')
-      if(item&&typeof item==='object')for(const child of Object.values(item))pending.push(child)
-    }
-    if(budget.bytes>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.chainBytes)inheritanceFailV1('SOURCE_INHERITANCE_BUDGET')
     budget.refs.set(key,{sha256,value})
     return value
   }
@@ -339,7 +337,8 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
   }
   function rowFromRawV1(table:TavernSourceStaticTableV1,key:string,raw:unknown,budget?:TavernLoreDataBudgetV1)
     :TavernSourceStaticRowV1 {
-    const value=raw===undefined?null:inheritanceDataV1(raw,budget)
+    const value=raw===undefined?null:table==='branch'
+      ?readCurrentKey(key,raw,undefined,budget):inheritanceDataV1(raw,budget)
     if(raw!==undefined&&!inheritanceObjectV1(value))inheritanceFailV1('SOURCE_INHERITANCE_INVALID',`${table}:${key}`)
     return {table,key,exists:raw!==undefined,sha256:raw===undefined?'missing':recordSha256(value),
       value:value as Record<string,unknown>|null}
@@ -365,7 +364,7 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
         if(plan===undefined){plan=compileReadonlyRowV1(expected)??null;plans.set(expected,plan)}
         equal=!!plan&&(plan.exists?matchesReadonlyRowValueV1(raw,plan.value):raw===undefined)
       }
-      if(!equal&&!inheritanceSameV1(rowFromRawV1(table,key,raw),expected))return false
+      if(!equal&&(raw===undefined?expected.exists:!expected.exists||recordSha256(raw)!==expected.sha256))return false
       if(table!=='branch'||!expected.exists||!validated.has(expected))return true
       try {
         // Preserve the separate actual read. Only a complete strict match to
@@ -404,7 +403,7 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
         if(typeof key!=='string')inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
         if(!key.startsWith(prefix))continue
         const row=readRow(table,key,budget)
-        if(!row.exists||!inheritanceSameV1(row.value,inheritanceDataV1(value))||rows.has(`${table}:${key}`))
+        if(!row.exists||!inheritanceSameV1(row.value,value)||rows.has(`${table}:${key}`))
           inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED',`${table}:${key}`)
         rows.set(`${table}:${key}`,row)
         if(rows.size>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.rows)inheritanceFailV1('SOURCE_INHERITANCE_BUDGET')
@@ -418,21 +417,64 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
     const result=[...rows.values()].sort((a,b)=>`${a.table}:${a.key}`<`${b.table}:${b.key}`?-1:
       `${a.table}:${a.key}`>`${b.table}:${b.key}`?1:0)
     validateStaticInventoryV1(result,sid)
-    return inheritanceDataV1(result)
+    return result
   }
   function readKey(key:string,budget?:TavernSourceReadBudgetV1):unknown {
     try {return readCurrentKey(key,tables.branch.get(key),budget)}catch(error) {
-      // Includes failed actual get, parser, key join and caller-owned charge.
+      // Includes failed actual get, parser, key join and same-address observation.
       clearNativeDecoded()
       throw error
     }
   }
-  function readCurrentKey(key:string,raw:unknown,budget?:TavernSourceReadBudgetV1):unknown {
-    // Route by own DATA descriptors only, with Proxy refusal before reflection.
-    // This does not admit the row: a first Native decode runs sealed()'s
-    // original complete bounded copy, then checks the original Native spelling.
-    // A hit compares the complete new raw tree to that successful frozen output.
-    // Undefined optional fields disappear in that copy and keep the old path.
+  function maintainedRecordOwnerV1(key:string,raw:unknown):string|undefined {
+    const sid=key.slice(0,key.lastIndexOf('__'))
+    if(inheritanceIdV1(sid)&&tavernSourceOwnedRecordKeysV1(sid).has(key))return sid
+    if(inheritanceObjectV1(raw)&&raw.encoding==='native-tavern-source-edit-baseline-slot-v1'
+      &&inheritanceHashV1(raw.identitySha256)&&key===tavernSourceEditSlotKeyV1(raw.identitySha256)) {
+      return inheritanceObjectV1(raw.identity)&&inheritanceIdV1(raw.identity.sessionId)
+        ?raw.identity.sessionId:undefined
+    }
+    return undefined
+  }
+  /** Exact maintained address families share the same grammar for fresh
+   * assembly and historical reads. An encoding or a prefix alone grants no
+   * exemption from the independent raw-leaf reader. */
+  function decodeMaintainedRecordV1(key:string,raw:unknown,owner:string):object {
+    let value:object
+    switch(key) {
+      case tavernSourcePreparedKeyV1(owner):value=validatePreparedInheritanceV1(raw);break
+      case tavernSourceApplyKeyV1(owner):value=validateApplyInheritanceV1(raw);break
+      case tavernSourceCommitKeyV1(owner):value=validateCommitInheritanceV1(raw);break
+      case tavernSourceReadyKeyV1(owner):value=validateReadyInheritanceV1(raw);break
+      case tavernSourceEditBaselineKeyV1(owner):value=validateFrozenSourceEditBaselineV1(raw);break
+      case tavernSourceMaterialBaselineKeyV1(owner):value=validateTavernSourceMaterialBaselineV1(raw);break
+      case tavernSourceMigrationKeyV1(owner):value=validateTavernSourceLegacyMigrationRecordV1(raw);break
+      case tavernSourceFrozenPromptScopeKeyV1(owner):value=validateFrozenPromptScopeRecordV1(raw);break
+      case tavernSourceProgramAbsenceOpeningKeyV1(owner):
+        value=validateTavernSourceProgramAbsenceOpeningRecordV1(raw);break
+      default:
+        value=validateInheritanceEditSlotV1(raw)
+        if((value as {identity:{sessionId:string}}).identity.sessionId!==owner)
+          inheritanceFailV1('SOURCE_INHERITANCE_INVALID',key)
+        return value
+    }
+    if((value as {childSessionId:string}).childSessionId!==owner)
+      inheritanceFailV1('SOURCE_INHERITANCE_INVALID',key)
+    return value
+  }
+  function copyImportRecordV1<T>(raw:T,budget?:TavernLoreDataBudgetV1):T {
+    try {return cloneRoleplayTavernLoreImportRecordV1(raw,TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.bytes,undefined,budget)}catch(error) {
+      inheritanceFailV1(error instanceof TavernLoreDataFailureV1&&error.code==='LORE_DATA_BUDGET'
+        ?'SOURCE_INHERITANCE_BUDGET':'SOURCE_INHERITANCE_INVALID')
+    }
+  }
+  function readCurrentKey(key:string,raw:unknown,budget?:TavernSourceReadBudgetV1,
+    leafBudget?:TavernLoreDataBudgetV1):unknown {
+    if(raw===undefined)inheritanceFailV1('SOURCE_INHERITANCE_MISSING',key)
+    const owner=maintainedRecordOwnerV1(key,raw)
+    // Domain tables return their shared immutable row. Detach once at this
+    // storage observation before a family freezes it. structuredClone retains
+    // Native's original -0/undefined spelling for its own strict decoder.
     let nativeEncoding:unknown,hasNativePrepared=false
     if(raw!==null&&typeof raw==='object'&&!types.isProxy(raw)&&!Array.isArray(raw)) {
       const encoding=Object.getOwnPropertyDescriptor(raw,'encoding')
@@ -445,31 +487,19 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
       }
     }
     let actual:unknown
-    if(nativeEncoding==='native-tavern-source-program-absence-opening-record-v1') {
-      actual=decodeNative(key,'archive',raw,()=>{
-        const record=validateTavernSourceProgramAbsenceOpeningRecordV1(raw)
-        if(key!==tavernSourceProgramAbsenceOpeningKeyV1(record.childSessionId))
-          inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID')
-        return record
-      })
-    }else if(nativeEncoding==='native-tavern-source-inheritance-prepared-v1'&&hasNativePrepared) {
-      actual=decodeNative(key,'prepared',raw,()=>validatePreparedInheritanceV1(raw))
+    if(owner!==undefined&&nativeEncoding==='native-tavern-source-program-absence-opening-record-v1') {
+      actual=decodeNative(key,'archive',raw,()=>decodeMaintainedRecordV1(key,cloneRecord(raw),owner))
+    }else if(owner!==undefined&&nativeEncoding==='native-tavern-source-inheritance-prepared-v1'&&hasNativePrepared) {
+      actual=decodeNative(key,'prepared',raw,()=>decodeMaintainedRecordV1(key,cloneRecord(raw),owner))
     }else {
       forgetNativeDecoded(key)
-      actual=raw===undefined?undefined:inheritanceDataV1(raw)
-      if(actual===undefined)inheritanceFailV1('SOURCE_INHERITANCE_MISSING',key)
-      // The bounded copier has checked descriptors. New Native-containing rows
-      // additionally parse their original packets before JSON normalization can
-      // hide Native's prohibited -0/undefined spelling. Old rows are unchanged.
-      if(inheritanceObjectV1(actual)&&actual.encoding==='native-tavern-source-program-absence-opening-record-v1') {
-        const record=validateTavernSourceProgramAbsenceOpeningRecordV1(raw)
-        if(key!==tavernSourceProgramAbsenceOpeningKeyV1(record.childSessionId))
-          inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID')
-        actual=record
-      }else if(inheritanceObjectV1(actual)&&actual.encoding==='native-tavern-source-inheritance-prepared-v1'
-        &&Object.hasOwn(actual,'frozenProgramAbsenceOpeningV1'))actual=validatePreparedInheritanceV1(raw)
+      if(owner!==undefined)actual=decodeMaintainedRecordV1(key,cloneRecord(raw),owner)
+      else if(inheritanceObjectV1(raw)&&[4,5].includes(Number(raw.schemaVersion))
+        &&inheritanceIdV1(raw.sessionId)&&inheritanceIdV1(raw.importId)
+        &&key===`${raw.sessionId}__import-${raw.importId}`)actual=copyImportRecordV1(raw,leafBudget)
+      else actual=inheritanceDataV1(raw,leafBudget)
     }
-    return budget?chargeReadV1(budget,key,actual):actual
+    return budget?observeReadV1(budget,key,actual):actual
   }
   function readRef(ref:TavernSourceInheritanceRefV1,budget?:TavernSourceReadBudgetV1):unknown {
     validateInheritanceRefV1(ref)
@@ -478,14 +508,16 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
     return actual
   }
   async function putExact(table:TavernSourceStaticTableV1,key:string,value:object,prior:unknown=undefined) {
-    const target=inheritanceDataV1(value),raw=tables[table].get(key),actual=raw===undefined?undefined:inheritanceDataV1(raw)
+    // Source supplies admitted DATA. Domain owns its immutable stored rows;
+    // comparing an actual observation neither retains nor freezes that row.
+    const target=value,actual=tables[table].get(key)
     if(actual!==undefined&&inheritanceSameV1(actual,target))return
     if(!inheritanceSameV1(actual,prior))inheritanceFailV1('SOURCE_INHERITANCE_CHILD_CONFLICT',`${table}:${key}`)
     let failure:unknown
     if(table==='branch')forgetNativeDecoded(key)
     try {await tables[table].put(key,target)}catch(error) {failure=error}
     // Await, then read: pending put promises cannot publish a ready marker.
-    const stored=tables[table].get(key),readback=stored===undefined?undefined:inheritanceDataV1(stored)
+    const readback=tables[table].get(key)
     if(!inheritanceSameV1(readback,target)) {
       inheritanceFailV1('SOURCE_INHERITANCE_WRITE_UNCONFIRMED',`${table}:${key}${failure?' (put rejected)':''}`)
     }
@@ -498,14 +530,31 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
     if(events.some((event,index)=>event.seq!==index))inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED',sid)
     return actual
   }
-  function numerical(sid:string,pointer:Readonly<ImportPointer>,rows:readonly TavernSourceStaticRowV1[])
+  function numerical(sid:string,pointer:Readonly<ImportPointer>,rows:readonly TavernSourceStaticRowV1[],
+    captured?:Extract<TavernLoreSourceCaptureV1,{kind:'captured-data'}>)
     :TavernSourceNumericalCaptureV1 {
     if(!deps.readNumericalSourceCapture)inheritanceFailV1('SOURCE_INHERITANCE_NUMERICAL_CAPTURE_UNAVAILABLE')
-    const input=inheritanceDataV1(deps.readNumericalSourceCapture(sid)),imported=input.imported
-    if(!imported)inheritanceFailV1('SOURCE_INHERITANCE_NUMERICAL_CAPTURE_UNAVAILABLE')
     const statusSpec=rows.find(row=>row.table==='status'&&row.key===`${sid}__spec`)!,
-      openingScene=rows.find(row=>row.table==='opening'&&row.key===`${sid}__scene`)!,
+      openingScene=rows.find(row=>row.table==='opening'&&row.key===`${sid}__scene`)!
+    let input:RoleplayInputSourceCaptureV1,openingContext:TavernSourceNumericalCaptureV1['openingContext']
+    if(captured) {
+      const current=captured.source.current
+      openingContext={context:current.openingContext.context,bindingSha256:current.openingContext.bindingSha256}
+      input={sessionId:sid,pointer:captured.contributionInput.activePointer as unknown as Readonly<Record<string,unknown>>,
+        imported:captured.contributionInput.activeImport as unknown as Readonly<Record<string,unknown>>,
+        versions:{cards:current.cards,worldbook:current.worldbook,rules:current.rules,settings:current.settings},
+        statusSpecSha256:statusSpec.sha256,openingSha256:openingScene.sha256,
+        openingContextBindingSha256:openingContext.bindingSha256}
+    }else {
+      // This actual supplier includes a raw table import, unlike Source's
+      // admitted capture. Its owner borrows the original-file transport scalar
+      // while the other independently read fields retain their leaf admission.
+      const {imported:rawImported,...metadata}=deps.readNumericalSourceCapture(sid)
+      input={...inheritanceDataV1(metadata),imported:rawImported===undefined?undefined:copyImportRecordV1(rawImported)}
       openingContext=inheritanceDataV1(deps.readOpeningContext(sid))
+    }
+    const imported=input.imported
+    if(!imported)inheritanceFailV1('SOURCE_INHERITANCE_NUMERICAL_CAPTURE_UNAVAILABLE')
     return validateNumericalCaptureV1(sealInheritanceDataV1({schemaVersion:1,
       encoding:'native-tavern-numerical-source-capture-v1',inputSource:input,sessionId:sid,pointer,
       importIdentity:{importId:imported.importId,rawSha256:imported.rawSha256,normalizedSha256:imported.normalizedSha256,
@@ -617,7 +666,7 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
   async function freezeNonNumericalOpening(parent:string,child:string,cut:TavernSourceNativeCutV1,
     input:TavernSourceFrozenNonNumericalOpeningCaptureV1|undefined):Promise<TavernSourceFrozenNonNumericalOpeningV1|undefined> {
     if(input===undefined)return undefined
-    const captured=inheritanceDataV1(input)
+    const captured=input
     if(captured.kind==='not-inherited') {
       if(cut.kind!=='reserved-fresh-branch'||cut.seedLength!==0)inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID')
       return validateFrozenNonNumericalOpeningV1(sealInheritanceDataV1(captured,'frozenSha256'))

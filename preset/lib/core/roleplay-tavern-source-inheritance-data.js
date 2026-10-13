@@ -5,7 +5,7 @@ import { recordSha256 } from './roleplay-data.js';
 import { cloneRoleplayTavernLoreDataV1, TavernLoreDataFailureV1 } from './roleplay-tavern-lore-data.js';
 import { validateProgramAbsenceOpeningClosureV1 } from './roleplay-program-absence-inheritance-data.js';
 export const TAVERN_SOURCE_INHERITANCE_BOUNDS_V1 = Object.freeze({ bytes: 16_777_216, nodes: 131_072,
-    depth: 66, chainBytes: 67_108_864, chainNodes: 524_288, rows: 4096, ancestors: 32, events: 256, publications: 4096 });
+    depth: 66, rows: 4096, ancestors: 32, events: 256, publications: 4096 });
 export class TavernSourceInheritanceFailureV1 extends Error {
     code;
     missingEvidence;
@@ -36,8 +36,8 @@ function rememberParsedDataV1(value) {
         if (seen.has(item) || parsedDataHashes.has(item))
             continue;
         seen.add(item);
-        // These objects came from the bounded copier and successful child parsers,
-        // so their own enumerable data is inert and their descendants are frozen.
+        // These objects came from their DATA owners and successful child parsers;
+        // the family has completed its joins and frozen the assembled descendants.
         if (!Object.isFrozen(item))
             return value;
         complete.push(item);
@@ -124,7 +124,10 @@ export function validateInheritanceRefV1(raw, key) {
         inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
 }
 function sealed(raw, encoding, hashKey, fields, optional = []) {
-    const data = inheritanceDataV1(raw);
+    // These records assemble already admitted owner DATA. Storage detaches an
+    // actual persisted observation before decoding; this family owns its seal
+    // and joins, not a second raw-leaf budget over the assembled representation.
+    const data = raw;
     if (!inheritanceObjectV1(data))
         inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
     inheritanceExactV1(data, ['schemaVersion', 'encoding', ...fields, ...optional.filter(key => Object.hasOwn(data, key)), hashKey]);
@@ -137,7 +140,7 @@ function sealed(raw, encoding, hashKey, fields, optional = []) {
     return inheritanceFreezeV1(data);
 }
 export function sealInheritanceDataV1(body, hashKey) {
-    return inheritanceFreezeV1(inheritanceDataV1({ ...body, [hashKey]: recordSha256(body) }));
+    return inheritanceFreezeV1({ ...body, [hashKey]: recordSha256(body) });
 }
 /** Shared strict parser for the actual persisted scope envelope. The facts
  * retain their original owner; this row's child address is storage provenance. */
@@ -150,7 +153,7 @@ export function validateFrozenPromptScopeRecordV1(raw) {
     return rememberParsedDataV1(record);
 }
 export function validateFrozenNonNumericalOpeningV1(raw) {
-    const data = inheritanceDataV1(raw);
+    const data = raw;
     if (!inheritanceObjectV1(data))
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID');
     if (data.kind === 'not-inherited') {
@@ -229,8 +232,9 @@ export function validateTavernSourceProgramAbsenceOpeningRecordV1(raw) {
     if (value.authority !== 'consumer-data-only' || !inheritanceIdV1(value.childSessionId)
         || !inheritanceIdV1(value.parentSessionId) || value.childSessionId === value.parentSessionId)
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID');
-    // sealed() bounded all original descriptors. Keep Native's original strict
-    // packet spelling rather than its clone's normalized -0/undefined values.
+    // Native owns its packet's original strict spelling. Storage's detached
+    // observation preserves -0/undefined for that decoder rather than replacing
+    // this packet with a normalized generic JSON copy.
     const closure = validateProgramAbsenceOpeningClosureV1(raw.closure);
     if (value.childSessionId === closure.ownerSessionId || value.closureSha256 !== closure.closureSha256
         || !inheritanceSameV1(value.closure, closure))
@@ -246,7 +250,7 @@ const checkedFrozenProgramAbsenceOpenings = new WeakSet();
 export function validateFrozenProgramAbsenceOpeningV1(raw) {
     if (raw !== null && typeof raw === 'object' && checkedFrozenProgramAbsenceOpenings.has(raw))
         return raw;
-    const data = inheritanceDataV1(raw);
+    const data = raw;
     if (!inheritanceObjectV1(data))
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_INVALID');
     if (data.kind === 'not-inherited') {
@@ -616,6 +620,17 @@ export function validateReadyInheritanceV1(raw) {
     if (!inheritanceObjectV1(value.metadata))
         inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
     return rememberParsedDataV1(value);
+}
+/** Pure persisted material grammar. The controller separately joins this
+ * historical record to its actual prepared ref, Native cut and publications. */
+export function validateTavernSourceMaterialBaselineV1(raw) {
+    if (!inheritanceObjectV1(raw))
+        inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
+    const { baselineSha256, ...body } = raw;
+    if (raw.schemaVersion !== 1 || raw.encoding !== 'native-tavern-source-material-baseline-v1'
+        || Object.keys(raw).length !== 7 || recordSha256(body) !== baselineSha256)
+        inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
+    return rememberParsedDataV1(inheritanceFreezeV1(raw));
 }
 export function frozenInheritanceRefV1(prepared) {
     return sealInheritanceDataV1({ schemaVersion: 1, encoding: 'native-tavern-source-inheritance-frozen-ref-v1',
