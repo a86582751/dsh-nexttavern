@@ -17,7 +17,7 @@ import { recordSha256, rollLogEntries, stableImportId } from '../lib/core/rolepl
 import { registerAvatarRoute } from '../lib/core/roleplay-panel-routes.js'
 import { registerMaintenanceRoute } from '../lib/core/roleplay-job-routes.js'
 const scenario=process.argv[2]
-if(!scenario){for(const name of ['core-contracts','request-watchdog','coarse-model-admission','maintenance-route','panel-routes','settings-routes','authoring','diagnosis','task-tools','session-actions','author-tools','loop-contract','status-special','decision-special','same-route','authoring-opening','status-fallback','status-delayed','status-delayed-fallback','status-delayed-cancel','background-memory','shared-special','shared-fallback'])execFileSync(process.execPath,[fileURLToPath(import.meta.url),name],{stdio:'inherit'});process.exit(0)}
+if(!scenario){for(const name of ['core-contracts','request-watchdog','request-watchdog-custom','coarse-model-admission','maintenance-route','panel-routes','settings-routes','authoring','diagnosis','task-tools','session-actions','author-tools','loop-contract','status-special','decision-special','same-route','authoring-opening','status-fallback','status-delayed','status-delayed-fallback','status-delayed-cancel','background-memory','shared-special','shared-fallback'])execFileSync(process.execPath,[fileURLToPath(import.meta.url),name],{stdio:'inherit'});process.exit(0)}
 const statusModel=['status-special','status-fallback','status-delayed','status-delayed-fallback','status-delayed-cancel','shared-special','shared-fallback'].includes(scenario)?'status-special':'main'
 const decisionModel=scenario.startsWith('shared-')||scenario==='status-delayed-cancel'?'status-special':scenario==='decision-special'?'decision-special':'main'
 const statusFallback=scenario==='status-fallback'
@@ -39,8 +39,9 @@ const ctx={storageDomain:{async open(){return {table,close(){}}}},sessions:{get:
   systemPrompt:{variable:(name,value)=>{variables.set(name,value);return()=>{}},section:s=>{sections.set(s.name,s);return()=>{}}},tools:{guard:g=>{guards.push(g);return()=>{}},register:t=>{tools.set(t.name,t);return()=>{}}},commands:{register:c=>{commands.set(c.name,c);return()=>{}}},
   connection:{fetch:{register:r=>{routes.set(r.path,r);return()=>{}}}},fs:{},logger:{info(){},warn(){}},
   effect:fn=>{const c=fn();if(typeof c==='function')cleanup.push(c)},on:(name,fn)=>{if(!hooks.has(name))hooks.set(name,[]);hooks.get(name).push(fn);return()=>{}},provide:(n,v)=>services.set(n,v),get:n=>services.get(n)}
-await apply(ctx,{statusRetryMs:60000})
-if(scenario==='request-watchdog'){
+const firstResponseTimeoutMs=scenario==='request-watchdog-custom'?600000:90000
+await apply(ctx,{statusRetryMs:60000,...(scenario==='request-watchdog-custom'?{firstResponseTimeoutMs}:{})})
+if(scenario==='request-watchdog'||scenario==='request-watchdog-custom'){
  const {mock}=await import('node:test'),calls=[]
  let controller=new AbortController()
  agent.cancel=(cause,options)=>{calls.push({cause,options});controller.abort(cause)}
@@ -48,18 +49,18 @@ if(scenario==='request-watchdog'){
  mock.timers.enable({apis:['setTimeout']})
  try{
   assert.equal(await request({agent,turn:1,step:1,signal:controller.signal},async()=>config),config,'request config is unchanged')
-  mock.timers.tick(89999);assert.equal(calls.length,0)
+  mock.timers.tick(firstResponseTimeoutMs-1);assert.equal(calls.length,0)
   mock.timers.tick(1);assert.equal(calls.length,1);assert.equal(calls[0].cause.kind,'hook');assert.deepEqual(calls[0].options,{keepInbox:true})
   controller=new AbortController()
   await request({agent,turn:2,step:1,signal:controller.signal},async()=>config)
   for(const fn of hooks.get('session/event'))await fn(session,{type:'assistant/chunk',data:{turn:2,step:1,chunk:{type:'reasoning-delta'}}})
-  mock.timers.tick(90001);assert.equal(calls.length,1,'first model output disarms the silence deadline')
+  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,1,'first model output disarms the silence deadline')
   await request({agent:{...agent,options:{...agent.options,subagentDepth:1}},turn:3,step:1,signal:controller.signal},async()=>config)
-  mock.timers.tick(90001);assert.equal(calls.length,1,'main watchdog never cancels an independent child')
+  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,1,'main watchdog never cancels an independent child')
   await assert.rejects(request({agent,turn:4,step:1,signal:controller.signal},async()=>{throw Error('configuration failed')}),/configuration failed/)
-  mock.timers.tick(90001);assert.equal(calls.length,1,'failed request preparation does not leave a timer')
+  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,1,'failed request preparation does not leave a timer')
  }finally{mock.timers.reset();cleanup.reverse().forEach(fn=>fn())}
- console.log('tavern-loop=request-watchdog=ok (registered native request hook, first output, child boundary, no retry, preserved inbox)')
+ console.log('tavern-loop='+scenario+'=ok (registered native request hook, first output, child boundary, no retry, preserved inbox)')
  process.exit(0)
 }
 if(scenario==='coarse-model-admission'){

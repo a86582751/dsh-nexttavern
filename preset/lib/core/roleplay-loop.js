@@ -42,10 +42,10 @@ export function createFirstResponseWatchdog(timeoutMs = 90000) {
             clear(id); },
     };
 }
-export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRoleplaySession, characterCluster, activeCardWorkflow, taskAgents, ensureState, clusterPhase, withDecisionMutationLock, normalizeDecisionRecord, resumeStatusMaintenance, resumeMemoryWork, resumeCardWorkflows, resumeNovelExports, withImportLock, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation, publishTurnDecision, runPhaseBC, adaptationScope, importPromptCheckpoint, authorContext }) {
+export function registerRoleplayLoop({ ctx, T, tavernTasks, clusterJob, isRoleplaySession, characterCluster, activeCardWorkflow, taskAgents, ensureState, clusterPhase, withDecisionMutationLock, normalizeDecisionRecord, resumeStatusMaintenance, resumeMemoryWork, resumeCardWorkflows, resumeNovelExports, withImportLock, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation, publishTurnDecision, runPhaseBC, adaptationScope, importPromptCheckpoint, authorContext, firstResponseTimeoutMs, }) {
     const preparationRecordKey = (sid) => keyOf(sid, 'task-preparation');
     const handledImportPrompts = new Map();
-    const firstResponse = createFirstResponseWatchdog();
+    const firstResponse = createFirstResponseWatchdog(firstResponseTimeoutMs);
     ctx.effect(() => () => firstResponse.dispose(), 'roleplay: first model output deadline');
     ctx.on('agent/request', async (payload, next) => {
         const config = await next(), agent = payload.agent;

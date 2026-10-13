@@ -147,6 +147,9 @@ const DEFAULT_CONFIG = {
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
+  // Optional profile overrides let slow models keep preparing without
+  // changing the historical first-output deadline for existing profiles.
+  firstResponseTimeoutMs: 90000,
   // Legacy/manual Phase-B work has a separate bound from foreground projection.
   phaseBTimeoutMs: 90000,
   statusRetryMs: 2000,
@@ -704,6 +707,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   // ── 阶段 A：程序组装当前分支笔记与窗口；主代理按需查资料 ──────────────────
 
   const { preparationRecordKey, taskInstruction } = registerRoleplayLoop({
+    firstResponseTimeoutMs: cfg.firstResponseTimeoutMs,
     authorContext: session => residentAuthorContext(T, session.id),
     adaptationScope: session => ctx.get('tavernConversations')?.rootOf(session.id) ?? session.id,
     importPromptCheckpoint: session => {

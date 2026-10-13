@@ -84,6 +84,8 @@ export interface LoopDependencies {
   withImportLock<T>(id: string, key: string, work: () => Promise<T>): Promise<T>
   buildPhaseA(session: LoopSession, payload: LoopPayload, state: LoopState): Promise<readonly ContextMessage[]>
   storyWindowSettings(session: LoopSession): {tail: number}
+  /** First-output deadline per model request; omitted keeps the 90-second default. */
+  firstResponseTimeoutMs?: number
   runStatusObligation: ReturnType<typeof createRoleplayStatus>['runStatusObligation']
   publishTurnDecision(session: LoopSession, event: ContextEvent, snapshot: CompletionSnapshot, narrative: string, signal?: AbortSignal): DecisionJob
   runPhaseBC(session: LoopSession, event: ContextEvent, state: LoopState, snapshot: CompletionSnapshot, signal?: AbortSignal): Promise<unknown>
