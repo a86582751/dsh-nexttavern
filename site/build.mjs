@@ -754,7 +754,7 @@ function header(activeId) {
     '  </button>',
     '  <a class="brand" href="index.html">' + brandMarkTag() +
     '<small>文档</small></a>',
-    '  <span class="chip hide-md"><span class="dot"></span>最新发布 <b>v' + escapeHtml(site.releaseVersion) + '</b></span>',
+    '  <span class="chip hide-md"><span class="dot"></span>最新发行 <b>v' + escapeHtml(site.releaseVersion) + '</b></span>',
     '  <span class="spacer"></span>',
     '  <div class="topbar-actions">',
     '    <button class="search-button" type="button" data-search-open aria-label="搜索文档">' + SEARCH_ICON +
@@ -792,7 +792,7 @@ function sidebar(activeId) {
     '  <p class="sidebar-title">文档目录</p>',
     groups,
     '  <div class="sidebar-footer">',
-    '    <p>当前展示 <b>' + escapeHtml(site.releaseVersion) + '</b> 正式发布；<br>' + escapeHtml(site.developmentLine) + '，代码持续同步到 main。</p>',
+    '    <p>当前最新发行 <b>' + escapeHtml(site.releaseVersion) + '</b>，修复安装与启动问题；<br>' + escapeHtml(site.developmentLine) + '，代码持续同步到 main。</p>',
     '    <p><a href="' + site.repoUrl + '" target="_blank" rel="noopener noreferrer">GitHub 仓库 ↗</a></p>',
     '  </div>',
     '</aside>'
@@ -1052,7 +1052,7 @@ function landingPage() {
     '<div class="section">',
     '  <div class="notice">' + icon('branch'),
     '    <p><b>' + escapeHtml(site.developmentLine) + '。</b>代码持续同步到 main；' + escapeHtml(site.releaseVersion) +
-    ' 是 GitHub 最新发行；便携安装器下载使用此版本，npm latest 仍为 0.2.9。升级前请在旧环境导出角色卡或小说。</p>',
+    ' 是 GitHub 最新发行，便携安装器下载此版本；npm latest 仍为 0.2.9。升级前请在旧环境导出角色卡或小说。</p>',
     '  </div>',
     '</div>',
     '<section class="section">',

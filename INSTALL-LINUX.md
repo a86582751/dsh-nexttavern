@@ -1,6 +1,8 @@
 # Linux 一键安装
 
-当前 GitHub 最新便携安装修复版是 **0.2.9-rc.2**，随包准备私有 pnpm，并为安装及后续启动传递正确 PATH。请使用新目录；本版不扩展跨版本原地升级范围。
+**0.2.9-rc.3 Linux 安装修复版。** 本页下载链接指向 GitHub 最新发行 rc.3，处理四项安装／就绪报告。安装请使用新目录，本版不扩展跨版本原地升级范围。
+
+首次启动默认等待最多 600 秒。若提示“still preparing”，进程仍保留，重新运行 `NextTavern.sh` 或安装器的 `--action start` 可继续等待同一个进程；需要停止时使用 `NextTavern.sh stop` 或安装器的 `--action stop`。更慢的存储可在启动前设置 `NEXTTAVERN_READY_TIMEOUT_MS` 为正整数毫秒，例如 `900000`；它只控制安装器就绪等待，与模型首响应设置分别生效。
 
 [返回首页](README.md) · [Windows 安装](INSTALL-WINDOWS.md) · [手动安装](README.md#安装) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose)
 
@@ -118,9 +120,9 @@ sh NextTavern-Setup.sh --action stop
 
 ## 下载
 
-- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup.sh)
-- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/nexttavern-setup.tgz)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.2)
+- [NextTavern-Setup.sh](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.sh)
+- [nexttavern-setup.tgz](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/nexttavern-setup.tgz)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.3)
 
 下载后先校验再运行是个好习惯：
 

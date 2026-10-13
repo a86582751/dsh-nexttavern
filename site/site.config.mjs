@@ -23,7 +23,7 @@ export const site = {
     issuesUrl: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose',
     licenseName: 'GPL-3.0-only',
     licenseUrl: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE',
-    releaseVersion: '0.2.9-rc.2',
+    releaseVersion: '0.2.9-rc.3',
     developmentLine: '0.3 开发中，抱歉让大家久等了',
     harnessLine: 'DeepSeek Harness 0.1.7-rc.2',
     hero: {
@@ -50,7 +50,7 @@ export const site = {
         primary: { label: '快速开始', href: 'quickstart.html' },
         secondary: { label: '核心能力', href: 'capabilities.html' },
         facts: [
-            { label: '最新发行', value: '0.2.9-rc.2' },
+            { label: '最新发行', value: '0.2.9-rc.3' },
             { label: '运行宿主', value: 'DeepSeek Harness' },
             { label: '许可证', value: 'GPL-3.0-only' }
         ]
@@ -69,7 +69,7 @@ export const site = {
             {
                 id: 'windows',
                 label: 'Windows',
-                note: '0.2.9-rc.2 修复全新安装找不到 pnpm；请选新目录，ARM64 设备用 arm64 版本。',
+                note: '0.2.9-rc.3 修复安装／就绪报告。请选新目录，ARM64 设备用 arm64 版本。',
                 primary: { label: 'Windows 安装指南', href: 'install-windows.html' },
                 code: 'NextTavern-Setup.exe'
             },
@@ -78,7 +78,7 @@ export const site = {
                 label: 'Linux',
                 note: '自包含脚本，x86_64 与 aarch64（glibc），不需要 root，也不需要包管理器。',
                 primary: { label: 'Linux 安装指南', href: 'install-linux.html' },
-                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.2/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.9-rc.2"'
+                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.9-rc.3"'
             }
         ]
     },
