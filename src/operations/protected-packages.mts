@@ -164,10 +164,13 @@ interface ProfileManifest {
 }
 
 function inventory(root: string, prefix = ''): string[] {
-  return fs.readdirSync(root, {withFileTypes: true}).flatMap(entry => {
-    const relative = prefix + entry.name
+  return fs.readdirSync(root).flatMap(name => {
+    const relative = prefix + name
+    // Android shared storage can report DT_LNK for pnpm hardlinked regular
+    // files. lstat owns the type decision for both ordinary files and links.
+    const entry = fs.lstatSync(path.join(root, name))
     if (entry.isSymbolicLink()) throw Error('Protected package contains a link: ' + relative)
-    if (entry.isDirectory()) return inventory(path.join(root, entry.name), relative + '/')
+    if (entry.isDirectory()) return inventory(path.join(root, name), relative + '/')
     if (!entry.isFile()) throw Error('Protected package contains a special file: ' + relative)
     return [relative]
   }).sort()

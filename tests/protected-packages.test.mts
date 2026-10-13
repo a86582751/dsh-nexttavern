@@ -16,7 +16,8 @@ const compiled = path.join(temporary, 'protected-packages.mjs')
 await require('esbuild').build({entryPoints: [fileURLToPath(new URL('../src/operations/protected-packages.mts', import.meta.url))],
   outfile: compiled, bundle: true, platform: 'node', format: 'esm', logLevel: 'silent'})
 const {planProtectedPackages, prepareProtectedPackages, protectedGeneration, recoverProtectedPackages,
-  readPreparedProfile, durableReferencesIntact} = await import(pathToFileURL(compiled).href) as {
+  readPreparedProfile, durableReferencesIntact, verifyProtectedPackage} = await import(pathToFileURL(compiled).href) as {
+    verifyProtectedPackage(root: string, record: object): void
     planProtectedPackages(options: object): {changes: {path: string}[]; receipt: {clientClaims: string[]}
       clientClaims: {names: string[]; state: string; detail?: string}}
     prepareProtectedPackages(options: object): {receipt: {clientClaims: string[]; packages: {directory: string}[]}
@@ -51,6 +52,31 @@ function source(root: string, name = 'dsh-nexttavern-anydoc', version = '1.0.0')
   return {name, version, source, files}
 }
 const json = (file: string) => JSON.parse(fs.readFileSync(file, 'utf8'))
+
+test('pnpm hardlinked regular files survive misleading Android shared-storage Dirent types', t => {
+  const f = fixture('pnpm-hardlinks')
+  const input = source(f.root)
+  const storedLicense = path.join(f.root, 'store-LICENSE')
+  const license = path.join(input.source, 'LICENSE')
+  write(storedLicense, 'fixture license\n')
+  fs.linkSync(storedLicense, license)
+  assert.equal(fs.lstatSync(license).isFile(), true)
+  assert.equal(fs.lstatSync(license).nlink, 2)
+  input.files.push({path: 'LICENSE', sha256: digest(fs.readFileSync(license))})
+  const originalReaddir = fs.readdirSync
+  t.mock.method(fs, 'readdirSync', (directory: fs.PathLike, options?: {withFileTypes?: boolean}) => {
+    const entries = Reflect.apply(originalReaddir, fs, [directory, options]) as fs.Dirent[]
+    if (String(directory) !== input.source || !options?.withFileTypes) return entries
+    // Android shared storage reports DT_LNK for hardlinked regular files;
+    // lstat on the same file correctly reports its real type.
+    return entries.map(entry => fs.lstatSync(path.join(input.source, entry.name)).nlink > 1
+      ? {name: entry.name, isSymbolicLink: () => true, isDirectory: () => false, isFile: () => false}
+      : entry)
+  })
+  assert.equal(fs.readdirSync(input.source, {withFileTypes: true})
+    .find(entry => entry.name === 'LICENSE')!.isSymbolicLink(), true)
+  verifyProtectedPackage(input.source, input)
+})
 
 test('preparation writes versioned payloads and owned refs, preserving user state and requiring relink', () => {
   const f = fixture('initial')
