@@ -233,11 +233,6 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     async finalLore(placements:readonly {entryId:string;sourcePointer:string;text:string;effectiveContentSha256:string;
       position?:string;depth?:number}[],
       macros=deps.macros) {
-      const output=await transform(placements.map(item=>row(`final-${item.entryId}`,item.sourcePointer,item.text,
-        'regex-only','prompt',true,item.entryId,5,item.position==='at-chat-depth'?item.depth??null:null)),macros)
-      return output.entries.map((projection,index)=>{
-        assertTavernPromptProjectionReadyV1(projection)
-        return {entryId:placements[index]!.entryId,inputSha256:placements[index]!.effectiveContentSha256,
       if(!deps.rules.length) {
         ownerCheckpoint()
         // The evaluator owns the text/hash pair. With no regex rules there
@@ -245,6 +240,11 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
         return placements.map(item=>({entryId:item.entryId,inputSha256:item.effectiveContentSha256,
           text:item.text,outputSha256:item.effectiveContentSha256}))
       }
+      const output=await transform(placements.map(item=>row(`final-${item.entryId}`,item.sourcePointer,item.text,
+        'regex-only','prompt',true,item.entryId,5,item.position==='at-chat-depth'?item.depth??null:null)),macros)
+      return output.entries.map((projection,index)=>{
+        assertTavernPromptProjectionReadyV1(projection)
+        return {entryId:placements[index]!.entryId,inputSha256:placements[index]!.effectiveContentSha256,
           text:projection.outputText,outputSha256:projection.outputSha256}
       })
     },audit:()=>freeze({schemaVersion:1,encoding:'native-tavern-render-chain-audit-v1',authority:'consumer-data-only',
