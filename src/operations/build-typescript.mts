@@ -212,7 +212,8 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
       : plan.typeScript.contexts![context]!.ambientDeclarations
     roots.push(...(ambientDeclarations ?? []).map(file => inside(repo, file)))
     const program = ts.createProgram(roots, options, host)
-    diagnostics.push(...ts.getPreEmitDiagnostics(program))
+    // noEmitOnError makes emit the owner of type and declaration diagnostics;
+    // collecting the same Program diagnostics before emit repeats that work.
     const verifiedTypePackages = new Set<string>()
     const externalTypeInput = (source: CompilerAPI.SourceFile) => {
       // Some real SDK declarations import typed JSON model catalogs. They are
