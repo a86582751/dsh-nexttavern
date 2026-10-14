@@ -591,6 +591,7 @@ React,
         const scopedCss = '@layer dsh-roleplay-reader-default {\n' +
             scopeReaderCss(READER_BASE_CSS) + '\n}\n' + (framed ? '' : scopeReaderCss(authorCss)) + `
 .rp-author-frame-host { position: relative; width: min(1500px, 100%); align-self: center; overflow: hidden; }
+.rp-reader-view > .rp-author-frame-host { flex-shrink: 0; }
 .rp-author-guard-frame { display: block; width: 100%; height: 150px; border: 0; }
 .rp-author-action-layer { position: absolute; inset: 0; pointer-events: none; }
 .rp-author-action-row { position: absolute; left: 0; right: 0; min-height: 32px;
