@@ -15,6 +15,8 @@ import type { ImportRecord,CardImportDependencies,ImportSession } from './rolepl
 import {captureNextTavernCardExportV1,captureNextTavernAuthorDataV1} from './roleplay-native-card-export.js'
 import {createSourceMusicV1} from './roleplay-source-music.js'
 import {registerSourceMusicRoutesV1} from './roleplay-source-music-routes.js'
+import {createSourceImagesV1} from './roleplay-source-images.js'
+import {registerSourceImagesRoutesV1} from './roleplay-source-images-routes.js'
 import {decodeTavernCard} from './tavern-card.js'
 import type {NextTavernCardExportDocument} from './nexttavern-card.js'
 import type {TavernLoreSourceCaptureV1} from './roleplay-tavern-lore-source-types.js'
@@ -920,6 +922,15 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return {sourceHash:current.sourceHash,importId:current.original.importId,data:current.data}
   }})
   ctx.effect(()=>()=>sourceMusic.dispose(),'roleplay: Source music catalog lifecycle')
+  const sourceImages=createSourceImagesV1({libraryFor,
+    capture:(session,build)=>inputState.captureSource(session.id,'source-images',build).data,
+    read:session=>{
+      const current=captureNextTavernAuthorDataV1({tables:T,source:tavernSource,edits:tavernLoreEdits},session.id)
+      if(current.captured.kind==='outside-declared-domain'&&current.captured.code==='ACTIVE_SOURCE_MISSING')return null
+      if(!current.sourceHash||!current.original)throw Error('当前角色卡的图片来源尚不可读取。')
+      return {sourceHash:current.sourceHash,importId:current.original.importId,data:current.data}
+    },
+  })
   const {
     sameModelRoute,
     canonicalModelRoute,
@@ -3208,6 +3219,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   })
   registerSourceMusicRoutesV1({ctx,resolveRoleplaySession,music:sourceMusic,
     withSourceLock:(id,work)=>withImportLock(id,'source-music',work)})
+  registerSourceImagesRoutesV1({ctx,resolveRoleplaySession,images:sourceImages,
+    withSourceLock:(id,work)=>withImportLock(id,'source-images',work)})
   registerSettingsRoutes({
     ctx,
     T,

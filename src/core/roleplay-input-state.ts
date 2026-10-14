@@ -22,6 +22,7 @@ function sourceMetadataSha256(value:unknown):string {
 type Slot='schema'|'source'|'author-identity'|'observation'|'control'|'input'|'closing'
 export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'|'card-export'|'reader-display-author'
   |'author-worldbook'
+  |'source-images'
   |'tavern-inheritance'
   |'schema-derived-genesis'
   |`program-opening:${number}:${boolean}`
