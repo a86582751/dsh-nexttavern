@@ -43,6 +43,12 @@ interface SourceLineageReadV1 {
   readonly closed:Map<string,SourceClosedStateV1>
   readonly active:Set<string>
 }
+interface SourceClosedCaptureV1 {
+  readonly state:SourceClosedStateV1
+  readonly reading:SourceLineageReadV1
+  readonly facts:TavernSourceOwnedRowFactsV1
+  readonly opening:TavernSourceProgramAbsenceObservationV1|undefined
+}
 type SourceClosedConsumerV1=(facts:TavernSourceOwnedRowFactsV1,state:SourceClosedStateV1,
   opening:TavernSourceProgramAbsenceObservationV1|undefined)=>unknown
 const sourceLineageReadV1=(subjectSessionId:string,dependencyOnly=false):SourceLineageReadV1=>
@@ -101,8 +107,20 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       prototype=Object.getPrototypeOf(prototype)
     }
   }
-  function withActiveRowFacts<T>(facts:TavernSourceOwnedRowFactsV1,p:TavernSourcePreparedV1,consume:()=>T):T {
+  function withActiveRowFacts<T>(facts:TavernSourceOwnedRowFactsV1,p:TavernSourcePreparedV1,consume:()=>T,
+    capturedCurrent?:()=>void):T {
     assertFactoryCurrent()
+    if(capturedCurrent) {
+      // The completed Source capture already owns these exact row subscriptions.
+      // Native carrier/namespace readers consume them without rehashing Source.
+      activeRowFacts.set(facts,capturedCurrent);rowFactsDepth++
+      try {
+        capturedCurrent()
+        const result=consume()
+        assertSynchronousResult(result);capturedCurrent()
+        return result
+      }finally {activeRowFacts.delete(facts);rowFactsDepth--}
+    }
     const applyRow=facts.validatedRecords.find(row=>row.key===tavernSourceApplyKeyV1(p.childSessionId)),
       apply=applyRow?validateApplyInheritanceV1(applyRow.value):undefined
     assertNativeCut(p,apply)
@@ -524,7 +542,9 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     }
     owned(rKey,r)
     const meta=observe('branch',`${sid}__meta`),pointer=observe('branch',`${sid}__import-active`)
-    observe('branch',`${sid}__settings`);observe('status',`${sid}__spec`);observe('status',`${sid}__panel`)
+    observe('branch',`${sid}__settings`);observe('status',`${sid}__spec`)
+    // The ordinary panel is a turn output. A Source reader that actually uses
+    // a panel fallback owns that dependency; the inherited static rows do not.
     const migrationRow=observe('branch',tavernSourceMigrationKeyV1(sid))
     if(a&&!c) {
       if(!inheritanceSameV1(meta,a.priorMeta)||(!inheritanceSameV1(pointer,a.priorPointer)
@@ -625,9 +645,52 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     return result
     }finally {reading.active.delete(sid)}
   }
-  function readStatic(sid:string,requireReady=true) {return readStaticInLineage(sid,requireReady,sourceLineageReadV1(sid))}
+  function captureClosedSource(sid:string) {
+    return deps.captureClosedRead!(sid,()=>{
+      // Dependency mode retains the immutable publication and original closure;
+      // the current child namespace belongs to the outer observation frame.
+      const reading=sourceLineageReadV1(sid,true)
+      let facts!:TavernSourceOwnedRowFactsV1,opening:TavernSourceProgramAbsenceObservationV1|undefined
+      const state=readStaticInLineage(sid,true,reading,(rows,_state,observed)=>{
+        facts=Object.freeze({...rows,purpose:'subject' as const});opening=observed
+      })
+      return Object.freeze({state,reading,facts,opening}) satisfies SourceClosedCaptureV1
+    })
+  }
+  function consumeClosedSource<T>(sid:string,consume:(capture:SourceClosedCaptureV1,
+    opening:TavernSourceProgramAbsenceObservationV1|undefined)=>T):T {
+    assertNoRowFactsReentry()
+    const read=captureClosedSource(sid),capture=read.data,{state,facts}=capture,p=state.prepared
+    assertNativeCut(p,state.applyIntent)
+    if(p.frozenNonNumericalOpeningV1!==undefined)
+      deps.assertNonNumericalOpening!(sid,p.frozenNonNumericalOpeningV1,p.nativeCut)
+    return withActiveRowFacts(facts,p,()=>{
+      const observed=p.frozenProgramAbsenceOpeningV1===undefined?undefined:
+        deps.assertProgramAbsenceOpening!(sid,p.frozenProgramAbsenceOpeningV1,p.nativeCut,facts,capture.opening)
+      assertSynchronousResult(observed)
+      consumerSource=state
+      try {
+        const result=consume(capture,observed??undefined)
+        // Export projections are synchronous consumers without an outer Native
+        // scope. Close their actual inherited cut, not the full live history.
+        assertNativeCut(p,state.applyIntent)
+        return result
+      }finally {consumerSource=undefined}
+    },()=>{assertFactoryCurrent();read.assertCurrent()})
+  }
+  function readStatic(sid:string,requireReady=true) {
+    return requireReady&&deps.captureClosedRead?consumeClosedSource(sid,capture=>capture.state):
+      readStaticInLineage(sid,requireReady,sourceLineageReadV1(sid))
+  }
   function readCommittedSourceLineage(sid:string,
     consume?:Parameters<TavernSourceInheritanceOwnerV1['readCommittedSourceLineage']>[1]) {
+    if(deps.captureClosedRead)return consumeClosedSource(sid,(capture,opening)=>{
+      const {state:current,reading,facts}=capture,
+        lineage=Object.freeze({current,ancestors:Object.freeze(current.prepared.ancestors.map(ref=>
+          reading.closed.get(ref.childSessionId)!))})
+      consume?.(lineage,facts,opening)
+      return lineage
+    })
     const reading=sourceLineageReadV1(sid)
     const lineage=(current:SourceClosedStateV1)=>Object.freeze({current,
       ancestors:Object.freeze(current.prepared.ancestors.map(ref=>{
@@ -766,9 +829,9 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       code:'SOURCE_INHERITANCE_REQUIRES_NEW_SOURCE_ACTIVATION' as const,
       missingEvidence:['immutable reservation Source, complete published edit journal and Native material terminal evidence']}
     try {
-      const s=readStatic(sid,true)
+      const sourceLineage=readCommittedSourceLineage(sid),s=sourceLineage.current
       return {kind:'committed-data' as const,data:s.inheritance,originalAbsenceProof:s.prepared.originalAbsenceProof,
-        editBaseline:s.edit,materialBaseline:s.material}
+        editBaseline:s.editBaseline,materialBaseline:s.materialBaseline,sourceLineage}
     }catch(error) {
       const failure=error instanceof TavernSourceInheritanceFailureV1?error:
         new TavernSourceInheritanceFailureV1('SOURCE_INHERITANCE_INVALID')
@@ -847,6 +910,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
   }
   function withOwnedRowFacts<T>(sid:string,consume:(facts:TavernSourceOwnedRowFactsV1,
     transaction:TavernSourceStaticTransactionV1,opening:TavernSourceProgramAbsenceObservationV1|undefined)=>T):T {
+    if(deps.captureClosedRead)return consumeClosedSource(sid,(capture,opening)=>
+      consume(capture.facts,capture.state,opening))
     assertNoRowFactsReentry()
     let result!:T
     readStaticInLineage(sid,true,sourceLineageReadV1(sid),(facts,state,opening)=>

@@ -121,7 +121,8 @@ interface Dependencies extends SourceDependencies {
   /** Reads inherited timing once while the input owner records its actual
    * dependencies. Later checkpoints use that captured dependency baseline. */
   inheritedTiming(scope:ActualMaterialScope,source:Parameters<typeof captureRoleplayTavernTimedHistoryV2>[0]['source'],
-    assertOwnerFactsCurrent:()=>void)
+    assertOwnerFactsCurrent:()=>void,
+    sourceLineage?:NonNullable<Parameters<typeof captureRoleplayTavernTimedHistoryV2>[0]['sourceLineage']>)
     :{sourceLineage:NonNullable<Parameters<typeof captureRoleplayTavernTimedHistoryV2>[0]['sourceLineage']>;
       inheritedHistory:NonNullable<Parameters<typeof captureRoleplayTavernTimedHistoryV2>[0]['inheritedHistory']>;
       assertCurrent():void}|undefined
@@ -202,7 +203,8 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         const materialHistory=captureRoleplayTavernMaterialHistoryV1({sessionId:scope.session.id,table:deps.branch,
           events:()=>scope.session.snapshotEvents(),projections:deps.projections,assertOwnerCurrent:assertSignal})
         const chatClock=captureTavernCanonicalChatClockV1({session:scope.session,selected:native.selected,
-          assertOwnerCurrent:assertSignal}),inheritedTiming=deps.inheritedTiming(scope,source,assertSignal),
+          assertOwnerCurrent:assertSignal}),inheritedTiming=deps.inheritedTiming(scope,source,assertSignal,
+            author.captured.sourceLineage),
           timed=captureRoleplayTavernTimedHistoryV2({sessionId:scope.session.id,source,compilation,ownHistory:materialHistory,
             inheritedHistory:inheritedTiming?.inheritedHistory,sourceLineage:inheritedTiming?.sourceLineage,
             clock:chatClock,projections:deps.projections(),assertOwnerCurrent:assertSignal,

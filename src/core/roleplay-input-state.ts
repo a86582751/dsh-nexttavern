@@ -22,6 +22,7 @@ function sourceMetadataSha256(value:unknown):string {
 type Slot='schema'|'source'|'author-identity'|'observation'|'control'|'input'|'closing'
 export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'|'card-export'|'reader-display-author'
   |'author-worldbook'
+  |'tavern-inheritance'
   |'schema-derived-genesis'
   |`program-opening:${number}:${boolean}`
 export interface RoleplayInputStateSession {readonly id:string}
@@ -424,12 +425,9 @@ export function createRoleplayInputStateOwner(deps:{
       &&deps.agent(read.session)===read.agent&&deps.scopeIdentity?.(read.session)===read.scopeIdentity
   }
   function current(frame:Frame,visiting=new Set<Frame>()):boolean {
-    // Returning true during an audit would counterfeit a current owner. Even
-    // if the callback swallows the refusal, the original frame stays dirty.
-    if(readingProgramFact) {markDirty(readingProgramFact.frame);return false}
-    if(standaloneProgramAbsenceAudit) {
-      standaloneProgramAbsenceReentrant=true;markDirty(frame);return false
-    }
+    // Completed independent reads may supply DATA to an audit. Its own Frame
+    // cannot prove itself current, including through a dependency cycle.
+    if(frame===readingProgramFact?.frame) {markDirty(frame);return false}
     if(!nominalCurrent(frame)) {markDirty(frame);return false}
     if(visiting.has(frame)) {markDirty(frame);return false}
     visiting.add(frame)
@@ -446,8 +444,9 @@ export function createRoleplayInputStateOwner(deps:{
     if(!current(frame))throw Error('INPUT_STATE_CAPTURE_CHANGED')
   }
   function connect(frame:Frame):void {
-    if(capturing&&capturing!==frame) {
-      capturing.children.add(frame);frame.parents.add(capturing)
+    const parent=capturing??readingProgramFact?.frame
+    if(parent&&parent!==frame) {
+      parent.children.add(frame);frame.parents.add(parent)
     }
   }
   function handle<T>(frame:Frame,data:T):RoleplayInputStateRead<T> {
@@ -472,6 +471,13 @@ export function createRoleplayInputStateOwner(deps:{
       &&current(previous)) {
       metrics.reusedReads++;connect(previous)
       return handle(previous,previous.data as T)
+    }
+    // Audit table reads belong to its Program footprint. Computing a new
+    // Frame here would leave that new read without its own dependencies.
+    if(readingProgramFact||standaloneProgramAbsenceAudit) {
+      if(readingProgramFact)markDirty(readingProgramFact.frame)
+      if(standaloneProgramAbsenceAudit)standaloneProgramAbsenceReentrant=true
+      throw programFactError(readingProgramFact?.kind??'absence','REENTRANT_AUDIT')
     }
     if(previous){markDirty(previous);forget(previous);slots.delete(slotKey)}
     const frame:Frame={slot,session,agent:deps.agent(session),dirty:false,rows:new Set(),activeRows:new Set(),

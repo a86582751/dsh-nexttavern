@@ -4,7 +4,8 @@ import type {TavernOpeningContext} from './tavern-card.js'
 import type {LegacyContributionDataRequestV1, LegacyRawEntryDataRefV1,
   LegacyRowRefDataV1} from './roleplay-tavern-lore-contributions.js'
 import type {TavernLoreBookAbsenceProofV1} from './tavern-lore-plan-types.mjs'
-import type {TavernSourceInheritanceDescriptorV1,TavernSourceInheritanceReadV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {TavernSourceInheritanceDescriptorV1,TavernSourceInheritanceReadV1,
+  TavernSourceCommittedLineageV1} from './roleplay-tavern-source-inheritance-types.js'
 
 /** Core supplies its actual synchronous tables under the existing import lock.
  * No Helper/opening producer, Native lease or user-selected source reader is used. */
@@ -109,6 +110,7 @@ export interface TavernLoreSourceDiagnosticV1 {
 export type TavernLoreSourceCaptureV1 =
   | {readonly schemaVersion: 1; readonly kind: 'captured-data'; readonly source: TavernLoreSourceDataV1;
       readonly currentIdentitySha256: string;
+      readonly sourceLineage?: TavernSourceCommittedLineageV1;
       readonly contributionInput: TavernLoreContributionInputV1}
   | {readonly schemaVersion: 1; readonly kind: 'outside-declared-domain';
       readonly code: TavernLoreSourceOutsideCodeV1; readonly pointer: string;

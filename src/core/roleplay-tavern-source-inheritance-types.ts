@@ -332,6 +332,7 @@ export type TavernSourcePrepareAuthorChatForkSeedsV2=()=>Promise<
   TavernSourceAuthorChatForkSeedCaptureV2|undefined>
 export type TavernSourceInheritanceReadV1={readonly kind:'committed-data';readonly data:TavernSourceInheritanceDescriptorV1;
   readonly originalAbsenceProof:TavernLoreBookAbsenceProofV1|null;
+  readonly sourceLineage?:TavernSourceCommittedLineageV1;
   readonly editBaseline:TavernSourceEditBaselineV1;readonly materialBaseline:TavernSourceMaterialBaselineV1}
   |{readonly kind:'refused';readonly code:TavernSourceInheritanceCodeV1;readonly missingEvidence:readonly string[]}
 export type TavernSourceInheritanceCodeV1='SOURCE_INHERITANCE_INVALID'|'SOURCE_INHERITANCE_MISSING'
@@ -344,6 +345,11 @@ export type TavernSourceInheritanceCodeV1='SOURCE_INHERITANCE_INVALID'|'SOURCE_I
   |'SOURCE_INHERITANCE_STATIC_OWNER_UNSUPPORTED'|'SOURCE_INHERITANCE_REQUIRES_NEW_SOURCE_ACTIVATION'
 export interface TavernSourceInheritanceDepsV1 {
   readonly tables:Readonly<Record<TavernSourceStaticTableV1,TavernSourceInheritanceTableV1>>
+  /** InputState owns the subscriptions of this completed static Source read.
+   * Current Native carrier/namespace observations remain outside this capture. */
+  readonly captureClosedRead?:<T>(sessionId:string,compute:()=>T)=>{
+    readonly data:T;current():boolean;assertCurrent():void
+  }
   /** Same actual Source FIFO as import/editor. No lock spans parent and child. */
   readonly withSourceLock:<T>(sessionId:string,work:()=>Promise<T>)=>Promise<T>
   readonly readNativeSession:(sessionId:string)=>TavernSourceNativeSessionV1|undefined
@@ -367,7 +373,8 @@ export interface TavernSourceInheritanceDepsV1 {
   /** Actual child's complete namespace/Native cut and original Source joins.
    * Called within Source's closed read; must not recursively re-enter it. */
   readonly assertProgramAbsenceOpening?:(childSessionId:string,packet:TavernSourceFrozenProgramAbsenceOpeningV1,
-    cut:TavernSourceNativeCutV1,sourceRows:TavernSourceOwnedRowFactsV1)=>TavernSourceProgramAbsenceObservationV1|void
+    cut:TavernSourceNativeCutV1,sourceRows:TavernSourceOwnedRowFactsV1,
+    closedOpening?:TavernSourceProgramAbsenceObservationV1)=>TavernSourceProgramAbsenceObservationV1|void
   /** State1's binding comes from the compiled Browser2 writer proof. Called
    * once at the actual reservation cut while this owner's parent FIFO holds. */
   readonly captureAuthorChatForkSeed?:(parentSessionId:string,childSessionId:string,

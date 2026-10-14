@@ -129,5 +129,5 @@ export function createRoleplayProgramInheritedAbsenceReaderV1(deps:Dependencies)
     assertSourceFrameCurrent:()=>void,mode:'current-carrier'|'retained-publication'='current-carrier') {
     return readCarrier(childId,raw,cut,assertSourceFrameCurrent,mode)
   }
-  return {read}
+  return {read,readValidatedCarrier}
 }

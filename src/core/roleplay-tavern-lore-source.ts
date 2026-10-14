@@ -350,7 +350,11 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   // Source already owns the complete admission above. Publish the same currency
   // identity for consumers without cloning or validating this DATA again.
   const currentIdentitySha256=recordSha256(sourceCurrentIdentity(body))
-  return freeze({schemaVersion:1 as const,kind:'captured-data' as const,source,currentIdentitySha256,contributionInput})
+  const result=freeze({schemaVersion:1 as const,kind:'captured-data' as const,source,currentIdentitySha256,contributionInput})
+  // The lineage owner already froze this DATA. Carry its reference outside the
+  // Source body/hash without traversing those frozen records again.
+  return lineage?.kind==='committed-data'&&lineage.sourceLineage
+    ?Object.freeze({...result,sourceLineage:lineage.sourceLineage}):result
 }
 
 export function createRoleplayTavernLoreSourceV1(deps:TavernLoreSourceDepsV1) {
