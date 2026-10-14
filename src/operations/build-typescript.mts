@@ -189,8 +189,11 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
       }
       if (!fallback.to || fallback.to.startsWith('.') || path.isAbsolute(fallback.to)) throw Error('Invalid declaration fallback target')
     }
+    // Each strict Program owns fixed inputs and options. Reuse TypeScript's
+    // resolution work within it; file-specific fallback selection stays below.
+    const moduleResolutionCache = ts.createModuleResolutionCache(repo, host.getCanonicalFileName, options)
     host.resolveModuleNameLiterals = (literals, containingFile) => literals.map(literal => {
-      const local = ts.resolveModuleName(literal.text, containingFile, options, host)
+      const local = ts.resolveModuleName(literal.text, containingFile, options, host, moduleResolutionCache)
       if (local.resolvedModule) return local
       const fallback = fallbacks.find(item => path.resolve(containingFile) === inside(repo, item.file) && item.from.includes(literal.text))
       if (!fallback && (literal.text.startsWith('.') || path.isAbsolute(literal.text))) return local
@@ -199,7 +202,7 @@ export function compileTypeScript(repo = root, suppliedPlan?: CompilePlan, entri
       // manifest-registered declaration root; the pin audit below still applies.
       for (const root of declarationRoots) {
         const resolutionBase = path.join(repo, root.prefix, 'type-resolution.mts')
-        const result = ts.resolveModuleName(fallback?.to ?? literal.text, resolutionBase, options, host)
+        const result = ts.resolveModuleName(fallback?.to ?? literal.text, resolutionBase, options, host, moduleResolutionCache)
         if (result.resolvedModule) return result
       }
       return local
