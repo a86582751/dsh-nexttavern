@@ -181,7 +181,15 @@ export async function boundedSTPromptTransformBatchV1(data, signal) {
                 settled = true;
                 if (timer)
                     clearTimeout(timer);
-                resolve(value);
+                // The Worker preserves admitted entry order and seals the complete
+                // projections before sending. Reuse this invocation's original strings.
+                const result = value.kind === 'transformed'
+                    ? { kind: 'transformed', output: { ...value.output, entries: value.output.entries.map((projection, index) => {
+                                const original = data.input.entries[index];
+                                return { ...projection, rawText: original.rawText, storyText: original.storyText, inputText: original.inputText };
+                            }) } }
+                    : value;
+                resolve(result);
             };
             abort = () => done(failure('PROMPT_TRANSFORM_CANCELLED', 'cancelled'));
             signal?.addEventListener('abort', abort, { once: true });
@@ -194,7 +202,7 @@ export async function boundedSTPromptTransformBatchV1(data, signal) {
             }
             try {
                 worker = new Worker(new URL('./tavern-prompt-transform-worker.mjs', import.meta.url), {
-                    workerData: data, resourceLimits: { maxOldGenerationSizeMb: 64, stackSizeMb: 2 },
+                    workerData: { ...data, projectionTransport: 'input-backed' }, resourceLimits: { maxOldGenerationSizeMb: 64, stackSizeMb: 2 },
                 });
                 worker.once('message', (value) => done(value));
                 worker.once('error', () => done(failure('PROMPT_TRANSFORM_WORKER')));

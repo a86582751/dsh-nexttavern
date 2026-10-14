@@ -379,6 +379,7 @@ export function createBrowserRuntimeFrameV3(outer, artifact, binding, program, h
             renderReader(value);
         }
         scene = createBrowserNativeSceneV3({ program, schedulerWindow: view, onCallback: deliver,
+            onImages: options.onImages,
             prepareCallback: gestures.prepare, onPageClosed: gestures.closePage,
             observeNativeEvent: program.generationDeclarationId ? gestures.observe : undefined,
             onSettlement: settlement => send({ type: 'settlement', settlement }),

@@ -564,17 +564,12 @@ export function createRoleplayStatus(deps) {
         if (session.header?.parentSession && Number(latest?.seq) < Number(session.inheritedEventCount))
             return jobs;
         const runStart = statusRunStartSeq.get(session.id) ?? Infinity;
-        // Recover pending durable work and this run's completed turns. A cold
-        // legacy session only backfills its latest turn, not its entire archive.
+        // Recover the latest turn and this run's completed turns. A newer
+        // status settles the prefix without restarting older pending work.
         for (const entry of surfaceEntries(session)) {
             if (entry.kind !== 'assistant')
                 continue;
-            const record = T.status.get(keyOf(session.id, `turn-${entry.turn}-${entry.seq}`));
-            if (entry.seq === latest?.seq || entry.seq > runStart
-                ||
-                    (record
-                        && (record.state === 'running' || record.state === 'waiting-main' || record.state === 'retry'
-                            || record.publicationState === 'retry'))) {
+            if (entry.seq === latest?.seq || entry.seq > runStart) {
                 const event = canonicalAssistantForTurn(session, entry.turn);
                 if (event)
                     jobs.push(queueStatusObligation(session, event, via, agent));

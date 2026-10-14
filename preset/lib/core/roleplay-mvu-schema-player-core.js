@@ -50,7 +50,10 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
             const session = deps.session(sid);
             if (!session)
                 return { code: 'MVU_PLAYER_SESSION_INACTIVE', completedByEventKey };
-            const prefix = `${sid}__mvu-schema-player-`, rows = [...deps.branch.entries()].filter(([key]) => key.startsWith(prefix));
+            // This cached ledger consumes only manual-player records. Watching the
+            // whole session would let ordinary turn outputs revoke the schema view.
+            const prefix = `${sid}__mvu-schema-player-`;
+            const rows = [...deps.branch.entries(prefix)].filter(([key]) => key.startsWith(prefix));
             if (rows.length > 4096)
                 return { code: 'SCHEMA_PLAYER_HISTORY_UNPROVEN', completedByEventKey };
             const operations = rows.filter(([key]) => key.startsWith(`${prefix}operation-`));
@@ -79,8 +82,9 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
                 if (!operations.some(([, row]) => [mvuSchemaPlayerOperationKey(sid, row.operationId), mvuSchemaPlayerCompletionKey(sid, row.operationId), mvuSchemaPlayerPlanKey(sid, row.operationId),
                     mvuSchemaPlayerRefusalKey(sid, row.operationId)].includes(key)))
                     fail('SCHEMA_PLAYER_HISTORY_UNPROVEN');
-            for (const [key] of deps.status.entries())
-                if (key.startsWith(`${sid}__mvu-state-schema-player-`)
+            const statusPrefix = `${sid}__mvu-state-schema-player-`;
+            for (const [key] of deps.status.entries(statusPrefix))
+                if (key.startsWith(statusPrefix)
                     && !publishedKeys.has(key))
                     fail('SCHEMA_PLAYER_HISTORY_UNPROVEN');
             return { completedByEventKey };

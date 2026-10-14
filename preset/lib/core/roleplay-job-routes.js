@@ -37,6 +37,8 @@ export function registerJobRoutes({ ctx, T, resolveRoleplaySession, novelExports
         assertSteeringAgent(agent);
         const job = kind === 'novel-export' ? await novelExports.begin(session, mode === 'organized' ? await modelPolicy.resolve(session, kind, agent) : undefined, { mode })
             : await beginCardWorkflow(session, kind, sourceFile, agent, requestId, undefined, mode);
+        if (job.status === 'completed')
+            return job;
         if (job.execution === 'deterministic') {
             if (kind === 'novel-export')
                 return novelExports.drive(session, job.id, agent);

@@ -90,7 +90,8 @@ export function captureRoleplayTavernPromptSourceDataV1(deps, sessionId, include
     const edited = deps.edits.observeSourceData(captured);
     if (edited.kind !== 'captured-data')
         fail(edited.diagnostics[0]?.code ?? 'INPUT_MATERIAL_EDIT_UNAVAILABLE');
-    return assemblePromptSourceData(captured, edited.data, sessionId, includeCardStyle, sourceAuthorTables(captured.source));
+    const assembled = assemblePromptSourceData(captured, edited.data, sessionId, includeCardStyle, sourceAuthorTables(captured.source));
+    return { ...assembled, ...(captured.sourceLineage ? { sourceLineage: captured.sourceLineage } : {}) };
 }
 /** Other callers retain their actual after-await Source/editor/author checks. */
 export function captureRoleplayTavernPromptSourceV1(deps, sessionId, includeCardStyle, assertOwnerCurrent) {

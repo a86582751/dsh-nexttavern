@@ -89,6 +89,7 @@ export function createBrowserPageRendererV3(options) {
     shellHead.remove();
     shellBody.remove();
     const handles = new Map(), reverse = new WeakMap();
+    const images = new Map();
     const nodes = new Map(), ownedNodes = new Set([doc]);
     const payloads = new Map(plan.parsed.document.nodes.map(node => [node.nodeId, node]));
     const scriptAttributes = new WeakMap();
@@ -123,6 +124,25 @@ export function createBrowserPageRendererV3(options) {
         return { tag: 'handle', pageId, handle, kind };
     }
     const documentHandle = ref(doc, 'document');
+    const publishImages = () => options.onImages?.(pageId, [...images.values()]);
+    const imageName = (image) => image.alt || image.title || options.carrierScript?.identity || '作者图片';
+    function imageAssigned(image, originalUrl) {
+        const target = ref(image, 'node');
+        images.set(target.handle, { target, originalUrl, url: image.src, name: imageName(image) });
+        publishImages();
+    }
+    function imageNamed(image) {
+        const handle = reverse.get(image), previous = handle === undefined ? undefined : images.get(handle);
+        if (previous) {
+            images.set(previous.target.handle, { ...previous, name: imageName(image) });
+            publishImages();
+        }
+    }
+    function imageRemoved(image) {
+        const handle = reverse.get(image);
+        if (handle !== undefined && images.delete(handle))
+            publishImages();
+    }
     const visibleNode = (node) => ownedNodes.has(node) || !!options.externalFrames?.encode(node);
     function owned(reference) {
         const result = reference.pageId === pageId ? handles.get(reference.handle) : undefined;
@@ -572,6 +592,7 @@ export function createBrowserPageRendererV3(options) {
             }
     }
     function attribute(target, name, value, parsed = false, namespace) {
+        const originalUrl = value, imageAttribute = name.toLowerCase();
         const script = scriptAttributes.get(target);
         if (script) {
             if (name === 'src' || name === 'nonce')
@@ -605,6 +626,12 @@ export function createBrowserPageRendererV3(options) {
             target.setAttributeNS(namespace, name, value);
         else
             target.setAttribute(name, value);
+        if (target instanceof view.HTMLImageElement) {
+            if (imageAttribute === 'src')
+                imageAssigned(target, originalUrl);
+            else if (imageAttribute === 'alt' || imageAttribute === 'title')
+                imageNamed(target);
+        }
     }
     function attributes(target, values) {
         for (const value of values) {
@@ -919,6 +946,7 @@ export function createBrowserPageRendererV3(options) {
             target.crossOrigin = 'anonymous';
             beginLoad(target);
             target.src = url;
+            imageAssigned(target, String(value));
             return;
         }
         if (key === 'textContent' && target instanceof view.HTMLStyleElement)
@@ -928,6 +956,8 @@ export function createBrowserPageRendererV3(options) {
             return;
         }
         target[key] = value;
+        if (target instanceof view.HTMLImageElement && (key === 'alt' || key === 'title'))
+            imageNamed(target);
     }
     function call(target, kind, method, args) {
         if (!BROWSER_NATIVE_METHODS_V3[kind].includes(method))
@@ -1032,6 +1062,8 @@ export function createBrowserPageRendererV3(options) {
                 if (value instanceof view.Node)
                     prepareInsertion(value);
         const result = target[method](...args);
+        if (method === 'removeAttribute' && String(args[0]).toLowerCase() === 'src' && target instanceof view.HTMLImageElement)
+            imageRemoved(target);
         if (method === 'removeChild' || method === 'replaceChild')
             options.externalFrames?.removed(result);
         if (kind === 'observer' && method === 'disconnect')
@@ -1255,14 +1287,25 @@ export function createBrowserPageRendererV3(options) {
                 objectURLs.add(url);
                 return url;
             }
-            if (objectURLs.delete(request.url))
+            if (objectURLs.delete(request.url)) {
                 view.URL.revokeObjectURL(request.url);
+                let removed = false;
+                for (const [handle, image] of images)
+                    if (image.url === request.url) {
+                        images.delete(handle);
+                        removed = true;
+                    }
+                if (removed)
+                    publishImages();
+            }
             return { tag: 'undefined' };
         },
         dispose() {
             if (disposal)
                 return disposal;
             active = false;
+            images.clear();
+            publishImages();
             for (const waiter of [...readinessWaiters])
                 finishReadiness(waiter, Error('BROWSER3_PAGE_CLOSED'));
             for (const load of nativeLoads.values())

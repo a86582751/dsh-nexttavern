@@ -643,6 +643,137 @@ export function compileTavernExtensionInventoryV3(decoded) {
     }
     return { schemaVersion: 3, sourceSha256: decoded.sourceSha256, entries };
 }
+/** Source relations describe the captured card, never permission to run its UI or loader. */
+export function compileTavernExtensionBindingsV1(decoded) {
+    const extensions = decoded.data.extensions;
+    if (!object(extensions) || !object(extensions.chaoshen_jixieshi))
+        return undefined;
+    const declaration = extensions.chaoshen_jixieshi;
+    const root = decoded.document.data === decoded.data ? '/data' : '';
+    const declarationPointer = `${root}/extensions/chaoshen_jixieshi`;
+    const bookPointer = `${root}/character_book`;
+    const book = decoded.data.character_book;
+    const bookMetadata = object(book) && object(book.extensions) ? book.extensions : undefined;
+    const helper = extensions.tavern_helper;
+    const scripts = object(helper) && Array.isArray(helper.scripts) ? helper.scripts : undefined;
+    const regexes = Array.isArray(extensions.regex_scripts) ? extensions.regex_scripts : undefined;
+    const bookEntries = object(book) && Array.isArray(book.entries) ? book.entries : undefined;
+    const names = ['embedded_worldbook_id', 'embedded_worldbook_version', 'opening_protocol', 'opening_mode',
+        'ui_panel_version', 'ui_panel_id', 'ui_mode', 'ui_source', 'mvu_protocol_version', 'mvu_loader_id',
+        'mvu_remote_ref', 'mvu_remote_fallback', 'mvu_commit', 'mvu_initvar_id'];
+    const entries = [];
+    const loaderIndices = typeof declaration.mvu_loader_id === 'string' && scripts
+        ? scripts.flatMap((script, index) => object(script) && script.id === declaration.mvu_loader_id ? [index] : [])
+        : [];
+    for (const field of names) {
+        const value = declaration[field];
+        if (typeof value !== 'string')
+            continue;
+        const base = { field, sourcePointer: `${declarationPointer}/${field}`, valueSha256: digest(value) };
+        let targets;
+        if (field === 'embedded_worldbook_id' || field === 'embedded_worldbook_version') {
+            const property = field === 'embedded_worldbook_id' ? 'worldbook_id' : 'worldbook_version';
+            targets = bookMetadata?.[property] === value
+                ? [{ pointer: `${bookPointer}/extensions/${property}`, objectPointer: bookPointer }] : [];
+        }
+        else if (field === 'ui_panel_id') {
+            targets = regexes?.flatMap((regex, index) => object(regex) && regex.id === value
+                ? [{ pointer: `${root}/extensions/regex_scripts/${index}/id`,
+                        objectPointer: `${root}/extensions/regex_scripts/${index}` }] : []) ?? [];
+        }
+        else if (field === 'mvu_loader_id') {
+            targets = loaderIndices.map(index => ({ pointer: `${root}/extensions/tavern_helper/scripts/${index}/id`,
+                objectPointer: `${root}/extensions/tavern_helper/scripts/${index}` }));
+        }
+        else if (field === 'mvu_remote_ref' || field === 'mvu_remote_fallback' || field === 'mvu_commit') {
+            // A duplicated loader ID cannot lend an apparently unique scalar from one of its scripts.
+            if (loaderIndices.length > 1) {
+                entries.push({ ...base, disposition: 'ambiguous-target' });
+                continue;
+            }
+            targets = [];
+            if (loaderIndices.length === 1) {
+                const index = loaderIndices[0], loader = scripts[index];
+                const data = loader.data;
+                const suffix = field === 'mvu_commit' ? 'commit' : field === 'mvu_remote_ref' ? 'sources/0' : 'sources/1';
+                let targetValue;
+                if (object(data)) {
+                    if (field === 'mvu_commit')
+                        targetValue = data.commit;
+                    else if (Array.isArray(data.sources))
+                        targetValue = data.sources[field === 'mvu_remote_ref' ? 0 : 1];
+                }
+                if (targetValue === value)
+                    targets.push({
+                        pointer: `${root}/extensions/tavern_helper/scripts/${index}/data/${suffix}`,
+                        objectPointer: `${root}/extensions/tavern_helper/scripts/${index}`,
+                    });
+            }
+        }
+        else if (field === 'mvu_initvar_id') {
+            targets = bookEntries?.flatMap((entry, index) => object(entry) && object(entry.extensions)
+                && entry.extensions.stable_id === value ? [{ pointer: `${bookPointer}/entries/${index}/extensions/stable_id`,
+                    objectPointer: `${bookPointer}/entries/${index}` }] : []) ?? [];
+        }
+        let disposition;
+        if (targets === undefined)
+            disposition = 'declared-configuration';
+        else if (targets.length === 0)
+            disposition = 'missing-target';
+        else if (targets.length > 1)
+            disposition = 'ambiguous-target';
+        else
+            disposition = 'matched-source';
+        entries.push({ ...base, disposition,
+            ...(targets?.length === 1 ? { targetPointer: targets[0].pointer, targetObjectPointer: targets[0].objectPointer } : {}) });
+    }
+    return { schemaVersion: 1, sourceSha256: decoded.sourceSha256, key: 'chaoshen_jixieshi', entries };
+}
+/** The editor index describes source relations, not runtime IDs or loaded external books. */
+export function compileTavernCardAgentSourceIndexV1(decoded) {
+    const extensions = decoded.data.extensions;
+    if (!object(extensions) || !object(extensions.card_agent))
+        return undefined;
+    const declaration = extensions.card_agent;
+    const root = decoded.document.data === decoded.data ? '/data' : '';
+    const sourcePointer = `${root}/extensions/card_agent`;
+    const bookPointer = `${root}/character_book`, book = decoded.data.character_book;
+    const bookName = object(book) && typeof book.name === 'string' ? book.name : undefined;
+    const externalName = typeof extensions.world === 'string' ? extensions.world : undefined;
+    // A worldbook-only index needs no opening parse; candidates retain their original ordinals.
+    const openings = Array.isArray(declaration.greetings) && declaration.greetings.length
+        ? compileTavernOpeningCandidates(decoded) : [];
+    const entries = [];
+    const references = [['greeting', declaration.greetings], ['worldbook', declaration.worldbooks]];
+    for (const [kind, values] of references) {
+        if (!Array.isArray(values))
+            continue;
+        for (const [index, reference] of values.entries()) {
+            const origin = { kind, index, sourcePointer: `${sourcePointer}/${kind}s/${index}` };
+            if (!object(reference) || typeof reference.id !== 'string' || typeof reference.name !== 'string') {
+                entries.push({ ...origin, disposition: 'invalid-reference' });
+                continue;
+            }
+            const named = { ...origin, idSha256: digest(reference.id), nameSha256: digest(reference.name) };
+            if (kind === 'greeting') {
+                const target = openings.find(candidate => candidate.index === index);
+                entries.push({ ...named, disposition: target ? 'standard-opening' : 'missing-standard-opening',
+                    ...(target ? { targetPointer: target.sourcePointer, targetSha256: target.sourceSha256 } : {}) });
+            }
+            else {
+                const local = bookName === reference.name;
+                // Only /name matches. Neither the snapshot nor extensions.world proves external content was read.
+                entries.push({ ...named, disposition: local ? 'local-snapshot-name-match' : 'external-book-reference',
+                    ...(local ? { targetPointer: `${bookPointer}/name`, targetObjectPointer: bookPointer,
+                        targetSha256: digest(reference.name) } : {}),
+                    ...(externalName === reference.name ? { externalBindingPointer: `${root}/extensions/world` } : {}) });
+            }
+        }
+    }
+    return { schemaVersion: 1, key: 'card_agent', protocol: 'dream-creator-editor-index-v1',
+        sourceSha256: decoded.sourceSha256, sourcePointer,
+        ...(typeof declaration.binding_id === 'string' ? { bindingIdSha256: digest(declaration.binding_id) } : {}), entries };
+}
 // A card is only a source of declarations. This report does not resolve URLs,
 // execute extensions, or imply that optional analysis has run. "Missing" means
 // the referenced asset bytes were not bundled in the card itself.

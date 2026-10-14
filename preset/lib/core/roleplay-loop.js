@@ -12,9 +12,7 @@ import { CHARACTER_PERSONA } from './character-cluster.js';
 import { tavernTaskToolBoundary, inlineTaskInstruction, taskPhaseMessage, retireCompletedTaskContexts, isInlinePending, inlineTaskMessages, internalTaskSeqs } from './tavern-tasks.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 /** Bound silence at the native request boundary without changing adapter
- * options, retrying a paid call or discarding queued player input.
- * The default keeps the historical 90-second bound; slow (e.g. local) models
- * widen it through the `firstResponseTimeoutMs` profile config. */
+ * options, retrying a paid call or discarding queued player input. */
 export function createFirstResponseWatchdog(timeoutMs = 90000) {
     const pending = new Map();
     const clear = (id) => { const item = pending.get(id); if (!item)

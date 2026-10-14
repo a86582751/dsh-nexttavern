@@ -5,7 +5,7 @@ import { jsonResponse } from './roleplay-state.js';
 import { withTavernLock } from './tavern-tasks.js';
 import { statusTemplateDiagnostics } from '../status-template.js';
 import { SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1 } from './roleplay-tavern-legacy-write-target-types.js';
-import { INDEPENDENT_AUTHOR_CORE_V1 } from './roleplay-import-record.js';
+import { INDEPENDENT_AUTHOR_CORE_V1, authorRuleEditV1 } from './roleplay-import-record.js';
 // Shared by the panel and bounded agent edits: one revision check and one mutation path.
 export async function savePanelSetting({ ctx, T, recordVersionsFor, svc, RULE_TEXT_FIELDS, checkLegacyWorldbookWriteTarget }, session, body, validate, source = 'user-edit') {
     const atSeq = lastSeq(session);
@@ -145,14 +145,7 @@ export async function savePanelSetting({ ctx, T, recordVersionsFor, svc, RULE_TE
             const next = {
                 ...prev,
                 verified: false,
-                editedFrom: {
-                    sha256: recordSha256(prev),
-                    source,
-                    seq: atSeq,
-                    ...(body.repairId ? {
-                        repairId: body.repairId
-                    } : {})
-                }
+                editedFrom: authorRuleEditV1(prev, RULE_TEXT_FIELDS.filter(field => body[field] !== undefined), source, atSeq, body.repairId)
             };
             for (const f of RULE_TEXT_FIELDS) {
                 if (body[f] !== undefined)

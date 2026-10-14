@@ -1,6 +1,7 @@
 // Generated from runtime/alpha3/src/core/tavern-prompt-transform-worker.mts; edit the TypeScript source.
 import { parentPort, workerData } from 'node:worker_threads';
-import { recordSha256 } from './roleplay-data.js';
+import { createHash } from 'node:crypto';
+import { recordSha256, sha256, stableJson } from './roleplay-data.js';
 import { schemaTextSha256 } from './tavern-mvu-schema-data.js';
 import { createTavernPromptTransformOutputV1 } from './tavern-prompt-transform-output.mjs';
 import { TAVERN_PROMPT_TRANSFORM_LIMITS_V1 as LIMITS, TAVERN_PROMPT_POST_ORDER_V1, TAVERN_PROMPT_CARD_ORDER_V1, TAVERN_PROMPT_INSTRUCT_ORDER_V1 } from './tavern-prompt-transform-types.mjs';
@@ -13,11 +14,13 @@ class Refusal extends Error {
 }
 function run(data) {
     const { input } = data, macro = input.macros;
+    const deferredMacros = new Set(macro.deferredMacros ?? []);
     let entry = null, rule = null;
     let jobs = 0, matches = 0, workChars = 0, outputChars = 0, compiledRules = 0, receiptCount = 0, receiptChars = 0;
     let reads = new Map();
     let diagnostics = [];
     const compiled = new Map();
+    let ruleMetadata;
     const diag = (code, token = null, limit = null) => ({
         schemaVersion: 1, code, entryKey: entry?.key ?? null, ruleId: rule?.id ?? null, macro: token, limit,
     });
@@ -27,10 +30,114 @@ function run(data) {
     };
     const job = () => { limit('jobs', ++jobs); };
     const work = (n) => { workChars += n; limit('workChars', workChars); };
-    const receipt = (value) => {
+    const encodeFields = (fields) => {
+        const chunks = [], metadata = ['{'];
+        for (const [index, key] of [...fields.keys()].sort().entries()) {
+            metadata.push((index ? ',' : '') + JSON.stringify(key) + ':');
+            const encoded = fields.get(key);
+            if (typeof encoded === 'string')
+                metadata.push(encoded);
+            else {
+                chunks.push(metadata.join(''), encoded);
+                metadata.length = 0;
+            }
+        }
+        metadata.push('}');
+        chunks.push(metadata.join(''));
+        return chunks;
+    };
+    const receipt = (value, fields, metadata) => {
         limit('receipts', ++receiptCount);
-        receiptChars += JSON.stringify(value).length;
+        let serialized, chunks;
+        let textEncodings;
+        if (fields) {
+            const record = value, rawJson = stableJson(record.rawText);
+            const storyJson = record.storyText === record.rawText ? rawJson : stableJson(record.storyText);
+            let inputJson = rawJson;
+            if (record.inputText !== record.rawText)
+                inputJson = record.inputText === record.storyText ? storyJson : stableJson(record.inputText);
+            let outputJson = rawJson;
+            if (record.outputText !== record.rawText) {
+                if (record.outputText === record.storyText)
+                    outputJson = storyJson;
+                else if (record.outputText === record.inputText)
+                    outputJson = inputJson;
+                else
+                    outputJson = stableJson(record.outputText);
+            }
+            textEncodings = [rawJson, storyJson, inputJson, outputJson];
+            for (const [key, item] of Object.entries(record)) {
+                if (item === undefined)
+                    continue;
+                let encoded;
+                if (key === 'rawText')
+                    encoded = rawJson;
+                else if (key === 'storyText')
+                    encoded = storyJson;
+                else if (key === 'inputText')
+                    encoded = inputJson;
+                else if (key === 'outputText')
+                    encoded = outputJson;
+                else if (key === 'rules')
+                    encoded = fields.get(key) ?? stableJson(item);
+                else
+                    encoded = stableJson(item);
+                fields.set(key, encoded);
+            }
+            chunks = [];
+            let metadata = ['{'];
+            for (const [index, key] of [...fields.keys()].sort().entries()) {
+                metadata.push((index ? ',' : '') + JSON.stringify(key) + ':');
+                const encoded = fields.get(key);
+                // Keep large text encodings shared, and join adjacent metadata so the
+                // same canonical bytes need at most nine native hash writes per entry.
+                if (key === 'rawText' || key === 'storyText' || key === 'inputText' || key === 'outputText') {
+                    chunks.push(metadata.join(''), encoded);
+                    metadata = [];
+                }
+                else
+                    metadata.push(encoded);
+            }
+            metadata.push('}');
+            chunks.push(metadata.join(''));
+        }
+        else if (metadata !== undefined) {
+            const outcome = value;
+            serialized = `{"matches":${outcome.matches},"reason":${JSON.stringify(outcome.reason)}`
+                + metadata + JSON.stringify(outcome.status) + '}';
+        }
+        else
+            serialized = JSON.stringify(value);
+        // Charge every occurrence before hashing, even when text encodings alias.
+        // Only the final sealed projection needs a complete allocated JSON string.
+        receiptChars += chunks ? chunks.reduce((sum, chunk) => sum + chunk.length, 0) : serialized.length;
         limit('receiptChars', receiptChars);
+        if (!chunks)
+            return serialized;
+        // The meter above charges every UTF-16 occurrence before allocating bytes.
+        // Both hashes consume these complete JSON tokens, sharing their UTF-8 once.
+        const [rawJson, storyJson, inputJson, outputJson] = textEncodings;
+        const rawBytes = Buffer.from(rawJson, 'utf8');
+        const storyBytes = storyJson === rawJson ? rawBytes : Buffer.from(storyJson, 'utf8');
+        const inputBytes = inputJson === rawJson ? rawBytes :
+            inputJson === storyJson ? storyBytes : Buffer.from(inputJson, 'utf8');
+        const outputBytes = outputJson === rawJson ? rawBytes : outputJson === storyJson ? storyBytes :
+            outputJson === inputJson ? inputBytes : Buffer.from(outputJson, 'utf8');
+        fields.set('rawText', rawBytes);
+        fields.set('storyText', storyBytes);
+        fields.set('inputText', inputBytes);
+        fields.set('outputText', outputBytes);
+        // Text fields occur in this fixed lexical order between adjacent metadata.
+        for (const [index, bytes] of [inputBytes, outputBytes, rawBytes, storyBytes].entries())
+            chunks[index * 2 + 1] = bytes;
+        const hash = createHash('sha256');
+        for (const chunk of chunks) {
+            if (typeof chunk === 'string')
+                hash.update(chunk, 'utf8');
+            else
+                hash.update(chunk);
+        }
+        return hash.digest('hex');
     };
     const issue = (code, token = null) => {
         const value = diag(code, token);
@@ -101,8 +208,15 @@ function run(data) {
         };
         for (;;) {
             const m = regex.exec(text);
-            if (!m)
+            if (!m) {
+                // A zero-match scan already owns its input work. Reuse the exact
+                // string instead of rebuilding and charging an unchanged output.
+                if (parts.length === 0) {
+                    limit('outputChars', text.length);
+                    return text;
+                }
                 break;
+            }
             job();
             if (untrusted)
                 limit('matches', ++matches);
@@ -138,14 +252,28 @@ function run(data) {
             issue('PROMPT_TRANSFORM_MACRO_ENGINE_UNSUPPORTED', 'experimental');
             return text;
         }
+        if (!text.includes('<') && !text.includes('{{'))
+            return text;
         const environment = override ? env(override) : baseEnv;
         const get = (key) => environment.find(b => b.key === key);
         let result = text;
+        let literalSource, literalText = '';
+        const hasLiteral = (tokens) => {
+            // Reuse only this stage's current text. Earlier substitutions can insert
+            // later aliases, so a changed result always refreshes this derived value.
+            if (literalSource !== result) {
+                literalSource = result;
+                literalText = result.toLowerCase();
+            }
+            return tokens.some(token => literalText.includes(token.toLowerCase()));
+        };
         for (const [pattern, key] of [['<USER>', 'user'], ['<BOT>', 'char'], ['<CHAR>', 'char'],
             ['<CHARIFNOTGROUP>', 'group'], ['<GROUP>', 'group']]) {
-            if (result.includes('<'))
+            if (hasLiteral([pattern]))
                 result = fixed(result, new RegExp(pattern, 'gi'), get(key), post, key);
         }
+        if (!result.includes('{{'))
+            return result;
         if (result.includes('{{'))
             replace(result, /{{roll[ : ]([^}]+)}}/gi, m => {
                 issue('PROMPT_TRANSFORM_MACRO_UNSUPPORTED', m[0]);
@@ -154,6 +282,8 @@ function run(data) {
         for (const key of TAVERN_PROMPT_INSTRUCT_ORDER_V1) {
             if (!result.includes('{{'))
                 break;
+            if (!hasLiteral(key.split('|').map(alias => `{{${alias}}}`)))
+                continue;
             result = fixed(result, new RegExp('{{(' + key + ')}}', 'gi'), macro.instruct.find(b => b.key === key), post, key);
         }
         // Read-only subset of getVariableMacros in its real pre-env position.
@@ -180,16 +310,20 @@ function run(data) {
             result = replace(result, /(?:\r?\n)*{{trim}}(?:\r?\n)*/gi, () => post(''));
         if (result.includes('{{'))
             result = replace(result, /{{noop}}/gi, () => post(''));
-        if (result.includes('{{'))
+        if (hasLiteral(['{{input}}']))
             result = fixed(result, /{{input}}/gi, macro.input, post, 'input');
         for (const row of environment) {
             if (!result.includes('{{'))
                 break;
+            // Arbitrary registered Unicode keys retain the exact non-u /i matching
+            // relation; lowercase literal lookup is equivalent only for ASCII keys.
+            if (!/[^\x00-\x7f]/.test(row.key) && !hasLiteral([`{{${row.key}}}`]))
+                continue;
             result = fixed(result, new RegExp('{{' + escape(row.key) + '}}', 'gi'), row, post, row.key);
         }
         // Reverse/comment occur between the ID aliases and clock aliases in ST.
         const postValue = (name) => {
-            if (result.includes('{{'))
+            if (hasLiteral([`{{${name}}}`]))
                 result = fixed(result, new RegExp('{{' + name + '}}', 'gi'), macro.post.find(b => b.key === name), post, name);
         };
         for (const name of TAVERN_PROMPT_POST_ORDER_V1.slice(0, 15))
@@ -213,7 +347,7 @@ function run(data) {
             });
         if (result.includes('{{'))
             replace(result, /{{([\s\S]*?)}}/g, m => {
-                if (!recognized(m[1], environment))
+                if (!recognized(m[1], environment) && !deferredMacros.has(m[1]))
                     issue('PROMPT_TRANSFORM_MACRO_UNSUPPORTED', m[0]);
                 return m[0];
             });
@@ -307,10 +441,17 @@ function run(data) {
         }
         return result;
     };
-    const regexStage = (text, receipts) => {
+    const regexStage = (text, receipts, encodings) => {
         let result = text;
-        const add = (value) => { receipt(value); receipts.push(value); };
-        for (const current of input.rules) {
+        // Immutable rule identity belongs to this batch. Encode it only when a
+        // regex stage runs; each outcome's canonical DATA then serves both charges.
+        ruleMetadata ??= input.rules.map(current => `,"ruleId":${JSON.stringify(current.id)}`
+            + `,"sourcePointer":${JSON.stringify(current.sourcePointer)},"status":`);
+        for (const [index, current] of input.rules.entries()) {
+            const add = (value) => {
+                encodings.push(receipt(value, undefined, ruleMetadata[index]));
+                receipts.push(value);
+            };
             rule = current;
             job();
             const skip = eligible(current, result);
@@ -326,8 +467,10 @@ function run(data) {
                 continue;
             }
             const before = matches;
-            const replacement = current.replaceString.replace(/{{match}}/gi, '$0');
+            let replacement;
             result = replace(result, c.regex, m => {
+                // A template cannot consume output or substitution work until a match.
+                replacement ??= current.replaceString.replace(/{{match}}/gi, '$0');
                 const substituted = replace(replacement, /\$(\d+)|\$<([^>]+)>/g, token => {
                     let capture;
                     if (token[1]) {
@@ -362,6 +505,7 @@ function run(data) {
         return result;
     };
     const outputs = [];
+    const canonicalEntries = [];
     for (const current of input.entries) {
         entry = current;
         rule = null;
@@ -369,11 +513,18 @@ function run(data) {
         diagnostics = [];
         job();
         let text = current.inputText;
-        const stages = [], receipts = [];
+        const rawSha256 = schemaTextSha256(current.rawText);
+        const storySha256 = current.storyText === current.rawText ? rawSha256 : schemaTextSha256(current.storyText);
+        const inputSha256 = current.inputText === current.rawText ? rawSha256 :
+            current.inputText === current.storyText ? storySha256 : schemaTextSha256(current.inputText);
+        let textSha256 = inputSha256;
+        const stages = [], receipts = [], ruleEncodings = [];
         const stage = (kind) => {
-            const before = text;
-            text = kind === 'macro' ? macros(text) : regexStage(text, receipts);
-            stages.push({ stage: kind, inputSha256: schemaTextSha256(before), outputSha256: schemaTextSha256(text) });
+            const before = text, beforeSha256 = textSha256;
+            text = kind === 'macro' ? macros(text) : regexStage(text, receipts, ruleEncodings);
+            if (text !== before)
+                textSha256 = schemaTextSha256(text);
+            stages.push({ stage: kind, inputSha256: beforeSha256, outputSha256: textSha256 });
         };
         if (current.pipeline === 'macro-only')
             stage('macro');
@@ -391,19 +542,29 @@ function run(data) {
         limit('outputChars', outputChars);
         const projection = { ...current, schemaVersion: 1, encoding: 'owned-tavern-prompt-projection-v1',
             authority: 'consumer-data-only', batchInputSha256: data.inputSha256, policySha256: data.policySha256,
-            rawSha256: schemaTextSha256(current.rawText),
-            storySha256: schemaTextSha256(current.storyText), inputSha256: schemaTextSha256(current.inputText),
-            outputText: text, outputSha256: schemaTextSha256(text), stages, rules: receipts,
+            rawSha256, storySha256, inputSha256,
+            outputText: text, outputSha256: textSha256, stages, rules: receipts,
             readDependencies: [...reads.values()], deferredDiagnostics: diagnostics };
-        receipt(projection);
-        outputs.push({ ...projection, projectionSha256: recordSha256(projection) });
+        // Count the original projection receipt once. Reuse each field's encoding
+        // when adding its hash and sealing the whole batch in the same invocation.
+        const fields = new Map([['rules', '[' + ruleEncodings.join(',') + ']']]);
+        const projectionSha256 = receipt(projection, fields);
+        fields.set('projectionSha256', stableJson(projectionSha256));
+        canonicalEntries.push(encodeFields(fields));
+        outputs.push({ ...projection, projectionSha256 });
     }
     return createTavernPromptTransformOutputV1(data, outputs, {
         outputChars, workChars, jobs, matches, compiledRules, receipts: receiptCount, receiptChars,
-    });
+    }, canonicalEntries);
 }
 try {
-    parentPort?.postMessage(run(workerData));
+    const data = workerData, result = run(data);
+    // Transport packing follows canonical receipt/hash construction. The three
+    // originals remain owned by the bounded caller's admitted batch input.
+    const message = data.projectionTransport === 'input-backed' && result.kind === 'transformed'
+        ? { kind: 'transformed', output: { ...result.output, entries: result.output.entries.map(({ rawText: _rawText, storyText: _storyText, inputText: _inputText, ...projection }) => projection) } }
+        : result;
+    parentPort?.postMessage(message);
 }
 catch (error) {
     const diagnostic = error instanceof Refusal ? error.diagnostic : { schemaVersion: 1,

@@ -5,8 +5,8 @@
 import { recordSha256 } from './roleplay-data.js';
 import { createCombinedAuthorCompilerV6 } from './tavern-author-combined-compiler-v6.mjs';
 import { createRoleplayMvuSchemaReplay } from './roleplay-mvu-schema-replay.js';
-export const AUTHOR_HOST_NAME_V5 = 'dsh-nexttavern-author-host-runtime-v5-server-candidates-v2';
-export const AUTHOR_HOST_VERSION_V5 = '0.5.2';
+export const AUTHOR_HOST_NAME_V5 = 'dsh-nexttavern-author-host-runtime-v5-author-dialog-v1';
+export const AUTHOR_HOST_VERSION_V5 = '0.6.0';
 const ownRoot = new URL('../', import.meta.url);
 let loadedGeneration;
 export async function createOwnedAuthorHostRuntimeV5(deps) {

@@ -310,7 +310,8 @@ export function mapPromptProgramAuthorOriginsV1(input) {
             // Existing edit paths own whole fields. Mixed constant-book/author edits
             // need a real boundary supplier; no guessed offsets can authorize them.
             if (group.parts.some(part => part.kind !== 'author-field') || !object(editedFrom)
-                || Object.keys(editedFrom).some(key => !['sha256', 'source', 'seq', 'repairId'].includes(key))
+                || Object.keys(editedFrom).some(key => !['sha256', 'source', 'seq', 'repairId',
+                    ...group.row.ref.table === 'rules' ? ['ruleFields'] : []].includes(key))
                 || typeof editedFrom.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(editedFrom.sha256)
                 || !['user-edit', 'agent-edit', 'native-tool'].includes(String(editedFrom.source))
                 || !Number.isSafeInteger(editedFrom.seq) || Number(editedFrom.seq) < -1

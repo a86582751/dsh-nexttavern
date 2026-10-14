@@ -1,8 +1,8 @@
 // Generated from runtime/alpha3/src/core/roleplay-import-record.ts; edit the TypeScript source.
 // Frozen import evidence and source-span validation. No table writes, workflow
 // state or import locks live here; validation remains usable by export/readback.
-import { sha256, cloneRecord, stableJson } from './roleplay-data.js';
-import { readCardSource, decodeTavernCard, readTavernExecutionCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1, compileTavernExtensionInventoryV3, compileTavernCapabilityReport } from './tavern-card.js';
+import { sha256, cloneRecord, stableJson, recordSha256 } from './roleplay-data.js';
+import { readCardSource, decodeTavernCard, readTavernExecutionCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernExtensionInventory, compileTavernExtensionInventoryV1, compileTavernExtensionInventoryV3, compileTavernExtensionBindingsV1, compileTavernCardAgentSourceIndexV1, compileTavernCapabilityReport } from './tavern-card.js';
 import { projectNextTavernCard } from './nexttavern-card.js';
 export const IMPORT_NORMALIZER = 'utf8-lf+anydoc-deescape-v2';
 export const NEXTTAVERN_IMPORT_NORMALIZER = 'nexttavern-fields-v1';
@@ -69,6 +69,13 @@ export const projectStructuredImport = (record, decoded) => {
     throw new Error('结构化导入投影版本不匹配');
 };
 export const INDEPENDENT_AUTHOR_CORE_V1 = Object.freeze({ schemaVersion: 1, kind: 'independent-author-core' });
+/** Rule writes retain field intent even when a saved value equals its import
+ * projection. Later saves of another field must not erase that author intent. */
+export function authorRuleEditV1(previous, fields, source, seq, repairId) {
+    const prior = previous.editedFrom;
+    return { sha256: recordSha256(previous), source, seq, ...repairId ? { repairId } : {},
+        ruleFields: [...new Set([...(prior?.ruleFields ?? []), ...fields])] };
+}
 export const hasIndependentAuthorCoreV1 = (rules) => {
     const marker = rules.coreOwnership;
     return marker?.schemaVersion === 1 && marker.kind === 'independent-author-core';
@@ -447,9 +454,15 @@ export const validateAssignmentIdentities = (assignments) => {
 };
 export const importSummary = (record, authorRules) => {
     let authorCoreData;
+    let extensionBindings;
+    let cardAgentSourceIndex;
     assertImportRecordIntegrity(record, decoded => {
         if (authorRules)
             authorCoreData = readAuthorCoreDataV1(record, authorRules, decoded);
+        if (decoded) {
+            extensionBindings = compileTavernExtensionBindingsV1(decoded);
+            cardAgentSourceIndex = compileTavernCardAgentSourceIndexV1(decoded);
+        }
     });
     const coverage = importCoverage(record);
     const extensionEntries = record.extensionInventory?.entries ?? [];
@@ -472,6 +485,8 @@ export const importSummary = (record, authorRules) => {
     });
     return {
         ...(authorCoreData ? { authorCoreData } : {}),
+        ...(extensionBindings ? { extensionBindings } : {}),
+        ...(cardAgentSourceIndex ? { cardAgentSourceIndex } : {}),
         importId: record.importId,
         sourceFile: record.sourceFile,
         mode: record.mode ?? 'replace',
