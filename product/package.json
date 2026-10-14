@@ -130,7 +130,9 @@
     "dsh-nexttavern-author-host-runtime-v5-source-html-v1": "0.5.2",
     "dsh-nexttavern-author-host-runtime-v5-source-html-checked-journal-v1": "0.5.2",
     "dsh-nexttavern-mvu-schema-runtime-v4-server-candidates-v1": "0.4.0",
-    "dsh-nexttavern-author-host-runtime-v5-server-candidates-v1": "0.5.2"
+    "dsh-nexttavern-author-host-runtime-v5-server-candidates-v1": "0.5.2",
+    "dsh-nexttavern-author-browser-runtime-v3-author-dialog-v1": "0.2.0",
+    "dsh-nexttavern-author-host-runtime-v5-author-dialog-v1": "0.6.0"
   },
   "bundleDependencies": [
     "dsh-nexttavern-anydoc",
@@ -184,7 +186,9 @@
     "dsh-nexttavern-author-host-runtime-v5-source-html-v1",
     "dsh-nexttavern-author-host-runtime-v5-source-html-checked-journal-v1",
     "dsh-nexttavern-mvu-schema-runtime-v4-server-candidates-v1",
-    "dsh-nexttavern-author-host-runtime-v5-server-candidates-v1"
+    "dsh-nexttavern-author-host-runtime-v5-server-candidates-v1",
+    "dsh-nexttavern-author-browser-runtime-v3-author-dialog-v1",
+    "dsh-nexttavern-author-host-runtime-v5-author-dialog-v1"
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",

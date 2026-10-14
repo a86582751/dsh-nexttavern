@@ -46,7 +46,7 @@ function browserData(program:BrowserProgramV3):BrowserProgramV3 {
     ||program.compiler.typescriptVersion!=='5.9.3'||!hash(program.compiler.implementationSha256)
     ||program.runtime?.id!=='native-author-browser-runtime'||program.runtime.version!==3
     ||program.runtime.quickjsVersion!=='0.32.0'||!hash(program.runtime.implementationSha256)
-    ||program.profile?.id!=='nexttavern-browser-source-html'||program.profile.version!==3
+    ||program.profile?.id!=='nexttavern-browser-source-html'||![3,4].includes(program.profile.version)
     ||!hash(program.profile.sha256)||program.capabilityContract?.schemaVersion!==3
     ||program.capabilityContract.authority!=='requirements-only')fail()
   checksum(program.capabilityContract,'contractSha256')

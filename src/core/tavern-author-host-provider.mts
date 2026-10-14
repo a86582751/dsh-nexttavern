@@ -13,8 +13,8 @@ import type {CombinedAuthorCompiler} from './tavern-author-combined-types.mjs'
 import type {OwnedAuthorPromptRuntimeV1} from './tavern-author-prompt-types.mjs'
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from './roleplay-author-host-types-v5.js'
 
-export const AUTHOR_HOST_NAME_V5='dsh-nexttavern-author-host-runtime-v5-server-candidates-v2'
-export const AUTHOR_HOST_VERSION_V5='0.5.2'
+export const AUTHOR_HOST_NAME_V5='dsh-nexttavern-author-host-runtime-v5-author-dialog-v1'
+export const AUTHOR_HOST_VERSION_V5='0.6.0'
 export interface AuthorHostInventoryV5 {
   name:typeof AUTHOR_HOST_NAME_V5|'dsh-nexttavern-author-host-runtime-v5-policy-init-chat-v1'
     |'dsh-nexttavern-author-host-runtime-v5-policy'|'dsh-nexttavern-author-host-runtime-v5'

@@ -130,7 +130,9 @@
     "dsh-nexttavern-author-host-runtime-v5-source-html-v1": "0.5.2",
     "dsh-nexttavern-author-host-runtime-v5-source-html-checked-journal-v1": "0.5.2",
     "dsh-nexttavern-mvu-schema-runtime-v4-server-candidates-v1": "0.4.0",
-    "dsh-nexttavern-author-host-runtime-v5-server-candidates-v1": "0.5.2"
+    "dsh-nexttavern-author-host-runtime-v5-server-candidates-v1": "0.5.2",
+    "dsh-nexttavern-author-browser-runtime-v3-author-dialog-v1": "0.2.0",
+    "dsh-nexttavern-author-host-runtime-v5-author-dialog-v1": "0.6.0"
   },
   "bundleDependencies": [
     "dsh-nexttavern-anydoc",
@@ -184,7 +186,9 @@
     "dsh-nexttavern-author-host-runtime-v5-source-html-v1",
     "dsh-nexttavern-author-host-runtime-v5-source-html-checked-journal-v1",
     "dsh-nexttavern-mvu-schema-runtime-v4-server-candidates-v1",
-    "dsh-nexttavern-author-host-runtime-v5-server-candidates-v1"
+    "dsh-nexttavern-author-host-runtime-v5-server-candidates-v1",
+    "dsh-nexttavern-author-browser-runtime-v3-author-dialog-v1",
+    "dsh-nexttavern-author-host-runtime-v5-author-dialog-v1"
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
@@ -269,18 +273,45 @@
   },
   "files": [
     "lib",
-    "locale",
+    "src",
     "preset",
     "memory",
-    "node_modules",
+    "skins",
+    "tools",
+    "tests",
+    "build-tools",
+    "integrations",
+    "harness",
     "licenses",
+    "schemas",
+    "screenshots",
+    "screenshots.json",
+    "components",
+    "development",
+    "provenance.json",
+    "LICENSE",
+    "PUBLIC-ACCESS.md",
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "FEEDBACK.md",
+    "INSTALL-LINUX.md",
+    "NOTICE.md",
+    "README.md",
+    "README.en.md",
+    "SCREENSHOTS.md",
+    "DEVELOPMENT-0.3.md",
+    "INSTALL-WINDOWS.md",
+    "locale",
+    "host-overrides",
     "cordis.patch.json",
     "nexttavern.dependencies.json"
   ],
   "scripts": {
-    "test": "node lib/operations/quality-cli.mjs tests",
-    "check": "node lib/operations/quality-cli.mjs",
+    "build": "node lib/ui/build-client.mjs lib/ui/client.js lib/client.js dsh-nexttavern",
     "build:modules": "node tools/build-modules.mjs --write",
-    "build": "node lib/ui/build-client.mjs lib/ui/client.js lib/client.js dsh-nexttavern"
+    "check": "node lib/operations/quality-cli.mjs",
+    "test": "node lib/operations/quality-cli.mjs tests"
   }
 }
