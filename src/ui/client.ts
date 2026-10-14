@@ -843,19 +843,27 @@ export function apply(ctx: ClientContext) {
 
     // A released main view clears its overlays, even if a sidebar retains B.
     let lastSessionId: string | null = null
+    let lastSessionPreset: string | null = null
     const onMainSelection = () => {
       const sid = resolveActiveSessionId()
-      if (sid === lastSessionId) return
-      sessionBgm.setSession(sid)
-      sessionImages.setSession(sid)
-      lastSessionId = sid
-      if (sid) syncImmersive(sid)
-      else document.body.classList.remove('rp-immersive')
-      overlaySessionId = sid
+      const preset = sessionPresetOf(sid)
+      if (sid === lastSessionId && preset === lastSessionPreset) return
+      if (sid !== lastSessionId) {
+        sessionBgm.setSession(sid)
+        sessionImages.setSession(sid)
+        lastSessionId = sid
+        if (sid) syncImmersive(sid)
+        else document.body.classList.remove('rp-immersive')
+        overlaySessionId = sid
+      }
+      // Native selection can arrive before its catalog preset. Refresh that
+      // mount decision without resetting the current session's image/music owner.
+      lastSessionPreset = preset
       overlayRender?.()
     }
     onMainSelection()
     ctx.effect(() => mainSelection.subscribe(onMainSelection), 'roleplay-ui: main view watch')
+    ctx.effect(() => sessionsService.list?.subscribe(onMainSelection), 'roleplay-ui: main session metadata watch')
     ctx.effect(() => () => document.body.classList.remove('rp-immersive'), 'roleplay-ui: immersive state')
   }
 }
