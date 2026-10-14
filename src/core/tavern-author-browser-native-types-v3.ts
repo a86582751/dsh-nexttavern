@@ -11,6 +11,13 @@ export interface NativeHandleV3 {
   readonly handle:number
   readonly kind:NativeHandleKindV3
 }
+/** Main-only snapshot of an admitted URL assigned by its actual IMG owner. */
+export interface BrowserNativeImageV3 {
+  readonly target:NativeHandleV3
+  readonly originalUrl:string
+  readonly url:string
+  readonly name:string
+}
 export interface OwnedNativeCallbackV3 {
   readonly tag:'callback'
   readonly pageId:string

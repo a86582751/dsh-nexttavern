@@ -20,6 +20,7 @@ import type {AuthorBrowserPendingV1,AuthorBrowserWorldbookPendingV2,AuthorBrowse
     from './author-browser-pending.js';
 import type {AuthorScriptResourceRequestV1} from '../core/roleplay-author-script-resources.js';
 import {scopeReaderCss} from './reader-rendering.js';
+import type {BrowserNativeImageV3} from '../core/tavern-author-browser-native-types-v3.js';
 
 export interface AuthorBrowserStatus {
     kind: 'loading' | 'inactive' | 'starting' | 'ready' | 'pending' | 'failed';
@@ -65,6 +66,8 @@ export function createAuthorBrowserSession(options: {
     status(value: AuthorBrowserStatus): void;
     transport?: AuthorBrowserTransport;
     storage?: Pick<Storage, 'getItem' | 'setItem'>;
+    images?(owner:object,pageId:string,images:readonly BrowserNativeImageV3[]):void;
+    releaseImages?(owner:object):void;
 }) {
     const transport = async (request: AuthorBrowserRequest, signal?: AbortSignal) => {
         const reply = await (options.transport ?? authorBrowserTransport)(request, signal);
@@ -94,6 +97,7 @@ export function createAuthorBrowserSession(options: {
     };
     const revoke = () => {
         generationWait?.abort();generationWait=undefined;
+        if(realm)options.releaseImages?.(realm);
         const frameClosesBinding=Boolean(frame?.invokeGenerationV3);
         frame?.dispose();frame = undefined;ready = false;realm = undefined;captured = undefined;
         options.container.replaceChildren();
@@ -338,11 +342,15 @@ export function createAuthorBrowserSession(options: {
             },
             failed: (code:string) => {
                 if (!current() || realm !== realmOwner) return;
+                options.releaseImages?.(realmOwner);
                 generationWait?.abort();generationWait=undefined;
                 frame = undefined;realm = undefined;ready = false;
                 options.container.replaceChildren();
                 notify({kind: 'failed', code});
             }, startupDeadlineMs: 15000,
+            onImages: (pageId:string,images:readonly BrowserNativeImageV3[]) => {
+                if(current()&&realm===realmOwner)options.images?.(realmOwner,pageId,images);
+            },
         };
         const host=createHost(realmOwner);
         // The attachment schema selects both implementation and captured
@@ -367,6 +375,7 @@ export function createAuthorBrowserSession(options: {
             }
         }).catch(error => {
             if (current() && frame === controller) {
+                options.releaseImages?.(realmOwner);
                 frame = undefined;ready = false;options.container.replaceChildren();
                 notify({kind: 'failed', code: String(error.message)});
             }

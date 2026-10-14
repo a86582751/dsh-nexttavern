@@ -6,7 +6,7 @@ import type {BrowserBindingV1,BrowserRenderV1} from './tavern-author-browser-typ
 import type {BrowserProgramV3,BrowserSnapshotV3,BrowserRuntimeArtifactV3,BrowserHostBridgeV3,BrowserSaveReplyV3}
   from './tavern-author-browser-types-v3.mjs'
 import type {BrowserWorkerRpcV3,BrowserWorkerInputV3,BrowserSourceEventV3} from './tavern-author-browser-worker-protocol-v3.js'
-import type {NativeCallbackDeliveryV3} from './tavern-author-browser-native-types-v3.js'
+import type {NativeCallbackDeliveryV3,BrowserNativeImageV3} from './tavern-author-browser-native-types-v3.js'
 import type {BrowserCallbackRegistrationV3,BrowserGenerationInvocationV3,BrowserGenerationResultV3}
   from './roleplay-author-browser-generation-types.js'
 
@@ -19,6 +19,7 @@ interface Options {
   layout(value:{height:number;renderRevision:number}):void
   diagnostic(code:string):void
   failed?(code:string):void
+  onImages?:(pageId:string,images:readonly BrowserNativeImageV3[])=>void
   startupDeadlineMs:number
 }
 interface EntryClock {
@@ -310,6 +311,7 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     readerMutation.observe(document.body,{childList:true,subtree:true,attributes:true,characterData:true})
     if(pendingRender){const value=pendingRender;pendingRender=undefined;renderReader(value)}
     scene=createBrowserNativeSceneV3({program,schedulerWindow:view,onCallback:deliver,
+      onImages:options.onImages,
       prepareCallback:gestures.prepare,onPageClosed:gestures.closePage,
       observeNativeEvent:program.generationDeclarationId?gestures.observe:undefined,
       onSettlement:settlement=>send({type:'settlement',settlement}),

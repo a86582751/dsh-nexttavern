@@ -10,6 +10,7 @@ import type { ActivityState, ActivityComponents } from './activity-view.js';
 import { normalizeConversationNodes, readerNodeSeq, readerMessageId, readerText, readerTime, usageTokens, formatReaderTime } from './reader-model.js';
 import { scopeReaderCss, READER_BASE_CSS } from './reader-rendering.js';
 import {createAuthorBrowserSession, type AuthorBrowserStatus} from './author-browser-session.js';
+import type {createSessionImages} from './session-images.js';
 
 
 import type { ReaderRule } from './reader-regex.js';
@@ -66,6 +67,7 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     pendingPlayerBubble: ActivityComponents['pendingPlayerBubble'];
     ActivityBanner: ActivityComponents['ActivityBanner'];
     ACTIVITY_CSS: string;
+    images?: Pick<ReturnType<typeof createSessionImages>, 'acceptBrowserImages' | 'releaseBrowserImages'>;
 }
 
 export function createReaderView({
@@ -83,7 +85,8 @@ React,
      ICONS,
      pendingPlayerBubble,
      ActivityBanner,
-     ACTIVITY_CSS
+     ACTIVITY_CSS,
+     images
 }: ReaderDependencies) {
     const noopSnapshotHook = () => null;
     function ReaderView(props: ReaderViewProps) {
@@ -451,6 +454,8 @@ React,
                 sessionId, container: browserContainerRef.current,
                 current: () => readerSessionRef.current === sessionId && browserControllerRef.current === controller,
                 status: setBrowserStatus,
+                images: (owner,pageId,values) => images?.acceptBrowserImages(sessionId,owner,pageId,values),
+                releaseImages: owner => images?.releaseBrowserImages(owner),
             });
             browserControllerRef.current = controller;
             browserObservedStateRef.current = state;

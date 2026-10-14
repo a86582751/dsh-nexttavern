@@ -94,6 +94,7 @@ import { createCardAdaptationPanel, CARD_ADAPTATION_CSS } from './card-adaptatio
 import { createReaderView } from './reader-view.js'
 import { createStatusSurface } from './status-surface.js'
 import { createSessionBgm, createSessionBgmControls } from './session-bgm.js'
+import { createSessionImages, createSessionImageComponents } from './session-images.js'
 import { createToastController, confirmWithDialog } from './message-actions.js'
 export { createToastController, confirmWithDialog } from './message-actions.js'
 import { createMessageActionComponents } from './message-actions.js'
@@ -352,6 +353,8 @@ export function apply(ctx: ClientContext) {
       }
       return data
     }
+    const sessionImages = createSessionImages(jsonFetch)
+    ctx.effect(() => () => sessionImages.dispose(), 'roleplay-ui: session image resources')
     const {
       btn,
       MemoryPanel,
@@ -729,6 +732,7 @@ export function apply(ctx: ClientContext) {
 
     // ── 状态栏悬浮窗（仅 roleplay 会话；可最小化）────────────────────────────
     const SessionBgmControls = createSessionBgmControls({React, player: sessionBgm, jsonFetch, uploadFile})
+    const {Controls: SessionImageControls, Scene: SessionImageScene} = createSessionImageComponents({React, images: sessionImages})
     const { decisionSeat, StatusOverlay } = createStatusSurface(
       {
         React,
@@ -737,7 +741,10 @@ export function apply(ctx: ClientContext) {
         isRoleplaySession,
         useTavernActivity,
         BackgroundNotesBanner,
-        onStateAccepted: state => sessionBgm.acceptSource(state),
+        onStateAccepted: state => {
+          sessionBgm.acceptSource(state)
+          sessionImages.acceptState(state)
+        },
         fetchState,
         stateVersion,
         subscribeState,
@@ -757,6 +764,7 @@ export function apply(ctx: ClientContext) {
     const ReaderView = createReaderView(
       {
         React,
+        images: sessionImages,
         resolveActiveSessionId,
         isRoleplaySession,
         useTavernActivity,
@@ -772,6 +780,8 @@ export function apply(ctx: ClientContext) {
         ActivityBanner,
         ACTIVITY_CSS
       })
+    const ReaderImageView = (props: Parameters<typeof ReaderView>[0]) =>
+      React.createElement(SessionImageScene, {sessionId: props.sessionId}, React.createElement(ReaderView, props))
 
     // ReaderView is registered through the native conversation slot only
     // after the declaration is in scope; the previous outer registration built
@@ -789,7 +799,7 @@ export function apply(ctx: ClientContext) {
               label: '酒馆',
               inject: (sessionId) => ({ sessionId }),
             },
-            ReaderView
+            ReaderImageView
           )
       )
     }
@@ -809,6 +819,9 @@ export function apply(ctx: ClientContext) {
             React.createElement(StatusOverlay, { key: overlaySessionId ?? 'no-session', sessionId: overlaySessionId }),
             overlaySessionId && isRoleplaySession(overlaySessionId)
               ? React.createElement(SessionBgmControls, {key: `bgm:${overlaySessionId}`, sessionId: overlaySessionId})
+              : null,
+            overlaySessionId && isRoleplaySession(overlaySessionId)
+              ? React.createElement(SessionImageControls, {key: `images:${overlaySessionId}`})
               : null,
             overlaySessionId && isRoleplaySession(overlaySessionId)
 
@@ -834,6 +847,7 @@ export function apply(ctx: ClientContext) {
       const sid = resolveActiveSessionId()
       if (sid === lastSessionId) return
       sessionBgm.setSession(sid)
+      sessionImages.setSession(sid)
       lastSessionId = sid
       if (sid) syncImmersive(sid)
       else document.body.classList.remove('rp-immersive')

@@ -100,7 +100,7 @@
       {
         "artifact": "tavern-author-browser-renderer-v3-typescript",
         "path": "src/core/tavern-author-browser-renderer-v3.ts",
-        "sha256": "e69c9a6aea7e929b0cce41d43db4a3f37930d6765656cbf2828df088db54b2c8"
+        "sha256": "5814259dc36e69a2cdf13c3cd68d98d32192692d66a8e9499d3135fb30834403"
       },
       {
         "artifact": "tavern-author-html-compiler-v1-typescript",
@@ -147,7 +147,7 @@
       {
         "artifact": "tavern-author-browser-renderer-v3-typescript",
         "path": "src/core/tavern-author-browser-renderer-v3.ts",
-        "sha256": "e69c9a6aea7e929b0cce41d43db4a3f37930d6765656cbf2828df088db54b2c8"
+        "sha256": "5814259dc36e69a2cdf13c3cd68d98d32192692d66a8e9499d3135fb30834403"
       },
       {
         "artifact": "tavern-author-browser-source-guest-v3-typescript",

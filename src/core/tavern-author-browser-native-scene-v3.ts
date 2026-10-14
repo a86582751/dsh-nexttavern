@@ -7,7 +7,7 @@ import type {BrowserCompiledScriptV3,BrowserProgramV3,BrowserPageResourceV3}
   from './tavern-author-browser-types-v3.mjs'
 import type {BrowserPageNativeSessionV3} from './tavern-author-browser-page-worker-v3.js'
 import type {BrowserPageRendererV3,NativeHandleV3,NativeWireObjectV3,NativeCallbackDeliveryV3,
-  NativePromiseSettlementV3,NativeReplyV3} from './tavern-author-browser-native-types-v3.js'
+  NativePromiseSettlementV3,NativeReplyV3,BrowserNativeImageV3} from './tavern-author-browser-native-types-v3.js'
 import type {BrowserNativeFrameFactV3,BrowserWorkerRequestV3}
   from './tavern-author-browser-worker-protocol-v3.js'
 
@@ -26,6 +26,7 @@ interface Options {
   readonly prepareCallback?:(delivery:NativeCallbackDeliveryV3,scriptIdentity:string)=>NativeCallbackDeliveryV3
   readonly observeNativeEvent?:(event:Event,pageId:string,scriptIdentity:string)=>void
   readonly onPageClosed?:(pageId:string)=>void
+  readonly onImages?:(pageId:string,images:readonly BrowserNativeImageV3[])=>void
   readonly onSettlement:(settlement:NativePromiseSettlementV3)=>void
   readonly onFrameClosed:(frameId:number)=>void
   readonly resolveResource?:(resource:BrowserPageResourceV3)=>string
@@ -64,7 +65,7 @@ export function createBrowserNativeSceneV3(options:Options) {
     },rendererOptions:(_frame,pageId,plan)=>({schedulerWindow:options.schedulerWindow,
       onNativeEvent:options.observeNativeEvent
         ?event=>options.observeNativeEvent!(event,pageId,plan.origin.carrier.identity):undefined,
-      onCallback:emitCallback,onPromiseSettlement:options.onSettlement,
+      onCallback:emitCallback,onPromiseSettlement:options.onSettlement,onImages:options.onImages,
       resolveResource:options.resolveResource})})
   function remember(value:unknown,facts:BrowserNativeFrameFactV3[]):void {
     if(!value||typeof value!=='object')return
@@ -103,7 +104,7 @@ export function createBrowserNativeSceneV3(options:Options) {
           captured:reference=>{scriptReference=reference}},
         externalFrames:frames.forCarrier({document:source.document,pageId:contextId,
           carrierIdentity:script.descriptor.identity}),onCallback:emitCallback,
-        onPromiseSettlement:options.onSettlement,resolveResource:options.resolveResource})
+        onPromiseSettlement:options.onSettlement,onImages:options.onImages,resolveResource:options.resolveResource})
       carriers.set(contextId,{source,renderer,scriptIdentity:script.descriptor.identity})
       return {document:renderer.getDocumentHandle(),script:scriptReference}
     }catch(error) {await source.dispose();throw error}
