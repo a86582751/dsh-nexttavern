@@ -89,6 +89,15 @@
   "private": true,
   "homepage": "https://github.com/a86582751/pi",
   "bundleDependencies": [
-    "@google/genai"
+    "@google/genai",
+    "@anthropic-ai/sdk",
+    "@aws-sdk/client-bedrock-runtime",
+    "@earendil-works/pi-telemetry",
+    "@smithy/node-http-handler",
+    "http-proxy-agent",
+    "https-proxy-agent",
+    "openai",
+    "partial-json",
+    "typebox"
   ]
 }
