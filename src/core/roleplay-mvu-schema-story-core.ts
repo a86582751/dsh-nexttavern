@@ -311,8 +311,10 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   }
   function eventRows(sid:string,nativeCut:number,
     ledger?:import('./roleplay-mvu-schema-player-types.js').MvuSchemaPlayerLedger) {
-    const rows=[...prefixInputs.status.entries()].filter(([key])=>key.startsWith(`${sid}__mvu-state-schema-story-event-`)
-      ||key.startsWith(`${sid}__mvu-state-schema-player-event-`))
+    const prefix=`${sid}__mvu-state-schema-`
+    const rows=[...prefixInputs.status.entries(prefix)]
+      .filter(([key])=>key.startsWith(`${sid}__mvu-state-schema-story-event-`)
+        ||key.startsWith(`${sid}__mvu-state-schema-player-event-`))
       .map(([key,row])=>{
         if(!key.startsWith(`${sid}__mvu-state-schema-player-event-`))
           return {key,event:validateMvuSchemaStoryEvent(row as never)}

@@ -37,7 +37,7 @@ import type {SchemaOwnedScope,SchemaBoundary,SchemaExecutionAssociation}
 import type {MvuPlayerEditRequest,MvuPlayerEditResponse,MvuStateObservation} from './roleplay-mvu-player-types.js'
 import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
 
-interface Table {get(key:string):unknown;put(key:string,value:unknown):Promise<unknown>;entries():Iterable<[string,unknown]>}
+interface Table {get(key:string):unknown;put(key:string,value:unknown):Promise<unknown>;entries(prefix?:string):Iterable<[string,unknown]>}
 interface Dependencies {
   inputState:RoleplayInputStateOwner
   branch:Table;status:Table
@@ -103,7 +103,10 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
     try {
       const session=deps.session(sid)
       if(!session)return {code:'MVU_PLAYER_SESSION_INACTIVE',completedByEventKey}
-      const prefix=`${sid}__mvu-schema-player-`,rows=[...deps.branch.entries()].filter(([key])=>key.startsWith(prefix))
+      // This cached ledger consumes only manual-player records. Watching the
+      // whole session would let ordinary turn outputs revoke the schema view.
+      const prefix=`${sid}__mvu-schema-player-`
+      const rows=[...deps.branch.entries(prefix)].filter(([key])=>key.startsWith(prefix))
       if(rows.length>4096)return {code:'SCHEMA_PLAYER_HISTORY_UNPROVEN',completedByEventKey}
       const operations=rows.filter(([key])=>key.startsWith(`${prefix}operation-`))
       const publishedKeys=new Set<string>()
@@ -127,7 +130,8 @@ export function createRoleplayMvuSchemaPlayerCore(deps:Dependencies) {
       for(const [key] of rows)if(!operations.some(([,row]:any)=>
         [mvuSchemaPlayerOperationKey(sid,row.operationId),mvuSchemaPlayerCompletionKey(sid,row.operationId),mvuSchemaPlayerPlanKey(sid,row.operationId),
           mvuSchemaPlayerRefusalKey(sid,row.operationId)].includes(key)))fail('SCHEMA_PLAYER_HISTORY_UNPROVEN')
-      for(const [key] of deps.status.entries())if(key.startsWith(`${sid}__mvu-state-schema-player-`)
+      const statusPrefix=`${sid}__mvu-state-schema-player-`
+      for(const [key] of deps.status.entries(statusPrefix))if(key.startsWith(statusPrefix)
         &&!publishedKeys.has(key))fail('SCHEMA_PLAYER_HISTORY_UNPROVEN')
       return {completedByEventKey}
     } catch {return {code:'SCHEMA_PLAYER_PENDING',completedByEventKey:new Map()}}

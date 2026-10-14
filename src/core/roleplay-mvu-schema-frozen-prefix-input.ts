@@ -6,7 +6,7 @@ import {createImmutableDescriptorValidator} from './roleplay-mvu-schema-descript
 
 interface Table {
   get(key:string):unknown
-  entries():Iterable<[string,unknown]>
+  entries(prefix?:string):Iterable<[string,unknown]>
   put(key:string,value:unknown):Promise<unknown>
 }
 export interface MvuSchemaPrefixInputBindingV1 {
@@ -89,7 +89,9 @@ export function createRoleplayMvuSchemaPrefixInputs(tables:{branch:Table;status:
   let active:{branch:Table;status:Table}|undefined
   const views=Object.fromEntries((['branch','status'] as const).map(name=>[name,{
     get:(key:string)=>(active?.[name]??tables[name]).get(key),
-    entries:()=>(active?.[name]??tables[name]).entries(),
+    // Live consumers declare their actual journal footprint. Frozen captures
+    // retain the complete recorded membership and its original closure hash.
+    entries:(prefix?:string)=>active?active[name].entries():tables[name].entries(prefix),
     put:(key:string,value:unknown)=>{
       if(active)fail('SCHEMA_FROZEN_INPUT_WRITE_REFUSED')
       return tables[name].put(key,value)
