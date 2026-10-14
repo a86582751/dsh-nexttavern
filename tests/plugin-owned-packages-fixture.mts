@@ -1,5 +1,5 @@
 /** Small generated-package fixtures sharing the locked host peers; never a Harness install. */
-import {cp, lstat, mkdir, readFile, readdir, realpath, symlink} from 'node:fs/promises'
+import {cp, lstat, mkdir, readFile, readdir, symlink} from 'node:fs/promises'
 import {existsSync} from 'node:fs'
 import {createHash} from 'node:crypto'
 import {createRequire} from 'node:module'
@@ -46,7 +46,7 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
       for (const [name, source] of [
         ['dsh-session', localSession],
         ['dsh-session-persistence', path.join(lockedScope, 'dsh-session-persistence')],
-      ]) {
+      ] as const) {
         const installed = path.join(scope, name)
         await mkdir(installed)
         await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
@@ -70,7 +70,7 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
       }
       const source = path.join(peers, name)
       const info = await lstat(source)
-      if (!info.isDirectory() || info.isSymbolicLink() || await realpath(source) !== path.resolve(source)) {
+      if (!info.isDirectory() || info.isSymbolicLink()) {
         throw Error(`Physical fixture peer is not an ordinary locked directory: ${name}`)
       }
       const bytes = await readFile(path.join(source, 'package.json'))

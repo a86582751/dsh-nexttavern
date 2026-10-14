@@ -45,7 +45,9 @@
         "plugin-session-history*",
         "native-input-admission*",
         "native-input-link*",
-        "native-input-stop*"
+        "native-input-stop*",
+        "runtime/alpha3/compat/http-proxy/*",
+        "http-proxy-native-fetch-compat*"
       ]
     },
     {
@@ -8637,6 +8639,21 @@
       ]
     },
     {
+      "id": "test:tavern-card-agent-source-index.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "inputs": [],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
       "id": "test:tavern-compat-server-prototype.test.mjs",
       "action": "test",
       "artifact": "tavern-compat-server-prototype-test",
@@ -11013,6 +11030,7 @@
         "compiler"
       ],
       "inputs": [
+        "plugin-owned-packages-fixture",
         "compat-session-format-src-index-ts",
         "compat-session-format-lib-index-js",
         "compat-session-format-src-projection-ts",
@@ -11318,6 +11336,7 @@
         "public-transaction-typescript",
         "test-temp-helper-typescript",
         "status-template-public-ui-typescript",
+        "roleplay-core-process-storage-fixture",
         "tavern-loop-test",
         "roleplay-opening-material-typescript",
         "roleplay-program-copy-span-typescript",
@@ -15924,6 +15943,7 @@
         "compiler"
       ],
       "inputs": [
+        "plugin-owned-packages-fixture",
         "compat-session-format-src-index-ts",
         "compat-session-format-lib-index-js",
         "compat-session-format-src-projection-ts",
@@ -16230,6 +16250,7 @@
         "test-temp-helper-typescript",
         "status-template-public-ui-typescript",
         "phase-a-memory-contract",
+        "roleplay-core-process-storage-fixture",
         "roleplay-opening-material-typescript",
         "roleplay-program-copy-span-typescript",
         "roleplay-program-genesis-data-typescript",
@@ -18495,6 +18516,8 @@
         "public-transaction-typescript",
         "test-temp-helper-typescript",
         "status-template-public-ui-typescript",
+        "plugin-owned-packages-fixture",
+        "roleplay-core-process-storage-fixture",
         "worldline-fork-e2e",
         "roleplay-opening-material-typescript",
         "roleplay-program-copy-span-typescript",
@@ -25255,6 +25278,78 @@
       "requires": [
         "compiler"
       ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:http-proxy-native-fetch-compat.test.mts",
+      "action": "test",
+      "inputs": [],
+      "modules": [
+        "plugin-lifecycle"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "timeoutMs": 60000,
+      "cache": false,
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:roleplay-source-images.test.mts",
+      "action": "test",
+      "modules": [
+        "card-import",
+        "status"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:session-images.test.mts",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "unavailable": "Maintainer-only facility; not part of this public delivery"
+    },
+    {
+      "id": "test:tavern-author-browser-native-scene-v3",
+      "action": "test",
+      "modules": [
+        "reader"
+      ],
+      "inputs": [],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler",
+        "maintenance"
+      ],
+      "cache": true,
+      "timeoutMs": 240000,
+      "effects": {
+        "build": false,
+        "network": false,
+        "service": false
+      },
       "unavailable": "Maintainer-only facility; not part of this public delivery"
     }
   ]

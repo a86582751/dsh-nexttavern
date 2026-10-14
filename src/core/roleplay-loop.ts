@@ -18,9 +18,7 @@ import type {ContextMessage} from './roleplay-context.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 
 /** Bound silence at the native request boundary without changing adapter
- * options, retrying a paid call or discarding queued player input.
- * The default keeps the historical 90-second bound; slow (e.g. local) models
- * widen it through the `firstResponseTimeoutMs` profile config. */
+ * options, retrying a paid call or discarding queued player input. */
 export function createFirstResponseWatchdog(timeoutMs=90000) {
   type Pending={turn:number;step:number;signal:AbortSignal;timer:ReturnType<typeof setTimeout>;abort:()=>void}
   const pending=new Map<string,Pending>()

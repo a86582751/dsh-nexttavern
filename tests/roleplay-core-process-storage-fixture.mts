@@ -26,13 +26,17 @@ export interface ProcessFixtureCloseReport {
 const hash = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex')
 const equalPath = (left: string, right: string) => process.platform === 'win32'
   ? left.toLowerCase() === right.toLowerCase() : left === right
+// An isolated Source snapshot still uses the maintenance repository's fixed
+// test storage and the one installed Harness, rather than deriving a second home.
+const fixtureRepo = process.env.NEXTTAVERN_FIXTURE_REPO_ROOT
+  ?? fileURLToPath(new URL('../../../', import.meta.url))
 
-/** Only a direct child of the actual orchestrator test-temp scope is accepted.
- * A quality run can nest its scope under the fixed D root. This module and
- * child processes never delete a scope owned by their orchestrator. */
+/** Own a direct child of test-temp or the fixed native test home. A quality
+ * run can nest its scope under the fixed D root. Child processes never delete
+ * a scope owned by their orchestrator. */
 export async function processFixtureDataRoot(input: string): Promise<string> {
   assert.ok(path.isAbsolute(input), 'process dataRoot must be a real absolute path')
-  const fixedRoot = await realpath(fileURLToPath(new URL('../../../artifacts/test-temp/', import.meta.url)))
+  const fixedRoot = await realpath(path.join(fixtureRepo, 'artifacts/test-temp'))
   const configuredRoot = process.env.DSH_TEST_TMPDIR
   if(configuredRoot)assert.ok(path.isAbsolute(configuredRoot),'orchestrator test-temp scope must be absolute')
   const root = configuredRoot?await realpath(configuredRoot):fixedRoot
@@ -41,7 +45,10 @@ export async function processFixtureDataRoot(input: string): Promise<string> {
     'orchestrator test-temp scope must remain under the fixed repository root')
   const actual = await realpath(input)
   assert.equal((await lstat(input)).isSymbolicLink(), false, 'dataRoot must not be a junction')
-  assert.equal(equalPath(path.dirname(actual), root), true, 'dataRoot must be an owned direct test-temp scope')
+  if(!equalPath(path.dirname(actual),root)) {
+    const nativeRoot=await realpath(path.resolve(fixtureRepo,'../dsh-public-access/artifacts/auth-native'))
+    assert.ok(equalPath(path.dirname(actual),nativeRoot),'dataRoot must be an owned direct test-temp or fixed native scope')
+  }
   assert.match(path.basename(actual), /^roleplay-core-process-[a-zA-Z0-9_-]+$/)
   if (process.platform === 'win32') assert.match(path.parse(actual).root, /^d:\\$/i)
   return actual
@@ -50,8 +57,8 @@ export async function processFixtureDataRoot(input: string): Promise<string> {
 /** Copy only the installed official adapter metadata/lib, binding its peer
  * imports to the fixture's existing graph. Never modify or execute the Harness. */
 export async function copyStorageJsonPackage(installed: string): Promise<StorageJsonPin> {
-  const source = await realpath(fileURLToPath(new URL(
-    '../../../../dsh-public-access/artifacts/auth-native/harness/node_modules/@deepseek-ai/dsh-storage-json/', import.meta.url)))
+  const source = await realpath(path.resolve(fixtureRepo,
+    '../dsh-public-access/artifacts/auth-native/harness/node_modules/@deepseek-ai/dsh-storage-json'))
   const metadataBytes = await readFile(path.join(source, 'package.json'))
   const metadata = JSON.parse(metadataBytes.toString('utf8'))
   assert.equal(metadata.name, '@deepseek-ai/dsh-storage-json')

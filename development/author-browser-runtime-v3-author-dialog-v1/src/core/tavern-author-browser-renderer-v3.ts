@@ -7,7 +7,7 @@ import type {HtmlAttributeV1,HtmlNodeCreationV1,HtmlParserStepV1,HtmlParsedCandi
 import type {BrowserPageRendererV3,NativeCallbackDeliveryV3,NativeCreateV3,NativeHandleKindV3,
   NativeHandleV3,NativePromiseSettlementV3,NativeRequestV3,NativeWireValueV3,
   NativeWireObjectV3,OwnedNativeCallbackV3} from './tavern-author-browser-native-types-v3.js'
-import type {BrowserNativeFrameHookV3,NativeReplyV3} from './tavern-author-browser-native-types-v3.js'
+import type {BrowserNativeFrameHookV3,BrowserNativeImageV3,NativeReplyV3} from './tavern-author-browser-native-types-v3.js'
 
 /** The same actual receiver-owner declarations can be used by the guest
  * proxy. A flat union of names does not confer methods on another kind. */
@@ -118,6 +118,7 @@ export interface BrowserPageRendererOptionsV3 {
   readonly onCallback?:(delivery:NativeCallbackDeliveryV3)=>void
   /** Main-only capture hook, before any Source listener; the Event stays Native. */
   readonly onNativeEvent?:(event:Event)=>void
+  readonly onImages?:(pageId:string,images:readonly BrowserNativeImageV3[])=>void
   readonly onPromiseSettlement?:(settlement:NativePromiseSettlementV3)=>void
   /** Resolves an already admitted resource to actual owned bytes/URL. */
   readonly resolveResource?:(resource:BrowserPageResourceV3)=>string
@@ -138,6 +139,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   for(const node of Array.from(shellBody.childNodes))trustedBody.appendChild(node)
   shellHead.remove();shellBody.remove()
   const handles=new Map<number,HandleOwner>(),reverse=new WeakMap<object,number>()
+  const images=new Map<number,BrowserNativeImageV3>()
   const nodes=new Map<number,Node>(),ownedNodes=new Set<Node>([doc])
   const payloads=new Map(plan.parsed.document.nodes.map(node=>[node.nodeId,node]))
   const scriptAttributes=new WeakMap<Element,Map<string,string>>()
@@ -169,6 +171,21 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     return {tag:'handle',pageId,handle,kind}
   }
   const documentHandle=ref(doc,'document')
+  const publishImages=()=>options.onImages?.(pageId,[...images.values()])
+  const imageName=(image:HTMLImageElement)=>image.alt||image.title||options.carrierScript?.identity||'作者图片'
+  function imageAssigned(image:HTMLImageElement,originalUrl:string):void {
+    const target=ref(image,'node')
+    images.set(target.handle,{target,originalUrl,url:image.src,name:imageName(image)})
+    publishImages()
+  }
+  function imageNamed(image:HTMLImageElement):void {
+    const handle=reverse.get(image),previous=handle===undefined?undefined:images.get(handle)
+    if(previous){images.set(previous.target.handle,{...previous,name:imageName(image)});publishImages()}
+  }
+  function imageRemoved(image:HTMLImageElement):void {
+    const handle=reverse.get(image)
+    if(handle!==undefined&&images.delete(handle))publishImages()
+  }
   const visibleNode=(node:Node)=>ownedNodes.has(node)||!!options.externalFrames?.encode(node)
   function owned(reference:NativeHandleV3):HandleOwner {
     const result=reference.pageId===pageId?handles.get(reference.handle):undefined
@@ -491,6 +508,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     }
   }
   function attribute(target:Element,name:string,value:string,parsed=false,namespace?:string):void {
+    const originalUrl=value,imageAttribute=name.toLowerCase()
     const script=scriptAttributes.get(target)
     if(script) {
       if(name==='src'||name==='nonce')throw Error('BROWSER3_SCRIPT_RESOURCE_UNSUPPORTED')
@@ -513,6 +531,10 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(name==='src'&&(target instanceof view.HTMLImageElement||target instanceof view.HTMLMediaElement))beginLoad(target)
     if(name==='href'&&target instanceof view.HTMLLinkElement&&target.isConnected&&target.relList.contains('stylesheet'))beginLoad(target)
     if(namespace)target.setAttributeNS(namespace,name,value);else target.setAttribute(name,value)
+    if(target instanceof view.HTMLImageElement) {
+      if(imageAttribute==='src')imageAssigned(target,originalUrl)
+      else if(imageAttribute==='alt'||imageAttribute==='title')imageNamed(target)
+    }
   }
   function attributes(target:Element,values:readonly HtmlAttributeV1[]):void {
     for(const value of values) {
@@ -701,11 +723,13 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(key==='src') {
       if(!(target instanceof view.HTMLImageElement))throw Error('BROWSER3_MEDIA_TARGET_UNSUPPORTED')
       const url=resourceUrl(String(value),true)
-      target.crossOrigin='anonymous';beginLoad(target);target.src=url;return
+      target.crossOrigin='anonymous';beginLoad(target);target.src=url
+      imageAssigned(target,String(value));return
     }
     if(key==='textContent'&&target instanceof view.HTMLStyleElement)value=css(String(value))
     if(key==='textContent'&&target instanceof view.Element){replaceOwnedChildren(target,[own(doc.createTextNode(String(value)))]);return}
     target[key]=value
+    if(target instanceof view.HTMLImageElement&&(key==='alt'||key==='title'))imageNamed(target)
   }
   function call(target:any,kind:NativeHandleKindV3,method:string,args:any[]):NativeWireValueV3 {
     if(!BROWSER_NATIVE_METHODS_V3[kind].includes(method))throw Error('BROWSER3_DOM_METHOD_UNSUPPORTED')
@@ -781,6 +805,8 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(['appendChild','insertBefore','replaceChild','append','prepend','after','before','replaceWith'].includes(method))
       for(const value of args)if(value instanceof view.Node)prepareInsertion(value)
     const result=target[method](...args)
+    if(method==='removeAttribute'&&String(args[0]).toLowerCase()==='src'&&target instanceof view.HTMLImageElement)
+      imageRemoved(target)
     if(method==='removeChild'||method==='replaceChild')options.externalFrames?.removed(result)
     if(kind==='observer'&&method==='disconnect')mutationBindings.get(target)?.pending.splice(0)
     if(kind==='style'&&method==='removeProperty'
@@ -942,12 +968,18 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
         if(target.kind!=='file'&&target.kind!=='blob')throw Error('BROWSER3_BLOB_HANDLE_REQUIRED')
         const url=view.URL.createObjectURL(target.value);objectURLs.add(url);return url
       }
-      if(objectURLs.delete(request.url))view.URL.revokeObjectURL(request.url)
+      if(objectURLs.delete(request.url)) {
+        view.URL.revokeObjectURL(request.url)
+        let removed=false
+        for(const [handle,image]of images)if(image.url===request.url) {images.delete(handle);removed=true}
+        if(removed)publishImages()
+      }
       return {tag:'undefined'}
     },
     dispose() {
       if(disposal)return disposal
       active=false
+      images.clear();publishImages()
       for(const waiter of [...readinessWaiters])finishReadiness(waiter,Error('BROWSER3_PAGE_CLOSED'))
       for(const load of nativeLoads.values())for(const type of load.events)load.target.removeEventListener(type,load.listener)
       nativeLoads.clear();assemblingStyles.clear()

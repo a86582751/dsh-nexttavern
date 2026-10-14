@@ -4589,6 +4589,10 @@
       "source": "tests/plugin-fork-controller-fixture.mts"
     },
     {
+      "id": "plugin-owned-packages-fixture",
+      "source": "tests/plugin-owned-packages-fixture.mts"
+    },
+    {
       "id": "plugin-product-entry-contract",
       "source": "tests/plugin-product-entry.test.mts"
     },
@@ -5291,6 +5295,10 @@
     {
       "id": "roleplay-core",
       "source": "lib/core/roleplay-core.js"
+    },
+    {
+      "id": "roleplay-core-process-storage-fixture",
+      "source": "tests/roleplay-core-process-storage-fixture.mts"
     },
     {
       "id": "roleplay-core-types",
@@ -28554,6 +28562,86 @@
     {
       "id": "author-host-runtime-v5-author-dialog-v1-package-json",
       "source": "development/author-host-runtime-v5-author-dialog-v1/package.json"
+    },
+    {
+      "id": "compat-http-proxy-index-ts",
+      "source": "development/http-proxy/src/index.ts"
+    },
+    {
+      "id": "compat-http-proxy-index-js",
+      "source": "development/http-proxy/lib/index.js"
+    },
+    {
+      "id": "compat-http-proxy-install-ts",
+      "source": "development/http-proxy/src/install.ts"
+    },
+    {
+      "id": "compat-http-proxy-install-js",
+      "source": "development/http-proxy/lib/install.js"
+    },
+    {
+      "id": "compat-http-proxy-policy-ts",
+      "source": "development/http-proxy/src/policy.ts"
+    },
+    {
+      "id": "compat-http-proxy-policy-js",
+      "source": "development/http-proxy/lib/policy.js"
+    },
+    {
+      "id": "compat-http-proxy-package-json",
+      "source": "development/http-proxy/package.json"
+    },
+    {
+      "id": "compat-http-proxy-readme-md",
+      "source": "development/http-proxy/README.md"
+    },
+    {
+      "id": "compat-http-proxy-license",
+      "source": "development/http-proxy/LICENSE"
+    },
+    {
+      "id": "compat-http-proxy-license-upstream",
+      "source": "development/http-proxy/LICENSE.upstream"
+    },
+    {
+      "id": "compat-http-proxy-notice",
+      "source": "development/http-proxy/NOTICE"
+    },
+    {
+      "id": "compat-http-proxy-origin-json",
+      "source": "development/http-proxy/ORIGIN.json"
+    },
+    {
+      "id": "roleplay-source-images-typescript",
+      "source": "src/core/roleplay-source-images.ts"
+    },
+    {
+      "id": "roleplay-source-images-parser-typescript",
+      "source": "src/core/roleplay-source-images-parser.mts"
+    },
+    {
+      "id": "roleplay-source-images-routes-typescript",
+      "source": "src/core/roleplay-source-images-routes.ts"
+    },
+    {
+      "id": "session-images-typescript",
+      "source": "src/ui/session-images.ts"
+    },
+    {
+      "id": "roleplay-source-images-js",
+      "source": "lib/core/roleplay-source-images.js"
+    },
+    {
+      "id": "roleplay-source-images-parser-js",
+      "source": "lib/core/roleplay-source-images-parser.mjs"
+    },
+    {
+      "id": "roleplay-source-images-routes-js",
+      "source": "lib/core/roleplay-source-images-routes.js"
+    },
+    {
+      "id": "session-images",
+      "source": "lib/ui/session-images.js"
     },
     {
       "id": "quality-registry",
@@ -68291,7 +68379,10 @@
         "src/operations/public-transaction.mts",
         "src/status-template.ts",
         "src/core/roleplay-author-browser-generation-types.ts",
-        "src/core/roleplay-author-browser-generation.ts"
+        "src/core/roleplay-author-browser-generation.ts",
+        "src/core/roleplay-source-images-parser.mts",
+        "src/core/roleplay-source-images.ts",
+        "src/core/roleplay-source-images-routes.ts"
       ]
     },
     {
@@ -113544,7 +113635,8 @@
         "src/ui/tavern-lore-editor-data.ts",
         "src/ui/tavern-lore-editor.ts",
         "src/ui/telemetry-panels.ts",
-        "src/ui/user-info.ts"
+        "src/ui/user-info.ts",
+        "src/ui/session-images.ts"
       ]
     },
     {
@@ -149283,6 +149375,124 @@
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "lib/operations/build-typescript.mjs"
+      ]
+    },
+    {
+      "id": "compat-http-proxy-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-http-proxy-index-js",
+      "entry": "development/http-proxy/src/index.ts",
+      "typeContext": "http-proxy-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/http-proxy/src/index.ts",
+        "development/http-proxy/src/install.ts",
+        "development/http-proxy/src/policy.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-http-proxy-install-build",
+      "kind": "typescript-module",
+      "artifact": "compat-http-proxy-install-js",
+      "entry": "development/http-proxy/src/install.ts",
+      "typeContext": "http-proxy-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/http-proxy/src/index.ts",
+        "development/http-proxy/src/install.ts",
+        "development/http-proxy/src/policy.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-http-proxy-policy-build",
+      "kind": "typescript-module",
+      "artifact": "compat-http-proxy-policy-js",
+      "entry": "development/http-proxy/src/policy.ts",
+      "typeContext": "http-proxy-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/http-proxy/src/index.ts",
+        "development/http-proxy/src/install.ts",
+        "development/http-proxy/src/policy.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "roleplay-source-images-parser-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-source-images-parser-js",
+      "entry": "src/core/roleplay-source-images-parser.mts",
+      "builder": "tools/build-modules.mjs",
+      "bundledDependencies": [
+        "parse5",
+        "typescript",
+        "entities",
+        "css-tree"
+      ],
+      "inputs": [
+        "src/core/roleplay-source-images-parser.mts",
+        "src/operations/build-typescript.mts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "roleplay-source-images-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-source-images-js",
+      "entry": "src/core/roleplay-source-images.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-source-images-parser.mts",
+        "src/core/roleplay-source-images.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "roleplay-source-images-routes-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-source-images-routes-js",
+      "entry": "src/core/roleplay-source-images-routes.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-source-images-routes.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "session-images-js",
+      "kind": "typescript-module",
+      "artifact": "session-images",
+      "entry": "src/ui/session-images.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/session-images.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     }
   ],

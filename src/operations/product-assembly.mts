@@ -59,6 +59,10 @@ interface ProductRecipe {
   bundleLibraries?: Record<string, string>
   /** Root SDKs with install hooks travel prebuilt, including their locked runtime graph. */
   rootBundledLibraries?: {libraries: Record<string, string>; lockArtifact: string}
+  /** Raw compiler projections retain their original relative library roots. */
+  rawBrowserCompilerLibraries?: {
+    schemaVersion: 1; libraries: Record<string, string>; lockArtifact: string; moduleRoots: string[]
+  }
   /**
    * Platform targets the product ships native companions for. A vendored
    * library that declares platform packages (for example koffi's loaders)
@@ -542,6 +546,19 @@ export function assembleProduct(options: {
       libraries: rootLibraries,
       admit: options.admitVendoredFile ?? (() => {throw Error('Root SDKs require public vendor admission')}),
     }).packages : []
+  const rawCompilerRecipe = plan.product.rawBrowserCompilerLibraries
+  const rawBrowserCompilerLibraries = rawCompilerRecipe ? {
+    schemaVersion: rawCompilerRecipe.schemaVersion,
+    projections: rawCompilerRecipe.moduleRoots.map(moduleRoot => ({
+      moduleRoot,
+      packages: materializeBundledLibraries({
+        libraryRoot: options.libraryRoot ?? '', moduleRoot: inside(packageRoot, moduleRoot),
+        lockFile: inside(repo, artifact(rawCompilerRecipe.lockArtifact).source),
+        libraries: rawCompilerRecipe.libraries,
+        admit: options.admitVendoredFile ?? (() => {throw Error('Raw compiler libraries require public vendor admission')}),
+      }).packages,
+    })),
+  } : undefined
   const packages = owned.map(({pkg, packageArtifact, assembly, publicMetadata}) => {
     const output = inside(moduleRoot, pkg.name)
     const result = assembleProductPackage({repo, output, packageArtifact, archives: options.archives,
@@ -601,6 +618,7 @@ export function assembleProduct(options: {
     historicalComponents:assembleHistoricalProductComponents(options),
     authorRuntimeHistory:productAuthorRuntimeHistory(repo),
     ...(hostForkProfile?{hostForkProfile}:{}),
+    ...(rawBrowserCompilerLibraries?{rawBrowserCompilerLibraries}:{}),
     rootBundledLibraries: rootLibraries, bundledLibraries}
   const excludedVendoredFiles = packages.flatMap(row => row.excludedVendoredFiles
     .map(item => ({package: row.name, ...item})))

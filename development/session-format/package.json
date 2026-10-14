@@ -12,6 +12,7 @@
     "./storage-contract": "./lib/storage-contract.js",
     "./mvu-player-marker": "./lib/mvu-player-marker.js",
     "./mvu-schema-marker": "./lib/mvu-schema-marker.js",
+    "./author-injection-cleanup": "./lib/author-injection-cleanup.js",
     "./package.json": "./package.json"
   },
   "files": [

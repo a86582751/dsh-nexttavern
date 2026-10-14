@@ -98,9 +98,7 @@ export interface LoopDependencies {
   buildForkLookupIndex(session:LoopSession):ForkLookup
   buildPhaseA(session: LoopSession, payload: LoopPayload, state: LoopState): Promise<readonly ContextMessage[]>
   storyWindowSettings(session: LoopSession): {tail: number}
-  /** First-output deadline per model request, milliseconds.  The loop falls
-   * back to its historical 90-second bound when omitted; slow (local) models
-   * widen it through the `firstResponseTimeoutMs` profile config. */
+  /** First-output deadline per model request; omitted keeps the 90-second default. */
   firstResponseTimeoutMs?: number
   runStatusObligation: ReturnType<typeof createRoleplayStatus>['runStatusObligation']
   publishTurnDecision(session: LoopSession, event: ContextEvent, snapshot: CompletionSnapshot, narrative: string, signal?: AbortSignal): DecisionJob

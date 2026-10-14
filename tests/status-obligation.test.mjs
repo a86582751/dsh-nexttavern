@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { apply } from '../lib/core/roleplay-core.js'
+const recoveryOnly = process.argv.includes('--status-recovery-only')
+const { apply } = recoveryOnly ? {} : await import('../lib/core/roleplay-core.js')
 
 // Exercise the registered runtime hooks, tools and HTTP projection. No Phase-A
 // snapshot is supplied: status must survive missing preparation and restarts.
@@ -101,6 +102,7 @@ async function bench({ tables = new Map(), result = () => panel, otherResult = (
   }
 }
 
+if (!recoveryOnly) {
 // Suggestions remain structured for decision reuse, never in fallback status HTML.
 {
   const options=[{label:'沿路前进',heart:true}]
@@ -746,3 +748,118 @@ console.log('status-obligation=ok (native hooks, tool input, author template, re
   } finally { b.dispose() }
 }
 console.log('decision-turn-publication=ok (later turn replaces superseded decision)')
+}
+{
+  // Exercise the actual status transaction at its existing dependency boundary.
+  // Model execution and storage failures are fixture inputs; Native permissions,
+  // full Core hooks and Session ownership are qualified by the Native caller.
+  const { createRoleplayStatus } = await import('../lib/core/roleplay-status.js')
+  const { taskCancellation } = await import('../lib/core/roleplay-decision.js')
+  const { InlinePending } = await import('../lib/core/tavern-tasks.js')
+  function statusBench({ tables, session, result = () => panel } = {}) {
+    const T = tables ?? Object.fromEntries(['status','branch','scene','cards','worldbook','rules'].map(name => [name,new Table()]))
+    const currentSession = session ?? {id:'status-recovery',header:{agentPreset:'roleplay'},events:[],surface:{nodes:[]},seq:0}
+    if (!T.status.has(`${currentSession.id}__spec`)) T.status.set(`${currentSession.id}__spec`,structuredClone(spec))
+    const cleanups=[], calls=[]
+    const selection={execution:'spawn',main:{provider:'fixture',model:'main'},actualRoute:{provider:'fixture',model:'status'}}
+    const owner=createRoleplayStatus({
+      ctx:{get(){},effect(fn){cleanups.push(fn())}},T,
+      cfg:{statusRetryMs:60000},DEFAULT_CONFIG:{statusWorkerTimeoutMs:60000},STATUS_SYSTEM:'fixture status',
+      cloneBranchRecord:structuredClone,storyBranchIsActive:()=>true,taskCancellation,
+      ensureBranch:async()=>{},modelPolicy:{resolve:()=>selection},
+      sameModelRoute:(a,b)=>a?.provider===b.provider&&a?.model===b.model,
+      retrieveWorldbook:async()=>({text:''}),resolveRoute:session=>({session}),
+      llmJson:async(_ctx,_route,options)=>{
+        calls.push(options)
+        options.onAdmission(null)
+        const value=options.validate(await result(options,calls.length))
+        options.onResult({id:`fixture-status-${calls.length}`,generation:1,actualRoute:selection.actualRoute,execution:'spawn'})
+        return value
+      },importRecordKey:(id,importId)=>`${id}__import-${importId}`,spanText:()=>'',
+    })
+    const append=(type,data,surfaceOp)=>{
+      const event={seq:currentSession.seq++,type,data,surfaceOp}
+      currentSession.events.push(event)
+      if(surfaceOp==='append')currentSession.surface.nodes.push(event.seq)
+      return event
+    }
+    const begin=turn=>{append('turn/start',{turn});append('user/message',{id:`u${turn}`,source:{kind:'user'},content:text(`行动 ${turn}`)},'append')}
+    const finish=turn=>{
+      const event=append('assistant/message',{turn,message:{id:`a${turn}`,content:text(`剧情 ${turn}`)}},'append')
+      append('turn/end',{turn,reason:{kind:'completed'}})
+      return event
+    }
+    return {T,session:currentSession,owner,calls,begin,finish,
+      panel:()=>owner.selectedStatusRecord(currentSession),
+      records:()=>[...T.status.values()].filter(value=>value.trigger?.kind==='turn-end'),
+      recover:()=>Promise.all(owner.recoverStatusObligations(currentSession,'agent/idle')),
+      dispose:()=>cleanups.reverse().forEach(fn=>fn?.())}
+  }
+  // An earlier pending task must stay untouched once a newer panel settles
+  // the prefix. Both durable results come from the real transaction.
+  {
+    const b=statusBench({result:(_options,call)=>{if(call===1)throw new InlinePending('historical');return panel}})
+    try {
+      b.begin(1);await b.owner.runStatusObligation(b.session,b.finish(1),'session/event')
+      const historical=structuredClone(b.records()[0])
+      assert.equal(historical.state,'waiting-main')
+      b.owner.statusRunStartSeq.set(b.session.id,b.session.seq-1)
+      b.begin(2);await b.owner.runStatusObligation(b.session,b.finish(2),'session/event')
+      const current=structuredClone(b.panel())
+      assert.equal(current.turnId,2)
+      await b.recover()
+      assert.equal(b.calls.length,2,'idle must not restart a historical pending worker')
+      assert.deepEqual(b.records().find(row=>row.trigger.id===historical.trigger.id),historical)
+      assert.deepEqual(b.panel(),current)
+    } finally {b.dispose()}
+  }
+  // Cold recovery settles only the latest completed turn. While a new Story
+  // is running, it waits for that Story rather than backfilling the old tail.
+  {
+    const b=statusBench()
+    try {
+      b.begin(1);b.finish(1);b.begin(2)
+      await b.recover();assert.equal(b.calls.length,0)
+      b.finish(2);await b.recover()
+      assert.equal(b.calls.length,1);assert.equal(b.panel().turnId,2)
+    } finally {b.dispose()}
+  }
+  // Latest pending work remains recoverable on idle.
+  {
+    const b=statusBench({result:(_options,call)=>{if(call===1)throw new InlinePending('latest');return panel}})
+    try {
+      b.begin(1);await b.owner.runStatusObligation(b.session,b.finish(1),'session/event')
+      assert.equal(b.records()[0].state,'waiting-main')
+      await b.recover()
+      assert.equal(b.calls.length,2);assert.equal(b.panel().turnId,1)
+    } finally {b.dispose()}
+  }
+  // An idle-only compatibility feed still drains both turns from this run,
+  // and the later result keeps the panel when the earlier worker finishes last.
+  {
+    const first=deferred(),b=statusBench({result:(_options,call)=>call===1?first.promise:panel})
+    try {
+      b.owner.statusRunStartSeq.set(b.session.id,-1)
+      b.begin(1);b.finish(1);b.begin(2);b.finish(2)
+      const jobs=b.owner.recoverStatusObligations(b.session,'agent/idle')
+      await jobs[1];assert.equal(b.panel().turnId,2)
+      first.resolve(panel);await jobs[0]
+      assert.equal(b.calls.length,2);assert.equal(b.panel().turnId,2)
+      assert.equal(b.records().filter(row=>row.state==='completed').length,2)
+    } finally {first.resolve(panel);b.dispose()}
+  }
+  // Restart retries a failed panel pointer from the durable completed result,
+  // keeping model execution at zero for the replay.
+  {
+    const b=statusBench();let restored
+    try {
+      b.T.status.fail=key=>key.endsWith('__panel')
+      b.begin(1);await b.owner.runStatusObligation(b.session,b.finish(1),'session/event')
+      assert.equal(b.records()[0].state,'completed');assert.equal(b.panel(),null)
+      b.T.status.fail=null;b.dispose()
+      restored=statusBench({tables:b.T,session:b.session});await restored.recover()
+      assert.equal(restored.calls.length,0);assert.equal(restored.panel().turnId,1)
+    } finally {if(restored)restored.dispose();else b.dispose()}
+  }
+  console.log('status-recovery=ok (5 cases: historical pending, cold latest, current pending, multi-turn idle, pointer restart)')
+}

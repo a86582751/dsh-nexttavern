@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, rmSync } from 'node:fs'
 import {testTempRoot as tmpdir} from '../lib/operations/test-temp.mjs'
 import { join } from 'node:path'
-import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernOpeningCandidates, compileTavernExtensionInventory, compileTavernExtensionInventoryV1, compileTavernExtensionInventoryV3, compileTavernCapabilityReport, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
+import { decodeTavernCard, projectTavernCard, projectTavernCardCompact, compileTavernFieldCoverage, compileTavernOpeningCandidates, compileTavernExtensionInventory, compileTavernExtensionInventoryV1, compileTavernExtensionInventoryV3, compileTavernExtensionBindingsV1, compileTavernCapabilityReport, readCardSource, fenceCardContent, pngCrc } from '../lib/core/tavern-card.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/tavern-card-legacy-v1.json', import.meta.url), 'utf8'))
 assert.equal(legacy.schemaVersion, 1)
@@ -212,6 +212,99 @@ assert.equal(compileTavernExtensionInventoryV3(decodeTavernCard(Buffer.from(JSON
 assert.equal(JSON.stringify(compileTavernExtensionInventoryV1(v3Decoded)),legacyV1Before)
 assert.equal(JSON.stringify(compileTavernExtensionInventory(v3Decoded)),legacyV2Before,
   'V3 does not mutate the older inventory views')
+const bindingDocument={spec:'chara_card_v2',spec_version:'2.0',data:{name:'SELF C21 relations',
+  character_book:{extensions:{worldbook_id:'self-book',worldbook_version:'self-book-version',source:'self-book'},
+    entries:[{id:10,content:'Ordinary lore',extensions:{stable_id:'self-lore'}},
+      {id:20,content:'Inert initialization DATA',extensions:{stable_id:'self-init'}}]},
+  extensions:{chaoshen_jixieshi:{embedded_worldbook_id:'self-book',embedded_worldbook_version:'self-book-version',
+    opening_protocol:'self-opening',opening_mode:'self-wizard',ui_panel_version:'self-panel-version',
+    ui_panel_id:'self-panel',ui_mode:'self-ui-mode',ui_source:'self/ui.html',mvu_protocol_version:'self-mvu-version',
+    mvu_loader_id:'self-loader',mvu_remote_ref:'https://example.invalid/primary',
+    mvu_remote_fallback:'https://example.invalid/fallback',mvu_commit:'self-commit',mvu_initvar_id:'self-init'},
+    regex_scripts:[{id:'other-panel',replaceString:'Inert other UI'},
+      {id:'self-panel',replaceString:'Inert SELF UI'}],tavern_helper:{scripts:[
+        {type:'script',id:'other-loader',content:'Inert other source',data:{commit:'other-commit'}},
+        {type:'script',id:'self-loader',content:'Inert SELF source',data:{commit:'self-commit',
+          sources:['https://example.invalid/primary','https://example.invalid/fallback']}}]}}}}
+const bindingDecoded=decodeTavernCard(Buffer.from(JSON.stringify(bindingDocument)),'.json')
+const bindingDecodedBefore=JSON.stringify(bindingDecoded)
+const bindingExistingViews=decoded=>JSON.stringify([
+  compileTavernExtensionInventoryV1(decoded),compileTavernExtensionInventory(decoded),
+  compileTavernExtensionInventoryV3(decoded),compileTavernCapabilityReport(decoded)])
+const bindingExistingBefore=bindingExistingViews(bindingDecoded)
+const bindings=compileTavernExtensionBindingsV1(bindingDecoded)
+const bindingByField=view=>Object.fromEntries(view.entries.map(entry=>[entry.field,entry]))
+const bound=bindingByField(bindings)
+assert.equal(bindings.schemaVersion,1)
+assert.equal(bindings.key,'chaoshen_jixieshi')
+assert.equal(bindings.sourceSha256,bindingDecoded.sourceSha256)
+assert.equal(bindings.entries.filter(entry=>entry.disposition==='matched-source').length,8)
+assert.equal(bindings.entries.filter(entry=>entry.disposition==='declared-configuration').length,6)
+const expectedBindingPointers={
+  embedded_worldbook_id:'/data/character_book/extensions/worldbook_id',
+  embedded_worldbook_version:'/data/character_book/extensions/worldbook_version',
+  ui_panel_id:'/data/extensions/regex_scripts/1/id',
+  mvu_loader_id:'/data/extensions/tavern_helper/scripts/1/id',
+  mvu_remote_ref:'/data/extensions/tavern_helper/scripts/1/data/sources/0',
+  mvu_remote_fallback:'/data/extensions/tavern_helper/scripts/1/data/sources/1',
+  mvu_commit:'/data/extensions/tavern_helper/scripts/1/data/commit',
+  mvu_initvar_id:'/data/character_book/entries/1/extensions/stable_id',
+}
+for(const [field,pointer] of Object.entries(expectedBindingPointers)) {
+  assert.equal(bound[field].targetPointer,pointer)
+  assert.equal(bound[field].sourcePointer,`/data/extensions/chaoshen_jixieshi/${field}`)
+  assert.equal(bound[field].valueSha256,
+    compileTavernExtensionInventoryV3(bindingDecoded).entries[0].detail.identifiers[field].valueSha256)
+}
+assert.equal(bound.ui_panel_id.targetObjectPointer,'/data/extensions/regex_scripts/1')
+assert.equal(bound.mvu_loader_id.targetObjectPointer,'/data/extensions/tavern_helper/scripts/1')
+assert.ok(bindings.entries.filter(entry=>entry.disposition==='declared-configuration')
+  .every(entry=>entry.targetPointer===undefined&&entry.targetObjectPointer===undefined))
+assert.equal(JSON.stringify(bindingDecoded),bindingDecodedBefore,'binding view does not mutate decoded Source')
+assert.equal(bindingExistingViews(bindingDecoded),bindingExistingBefore,'existing inventory and capability bytes stay intact')
+const movedBindingDocument=structuredClone(bindingDocument)
+movedBindingDocument.data.extensions.regex_scripts.reverse()
+movedBindingDocument.data.extensions.tavern_helper.scripts.reverse()
+movedBindingDocument.data.character_book.entries.reverse()
+const movedBound=bindingByField(compileTavernExtensionBindingsV1(
+  decodeTavernCard(Buffer.from(JSON.stringify(movedBindingDocument)),'.json')))
+assert.equal(movedBound.ui_panel_id.targetPointer,'/data/extensions/regex_scripts/0/id')
+assert.equal(movedBound.mvu_loader_id.targetPointer,'/data/extensions/tavern_helper/scripts/0/id')
+assert.equal(movedBound.mvu_remote_ref.targetPointer,'/data/extensions/tavern_helper/scripts/0/data/sources/0')
+assert.equal(movedBound.mvu_remote_fallback.targetPointer,'/data/extensions/tavern_helper/scripts/0/data/sources/1')
+assert.equal(movedBound.mvu_commit.targetPointer,'/data/extensions/tavern_helper/scripts/0/data/commit')
+assert.equal(movedBound.mvu_initvar_id.targetPointer,'/data/character_book/entries/0/extensions/stable_id')
+const missingBindingDocument=structuredClone(bindingDocument)
+missingBindingDocument.data.extensions.regex_scripts.pop()
+missingBindingDocument.data.character_book.entries.pop()
+missingBindingDocument.data.extensions.tavern_helper.scripts[0].data=
+  structuredClone(missingBindingDocument.data.extensions.tavern_helper.scripts.pop().data)
+const missingBound=bindingByField(compileTavernExtensionBindingsV1(
+  decodeTavernCard(Buffer.from(JSON.stringify(missingBindingDocument)),'.json')))
+for(const field of ['ui_panel_id','mvu_loader_id','mvu_remote_ref','mvu_remote_fallback','mvu_commit','mvu_initvar_id']) {
+  assert.equal(missingBound[field].disposition,'missing-target',`${field} cannot borrow another object's DATA`)
+  assert.equal(missingBound[field].targetPointer,undefined)
+}
+assert.equal(missingBound.embedded_worldbook_id.disposition,'matched-source')
+const duplicateBindingDocument=structuredClone(bindingDocument)
+duplicateBindingDocument.data.extensions.regex_scripts.push(
+  structuredClone(duplicateBindingDocument.data.extensions.regex_scripts[1]))
+duplicateBindingDocument.data.character_book.entries.push(
+  structuredClone(duplicateBindingDocument.data.character_book.entries[1]))
+duplicateBindingDocument.data.extensions.tavern_helper.scripts.push({type:'script',id:'self-loader',
+  content:'Another inert source',data:{commit:'different-commit',sources:['https://example.invalid/different']}})
+const duplicateBound=bindingByField(compileTavernExtensionBindingsV1(
+  decodeTavernCard(Buffer.from(JSON.stringify(duplicateBindingDocument)),'.json')))
+for(const field of ['ui_panel_id','mvu_loader_id','mvu_remote_ref','mvu_remote_fallback','mvu_commit','mvu_initvar_id']) {
+  assert.equal(duplicateBound[field].disposition,'ambiguous-target')
+  assert.equal(duplicateBound[field].targetPointer,undefined)
+}
+const partialBindingDocument=structuredClone(bindingDocument)
+partialBindingDocument.data.extensions.chaoshen_jixieshi.ui_panel_version=12
+delete partialBindingDocument.data.extensions.chaoshen_jixieshi.opening_protocol
+assert.equal(compileTavernExtensionBindingsV1(
+  decodeTavernCard(Buffer.from(JSON.stringify(partialBindingDocument)),'.json')).entries.length,12)
+assert.equal(compileTavernExtensionBindingsV1(legacy.cases[0].decoded),undefined)
 const reorderedExtensions = structuredClone(extensionsSource)
 reorderedExtensions.data.extensions=Object.fromEntries(Object.entries(reorderedExtensions.data.extensions).reverse())
 assert.deepEqual(compileTavernExtensionInventory(decodeTavernCard(Buffer.from(JSON.stringify(reorderedExtensions)),'.json')).entries,
@@ -333,8 +426,9 @@ assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from(cardV3.slice(0,
 assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from(cardV3, 'ascii'), textChunks: [['ccv3', Buffer.from(cardV3, 'ascii')]]}), '.png'), /重复/)
 assert.throws(() => decodeTavernCard(pngImage({textChunks: [['CCV3', Buffer.from(cardV3, 'ascii')]]}), '.png'), /不含/)
 assert.throws(() => decodeTavernCard(pngImage({ccv3: Buffer.from(cardV3, 'ascii'), corruptType: 'tEXt'}), '.png'), /CRC/)
-const overJson = Buffer.from(JSON.stringify({name: 'Synthetic', description: 'x'.repeat(5_000_000)})).toString('base64')
-assert.throws(() => decodeTavernCard(pngImage({chara: Buffer.from(overJson, 'ascii')}), '.png'), /Base64|大小/)
+const fullJson = Buffer.from(JSON.stringify({name: 'Synthetic', description: 'x'.repeat(5_000_000)})).toString('base64')
+const fullPng = decodeTavernCard(pngImage({chara: Buffer.from(fullJson, 'ascii')}), '.png')
+assert.equal(fullPng.data.description.length, 5_000_000, 'structured PNG DATA uses the source resource budget')
 const avatarOnly = decodeTavernCard(pngImage({ chara: Buffer.from(cardV2, 'ascii') }), '.png')
 assert.ok(Buffer.from(avatarOnly.avatarBase64, 'base64').subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])))
 assert.equal(Buffer.from(avatarOnly.avatarBase64, 'base64').includes(Buffer.from('chara')), false, 'avatar must omit card metadata')
