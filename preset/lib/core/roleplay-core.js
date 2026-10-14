@@ -3,6 +3,8 @@ import { readProjectedStory, projectStoryEvent } from './roleplay-message-view.j
 import { captureNextTavernCardExportV1, captureNextTavernAuthorDataV1 } from './roleplay-native-card-export.js';
 import { createSourceMusicV1 } from './roleplay-source-music.js';
 import { registerSourceMusicRoutesV1 } from './roleplay-source-music-routes.js';
+import { createSourceImagesV1 } from './roleplay-source-images.js';
+import { registerSourceImagesRoutesV1 } from './roleplay-source-images-routes.js';
 import { decodeTavernCard } from './tavern-card.js';
 import { keyOf, textOf, durableSeq, provenanceSeq, sha256, safeId, cloneRecord, recordSha256, readUserInfo, passthroughSchema, rollsSchema, } from './roleplay-data.js';
 import { eventsOf, sessionEventsIfReady, surfaceEvents, surfaceEntries, isCompletedTurnEnd, canonicalAssistantForTurn, recentWindowSince, roleplayWindowCutStartIndex, retainRoleplayWindowContinuity, assertWorkspaceSession, } from './roleplay-context.js';
@@ -135,6 +137,7 @@ export const inject = [
     'agents',
     'nexttavernMessageEdits',
     'nexttavernAuthorInjectionCleanupMarkers',
+    'nexttavernMvuSchemaMarkers',
     'nexttavernMvuPlayerMarkers',
     'sessionPersistence',
     'sessionQuery',
@@ -159,9 +162,8 @@ const DEFAULT_CONFIG = {
     sceneWorkerTimeoutMs: 45000,
     memoryWorkerTimeoutMs: 45000,
     phaseATimeoutMs: 60000,
-    // First model output deadline per request.  Framework overhead (system
-    // prompt, tool definitions, maintenance instructions) can dwarf the story
-    // window, so slow local models may need minutes before the first token.
+    // Optional profile overrides let slow models keep preparing without
+    // changing the historical first-output deadline for existing profiles.
     firstResponseTimeoutMs: 90000,
     // Legacy/manual Phase-B work has a separate bound from foreground projection.
     phaseBTimeoutMs: 90000,
@@ -599,13 +601,14 @@ export async function apply(ctx, config = {}) {
         }
         return found.closure;
     }
-    function assertProgramAbsenceOpening(id, packet, cut, sourceRows) {
+    function assertProgramAbsenceOpening(id, packet, cut, sourceRows, closedOpening) {
         const assertCurrent = () => tavernSourceInheritance.assertOwnedRowFactsCurrent(sourceRows);
         // A zero cut carries only the copied Source recipe. It does not assert a
         // child absence domain while that child's own opening is being prepared.
         if (packet.kind === 'not-inherited')
             return;
-        const native = inheritedProgramAbsence.read(id, packet, cut, assertCurrent, sourceRows.purpose === 'lineage-dependency' ? 'retained-publication' : 'current-carrier');
+        const mode = sourceRows.purpose === 'lineage-dependency' ? 'retained-publication' : 'current-carrier', native = closedOpening ? inheritedProgramAbsence.readValidatedCarrier(id, packet, cut, closedOpening.closure, assertCurrent, mode)
+            : inheritedProgramAbsence.read(id, packet, cut, assertCurrent, mode);
         if (native.kind !== 'program-absence')
             return;
         let inventory;
@@ -708,6 +711,7 @@ export async function apply(ctx, config = {}) {
         captureRead: (id, compute) => inputState.captureSource(id, 'author-worldbook', compute),
         withSourceLock: (id, work) => withImportLock(id, 'author-worldbook-read', work) });
     const tavernSourceInheritance = createRoleplayTavernSourceInheritanceV1({ tables: T, source: tavernSource,
+        captureClosedRead: (id, compute) => inputState.captureSource(id, 'tavern-inheritance', compute),
         withSourceLock: (id, work) => withImportLock(id, 'tavern-source-inheritance', work),
         readNativeSession: id => mvuAncestry.readNativeObservation(id), readOpeningContext: openingContextBinding,
         captureNonNumericalOpening, assertNonNumericalOpening, captureProgramAbsenceOpening, assertProgramAbsenceOpening,
@@ -825,6 +829,17 @@ export async function apply(ctx, config = {}) {
             return { sourceHash: current.sourceHash, importId: current.original.importId, data: current.data };
         } });
     ctx.effect(() => () => sourceMusic.dispose(), 'roleplay: Source music catalog lifecycle');
+    const sourceImages = createSourceImagesV1({ libraryFor,
+        capture: (session, build) => inputState.captureSource(session.id, 'source-images', build).data,
+        read: session => {
+            const current = captureNextTavernAuthorDataV1({ tables: T, source: tavernSource, edits: tavernLoreEdits }, session.id);
+            if (current.captured.kind === 'outside-declared-domain' && current.captured.code === 'ACTIVE_SOURCE_MISSING')
+                return null;
+            if (!current.sourceHash || !current.original)
+                throw Error('当前角色卡的图片来源尚不可读取。');
+            return { sourceHash: current.sourceHash, importId: current.original.importId, data: current.data };
+        },
+    });
     const { sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask, requestAuthorDialog, readCompletedAuthorDialog, resumeMemoryWork, resumeStatusMaintenance, } = createRoleplayTaskHost({
         assertCardWorkflow: (session, record) => assertCardWorkflow(session, record),
         currentTaskClaim: agent => {
@@ -2401,14 +2416,16 @@ export async function apply(ctx, config = {}) {
             sourceInheritance: () => tavernSourceInheritance, readSourceDescriptor: mvuOpening.readSourceDescriptor,
             history: schemaStory });
     const completion = createRoleplayMvuStoryCompletion(completionDeps);
-    function captureInheritedTiming(sid, source, assertOwnerFactsCurrent) {
+    function captureInheritedTiming(sid, source, assertOwnerFactsCurrent, sourceLineage) {
         if (!source.inheritance)
             return undefined;
         assertOwnerFactsCurrent();
         const session = ctx.sessions.get(sid);
         if (!session)
             throw Error('INPUT_MATERIAL_TIMED_NATIVE_UNAVAILABLE');
-        const lineage = tavernSourceInheritance.readCommittedSourceLineage(sid), current = lineage.current, inheritedHistory = captureRoleplayTavernInheritedMaterialHistoryV1({ sessionId: sid, table: T.branch,
+        // Main reuses the Source owner's closed DATA from this InputState capture.
+        // AuthorDialog retains its independent read; Native history is per input.
+        const lineage = sourceLineage ?? tavernSourceInheritance.readCommittedSourceLineage(sid), current = lineage.current, inheritedHistory = captureRoleplayTavernInheritedMaterialHistoryV1({ sessionId: sid, table: T.branch,
             events: () => session.snapshotEvents(), projections: () => ctx.sessions.messageProjections,
             inheritedEventCount: current.prepared.nativeCut.seedLength,
             publications: current.materialBaseline.publications, assertOwnerCurrent: assertOwnerFactsCurrent }), refs = new Map();
@@ -2445,7 +2462,7 @@ export async function apply(ctx, config = {}) {
         },
         loadTemplate: signal => tavernTemplate.load(signal),
         projections: () => ctx.sessions.messageProjections,
-        inheritedTiming: (scope, source, current) => captureInheritedTiming(scope.session.id, source, current),
+        inheritedTiming: (scope, source, current, lineage) => captureInheritedTiming(scope.session.id, source, current, lineage),
         schemaScopes: mvuOpening.captureSchemaPromptScopes,
         executeAuthorPrompt: mvuOpening.executeAuthorPrompt,
         executeAuthorBrowser: (sid, program, capture, facts, signal) => {
@@ -3074,6 +3091,8 @@ export async function apply(ctx, config = {}) {
     });
     registerSourceMusicRoutesV1({ ctx, resolveRoleplaySession, music: sourceMusic,
         withSourceLock: (id, work) => withImportLock(id, 'source-music', work) });
+    registerSourceImagesRoutesV1({ ctx, resolveRoleplaySession, images: sourceImages,
+        withSourceLock: (id, work) => withImportLock(id, 'source-images', work) });
     registerSettingsRoutes({
         ctx,
         T,

@@ -223,6 +223,7 @@ export const inject = [
   'agents',
   'nexttavernMessageEdits',
   'nexttavernAuthorInjectionCleanupMarkers',
+  'nexttavernMvuSchemaMarkers',
   'nexttavernMvuPlayerMarkers',
   'sessionPersistence',
   'sessionQuery',
