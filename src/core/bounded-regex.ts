@@ -1,5 +1,6 @@
 import { Worker } from 'node:worker_threads'
-import type {TavernPromptTransformResultV1,TavernPromptTransformWorkerInputV1} from './tavern-prompt-transform-types.mjs'
+import type {TavernPromptTransformResultV1,TavernPromptTransformWorkerInputV1,
+  TavernPromptTransformWorkerResultV1} from './tavern-prompt-transform-types.mjs'
 import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1} from './tavern-prompt-transform-types.mjs'
 
 export interface RegexPattern {
@@ -231,11 +232,19 @@ export async function boundedSTPromptTransformBatchV1(
   try {
     const result=await new Promise<TavernPromptTransformResultV1>(resolve=>{
       let settled=false
-      const done=(value:TavernPromptTransformResultV1):void=>{
+      const done=(value:TavernPromptTransformWorkerResultV1):void=>{
         if(settled)return
         settled=true
         if(timer)clearTimeout(timer)
-        resolve(value)
+        // The Worker preserves admitted entry order and seals the complete
+        // projections before sending. Reuse this invocation's original strings.
+        const result:TavernPromptTransformResultV1=value.kind==='transformed'
+          ?{kind:'transformed',output:{...value.output,entries:value.output.entries.map((projection,index)=>{
+            const original=data.input.entries[index]!
+            return {...projection,rawText:original.rawText,storyText:original.storyText,inputText:original.inputText}
+          })}}
+          :value
+        resolve(result)
       }
       abort=()=>done(failure('PROMPT_TRANSFORM_CANCELLED','cancelled'))
       signal?.addEventListener('abort',abort,{once:true})
@@ -246,9 +255,9 @@ export async function boundedSTPromptTransformBatchV1(
       if(signal?.aborted){abort();return}
       try {
         worker=new Worker(new URL('./tavern-prompt-transform-worker.mjs',import.meta.url),{
-          workerData:data,resourceLimits:{maxOldGenerationSizeMb:64,stackSizeMb:2},
+          workerData:{...data,projectionTransport:'input-backed'},resourceLimits:{maxOldGenerationSizeMb:64,stackSizeMb:2},
         })
-        worker.once('message',(value:TavernPromptTransformResultV1)=>done(value))
+        worker.once('message',(value:TavernPromptTransformWorkerResultV1)=>done(value))
         worker.once('error',()=>done(failure('PROMPT_TRANSFORM_WORKER')))
         worker.once('exit',()=>done(failure('PROMPT_TRANSFORM_WORKER')))
       } catch {done(failure('PROMPT_TRANSFORM_WORKER'))}

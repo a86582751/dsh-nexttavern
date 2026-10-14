@@ -1,4 +1,5 @@
-import {recordSha256} from './roleplay-data.js'
+import {createHash} from 'node:crypto'
+import {recordSha256,stableJson} from './roleplay-data.js'
 import type {TavernPromptProjectionV1,TavernPromptTransformOutputV1,
   TavernPromptTransformResultV1,TavernPromptTransformWorkerInputV1} from './tavern-prompt-transform-types.mjs'
 
@@ -8,9 +9,37 @@ export function createTavernPromptTransformOutputV1(
   data:Pick<TavernPromptTransformWorkerInputV1,'inputSha256'|'policySha256'|'inputChars'>,
   entries:readonly TavernPromptProjectionV1[],
   totals:Omit<TavernPromptTransformOutputV1['totals'],'inputChars'>,
+  canonicalEntries?:readonly (string|readonly (string|Uint8Array)[])[],
 ):Extract<TavernPromptTransformResultV1,{kind:'transformed'}> {
   const output={schemaVersion:1 as const,encoding:'owned-tavern-prompt-transform-output-v1' as const,
     authority:'consumer-data-only' as const,inputSha256:data.inputSha256,policySha256:data.policySha256,
     entries,totals:{inputChars:data.inputChars,...totals}}
-  return {kind:'transformed',output:{...output,outputSha256:recordSha256(output)}}
+  let outputSha256:string
+  if(canonicalEntries===undefined)outputSha256=recordSha256(output)
+  else {
+    // Worker owns these encodings in this invocation. Stream the same record
+    // bytes without traversing its already encoded projection DATA again.
+    // String chunks are complete JSON tokens or adjacent metadata, so a UTF-16
+    // surrogate pair is never split across separate UTF-8 conversions.
+    const hash=createHash('sha256'),record=output as Record<string,unknown>
+    hash.update('{')
+    const keys=Object.keys(record).filter(key=>record[key]!==undefined).sort()
+    for(const [index,key] of keys.entries()) {
+      hash.update((index?',':'')+JSON.stringify(key)+':','utf8')
+      if(key==='entries') {
+        hash.update('[')
+        for(const [entryIndex,encoded] of canonicalEntries.entries()) {
+          if(entryIndex)hash.update(',')
+          if(typeof encoded==='string')hash.update(encoded,'utf8')
+          else for(const chunk of encoded) {
+            if(typeof chunk==='string')hash.update(chunk,'utf8')
+            else hash.update(chunk)
+          }
+        }
+        hash.update(']')
+      }else hash.update(stableJson(record[key])!,'utf8')
+    }
+    outputSha256=hash.update('}').digest('hex')
+  }
+  return {kind:'transformed',output:{...output,outputSha256}}
 }

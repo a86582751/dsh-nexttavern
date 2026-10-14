@@ -55,6 +55,9 @@ export interface TavernPromptMacroSnapshotV1 {
   readonly instruct:readonly TavernPromptBindingV1[]
   readonly dynamic:readonly TavernPromptBindingV1[]
   readonly registered:readonly TavernPromptBindingV1[]
+  /** Exact caller-owned placeholders for a later deterministic substitution.
+   * ST aliases still run first. Ordinary ST snapshots omit this field. */
+  readonly deferredMacros?:readonly string[]
   readonly localVariables:readonly TavernPromptBindingV1[]
   readonly globalVariables:readonly TavernPromptBindingV1[]
   readonly outlets:readonly TavernPromptBindingV1[]
@@ -163,6 +166,12 @@ export interface TavernPromptTransformOutputV1 {
 }
 export type TavernPromptTransformResultV1={readonly kind:'transformed';readonly output:TavernPromptTransformOutputV1}
   |{readonly kind:'refused'|'cancelled';readonly diagnostics:readonly TavernPromptTransformDiagnosticV1[]}
+/** Internal Worker reply only. The bounded transport owner retains these
+ * admitted strings; canonical projections and their hashes remain complete. */
+export type TavernPromptTransformWorkerResultV1={readonly kind:'transformed';readonly output:
+  Omit<TavernPromptTransformOutputV1,'entries'> & {readonly entries:readonly
+    Omit<TavernPromptProjectionV1,'rawText'|'storyText'|'inputText'>[]}}
+  |Extract<TavernPromptTransformResultV1,{readonly kind:'refused'|'cancelled'}>
 export interface TavernPromptTransformDependenciesV1 {
   /** Actual owner assertion is retained by reference outside the data snapshot.
    * It must be synchronous. Replay hashes never replace this check. */
@@ -174,4 +183,7 @@ export interface TavernPromptTransformWorkerInputV1 {
   readonly inputSha256:string
   readonly policySha256:string
   readonly inputChars:number
+  /** Opt-in transport metadata, outside canonical input and persisted DATA.
+   * Direct Worker consumers without it retain the complete legacy reply. */
+  readonly projectionTransport?:'input-backed'
 }
