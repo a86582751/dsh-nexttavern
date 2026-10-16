@@ -3,7 +3,6 @@
  * records can explain a request; they cannot recreate this owner after resume. */
 import { nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
 import { recordSha256, keyOf } from './roleplay-data.js';
-import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 /** One preparation budget covers lock waits, deterministic workers and record
  * publication. Nested work cannot renew it by starting another evaluator. */
 export const ROLEPLAY_INPUT_MATERIAL_LIMITS_V1 = Object.freeze({ deadlineMs: 15_000 });
@@ -106,9 +105,12 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                     // The recorded plan and the live transform must use the same detached,
                     // frozen values. A producer's later array mutation cannot alter wire
                     // content while the persisted explanatory record remains unchanged.
-                    const material = freeze(cloneRoleplayTavernLoreDataV1({ requiredSections: data.requiredSections,
+                    // Layout owns the valid wire data; this publisher only detaches the
+                    // transform so its record and live request retain the same values.
+                    const material = freeze(structuredClone({ requiredSections: data.requiredSections,
                         sections: data.sections, insertions: data.insertions,
-                        ...data.anchoredInsertions ? { anchoredInsertions: data.anchoredInsertions } : {} }, 4_194_304, { nodes: 131072, depth: 66 }));
+                        ...data.anchoredInsertions ? { anchoredInsertions: data.anchoredInsertions } : {},
+                        ...data.messageTextProjections ? { messageTextProjections: data.messageTextProjections } : {} }));
                     const materialSha256 = nativeInputSha256(material);
                     const basis = { schemaVersion: 1, encoding: 'core-input-material-record-v1',
                         authority: 'consumer-data-only', sessionId: scope.session.id, branchId: scope.session.id,
@@ -179,8 +181,11 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                 if (row.routeSha256 !== undefined && row.routeSha256 !== route)
                     fail('INPUT_MATERIAL_ROUTE_CHANGED');
                 row.routeSha256 = route;
-                const decision = { kind: 'transform', schemaVersion: 1,
-                    encoding: 'native-request-material-owner-transform-v1', snapshot: row.snapshot, plan: row.plan,
+                const decision = { kind: 'transform',
+                    ...row.material.messageTextProjections ? { schemaVersion: 2,
+                        encoding: 'native-request-material-owner-transform-v2',
+                        messageTextProjections: row.material.messageTextProjections } : { schemaVersion: 1,
+                        encoding: 'native-request-material-owner-transform-v1' }, snapshot: row.snapshot, plan: row.plan,
                     captureSha256: row.captureSha256, expectedAssemblySha256: input.assemblySha256,
                     expectedSelectedBaseSha256: input.selected.sha256, requiredSections: row.material.requiredSections,
                     sections: row.material.sections, insertions: row.material.insertions,

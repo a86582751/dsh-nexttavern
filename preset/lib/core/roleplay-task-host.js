@@ -239,7 +239,9 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             && taskHash({ sessionId: session.id, kind, source: job.source, input: requestKey }) === job.id)
             .sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0) || a.id.localeCompare(b.id))[0] : undefined;
         const source = completed ? completed.source : (() => {
-            const preparation = T.branch.get(keyOf(session.id, 'task-preparation')), currency = inputCurrency?.(session);
+            // Explicit rebuilding owns its durable generation, not the completed
+            // Story's hot input, which the actual management wake must replace.
+            const preparation = T.branch.get(keyOf(session.id, 'task-preparation')), currency = kind === 'status' && generationKey !== undefined ? undefined : inputCurrency?.(session);
             return { ...(providedSource ?? { events: taskStory(session).map(e => ({ seq: e.seq, hash: sha256(e.text) })),
                     ...(kind === 'status' ? { fixedHash: recordSha256(statusFixedContext(session)) } : {}),
                     ...(!background && preparation?.sessionId === session.id && preparation.status === 'preparing'

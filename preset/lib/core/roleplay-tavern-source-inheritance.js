@@ -4,8 +4,8 @@
 import { recordSha256 } from './roleplay-data.js';
 import { genesis, parseHead, identityOf } from './roleplay-tavern-lore-edits-data.js';
 import { createSourceInheritanceStorageV1, sourceReadBudgetV1 } from './roleplay-tavern-source-inheritance-storage.js';
-import { freezePublishedLocalEditLayerV1, validateFrozenPublishedEditLayerV1, sealFrozenSourceEditBaselineV1, validateFrozenSourceEditBaselineV1, validateInheritanceEditSlotV1 } from './roleplay-tavern-source-edit-baseline.js';
-import { inheritanceDataV1, inheritanceDataSha256V1, inheritanceFailV1, inheritanceSameV1, inheritanceObjectV1, inheritanceRefV1, inheritanceFreezeV1, sealInheritanceDataV1, validatePreparedInheritanceV1, validateApplyInheritanceV1, validateCommitInheritanceV1, validateReadyInheritanceV1, validateStaticRowV1, validateTavernSourceInheritanceDescriptorV1, frozenInheritanceRefV1, validateTavernSourceLegacyMigrationRecordV1, validateTavernSourceMaterialBaselineV1, validateFrozenNonNumericalOpeningV1, validateFrozenPromptScopeRecordV1, validateFrozenProgramAbsenceOpeningV1, validateTavernSourceProgramAbsenceOpeningRecordV1, assertFrozenProgramAbsenceOpeningCutV1, assertProgramAbsenceOriginalBindingV1, tavernSourcePreparedKeyV1, tavernSourceApplyKeyV1, tavernSourceCommitKeyV1, tavernSourceReadyKeyV1, tavernSourceEditBaselineKeyV1, tavernSourceMaterialBaselineKeyV1, tavernSourceEditSlotKeyV1, tavernSourceMigrationKeyV1, tavernSourceProgramAbsenceOpeningKeyV1, tavernSourceFrozenPromptScopeKeyV1, TavernSourceInheritanceFailureV1, TAVERN_SOURCE_INHERITANCE_BOUNDS_V1 } from './roleplay-tavern-source-inheritance-data.js';
+import { freezePublishedLocalEditLayerV1, validateFrozenPublishedEditLayerV1, sealFrozenSourceEditBaselineV1, validateInheritanceEditSlotV1 } from './roleplay-tavern-source-edit-baseline.js';
+import { inheritanceDataV1, inheritanceDataSha256V1, inheritanceFailV1, inheritanceSameV1, inheritanceObjectV1, inheritanceRefV1, inheritanceFreezeV1, sealInheritanceDataV1, validatePreparedInheritanceV1, validateApplyInheritanceV1, validateCommitInheritanceV1, validateReadyInheritanceV1, validateStaticRowV1, validateTavernSourceInheritanceDescriptorV1, frozenInheritanceRefV1, validateTavernSourceLegacyMigrationRecordV1, validateFrozenNonNumericalOpeningV1, validateFrozenPromptScopeRecordV1, validateFrozenProgramAbsenceOpeningV1, validateTavernSourceProgramAbsenceOpeningRecordV1, assertFrozenProgramAbsenceOpeningCutV1, assertProgramAbsenceOriginalBindingV1, tavernSourcePreparedKeyV1, tavernSourceApplyKeyV1, tavernSourceCommitKeyV1, tavernSourceReadyKeyV1, tavernSourceEditBaselineKeyV1, tavernSourceMaterialBaselineKeyV1, tavernSourceEditSlotKeyV1, tavernSourceMigrationKeyV1, tavernSourceProgramAbsenceOpeningKeyV1, tavernSourceFrozenPromptScopeKeyV1, TavernSourceInheritanceFailureV1, TAVERN_SOURCE_INHERITANCE_BOUNDS_V1 } from './roleplay-tavern-source-inheritance-data.js';
 const sourceLineageReadV1 = (subjectSessionId, dependencyOnly = false) => ({ subjectSessionId, dependencyOnly, budget: sourceReadBudgetV1(), closed: new Map(), active: new Set() });
 const setupOnly = new Set(['session/end-seed', 'session/title', 'model/selection', 'agent-preset/selected',
     'permission/preset', 'sandbox/mode', 'approval/policy']);
@@ -503,7 +503,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps) {
             if (!row.exists)
                 missingRecords.push(row);
         }
-        const aKey = tavernSourceApplyKeyV1(sid), cKey = tavernSourceCommitKeyV1(sid), rKey = tavernSourceReadyKeyV1(sid), aRow = store.readRow('branch', aKey), cRow = store.readRow('branch', cKey), rRow = store.readRow('branch', rKey), a = aRow.exists ? validateApplyInheritanceV1(store.readKey(aKey)) : undefined, c = cRow.exists ? validateCommitInheritanceV1(store.readKey(cKey)) : undefined, r = rRow.exists ? validateReadyInheritanceV1(store.readKey(rKey)) : undefined;
+        const aKey = tavernSourceApplyKeyV1(sid), cKey = tavernSourceCommitKeyV1(sid), rKey = tavernSourceReadyKeyV1(sid), aRow = store.readRow('branch', aKey), cRow = store.readRow('branch', cKey), rRow = store.readRow('branch', rKey), a = aRow.exists ? store.readKey(aKey) : undefined, c = cRow.exists ? store.readKey(cKey) : undefined, r = rRow.exists ? store.readKey(rKey) : undefined;
         if ((supplied && !inheritanceSameV1(a, supplied)) || (!a && (c || r)))
             inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
         if (a)
@@ -579,7 +579,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps) {
             inheritanceFailV1('SOURCE_INHERITANCE_BUDGET');
         reading.active.add(sid);
         try {
-            const { budget } = reading, p = readPreparedInternal(sid, reading), pRef = preparedRef(p), a = validateApplyInheritanceV1(store.readKey(tavernSourceApplyKeyV1(sid), budget)), aRef = inheritanceRefV1(tavernSourceApplyKeyV1(sid), a), c = validateCommitInheritanceV1(store.readKey(tavernSourceCommitKeyV1(sid), budget)), cRef = inheritanceRefV1(tavernSourceCommitKeyV1(sid), c), r = validateReadyInheritanceV1(store.readKey(tavernSourceReadyKeyV1(sid), budget)), rRef = inheritanceRefV1(tavernSourceReadyKeyV1(sid), r);
+            // Storage parses exact maintained addresses; this owner joins their records.
+            const { budget } = reading, p = readPreparedInternal(sid, reading), pRef = preparedRef(p), a = store.readKey(tavernSourceApplyKeyV1(sid), budget), aRef = inheritanceRefV1(tavernSourceApplyKeyV1(sid), a), c = store.readKey(tavernSourceCommitKeyV1(sid), budget), cRef = inheritanceRefV1(tavernSourceCommitKeyV1(sid), c), r = store.readKey(tavernSourceReadyKeyV1(sid), budget), rRef = inheritanceRefV1(tavernSourceReadyKeyV1(sid), r);
             assertApplyData(p, a);
             if (c.childSessionId !== sid || r.childSessionId !== sid || !inheritanceSameV1(c.preparedRef, pRef)
                 || !inheritanceSameV1(c.applyIntentRef, aRef) || c.childInventorySha256 !== a.childInventorySha256
@@ -588,7 +589,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps) {
                 || !inheritanceSameV1(r.binding, { schemaVersion: 1, preparedRef: pRef, applyIntentRef: aRef, commitRef: cRef })
                 || !inheritanceSameV1(r.priorMeta, a.priorMeta))
                 inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
-            const edit = validateFrozenSourceEditBaselineV1(store.readRef(c.editBaselineRef, budget)), slot = validateInheritanceEditSlotV1(store.readRef(c.editBaselineSlotRef, budget)), material = readMaterialBaseline(c.materialBaselineRef, p, budget);
+            const edit = store.readRef(c.editBaselineRef, budget), slot = validateInheritanceEditSlotV1(store.readRef(c.editBaselineSlotRef, budget)), material = readMaterialBaseline(c.materialBaselineRef, p, budget);
             if (!inheritanceSameV1(edit.preparedRef, pRef) || !inheritanceSameV1(edit.layers, p.editLayers)
                 || !inheritanceSameV1(slot.preparedRef, pRef) || !inheritanceSameV1(slot.baselineRef, c.editBaselineRef)
                 || c.editBaselineSlotRef.key !== tavernSourceEditSlotKeyV1(slot.identitySha256)
@@ -712,7 +713,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps) {
         return captured ?? lineage(current);
     }
     function readMaterialBaseline(ref, p, budget) {
-        const raw = validateTavernSourceMaterialBaselineV1(store.readRef(ref, budget));
+        // The parsed commit binds this reference to the child's maintained address.
+        const raw = store.readRef(ref, budget);
         if (raw.childSessionId !== p.childSessionId
             || !inheritanceSameV1(raw.preparedRef, preparedRef(p)) || !inheritanceSameV1(raw.nativeCut, p.nativeCut)
             || !inheritanceSameV1(raw.publications, p.materialPublications))

@@ -920,8 +920,17 @@ export function createRoleplayInputStateOwner(deps) {
         captureClosing, borrowHistorical, readPendingVariantFacts, readProgramAbsenceNamespaceFacts,
         readProgramOpeningPreparationFacts,
         captureSchema: (id, compute) => read('schema', id, 'verified-history', compute, true),
+        reuseSchema: (id, matches) => {
+            const frame = slots.get('schema\0' + id + '\0verified-history');
+            if (!frame || !current(frame) || !matches(frame.data))
+                return;
+            // Only the matching historical cut borrows this dependency. A different
+            // cut must not become dependent on today's numerical head.
+            connect(frame);
+            return handle(frame, frame.data);
+        },
         captureSource: (id, kind, compute, outputs) => read('source', id, kind, compute, true, undefined, outputs),
-        captureOriginal: (id, identity, compute) => read('source', id, 'schema-original', compute, true, identity),
+        captureOriginal: (id, identity, compute) => read('source', id, `schema-original:${identity}`, compute, true),
         captureSourceFrame,
         captureObservation: (id, compute, purpose = 'input-observation') => read('observation', id, purpose, compute, true),
         capturePlayerLedger: (id, compute) => read('control', id, 'schema-player-ledger', compute, true),
