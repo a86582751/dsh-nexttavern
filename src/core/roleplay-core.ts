@@ -244,8 +244,8 @@ export const inject = [
 ]
 
 const DEFAULT_CONFIG = {
-  workerProvider: null as string | null,
-  workerModel: null as string | null,
+  workerProvider: 'deepseek-official' as string | null,
+  workerModel: 'deepseek-flash' as string | null,
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
@@ -1235,8 +1235,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   function recoverStatusObligations(...args:Parameters<typeof recoverStoredStatusObligations>) {
     // An edited/unready numerical branch has no current story authority.
     // State reads must not start model work over its superseded prose.
-    if(editBasisFacts(args[0].id).kind!=='none'
-      &&mvuOpening.readInputObservation(args[0].id).kind==='management')return []
+    const id=args[0].id
+    // Schema presence already proves non-none; edit consumers own the full authority read.
+    if((mvuOpening.hasSchemaOpening(id)||editBasisFacts(id).kind!=='none')
+      &&mvuOpening.readInputObservation(id).kind==='management')return []
     const jobs=recoverStoredStatusObligations(...args),
       batch={session:args[0],settled:Promise.allSettled(jobs)}
     statusReadRecoveries.set(args[0].id,batch)
