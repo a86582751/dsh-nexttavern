@@ -10,7 +10,7 @@ interface CapabilityReport {
   omitted:number
 }
 const labels:Record<CapabilityStatus,string> = {interpreted:'已整理为角色资料',
-  'preserved-unexecuted':'已保留，未执行','missing-external-resource':'缺少外部资源','requires-optional-analysis':'需要可选分析'}
+  'preserved-unexecuted':'导入时保留，未运行','missing-external-resource':'缺少外部资源','requires-optional-analysis':'需要可选分析'}
 const reasons:Record<string,string> = {
   'structured-projection':'已整理为角色资料', 'opening-candidate':'可选择的作者开场',
   'worldbook-projection':'已整理为世界书，尚不代表条目已触发', 'extension-runtime-not-wired':'扩展运行逻辑尚未接入',
@@ -22,7 +22,12 @@ const names:Record<string,string> = {name:'名称',description:'人物资料',pe
   system_prompt:'系统规则',post_history_instructions:'补充规则',creator_notes:'作者说明',extensions:'扩展设置',assets:'媒体资源'}
 function fieldName(pointer:string):string {
   const parts = pointer.split('/').filter(Boolean)
-  const field = parts[0] === 'data' ? parts[1] : parts[0]
+  const offset = parts[0] === 'data' ? 1 : 0
+  const field = parts[offset]
+  if (field === 'extensions') {
+    if (parts[offset + 1] === 'regex_scripts') return '显示／提示正则'
+    if (parts[offset + 1] === 'RubyAnalyzer') return 'RubyAnalyzer 模型分析'
+  }
   return field && names[field] || '角色卡字段'
 }
 
@@ -68,7 +73,8 @@ export function createCardImportPanel(deps:CardUploadPanelDependencies) {
           h('button',{className:'dsh-rp-btn',type:'button',disabled:loading,onClick:() => void load()},loading ? '读取中…' : '刷新')),
         error ? h('p',{className:'dsh-rp-error',role:'alert'},error) : null,
         report ? h(React.Fragment,null,
-          h('p',{className:'dsh-rp-muted'},'资料整理、扩展执行和外部资源分别记录；导入成功并不代表所有扩展都能运行。'),
+          h('p',{className:'dsh-rp-muted'},'这里记录导入时如何处理卡内声明，不表示当前运行状态。'
+            +'运行结果请查看开场、阅读器或 Ruby额外分析；保留声明不代表全部内容都受支持。'),
           h('div',{className:'dsh-rp-card-capabilities'},(Object.keys(labels) as CapabilityStatus[]).map(status =>
             h('div',{key:status,className:'dsh-rp-card-capability','data-capability':status},
               h('strong',null,report.counts[status] ?? 0),h('span',null,labels[status])))),
