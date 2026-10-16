@@ -20,7 +20,7 @@
       {
         "artifact": "roleplay-data-typescript",
         "path": "src/core/roleplay-data.ts",
-        "sha256": "822da30c42cf77f9df36da7b36b7cb04699af3afbed78f803cba5f8694bdceaf"
+        "sha256": "bcb75f9b0dbbf688e06aed3efce60f0f8003b994670bc164e823e96358516a06"
       },
       {
         "artifact": "roleplay-mvu-schema-executor-types-typescript",
