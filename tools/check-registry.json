@@ -124,7 +124,7 @@
         "roleplay-mvu-prompt-numerical-facts*",
         "roleplay-author-host*",
         "tavern-author-combined*",
-        "development/author-host-runtime-v5/*",
+        "development/author-host-runtime*",
         "roleplay-author-browser*"
       ]
     },
@@ -247,7 +247,7 @@
         "tavern-template*",
         "tavern-lore-editor*",
         "tavern-author-browser*",
-        "development/author-browser-runtime-v1/*",
+        "development/author-browser-runtime*",
         "author-browser-*"
       ]
     },
