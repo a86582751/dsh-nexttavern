@@ -1013,32 +1013,29 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     let declared:ReturnType<typeof captureDeclaredChatKeys>=[]
     const current=()=>viewCurrent(view)&&declared.every(row=>row.capture.current())
     if(!current())return undefined
+    const ready=view.history.ready,combined=isAuthorHostJournalReadyV5(ready)?ready.epoch.program:undefined,
+      browser=combined?.browserProgram,program=combined&&'promptProgram' in combined?combined.promptProgram:undefined
+    if(!program&&browser?.schemaVersion!==2&&browser?.schemaVersion!==3)return {data,current}
+    // The admitted program owns its Prompt partition across Combined versions.
+    // Prompt and Browser share this capture of the same original Native opening.
+    const opening=captureAuthorOpening(view,frame,events),
+      binding=browser?.schemaVersion===2?deriveAuthorChatBindingV1(sid,browser):null,
+      authorChat=binding&&deps.authorChat?deps.authorChat.capture(binding):null
     let authorPrompt:AuthorPromptPreparationFactsV1|undefined,authorBrowser:AuthorBrowserPreparationFactsV2|undefined
-    const ready=view.history.ready
-    if(isAuthorHostJournalReadyV5(ready)&&(ready.epoch.program.schemaVersion===4||ready.epoch.program.schemaVersion===5)) {
-      const browser=ready.epoch.program.browserProgram,
-        binding=browser?.schemaVersion===2?deriveAuthorChatBindingV1(sid,browser):null,
-        authorChat=binding&&deps.authorChat?deps.authorChat.capture(binding):null,
-        opening=captureAuthorOpening(view,frame,events)
-      // The completed schema opening already proves its original Native copy.
-      // An edited projected version is excluded by the consumer's version join.
-      const program=ready.epoch.program.promptProgram
-      if(program)authorPrompt={program,opening,
-        scopes:produceAuthorPromptScopeFrameV1(frame,program),...authorChat?{authorChat}:{}}
-      if(browser?.schemaVersion===2) {
-        const context=view.frame.material.openingContext as {user:string;user_gender?:string}
-        authorBrowser={program:browser,opening,scopes:produceAuthorPromptScopeFrameV1(frame,browser),
-          basis:{materialSha256:view.frame.materialSha256,numericalSnapshotSha256:view.history.snapshot.stateSnapshotSha256},
-          numerical:browserNumericalSnapshot(view,events.length),
-          persona:{name:context.user,...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},authorChat}
-      }
+    if(program)authorPrompt={program,opening,
+      scopes:produceAuthorPromptScopeFrameV1(frame,program),...authorChat?{authorChat}:{}}
+    if(browser?.schemaVersion===2) {
+      const context=view.frame.material.openingContext as {user:string;user_gender?:string}
+      authorBrowser={program:browser,opening,scopes:produceAuthorPromptScopeFrameV1(frame,browser),
+        basis:{materialSha256:view.frame.materialSha256,numericalSnapshotSha256:view.history.snapshot.stateSnapshotSha256},
+        numerical:browserNumericalSnapshot(view,events.length),
+        persona:{name:context.user,...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},authorChat}
     }
-    const browser=isAuthorHostJournalReadyV5(ready)?ready.epoch.program.browserProgram:undefined
     let authorBrowserV3:AuthorBrowserPreparationFactsV3|undefined
     if(browser?.schemaVersion===3) {
       declared=captureDeclaredChatKeys(sid,browser)
       const context=view.frame.material.openingContext as {user:string;user_gender?:string}
-      authorBrowserV3={program:browser,opening:captureAuthorOpening(view,frame,events),
+      authorBrowserV3={program:browser,opening,
         scopes:produceAuthorPromptScopeFrameV1(frame,browser),
         basis:{materialSha256:view.frame.materialSha256,numericalSnapshotSha256:view.history.snapshot.stateSnapshotSha256},
         numerical:browserNumericalSnapshot(view,events.length),
@@ -1070,7 +1067,12 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(!view)fail('AUTHOR_PROMPT_HISTORY_UNAVAILABLE')
     const {runtime}=await engine(view.history.ready)
     if(!('host' in runtime))fail('AUTHOR_PROMPT_RUNTIME_UNAVAILABLE')
-    return runtime.prompt.execute(program,capture,signal)
+    const prompt=runtime.prompt,result=await prompt.execute(program,capture,signal)
+    if(result.kind!=='refused'||result.diagnostics[0]?.code!=='PROMPT_PROGRAM_NOT_COMPILED')return result
+    // A fresh historical owner has lost its live compilation admission. This
+    // refusal precedes dispatch; compilation restores admission without callbacks.
+    if(!await prompt.compiler.verifyProgram(program,signal))return result
+    return prompt.execute(program,capture,signal)
   }
   function captureManualBasis(sid:string) {
     const view=views.get(sid)
