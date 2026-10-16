@@ -6,7 +6,7 @@
 
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, GenerateOptions, ImageAttachmentAccessResolver, Message, RequestMessage, RequestMaterialMessageV1, ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, GenerateOptions, ImageAttachmentAccessResolver, Message, RequestMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type {
   AttachmentId,
   AttachmentStore,
@@ -175,7 +175,7 @@ function piContext(systemPrompt: string | undefined, options: GenerateOptions, m
 }
 
 function appendAssistant(
-  message: Extract<Message|RequestMaterialMessageV1, { role: 'assistant' }>,
+  message: Extract<RequestMessage, { role: 'assistant' }>,
   messages: PiMessage[],
   toolNames: Map<ToolCallId, string>,
   onReplayDegrade?: (reason: string) => void,

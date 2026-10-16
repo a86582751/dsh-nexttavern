@@ -59,7 +59,7 @@ import {nativeRequestMaterialDecisionV1,nativeRequestMaterialOwnerRegistrationV1
   nativeRequestMaterialOwnerCheckV1,nativeRequestMaterialPrepareDecisionV1,applyNativeOwnedSectionsV1,
   resolveNativeOwnedMaterialAnchorsV1,nativeOpeningMaterialOwnerRegistrationV1,
   nativeOpeningClosingAcknowledgementV1} from './request-material-owner.js'
-import type {NativeRequestMaterialOwnerV1,NativeRequestMaterialInputV1,NativeRequestMaterialTransformV1,
+import type {NativeRequestMaterialOwnerV1,NativeRequestMaterialOwnerV2,NativeRequestMaterialInputV1,NativeRequestMaterialTransform,
   NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,NativeMaterialSelectionEvidenceV1,
   NativeMaterialSelectionEventV1,NativeOpeningMaterialOwnerV1,NativeOpeningMaterialPrepareInputV1,
   NativeOpeningMaterialInputV1,NativeOpeningOwnerIdentityV1,NativeOpeningMaterialCheckV1} from './request-material-owner.js'
@@ -135,7 +135,7 @@ type PreparedStep =
   }
 type OwnedContinuation = {ref: NativeInputRef; ownerToken: object; parentSha256: string; turn: number; claimed: boolean}
 type AdmissionRegistration = {hook: NativeInputAdmissionHook | NativeInputAdmissionHookV2; active: boolean;
-  requestMaterial?:NativeRequestMaterialOwnerV1;
+  requestMaterial?:NativeRequestMaterialOwnerV1|NativeRequestMaterialOwnerV2;
   stopOwner?: NativeInputAdmissionHookV2['onStop']; nominations?: Map<string, OwnedContinuation>; usedTokens?: WeakSet<object>}
 type InputAdmission = {registration: AdmissionRegistration; proposal: NativeInputProposal; identity: unknown;
   resumeProof?: NativeInputResumeProof; claim?: NativeInputClaim; continuation?: true;
@@ -156,7 +156,7 @@ type OpeningWork={readonly registration:OpeningRegistration;readonly identity:Na
   readonly invocation:SessionEvent<'opening/invocation'>;readonly attempts:Map<number,number>}
 type OpeningCompletion={status:'pending'|'blocked'|'unknown'|'settled';code?:string;
   invocationRef?:NativeOpeningEventRefV1;generatedReceiptRef?:NativeOpeningEventRefV1}
-type MaterialRequestOwner={readonly kind:'player-input';readonly admission:InputAdmission;readonly owner:NativeRequestMaterialOwnerV1}
+type MaterialRequestOwner={readonly kind:'player-input';readonly admission:InputAdmission;readonly owner:NativeRequestMaterialOwnerV2}
   |{readonly kind:'programmatic-opening';readonly opening:OpeningWork;readonly owner:NativeOpeningMaterialOwnerV1}
 
 type MaterialSelectionCut={readonly boundary:SessionRequestBoundary;readonly sha256:string}
@@ -168,7 +168,7 @@ type MaterialSelectionLineage={
   stepStartSeq?:number;checkpointSha256?:string;
   lastAttempt?:{readonly event:SessionEvent<'assistant/attempt'>;readonly sha256:string};
 }&({readonly kind:'player-input';readonly admission:InputAdmission;readonly registration:AdmissionRegistration;
-  readonly identity:unknown;readonly owner:NativeRequestMaterialOwnerV1;readonly claim:NativeInputClaim;readonly claimSha256:string}
+  readonly identity:unknown;readonly owner:NativeRequestMaterialOwnerV2;readonly claim:NativeInputClaim;readonly claimSha256:string}
   |{readonly kind:'programmatic-opening';readonly opening:OpeningWork;readonly registration:OpeningRegistration;
     readonly owner:NativeOpeningMaterialOwnerV1})
 type MaterialSelectedProvenance={readonly lineage:MaterialSelectionLineage;readonly revision:number;
@@ -2269,7 +2269,7 @@ export class ReactLoopAgent implements Agent {
   }
 
   private checkMaterialOwner(requestOwner:MaterialRequestOwner,messages:readonly UserMessage[],
-    decision:NativeRequestMaterialTransformV1,phase:'planned-precommit'|'committed-predispatch',
+    decision:NativeRequestMaterialTransform,phase:'planned-precommit'|'committed-predispatch',
     materialRef?:{seq:number;sha256:string}):void {
     this.assertMaterialRequestOwner(requestOwner,messages)
     const admission=requestOwner.kind==='player-input'?requestOwner.admission:undefined
@@ -2365,6 +2365,13 @@ export class ReactLoopAgent implements Agent {
       previousContext:this.session.requestContext()})
     appends.push(...envelope.appends)
     const preview=this.session.previewRequestAppends(appends)
+    if(plan.schemaVersion===2)for(const projection of plan.messageTextProjections) {
+      const target=projection.target
+      if(selected.messages.filter(row=>row.id===target.id&&row.role===target.role
+        &&row.messageSha256===target.messageSha256).length!==1) {
+        this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_PROJECTION_SELECTED_UNPROVEN')
+      }
+    }
     let protectedPrefixLength=0
     while(preview.messages[protectedPrefixLength]?.role==='system'
       ||preview.messages[protectedPrefixLength]?.role==='developer')protectedPrefixLength++
@@ -2379,7 +2386,8 @@ export class ReactLoopAgent implements Agent {
       snapshot:plan.snapshot,plan:plan.plan,boundarySeq:Number(preview.boundarySeq),contentGeneration:preview.contentGeneration,
       surfaceNodes:preview.surfaceNodes,baseMessages:preview.messages,
       baseRefs:preview.messageNodes.map(({seq,message})=>({seq:Number(seq),id:String(message.id),role:message.role,
-        messageSha256:nativeInputSha256(message)})),protectedPrefixLength,insertions:anchored.insertions})
+        messageSha256:nativeInputSha256(message)})),protectedPrefixLength,insertions:anchored.insertions,
+      ...plan.schemaVersion===2?{messageTextProjections:plan.messageTextProjections}:{}})
     for(const expected of anchored.resolutions) {
       const actual=result.record.placements.find(row=>row.contributionRef===expected.contributionRef)
       if(!actual||actual.baseIndex!==expected.baseIndex) {

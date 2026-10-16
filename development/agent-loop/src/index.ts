@@ -258,14 +258,17 @@ export {nativeOpeningRecordSha256V1,nativeOpeningInstructionSha256V1,nativeOpeni
   validateNativeOpeningRequestAttemptV1,validateNativeGeneratedOpeningReceiptV1,validateNativeOpeningClosingAckV1}
   from './opening-record-hashes.js'
 export type {NativeRequestMaterialOwnerV1,NativeRequestMaterialInputV1,NativeRequestMaterialDecisionV1,
+  NativeRequestMaterialOwnerV2,NativeRequestMaterialTransformV2,NativeRequestMaterialDecision,NativeRequestMaterialTransform,
+  NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2,
   NativeRequestMaterialTransformV1,NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,
   NativeOwnedMaterialAnchorV1,NativeOwnedMaterialAnchoredInsertionV1,
   NativeRequestMaterialPrepareDecisionV1,NativeMaterialSelectionEvidenceV1,
   NativeMaterialSelectionEventV1} from './request-material-owner.js'
 export {nativeInputSha256,inspectNativeInboxHistory} from './input-admission.js'
 export type {NativeInboxHistory} from './input-admission.js'
-export {reconstructNativeRequestMaterialV1,NativeRequestMaterialFailure} from './request-material.js'
-export type {NativeRequestMaterialRecordV1,NativeRequestMaterialEventV1} from './request-material.js'
+export {reconstructNativeRequestMaterialV1,NativeRequestMaterialFailure,projectNativeMessageTextV2} from './request-material.js'
+export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
+  NativeRequestMaterialEventV1} from './request-material.js'
 export type {NativeInputRef, NativePreparationReceiptV1, NativeInputLinkV1} from '@deepseek-ai/dsh-session'
 export type {NativeInputAdmissionAgentV2, NativeInputAdmissionCapabilityV2, NativeInputAdmissionHookV2, NativeInputAdmissionHook,
   NativeInputAdmissionCheckV2, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,

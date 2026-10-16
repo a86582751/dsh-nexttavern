@@ -156,6 +156,7 @@ export interface NativeInputAdmissionHookV2 {
   /** Optional synchronous extension under this same actual registration. Old
    * Hosts must be rejected by Core when a required material capability is absent. */
   readonly requestMaterial?:import('./request-material-owner.js').NativeRequestMaterialOwnerV1
+    |import('./request-material-owner.js').NativeRequestMaterialOwnerV2
   admit(proposal: NativeInputProposal, signal: AbortSignal, existing?: NativeExistingInputWorkV2): Promise<
     | {kind: 'blocked'; code: string}
     | {kind: 'allow'; identity: unknown; preparation: NativePreparationReceiptV1;

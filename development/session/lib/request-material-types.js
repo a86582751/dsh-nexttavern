@@ -21,7 +21,9 @@ function dataRef(value, subject) {
  * be treated as an ignorable event or as an unchanged base request. */
 export function validateNativeRequestMaterialDataV1(value, subject) {
     const row = record(value, ['schemaVersion', 'encoding', 'turn', 'step', 'header', 'snapshot', 'plan', 'base', 'delta', 'placements', 'outputSha256'], subject);
-    if (row['schemaVersion'] !== 1 || row['encoding'] !== 'native-request-material-v1' || !integer(row['turn']) || row['turn'] < 1
+    const version = row['schemaVersion'];
+    if (!(version === 1 && row['encoding'] === 'native-request-material-v1'
+        || version === 2 && row['encoding'] === 'native-request-material-v2') || !integer(row['turn']) || row['turn'] < 1
         || !integer(row['step']) || row['step'] < 1 || !sha(row['outputSha256']))
         fail(subject);
     dataRef(row['snapshot'], subject);
@@ -47,9 +49,30 @@ export function validateNativeRequestMaterialDataV1(value, subject) {
         priorPosition = position;
         ids.add(ref['id']);
     }
-    const delta = record(row['delta'], ['insertions', 'protectedPrefixLength'], subject);
+    const delta = record(row['delta'], ['insertions', 'protectedPrefixLength', ...version === 2 ? ['messageTextProjections'] : []], subject);
     if (!integer(delta['protectedPrefixLength'], messages.length))
         fail(subject);
+    if (version === 2) {
+        const projected = new Set();
+        for (const value of list(delta['messageTextProjections'], 4096, subject)) {
+            const projection = record(value, ['target', 'textEdits', 'projectionSha256'], subject);
+            const target = record(projection['target'], ['id', 'role', 'messageSha256'], subject);
+            if (!identity(target['id']) || projected.has(target['id']) || !['user', 'assistant'].includes(String(target['role']))
+                || !sha(target['messageSha256']) || !sha(projection['projectionSha256']))
+                fail(subject);
+            projected.add(target['id']);
+            const edits = list(projection['textEdits'], 4096, subject), indices = new Set();
+            if (!edits.length)
+                fail(subject);
+            for (const value of edits) {
+                const edit = record(value, ['blockIndex', 'replacementText'], subject);
+                if (!integer(edit['blockIndex'], 4095) || indices.has(edit['blockIndex']) || typeof edit['replacementText'] !== 'string'
+                    || !edit['replacementText'].isWellFormed())
+                    fail(subject);
+                indices.add(edit['blockIndex']);
+            }
+        }
+    }
     const insertions = list(delta['insertions'], 128, subject), contributions = new Set(), orders = new Set();
     let bytes = 0;
     for (const item of insertions) {

@@ -32,7 +32,8 @@ function assertBoundMaterialBase(request, binding) {
         contentGeneration: boundary.contentGeneration, surfaceNodes: boundary.surfaceNodes,
         baseMessages: boundary.messages, baseRefs: boundary.messageNodes.map(({ seq, message }) => ({ seq, id: message.id,
             role: message.role, messageSha256: nativeInputSha256(message) })),
-        protectedPrefixLength: record.delta.protectedPrefixLength, insertions: record.delta.insertions });
+        protectedPrefixLength: record.delta.protectedPrefixLength, insertions: record.delta.insertions,
+        ...record.schemaVersion === 2 ? { messageTextProjections: record.delta.messageTextProjections } : {} });
     if (nativeInputSha256(result.record) !== nativeInputSha256(record)
         || JSON.stringify(request.messages) !== JSON.stringify(result.messages)) {
         throw Error('REQUEST_MATERIAL_RECONSTRUCTION_CHANGED');

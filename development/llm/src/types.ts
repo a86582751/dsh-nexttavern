@@ -519,7 +519,18 @@ export type RequestMaterialMessageV1 =
   | (RequestMaterialTextBaseV1 & {readonly role:'user'})
   | (RequestMaterialTextBaseV1 & {readonly role:'assistant'})
 
-export type RequestMessage = Message | RequestUserInput | RequestMaterialMessageV1
+/** Changed historical assistant content is provider-neutral request data. Its
+ * source deliberately cannot carry the original model's replay envelope. */
+export interface RequestMessageTextProjectionV2 {
+  readonly id:MessageId
+  readonly role:'assistant'
+  readonly content:readonly ContentBlock[]
+  readonly source:{readonly kind:'request-material-projection';readonly schemaVersion:2;
+    readonly encoding:'native-request-message-text-projection-v2';
+    readonly target:{readonly id:string;readonly role:'assistant';readonly messageSha256:string};
+    readonly textEditsSha256:string}
+}
+export type RequestMessage = Message | RequestUserInput | RequestMaterialMessageV1 | RequestMessageTextProjectionV2
 
 /** Logged tool declarations and update identities since the last declaration reset. */
 export interface ToolHistory {

@@ -85,8 +85,6 @@ const ref = (value) => {
     return { key: identity(row['key']), sha256: sha(row['sha256']) };
 };
 const text = (value, max) => typeof value === 'string' && value.length <= max ? value : fail();
-/** Capture callbacks once at registration. A later property mutation cannot
- * substitute another material owner under an already captured v2 work. */
 export function nativeRequestMaterialOwnerRegistrationV1(value) {
     const ownsPrepare = value !== null && typeof value === 'object' && !utilTypes.isProxy(value) && Object.hasOwn(value, 'prepare');
     const row = object(value, ['schemaVersion', 'sectionNames', 'transform', 'check', ...ownsPrepare ? ['prepare'] : []]);
@@ -136,8 +134,6 @@ export function nativeRequestMaterialOwnerCheckV1(value) {
         return fail();
     return Object.freeze({ kind: 'blocked', code });
 }
-/** Only detached exact data crosses from the callback to Native's planner.
- * The original return object is never used as a capability or live row cache. */
 export function nativeRequestMaterialDecisionV1(value) {
     if (value === null || typeof value !== 'object' || utilTypes.isProxy(value))
         return fail();
@@ -158,10 +154,12 @@ export function nativeRequestMaterialDecisionV1(value) {
     if (kind !== 'transform')
         return fail();
     const hasAnchors = Object.hasOwn(value, 'anchoredInsertions');
+    const version = Object.getOwnPropertyDescriptor(value, 'schemaVersion')?.value;
     const row = object(value, ['kind', 'schemaVersion', 'encoding', 'snapshot', 'plan', 'captureSha256',
         'expectedAssemblySha256', 'expectedSelectedBaseSha256', 'requiredSections', 'sections', 'insertions',
-        ...hasAnchors ? ['anchoredInsertions'] : []]);
-    if (row['schemaVersion'] !== 1 || row['encoding'] !== 'native-request-material-owner-transform-v1')
+        ...hasAnchors ? ['anchoredInsertions'] : [], ...version === 2 ? ['messageTextProjections'] : []]);
+    if (!(version === 1 && row['encoding'] === 'native-request-material-owner-transform-v1'
+        || version === 2 && row['encoding'] === 'native-request-material-owner-transform-v2'))
         return fail();
     const requiredSections = array(row['requiredSections'], NATIVE_REQUEST_OWNER_BOUNDS.sections).map(item => {
         const section = object(item, ['name', 'sha256']);
@@ -227,10 +225,33 @@ export function nativeRequestMaterialDecisionV1(value) {
     if (new Set(requiredSections.map(item => item.name)).size !== requiredSections.length
         || new Set(sections.map(item => item.name)).size !== sections.length)
         return fail();
-    return deepFreeze({ kind: 'transform', schemaVersion: 1, encoding: 'native-request-material-owner-transform-v1',
+    const messageTextProjections = version === 2 ? array(row['messageTextProjections'], 4096)
+        .map((value) => {
+        const projection = object(value, ['target', 'textEdits', 'projectionSha256']), target = object(projection['target'], ['id', 'role', 'messageSha256']);
+        if (target['role'] !== 'user' && target['role'] !== 'assistant')
+            return fail();
+        const textEdits = array(projection['textEdits'], 4096).map(value => {
+            const edit = object(value, ['blockIndex', 'replacementText']), replacementText = text(edit['replacementText'], NATIVE_REQUEST_OWNER_BOUNDS.textChars);
+            if (!replacementText.isWellFormed())
+                return fail();
+            renderedBytes += Buffer.byteLength(replacementText, 'utf8');
+            if (renderedBytes > NATIVE_REQUEST_OWNER_BOUNDS.renderedBytes)
+                return fail();
+            return { blockIndex: count(edit['blockIndex'], 4095), replacementText };
+        });
+        if (!textEdits.length || new Set(textEdits.map(edit => edit.blockIndex)).size !== textEdits.length)
+            return fail();
+        return { target: { id: identity(target['id']), role: target['role'], messageSha256: sha(target['messageSha256']) },
+            textEdits, projectionSha256: sha(projection['projectionSha256']) };
+    }) : undefined;
+    if (messageTextProjections && new Set(messageTextProjections.map(item => item.target.id)).size !== messageTextProjections.length)
+        return fail();
+    const common = { kind: 'transform',
         snapshot: ref(row['snapshot']), plan: ref(row['plan']), captureSha256: sha(row['captureSha256']),
         expectedAssemblySha256: sha(row['expectedAssemblySha256']), expectedSelectedBaseSha256: sha(row['expectedSelectedBaseSha256']),
-        requiredSections, sections, insertions, ...anchoredInsertions ? { anchoredInsertions } : {} });
+        requiredSections, sections, insertions, ...anchoredInsertions ? { anchoredInsertions } : {} };
+    return messageTextProjections ? deepFreeze({ ...common, schemaVersion: 2, encoding: 'native-request-material-owner-transform-v2', messageTextProjections }) :
+        deepFreeze({ ...common, schemaVersion: 1, encoding: 'native-request-material-owner-transform-v1' });
 }
 /** Internal, data-only resolver called once on the actual Session preview.
  * The caller retains registration/claim/selected/current checks. This cannot

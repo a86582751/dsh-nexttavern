@@ -2412,6 +2412,14 @@ export class ReactLoopAgent {
             previousContext: this.session.requestContext() });
         appends.push(...envelope.appends);
         const preview = this.session.previewRequestAppends(appends);
+        if (plan.schemaVersion === 2)
+            for (const projection of plan.messageTextProjections) {
+                const target = projection.target;
+                if (selected.messages.filter(row => row.id === target.id && row.role === target.role
+                    && row.messageSha256 === target.messageSha256).length !== 1) {
+                    this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_PROJECTION_SELECTED_UNPROVEN');
+                }
+            }
         let protectedPrefixLength = 0;
         while (preview.messages[protectedPrefixLength]?.role === 'system'
             || preview.messages[protectedPrefixLength]?.role === 'developer')
@@ -2429,7 +2437,8 @@ export class ReactLoopAgent {
             snapshot: plan.snapshot, plan: plan.plan, boundarySeq: Number(preview.boundarySeq), contentGeneration: preview.contentGeneration,
             surfaceNodes: preview.surfaceNodes, baseMessages: preview.messages,
             baseRefs: preview.messageNodes.map(({ seq, message }) => ({ seq: Number(seq), id: String(message.id), role: message.role,
-                messageSha256: nativeInputSha256(message) })), protectedPrefixLength, insertions: anchored.insertions });
+                messageSha256: nativeInputSha256(message) })), protectedPrefixLength, insertions: anchored.insertions,
+            ...plan.schemaVersion === 2 ? { messageTextProjections: plan.messageTextProjections } : {} });
         for (const expected of anchored.resolutions) {
             const actual = result.record.placements.find(row => row.contributionRef === expected.contributionRef);
             if (!actual || actual.baseIndex !== expected.baseIndex) {

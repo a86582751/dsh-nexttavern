@@ -28,7 +28,8 @@ import type {SessionRequestAppendInput, SessionRequestPreview, SessionRequestPla
 
 export { buildForkSeed } from './fork.js'
 export * from './types.js'
-export type {NativeRequestMaterialRecordV1,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,
+export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
+  NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,
   NativeMaterialInsertionV1,NativeMaterialPlacementV1,NativeLoreRoleV1} from './request-material-types.js'
 export { SessionPreparation } from './preparation.js'
 export type { SessionPreparationOptions } from './preparation.js'

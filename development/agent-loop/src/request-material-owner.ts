@@ -9,7 +9,8 @@ import type {SessionRequestPreview} from '@deepseek-ai/dsh-session'
 import type {NativeOpeningIdentityV1,NativeOpeningEventRefV1,NativeGeneratedOpeningReceiptV1,SessionEvent}
   from '@deepseek-ai/dsh-session'
 import type {NativeInputAdmissionCheckV2} from './input-admission.js'
-import type {NativeMaterialDataRefV1, NativeMaterialInsertionV1} from './request-material.js'
+import type {NativeMaterialDataRefV1, NativeMaterialInsertionV1,NativeMaterialMessageTextProjectionV2} from './request-material.js'
+export type {NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2} from './request-material.js'
 import {nativeInputSha256} from './input-admission.js'
 
 export interface NativeMaterialSelectedMessageV1 {
@@ -128,6 +129,19 @@ export interface NativeRequestMaterialOwnerV1 {
     readonly materialRef?:{readonly seq:number;readonly sha256:string}}):
     {readonly kind:'allow'}|{readonly kind:'blocked';readonly code:string}
 }
+export type NativeRequestMaterialTransformV2=Omit<NativeRequestMaterialTransformV1,'schemaVersion'|'encoding'> & {
+  readonly schemaVersion:2
+  readonly encoding:'native-request-material-owner-transform-v2'
+  readonly messageTextProjections:readonly NativeMaterialMessageTextProjectionV2[]
+}
+export type NativeRequestMaterialDecision=NativeRequestMaterialDecisionV1|NativeRequestMaterialTransformV2
+export type NativeRequestMaterialTransform=NativeRequestMaterialTransformV1|NativeRequestMaterialTransformV2
+export interface NativeRequestMaterialOwnerV2 extends Omit<NativeRequestMaterialOwnerV1,'transform'|'check'> {
+  transform(input:NativeRequestMaterialInputV1):NativeRequestMaterialDecision
+  check(input:Omit<Parameters<NativeRequestMaterialOwnerV1['check']>[0],'decision'> & {
+    readonly decision:NativeRequestMaterialTransform
+  }):ReturnType<NativeRequestMaterialOwnerV1['check']>
+}
 /** Separate no-player authority. The original player input type above and its
  * serialization are unchanged; opening data never supplies admission/claim. */
 export interface NativeOpeningOwnerIdentityV1 {
@@ -151,7 +165,7 @@ export type NativeOpeningMaterialCheckV1={readonly identity:NativeOpeningIdentit
   |{readonly owner:NativeOpeningOwnerIdentityV1;readonly phase:'prepared-precheckpoint';
     readonly selected:NativeMaterialSelectedBaseV1;readonly assemblySha256:string}
   |{readonly owner:NativeOpeningOwnerIdentityV1;readonly phase:'planned-precommit'|'committed-predispatch';
-    readonly decision:NativeRequestMaterialTransformV1;readonly selected:NativeMaterialSelectedBaseV1;
+    readonly decision:NativeRequestMaterialTransform;readonly selected:NativeMaterialSelectedBaseV1;
     readonly materialRef?:NativeOpeningEventRefV1}
 export interface NativeOpeningClosingInputV1 {
   readonly schemaVersion:1
@@ -238,7 +252,9 @@ const text=(value:unknown,max:number):string=>typeof value==='string'&&value.len
 
 /** Capture callbacks once at registration. A later property mutation cannot
  * substitute another material owner under an already captured v2 work. */
-export function nativeRequestMaterialOwnerRegistrationV1(value:unknown):NativeRequestMaterialOwnerV1 {
+export function nativeRequestMaterialOwnerRegistrationV1(value:NativeRequestMaterialOwnerV1):NativeRequestMaterialOwnerV1
+export function nativeRequestMaterialOwnerRegistrationV1(value:unknown):NativeRequestMaterialOwnerV2
+export function nativeRequestMaterialOwnerRegistrationV1(value:unknown):NativeRequestMaterialOwnerV2 {
   const ownsPrepare=value!==null&&typeof value==='object'&&!utilTypes.isProxy(value)&&Object.hasOwn(value,'prepare')
   const row=object(value,['schemaVersion','sectionNames','transform','check',...ownsPrepare?['prepare']:[]])
   if(row['schemaVersion']!==1||typeof row['transform']!=='function'||typeof row['check']!=='function')return fail()
@@ -247,8 +263,8 @@ export function nativeRequestMaterialOwnerRegistrationV1(value:unknown):NativeRe
   if(!sectionNames.length||new Set(sectionNames).size!==sectionNames.length)return fail()
   return Object.freeze({schemaVersion:1,sectionNames:Object.freeze(sectionNames),
     ...ownsPrepare?{prepare:(row['prepare'] as NonNullable<NativeRequestMaterialOwnerV1['prepare']>).bind(value)}:{},
-    transform:row['transform'].bind(value) as NativeRequestMaterialOwnerV1['transform'],
-    check:row['check'].bind(value) as NativeRequestMaterialOwnerV1['check']})
+    transform:row['transform'].bind(value) as NativeRequestMaterialOwnerV2['transform'],
+    check:row['check'].bind(value) as NativeRequestMaterialOwnerV2['check']})
 }
 
 export function nativeRequestMaterialPrepareDecisionV1(value:unknown):NativeRequestMaterialPrepareDecisionV1 {
@@ -277,7 +293,9 @@ export function nativeRequestMaterialOwnerCheckV1(value:unknown):ReturnType<Nati
 
 /** Only detached exact data crosses from the callback to Native's planner.
  * The original return object is never used as a capability or live row cache. */
-export function nativeRequestMaterialDecisionV1(value:unknown):NativeRequestMaterialDecisionV1 {
+export function nativeRequestMaterialDecisionV1(value:NativeRequestMaterialDecisionV1):NativeRequestMaterialDecisionV1
+export function nativeRequestMaterialDecisionV1(value:unknown):NativeRequestMaterialDecision
+export function nativeRequestMaterialDecisionV1(value:unknown):NativeRequestMaterialDecision {
   if(value===null||typeof value!=='object'||utilTypes.isProxy(value))return fail()
   const kindDescriptor=Object.getOwnPropertyDescriptor(value,'kind')
   if(!kindDescriptor||!Object.hasOwn(kindDescriptor,'value'))return fail()
@@ -288,10 +306,12 @@ export function nativeRequestMaterialDecisionV1(value:unknown):NativeRequestMate
     return Object.freeze({kind,code})}
   if(kind!=='transform')return fail()
   const hasAnchors=Object.hasOwn(value,'anchoredInsertions')
+  const version=Object.getOwnPropertyDescriptor(value,'schemaVersion')?.value
   const row=object(value,['kind','schemaVersion','encoding','snapshot','plan','captureSha256',
     'expectedAssemblySha256','expectedSelectedBaseSha256','requiredSections','sections','insertions',
-    ...hasAnchors?['anchoredInsertions']:[]])
-  if(row['schemaVersion']!==1||row['encoding']!=='native-request-material-owner-transform-v1')return fail()
+    ...hasAnchors?['anchoredInsertions']:[],...version===2?['messageTextProjections']:[]])
+  if(!(version===1&&row['encoding']==='native-request-material-owner-transform-v1'
+    ||version===2&&row['encoding']==='native-request-material-owner-transform-v2'))return fail()
   const requiredSections=array(row['requiredSections'],NATIVE_REQUEST_OWNER_BOUNDS.sections).map(item=>{
     const section=object(item,['name','sha256']);return {name:identity(section['name']),sha256:sha(section['sha256'])}})
   let sectionBytes=0
@@ -340,16 +360,35 @@ export function nativeRequestMaterialDecisionV1(value:unknown):NativeRequestMate
   if(insertions.length+(anchoredInsertions?.length??0)>NATIVE_REQUEST_OWNER_BOUNDS.insertions)return fail()
   if(new Set(requiredSections.map(item=>item.name)).size!==requiredSections.length
     ||new Set(sections.map(item=>item.name)).size!==sections.length)return fail()
-  return deepFreeze({kind:'transform',schemaVersion:1,encoding:'native-request-material-owner-transform-v1',
+  const messageTextProjections=version===2?array(row['messageTextProjections'],4096)
+    .map((value):NativeMaterialMessageTextProjectionV2=>{
+      const projection=object(value,['target','textEdits','projectionSha256']),
+        target=object(projection['target'],['id','role','messageSha256'])
+      if(target['role']!=='user'&&target['role']!=='assistant')return fail()
+      const textEdits=array(projection['textEdits'],4096).map(value=>{
+        const edit=object(value,['blockIndex','replacementText']),replacementText=text(edit['replacementText'],NATIVE_REQUEST_OWNER_BOUNDS.textChars)
+        if(!replacementText.isWellFormed())return fail()
+        renderedBytes+=Buffer.byteLength(replacementText,'utf8')
+        if(renderedBytes>NATIVE_REQUEST_OWNER_BOUNDS.renderedBytes)return fail()
+        return {blockIndex:count(edit['blockIndex'],4095),replacementText}
+      })
+      if(!textEdits.length||new Set(textEdits.map(edit=>edit.blockIndex)).size!==textEdits.length)return fail()
+      return {target:{id:identity(target['id']),role:target['role'],messageSha256:sha(target['messageSha256'])},
+        textEdits,projectionSha256:sha(projection['projectionSha256'])}
+    }):undefined
+  if(messageTextProjections&&new Set(messageTextProjections.map(item=>item.target.id)).size!==messageTextProjections.length)return fail()
+  const common={kind:'transform' as const,
     snapshot:ref(row['snapshot']),plan:ref(row['plan']),captureSha256:sha(row['captureSha256']),
     expectedAssemblySha256:sha(row['expectedAssemblySha256']),expectedSelectedBaseSha256:sha(row['expectedSelectedBaseSha256']),
-    requiredSections,sections,insertions,...anchoredInsertions?{anchoredInsertions}:{}})
+    requiredSections,sections,insertions,...anchoredInsertions?{anchoredInsertions}:{}}
+  return messageTextProjections?deepFreeze({...common,schemaVersion:2,encoding:'native-request-material-owner-transform-v2',messageTextProjections}):
+    deepFreeze({...common,schemaVersion:1,encoding:'native-request-material-owner-transform-v1'})
 }
 
 /** Internal, data-only resolver called once on the actual Session preview.
  * The caller retains registration/claim/selected/current checks. This cannot
  * register a selection or recreate a live owner from stored anchor JSON. */
-export function resolveNativeOwnedMaterialAnchorsV1(plan:NativeRequestMaterialTransformV1,
+export function resolveNativeOwnedMaterialAnchorsV1(plan:NativeRequestMaterialTransform,
   selected:NativeMaterialSelectedBaseV1,preview:SessionRequestPreview,protectedPrefixLength:number) {
   const insertions:NativeMaterialInsertionV1[]=[...plan.insertions]
   const resolutions:{contributionRef:string;baseIndex:number}[]=[]
@@ -382,7 +421,7 @@ export function resolveNativeOwnedMaterialAnchorsV1(plan:NativeRequestMaterialTr
 
 /** Replacing a whole surviving owned section preserves its full preimage;
  * prose substrings and marker text cannot grant a lost slot permission. */
-export function applyNativeOwnedSectionsV1(assembly:PromptAssembly,decision:NativeRequestMaterialTransformV1,
+export function applyNativeOwnedSectionsV1(assembly:PromptAssembly,decision:NativeRequestMaterialTransform,
   sectionNames:readonly string[]):PromptAssembly {
   if(nativeInputSha256(assembly)!==decision.expectedAssemblySha256)throw Error('REQUEST_MATERIAL_ASSEMBLY_CHANGED')
   const required=new Map(decision.requiredSections.map(item=>[item.name,item.sha256]))

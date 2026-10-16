@@ -4,6 +4,8 @@
 import { createHash } from 'node:crypto';
 import { types as utilTypes } from 'node:util';
 import { brandString } from '@deepseek-ai/dsh-brand';
+import { deepFreeze } from '@deepseek-ai/dsh-util-values';
+import { nativeInputSha256 } from './input-admission.js';
 import { deriveEventMessage, foldSurface } from '@deepseek-ai/dsh-session/surface';
 export const NATIVE_REQUEST_MATERIAL_LIMITS_V1 = Object.freeze({
     baseMessages: 4096, insertions: 128, textChars: 65536, renderedBytes: 1048576,
@@ -137,6 +139,63 @@ function digest(value) {
 function same(left, right) {
     return canonical(left) === canonical(right);
 }
+function canonicalMessageTextProjections(raw) {
+    list(raw, limits.baseMessages, 'messageTextProjections');
+    let bytes = 0;
+    const targets = new Set();
+    for (const projection of raw) {
+        object(projection, ['target', 'textEdits', 'projectionSha256'], 'projection');
+        const target = object(projection.target, ['id', 'role', 'messageSha256'], 'projection.target');
+        if (!identity(target['id']) || targets.has(target['id']) || !['user', 'assistant'].includes(String(target['role']))
+            || !sha(target['messageSha256']) || !sha(projection.projectionSha256))
+            fail('MALFORMED', 'projection.target');
+        targets.add(target['id']);
+        const edits = list(projection.textEdits, 4096, 'projection.textEdits'), indices = new Set();
+        if (!edits.length)
+            fail('MALFORMED', 'projection.textEdits');
+        for (const rawEdit of edits) {
+            const edit = object(rawEdit, ['blockIndex', 'replacementText'], 'projection.textEdit');
+            if (!safeInt(edit['blockIndex'], 4095) || indices.has(edit['blockIndex']) || typeof edit['replacementText'] !== 'string'
+                || !edit['replacementText'].isWellFormed() || edit['replacementText'].length > limits.textChars)
+                fail('MALFORMED', 'projection.textEdit');
+            indices.add(edit['blockIndex']);
+            bytes += Buffer.byteLength(edit['replacementText'], 'utf8');
+            if (bytes > limits.renderedBytes)
+                fail('DATA_LIMIT', 'projection.textEdits');
+        }
+    }
+    return raw;
+}
+/** One shared pure projection for the Core producer and Native reconstruction.
+ * Unchanged input retains its original identity and provider replay envelope. */
+export function projectNativeMessageTextV2(message, textEdits) {
+    if (message.role !== 'user' && message.role !== 'assistant')
+        fail('BASE_MISMATCH', 'projection.role');
+    const replacements = new Map();
+    for (const edit of textEdits) {
+        if (!safeInt(edit.blockIndex, message.content.length - 1) || replacements.has(edit.blockIndex)
+            || message.content[edit.blockIndex]?.type !== 'text' || typeof edit.replacementText !== 'string'
+            || !edit.replacementText.isWellFormed())
+            fail('BASE_MISMATCH', 'projection.textEdits');
+        replacements.set(edit.blockIndex, edit.replacementText);
+    }
+    let changed = false;
+    const content = message.content.map((block, index) => {
+        const replacement = replacements.get(index);
+        if (block.type !== 'text' || replacement === undefined || replacement === block.text)
+            return block;
+        changed = true;
+        return { ...block, text: replacement };
+    });
+    if (!changed)
+        return message;
+    if (message.role === 'user')
+        return deepFreeze({ ...message, content });
+    const target = { id: String(message.id), role: 'assistant', messageSha256: nativeInputSha256(message) }, textEditsSha256 = nativeInputSha256(textEdits);
+    return deepFreeze({ id: brandString(`native-message-projection-${nativeInputSha256({ target, textEdits })}`),
+        role: 'assistant', content, source: { kind: 'request-material-projection', schemaVersion: 2,
+            encoding: 'native-request-message-text-projection-v2', target, textEditsSha256 } });
+}
 function validateMessage(value, location) {
     if (value === null || typeof value !== 'object' || Array.isArray(value))
         fail('MALFORMED', location);
@@ -263,10 +322,27 @@ function materialize(input) {
         surfaceNodes: input.surfaceNodes, messages: input.baseRefs,
         sha256: digest(input.baseMessages),
     };
+    const projections = 'messageTextProjections' in input ? canonicalMessageTextProjections(input.messageTextProjections) : undefined;
+    const projected = new Map();
+    if (projections)
+        for (const projection of projections) {
+            const { target } = projection;
+            const matches = input.baseMessages.filter(message => String(message.id) === target.id && message.role === target.role
+                && nativeInputSha256(message) === target.messageSha256);
+            if (matches.length !== 1 || projected.has(target.id))
+                fail('BASE_MISMATCH', 'projection.target');
+            const raw = matches[0], message = projectNativeMessageTextV2(raw, projection.textEdits);
+            if (message === raw || nativeInputSha256(message) !== projection.projectionSha256)
+                fail('MATERIAL_MISMATCH', 'projection.output');
+            projected.set(target.id, message);
+        }
+    const version = projections ? { schemaVersion: 2, encoding: 'native-request-material-v2' } :
+        { schemaVersion: 1, encoding: 'native-request-material-v1' };
     const seed = {
-        schemaVersion: 1, encoding: 'native-request-material-v1', turn: input.turn, step: input.step,
+        ...version, turn: input.turn, step: input.step,
         header: input.header, snapshot: input.snapshot, plan: input.plan, base,
-        delta: { insertions, protectedPrefixLength: input.protectedPrefixLength },
+        delta: { insertions, protectedPrefixLength: input.protectedPrefixLength,
+            ...projections ? { messageTextProjections: projections } : {} },
     };
     const inputSha = digest(seed);
     const forbidden = insertions.length > 0 ? forbiddenToolBoundaries(input.baseMessages) : new Set();
@@ -302,7 +378,7 @@ function materialize(input) {
         }
         const item = input.baseMessages[index];
         if (item)
-            messages.push(item);
+            messages.push(projected.get(String(item.id)) ?? item);
     }
     const record = { ...seed, placements: located.map(item => item.placement),
         outputSha256: digest(messages) };
@@ -331,8 +407,10 @@ export function planNativeRequestMaterialV1(input) {
         ownedData(item.value, `input.baseMessages[${index}]`, false, true);
     }
     const data = ownedData(input, 'input');
+    const hasProjections = Object.hasOwn(data, 'messageTextProjections');
     object(data, ['turn', 'step', 'header', 'snapshot', 'plan', 'boundarySeq', 'contentGeneration',
-        'surfaceNodes', 'baseMessages', 'baseRefs', 'protectedPrefixLength', 'insertions'], 'input');
+        'surfaceNodes', 'baseMessages', 'baseRefs', 'protectedPrefixLength', 'insertions',
+        ...hasProjections ? ['messageTextProjections'] : []], 'input');
     const owned = data;
     object(owned.header, ['seq', 'sha256'], 'header');
     list(owned.surfaceNodes, limits.baseMessages, 'surfaceNodes');
@@ -345,12 +423,14 @@ function recordData(value) {
     const data = ownedData(value, 'record');
     if (data === null || typeof data !== 'object' || Array.isArray(data))
         fail('MALFORMED', 'record');
-    if (data['schemaVersion'] !== 1 || data['encoding'] !== 'native-request-material-v1')
+    const version = data['schemaVersion'];
+    if (!(version === 1 && data['encoding'] === 'native-request-material-v1'
+        || version === 2 && data['encoding'] === 'native-request-material-v2'))
         fail('UNKNOWN_VERSION', 'record');
     const record = object(data, ['schemaVersion', 'encoding', 'turn', 'step', 'header', 'snapshot', 'plan',
         'base', 'delta', 'placements', 'outputSha256'], 'record');
     object(record['base'], ['boundarySeq', 'contentGeneration', 'surfaceNodes', 'messages', 'sha256'], 'record.base');
-    object(record['delta'], ['insertions', 'protectedPrefixLength'], 'record.delta');
+    object(record['delta'], ['insertions', 'protectedPrefixLength', ...version === 2 ? ['messageTextProjections'] : []], 'record.delta');
     object(record['header'], ['seq', 'sha256'], 'record.header');
     list(record['placements'], limits.insertions, 'record.placements');
     return record;
@@ -486,7 +566,8 @@ function reconstructAgainstPrefix(record, prefix, projections) {
     const rebuilt = materialize({ turn: record.turn, step: record.step, header: record.header,
         snapshot: record.snapshot, plan: record.plan, boundarySeq: record.base.boundarySeq,
         contentGeneration, surfaceNodes: folded.nodes, baseMessages, baseRefs,
-        protectedPrefixLength: record.delta.protectedPrefixLength, insertions: record.delta.insertions });
+        protectedPrefixLength: record.delta.protectedPrefixLength, insertions: record.delta.insertions,
+        ...record.schemaVersion === 2 ? { messageTextProjections: record.delta.messageTextProjections } : {} });
     if (!same(rebuilt.record, record))
         fail('MATERIAL_MISMATCH', 'record.rebuilt');
     return rebuilt;
@@ -498,6 +579,8 @@ function validateStoredShape(record) {
         fail('MALFORMED', 'priorMaterial');
     ref(record.snapshot, 'priorMaterial.snapshot');
     ref(record.plan, 'priorMaterial.plan');
+    if (record.schemaVersion === 2)
+        canonicalMessageTextProjections(record.delta.messageTextProjections);
     const nodes = list(record.base.surfaceNodes, limits.baseMessages, 'priorMaterial.nodes');
     const refs = list(record.base.messages, limits.baseMessages, 'priorMaterial.refs');
     if (!safeInt(record.delta.protectedPrefixLength, refs.length) || new Set(nodes).size !== nodes.length

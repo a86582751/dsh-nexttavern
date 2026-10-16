@@ -9,7 +9,8 @@
  */
 
 import { LlmError } from '@deepseek-ai/dsh-llm'
-import type { AssistantMessage as HarnessAssistantMessage, ModelMessageSource, ReplayEnvelope, RequestMaterialMessageV1 } from '@deepseek-ai/dsh-llm'
+import type { AssistantMessage as HarnessAssistantMessage, ModelMessageSource, ReplayEnvelope, RequestMaterialMessageV1,
+  RequestMessageTextProjectionV2 } from '@deepseek-ai/dsh-llm'
 import type { Api, AssistantMessage, Usage as PiUsage } from 'dsh-nexttavern-pi-ai'
 
 /** Per-block half of the pi-ai replay envelope, one entry per content block. */
@@ -150,7 +151,7 @@ function readReplayState(value: unknown): PiAiReplayState {
 }
 
 /** Convert provider-neutral blocks without trusting them as same-model replay. */
-function foreignAssistant(message: HarnessAssistantMessage): AssistantMessage {
+function foreignAssistant(message: HarnessAssistantMessage|RequestMessageTextProjectionV2): AssistantMessage {
   const source = message.source
   const content: AssistantMessage['content'] = []
   for (const block of message.content) {
@@ -176,8 +177,10 @@ function foreignAssistant(message: HarnessAssistantMessage): AssistantMessage {
     // Deliberately never equals a catalog API: model output without replay
     // state and programmatic prose are both provider-neutral history.
     api: 'dsh-foreign',
-    provider: source.kind === 'model' ? source.provider : 'programmatic',
-    model: source.kind === 'model' ? source.model : source.origin,
+    provider: source.kind === 'model' ? source.provider : source.kind==='request-material-projection'
+      ?'dsh-request-material':'programmatic',
+    model: source.kind === 'model' ? source.model : source.kind==='request-material-projection'
+      ?'dsh-request-material-projection-v2':source.origin,
     usage: emptyPiUsage(),
     stopReason: content.some(piece => piece.type === 'toolCall') ? 'toolUse' : 'stop',
     timestamp: 0,
@@ -258,13 +261,18 @@ export function toPiRequestMaterialAssistant(message:Extract<RequestMaterialMess
     usage:emptyPiUsage(),stopReason:'stop',timestamp:0}
 }
 
-function isRequestMaterialAssistant(message:HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>):
+function isRequestMaterialAssistant(message:HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>|RequestMessageTextProjectionV2):
   message is Extract<RequestMaterialMessageV1,{role:'assistant'}> {
   return message.source.kind==='request-material'
 }
 
-export function toPiAssistant(message: HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>, onDegrade?: (reason: string) => void): AssistantMessage {
+function isProjectedAssistant(message:HarnessAssistantMessage|RequestMessageTextProjectionV2):message is RequestMessageTextProjectionV2 {
+  return message.source.kind==='request-material-projection'
+}
+export function toPiAssistant(message: HarnessAssistantMessage|Extract<RequestMaterialMessageV1,{role:'assistant'}>|RequestMessageTextProjectionV2,
+  onDegrade?: (reason: string) => void): AssistantMessage {
   if(isRequestMaterialAssistant(message))return toPiRequestMaterialAssistant(message)
+  if(isProjectedAssistant(message))return foreignAssistant(message)
   const source = message.source
   if (source.kind !== 'model' || source.replayState === undefined) return foreignAssistant(message)
   try {

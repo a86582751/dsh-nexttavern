@@ -160,8 +160,10 @@ function foreignAssistant(message) {
         // Deliberately never equals a catalog API: model output without replay
         // state and programmatic prose are both provider-neutral history.
         api: 'dsh-foreign',
-        provider: source.kind === 'model' ? source.provider : 'programmatic',
-        model: source.kind === 'model' ? source.model : source.origin,
+        provider: source.kind === 'model' ? source.provider : source.kind === 'request-material-projection'
+            ? 'dsh-request-material' : 'programmatic',
+        model: source.kind === 'model' ? source.model : source.kind === 'request-material-projection'
+            ? 'dsh-request-material-projection-v2' : source.origin,
         usage: emptyPiUsage(),
         stopReason: content.some(piece => piece.type === 'toolCall') ? 'toolUse' : 'stop',
         timestamp: 0,
@@ -246,9 +248,14 @@ export function toPiRequestMaterialAssistant(message) {
 function isRequestMaterialAssistant(message) {
     return message.source.kind === 'request-material';
 }
+function isProjectedAssistant(message) {
+    return message.source.kind === 'request-material-projection';
+}
 export function toPiAssistant(message, onDegrade) {
     if (isRequestMaterialAssistant(message))
         return toPiRequestMaterialAssistant(message);
+    if (isProjectedAssistant(message))
+        return foreignAssistant(message);
     const source = message.source;
     if (source.kind !== 'model' || source.replayState === undefined)
         return foreignAssistant(message);

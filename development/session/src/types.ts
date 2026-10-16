@@ -15,7 +15,7 @@ import type {
   UserMessage,
 } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type {NativeRequestMaterialRecordV1} from './request-material-types.js'
+import type {NativeRequestMaterialRecord} from './request-material-types.js'
 
 /** Identifies one session in the store (and its persistence artifacts). */
 export type SessionId = Branded<'SessionId'>
@@ -535,7 +535,7 @@ export interface SessionEventMap {
   /** Required non-surface prepared request delta. It is not dispatched work,
    * an input/assistant message, or a live Core permission. Old readers reject
    * the unknown non-ignorable type rather than silently losing prompt lore. */
-  'request/material':NativeRequestMaterialRecordV1
+  'request/material':NativeRequestMaterialRecord
   /**
    * Separates inherited or restored history from later lifecycle-owned work.
    * This log-only marker need not be at {@link Session.firstLiveSeq}: a fork
