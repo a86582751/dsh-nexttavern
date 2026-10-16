@@ -161979,6 +161979,63 @@
         "descriptorOutput": "assets/runtime.json",
         "policyArtifact": "tavern-author-browser-profile-generated"
       },
+      "authorBrowserRuntimeV2": {
+        "schemaVersion": 2,
+        "encoding": "owned-author-browser-runtime-recipe-v2",
+        "packageArtifact": "author-browser-runtime-v2-native-personas-v1-package-json",
+        "modules": [
+          {
+            "role": "provider",
+            "artifact": "author-browser-runtime-v2-native-personas-v1-src-tavern-author-browser-provider-mts",
+            "output": "dist/index.mjs"
+          },
+          {
+            "role": "partition",
+            "artifact": "tavern-author-browser-partition-v2-typescript",
+            "output": "dist/partition.mjs"
+          },
+          {
+            "role": "ast-worker",
+            "artifact": "tavern-author-browser-ast-worker-v2-typescript",
+            "output": "dist/browser-ast-worker.mjs"
+          },
+          {
+            "role": "execution-worker",
+            "artifact": "tavern-author-browser-execution-worker-v2-typescript",
+            "output": "dist/browser-execution-worker.js"
+          },
+          {
+            "role": "child",
+            "artifact": "tavern-author-browser-child-entry-v2-typescript",
+            "output": "dist/browser-runtime-child.js"
+          },
+          {
+            "role": "guard",
+            "artifact": "tavern-author-browser-guard-entry-v2-typescript",
+            "output": "dist/browser-runtime-guard.js"
+          }
+        ],
+        "descriptorOutput": "assets/runtime.json",
+        "sourceInputOutput": "assets/source-inputs.json",
+        "wasmOutput": "assets/emscripten-module.wasm",
+        "policyArtifact": "tavern-author-browser-profile-v2-generated",
+        "lockArtifact": "inventory-runtime-alpha3-build-tools-package-lock-json",
+        "dependencies": {
+          "typescript": "5.9.3",
+          "quickjs-emscripten-core": "0.32.0",
+          "@jitl/quickjs-ffi-types": "0.32.0",
+          "@jitl/quickjs-wasmfile-release-asyncify": "0.32.0"
+        },
+        "builder": {
+          "esbuildVersion": "0.24.2",
+          "target": "es2023",
+          "bundle": true,
+          "write": false,
+          "legalComments": "none"
+        },
+        "sourceGraph": "esbuild-metafile-input-sha256",
+        "dependencyClosure": "locked-published-runtime-libraries"
+      },
       "authorBrowserRuntimeV3": {
         "schemaVersion": 3,
         "encoding": "owned-author-browser-runtime-recipe-v3",
