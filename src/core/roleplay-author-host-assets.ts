@@ -20,7 +20,7 @@ import {AUTHOR_PROMPT_RUNTIME_NAME,AUTHOR_PROMPT_RUNTIME_VERSION} from './tavern
 import {loadAdmittedAuthorPromptRuntimeV1} from './roleplay-author-prompt-assets.js'
 
 const browserName=AUTHOR_BROWSER_RUNTIME_NAME_V3,browserVersion=AUTHOR_BROWSER_RUNTIME_VERSION_V3
-const hostName='dsh-nexttavern-author-host-runtime-v5-server-candidates-v2',hostVersion='0.5.2'
+const hostName='dsh-nexttavern-author-host-runtime-v5-author-dialog-v1',hostVersion='0.6.0'
 interface AdmittedPackage {
   entry:string
   owned:string
