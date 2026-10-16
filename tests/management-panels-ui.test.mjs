@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {createManagementPanels} from '../lib/ui/management-panels.js'
+import {createCardImportPanel} from '../lib/ui/card-import-panel.js'
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}}
 function hooks(){
   const cells=[];let index=0,pending=[],dirty=false,component,props,seat
@@ -215,12 +216,18 @@ try{
       {sourcePointer:'/data/extensions/example',status:'preserved-unexecuted',reason:'extension-runtime-not-wired'},
       {sourcePointer:'/data/assets/0',status:'missing-external-resource',reason:'external-asset-not-bundled'},
       {sourcePointer:'/data/extensions/analysis',status:'requires-optional-analysis',reason:'optional-analysis-not-run'}]}
-    const p=panels(r,async url=>url.includes('/state?')?{cardImport:{capabilityReport:report}}:{candidates:[]})
-    r.mount(p.ResourcesPanel,{sessionId:'story'});await r.flush()
+    const CardImportPanel=createCardImportPanel({React:r.React,toast(){},
+      jsonFetch:async url=>url.includes('/state?')?{cardImport:{capabilityReport:report}}:{candidates:[]}})
+    r.mount(CardImportPanel,{sessionId:'story'});await r.flush()
     const displayed=text(r.seat)
-    for(const status of ['已解释为结构化资料：1','已保留，未执行：1','外部资源未随卡附带：1','需要可选分析：1'])
-      assert(displayed.includes(status),`capability status ${status} is visible`)
-    assert(displayed.includes('/data/assets/0 · 外部资源未随卡附带 · 卡内没有资源字节；未请求或验证外部 URL'))
+    const capabilities=nodes(r.seat).filter(node=>node?.props?.['data-capability'])
+    assert.equal(capabilities.length,4)
+    for(const label of ['已整理为角色资料','导入时保留，未运行','缺少外部资源','需要可选分析']) {
+      const capability=capabilities.find(node=>text(node).includes(label))
+      assert(capability,`capability status ${label} is visible`)
+      assert.equal(nodes(capability).find(node=>node?.type==='strong').props.children[0],1)
+    }
+    assert(displayed.includes('媒体资源缺少外部资源 · 卡内未附带资源；外部地址尚未验证'))
     assert(!displayed.includes('URL 已验证'))
     r.unmount()
   }
@@ -239,7 +246,7 @@ try{
   let tick;globalThis.setInterval=fn=>(tick=fn,1);globalThis.clearInterval=()=>{}
   const old=deferred(),fresh=deferred();let gets=0;const e=hooks(),ep=panels(e,async(_,init)=>init?{}:gets++===0?old.promise:fresh.promise)
   e.mount(ep.ExportPanel,{sessionId:'story'});await e.flush();tick();assert.equal(gets,1,'slow polls must not overlap or starve every response')
-  const started=button(e,'导出完整小说').props.onClick();await e.flush()
+  const started=button(e,'导出小说原文').props.onClick();await e.flush()
   fresh.resolve({jobs:[{id:'j',kind:'novel-export',status:'completed',resourceId:'file'}]});await started;await e.flush()
   old.resolve({jobs:[{id:'j',kind:'novel-export',status:'running'}]});await e.flush()
   assert(text(e.seat).includes('下载文件'),'late jobs response must not erase completed download');e.unmount()

@@ -7,6 +7,7 @@ import {makePlan} from '../lib/operations/quality-plan.mjs';
 import {executePlan} from '../lib/operations/quality-run.mjs';
 import {runProcess, capabilityProblem} from '../lib/operations/quality-process.mjs';
 import {executeTask} from '../lib/operations/quality-actions.mjs';
+import {projectChecks} from '../lib/operations/quality-projection.mjs';
 
 const root = createTestDirectory('quality-runner-');
 const write = (file, text = 'export {};\n') => {
@@ -61,6 +62,37 @@ const ids = plan => plan.tasks.map(item => item.id);
 const passed = {status: 0, timedOut: false, interrupted: false};
 
 try {
+  const projected = projectChecks({
+    artifacts: [
+      {id: 'source', source: 'runtime/alpha3/compat/agent-loop/src/request.ts', public: {path: 'development/agent-loop/src/request.ts'}},
+      {id: 'test', source: 'runtime/alpha3/tests/request.test.mjs', public: {path: 'tests/request.test.mjs'}},
+    ],
+    builds: [], deliveries: [{artifact: 'source', layout: 'preset', path: 'lib/request.js'}],
+    publicRelease: {layoutPaths: {preset: 'preset'}, publicTests: []},
+  }, {
+    schemaVersion: 1,
+    modules: [{id: 'loop', aliases: [], patterns: ['runtime/alpha3/compat/agent-loop/*']}],
+    tasks: [
+      {id: 'loop-test', action: 'test', artifact: 'test', modules: ['loop']},
+      {id: 'private', action: 'candidate', modules: [], requires: ['maintenance']},
+      {id: 'private-dependent', action: 'test', artifact: 'test', modules: [], depends: ['private']},
+      {id: 'private-transitive', action: 'test', artifact: 'test', modules: [], depends: ['private-dependent']},
+      {id: 'not-shipped', action: 'test', artifact: 'missing-test', modules: []},
+    ],
+  });
+  assert.deepEqual(projected.registry.tasks.map(task => task.id), ['loop-test'],
+    'public selection lists only shipped tasks with executable prerequisites');
+  assert.deepEqual(projected.registry.modules[0].patterns, ['development/agent-loop/*']);
+  const projectedContext = {...context, registry: projected.registry, mapping: projected.mapping};
+  const relocated = makePlan(projectedContext, request('file', ['development/agent-loop/src/request.ts']));
+  assert.deepEqual(ids(relocated), ['loop-test'], 'relocated public sources retain their feature checks');
+  assert.deepEqual(relocated.uncovered, []);
+  const alias = makePlan(projectedContext, request('file', ['preset/lib/request.js']));
+  assert.deepEqual(ids(alias), ['loop-test'], 'delivery aliases select the canonical source feature');
+  assert.deepEqual(alias.uncovered, []);
+  assert.throws(() => makePlan(projectedContext, request('mechanics')), /No mechanism checks/,
+    'an omitted private scope cannot report an empty successful check');
+
   // A changed source selects only its feature's lightweight tests and one shared
   // prerequisite. Heavy candidate, installer and Harness actions cannot leak in.
   const filePlan = makePlan(context, request('file', ['src/core/cards.ts']));
@@ -203,7 +235,9 @@ try {
     write(id + '-expected.js', id);
   }
   const browserContext = {...context, audience: 'maintenance',
-    mapping: {...context.mapping, artifacts: browserArtifacts, builds: browserBuilds},
+    mapping: {...context.mapping, artifacts: browserArtifacts, builds: [...browserBuilds,
+      {id: 'typert', kind: 'subagent-typert', artifact: 'typert', entry: 'not-a-browser.ts',
+        builder: 'not-a-browser-builder.mjs', inputs: []}]},
     artifactPaths: new Map(browserArtifacts.map(item => [item.id, item.source])),
   };
   const browserTask = {id: 'bundle', action: 'bundle', modules: []};

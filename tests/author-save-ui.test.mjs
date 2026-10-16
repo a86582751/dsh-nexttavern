@@ -13,14 +13,16 @@ function runner(){
   const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>Object.is(v,b[i]))
   const React={
     createElement:(type,props,...children)=>({type,props:{...(props??{}),children}}),
-    useState(initial){const id=index++;cells[id]??={value:typeof initial==='function'?initial():initial};return [cells[id].value,next=>{const value=typeof next==='function'?next(cells[id].value):next;if(!Object.is(value,cells[id].value)){cells[id].value=value;dirty=true}}]},
+    useState(initial){const id=index++,cell=cells[id]??={value:typeof initial==='function'?initial():initial};return [cell.value,next=>{if(cells[id]!==cell)return;const value=typeof next==='function'?next(cell.value):next;if(!Object.is(value,cell.value)){cell.value=value;dirty=true}}]},
     useRef(value){const id=index++;return cells[id]??={current:value}},
     useCallback(fn,deps){const id=index++;if(!same(cells[id]?.deps,deps))cells[id]={deps,fn};return cells[id].fn},
+    useMemo(fn,deps){const id=index++;if(!same(cells[id]?.deps,deps))cells[id]={deps,value:fn()};return cells[id].value},
     useEffect(fn,deps){const id=index++,old=cells[id];if(!same(old?.deps,deps))pending.push(()=>{old?.cleanup?.();cells[id]={deps,cleanup:fn()}})},
   }
   const resolve=node=>{if(node==null||typeof node!=='object')return node;if(Array.isArray(node))return node.map(resolve);if(typeof node.type==='function')return resolve(node.type(node.props));return {...node,props:{...node.props,children:resolve(node.props.children)}}}
   const render=()=>{index=0;dirty=false;seat=resolve(component(props));const work=pending;pending=[];work.forEach(fn=>fn())}
-  return {React,mount(fn,p){component=fn;props=p;render()},get seat(){return seat},async flush(){for(let i=0;i<40;i++){await Promise.resolve();if(dirty)render()}},render,unmount(){cells.forEach(cell=>cell?.cleanup?.());cells.length=0;pending=[]}}
+  const unmount=()=>{cells.forEach(cell=>cell?.cleanup?.());cells.length=0;pending=[]}
+  return {React,mount(fn,p){unmount();component=fn;props=p;render()},get seat(){return seat},async flush(){for(let i=0;i<40;i++){await Promise.resolve();if(dirty)render()}},render,unmount}
 }
 const walk=(node,out=[])=>{if(node==null)return out;if(Array.isArray(node)){node.forEach(n=>walk(n,out));return out}out.push(node);if(typeof node==='object')walk(node.props?.children,out);return out}
 const text=node=>walk(node).filter(v=>typeof v==='string').join('')
@@ -54,7 +56,7 @@ assert.equal(inputs().every(n=>n.props.disabled===true),true,'userinfo fields lo
 post.reject(new Error('synthetic failure'));await r.flush()
 assert.equal(inputs().every(n=>n.props.disabled!==true),true,'userinfo fields unlock after a failed POST')
 assert.match(toasts.at(-1),/保存失败/)
-console.log('author-save-ui=ok (worldbook/cards fieldset lock; userinfo deferred failure unlock)')
+console.log('author-save-ui=ok (fresh component mounts; worldbook/cards fieldset lock and userinfo failure unlock)')
 
 // Use the public factory and deterministic hooks to exercise the extracted pricing lifecycle.
 const originalSetTimeout = globalThis.setTimeout, originalClearTimeout = globalThis.clearTimeout

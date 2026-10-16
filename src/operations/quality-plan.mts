@@ -37,7 +37,7 @@ export function makePlan(context: CheckContext, request: CheckRequest): CheckPla
     } else if (command === 'syntax') {if (result.files.length) add('syntax', 'syntax only; not a type or behavior proof')}
     else for (const file of result.files) {
       if (/\.(?:md|txt)$/.test(file)) {add('docs', file); continue}
-      const artifact = context.mapping.artifacts.find(item => item.source === file)
+      const artifact = context.mapping.artifacts.find(item => item.source === file || item.aliases?.includes(file))
       const direct = artifact && context.registry.tasks.filter(task => task.artifact === artifact.id)
       if (direct?.length) {
         const heavy = direct.filter(task => task.heavy)
@@ -51,7 +51,7 @@ export function makePlan(context: CheckContext, request: CheckRequest): CheckPla
         }
         continue
       }
-      const modules = owners(context, file)
+      const modules = owners(context, artifact?.source ?? file)
       if (!artifact && !['package.json', 'checks/registry.json'].includes(file) && !file.startsWith('.github/')) {
         result.uncovered.push(file + ': not registered; add ownership or explicitly select syntax')
       } else if (!modules.length) result.uncovered.push(file + ': no feature ownership; use list and add a mapping')
@@ -67,7 +67,9 @@ export function makePlan(context: CheckContext, request: CheckRequest): CheckPla
   } else if (command === 'tests') {
     for (const task of tasks.values()) if (task.action === 'test' && !task.heavy && !task.unavailable) add(task.id, 'explicit available test suites')
   } else if (command === 'mechanics') {
-    for (const task of tasks.values()) if (task.id.startsWith('mechanics:')) add(task.id, 'explicit build/install mechanism properties')
+    const mechanisms = [...tasks.values()].filter(task => task.id.startsWith('mechanics:'))
+    if (!mechanisms.length) throw Error('No mechanism checks are available in this package')
+    for (const task of mechanisms) add(task.id, 'explicit build/install mechanism properties')
   } else if (command === 'build') {
     if (!request.output) throw Error('build requires --out NEW_DIRECTORY; it is separate from verification')
     add('candidate', 'explicit candidate build; never selected by file/module')

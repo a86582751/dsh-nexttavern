@@ -7,12 +7,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      purpose:
-        type: choice
-        default: changed
-        options: [changed, release]
-        description: Affected checks or explicit complete public offline checks
 permissions:
   contents: read
 concurrency:
@@ -23,7 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-      PURPOSE: ${{ inputs.purpose || 'changed' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,15 +33,11 @@ jobs:
           npm ci --prefix build-tools
           npm ci --prefix integrations/auth-webserver
       - name: Same affected selector as local contributors
-        if: env.PURPOSE == 'changed'
         shell: pwsh
         run: |
           if (-not $env:BASE -or $env:BASE -match '^0+$') { $env:BASE = 'HEAD^' }
           npm run check -- changed --base $env:BASE --portable
           exit $LASTEXITCODE
-      - name: Explicit public offline release scope
-        if: env.PURPOSE == 'release'
-        run: npm run check -- release --portable
       - uses: actions/upload-artifact@v4
         if: always()
         with:

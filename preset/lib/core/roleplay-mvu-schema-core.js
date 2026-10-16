@@ -252,7 +252,7 @@ export function createRoleplayMvuSchemaCore(deps) {
             fail('SCHEMA_OPENING_NOT_COMPLETED');
         const author = authorFor(intent.preparation), all = events(session);
         const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers, recordOwner: deps.recordOwner });
-        const cut = journal.capture(session.id, selector.realmEpoch, all.slice(0, selector.nativeCut));
+        const cut = journal.capture(session.id, selector.realmEpoch, all.slice(0, selector.nativeCut), null, true);
         if (cut.kind !== 'ready')
             fail(cut.code);
         const program = schemaEpochExecution(cut.epoch).program;
@@ -642,16 +642,16 @@ export function createRoleplayMvuSchemaCore(deps) {
             if (!session || !deps.active(session))
                 fail('SCHEMA_SESSION_INACTIVE');
             const incarnation = deps.agent(session), stopSha256 = recordSha256(incarnation?.lookupInputStop());
-            if (!originalBasis({ session, preparation: intent.preparation })
-                || !numericalRowsAllowed({ session, preparation: intent.preparation }, { intent, event, head, stage: 'completed' })) {
-                fail('SCHEMA_FRESH_BASIS_CHANGED');
-            }
+            // The journal and Native receipt prove the completed opening at its own
+            // cut. Later Story metadata and MVU rows do not restore a fresh-session
+            // prerequisite or grant another initialization/publication permission.
             const before = recordSha256({ events: events(session), intent: retained(intent.preparation), event, head });
             const author = authorFor(intent.preparation), parsed = compileSchemaMvuInitData(plan.initSource);
             if (parsed.kind !== 'parsed' || parsed.valuesSha256 !== plan.initialValuesSha256)
                 fail('SCHEMA_INITIAL_DATA_INVALID');
             const journal = createRoleplayMvuSchemaJournal({ table: deps.status, markers: deps.markers, recordOwner: deps.recordOwner });
-            const cut = plan.execution.completionMarker.seq + 1, ready = journal.capture(session.id, plan.execution.realmEpoch, events(session).slice(0, cut));
+            const cut = plan.execution.completionMarker.seq + 1;
+            const ready = journal.capture(session.id, plan.execution.realmEpoch, events(session).slice(0, cut), null, true);
             if (ready.kind !== 'ready' || !readyAssociation(ready, plan, parsed))
                 fail('SCHEMA_JOURNAL_UNPROVEN');
             const { program, runner, loadFrame: load } = schemaEpochExecution(ready.epoch);
@@ -676,8 +676,6 @@ export function createRoleplayMvuSchemaCore(deps) {
             if (disposed || deps.session(session.id) !== session || !sourceCurrent(intent.preparation)
                 || deps.agent(session) !== incarnation || recordSha256(incarnation?.lookupInputStop()) !== stopSha256
                 || before !== recordSha256({ events: events(session), intent: retained(intent.preparation), event, head })
-                || !originalBasis({ session, preparation: intent.preparation })
-                || !numericalRowsAllowed({ session, preparation: intent.preparation }, { intent, event, head, stage: 'completed' })
                 || actualNative.status !== 'committed' || !same(actualNative.receipt, event.native))
                 fail('SCHEMA_HISTORICAL_FACTS_CHANGED');
             // Historical execution grants a read view only. It never restores a hot

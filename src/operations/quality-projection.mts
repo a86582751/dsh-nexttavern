@@ -12,10 +12,17 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
   registry: CheckRegistry; mapping: SourceMapping
 } {
   const paths = new Map<string, string>()
+  const aliases = new Map<string, Set<string>>()
   for (const artifact of plan.artifacts) if (artifact.public?.path) paths.set(artifact.id, artifact.public.path)
   for (const delivery of plan.deliveries) {
     const base = plan.publicRelease.layoutPaths[delivery.layout]
-    if (base !== undefined && !paths.has(delivery.artifact)) paths.set(delivery.artifact, path.posix.join(base, delivery.path))
+    if (base === undefined) continue
+    const target = path.posix.join(base, delivery.path)
+    if (!paths.has(delivery.artifact)) paths.set(delivery.artifact, target)
+    else if (paths.get(delivery.artifact) !== target) {
+      if (!aliases.has(delivery.artifact)) aliases.set(delivery.artifact, new Set())
+      aliases.get(delivery.artifact)!.add(target)
+    }
   }
   for (const test of plan.publicRelease.publicTests) paths.set(test.artifact, test.path)
   // Locked browser inputs are reconstructed by npm ci, not copied into public
@@ -35,6 +42,7 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
   const mapping: SourceMapping = {
     artifacts: plan.artifacts.filter(artifact => paths.has(artifact.id)).map(artifact => ({
       id: artifact.id, source: paths.get(artifact.id)!, ...(artifact.sha256 ? {sha256:artifact.sha256} : {}),
+      ...(aliases.has(artifact.id) ? {aliases: [...aliases.get(artifact.id)!]} : {}),
     })),
     builds: plan.builds.filter(build => paths.has(build.artifact) && sourcePaths.has(build.entry)).map(build => ({
       ...build, entry: sourcePaths.get(build.entry)!,
@@ -50,10 +58,32 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
   }
   mapping.artifacts.push({id: 'quality-registry', source: 'tools/check-registry.json'},
     {id: 'quality-public-map', source: 'tools/check-map.json'})
-  const tasks = registry.tasks.map(task => {
+  const tasks = registry.tasks.filter(task => {
     const unsupported = task.requires?.includes('maintenance') || (task.artifact && !paths.has(task.artifact))
-    return unsupported ? {...task, artifact: undefined, inputs: [], unavailable: 'Maintainer-only facility; not part of this public delivery'}
-      : {...task, inputs: task.inputs?.filter(id => paths.has(id))}
-  })
-  return {registry: {...registry, tasks}, mapping}
+    return !unsupported && !task.unavailable
+  }).map(task => ({...task, inputs: task.inputs?.filter(id => paths.has(id))}))
+  // A public task cannot consume a prerequisite omitted from this delivery.
+  // Remove dependent tasks too, rather than publishing dangling task IDs.
+  let available = new Set(tasks.map(task => task.id))
+  while (true) {
+    const next = new Set(tasks.filter(task => available.has(task.id)
+      && (task.depends ?? []).every(id => available.has(id))).map(task => task.id))
+    if (next.size === available.size) break
+    available = next
+  }
+  const modules = registry.modules.map(module => ({...module, patterns: [...new Set(module.patterns.flatMap(pattern => {
+    if (!pattern.includes('/')) return [pattern]
+    const expression = new RegExp('^' + pattern.split('*')
+      .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$')
+    return [...sourcePaths].filter(([source]) => expression.test(source)).map(([source, target]) => {
+      // Preserve directory globs when projection only relocates their prefix.
+      // Individual aliases remain exact paths when their layout really differs.
+      if (pattern.endsWith('*') && pattern.indexOf('*') === pattern.length - 1) {
+        const suffix = source.slice(pattern.length - 1)
+        if (suffix && target.endsWith(suffix)) return target.slice(0, -suffix.length) + '*'
+      }
+      return target
+    })
+  }))]}))
+  return {registry: {...registry, modules, tasks: tasks.filter(task => available.has(task.id))}, mapping}
 }

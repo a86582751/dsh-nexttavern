@@ -47,7 +47,7 @@ npm run check -- --plan
 
 `npm run build` rebuilds `lib/client.js`. Use `npm run build:modules` to regenerate mapped modules and legacy forwarding entries after editing TS/MTS. A change that reaches the browser client requires both steps and both affected outputs in the commit; rebuilding the TS modules alone does not update the `./client` export. The locked build-tools dependency set includes jsdom; `NEXTTAVERN_JSDOM` remains an override when a runner must point at another installed copy. Do not modify generated modules to make a check pass.
 
-The package does not carry every maintenance facility. A task that depends on a maintainer-only input is reported as `unsupported` and ends nonzero; it is never a green substitute. Candidate creation, maintainer release verification, fixed local Harness runs, deployment, tags and publication happen outside this package.
+The public task list includes only shipped inputs and executable prerequisite chains. Tasks requiring private maintenance facilities are omitted; explicitly requesting an unknown task ends nonzero. Candidate creation, maintainer release verification, fixed local Harness runs, deployment, tags and publication happen outside this package. GitHub CI runs affected checks and has no private packaging or release option.
 
 Check records live under `artifacts/checks/`. `--force` ignores a matching cached success; `resume` uses the previous or named record. Failed, interrupted, uncovered and unsupported records are not successful checks.
 

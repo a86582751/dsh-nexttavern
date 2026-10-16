@@ -81,7 +81,9 @@ export async function executeTask(context: CheckContext, plan: CheckPlan, task: 
     return passed()
   }
   if (task.action === 'bundle') {
-    const recipes = context.mapping.builds.filter(build => build.kind !== 'typescript-module'
+    // Unkinded recipes use the browser builder contract. Typed producers such
+    // as subagent-typert are already checked by generated, with their own API.
+    const recipes = context.mapping.builds.filter(build => build.kind === undefined
       && (!task.artifact || build.artifact === task.artifact))
     if (!recipes.length) throw Error('No browser bundle mapping')
     for (const recipe of recipes) {

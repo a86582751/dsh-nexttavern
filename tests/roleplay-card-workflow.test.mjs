@@ -27,7 +27,9 @@ function exportFixture(workspace,overrides={}) {
     taskAgents:new Map([[session.id,{steer(){calls.steer++}}]]),ctx:{sessionController:{}},
     ...overrides,
   }
-  return {branch,calls,session,selection,sha256,deps,workflows:createCardWorkflows(deps)}
+  const workflows=createCardWorkflows(deps)
+  const beginExport=()=>workflows.beginCardWorkflow(session,'card-export',undefined,undefined,undefined,undefined,'organized')
+  return {branch,calls,session,selection,sha256,deps,workflows,beginExport}
 }
 
 const workspace=mkdtempSync(join(testTempRoot(),'dsh-card-workflow-'))
@@ -91,7 +93,7 @@ try {
 
   {
     const f=exportFixture(workspace)
-    const exported=await f.workflows.beginCardWorkflow(f.session,'card-export')
+    const exported=await f.beginExport()
     assert.equal(exported.source.sha256,f.sha256,'export uses captured edit DATA, independent of strict story Source')
     assert.equal(exported.source.sourceFile,null)
     assert.equal(f.calls.capture,1)
@@ -103,13 +105,13 @@ try {
   }
   {
     const f=exportFixture(workspace,{captureExportStartSource:undefined,statusFixedContext:()=>({legacy:'caller'})})
-    const exported=await f.workflows.beginCardWorkflow(f.session,'card-export')
+    const exported=await f.beginExport()
     assert.equal(exported.source.sha256,hashBytes(JSON.stringify({legacy:'caller'})),
       'pure callers without the new capture interface retain their old startup DATA dependency')
   }
   for(const invalid of [undefined,{sha256:'not-a-hash',assertCurrent(){}},{sha256:'a'.repeat(64)}]) {
     const f=exportFixture(workspace,{captureExportStartSource:()=>invalid})
-    await assert.rejects(f.workflows.beginCardWorkflow(f.session,'card-export'),/导出启动来源无效/)
+    await assert.rejects(f.beginExport(),/导出启动来源无效/)
     assert.equal(f.branch.size,0,'invalid captures cannot create a startup job')
     assert.equal(f.calls.resolve,0)
   }
@@ -124,7 +126,7 @@ try {
       },
       modelPolicy:{resolve:async()=>{entered.resolve();await release.promise;return f.selection}},
     })
-    const begin=f.workflows.beginCardWorkflow(f.session,'card-export')
+    const begin=f.beginExport()
     const rejected=assert.rejects(begin,/EXPORT_START_SOURCE_CHANGED/)
     await entered.promise
     state[changed]++
@@ -145,7 +147,7 @@ try {
       f.branch.set(key,structuredClone(value))
       if(value.status==='queued'){original=structuredClone(value);entered.resolve();await release.promise}
     }
-    const begin=f.workflows.beginCardWorkflow(f.session,'card-export')
+    const begin=f.beginExport()
     const rejected=assert.rejects(begin,/EXPORT_START_SCOPE_CHANGED/)
     await entered.promise
     const resume=f.workflows.resumeCardWorkflows(f.session)
@@ -172,7 +174,7 @@ try {
       f.branch.set(key,structuredClone(value))
       if(value.status==='queued'){original=structuredClone(value);entered.resolve();await release.promise}
     }
-    const begin=f.workflows.beginCardWorkflow(f.session,'card-export')
+    const begin=f.beginExport()
     const rejected=assert.rejects(begin,/EXPORT_START_SCOPE_CHANGED/)
     await entered.promise
     const key=f.workflows.cardWorkflowKey(original.id),cancelled={...original,status:'cancelled',error:'player cancelled'}
@@ -195,7 +197,7 @@ try {
       f.branch.set(key,structuredClone(value))
       if(value.status==='queued'){original=structuredClone(value);entered.resolve();await release.promise}
     }
-    const begin=f.workflows.beginCardWorkflow(f.session,'card-export')
+    const begin=f.beginExport()
     const rejected=assert.rejects(begin,/STALE_WRITE_FAILED/)
     await entered.promise
     const resumeRejected=assert.rejects(f.workflows.resumeCardWorkflows(f.session),/CARD_EXPORT_START_FAILURE_UNPUBLISHED/)

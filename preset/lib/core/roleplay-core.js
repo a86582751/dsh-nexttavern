@@ -157,8 +157,8 @@ export const inject = [
     'userQuestions',
 ];
 const DEFAULT_CONFIG = {
-    workerProvider: null,
-    workerModel: null,
+    workerProvider: 'deepseek-official',
+    workerModel: 'deepseek-flash',
     sceneWorkerTimeoutMs: 45000,
     memoryWorkerTimeoutMs: 45000,
     phaseATimeoutMs: 60000,
@@ -1104,8 +1104,10 @@ export async function apply(ctx, config = {}) {
     function recoverStatusObligations(...args) {
         // An edited/unready numerical branch has no current story authority.
         // State reads must not start model work over its superseded prose.
-        if (editBasisFacts(args[0].id).kind !== 'none'
-            && mvuOpening.readInputObservation(args[0].id).kind === 'management')
+        const id = args[0].id;
+        // Schema presence already proves non-none; edit consumers own the full authority read.
+        if ((mvuOpening.hasSchemaOpening(id) || editBasisFacts(id).kind !== 'none')
+            && mvuOpening.readInputObservation(id).kind === 'management')
             return [];
         const jobs = recoverStoredStatusObligations(...args), batch = { session: args[0], settled: Promise.allSettled(jobs) };
         statusReadRecoveries.set(args[0].id, batch);
@@ -1349,9 +1351,14 @@ export async function apply(ctx, config = {}) {
             const job = record.workflowId ? cardWorkflows(session).find(value => value.id === record.workflowId) : undefined;
             let openingChoicePending = false;
             if (job?.status === 'completed' && job.generation === record.workflowGeneration
-                && job.source.sha256 === record.rawSha256 && job.clientRequestId) {
-                assertWorkspaceSession(session);
-                openingChoicePending = !!chatAttachmentSources.readChatProof(session, job.clientRequestId);
+                && job.source.sha256 === record.rawSha256) {
+                // Structured imports use the native opening chooser through every entry
+                // point. Their management receipt must not also retain an opening preview.
+                openingChoicePending = job.execution === 'deterministic';
+                if (!openingChoicePending && job.clientRequestId) {
+                    assertWorkspaceSession(session);
+                    openingChoicePending = !!chatAttachmentSources.readChatProof(session, job.clientRequestId);
+                }
             }
             return {
                 importId: checkpoint.importId,
