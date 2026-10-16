@@ -162090,6 +162090,11 @@
           },
           "sourceBindings": [
             {
+              "logicalArtifact": "roleplay-mvu-schema-journal-typescript",
+              "sourceArtifact": "browser3-author-dialog-predecessor-50f89e00f77cb4d6fef9",
+              "sha256": "0da89de60d2d7a5399d5ea9ab3e098cfcd25b6452e13bd6c4e5fc4d623c7617e"
+            },
+            {
               "logicalArtifact": "tavern-author-host-provider-typescript",
               "sourceArtifact": "server-candidates-v1-host-provider-predecessor-source",
               "sha256": "bedfe5802d594ba1c4fc6b69e9e43552061d5dc52fd92c8e03f513fcc26f278b"
@@ -179457,7 +179462,7 @@
               "path": "src/core/roleplay-mvu-schema-executor-types.ts"
             },
             {
-              "artifact": "roleplay-mvu-schema-journal-typescript",
+              "artifact": "browser3-author-dialog-predecessor-50f89e00f77cb4d6fef9",
               "path": "src/core/roleplay-mvu-schema-journal.ts"
             },
             {

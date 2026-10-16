@@ -494,7 +494,7 @@ function rowsForReady(ready:SchemaJournalReady):CheckedRows {
 }
 function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:string,events:readonly SessionEvent[],
   input:CheckedRows|BoundedRows|{records:readonly SchemaJournalRow[]},historical=false,
-  recordOwner?:SchemaJournalRecordOwner,inherited?:SchemaJournalFrozenCut):SchemaJournalCapture {
+  recordOwner?:SchemaJournalRecordOwner,inherited?:SchemaJournalReady):SchemaJournalCapture {
   try {
     if(!id(sessionId)||!hash(realmEpoch))fail('SCHEMA_JOURNAL_LIMIT')
     const checked=input instanceof CheckedRows
@@ -528,13 +528,13 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
     // A valid checksum cannot permit a dispatch/completion from another wire.
     if(relevant.some(item=>item.record.schemaVersion!==epoch.schemaVersion))fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
     const cuts:number[]=native.filter(event=>event.type===markers.dispatchEventType).map(event=>event.seq)
-    if(inherited)cuts.push(inherited.nativeCut)
+    if(inherited)cuts.push(inherited.frozen.nativeCut)
     const nativePrefixes=schemaNativePrefixSha256(events,cuts)
     // A checked DATA result never fixes the descendant's actual Native prefix.
     // Join its cut in this fold's existing prefix derivation, without a second
     // inherited serialization/hash or another complete journal parse.
-    if(inherited&&(inherited.realmEpoch!==realmEpoch
-      ||nativePrefixes.get(inherited.nativeCut)!==inherited.nativePrefixSha256))fail('SCHEMA_FROZEN_CUT_INVALID')
+    if(inherited&&(inherited.frozen.realmEpoch!==realmEpoch
+      ||nativePrefixes.get(inherited.frozen.nativeCut)!==inherited.frozen.nativePrefixSha256))fail('SCHEMA_FROZEN_CUT_INVALID')
     let tail=execution.loadAnchorSha256
     let pending:Pick<SchemaJournalStepFacts,'dispatch'|'dispatchRef'|'dispatchMarker'>|undefined
     const steps:SchemaJournalStepFacts[]=[],selected=new Set<string>([epochRef.key]),seenEvents=new Set<string>()
@@ -552,19 +552,22 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
         if(steps.length===0&&!same(execution.loadFrame.sourceNativeCutSha256,row.requestedStep.frame.sourceNativeCutSha256)) {
           fail('SCHEMA_LOAD_BOUNDARY_INVALID')
         }
+        const inheritedDispatch=inherited?.steps.some(pair=>pair.dispatch===row)
         if(row.schemaVersion===3) {
           if(epoch.schemaVersion!==3)fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
-          validateSchemaScopeProgramFrameV3(epoch.program,row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
+          if(!inheritedDispatch)validateSchemaScopeProgramFrameV3(epoch.program,
+            row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
         }
         if(row.schemaVersion===4) {
           if(epoch.schemaVersion!==4)fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
-          validateSchemaScopeProgramFrameV4(epoch.program,row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
+          if(!inheritedDispatch)validateSchemaScopeProgramFrameV4(epoch.program,
+            row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
         }
         if(row.schemaVersion===5) {
           if(epoch.schemaVersion!==5)fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
           if(row.combinedProgramSha256!==epoch.program.combinedProgramSha256
             ||row.serverProgramSha256!==epoch.program.serverProgram!.programSha256)fail('SCHEMA_DISPATCH_UNPROVEN')
-          validateSchemaScopeProgramFrameV4(epoch.program.serverProgram!,
+          if(!inheritedDispatch)validateSchemaScopeProgramFrameV4(epoch.program.serverProgram!,
             row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
         }
         seenEvents.add(row.requestedStep.eventId);selected.add(key)
@@ -572,38 +575,44 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
       } else if(event.type===markers.completionEventType) {
         const marker=event.data,key=schemaCompletionKey(marker.sessionId,realmEpoch,marker.batchId),row=all.get(key)
         if(!pending||!row||!isCompletion(row))fail('SCHEMA_COMPLETION_UNPROVEN')
+        const dispatch=pending.dispatch,inheritedStep=inherited?.steps.find(pair=>pair.dispatch===dispatch&&pair.completion===row)
         if(row.recordSha256!==marker.completionRecordSha256||!same(row.runner,execution.runner)||!same(row.dispatch,pending.dispatchRef)
           ||!same(row.dispatchMarker,pending.dispatchMarker)||marker.dispatchSeq!==pending.dispatchMarker.seq
           ||marker.dispatchRecordSha256!==pending.dispatch.recordSha256||row.step.ordinal!==steps.length+1
           ||row.step.previousStepSha256!==tail||row.step.eventId!==pending.dispatch.requestedStep.eventId
-          ||row.step.frameSha256!==(recordOwner?.dispatchFrameSha256?.(pending.dispatch)
-            ??recordSha256(pending.dispatch.requestedStep.frame))
+          ||(!inheritedStep&&row.step.frameSha256!==(recordOwner?.dispatchFrameSha256?.(dispatch)
+            ??recordSha256(dispatch.requestedStep.frame)))
           ||marker.completedTailSha256!==row.step.stepSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
         if(row.schemaVersion===5) {
           if(epoch.schemaVersion!==5||row.combinedProgramSha256!==epoch.program.combinedProgramSha256
             ||row.serverProgramSha256!==epoch.program.serverProgram!.programSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
         }
-        const {frameSha256:_frameHash,...receipt}=row.step
-        const step={...receipt,frame:pending.dispatch.requestedStep.frame} as SchemaTraceStepRecord
-        const {stepSha256}=step
-        if(epoch.schemaVersion===2) {
-          validateSchemaGuestOutputV2(step.output,validateSchemaEvaluationInputV2(pending.dispatch.requestedStep.frame.input))
+        // The exact inherited pair already owns these DATA relationships. This
+        // fold still selects it through the descendant's actual Native history.
+        let step:SchemaTraceStepRecord
+        if(inheritedStep)step=inheritedStep.step
+        else {
+          const {frameSha256:_frameHash,...receipt}=row.step
+          step={...receipt,frame:dispatch.requestedStep.frame} as SchemaTraceStepRecord
+          if(epoch.schemaVersion===2) {
+            validateSchemaGuestOutputV2(step.output,validateSchemaEvaluationInputV2(dispatch.requestedStep.frame.input))
+          }
+          if(epoch.schemaVersion===3) {
+            validateSchemaGuestOutputV3(step.output,validateSchemaEvaluationInputV3(dispatch.requestedStep.frame.input))
+          }
+          if(epoch.schemaVersion===4) {
+            // Each row was parsed before this fold. The epoch fixes their wire;
+            // only the actual program/phase/output relationships remain here.
+            assertSchemaGuestOutputBindingsV4(step.output as MvuSchemaGuestOutputV4,epoch.program,
+              dispatch.requestedStep.frame.input as MvuSchemaEvaluationInputV4)
+          }
+          if(epoch.schemaVersion===5) {
+            assertSchemaGuestOutputBindingsV4(step.output as MvuSchemaGuestOutputV4,epoch.program.serverProgram!,
+              dispatch.requestedStep.frame.input as MvuSchemaEvaluationInputV4)
+          }
+          if((recordOwner?.fullStepSha256?.(row,dispatch)
+            ??schemaJournalFullStepSha256(row,dispatch))!==step.stepSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
         }
-        if(epoch.schemaVersion===3) {
-          validateSchemaGuestOutputV3(step.output,validateSchemaEvaluationInputV3(pending.dispatch.requestedStep.frame.input))
-        }
-        if(epoch.schemaVersion===4) {
-          // Each row was parsed before this fold. The epoch fixes their wire;
-          // only the actual program/phase/output relationships remain here.
-          assertSchemaGuestOutputBindingsV4(step.output as MvuSchemaGuestOutputV4,epoch.program,
-            pending.dispatch.requestedStep.frame.input as MvuSchemaEvaluationInputV4)
-        }
-        if(epoch.schemaVersion===5) {
-          assertSchemaGuestOutputBindingsV4(step.output as MvuSchemaGuestOutputV4,epoch.program.serverProgram!,
-            pending.dispatch.requestedStep.frame.input as MvuSchemaEvaluationInputV4)
-        }
-        if((recordOwner?.fullStepSha256?.(row,pending.dispatch)
-          ??schemaJournalFullStepSha256(row,pending.dispatch))!==stepSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
         selected.add(key)
         steps.push({...pending,completion:row,completionRef:reference(row),step,
           completionMarker:{seq:event.seq,sha256:recordSha256(event)}})
@@ -728,7 +737,7 @@ export function createRoleplayMvuSchemaJournal(deps:{table:SchemaJournalTable;ma
       // The genuine captured result owns inherited grammar. Local inventory
       // owns all new DATA; this fold alone joins them to the actual Native cut.
       return captured(deps.markers,sessionId,realmEpoch,events,
-        new CheckedRows(rows),historical,deps.recordOwner,inherited?.frozen)
+        new CheckedRows(rows),historical,deps.recordOwner,inherited??undefined)
     } catch(error) {return {kind:'blocked',code:codeOf(error)}}
   }
   function recutChecked(sessionId:string,realmEpoch:string,events:readonly SessionEvent[],
