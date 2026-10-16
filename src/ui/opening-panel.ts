@@ -17,7 +17,7 @@ interface OpeningReply {
   candidates: OpeningCandidate[]
   source?:OpeningSourceView
   selection: {status:string;index:number;operationId:string;committedTurn?:number;
-    schemaVersion?:number;mode?:'plain'|'native-json'|'unsupported';textRetained?:boolean;
+    schemaVersion?:number;mode?:'plain'|'native-json'|'schema'|'unsupported';textRetained?:boolean;
     initializationCode?:OpeningInitializationCode;rejectionCode?:OpeningRejectionCode} | null
 }
 export interface OpeningSourceView {importId:string;rawSha256:string;transactionId:string}
@@ -54,7 +54,7 @@ const selectionMessage = (selection: NonNullable<OpeningReply['selection']>): st
     return '这张卡的初始化方式暂不支持，开场尚未写入。请先核对设定。'
   }
   if (selection.status === 'completed') {
-    return selection.mode === 'native-json' || selection.schemaVersion === 3
+    return selection.mode === 'native-json' || selection.mode === 'schema' || selection.schemaVersion === 3
       ? '开场与初始状态已确认。' : `已写入第 ${selection.committedTurn} 回合`
   }
   if (selection.status === 'native-committed' || selection.status === 'blocked' && selection.committedTurn !== undefined) {
