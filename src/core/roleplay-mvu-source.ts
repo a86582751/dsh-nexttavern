@@ -387,7 +387,7 @@ function captureSource(deps: MvuSourceDeps, sessionId: string, selectedIndex: nu
     // These values come from Core's actual JSONDomain tables. Their DATA parser
     // owns descriptor safety; the numerical Source owns this exact row binding.
     const ref = {table,key,exists:value !== undefined,sha256:recordSha256(value)}
-    if (expected !== undefined && (!ref.exists || ref.sha256 !== expected)) fail('MATERIAL_INVALID','/material')
+    if (expected !== undefined && ref.sha256 !== expected) fail('MATERIAL_INVALID','/material')
     if (!seen.has(id)) {rows.push({ref,value}); seen.add(id)}
     return ref
   }
@@ -396,7 +396,7 @@ function captureSource(deps: MvuSourceDeps, sessionId: string, selectedIndex: nu
   if (!Array.isArray(digests) || !digests.length || digests.length > MAX_ROWS) fail('MATERIAL_INVALID','/material')
   for (const digest of digests) {
     if (!digest || !['branch','cards','worldbook','rules','status','opening'].includes(digest.tableName)
-      || !isHash(digest.sha256)) fail('MATERIAL_INVALID','/material')
+      || !isVersion(digest.sha256)) fail('MATERIAL_INVALID','/material')
     let materialKey=digest.key
     if(currentMaterial) {
       // The original import keeps ancestor-owned activation keys. Verified
