@@ -67,7 +67,8 @@ try {
       {id: 'source', source: 'runtime/alpha3/compat/agent-loop/src/request.ts', public: {path: 'development/agent-loop/src/request.ts'}},
       {id: 'test', source: 'runtime/alpha3/tests/request.test.mjs', public: {path: 'tests/request.test.mjs'}},
     ],
-    builds: [], deliveries: [], publicRelease: {layoutPaths: {}, publicTests: []},
+    builds: [], deliveries: [{artifact: 'source', layout: 'preset', path: 'lib/request.js'}],
+    publicRelease: {layoutPaths: {preset: 'preset'}, publicTests: []},
   }, {
     schemaVersion: 1,
     modules: [{id: 'loop', aliases: [], patterns: ['runtime/alpha3/compat/agent-loop/*']}],
@@ -86,6 +87,9 @@ try {
   const relocated = makePlan(projectedContext, request('file', ['development/agent-loop/src/request.ts']));
   assert.deepEqual(ids(relocated), ['loop-test'], 'relocated public sources retain their feature checks');
   assert.deepEqual(relocated.uncovered, []);
+  const alias = makePlan(projectedContext, request('file', ['preset/lib/request.js']));
+  assert.deepEqual(ids(alias), ['loop-test'], 'delivery aliases select the canonical source feature');
+  assert.deepEqual(alias.uncovered, []);
 
   // A changed source selects only its feature's lightweight tests and one shared
   // prerequisite. Heavy candidate, installer and Harness actions cannot leak in.

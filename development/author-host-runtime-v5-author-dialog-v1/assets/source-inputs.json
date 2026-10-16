@@ -5,7 +5,7 @@
   "version": "0.6.0",
   "package": {
     "artifact": "author-host-runtime-v5-author-dialog-v1-package-json",
-    "sha256": "f78e9675483892defacae67b1befae90c7d331a3b47ad34d95ef835fc9f63c5a"
+    "sha256": "e0e3397be75f5cdaa2831b7688e298aa73c176037c4ed143b9b844f9fa994827"
   },
   "builder": {
     "esbuildVersion": "0.24.2",

@@ -22,11 +22,17 @@
     },
     {
       "id": "roleplay-source-music-parser-js",
-      "source": "lib/core/roleplay-source-music-parser.mjs"
+      "source": "lib/core/roleplay-source-music-parser.mjs",
+      "aliases": [
+        "preset/lib/core/roleplay-source-music-parser.mjs"
+      ]
     },
     {
       "id": "roleplay-source-music-js",
-      "source": "lib/core/roleplay-source-music.js"
+      "source": "lib/core/roleplay-source-music.js",
+      "aliases": [
+        "preset/lib/core/roleplay-source-music.js"
+      ]
     },
     {
       "id": "roleplay-source-music-typescript",
@@ -34,7 +40,10 @@
     },
     {
       "id": "roleplay-source-music-routes-js",
-      "source": "lib/core/roleplay-source-music-routes.js"
+      "source": "lib/core/roleplay-source-music-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-source-music-routes.js"
+      ]
     },
     {
       "id": "roleplay-source-music-routes-typescript",
@@ -58,7 +67,10 @@
     },
     {
       "id": "ask-user-decision-pr",
-      "source": "lib/core/ask-user-decision-pr.js"
+      "source": "lib/core/ask-user-decision-pr.js",
+      "aliases": [
+        "preset/lib/core/ask-user-decision-pr.js"
+      ]
     },
     {
       "id": "ask-user-decision-pr-test",
@@ -130,7 +142,10 @@
     },
     {
       "id": "author-browser-runtime-assets-v3-generated",
-      "source": "lib/operations/author-browser-runtime-assets-v3.mjs"
+      "source": "lib/operations/author-browser-runtime-assets-v3.mjs",
+      "aliases": [
+        "preset/lib/operations/author-browser-runtime-assets-v3.mjs"
+      ]
     },
     {
       "id": "author-browser-runtime-assets-v3-typescript",
@@ -334,7 +349,10 @@
     },
     {
       "id": "bounded-regex",
-      "source": "lib/core/bounded-regex.js"
+      "source": "lib/core/bounded-regex.js",
+      "aliases": [
+        "preset/lib/core/bounded-regex.js"
+      ]
     },
     {
       "id": "bounded-regex-test",
@@ -354,7 +372,10 @@
     },
     {
       "id": "bundled-library-assembly",
-      "source": "lib/operations/bundled-library-assembly.mjs"
+      "source": "lib/operations/bundled-library-assembly.mjs",
+      "aliases": [
+        "preset/lib/operations/bundled-library-assembly.mjs"
+      ]
     },
     {
       "id": "bundled-library-assembly-typescript",
@@ -370,11 +391,17 @@
     },
     {
       "id": "card-adaptation",
-      "source": "lib/core/card-adaptation.js"
+      "source": "lib/core/card-adaptation.js",
+      "aliases": [
+        "preset/lib/core/card-adaptation.js"
+      ]
     },
     {
       "id": "card-adaptation-context",
-      "source": "lib/core/card-adaptation-context.js"
+      "source": "lib/core/card-adaptation-context.js",
+      "aliases": [
+        "preset/lib/core/card-adaptation-context.js"
+      ]
     },
     {
       "id": "card-adaptation-context-typescript",
@@ -406,7 +433,10 @@
     },
     {
       "id": "card-adaptation-tool-schemas",
-      "source": "lib/core/card-adaptation-tool-schemas.js"
+      "source": "lib/core/card-adaptation-tool-schemas.js",
+      "aliases": [
+        "preset/lib/core/card-adaptation-tool-schemas.js"
+      ]
     },
     {
       "id": "card-adaptation-tool-schemas-typescript",
@@ -414,7 +444,10 @@
     },
     {
       "id": "card-adaptation-tools",
-      "source": "lib/core/card-adaptation-tools.js"
+      "source": "lib/core/card-adaptation-tools.js",
+      "aliases": [
+        "preset/lib/core/card-adaptation-tools.js"
+      ]
     },
     {
       "id": "card-adaptation-tools-typescript",
@@ -430,7 +463,10 @@
     },
     {
       "id": "card-character-map",
-      "source": "lib/core/card-character-map.js"
+      "source": "lib/core/card-character-map.js",
+      "aliases": [
+        "preset/lib/core/card-character-map.js"
+      ]
     },
     {
       "id": "card-character-map-test",
@@ -442,11 +478,17 @@
     },
     {
       "id": "card-export",
-      "source": "lib/core/card-export.js"
+      "source": "lib/core/card-export.js",
+      "aliases": [
+        "preset/lib/core/card-export.js"
+      ]
     },
     {
       "id": "card-export-projection-js",
-      "source": "lib/core/card-export-projection.js"
+      "source": "lib/core/card-export-projection.js",
+      "aliases": [
+        "preset/lib/core/card-export-projection.js"
+      ]
     },
     {
       "id": "card-export-projection-typescript",
@@ -482,7 +524,10 @@
     },
     {
       "id": "card-research-packets",
-      "source": "lib/core/card-research-packets.js"
+      "source": "lib/core/card-research-packets.js",
+      "aliases": [
+        "preset/lib/core/card-research-packets.js"
+      ]
     },
     {
       "id": "card-research-packets-typescript",
@@ -490,7 +535,10 @@
     },
     {
       "id": "card-research-planner",
-      "source": "lib/core/card-research-planner.js"
+      "source": "lib/core/card-research-planner.js",
+      "aliases": [
+        "preset/lib/core/card-research-planner.js"
+      ]
     },
     {
       "id": "card-research-planner-test",
@@ -502,7 +550,10 @@
     },
     {
       "id": "card-research-record",
-      "source": "lib/core/card-research-record.js"
+      "source": "lib/core/card-research-record.js",
+      "aliases": [
+        "preset/lib/core/card-research-record.js"
+      ]
     },
     {
       "id": "card-research-record-typescript",
@@ -526,7 +577,10 @@
     },
     {
       "id": "character-cluster",
-      "source": "lib/core/character-cluster.js"
+      "source": "lib/core/character-cluster.js",
+      "aliases": [
+        "preset/lib/core/character-cluster.js"
+      ]
     },
     {
       "id": "character-cluster-legacy-fixture",
@@ -534,7 +588,10 @@
     },
     {
       "id": "character-cluster-projection-js",
-      "source": "lib/core/character-cluster-projection.js"
+      "source": "lib/core/character-cluster-projection.js",
+      "aliases": [
+        "preset/lib/core/character-cluster-projection.js"
+      ]
     },
     {
       "id": "character-cluster-projection-ts",
@@ -542,7 +599,10 @@
     },
     {
       "id": "character-cluster-settings",
-      "source": "lib/core/character-cluster-settings.js"
+      "source": "lib/core/character-cluster-settings.js",
+      "aliases": [
+        "preset/lib/core/character-cluster-settings.js"
+      ]
     },
     {
       "id": "character-cluster-settings-typescript",
@@ -3478,7 +3538,10 @@
     },
     {
       "id": "memory-compaction-js",
-      "source": "lib/memory/memory-compaction.js"
+      "source": "lib/memory/memory-compaction.js",
+      "aliases": [
+        "preset/lib/memory/memory-compaction.js"
+      ]
     },
     {
       "id": "memory-compaction-legacy-fixture",
@@ -3490,7 +3553,10 @@
     },
     {
       "id": "memory-embedding-api-generated",
-      "source": "lib/memory/memory-embedding-api.js"
+      "source": "lib/memory/memory-embedding-api.js",
+      "aliases": [
+        "preset/lib/memory/memory-embedding-api.js"
+      ]
     },
     {
       "id": "memory-embedding-api-source",
@@ -3506,7 +3572,10 @@
     },
     {
       "id": "memory-history-js",
-      "source": "lib/memory/memory-history.js"
+      "source": "lib/memory/memory-history.js",
+      "aliases": [
+        "preset/lib/memory/memory-history.js"
+      ]
     },
     {
       "id": "memory-history-legacy-fixture",
@@ -3518,7 +3587,10 @@
     },
     {
       "id": "memory-local-catalog-generated",
-      "source": "lib/memory/memory-local-catalog.js"
+      "source": "lib/memory/memory-local-catalog.js",
+      "aliases": [
+        "preset/lib/memory/memory-local-catalog.js"
+      ]
     },
     {
       "id": "memory-local-catalog-source",
@@ -3526,7 +3598,10 @@
     },
     {
       "id": "memory-local-worker-generated",
-      "source": "lib/memory/memory-local-worker.mjs"
+      "source": "lib/memory/memory-local-worker.mjs",
+      "aliases": [
+        "preset/lib/memory/memory-local-worker.mjs"
+      ]
     },
     {
       "id": "memory-local-worker-source",
@@ -3538,7 +3613,10 @@
     },
     {
       "id": "memory-notes-writer-js",
-      "source": "lib/memory/memory-notes-writer.js"
+      "source": "lib/memory/memory-notes-writer.js",
+      "aliases": [
+        "preset/lib/memory/memory-notes-writer.js"
+      ]
     },
     {
       "id": "memory-notes-writer-legacy-fixture",
@@ -3554,7 +3632,10 @@
     },
     {
       "id": "memory-provenance-js",
-      "source": "lib/memory/memory-provenance.js"
+      "source": "lib/memory/memory-provenance.js",
+      "aliases": [
+        "preset/lib/memory/memory-provenance.js"
+      ]
     },
     {
       "id": "memory-provenance-test",
@@ -3566,7 +3647,10 @@
     },
     {
       "id": "memory-retrieval-generated",
-      "source": "lib/memory/memory-retrieval.js"
+      "source": "lib/memory/memory-retrieval.js",
+      "aliases": [
+        "preset/lib/memory/memory-retrieval.js"
+      ]
     },
     {
       "id": "memory-retrieval-panel-generated",
@@ -3586,7 +3670,10 @@
     },
     {
       "id": "memory-retrieval-types-generated",
-      "source": "lib/memory/memory-retrieval-types.js"
+      "source": "lib/memory/memory-retrieval-types.js",
+      "aliases": [
+        "preset/lib/memory/memory-retrieval-types.js"
+      ]
     },
     {
       "id": "memory-retrieval-types-source",
@@ -3598,7 +3685,10 @@
     },
     {
       "id": "memory-scheduler-js",
-      "source": "lib/memory/memory-scheduler.js"
+      "source": "lib/memory/memory-scheduler.js",
+      "aliases": [
+        "preset/lib/memory/memory-scheduler.js"
+      ]
     },
     {
       "id": "memory-scheduler-test",
@@ -3610,7 +3700,10 @@
     },
     {
       "id": "memory-story-text-generated",
-      "source": "lib/memory/memory-story-text.js"
+      "source": "lib/memory/memory-story-text.js",
+      "aliases": [
+        "preset/lib/memory/memory-story-text.js"
+      ]
     },
     {
       "id": "memory-story-text-source",
@@ -3618,7 +3711,10 @@
     },
     {
       "id": "memory-summary-js",
-      "source": "lib/memory/memory-summary.js"
+      "source": "lib/memory/memory-summary.js",
+      "aliases": [
+        "preset/lib/memory/memory-summary.js"
+      ]
     },
     {
       "id": "memory-summary-legacy-fixture",
@@ -3634,7 +3730,10 @@
     },
     {
       "id": "memory-vector-worker-generated",
-      "source": "lib/memory/memory-vector-worker.mjs"
+      "source": "lib/memory/memory-vector-worker.mjs",
+      "aliases": [
+        "preset/lib/memory/memory-vector-worker.mjs"
+      ]
     },
     {
       "id": "memory-vector-worker-source",
@@ -4242,7 +4341,10 @@
     },
     {
       "id": "narrative-preset-catalog",
-      "source": "lib/core/narrative-preset-catalog.js"
+      "source": "lib/core/narrative-preset-catalog.js",
+      "aliases": [
+        "preset/lib/core/narrative-preset-catalog.js"
+      ]
     },
     {
       "id": "narrative-preset-catalog-typescript",
@@ -4250,7 +4352,10 @@
     },
     {
       "id": "narrative-preset-default",
-      "source": "lib/core/narrative-preset-default.js"
+      "source": "lib/core/narrative-preset-default.js",
+      "aliases": [
+        "preset/lib/core/narrative-preset-default.js"
+      ]
     },
     {
       "id": "narrative-preset-default-typescript",
@@ -4258,7 +4363,10 @@
     },
     {
       "id": "narrative-presets",
-      "source": "lib/core/narrative-presets.js"
+      "source": "lib/core/narrative-presets.js",
+      "aliases": [
+        "preset/lib/core/narrative-presets.js"
+      ]
     },
     {
       "id": "narrative-presets-typescript",
@@ -4270,7 +4378,10 @@
     },
     {
       "id": "narrative-styles-annalistic",
-      "source": "lib/core/narrative-styles/annalistic.js"
+      "source": "lib/core/narrative-styles/annalistic.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/annalistic.js"
+      ]
     },
     {
       "id": "narrative-styles-annalistic-typescript",
@@ -4278,7 +4389,10 @@
     },
     {
       "id": "narrative-styles-cinematic",
-      "source": "lib/core/narrative-styles/cinematic.js"
+      "source": "lib/core/narrative-styles/cinematic.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/cinematic.js"
+      ]
     },
     {
       "id": "narrative-styles-cinematic-typescript",
@@ -4286,7 +4400,10 @@
     },
     {
       "id": "narrative-styles-classical",
-      "source": "lib/core/narrative-styles/classical.js"
+      "source": "lib/core/narrative-styles/classical.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/classical.js"
+      ]
     },
     {
       "id": "narrative-styles-classical-typescript",
@@ -4294,7 +4411,10 @@
     },
     {
       "id": "narrative-styles-comedy",
-      "source": "lib/core/narrative-styles/comedy.js"
+      "source": "lib/core/narrative-styles/comedy.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/comedy.js"
+      ]
     },
     {
       "id": "narrative-styles-comedy-typescript",
@@ -4302,7 +4422,10 @@
     },
     {
       "id": "narrative-styles-cosmic-romance",
-      "source": "lib/core/narrative-styles/cosmic-romance.js"
+      "source": "lib/core/narrative-styles/cosmic-romance.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/cosmic-romance.js"
+      ]
     },
     {
       "id": "narrative-styles-cosmic-romance-typescript",
@@ -4310,7 +4433,10 @@
     },
     {
       "id": "narrative-styles-delicate",
-      "source": "lib/core/narrative-styles/delicate.js"
+      "source": "lib/core/narrative-styles/delicate.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/delicate.js"
+      ]
     },
     {
       "id": "narrative-styles-delicate-typescript",
@@ -4318,7 +4444,10 @@
     },
     {
       "id": "narrative-styles-fantasy",
-      "source": "lib/core/narrative-styles/fantasy.js"
+      "source": "lib/core/narrative-styles/fantasy.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/fantasy.js"
+      ]
     },
     {
       "id": "narrative-styles-fantasy-typescript",
@@ -4326,7 +4455,10 @@
     },
     {
       "id": "narrative-styles-horror",
-      "source": "lib/core/narrative-styles/horror.js"
+      "source": "lib/core/narrative-styles/horror.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/horror.js"
+      ]
     },
     {
       "id": "narrative-styles-horror-typescript",
@@ -4334,7 +4466,10 @@
     },
     {
       "id": "narrative-styles-jrpg",
-      "source": "lib/core/narrative-styles/jrpg.js"
+      "source": "lib/core/narrative-styles/jrpg.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/jrpg.js"
+      ]
     },
     {
       "id": "narrative-styles-jrpg-typescript",
@@ -4342,7 +4477,10 @@
     },
     {
       "id": "narrative-styles-light-novel",
-      "source": "lib/core/narrative-styles/light-novel.js"
+      "source": "lib/core/narrative-styles/light-novel.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/light-novel.js"
+      ]
     },
     {
       "id": "narrative-styles-light-novel-typescript",
@@ -4350,7 +4488,10 @@
     },
     {
       "id": "narrative-styles-luxun",
-      "source": "lib/core/narrative-styles/luxun.js"
+      "source": "lib/core/narrative-styles/luxun.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/luxun.js"
+      ]
     },
     {
       "id": "narrative-styles-luxun-typescript",
@@ -4358,7 +4499,10 @@
     },
     {
       "id": "narrative-styles-lyrical",
-      "source": "lib/core/narrative-styles/lyrical.js"
+      "source": "lib/core/narrative-styles/lyrical.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/lyrical.js"
+      ]
     },
     {
       "id": "narrative-styles-lyrical-typescript",
@@ -4366,7 +4510,10 @@
     },
     {
       "id": "narrative-styles-minimal",
-      "source": "lib/core/narrative-styles/minimal.js"
+      "source": "lib/core/narrative-styles/minimal.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/minimal.js"
+      ]
     },
     {
       "id": "narrative-styles-minimal-typescript",
@@ -4374,7 +4521,10 @@
     },
     {
       "id": "narrative-styles-otome",
-      "source": "lib/core/narrative-styles/otome.js"
+      "source": "lib/core/narrative-styles/otome.js",
+      "aliases": [
+        "preset/lib/core/narrative-styles/otome.js"
+      ]
     },
     {
       "id": "narrative-styles-otome-typescript",
@@ -4414,7 +4564,10 @@
     },
     {
       "id": "native-fork-host-profile-generated",
-      "source": "lib/operations/native-fork-host-profile.mjs"
+      "source": "lib/operations/native-fork-host-profile.mjs",
+      "aliases": [
+        "tools/native-fork-host-profile.mjs"
+      ]
     },
     {
       "id": "native-fork-host-profile-source",
@@ -4430,7 +4583,10 @@
     },
     {
       "id": "nexttavern-card-js",
-      "source": "lib/core/nexttavern-card.js"
+      "source": "lib/core/nexttavern-card.js",
+      "aliases": [
+        "preset/lib/core/nexttavern-card.js"
+      ]
     },
     {
       "id": "nexttavern-card-typescript",
@@ -4522,7 +4678,10 @@
     },
     {
       "id": "novel-export",
-      "source": "lib/core/novel-export.js"
+      "source": "lib/core/novel-export.js",
+      "aliases": [
+        "preset/lib/core/novel-export.js"
+      ]
     },
     {
       "id": "novel-export-legacy-fixture",
@@ -4530,7 +4689,10 @@
     },
     {
       "id": "novel-export-projection-js",
-      "source": "lib/core/novel-export-projection.js"
+      "source": "lib/core/novel-export-projection.js",
+      "aliases": [
+        "preset/lib/core/novel-export-projection.js"
+      ]
     },
     {
       "id": "novel-export-projection-typescript",
@@ -4890,7 +5052,10 @@
     },
     {
       "id": "public-transaction",
-      "source": "lib/operations/public-transaction.mjs"
+      "source": "lib/operations/public-transaction.mjs",
+      "aliases": [
+        "preset/lib/operations/public-transaction.mjs"
+      ]
     },
     {
       "id": "public-transaction-schema",
@@ -5046,15 +5211,24 @@
     },
     {
       "id": "roleplay-author-browser-generated",
-      "source": "lib/core/roleplay-author-browser.js"
+      "source": "lib/core/roleplay-author-browser.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-browser.js"
+      ]
     },
     {
       "id": "roleplay-author-browser-generation-js",
-      "source": "lib/core/roleplay-author-browser-generation.js"
+      "source": "lib/core/roleplay-author-browser-generation.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-browser-generation.js"
+      ]
     },
     {
       "id": "roleplay-author-browser-generation-types-js",
-      "source": "lib/core/roleplay-author-browser-generation-types.js"
+      "source": "lib/core/roleplay-author-browser-generation-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-browser-generation-types.js"
+      ]
     },
     {
       "id": "roleplay-author-browser-generation-types-typescript",
@@ -5066,7 +5240,10 @@
     },
     {
       "id": "roleplay-author-browser-types-generated",
-      "source": "lib/core/roleplay-author-browser-types.js"
+      "source": "lib/core/roleplay-author-browser-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-browser-types.js"
+      ]
     },
     {
       "id": "roleplay-author-browser-types-typescript",
@@ -5078,7 +5255,10 @@
     },
     {
       "id": "roleplay-author-chat-state-types-js",
-      "source": "lib/core/roleplay-author-chat-state-types.js"
+      "source": "lib/core/roleplay-author-chat-state-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-chat-state-types.js"
+      ]
     },
     {
       "id": "roleplay-author-chat-state-types-typescript",
@@ -5086,7 +5266,10 @@
     },
     {
       "id": "roleplay-author-chat-state-v2-types-js",
-      "source": "lib/core/roleplay-author-chat-state-v2-types.js"
+      "source": "lib/core/roleplay-author-chat-state-v2-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-chat-state-v2-types.js"
+      ]
     },
     {
       "id": "roleplay-author-chat-state-v2-types-typescript",
@@ -5094,11 +5277,17 @@
     },
     {
       "id": "roleplay-author-context",
-      "source": "lib/core/roleplay-author-context.js"
+      "source": "lib/core/roleplay-author-context.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-context.js"
+      ]
     },
     {
       "id": "roleplay-author-context-types",
-      "source": "lib/core/roleplay-author-context-types.js"
+      "source": "lib/core/roleplay-author-context-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-context-types.js"
+      ]
     },
     {
       "id": "roleplay-author-context-types-typescript",
@@ -5110,7 +5299,10 @@
     },
     {
       "id": "roleplay-author-contributions-js",
-      "source": "lib/core/roleplay-author-contributions.js"
+      "source": "lib/core/roleplay-author-contributions.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-contributions.js"
+      ]
     },
     {
       "id": "roleplay-author-contributions-typescript",
@@ -5118,7 +5310,10 @@
     },
     {
       "id": "roleplay-author-host-assets-generated",
-      "source": "lib/core/roleplay-author-host-assets.js"
+      "source": "lib/core/roleplay-author-host-assets.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-host-assets.js"
+      ]
     },
     {
       "id": "roleplay-author-host-assets-typescript",
@@ -5126,7 +5321,10 @@
     },
     {
       "id": "roleplay-author-host-types-v5-generated",
-      "source": "lib/core/roleplay-author-host-types-v5.js"
+      "source": "lib/core/roleplay-author-host-types-v5.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-host-types-v5.js"
+      ]
     },
     {
       "id": "roleplay-author-host-types-v5-typescript",
@@ -5134,7 +5332,10 @@
     },
     {
       "id": "roleplay-author-prompt-assets-js",
-      "source": "lib/core/roleplay-author-prompt-assets.js"
+      "source": "lib/core/roleplay-author-prompt-assets.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-prompt-assets.js"
+      ]
     },
     {
       "id": "roleplay-author-prompt-assets-typescript",
@@ -5142,7 +5343,10 @@
     },
     {
       "id": "roleplay-author-prompt-capture-js",
-      "source": "lib/core/roleplay-author-prompt-capture.js"
+      "source": "lib/core/roleplay-author-prompt-capture.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-prompt-capture.js"
+      ]
     },
     {
       "id": "roleplay-author-prompt-capture-typescript",
@@ -5150,7 +5354,10 @@
     },
     {
       "id": "roleplay-author-script-resources-js",
-      "source": "lib/core/roleplay-author-script-resources.js"
+      "source": "lib/core/roleplay-author-script-resources.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-script-resources.js"
+      ]
     },
     {
       "id": "roleplay-author-script-resources-typescript",
@@ -5158,11 +5365,17 @@
     },
     {
       "id": "roleplay-author-tools",
-      "source": "lib/core/roleplay-author-tools.js"
+      "source": "lib/core/roleplay-author-tools.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-tools.js"
+      ]
     },
     {
       "id": "roleplay-author-tools-types",
-      "source": "lib/core/roleplay-author-tools-types.js"
+      "source": "lib/core/roleplay-author-tools-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-tools-types.js"
+      ]
     },
     {
       "id": "roleplay-author-tools-types-typescript",
@@ -5174,7 +5387,10 @@
     },
     {
       "id": "roleplay-author-worldbook-data-js",
-      "source": "lib/core/roleplay-author-worldbook-data.js"
+      "source": "lib/core/roleplay-author-worldbook-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-worldbook-data.js"
+      ]
     },
     {
       "id": "roleplay-author-worldbook-data-typescript",
@@ -5182,11 +5398,17 @@
     },
     {
       "id": "roleplay-authoring",
-      "source": "lib/core/roleplay-authoring.js"
+      "source": "lib/core/roleplay-authoring.js",
+      "aliases": [
+        "preset/lib/core/roleplay-authoring.js"
+      ]
     },
     {
       "id": "roleplay-authoring-types",
-      "source": "lib/core/roleplay-authoring-types.js"
+      "source": "lib/core/roleplay-authoring-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-authoring-types.js"
+      ]
     },
     {
       "id": "roleplay-authoring-types-typescript",
@@ -5198,11 +5420,17 @@
     },
     {
       "id": "roleplay-branch-routes",
-      "source": "lib/core/roleplay-branch-routes.js"
+      "source": "lib/core/roleplay-branch-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-branch-routes.js"
+      ]
     },
     {
       "id": "roleplay-branch-routes-types",
-      "source": "lib/core/roleplay-branch-routes-types.js"
+      "source": "lib/core/roleplay-branch-routes-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-branch-routes-types.js"
+      ]
     },
     {
       "id": "roleplay-branch-routes-types-typescript",
@@ -5214,7 +5442,10 @@
     },
     {
       "id": "roleplay-card-attachment",
-      "source": "lib/core/roleplay-card-attachment.js"
+      "source": "lib/core/roleplay-card-attachment.js",
+      "aliases": [
+        "preset/lib/core/roleplay-card-attachment.js"
+      ]
     },
     {
       "id": "roleplay-card-attachment-typescript",
@@ -5226,7 +5457,10 @@
     },
     {
       "id": "roleplay-card-export-opening-js",
-      "source": "lib/core/roleplay-card-export-opening.js"
+      "source": "lib/core/roleplay-card-export-opening.js",
+      "aliases": [
+        "preset/lib/core/roleplay-card-export-opening.js"
+      ]
     },
     {
       "id": "roleplay-card-export-opening-typescript",
@@ -5234,7 +5468,10 @@
     },
     {
       "id": "roleplay-card-workflow",
-      "source": "lib/core/roleplay-card-workflow.js"
+      "source": "lib/core/roleplay-card-workflow.js",
+      "aliases": [
+        "preset/lib/core/roleplay-card-workflow.js"
+      ]
     },
     {
       "id": "roleplay-card-workflow-contract",
@@ -5242,7 +5479,10 @@
     },
     {
       "id": "roleplay-card-workflow-types",
-      "source": "lib/core/roleplay-card-workflow-types.js"
+      "source": "lib/core/roleplay-card-workflow-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-card-workflow-types.js"
+      ]
     },
     {
       "id": "roleplay-card-workflow-types-typescript",
@@ -5254,7 +5494,10 @@
     },
     {
       "id": "roleplay-chat-card-context-js",
-      "source": "lib/core/roleplay-chat-card-context.js"
+      "source": "lib/core/roleplay-chat-card-context.js",
+      "aliases": [
+        "preset/lib/core/roleplay-chat-card-context.js"
+      ]
     },
     {
       "id": "roleplay-chat-card-context-typescript",
@@ -5262,7 +5505,10 @@
     },
     {
       "id": "roleplay-chat-card-source-js",
-      "source": "lib/core/roleplay-chat-card-source.js"
+      "source": "lib/core/roleplay-chat-card-source.js",
+      "aliases": [
+        "preset/lib/core/roleplay-chat-card-source.js"
+      ]
     },
     {
       "id": "roleplay-chat-card-source-typescript",
@@ -5270,11 +5516,17 @@
     },
     {
       "id": "roleplay-completion",
-      "source": "lib/core/roleplay-completion.js"
+      "source": "lib/core/roleplay-completion.js",
+      "aliases": [
+        "preset/lib/core/roleplay-completion.js"
+      ]
     },
     {
       "id": "roleplay-completion-types",
-      "source": "lib/core/roleplay-completion-types.js"
+      "source": "lib/core/roleplay-completion-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-completion-types.js"
+      ]
     },
     {
       "id": "roleplay-completion-types-typescript",
@@ -5286,7 +5538,10 @@
     },
     {
       "id": "roleplay-context",
-      "source": "lib/core/roleplay-context.js"
+      "source": "lib/core/roleplay-context.js",
+      "aliases": [
+        "preset/lib/core/roleplay-context.js"
+      ]
     },
     {
       "id": "roleplay-context-typescript",
@@ -5294,7 +5549,10 @@
     },
     {
       "id": "roleplay-core",
-      "source": "lib/core/roleplay-core.js"
+      "source": "lib/core/roleplay-core.js",
+      "aliases": [
+        "preset/lib/core/roleplay-core.js"
+      ]
     },
     {
       "id": "roleplay-core-process-storage-fixture",
@@ -5302,7 +5560,10 @@
     },
     {
       "id": "roleplay-core-types",
-      "source": "lib/core/roleplay-core-types.js"
+      "source": "lib/core/roleplay-core-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-core-types.js"
+      ]
     },
     {
       "id": "roleplay-core-typescript",
@@ -5314,7 +5575,10 @@
     },
     {
       "id": "roleplay-data",
-      "source": "lib/core/roleplay-data.js"
+      "source": "lib/core/roleplay-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-data.js"
+      ]
     },
     {
       "id": "roleplay-data-typescript",
@@ -5322,11 +5586,17 @@
     },
     {
       "id": "roleplay-decision",
-      "source": "lib/core/roleplay-decision.js"
+      "source": "lib/core/roleplay-decision.js",
+      "aliases": [
+        "preset/lib/core/roleplay-decision.js"
+      ]
     },
     {
       "id": "roleplay-decision-types",
-      "source": "lib/core/roleplay-decision-types.js"
+      "source": "lib/core/roleplay-decision-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-decision-types.js"
+      ]
     },
     {
       "id": "roleplay-decision-types-typescript",
@@ -5338,7 +5608,10 @@
     },
     {
       "id": "roleplay-deescape",
-      "source": "lib/preset/deescape-md.mjs"
+      "source": "lib/preset/deescape-md.mjs",
+      "aliases": [
+        "preset/lib/preset/deescape-md.mjs"
+      ]
     },
     {
       "id": "roleplay-deescape-typescript",
@@ -5346,11 +5619,17 @@
     },
     {
       "id": "roleplay-diagnosis",
-      "source": "lib/core/roleplay-diagnosis.js"
+      "source": "lib/core/roleplay-diagnosis.js",
+      "aliases": [
+        "preset/lib/core/roleplay-diagnosis.js"
+      ]
     },
     {
       "id": "roleplay-diagnosis-types",
-      "source": "lib/core/roleplay-diagnosis-types.js"
+      "source": "lib/core/roleplay-diagnosis-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-diagnosis-types.js"
+      ]
     },
     {
       "id": "roleplay-diagnosis-types-typescript",
@@ -5362,7 +5641,11 @@
     },
     {
       "id": "roleplay-host-index",
-      "source": "lib/core/host-index.js"
+      "source": "lib/core/host-index.js",
+      "aliases": [
+        "lib/index.js",
+        "preset/lib/core/host-index.js"
+      ]
     },
     {
       "id": "roleplay-host-index-typescript",
@@ -5370,11 +5653,17 @@
     },
     {
       "id": "roleplay-import",
-      "source": "lib/core/roleplay-import.js"
+      "source": "lib/core/roleplay-import.js",
+      "aliases": [
+        "preset/lib/core/roleplay-import.js"
+      ]
     },
     {
       "id": "roleplay-import-record",
-      "source": "lib/core/roleplay-import-record.js"
+      "source": "lib/core/roleplay-import-record.js",
+      "aliases": [
+        "preset/lib/core/roleplay-import-record.js"
+      ]
     },
     {
       "id": "roleplay-import-record-typescript",
@@ -5382,7 +5671,10 @@
     },
     {
       "id": "roleplay-import-types",
-      "source": "lib/core/roleplay-import-types.js"
+      "source": "lib/core/roleplay-import-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-import-types.js"
+      ]
     },
     {
       "id": "roleplay-import-types-typescript",
@@ -5394,11 +5686,17 @@
     },
     {
       "id": "roleplay-inheritance",
-      "source": "lib/core/roleplay-inheritance.js"
+      "source": "lib/core/roleplay-inheritance.js",
+      "aliases": [
+        "preset/lib/core/roleplay-inheritance.js"
+      ]
     },
     {
       "id": "roleplay-inheritance-types",
-      "source": "lib/core/roleplay-inheritance-types.js"
+      "source": "lib/core/roleplay-inheritance-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-inheritance-types.js"
+      ]
     },
     {
       "id": "roleplay-inheritance-types-typescript",
@@ -5410,7 +5708,10 @@
     },
     {
       "id": "roleplay-input-cold-row-facts-js",
-      "source": "lib/core/roleplay-input-cold-row-facts.js"
+      "source": "lib/core/roleplay-input-cold-row-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-cold-row-facts.js"
+      ]
     },
     {
       "id": "roleplay-input-cold-row-facts-typescript",
@@ -5418,7 +5719,10 @@
     },
     {
       "id": "roleplay-input-completion-js",
-      "source": "lib/core/roleplay-input-completion.js"
+      "source": "lib/core/roleplay-input-completion.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-completion.js"
+      ]
     },
     {
       "id": "roleplay-input-completion-typescript",
@@ -5426,7 +5730,10 @@
     },
     {
       "id": "roleplay-input-continuation-js",
-      "source": "lib/core/roleplay-input-continuation.js"
+      "source": "lib/core/roleplay-input-continuation.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-continuation.js"
+      ]
     },
     {
       "id": "roleplay-input-continuation-typescript",
@@ -5434,7 +5741,10 @@
     },
     {
       "id": "roleplay-input-import-js",
-      "source": "lib/core/roleplay-input-import.js"
+      "source": "lib/core/roleplay-input-import.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-import.js"
+      ]
     },
     {
       "id": "roleplay-input-import-typescript",
@@ -5442,7 +5752,10 @@
     },
     {
       "id": "roleplay-input-management-js",
-      "source": "lib/core/roleplay-input-management.js"
+      "source": "lib/core/roleplay-input-management.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-management.js"
+      ]
     },
     {
       "id": "roleplay-input-management-typescript",
@@ -5450,7 +5763,10 @@
     },
     {
       "id": "roleplay-input-material-js",
-      "source": "lib/core/roleplay-input-material.js"
+      "source": "lib/core/roleplay-input-material.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-material.js"
+      ]
     },
     {
       "id": "roleplay-input-material-typescript",
@@ -5458,7 +5774,10 @@
     },
     {
       "id": "roleplay-input-preparation-js",
-      "source": "lib/core/roleplay-input-preparation.js"
+      "source": "lib/core/roleplay-input-preparation.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-preparation.js"
+      ]
     },
     {
       "id": "roleplay-input-preparation-typescript",
@@ -5466,7 +5785,10 @@
     },
     {
       "id": "roleplay-input-source-data-js",
-      "source": "lib/core/roleplay-input-source-data.js"
+      "source": "lib/core/roleplay-input-source-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-source-data.js"
+      ]
     },
     {
       "id": "roleplay-input-source-data-typescript",
@@ -5474,7 +5796,10 @@
     },
     {
       "id": "roleplay-input-state-js",
-      "source": "lib/core/roleplay-input-state.js"
+      "source": "lib/core/roleplay-input-state.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-state.js"
+      ]
     },
     {
       "id": "roleplay-input-state-typescript",
@@ -5482,7 +5807,10 @@
     },
     {
       "id": "roleplay-input-terminal-js",
-      "source": "lib/core/roleplay-input-terminal.js"
+      "source": "lib/core/roleplay-input-terminal.js",
+      "aliases": [
+        "preset/lib/core/roleplay-input-terminal.js"
+      ]
     },
     {
       "id": "roleplay-input-terminal-typescript",
@@ -5490,11 +5818,17 @@
     },
     {
       "id": "roleplay-job-routes",
-      "source": "lib/core/roleplay-job-routes.js"
+      "source": "lib/core/roleplay-job-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-job-routes.js"
+      ]
     },
     {
       "id": "roleplay-job-routes-types",
-      "source": "lib/core/roleplay-job-routes-types.js"
+      "source": "lib/core/roleplay-job-routes-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-job-routes-types.js"
+      ]
     },
     {
       "id": "roleplay-job-routes-types-typescript",
@@ -5506,11 +5840,17 @@
     },
     {
       "id": "roleplay-loop",
-      "source": "lib/core/roleplay-loop.js"
+      "source": "lib/core/roleplay-loop.js",
+      "aliases": [
+        "preset/lib/core/roleplay-loop.js"
+      ]
     },
     {
       "id": "roleplay-loop-types",
-      "source": "lib/core/roleplay-loop-types.js"
+      "source": "lib/core/roleplay-loop-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-loop-types.js"
+      ]
     },
     {
       "id": "roleplay-loop-types-typescript",
@@ -5522,7 +5862,10 @@
     },
     {
       "id": "roleplay-memory",
-      "source": "lib/memory/roleplay-memory-engine.js"
+      "source": "lib/memory/roleplay-memory-engine.js",
+      "aliases": [
+        "preset/lib/memory/roleplay-memory-engine.js"
+      ]
     },
     {
       "id": "roleplay-memory-typescript",
@@ -5530,7 +5873,10 @@
     },
     {
       "id": "roleplay-message-view",
-      "source": "lib/core/roleplay-message-view.js"
+      "source": "lib/core/roleplay-message-view.js",
+      "aliases": [
+        "preset/lib/core/roleplay-message-view.js"
+      ]
     },
     {
       "id": "roleplay-message-view-typescript",
@@ -5538,7 +5884,10 @@
     },
     {
       "id": "roleplay-mvu-ancestry-js",
-      "source": "lib/core/roleplay-mvu-ancestry.js"
+      "source": "lib/core/roleplay-mvu-ancestry.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-ancestry.js"
+      ]
     },
     {
       "id": "roleplay-mvu-ancestry-typescript",
@@ -5546,7 +5895,10 @@
     },
     {
       "id": "roleplay-mvu-basis-js",
-      "source": "lib/core/roleplay-mvu-basis.js"
+      "source": "lib/core/roleplay-mvu-basis.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-basis.js"
+      ]
     },
     {
       "id": "roleplay-mvu-basis-typescript",
@@ -5554,7 +5906,10 @@
     },
     {
       "id": "roleplay-mvu-derived-js",
-      "source": "lib/core/roleplay-mvu-derived.js"
+      "source": "lib/core/roleplay-mvu-derived.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-derived.js"
+      ]
     },
     {
       "id": "roleplay-mvu-derived-typescript",
@@ -5562,7 +5917,10 @@
     },
     {
       "id": "roleplay-mvu-display-facts-js",
-      "source": "lib/core/roleplay-mvu-display-facts.js"
+      "source": "lib/core/roleplay-mvu-display-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-display-facts.js"
+      ]
     },
     {
       "id": "roleplay-mvu-display-facts-typescript",
@@ -5570,7 +5928,10 @@
     },
     {
       "id": "roleplay-mvu-edit-facts-js",
-      "source": "lib/core/roleplay-mvu-edit-facts.js"
+      "source": "lib/core/roleplay-mvu-edit-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-edit-facts.js"
+      ]
     },
     {
       "id": "roleplay-mvu-edit-facts-typescript",
@@ -5578,7 +5939,10 @@
     },
     {
       "id": "roleplay-mvu-frozen-lineage-js",
-      "source": "lib/core/roleplay-mvu-frozen-lineage.js"
+      "source": "lib/core/roleplay-mvu-frozen-lineage.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-frozen-lineage.js"
+      ]
     },
     {
       "id": "roleplay-mvu-frozen-lineage-typescript",
@@ -5586,7 +5950,10 @@
     },
     {
       "id": "roleplay-mvu-initialization-js",
-      "source": "lib/core/roleplay-mvu-initialization.js"
+      "source": "lib/core/roleplay-mvu-initialization.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-initialization.js"
+      ]
     },
     {
       "id": "roleplay-mvu-initialization-typescript",
@@ -5594,7 +5961,10 @@
     },
     {
       "id": "roleplay-mvu-lineage-js",
-      "source": "lib/core/roleplay-mvu-lineage.js"
+      "source": "lib/core/roleplay-mvu-lineage.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-lineage.js"
+      ]
     },
     {
       "id": "roleplay-mvu-lineage-typescript",
@@ -5602,7 +5972,10 @@
     },
     {
       "id": "roleplay-mvu-native-js",
-      "source": "lib/core/roleplay-mvu-native.js"
+      "source": "lib/core/roleplay-mvu-native.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-native.js"
+      ]
     },
     {
       "id": "roleplay-mvu-native-typescript",
@@ -5610,7 +5983,10 @@
     },
     {
       "id": "roleplay-mvu-opening-js",
-      "source": "lib/core/roleplay-mvu-opening.js"
+      "source": "lib/core/roleplay-mvu-opening.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-opening.js"
+      ]
     },
     {
       "id": "roleplay-mvu-opening-typescript",
@@ -5618,7 +5994,10 @@
     },
     {
       "id": "roleplay-mvu-player-facts-js",
-      "source": "lib/core/roleplay-mvu-player-facts.js"
+      "source": "lib/core/roleplay-mvu-player-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-player-facts.js"
+      ]
     },
     {
       "id": "roleplay-mvu-player-facts-typescript",
@@ -5626,11 +6005,17 @@
     },
     {
       "id": "roleplay-mvu-player-js",
-      "source": "lib/core/roleplay-mvu-player.js"
+      "source": "lib/core/roleplay-mvu-player.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-player.js"
+      ]
     },
     {
       "id": "roleplay-mvu-player-records-js",
-      "source": "lib/core/roleplay-mvu-player-records.js"
+      "source": "lib/core/roleplay-mvu-player-records.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-player-records.js"
+      ]
     },
     {
       "id": "roleplay-mvu-player-records-typescript",
@@ -5638,7 +6023,10 @@
     },
     {
       "id": "roleplay-mvu-player-routes-js",
-      "source": "lib/core/roleplay-mvu-player-routes.js"
+      "source": "lib/core/roleplay-mvu-player-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-player-routes.js"
+      ]
     },
     {
       "id": "roleplay-mvu-player-routes-typescript",
@@ -5646,7 +6034,10 @@
     },
     {
       "id": "roleplay-mvu-player-types-js",
-      "source": "lib/core/roleplay-mvu-player-types.js"
+      "source": "lib/core/roleplay-mvu-player-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-player-types.js"
+      ]
     },
     {
       "id": "roleplay-mvu-player-types-typescript",
@@ -5658,7 +6049,10 @@
     },
     {
       "id": "roleplay-mvu-prefix-facts-js",
-      "source": "lib/core/roleplay-mvu-prefix-facts.js"
+      "source": "lib/core/roleplay-mvu-prefix-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-prefix-facts.js"
+      ]
     },
     {
       "id": "roleplay-mvu-prefix-facts-typescript",
@@ -5666,7 +6060,10 @@
     },
     {
       "id": "roleplay-mvu-prefix-ledger-js",
-      "source": "lib/core/roleplay-mvu-prefix-ledger.js"
+      "source": "lib/core/roleplay-mvu-prefix-ledger.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-prefix-ledger.js"
+      ]
     },
     {
       "id": "roleplay-mvu-prefix-ledger-typescript",
@@ -5674,7 +6071,10 @@
     },
     {
       "id": "roleplay-mvu-prompt-numerical-facts-js",
-      "source": "lib/core/roleplay-mvu-prompt-numerical-facts.js"
+      "source": "lib/core/roleplay-mvu-prompt-numerical-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-prompt-numerical-facts.js"
+      ]
     },
     {
       "id": "roleplay-mvu-prompt-numerical-facts-typescript",
@@ -5682,7 +6082,10 @@
     },
     {
       "id": "roleplay-mvu-schema-assets-js",
-      "source": "lib/core/roleplay-mvu-schema-assets.js"
+      "source": "lib/core/roleplay-mvu-schema-assets.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-assets.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-assets-typescript",
@@ -5690,7 +6093,10 @@
     },
     {
       "id": "roleplay-mvu-schema-core-js",
-      "source": "lib/core/roleplay-mvu-schema-core.js"
+      "source": "lib/core/roleplay-mvu-schema-core.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-core.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-core-typescript",
@@ -5698,11 +6104,17 @@
     },
     {
       "id": "roleplay-mvu-schema-derived-js",
-      "source": "lib/core/roleplay-mvu-schema-derived.js"
+      "source": "lib/core/roleplay-mvu-schema-derived.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-derived.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-derived-types-js",
-      "source": "lib/core/roleplay-mvu-schema-derived-types.js"
+      "source": "lib/core/roleplay-mvu-schema-derived-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-derived-types.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-derived-types-typescript",
@@ -5714,7 +6126,10 @@
     },
     {
       "id": "roleplay-mvu-schema-descriptor-data-js",
-      "source": "lib/core/roleplay-mvu-schema-descriptor-data.js"
+      "source": "lib/core/roleplay-mvu-schema-descriptor-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-descriptor-data.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-descriptor-data-typescript",
@@ -5722,7 +6137,10 @@
     },
     {
       "id": "roleplay-mvu-schema-executor-types-generated",
-      "source": "lib/core/roleplay-mvu-schema-executor-types.js"
+      "source": "lib/core/roleplay-mvu-schema-executor-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-executor-types.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-executor-types-typescript",
@@ -5730,7 +6148,10 @@
     },
     {
       "id": "roleplay-mvu-schema-frozen-prefix-input-js",
-      "source": "lib/core/roleplay-mvu-schema-frozen-prefix-input.js"
+      "source": "lib/core/roleplay-mvu-schema-frozen-prefix-input.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-frozen-prefix-input.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-frozen-prefix-input-typescript",
@@ -5738,7 +6159,10 @@
     },
     {
       "id": "roleplay-mvu-schema-history-tail-js",
-      "source": "lib/core/roleplay-mvu-schema-history-tail.js"
+      "source": "lib/core/roleplay-mvu-schema-history-tail.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-history-tail.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-history-tail-typescript",
@@ -5746,7 +6170,10 @@
     },
     {
       "id": "roleplay-mvu-schema-journal-js",
-      "source": "lib/core/roleplay-mvu-schema-journal.js"
+      "source": "lib/core/roleplay-mvu-schema-journal.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-journal.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-journal-typescript",
@@ -5754,11 +6181,17 @@
     },
     {
       "id": "roleplay-mvu-schema-opening-js",
-      "source": "lib/core/roleplay-mvu-schema-opening.js"
+      "source": "lib/core/roleplay-mvu-schema-opening.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-opening.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-opening-types-js",
-      "source": "lib/core/roleplay-mvu-schema-opening-types.js"
+      "source": "lib/core/roleplay-mvu-schema-opening-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-opening-types.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-opening-types-typescript",
@@ -5770,7 +6203,10 @@
     },
     {
       "id": "roleplay-mvu-schema-player-core-js",
-      "source": "lib/core/roleplay-mvu-schema-player-core.js"
+      "source": "lib/core/roleplay-mvu-schema-player-core.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-player-core.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-player-core-typescript",
@@ -5778,11 +6214,17 @@
     },
     {
       "id": "roleplay-mvu-schema-player-js",
-      "source": "lib/core/roleplay-mvu-schema-player.js"
+      "source": "lib/core/roleplay-mvu-schema-player.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-player.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-player-types-js",
-      "source": "lib/core/roleplay-mvu-schema-player-types.js"
+      "source": "lib/core/roleplay-mvu-schema-player-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-player-types.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-player-types-typescript",
@@ -5794,7 +6236,10 @@
     },
     {
       "id": "roleplay-mvu-schema-prefix-facts-js",
-      "source": "lib/core/roleplay-mvu-schema-prefix-facts.js"
+      "source": "lib/core/roleplay-mvu-schema-prefix-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-prefix-facts.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-prefix-facts-typescript",
@@ -5802,7 +6247,10 @@
     },
     {
       "id": "roleplay-mvu-schema-replay-js",
-      "source": "lib/core/roleplay-mvu-schema-replay.js"
+      "source": "lib/core/roleplay-mvu-schema-replay.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-replay.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-replay-typescript",
@@ -5810,7 +6258,10 @@
     },
     {
       "id": "roleplay-mvu-schema-scope-facts-js",
-      "source": "lib/core/roleplay-mvu-schema-scope-facts.js"
+      "source": "lib/core/roleplay-mvu-schema-scope-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-scope-facts.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-scope-facts-typescript",
@@ -5818,7 +6269,10 @@
     },
     {
       "id": "roleplay-mvu-schema-source-js",
-      "source": "lib/core/roleplay-mvu-schema-source.js"
+      "source": "lib/core/roleplay-mvu-schema-source.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-source.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-source-typescript",
@@ -5826,7 +6280,10 @@
     },
     {
       "id": "roleplay-mvu-schema-story-core-js",
-      "source": "lib/core/roleplay-mvu-schema-story-core.js"
+      "source": "lib/core/roleplay-mvu-schema-story-core.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-story-core.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-story-core-typescript",
@@ -5834,11 +6291,17 @@
     },
     {
       "id": "roleplay-mvu-schema-story-js",
-      "source": "lib/core/roleplay-mvu-schema-story.js"
+      "source": "lib/core/roleplay-mvu-schema-story.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-story.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-story-types-js",
-      "source": "lib/core/roleplay-mvu-schema-story-types.js"
+      "source": "lib/core/roleplay-mvu-schema-story-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-schema-story-types.js"
+      ]
     },
     {
       "id": "roleplay-mvu-schema-story-types-typescript",
@@ -5850,11 +6313,17 @@
     },
     {
       "id": "roleplay-mvu-source-js",
-      "source": "lib/core/roleplay-mvu-source.js"
+      "source": "lib/core/roleplay-mvu-source.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-source.js"
+      ]
     },
     {
       "id": "roleplay-mvu-source-policy-js",
-      "source": "lib/core/roleplay-mvu-source-policy.js"
+      "source": "lib/core/roleplay-mvu-source-policy.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-source-policy.js"
+      ]
     },
     {
       "id": "roleplay-mvu-source-policy-typescript",
@@ -5866,7 +6335,10 @@
     },
     {
       "id": "roleplay-mvu-state-js",
-      "source": "lib/core/roleplay-mvu-state.js"
+      "source": "lib/core/roleplay-mvu-state.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-state.js"
+      ]
     },
     {
       "id": "roleplay-mvu-state-typescript",
@@ -5874,7 +6346,10 @@
     },
     {
       "id": "roleplay-mvu-story-js",
-      "source": "lib/core/roleplay-mvu-story.js"
+      "source": "lib/core/roleplay-mvu-story.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-story.js"
+      ]
     },
     {
       "id": "roleplay-mvu-story-typescript",
@@ -5882,7 +6357,10 @@
     },
     {
       "id": "roleplay-mvu-update-js",
-      "source": "lib/core/roleplay-mvu-update.js"
+      "source": "lib/core/roleplay-mvu-update.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-update.js"
+      ]
     },
     {
       "id": "roleplay-mvu-update-typescript",
@@ -5890,7 +6368,10 @@
     },
     {
       "id": "roleplay-mvu-update-v2-js",
-      "source": "lib/core/roleplay-mvu-update-v2.js"
+      "source": "lib/core/roleplay-mvu-update-v2.js",
+      "aliases": [
+        "preset/lib/core/roleplay-mvu-update-v2.js"
+      ]
     },
     {
       "id": "roleplay-mvu-update-v2-typescript",
@@ -5902,7 +6383,10 @@
     },
     {
       "id": "roleplay-native-card-export-js",
-      "source": "lib/core/roleplay-native-card-export.js"
+      "source": "lib/core/roleplay-native-card-export.js",
+      "aliases": [
+        "preset/lib/core/roleplay-native-card-export.js"
+      ]
     },
     {
       "id": "roleplay-native-card-export-typescript",
@@ -5910,7 +6394,10 @@
     },
     {
       "id": "roleplay-native-persona-types-js",
-      "source": "lib/core/roleplay-native-persona-types.js"
+      "source": "lib/core/roleplay-native-persona-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-native-persona-types.js"
+      ]
     },
     {
       "id": "roleplay-native-persona-types-typescript",
@@ -5918,7 +6405,10 @@
     },
     {
       "id": "roleplay-opening-material-js",
-      "source": "lib/core/roleplay-opening-material.js"
+      "source": "lib/core/roleplay-opening-material.js",
+      "aliases": [
+        "preset/lib/core/roleplay-opening-material.js"
+      ]
     },
     {
       "id": "roleplay-opening-material-typescript",
@@ -5926,7 +6416,10 @@
     },
     {
       "id": "roleplay-opening-routes",
-      "source": "lib/core/roleplay-opening-routes.js"
+      "source": "lib/core/roleplay-opening-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-opening-routes.js"
+      ]
     },
     {
       "id": "roleplay-opening-routes-typescript",
@@ -5934,7 +6427,10 @@
     },
     {
       "id": "roleplay-opening-selection",
-      "source": "lib/core/roleplay-opening-selection.js"
+      "source": "lib/core/roleplay-opening-selection.js",
+      "aliases": [
+        "preset/lib/core/roleplay-opening-selection.js"
+      ]
     },
     {
       "id": "roleplay-opening-selection-typescript",
@@ -5942,11 +6438,17 @@
     },
     {
       "id": "roleplay-panel-routes",
-      "source": "lib/core/roleplay-panel-routes.js"
+      "source": "lib/core/roleplay-panel-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-panel-routes.js"
+      ]
     },
     {
       "id": "roleplay-panel-routes-types",
-      "source": "lib/core/roleplay-panel-routes-types.js"
+      "source": "lib/core/roleplay-panel-routes-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-panel-routes-types.js"
+      ]
     },
     {
       "id": "roleplay-panel-routes-types-typescript",
@@ -5958,7 +6460,10 @@
     },
     {
       "id": "roleplay-phase-a-row-facts-js",
-      "source": "lib/core/roleplay-phase-a-row-facts.js"
+      "source": "lib/core/roleplay-phase-a-row-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-phase-a-row-facts.js"
+      ]
     },
     {
       "id": "roleplay-phase-a-row-facts-typescript",
@@ -5966,11 +6471,17 @@
     },
     {
       "id": "roleplay-preparation",
-      "source": "lib/core/roleplay-preparation.js"
+      "source": "lib/core/roleplay-preparation.js",
+      "aliases": [
+        "preset/lib/core/roleplay-preparation.js"
+      ]
     },
     {
       "id": "roleplay-preparation-types",
-      "source": "lib/core/roleplay-preparation-types.js"
+      "source": "lib/core/roleplay-preparation-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-preparation-types.js"
+      ]
     },
     {
       "id": "roleplay-preparation-types-typescript",
@@ -5990,7 +6501,10 @@
     },
     {
       "id": "roleplay-program-absence-branch-controls-js",
-      "source": "lib/core/roleplay-program-absence-branch-controls.js"
+      "source": "lib/core/roleplay-program-absence-branch-controls.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-absence-branch-controls.js"
+      ]
     },
     {
       "id": "roleplay-program-absence-branch-controls-typescript",
@@ -5998,7 +6512,10 @@
     },
     {
       "id": "roleplay-program-absence-inheritance-data-js",
-      "source": "lib/core/roleplay-program-absence-inheritance-data.js"
+      "source": "lib/core/roleplay-program-absence-inheritance-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-absence-inheritance-data.js"
+      ]
     },
     {
       "id": "roleplay-program-absence-inheritance-data-typescript",
@@ -6006,7 +6523,10 @@
     },
     {
       "id": "roleplay-program-absence-inventory-js",
-      "source": "lib/core/roleplay-program-absence-inventory.js"
+      "source": "lib/core/roleplay-program-absence-inventory.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-absence-inventory.js"
+      ]
     },
     {
       "id": "roleplay-program-absence-inventory-typescript",
@@ -6014,7 +6534,10 @@
     },
     {
       "id": "roleplay-program-absence-material-facts-js",
-      "source": "lib/core/roleplay-program-absence-material-facts.js"
+      "source": "lib/core/roleplay-program-absence-material-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-absence-material-facts.js"
+      ]
     },
     {
       "id": "roleplay-program-absence-material-facts-typescript",
@@ -6022,7 +6545,10 @@
     },
     {
       "id": "roleplay-program-absence-mutable-controls-js",
-      "source": "lib/core/roleplay-program-absence-mutable-controls.js"
+      "source": "lib/core/roleplay-program-absence-mutable-controls.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-absence-mutable-controls.js"
+      ]
     },
     {
       "id": "roleplay-program-absence-mutable-controls-typescript",
@@ -6030,7 +6556,10 @@
     },
     {
       "id": "roleplay-program-copy-span-js",
-      "source": "lib/core/roleplay-program-copy-span.js"
+      "source": "lib/core/roleplay-program-copy-span.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-copy-span.js"
+      ]
     },
     {
       "id": "roleplay-program-copy-span-typescript",
@@ -6038,7 +6567,10 @@
     },
     {
       "id": "roleplay-program-genesis-data-js",
-      "source": "lib/core/roleplay-program-genesis-data.js"
+      "source": "lib/core/roleplay-program-genesis-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-genesis-data.js"
+      ]
     },
     {
       "id": "roleplay-program-genesis-data-typescript",
@@ -6046,7 +6578,10 @@
     },
     {
       "id": "roleplay-program-genesis-publisher-js",
-      "source": "lib/core/roleplay-program-genesis-publisher.js"
+      "source": "lib/core/roleplay-program-genesis-publisher.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-genesis-publisher.js"
+      ]
     },
     {
       "id": "roleplay-program-genesis-publisher-typescript",
@@ -6054,7 +6589,10 @@
     },
     {
       "id": "roleplay-program-genesis-types-js",
-      "source": "lib/core/roleplay-program-genesis-types.js"
+      "source": "lib/core/roleplay-program-genesis-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-genesis-types.js"
+      ]
     },
     {
       "id": "roleplay-program-genesis-types-typescript",
@@ -6062,7 +6600,10 @@
     },
     {
       "id": "roleplay-program-inherited-absence-js",
-      "source": "lib/core/roleplay-program-inherited-absence.js"
+      "source": "lib/core/roleplay-program-inherited-absence.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-inherited-absence.js"
+      ]
     },
     {
       "id": "roleplay-program-inherited-absence-typescript",
@@ -6070,7 +6611,10 @@
     },
     {
       "id": "roleplay-program-native-reader-js",
-      "source": "lib/core/roleplay-program-native-reader.js"
+      "source": "lib/core/roleplay-program-native-reader.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-native-reader.js"
+      ]
     },
     {
       "id": "roleplay-program-native-reader-typescript",
@@ -6078,11 +6622,17 @@
     },
     {
       "id": "roleplay-program-opening-basis-js",
-      "source": "lib/core/roleplay-program-opening-basis.js"
+      "source": "lib/core/roleplay-program-opening-basis.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-opening-basis.js"
+      ]
     },
     {
       "id": "roleplay-program-opening-basis-types-js",
-      "source": "lib/core/roleplay-program-opening-basis-types.js"
+      "source": "lib/core/roleplay-program-opening-basis-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-opening-basis-types.js"
+      ]
     },
     {
       "id": "roleplay-program-opening-basis-types-typescript",
@@ -6094,7 +6644,10 @@
     },
     {
       "id": "roleplay-program-opening-core-js",
-      "source": "lib/core/roleplay-program-opening-core.js"
+      "source": "lib/core/roleplay-program-opening-core.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-opening-core.js"
+      ]
     },
     {
       "id": "roleplay-program-opening-core-typescript",
@@ -6102,7 +6655,10 @@
     },
     {
       "id": "roleplay-program-opening-history-js",
-      "source": "lib/core/roleplay-program-opening-history.js"
+      "source": "lib/core/roleplay-program-opening-history.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-opening-history.js"
+      ]
     },
     {
       "id": "roleplay-program-opening-history-typescript",
@@ -6110,11 +6666,17 @@
     },
     {
       "id": "roleplay-program-opening-js",
-      "source": "lib/core/roleplay-program-opening.js"
+      "source": "lib/core/roleplay-program-opening.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-opening.js"
+      ]
     },
     {
       "id": "roleplay-program-opening-prompt-scopes-types-js",
-      "source": "lib/core/roleplay-program-opening-prompt-scopes-types.js"
+      "source": "lib/core/roleplay-program-opening-prompt-scopes-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-opening-prompt-scopes-types.js"
+      ]
     },
     {
       "id": "roleplay-program-opening-prompt-scopes-types-typescript",
@@ -6122,7 +6684,10 @@
     },
     {
       "id": "roleplay-program-opening-records-js",
-      "source": "lib/core/roleplay-program-opening-records.js"
+      "source": "lib/core/roleplay-program-opening-records.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-opening-records.js"
+      ]
     },
     {
       "id": "roleplay-program-opening-records-typescript",
@@ -6130,7 +6695,10 @@
     },
     {
       "id": "roleplay-program-opening-row-facts-js",
-      "source": "lib/core/roleplay-program-opening-row-facts.js"
+      "source": "lib/core/roleplay-program-opening-row-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-program-opening-row-facts.js"
+      ]
     },
     {
       "id": "roleplay-program-opening-row-facts-typescript",
@@ -6142,7 +6710,10 @@
     },
     {
       "id": "roleplay-prompt-opening-source-data-js",
-      "source": "lib/core/roleplay-prompt-opening-source-data.js"
+      "source": "lib/core/roleplay-prompt-opening-source-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-opening-source-data.js"
+      ]
     },
     {
       "id": "roleplay-prompt-opening-source-data-typescript",
@@ -6150,11 +6721,17 @@
     },
     {
       "id": "roleplay-prompt-opening-source-js",
-      "source": "lib/core/roleplay-prompt-opening-source.js"
+      "source": "lib/core/roleplay-prompt-opening-source.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-opening-source.js"
+      ]
     },
     {
       "id": "roleplay-prompt-opening-source-types-js",
-      "source": "lib/core/roleplay-prompt-opening-source-types.js"
+      "source": "lib/core/roleplay-prompt-opening-source-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-opening-source-types.js"
+      ]
     },
     {
       "id": "roleplay-prompt-opening-source-types-typescript",
@@ -6166,11 +6743,17 @@
     },
     {
       "id": "roleplay-prompt-program-source-js",
-      "source": "lib/core/roleplay-prompt-program-source.js"
+      "source": "lib/core/roleplay-prompt-program-source.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-program-source.js"
+      ]
     },
     {
       "id": "roleplay-prompt-program-source-types-js",
-      "source": "lib/core/roleplay-prompt-program-source-types.js"
+      "source": "lib/core/roleplay-prompt-program-source-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-program-source-types.js"
+      ]
     },
     {
       "id": "roleplay-prompt-program-source-types-typescript",
@@ -6182,7 +6765,10 @@
     },
     {
       "id": "roleplay-prompt-template-inherited-source-js",
-      "source": "lib/core/roleplay-prompt-template-inherited-source.js"
+      "source": "lib/core/roleplay-prompt-template-inherited-source.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-template-inherited-source.js"
+      ]
     },
     {
       "id": "roleplay-prompt-template-inherited-source-typescript",
@@ -6190,7 +6776,10 @@
     },
     {
       "id": "roleplay-prompt-template-only-data-js",
-      "source": "lib/core/roleplay-prompt-template-only-data.js"
+      "source": "lib/core/roleplay-prompt-template-only-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-template-only-data.js"
+      ]
     },
     {
       "id": "roleplay-prompt-template-only-data-typescript",
@@ -6198,7 +6787,10 @@
     },
     {
       "id": "roleplay-prompt-template-only-origins-js",
-      "source": "lib/core/roleplay-prompt-template-only-origins.js"
+      "source": "lib/core/roleplay-prompt-template-only-origins.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-template-only-origins.js"
+      ]
     },
     {
       "id": "roleplay-prompt-template-only-origins-typescript",
@@ -6206,7 +6798,10 @@
     },
     {
       "id": "roleplay-prompt-template-only-source-js",
-      "source": "lib/core/roleplay-prompt-template-only-source.js"
+      "source": "lib/core/roleplay-prompt-template-only-source.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-template-only-source.js"
+      ]
     },
     {
       "id": "roleplay-prompt-template-only-source-typescript",
@@ -6214,7 +6809,10 @@
     },
     {
       "id": "roleplay-prompt-template-only-types-js",
-      "source": "lib/core/roleplay-prompt-template-only-types.js"
+      "source": "lib/core/roleplay-prompt-template-only-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-prompt-template-only-types.js"
+      ]
     },
     {
       "id": "roleplay-prompt-template-only-types-typescript",
@@ -6230,11 +6828,17 @@
     },
     {
       "id": "roleplay-resource-bridge",
-      "source": "lib/core/roleplay-resource-bridge.js"
+      "source": "lib/core/roleplay-resource-bridge.js",
+      "aliases": [
+        "preset/lib/core/roleplay-resource-bridge.js"
+      ]
     },
     {
       "id": "roleplay-resource-bridge-types",
-      "source": "lib/core/roleplay-resource-bridge-types.js"
+      "source": "lib/core/roleplay-resource-bridge-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-resource-bridge-types.js"
+      ]
     },
     {
       "id": "roleplay-resource-bridge-types-typescript",
@@ -6250,11 +6854,17 @@
     },
     {
       "id": "roleplay-service",
-      "source": "lib/core/roleplay-service.js"
+      "source": "lib/core/roleplay-service.js",
+      "aliases": [
+        "preset/lib/core/roleplay-service.js"
+      ]
     },
     {
       "id": "roleplay-service-types",
-      "source": "lib/core/roleplay-service-types.js"
+      "source": "lib/core/roleplay-service-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-service-types.js"
+      ]
     },
     {
       "id": "roleplay-service-types-typescript",
@@ -6266,11 +6876,17 @@
     },
     {
       "id": "roleplay-session-actions",
-      "source": "lib/core/roleplay-session-actions.js"
+      "source": "lib/core/roleplay-session-actions.js",
+      "aliases": [
+        "preset/lib/core/roleplay-session-actions.js"
+      ]
     },
     {
       "id": "roleplay-session-actions-types",
-      "source": "lib/core/roleplay-session-actions-types.js"
+      "source": "lib/core/roleplay-session-actions-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-session-actions-types.js"
+      ]
     },
     {
       "id": "roleplay-session-actions-types-typescript",
@@ -6282,7 +6898,10 @@
     },
     {
       "id": "roleplay-setting-store",
-      "source": "lib/core/roleplay-setting-store.js"
+      "source": "lib/core/roleplay-setting-store.js",
+      "aliases": [
+        "preset/lib/core/roleplay-setting-store.js"
+      ]
     },
     {
       "id": "roleplay-setting-store-typescript",
@@ -6290,7 +6909,10 @@
     },
     {
       "id": "roleplay-setting-tools",
-      "source": "lib/core/roleplay-setting-tools.js"
+      "source": "lib/core/roleplay-setting-tools.js",
+      "aliases": [
+        "preset/lib/core/roleplay-setting-tools.js"
+      ]
     },
     {
       "id": "roleplay-setting-tools-typescript",
@@ -6298,11 +6920,17 @@
     },
     {
       "id": "roleplay-settings-routes",
-      "source": "lib/core/roleplay-settings-routes.js"
+      "source": "lib/core/roleplay-settings-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-settings-routes.js"
+      ]
     },
     {
       "id": "roleplay-settings-routes-types",
-      "source": "lib/core/roleplay-settings-routes-types.js"
+      "source": "lib/core/roleplay-settings-routes-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-settings-routes-types.js"
+      ]
     },
     {
       "id": "roleplay-settings-routes-types-typescript",
@@ -6314,7 +6942,10 @@
     },
     {
       "id": "roleplay-source-lock-js",
-      "source": "lib/core/roleplay-source-lock.js"
+      "source": "lib/core/roleplay-source-lock.js",
+      "aliases": [
+        "preset/lib/core/roleplay-source-lock.js"
+      ]
     },
     {
       "id": "roleplay-source-lock-typescript",
@@ -6322,11 +6953,17 @@
     },
     {
       "id": "roleplay-state",
-      "source": "lib/core/roleplay-state.js"
+      "source": "lib/core/roleplay-state.js",
+      "aliases": [
+        "preset/lib/core/roleplay-state.js"
+      ]
     },
     {
       "id": "roleplay-state-types",
-      "source": "lib/core/roleplay-state-types.js"
+      "source": "lib/core/roleplay-state-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-state-types.js"
+      ]
     },
     {
       "id": "roleplay-state-types-typescript",
@@ -6338,11 +6975,17 @@
     },
     {
       "id": "roleplay-status",
-      "source": "lib/core/roleplay-status.js"
+      "source": "lib/core/roleplay-status.js",
+      "aliases": [
+        "preset/lib/core/roleplay-status.js"
+      ]
     },
     {
       "id": "roleplay-status-control-facts-js",
-      "source": "lib/core/roleplay-status-control-facts.js"
+      "source": "lib/core/roleplay-status-control-facts.js",
+      "aliases": [
+        "preset/lib/core/roleplay-status-control-facts.js"
+      ]
     },
     {
       "id": "roleplay-status-control-facts-typescript",
@@ -6350,7 +6993,10 @@
     },
     {
       "id": "roleplay-status-presentation",
-      "source": "lib/core/roleplay-status-presentation.js"
+      "source": "lib/core/roleplay-status-presentation.js",
+      "aliases": [
+        "preset/lib/core/roleplay-status-presentation.js"
+      ]
     },
     {
       "id": "roleplay-status-presentation-typescript",
@@ -6358,7 +7004,10 @@
     },
     {
       "id": "roleplay-status-types",
-      "source": "lib/core/roleplay-status-types.js"
+      "source": "lib/core/roleplay-status-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-status-types.js"
+      ]
     },
     {
       "id": "roleplay-status-types-typescript",
@@ -6370,11 +7019,17 @@
     },
     {
       "id": "roleplay-task-host",
-      "source": "lib/core/roleplay-task-host.js"
+      "source": "lib/core/roleplay-task-host.js",
+      "aliases": [
+        "preset/lib/core/roleplay-task-host.js"
+      ]
     },
     {
       "id": "roleplay-task-host-types",
-      "source": "lib/core/roleplay-task-host-types.js"
+      "source": "lib/core/roleplay-task-host-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-task-host-types.js"
+      ]
     },
     {
       "id": "roleplay-task-host-types-typescript",
@@ -6386,11 +7041,17 @@
     },
     {
       "id": "roleplay-task-tools",
-      "source": "lib/core/roleplay-task-tools.js"
+      "source": "lib/core/roleplay-task-tools.js",
+      "aliases": [
+        "preset/lib/core/roleplay-task-tools.js"
+      ]
     },
     {
       "id": "roleplay-task-tools-types",
-      "source": "lib/core/roleplay-task-tools-types.js"
+      "source": "lib/core/roleplay-task-tools-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-task-tools-types.js"
+      ]
     },
     {
       "id": "roleplay-task-tools-types-typescript",
@@ -6402,7 +7063,10 @@
     },
     {
       "id": "roleplay-tavern-chat-clock-js",
-      "source": "lib/core/roleplay-tavern-chat-clock.js"
+      "source": "lib/core/roleplay-tavern-chat-clock.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-chat-clock.js"
+      ]
     },
     {
       "id": "roleplay-tavern-chat-clock-typescript",
@@ -6410,7 +7074,10 @@
     },
     {
       "id": "roleplay-tavern-current-overlay-js",
-      "source": "lib/core/roleplay-tavern-current-overlay.js"
+      "source": "lib/core/roleplay-tavern-current-overlay.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-current-overlay.js"
+      ]
     },
     {
       "id": "roleplay-tavern-current-overlay-typescript",
@@ -6418,7 +7085,10 @@
     },
     {
       "id": "roleplay-tavern-injection-definitions-js",
-      "source": "lib/core/roleplay-tavern-injection-definitions.js"
+      "source": "lib/core/roleplay-tavern-injection-definitions.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-injection-definitions.js"
+      ]
     },
     {
       "id": "roleplay-tavern-injection-definitions-typescript",
@@ -6426,7 +7096,10 @@
     },
     {
       "id": "roleplay-tavern-injections-js",
-      "source": "lib/core/roleplay-tavern-injections.js"
+      "source": "lib/core/roleplay-tavern-injections.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-injections.js"
+      ]
     },
     {
       "id": "roleplay-tavern-injections-typescript",
@@ -6434,7 +7107,10 @@
     },
     {
       "id": "roleplay-tavern-layout-js",
-      "source": "lib/core/roleplay-tavern-layout.js"
+      "source": "lib/core/roleplay-tavern-layout.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-layout.js"
+      ]
     },
     {
       "id": "roleplay-tavern-layout-typescript",
@@ -6442,7 +7118,10 @@
     },
     {
       "id": "roleplay-tavern-legacy-reading-js",
-      "source": "lib/core/roleplay-tavern-legacy-reading.js"
+      "source": "lib/core/roleplay-tavern-legacy-reading.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-legacy-reading.js"
+      ]
     },
     {
       "id": "roleplay-tavern-legacy-reading-typescript",
@@ -6450,7 +7129,10 @@
     },
     {
       "id": "roleplay-tavern-legacy-write-target-types-js",
-      "source": "lib/core/roleplay-tavern-legacy-write-target-types.js"
+      "source": "lib/core/roleplay-tavern-legacy-write-target-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-legacy-write-target-types.js"
+      ]
     },
     {
       "id": "roleplay-tavern-legacy-write-target-types-typescript",
@@ -6458,7 +7140,10 @@
     },
     {
       "id": "roleplay-tavern-lore-contributions-js",
-      "source": "lib/core/roleplay-tavern-lore-contributions.js"
+      "source": "lib/core/roleplay-tavern-lore-contributions.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-contributions.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-contributions-typescript",
@@ -6466,7 +7151,10 @@
     },
     {
       "id": "roleplay-tavern-lore-data-js",
-      "source": "lib/core/roleplay-tavern-lore-data.js"
+      "source": "lib/core/roleplay-tavern-lore-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-data.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-data-typescript",
@@ -6474,7 +7162,10 @@
     },
     {
       "id": "roleplay-tavern-lore-editor-routes-js",
-      "source": "lib/core/roleplay-tavern-lore-editor-routes.js"
+      "source": "lib/core/roleplay-tavern-lore-editor-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-editor-routes.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-editor-routes-typescript",
@@ -6482,7 +7173,10 @@
     },
     {
       "id": "roleplay-tavern-lore-editor-types-js",
-      "source": "lib/core/roleplay-tavern-lore-editor-types.js"
+      "source": "lib/core/roleplay-tavern-lore-editor-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-editor-types.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-editor-types-typescript",
@@ -6490,7 +7184,10 @@
     },
     {
       "id": "roleplay-tavern-lore-edits-data-js",
-      "source": "lib/core/roleplay-tavern-lore-edits-data.js"
+      "source": "lib/core/roleplay-tavern-lore-edits-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-edits-data.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-edits-data-typescript",
@@ -6498,7 +7195,10 @@
     },
     {
       "id": "roleplay-tavern-lore-edits-journal-js",
-      "source": "lib/core/roleplay-tavern-lore-edits-journal.js"
+      "source": "lib/core/roleplay-tavern-lore-edits-journal.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-edits-journal.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-edits-journal-typescript",
@@ -6506,11 +7206,17 @@
     },
     {
       "id": "roleplay-tavern-lore-edits-js",
-      "source": "lib/core/roleplay-tavern-lore-edits.js"
+      "source": "lib/core/roleplay-tavern-lore-edits.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-edits.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-edits-types-js",
-      "source": "lib/core/roleplay-tavern-lore-edits-types.js"
+      "source": "lib/core/roleplay-tavern-lore-edits-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-edits-types.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-edits-types-typescript",
@@ -6522,7 +7228,10 @@
     },
     {
       "id": "roleplay-tavern-lore-export-js",
-      "source": "lib/core/roleplay-tavern-lore-export.js"
+      "source": "lib/core/roleplay-tavern-lore-export.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-export.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-export-typescript",
@@ -6530,7 +7239,10 @@
     },
     {
       "id": "roleplay-tavern-lore-membership-js",
-      "source": "lib/core/roleplay-tavern-lore-membership.js"
+      "source": "lib/core/roleplay-tavern-lore-membership.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-membership.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-membership-typescript",
@@ -6538,11 +7250,17 @@
     },
     {
       "id": "roleplay-tavern-lore-source-js",
-      "source": "lib/core/roleplay-tavern-lore-source.js"
+      "source": "lib/core/roleplay-tavern-lore-source.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-source.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-source-types-js",
-      "source": "lib/core/roleplay-tavern-lore-source-types.js"
+      "source": "lib/core/roleplay-tavern-lore-source-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-source-types.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-source-types-typescript",
@@ -6554,7 +7272,10 @@
     },
     {
       "id": "roleplay-tavern-lore-timed-history-js",
-      "source": "lib/core/roleplay-tavern-lore-timed-history.js"
+      "source": "lib/core/roleplay-tavern-lore-timed-history.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-timed-history.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-timed-history-typescript",
@@ -6562,7 +7283,10 @@
     },
     {
       "id": "roleplay-tavern-lore-timed-lineage-js",
-      "source": "lib/core/roleplay-tavern-lore-timed-lineage.js"
+      "source": "lib/core/roleplay-tavern-lore-timed-lineage.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-lore-timed-lineage.js"
+      ]
     },
     {
       "id": "roleplay-tavern-lore-timed-lineage-typescript",
@@ -6570,7 +7294,10 @@
     },
     {
       "id": "roleplay-tavern-material-history-js",
-      "source": "lib/core/roleplay-tavern-material-history.js"
+      "source": "lib/core/roleplay-tavern-material-history.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-material-history.js"
+      ]
     },
     {
       "id": "roleplay-tavern-material-history-typescript",
@@ -6578,11 +7305,17 @@
     },
     {
       "id": "roleplay-tavern-prompt-initial-js",
-      "source": "lib/core/roleplay-tavern-prompt-initial.js"
+      "source": "lib/core/roleplay-tavern-prompt-initial.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-initial.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-initial-types-js",
-      "source": "lib/core/roleplay-tavern-prompt-initial-types.js"
+      "source": "lib/core/roleplay-tavern-prompt-initial-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-initial-types.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-initial-types-typescript",
@@ -6594,11 +7327,17 @@
     },
     {
       "id": "roleplay-tavern-prompt-js",
-      "source": "lib/core/roleplay-tavern-prompt.js"
+      "source": "lib/core/roleplay-tavern-prompt.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-macros-js",
-      "source": "lib/core/roleplay-tavern-prompt-macros.js"
+      "source": "lib/core/roleplay-tavern-prompt-macros.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-macros.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-macros-typescript",
@@ -6606,7 +7345,10 @@
     },
     {
       "id": "roleplay-tavern-prompt-render-js",
-      "source": "lib/core/roleplay-tavern-prompt-render.js"
+      "source": "lib/core/roleplay-tavern-prompt-render.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-render.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-render-typescript",
@@ -6614,7 +7356,10 @@
     },
     {
       "id": "roleplay-tavern-prompt-scopes-js",
-      "source": "lib/core/roleplay-tavern-prompt-scopes.js"
+      "source": "lib/core/roleplay-tavern-prompt-scopes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-scopes.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-scopes-typescript",
@@ -6622,7 +7367,10 @@
     },
     {
       "id": "roleplay-tavern-prompt-source-js",
-      "source": "lib/core/roleplay-tavern-prompt-source.js"
+      "source": "lib/core/roleplay-tavern-prompt-source.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-source.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-source-typescript",
@@ -6634,7 +7382,10 @@
     },
     {
       "id": "roleplay-tavern-prompt-variables-data-js",
-      "source": "lib/core/roleplay-tavern-prompt-variables-data.js"
+      "source": "lib/core/roleplay-tavern-prompt-variables-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-variables-data.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-variables-data-typescript",
@@ -6642,11 +7393,17 @@
     },
     {
       "id": "roleplay-tavern-prompt-variables-js",
-      "source": "lib/core/roleplay-tavern-prompt-variables.js"
+      "source": "lib/core/roleplay-tavern-prompt-variables.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-variables.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-variables-message-js",
-      "source": "lib/core/roleplay-tavern-prompt-variables-message.js"
+      "source": "lib/core/roleplay-tavern-prompt-variables-message.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-variables-message.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-variables-message-typescript",
@@ -6654,7 +7411,10 @@
     },
     {
       "id": "roleplay-tavern-prompt-variables-types-js",
-      "source": "lib/core/roleplay-tavern-prompt-variables-types.js"
+      "source": "lib/core/roleplay-tavern-prompt-variables-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-variables-types.js"
+      ]
     },
     {
       "id": "roleplay-tavern-prompt-variables-types-typescript",
@@ -6666,7 +7426,10 @@
     },
     {
       "id": "roleplay-tavern-source-edit-baseline-js",
-      "source": "lib/core/roleplay-tavern-source-edit-baseline.js"
+      "source": "lib/core/roleplay-tavern-source-edit-baseline.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-source-edit-baseline.js"
+      ]
     },
     {
       "id": "roleplay-tavern-source-edit-baseline-typescript",
@@ -6674,7 +7437,10 @@
     },
     {
       "id": "roleplay-tavern-source-inheritance-data-js",
-      "source": "lib/core/roleplay-tavern-source-inheritance-data.js"
+      "source": "lib/core/roleplay-tavern-source-inheritance-data.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-source-inheritance-data.js"
+      ]
     },
     {
       "id": "roleplay-tavern-source-inheritance-data-typescript",
@@ -6682,11 +7448,17 @@
     },
     {
       "id": "roleplay-tavern-source-inheritance-js",
-      "source": "lib/core/roleplay-tavern-source-inheritance.js"
+      "source": "lib/core/roleplay-tavern-source-inheritance.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-source-inheritance.js"
+      ]
     },
     {
       "id": "roleplay-tavern-source-inheritance-storage-js",
-      "source": "lib/core/roleplay-tavern-source-inheritance-storage.js"
+      "source": "lib/core/roleplay-tavern-source-inheritance-storage.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-source-inheritance-storage.js"
+      ]
     },
     {
       "id": "roleplay-tavern-source-inheritance-storage-typescript",
@@ -6694,7 +7466,10 @@
     },
     {
       "id": "roleplay-tavern-source-inheritance-types-js",
-      "source": "lib/core/roleplay-tavern-source-inheritance-types.js"
+      "source": "lib/core/roleplay-tavern-source-inheritance-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-source-inheritance-types.js"
+      ]
     },
     {
       "id": "roleplay-tavern-source-inheritance-types-typescript",
@@ -6706,7 +7481,10 @@
     },
     {
       "id": "roleplay-tavern-source-recovery-js",
-      "source": "lib/core/roleplay-tavern-source-recovery.js"
+      "source": "lib/core/roleplay-tavern-source-recovery.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-source-recovery.js"
+      ]
     },
     {
       "id": "roleplay-tavern-source-recovery-typescript",
@@ -6714,7 +7492,10 @@
     },
     {
       "id": "roleplay-tavern-template-assets-generated",
-      "source": "lib/core/roleplay-tavern-template-assets.js"
+      "source": "lib/core/roleplay-tavern-template-assets.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-template-assets.js"
+      ]
     },
     {
       "id": "roleplay-tavern-template-assets-typescript",
@@ -6722,7 +7503,10 @@
     },
     {
       "id": "roleplay-tavern-token-count-js",
-      "source": "lib/core/roleplay-tavern-token-count.js"
+      "source": "lib/core/roleplay-tavern-token-count.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-token-count.js"
+      ]
     },
     {
       "id": "roleplay-tavern-token-count-typescript",
@@ -6730,11 +7514,17 @@
     },
     {
       "id": "roleplay-telemetry-routes",
-      "source": "lib/core/roleplay-telemetry-routes.js"
+      "source": "lib/core/roleplay-telemetry-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-telemetry-routes.js"
+      ]
     },
     {
       "id": "roleplay-telemetry-routes-types",
-      "source": "lib/core/roleplay-telemetry-routes-types.js"
+      "source": "lib/core/roleplay-telemetry-routes-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-telemetry-routes-types.js"
+      ]
     },
     {
       "id": "roleplay-telemetry-routes-types-typescript",
@@ -6766,7 +7556,11 @@
     },
     {
       "id": "roleplay-userinfo",
-      "source": "lib/core/roleplay-userinfo.js"
+      "source": "lib/core/roleplay-userinfo.js",
+      "aliases": [
+        "lib/roleplay-userinfo.js",
+        "preset/lib/core/roleplay-userinfo.js"
+      ]
     },
     {
       "id": "roleplay-userinfo-typescript",
@@ -6774,7 +7568,10 @@
     },
     {
       "id": "roleplay-worldline-surface",
-      "source": "lib/core/roleplay-worldline-surface.js"
+      "source": "lib/core/roleplay-worldline-surface.js",
+      "aliases": [
+        "preset/lib/core/roleplay-worldline-surface.js"
+      ]
     },
     {
       "id": "roleplay-worldline-surface-typescript",
@@ -6782,7 +7579,10 @@
     },
     {
       "id": "roleplay-worldline-types-js",
-      "source": "lib/core/roleplay-worldline-types.js"
+      "source": "lib/core/roleplay-worldline-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-worldline-types.js"
+      ]
     },
     {
       "id": "roleplay-worldline-types-typescript",
@@ -6790,7 +7590,10 @@
     },
     {
       "id": "roleplay-worldlines",
-      "source": "lib/core/roleplay-worldlines.js"
+      "source": "lib/core/roleplay-worldlines.js",
+      "aliases": [
+        "preset/lib/core/roleplay-worldlines.js"
+      ]
     },
     {
       "id": "roleplay-worldlines-typescript",
@@ -6890,7 +7693,10 @@
     },
     {
       "id": "session-history",
-      "source": "lib/core/session-history.js"
+      "source": "lib/core/session-history.js",
+      "aliases": [
+        "preset/lib/core/session-history.js"
+      ]
     },
     {
       "id": "session-history-typescript",
@@ -6978,7 +7784,11 @@
     },
     {
       "id": "status-template",
-      "source": "lib/status-template.js"
+      "source": "lib/status-template.js",
+      "aliases": [
+        "preset/lib/status-template.js",
+        "status-template.js"
+      ]
     },
     {
       "id": "status-template-public-ui",
@@ -7014,7 +7824,10 @@
     },
     {
       "id": "tavern-author-browser-adapter-v2-js",
-      "source": "lib/core/tavern-author-browser-adapter-v2.js"
+      "source": "lib/core/tavern-author-browser-adapter-v2.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-adapter-v2.js"
+      ]
     },
     {
       "id": "tavern-author-browser-adapter-v2-typescript",
@@ -7022,7 +7835,10 @@
     },
     {
       "id": "tavern-author-browser-adapter-v3-js",
-      "source": "lib/core/tavern-author-browser-adapter-v3.js"
+      "source": "lib/core/tavern-author-browser-adapter-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-adapter-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-adapter-v3-typescript",
@@ -7030,7 +7846,10 @@
     },
     {
       "id": "tavern-author-browser-artifact-generated",
-      "source": "lib/core/tavern-author-browser-artifact.mjs"
+      "source": "lib/core/tavern-author-browser-artifact.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-artifact.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-artifact-typescript",
@@ -7038,7 +7857,10 @@
     },
     {
       "id": "tavern-author-browser-artifact-v3-generated",
-      "source": "lib/core/tavern-author-browser-artifact-v3.mjs"
+      "source": "lib/core/tavern-author-browser-artifact-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-artifact-v3.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-artifact-v3-typescript",
@@ -7046,7 +7868,10 @@
     },
     {
       "id": "tavern-author-browser-ast-v3-generated",
-      "source": "lib/core/tavern-author-browser-ast-v3.mjs"
+      "source": "lib/core/tavern-author-browser-ast-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-ast-v3.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-ast-v3-typescript",
@@ -7054,7 +7879,10 @@
     },
     {
       "id": "tavern-author-browser-ast-worker-generated",
-      "source": "lib/core/tavern-author-browser-ast-worker.mjs"
+      "source": "lib/core/tavern-author-browser-ast-worker.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-ast-worker.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-ast-worker-typescript",
@@ -7062,7 +7890,10 @@
     },
     {
       "id": "tavern-author-browser-ast-worker-v3-generated",
-      "source": "lib/core/tavern-author-browser-ast-worker-v3.mjs"
+      "source": "lib/core/tavern-author-browser-ast-worker-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-ast-worker-v3.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-ast-worker-v3-typescript",
@@ -7070,7 +7901,10 @@
     },
     {
       "id": "tavern-author-browser-attachment-worker-v3-js",
-      "source": "lib/core/tavern-author-browser-attachment-worker-v3.js"
+      "source": "lib/core/tavern-author-browser-attachment-worker-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-attachment-worker-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-attachment-worker-v3-typescript",
@@ -7078,7 +7912,10 @@
     },
     {
       "id": "tavern-author-browser-budget-generated",
-      "source": "lib/core/tavern-author-browser-budget.js"
+      "source": "lib/core/tavern-author-browser-budget.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-budget.js"
+      ]
     },
     {
       "id": "tavern-author-browser-budget-typescript",
@@ -7086,7 +7923,10 @@
     },
     {
       "id": "tavern-author-browser-child-entry-generated",
-      "source": "lib/core/tavern-author-browser-child-entry.js"
+      "source": "lib/core/tavern-author-browser-child-entry.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-child-entry.js"
+      ]
     },
     {
       "id": "tavern-author-browser-child-entry-typescript",
@@ -7094,7 +7934,10 @@
     },
     {
       "id": "tavern-author-browser-child-generated",
-      "source": "lib/core/tavern-author-browser-child.js"
+      "source": "lib/core/tavern-author-browser-child.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-child.js"
+      ]
     },
     {
       "id": "tavern-author-browser-child-typescript",
@@ -7102,7 +7945,10 @@
     },
     {
       "id": "tavern-author-browser-compiler-generated",
-      "source": "lib/core/tavern-author-browser-compiler.mjs"
+      "source": "lib/core/tavern-author-browser-compiler.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-compiler.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-compiler-typescript",
@@ -7110,7 +7956,10 @@
     },
     {
       "id": "tavern-author-browser-compiler-v3-generated",
-      "source": "lib/core/tavern-author-browser-compiler-v3.mjs"
+      "source": "lib/core/tavern-author-browser-compiler-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-compiler-v3.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-compiler-v3-typescript",
@@ -7118,7 +7967,10 @@
     },
     {
       "id": "tavern-author-browser-descriptor-generated",
-      "source": "lib/core/tavern-author-browser-descriptor.mjs"
+      "source": "lib/core/tavern-author-browser-descriptor.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-descriptor.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-descriptor-typescript",
@@ -7126,7 +7978,10 @@
     },
     {
       "id": "tavern-author-browser-descriptor-v2-generated",
-      "source": "lib/core/tavern-author-browser-descriptor-v2.mjs"
+      "source": "lib/core/tavern-author-browser-descriptor-v2.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-descriptor-v2.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-descriptor-v2-typescript",
@@ -7134,7 +7989,10 @@
     },
     {
       "id": "tavern-author-browser-descriptor-v3-generated",
-      "source": "lib/core/tavern-author-browser-descriptor-v3.mjs"
+      "source": "lib/core/tavern-author-browser-descriptor-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-descriptor-v3.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-descriptor-v3-typescript",
@@ -7142,7 +8000,10 @@
     },
     {
       "id": "tavern-author-browser-execution-worker-v3-js",
-      "source": "lib/core/tavern-author-browser-execution-worker-v3.js"
+      "source": "lib/core/tavern-author-browser-execution-worker-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-execution-worker-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-execution-worker-v3-typescript",
@@ -7150,7 +8011,10 @@
     },
     {
       "id": "tavern-author-browser-frame-generated",
-      "source": "lib/core/tavern-author-browser-frame.js"
+      "source": "lib/core/tavern-author-browser-frame.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-frame.js"
+      ]
     },
     {
       "id": "tavern-author-browser-frame-typescript",
@@ -7158,7 +8022,10 @@
     },
     {
       "id": "tavern-author-browser-guard-entry-generated",
-      "source": "lib/core/tavern-author-browser-guard-entry.js"
+      "source": "lib/core/tavern-author-browser-guard-entry.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-guard-entry.js"
+      ]
     },
     {
       "id": "tavern-author-browser-guard-entry-typescript",
@@ -7166,7 +8033,10 @@
     },
     {
       "id": "tavern-author-browser-native-types-v3-js",
-      "source": "lib/core/tavern-author-browser-native-types-v3.js"
+      "source": "lib/core/tavern-author-browser-native-types-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-native-types-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-native-types-v3-typescript",
@@ -7174,7 +8044,10 @@
     },
     {
       "id": "tavern-author-browser-page-guest-v3-js",
-      "source": "lib/core/tavern-author-browser-page-guest-v3.js"
+      "source": "lib/core/tavern-author-browser-page-guest-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-page-guest-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-page-guest-v3-typescript",
@@ -7182,7 +8055,10 @@
     },
     {
       "id": "tavern-author-browser-page-worker-v3-js",
-      "source": "lib/core/tavern-author-browser-page-worker-v3.js"
+      "source": "lib/core/tavern-author-browser-page-worker-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-page-worker-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-page-worker-v3-typescript",
@@ -7190,7 +8066,10 @@
     },
     {
       "id": "tavern-author-browser-partition-generated",
-      "source": "lib/core/tavern-author-browser-partition.mjs"
+      "source": "lib/core/tavern-author-browser-partition.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-partition.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-partition-typescript",
@@ -7198,7 +8077,10 @@
     },
     {
       "id": "tavern-author-browser-partition-v3-generated",
-      "source": "lib/core/tavern-author-browser-partition-v3.mjs"
+      "source": "lib/core/tavern-author-browser-partition-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-partition-v3.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-partition-v3-typescript",
@@ -7206,7 +8088,10 @@
     },
     {
       "id": "tavern-author-browser-profile-generated",
-      "source": "lib/core/tavern-author-browser-profile.mjs"
+      "source": "lib/core/tavern-author-browser-profile.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-profile.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-profile-typescript",
@@ -7214,7 +8099,10 @@
     },
     {
       "id": "tavern-author-browser-profile-v3-generated",
-      "source": "lib/core/tavern-author-browser-profile-v3.mjs"
+      "source": "lib/core/tavern-author-browser-profile-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-profile-v3.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-profile-v3-typescript",
@@ -7230,7 +8118,10 @@
     },
     {
       "id": "tavern-author-browser-renderer-v3-js",
-      "source": "lib/core/tavern-author-browser-renderer-v3.js"
+      "source": "lib/core/tavern-author-browser-renderer-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-renderer-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-renderer-v3-typescript",
@@ -7238,7 +8129,10 @@
     },
     {
       "id": "tavern-author-browser-source-guest-v3-js",
-      "source": "lib/core/tavern-author-browser-source-guest-v3.js"
+      "source": "lib/core/tavern-author-browser-source-guest-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-source-guest-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-source-guest-v3-typescript",
@@ -7246,7 +8140,10 @@
     },
     {
       "id": "tavern-author-browser-types-generated",
-      "source": "lib/core/tavern-author-browser-types.mjs"
+      "source": "lib/core/tavern-author-browser-types.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-types.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-types-typescript",
@@ -7254,7 +8151,10 @@
     },
     {
       "id": "tavern-author-browser-types-v2-generated",
-      "source": "lib/core/tavern-author-browser-types-v2.mjs"
+      "source": "lib/core/tavern-author-browser-types-v2.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-types-v2.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-types-v2-typescript",
@@ -7262,7 +8162,10 @@
     },
     {
       "id": "tavern-author-browser-types-v3-generated",
-      "source": "lib/core/tavern-author-browser-types-v3.mjs"
+      "source": "lib/core/tavern-author-browser-types-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-types-v3.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-types-v3-typescript",
@@ -7270,7 +8173,10 @@
     },
     {
       "id": "tavern-author-browser-worker-protocol-v3-js",
-      "source": "lib/core/tavern-author-browser-worker-protocol-v3.js"
+      "source": "lib/core/tavern-author-browser-worker-protocol-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-worker-protocol-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-worker-protocol-v3-typescript",
@@ -7278,7 +8184,10 @@
     },
     {
       "id": "tavern-author-combined-compiler-generated",
-      "source": "lib/core/tavern-author-combined-compiler.mjs"
+      "source": "lib/core/tavern-author-combined-compiler.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-compiler.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-compiler-typescript",
@@ -7286,7 +8195,10 @@
     },
     {
       "id": "tavern-author-combined-data-generated",
-      "source": "lib/core/tavern-author-combined-data.mjs"
+      "source": "lib/core/tavern-author-combined-data.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-data.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-data-typescript",
@@ -7294,7 +8206,10 @@
     },
     {
       "id": "tavern-author-combined-types-generated",
-      "source": "lib/core/tavern-author-combined-types.mjs"
+      "source": "lib/core/tavern-author-combined-types.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-types.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-types-typescript",
@@ -7302,7 +8217,10 @@
     },
     {
       "id": "tavern-author-host-provider-generated",
-      "source": "lib/core/tavern-author-host-provider.mjs"
+      "source": "lib/core/tavern-author-host-provider.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-host-provider.mjs"
+      ]
     },
     {
       "id": "tavern-author-host-provider-typescript",
@@ -7310,7 +8228,10 @@
     },
     {
       "id": "tavern-author-html-compiler-v1-generated",
-      "source": "lib/core/tavern-author-html-compiler-v1.mjs"
+      "source": "lib/core/tavern-author-html-compiler-v1.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-html-compiler-v1.mjs"
+      ]
     },
     {
       "id": "tavern-author-html-compiler-v1-typescript",
@@ -7322,7 +8243,10 @@
     },
     {
       "id": "tavern-author-html-types-v1-generated",
-      "source": "lib/core/tavern-author-html-types-v1.mjs"
+      "source": "lib/core/tavern-author-html-types-v1.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-html-types-v1.mjs"
+      ]
     },
     {
       "id": "tavern-author-html-types-v1-typescript",
@@ -7338,7 +8262,10 @@
     },
     {
       "id": "tavern-author-prompt-data-generated",
-      "source": "lib/core/tavern-author-prompt-data.mjs"
+      "source": "lib/core/tavern-author-prompt-data.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-prompt-data.mjs"
+      ]
     },
     {
       "id": "tavern-author-prompt-data-typescript",
@@ -7346,7 +8273,10 @@
     },
     {
       "id": "tavern-author-prompt-descriptor-generated",
-      "source": "lib/core/tavern-author-prompt-descriptor.mjs"
+      "source": "lib/core/tavern-author-prompt-descriptor.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-prompt-descriptor.mjs"
+      ]
     },
     {
       "id": "tavern-author-prompt-descriptor-typescript",
@@ -7354,7 +8284,10 @@
     },
     {
       "id": "tavern-author-prompt-profile-generated",
-      "source": "lib/core/tavern-author-prompt-profile.mjs"
+      "source": "lib/core/tavern-author-prompt-profile.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-prompt-profile.mjs"
+      ]
     },
     {
       "id": "tavern-author-prompt-profile-typescript",
@@ -7394,11 +8327,17 @@
     },
     {
       "id": "tavern-card-adapter",
-      "source": "lib/core/tavern-card.js"
+      "source": "lib/core/tavern-card.js",
+      "aliases": [
+        "preset/lib/core/tavern-card.js"
+      ]
     },
     {
       "id": "tavern-card-crc-js",
-      "source": "lib/core/tavern-card-crc.js"
+      "source": "lib/core/tavern-card-crc.js",
+      "aliases": [
+        "preset/lib/core/tavern-card-crc.js"
+      ]
     },
     {
       "id": "tavern-card-crc-typescript",
@@ -7446,7 +8385,11 @@
     },
     {
       "id": "tavern-conversations",
-      "source": "lib/core/tavern-conversations.js"
+      "source": "lib/core/tavern-conversations.js",
+      "aliases": [
+        "lib/tavern-conversations.js",
+        "preset/lib/core/tavern-conversations.js"
+      ]
     },
     {
       "id": "tavern-conversations-test",
@@ -7458,7 +8401,10 @@
     },
     {
       "id": "tavern-display-html-js",
-      "source": "lib/core/tavern-display-html.js"
+      "source": "lib/core/tavern-display-html.js",
+      "aliases": [
+        "preset/lib/core/tavern-display-html.js"
+      ]
     },
     {
       "id": "tavern-display-html-typescript",
@@ -7470,7 +8416,10 @@
     },
     {
       "id": "tavern-exchange-rates",
-      "source": "lib/core/tavern-exchange-rates.js"
+      "source": "lib/core/tavern-exchange-rates.js",
+      "aliases": [
+        "preset/lib/core/tavern-exchange-rates.js"
+      ]
     },
     {
       "id": "tavern-exchange-rates-typescript",
@@ -7482,11 +8431,17 @@
     },
     {
       "id": "tavern-library",
-      "source": "lib/core/tavern-library.js"
+      "source": "lib/core/tavern-library.js",
+      "aliases": [
+        "preset/lib/core/tavern-library.js"
+      ]
     },
     {
       "id": "tavern-library-input-js",
-      "source": "lib/core/tavern-library-input.js"
+      "source": "lib/core/tavern-library-input.js",
+      "aliases": [
+        "preset/lib/core/tavern-library-input.js"
+      ]
     },
     {
       "id": "tavern-library-input-test",
@@ -7498,7 +8453,10 @@
     },
     {
       "id": "tavern-library-record-js",
-      "source": "lib/core/tavern-library-record.js"
+      "source": "lib/core/tavern-library-record.js",
+      "aliases": [
+        "preset/lib/core/tavern-library-record.js"
+      ]
     },
     {
       "id": "tavern-library-record-test",
@@ -7522,7 +8480,10 @@
     },
     {
       "id": "tavern-lore-compiler-mjs",
-      "source": "lib/core/tavern-lore-compiler.mjs"
+      "source": "lib/core/tavern-lore-compiler.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-compiler.mjs"
+      ]
     },
     {
       "id": "tavern-lore-compiler-typescript",
@@ -7546,11 +8507,17 @@
     },
     {
       "id": "tavern-lore-evaluator-mjs",
-      "source": "lib/core/tavern-lore-evaluator.mjs"
+      "source": "lib/core/tavern-lore-evaluator.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-evaluator.mjs"
+      ]
     },
     {
       "id": "tavern-lore-evaluator-types-mjs",
-      "source": "lib/core/tavern-lore-evaluator-types.mjs"
+      "source": "lib/core/tavern-lore-evaluator-types.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-evaluator-types.mjs"
+      ]
     },
     {
       "id": "tavern-lore-evaluator-types-typescript",
@@ -7562,7 +8529,10 @@
     },
     {
       "id": "tavern-lore-fixed-profile-mjs",
-      "source": "lib/core/tavern-lore-fixed-profile.mjs"
+      "source": "lib/core/tavern-lore-fixed-profile.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-fixed-profile.mjs"
+      ]
     },
     {
       "id": "tavern-lore-fixed-profile-typescript",
@@ -7570,7 +8540,10 @@
     },
     {
       "id": "tavern-lore-match-mjs",
-      "source": "lib/core/tavern-lore-match.mjs"
+      "source": "lib/core/tavern-lore-match.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-match.mjs"
+      ]
     },
     {
       "id": "tavern-lore-match-typescript",
@@ -7578,7 +8551,10 @@
     },
     {
       "id": "tavern-lore-plan-types-mjs",
-      "source": "lib/core/tavern-lore-plan-types.mjs"
+      "source": "lib/core/tavern-lore-plan-types.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-plan-types.mjs"
+      ]
     },
     {
       "id": "tavern-lore-plan-types-typescript",
@@ -7586,7 +8562,10 @@
     },
     {
       "id": "tavern-lore-scan-mjs",
-      "source": "lib/core/tavern-lore-scan.mjs"
+      "source": "lib/core/tavern-lore-scan.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-scan.mjs"
+      ]
     },
     {
       "id": "tavern-lore-scan-typescript",
@@ -7594,7 +8573,10 @@
     },
     {
       "id": "tavern-lore-snapshot-mjs",
-      "source": "lib/core/tavern-lore-snapshot.mjs"
+      "source": "lib/core/tavern-lore-snapshot.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-snapshot.mjs"
+      ]
     },
     {
       "id": "tavern-lore-snapshot-typescript",
@@ -7602,7 +8584,10 @@
     },
     {
       "id": "tavern-lore-template-feedback-mjs",
-      "source": "lib/core/tavern-lore-template-feedback.mjs"
+      "source": "lib/core/tavern-lore-template-feedback.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-template-feedback.mjs"
+      ]
     },
     {
       "id": "tavern-lore-template-feedback-typescript",
@@ -7610,7 +8595,10 @@
     },
     {
       "id": "tavern-lore-timed-mjs",
-      "source": "lib/core/tavern-lore-timed.mjs"
+      "source": "lib/core/tavern-lore-timed.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-lore-timed.mjs"
+      ]
     },
     {
       "id": "tavern-lore-timed-typescript",
@@ -7618,7 +8606,10 @@
     },
     {
       "id": "tavern-model-policy-js",
-      "source": "lib/core/tavern-model-policy.js"
+      "source": "lib/core/tavern-model-policy.js",
+      "aliases": [
+        "preset/lib/core/tavern-model-policy.js"
+      ]
     },
     {
       "id": "tavern-model-policy-typescript",
@@ -7642,7 +8633,10 @@
     },
     {
       "id": "tavern-mvu-initvar-js",
-      "source": "lib/core/tavern-mvu-initvar.js"
+      "source": "lib/core/tavern-mvu-initvar.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-initvar.js"
+      ]
     },
     {
       "id": "tavern-mvu-initvar-typescript",
@@ -7658,7 +8652,10 @@
     },
     {
       "id": "tavern-mvu-schema-compiler-js",
-      "source": "lib/core/tavern-mvu-schema-compiler.js"
+      "source": "lib/core/tavern-mvu-schema-compiler.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-compiler.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-compiler-typescript",
@@ -7674,7 +8671,10 @@
     },
     {
       "id": "tavern-mvu-schema-compiler-worker-mjs",
-      "source": "lib/core/tavern-mvu-schema-compiler-worker.mjs"
+      "source": "lib/core/tavern-mvu-schema-compiler-worker.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-compiler-worker.mjs"
+      ]
     },
     {
       "id": "tavern-mvu-schema-compiler-worker-typescript",
@@ -7690,7 +8690,10 @@
     },
     {
       "id": "tavern-mvu-schema-data-js",
-      "source": "lib/core/tavern-mvu-schema-data.js"
+      "source": "lib/core/tavern-mvu-schema-data.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-data.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-data-typescript",
@@ -7706,7 +8709,10 @@
     },
     {
       "id": "tavern-mvu-schema-import-policy-js",
-      "source": "lib/core/tavern-mvu-schema-import-policy.js"
+      "source": "lib/core/tavern-mvu-schema-import-policy.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-import-policy.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-import-policy-typescript",
@@ -7714,7 +8720,10 @@
     },
     {
       "id": "tavern-mvu-schema-program-v4-js",
-      "source": "lib/core/tavern-mvu-schema-program-v4.js"
+      "source": "lib/core/tavern-mvu-schema-program-v4.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-program-v4.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-program-v4-typescript",
@@ -7722,7 +8731,10 @@
     },
     {
       "id": "tavern-mvu-schema-runner-js",
-      "source": "lib/core/tavern-mvu-schema-runner.js"
+      "source": "lib/core/tavern-mvu-schema-runner.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-runner.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-runner-typescript",
@@ -7730,7 +8742,10 @@
     },
     {
       "id": "tavern-mvu-schema-runner-v2-generated",
-      "source": "lib/core/tavern-mvu-schema-runner-v2.js"
+      "source": "lib/core/tavern-mvu-schema-runner-v2.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-runner-v2.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-runner-v2-typescript",
@@ -7738,7 +8753,10 @@
     },
     {
       "id": "tavern-mvu-schema-runner-v3-generated",
-      "source": "lib/core/tavern-mvu-schema-runner-v3.js"
+      "source": "lib/core/tavern-mvu-schema-runner-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-runner-v3.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-runner-v3-typescript",
@@ -7746,7 +8764,10 @@
     },
     {
       "id": "tavern-mvu-schema-runner-v4-js",
-      "source": "lib/core/tavern-mvu-schema-runner-v4.js"
+      "source": "lib/core/tavern-mvu-schema-runner-v4.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-runner-v4.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-runner-v4-typescript",
@@ -7754,7 +8775,10 @@
     },
     {
       "id": "tavern-mvu-schema-types-js",
-      "source": "lib/core/tavern-mvu-schema-types.js"
+      "source": "lib/core/tavern-mvu-schema-types.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-types.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-types-typescript",
@@ -7786,7 +8810,10 @@
     },
     {
       "id": "tavern-mvu-schema-update-effects-v2-generated",
-      "source": "lib/core/tavern-mvu-schema-update-effects-v2.js"
+      "source": "lib/core/tavern-mvu-schema-update-effects-v2.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-update-effects-v2.js"
+      ]
     },
     {
       "id": "tavern-mvu-schema-update-effects-v2-typescript",
@@ -7794,7 +8821,10 @@
     },
     {
       "id": "tavern-mvu-schema-worker-mjs",
-      "source": "lib/core/tavern-mvu-schema-worker.mjs"
+      "source": "lib/core/tavern-mvu-schema-worker.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-worker.mjs"
+      ]
     },
     {
       "id": "tavern-mvu-schema-worker-typescript",
@@ -7802,7 +8832,10 @@
     },
     {
       "id": "tavern-mvu-schema-worker-v2-generated",
-      "source": "lib/core/tavern-mvu-schema-worker-v2.mjs"
+      "source": "lib/core/tavern-mvu-schema-worker-v2.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-worker-v2.mjs"
+      ]
     },
     {
       "id": "tavern-mvu-schema-worker-v2-typescript",
@@ -7810,7 +8843,10 @@
     },
     {
       "id": "tavern-mvu-schema-worker-v3-generated",
-      "source": "lib/core/tavern-mvu-schema-worker-v3.mjs"
+      "source": "lib/core/tavern-mvu-schema-worker-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-worker-v3.mjs"
+      ]
     },
     {
       "id": "tavern-mvu-schema-worker-v3-typescript",
@@ -7818,7 +8854,10 @@
     },
     {
       "id": "tavern-mvu-schema-worker-v4-js",
-      "source": "lib/core/tavern-mvu-schema-worker-v4.mjs"
+      "source": "lib/core/tavern-mvu-schema-worker-v4.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-schema-worker-v4.mjs"
+      ]
     },
     {
       "id": "tavern-mvu-schema-worker-v4-typescript",
@@ -7826,11 +8865,17 @@
     },
     {
       "id": "tavern-mvu-scope-read-generated",
-      "source": "lib/core/tavern-mvu-scope-read.js"
+      "source": "lib/core/tavern-mvu-scope-read.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-scope-read.js"
+      ]
     },
     {
       "id": "tavern-mvu-scope-read-types-generated",
-      "source": "lib/core/tavern-mvu-scope-read-types.js"
+      "source": "lib/core/tavern-mvu-scope-read-types.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-scope-read-types.js"
+      ]
     },
     {
       "id": "tavern-mvu-scope-read-types-typescript",
@@ -7842,7 +8887,10 @@
     },
     {
       "id": "tavern-mvu-state-loader-policy-v4-js",
-      "source": "lib/core/tavern-mvu-state-loader-policy-v4.mjs"
+      "source": "lib/core/tavern-mvu-state-loader-policy-v4.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-state-loader-policy-v4.mjs"
+      ]
     },
     {
       "id": "tavern-mvu-state-loader-policy-v4-typescript",
@@ -7850,7 +8898,10 @@
     },
     {
       "id": "tavern-mvu-yaml-js",
-      "source": "lib/core/tavern-mvu-yaml.js"
+      "source": "lib/core/tavern-mvu-yaml.js",
+      "aliases": [
+        "preset/lib/core/tavern-mvu-yaml.js"
+      ]
     },
     {
       "id": "tavern-mvu-yaml-typescript",
@@ -7858,7 +8909,10 @@
     },
     {
       "id": "tavern-named-worldbook-data-js",
-      "source": "lib/core/tavern-named-worldbook-data.js"
+      "source": "lib/core/tavern-named-worldbook-data.js",
+      "aliases": [
+        "preset/lib/core/tavern-named-worldbook-data.js"
+      ]
     },
     {
       "id": "tavern-named-worldbook-data-typescript",
@@ -7866,7 +8920,10 @@
     },
     {
       "id": "tavern-price-catalog",
-      "source": "lib/core/tavern-price-catalog.js"
+      "source": "lib/core/tavern-price-catalog.js",
+      "aliases": [
+        "preset/lib/core/tavern-price-catalog.js"
+      ]
     },
     {
       "id": "tavern-price-catalog-typescript",
@@ -7874,11 +8931,17 @@
     },
     {
       "id": "tavern-pricing",
-      "source": "lib/core/tavern-pricing.js"
+      "source": "lib/core/tavern-pricing.js",
+      "aliases": [
+        "preset/lib/core/tavern-pricing.js"
+      ]
     },
     {
       "id": "tavern-pricing-data",
-      "source": "lib/core/tavern-pricing-data.js"
+      "source": "lib/core/tavern-pricing-data.js",
+      "aliases": [
+        "preset/lib/core/tavern-pricing-data.js"
+      ]
     },
     {
       "id": "tavern-pricing-data-typescript",
@@ -7894,11 +8957,17 @@
     },
     {
       "id": "tavern-prompt-transform-mjs",
-      "source": "lib/core/tavern-prompt-transform.mjs"
+      "source": "lib/core/tavern-prompt-transform.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-prompt-transform.mjs"
+      ]
     },
     {
       "id": "tavern-prompt-transform-output-mjs",
-      "source": "lib/core/tavern-prompt-transform-output.mjs"
+      "source": "lib/core/tavern-prompt-transform-output.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-prompt-transform-output.mjs"
+      ]
     },
     {
       "id": "tavern-prompt-transform-output-typescript",
@@ -7906,7 +8975,10 @@
     },
     {
       "id": "tavern-prompt-transform-types-mjs",
-      "source": "lib/core/tavern-prompt-transform-types.mjs"
+      "source": "lib/core/tavern-prompt-transform-types.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-prompt-transform-types.mjs"
+      ]
     },
     {
       "id": "tavern-prompt-transform-types-typescript",
@@ -7918,7 +8990,10 @@
     },
     {
       "id": "tavern-prompt-transform-worker-mjs",
-      "source": "lib/core/tavern-prompt-transform-worker.mjs"
+      "source": "lib/core/tavern-prompt-transform-worker.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-prompt-transform-worker.mjs"
+      ]
     },
     {
       "id": "tavern-prompt-transform-worker-typescript",
@@ -7926,7 +9001,10 @@
     },
     {
       "id": "tavern-task-context-js",
-      "source": "lib/core/tavern-task-context.js"
+      "source": "lib/core/tavern-task-context.js",
+      "aliases": [
+        "preset/lib/core/tavern-task-context.js"
+      ]
     },
     {
       "id": "tavern-task-context-typescript",
@@ -7938,7 +9016,10 @@
     },
     {
       "id": "tavern-task-primitives-js",
-      "source": "lib/core/tavern-task-primitives.js"
+      "source": "lib/core/tavern-task-primitives.js",
+      "aliases": [
+        "preset/lib/core/tavern-task-primitives.js"
+      ]
     },
     {
       "id": "tavern-task-primitives-typescript",
@@ -7946,7 +9027,10 @@
     },
     {
       "id": "tavern-task-retirement",
-      "source": "lib/core/tavern-task-retirement.js"
+      "source": "lib/core/tavern-task-retirement.js",
+      "aliases": [
+        "preset/lib/core/tavern-task-retirement.js"
+      ]
     },
     {
       "id": "tavern-task-retirement-typescript",
@@ -7954,7 +9038,10 @@
     },
     {
       "id": "tavern-task-support-js",
-      "source": "lib/core/tavern-task-support.js"
+      "source": "lib/core/tavern-task-support.js",
+      "aliases": [
+        "preset/lib/core/tavern-task-support.js"
+      ]
     },
     {
       "id": "tavern-task-support-typescript",
@@ -7962,7 +9049,10 @@
     },
     {
       "id": "tavern-task-types-js",
-      "source": "lib/core/tavern-task-types.js"
+      "source": "lib/core/tavern-task-types.js",
+      "aliases": [
+        "preset/lib/core/tavern-task-types.js"
+      ]
     },
     {
       "id": "tavern-task-types-typescript",
@@ -7970,7 +9060,10 @@
     },
     {
       "id": "tavern-tasks",
-      "source": "lib/core/tavern-tasks.js"
+      "source": "lib/core/tavern-tasks.js",
+      "aliases": [
+        "preset/lib/core/tavern-tasks.js"
+      ]
     },
     {
       "id": "tavern-tasks-typescript",
@@ -7978,11 +9071,17 @@
     },
     {
       "id": "tavern-telemetry",
-      "source": "lib/core/tavern-telemetry.js"
+      "source": "lib/core/tavern-telemetry.js",
+      "aliases": [
+        "preset/lib/core/tavern-telemetry.js"
+      ]
     },
     {
       "id": "tavern-telemetry-aggregate-js",
-      "source": "lib/core/tavern-telemetry-aggregate.js"
+      "source": "lib/core/tavern-telemetry-aggregate.js",
+      "aliases": [
+        "preset/lib/core/tavern-telemetry-aggregate.js"
+      ]
     },
     {
       "id": "tavern-telemetry-aggregate-typescript",
@@ -7990,7 +9089,10 @@
     },
     {
       "id": "tavern-telemetry-fold-js",
-      "source": "lib/core/tavern-telemetry-fold.js"
+      "source": "lib/core/tavern-telemetry-fold.js",
+      "aliases": [
+        "preset/lib/core/tavern-telemetry-fold.js"
+      ]
     },
     {
       "id": "tavern-telemetry-fold-typescript",
@@ -7998,7 +9100,10 @@
     },
     {
       "id": "tavern-telemetry-normalize-js",
-      "source": "lib/core/tavern-telemetry-normalize.js"
+      "source": "lib/core/tavern-telemetry-normalize.js",
+      "aliases": [
+        "preset/lib/core/tavern-telemetry-normalize.js"
+      ]
     },
     {
       "id": "tavern-telemetry-normalize-typescript",
@@ -8006,7 +9111,10 @@
     },
     {
       "id": "tavern-telemetry-query-js",
-      "source": "lib/core/tavern-telemetry-query.js"
+      "source": "lib/core/tavern-telemetry-query.js",
+      "aliases": [
+        "preset/lib/core/tavern-telemetry-query.js"
+      ]
     },
     {
       "id": "tavern-telemetry-query-typescript",
@@ -8018,7 +9126,10 @@
     },
     {
       "id": "tavern-telemetry-time-range-js",
-      "source": "lib/core/tavern-telemetry-time-range.js"
+      "source": "lib/core/tavern-telemetry-time-range.js",
+      "aliases": [
+        "preset/lib/core/tavern-telemetry-time-range.js"
+      ]
     },
     {
       "id": "tavern-telemetry-time-range-typescript",
@@ -8030,7 +9141,10 @@
     },
     {
       "id": "tavern-template-assets-generated",
-      "source": "lib/core/tavern-template-assets.mjs"
+      "source": "lib/core/tavern-template-assets.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-assets.mjs"
+      ]
     },
     {
       "id": "tavern-template-assets-typescript",
@@ -8038,7 +9152,10 @@
     },
     {
       "id": "tavern-template-compiler-generated",
-      "source": "lib/core/tavern-template-compiler.mjs"
+      "source": "lib/core/tavern-template-compiler.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-compiler.mjs"
+      ]
     },
     {
       "id": "tavern-template-compiler-typescript",
@@ -8046,7 +9163,10 @@
     },
     {
       "id": "tavern-template-controller-generated",
-      "source": "lib/core/tavern-template-controller.mjs"
+      "source": "lib/core/tavern-template-controller.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-controller.mjs"
+      ]
     },
     {
       "id": "tavern-template-controller-typescript",
@@ -8054,7 +9174,10 @@
     },
     {
       "id": "tavern-template-data-generated",
-      "source": "lib/core/tavern-template-data.mjs"
+      "source": "lib/core/tavern-template-data.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-data.mjs"
+      ]
     },
     {
       "id": "tavern-template-data-typescript",
@@ -8062,7 +9185,10 @@
     },
     {
       "id": "tavern-template-descriptor-generated",
-      "source": "lib/core/tavern-template-descriptor.mjs"
+      "source": "lib/core/tavern-template-descriptor.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-descriptor.mjs"
+      ]
     },
     {
       "id": "tavern-template-descriptor-typescript",
@@ -8070,7 +9196,10 @@
     },
     {
       "id": "tavern-template-injection-data-mjs",
-      "source": "lib/core/tavern-template-injection-data.mjs"
+      "source": "lib/core/tavern-template-injection-data.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-injection-data.mjs"
+      ]
     },
     {
       "id": "tavern-template-injection-data-typescript",
@@ -8078,7 +9207,10 @@
     },
     {
       "id": "tavern-template-injection-guest-mjs",
-      "source": "lib/core/tavern-template-injection-guest.mjs"
+      "source": "lib/core/tavern-template-injection-guest.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-injection-guest.mjs"
+      ]
     },
     {
       "id": "tavern-template-injection-guest-typescript",
@@ -8086,7 +9218,10 @@
     },
     {
       "id": "tavern-template-provider-generated",
-      "source": "lib/core/tavern-template-provider.mjs"
+      "source": "lib/core/tavern-template-provider.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-provider.mjs"
+      ]
     },
     {
       "id": "tavern-template-provider-typescript",
@@ -8134,7 +9269,10 @@
     },
     {
       "id": "tavern-template-types-generated",
-      "source": "lib/core/tavern-template-types.mjs"
+      "source": "lib/core/tavern-template-types.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-types.mjs"
+      ]
     },
     {
       "id": "tavern-template-types-typescript",
@@ -8142,7 +9280,10 @@
     },
     {
       "id": "tavern-template-worker-generated",
-      "source": "lib/core/tavern-template-worker.mjs"
+      "source": "lib/core/tavern-template-worker.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-template-worker.mjs"
+      ]
     },
     {
       "id": "tavern-template-worker-typescript",
@@ -8158,7 +9299,10 @@
     },
     {
       "id": "test-temp-helper",
-      "source": "lib/operations/test-temp.mjs"
+      "source": "lib/operations/test-temp.mjs",
+      "aliases": [
+        "preset/lib/operations/test-temp.mjs"
+      ]
     },
     {
       "id": "test-temp-helper-typescript",
@@ -24545,7 +25689,10 @@
     },
     {
       "id": "roleplay-author-browser-key-core-v3-js",
-      "source": "lib/core/roleplay-author-browser-key-core-v3.js"
+      "source": "lib/core/roleplay-author-browser-key-core-v3.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-browser-key-core-v3.js"
+      ]
     },
     {
       "id": "roleplay-author-browser-key-core-v3-typescript",
@@ -24553,7 +25700,10 @@
     },
     {
       "id": "roleplay-author-chat-state-js",
-      "source": "lib/core/roleplay-author-chat-state.js"
+      "source": "lib/core/roleplay-author-chat-state.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-chat-state.js"
+      ]
     },
     {
       "id": "roleplay-author-chat-state-typescript",
@@ -24581,7 +25731,10 @@
     },
     {
       "id": "tavern-author-browser-artifact-v2-generated",
-      "source": "lib/core/tavern-author-browser-artifact-v2.mjs"
+      "source": "lib/core/tavern-author-browser-artifact-v2.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-artifact-v2.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-artifact-v2-typescript",
@@ -24589,7 +25742,10 @@
     },
     {
       "id": "tavern-author-browser-ast-worker-v2-generated",
-      "source": "lib/core/tavern-author-browser-ast-worker-v2.mjs"
+      "source": "lib/core/tavern-author-browser-ast-worker-v2.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-ast-worker-v2.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-ast-worker-v2-typescript",
@@ -24597,7 +25753,10 @@
     },
     {
       "id": "tavern-author-browser-child-entry-v2-js",
-      "source": "lib/core/tavern-author-browser-child-entry-v2.js"
+      "source": "lib/core/tavern-author-browser-child-entry-v2.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-child-entry-v2.js"
+      ]
     },
     {
       "id": "tavern-author-browser-child-entry-v2-typescript",
@@ -24605,7 +25764,10 @@
     },
     {
       "id": "tavern-author-browser-child-v2-js",
-      "source": "lib/core/tavern-author-browser-child-v2.js"
+      "source": "lib/core/tavern-author-browser-child-v2.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-child-v2.js"
+      ]
     },
     {
       "id": "tavern-author-browser-child-v2-typescript",
@@ -24613,7 +25775,10 @@
     },
     {
       "id": "tavern-author-browser-compiler-v2-generated",
-      "source": "lib/core/tavern-author-browser-compiler-v2.mjs"
+      "source": "lib/core/tavern-author-browser-compiler-v2.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-compiler-v2.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-compiler-v2-typescript",
@@ -24621,7 +25786,10 @@
     },
     {
       "id": "tavern-author-browser-execution-worker-v2-js",
-      "source": "lib/core/tavern-author-browser-execution-worker-v2.js"
+      "source": "lib/core/tavern-author-browser-execution-worker-v2.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-execution-worker-v2.js"
+      ]
     },
     {
       "id": "tavern-author-browser-execution-worker-v2-typescript",
@@ -24629,7 +25797,10 @@
     },
     {
       "id": "tavern-author-browser-frame-v2-js",
-      "source": "lib/core/tavern-author-browser-frame-v2.js"
+      "source": "lib/core/tavern-author-browser-frame-v2.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-frame-v2.js"
+      ]
     },
     {
       "id": "tavern-author-browser-frame-v2-typescript",
@@ -24637,7 +25808,10 @@
     },
     {
       "id": "tavern-author-browser-guard-entry-v2-js",
-      "source": "lib/core/tavern-author-browser-guard-entry-v2.js"
+      "source": "lib/core/tavern-author-browser-guard-entry-v2.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-guard-entry-v2.js"
+      ]
     },
     {
       "id": "tavern-author-browser-guard-entry-v2-typescript",
@@ -24645,7 +25819,10 @@
     },
     {
       "id": "tavern-author-browser-guest-v2-js",
-      "source": "lib/core/tavern-author-browser-guest-v2.js"
+      "source": "lib/core/tavern-author-browser-guest-v2.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-guest-v2.js"
+      ]
     },
     {
       "id": "tavern-author-browser-guest-v2-typescript",
@@ -24653,7 +25830,10 @@
     },
     {
       "id": "tavern-author-browser-partition-v2-generated",
-      "source": "lib/core/tavern-author-browser-partition-v2.mjs"
+      "source": "lib/core/tavern-author-browser-partition-v2.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-partition-v2.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-partition-v2-typescript",
@@ -24661,7 +25841,10 @@
     },
     {
       "id": "tavern-author-browser-profile-v2-generated",
-      "source": "lib/core/tavern-author-browser-profile-v2.mjs"
+      "source": "lib/core/tavern-author-browser-profile-v2.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-profile-v2.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-profile-v2-typescript",
@@ -24669,7 +25852,10 @@
     },
     {
       "id": "tavern-author-browser-source-projection-v3-generated",
-      "source": "lib/core/tavern-author-browser-source-projection-v3.mjs"
+      "source": "lib/core/tavern-author-browser-source-projection-v3.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-source-projection-v3.mjs"
+      ]
     },
     {
       "id": "tavern-author-browser-source-projection-v3-typescript",
@@ -24677,7 +25863,10 @@
     },
     {
       "id": "tavern-author-combined-compiler-v6-generated",
-      "source": "lib/core/tavern-author-combined-compiler-v6.mjs"
+      "source": "lib/core/tavern-author-combined-compiler-v6.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-compiler-v6.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-compiler-v6-typescript",
@@ -24685,7 +25874,10 @@
     },
     {
       "id": "tavern-author-combined-data-v5-generated",
-      "source": "lib/core/tavern-author-combined-data-v5.mjs"
+      "source": "lib/core/tavern-author-combined-data-v5.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-data-v5.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-data-v5-typescript",
@@ -24693,7 +25885,10 @@
     },
     {
       "id": "tavern-author-combined-data-v6-generated",
-      "source": "lib/core/tavern-author-combined-data-v6.mjs"
+      "source": "lib/core/tavern-author-combined-data-v6.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-data-v6.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-data-v6-typescript",
@@ -24701,7 +25896,10 @@
     },
     {
       "id": "tavern-author-combined-types-v5-generated",
-      "source": "lib/core/tavern-author-combined-types-v5.mjs"
+      "source": "lib/core/tavern-author-combined-types-v5.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-types-v5.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-types-v5-typescript",
@@ -24709,7 +25907,10 @@
     },
     {
       "id": "tavern-author-combined-types-v6-generated",
-      "source": "lib/core/tavern-author-combined-types-v6.mjs"
+      "source": "lib/core/tavern-author-combined-types-v6.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-types-v6.mjs"
+      ]
     },
     {
       "id": "tavern-author-combined-types-v6-typescript",
@@ -25637,7 +26838,10 @@
     },
     {
       "id": "tavern-author-browser-frame-v3-js",
-      "source": "lib/core/tavern-author-browser-frame-v3.js"
+      "source": "lib/core/tavern-author-browser-frame-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-frame-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-frame-native-v3-typescript",
@@ -25645,7 +26849,10 @@
     },
     {
       "id": "tavern-author-browser-frame-native-v3-js",
-      "source": "lib/core/tavern-author-browser-frame-native-v3.js"
+      "source": "lib/core/tavern-author-browser-frame-native-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-frame-native-v3.js"
+      ]
     },
     {
       "id": "tavern-author-browser-native-scene-v3-typescript",
@@ -25653,7 +26860,10 @@
     },
     {
       "id": "tavern-author-browser-native-scene-v3-js",
-      "source": "lib/core/tavern-author-browser-native-scene-v3.js"
+      "source": "lib/core/tavern-author-browser-native-scene-v3.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-browser-native-scene-v3.js"
+      ]
     },
     {
       "id": "roleplay-author-worldbook-core-typescript",
@@ -25661,7 +26871,10 @@
     },
     {
       "id": "roleplay-author-worldbook-core-js",
-      "source": "lib/core/roleplay-author-worldbook-core.js"
+      "source": "lib/core/roleplay-author-worldbook-core.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-worldbook-core.js"
+      ]
     },
     {
       "id": "browser3-native-dom-predecessor-browser-c693279643b8cd5d2481",
@@ -27417,7 +28630,10 @@
     },
     {
       "id": "roleplay-author-browser-dialog-core-js",
-      "source": "lib/core/roleplay-author-browser-dialog-core.js"
+      "source": "lib/core/roleplay-author-browser-dialog-core.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-browser-dialog-core.js"
+      ]
     },
     {
       "id": "roleplay-author-browser-dialog-core-typescript",
@@ -27425,7 +28641,10 @@
     },
     {
       "id": "roleplay-author-dialog-content-js",
-      "source": "lib/core/roleplay-author-dialog-content.js"
+      "source": "lib/core/roleplay-author-dialog-content.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-dialog-content.js"
+      ]
     },
     {
       "id": "roleplay-author-dialog-content-typescript",
@@ -27433,7 +28652,10 @@
     },
     {
       "id": "roleplay-author-dialog-js",
-      "source": "lib/core/roleplay-author-dialog.js"
+      "source": "lib/core/roleplay-author-dialog.js",
+      "aliases": [
+        "preset/lib/core/roleplay-author-dialog.js"
+      ]
     },
     {
       "id": "roleplay-author-dialog-typescript",
@@ -27441,7 +28663,10 @@
     },
     {
       "id": "roleplay-tavern-content-js",
-      "source": "lib/core/roleplay-tavern-content.js"
+      "source": "lib/core/roleplay-tavern-content.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-content.js"
+      ]
     },
     {
       "id": "roleplay-tavern-content-typescript",
@@ -28629,15 +29854,24 @@
     },
     {
       "id": "roleplay-source-images-js",
-      "source": "lib/core/roleplay-source-images.js"
+      "source": "lib/core/roleplay-source-images.js",
+      "aliases": [
+        "preset/lib/core/roleplay-source-images.js"
+      ]
     },
     {
       "id": "roleplay-source-images-parser-js",
-      "source": "lib/core/roleplay-source-images-parser.mjs"
+      "source": "lib/core/roleplay-source-images-parser.mjs",
+      "aliases": [
+        "preset/lib/core/roleplay-source-images-parser.mjs"
+      ]
     },
     {
       "id": "roleplay-source-images-routes-js",
-      "source": "lib/core/roleplay-source-images-routes.js"
+      "source": "lib/core/roleplay-source-images-routes.js",
+      "aliases": [
+        "preset/lib/core/roleplay-source-images-routes.js"
+      ]
     },
     {
       "id": "session-images",

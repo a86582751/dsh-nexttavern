@@ -12,10 +12,17 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
   registry: CheckRegistry; mapping: SourceMapping
 } {
   const paths = new Map<string, string>()
+  const aliases = new Map<string, Set<string>>()
   for (const artifact of plan.artifacts) if (artifact.public?.path) paths.set(artifact.id, artifact.public.path)
   for (const delivery of plan.deliveries) {
     const base = plan.publicRelease.layoutPaths[delivery.layout]
-    if (base !== undefined && !paths.has(delivery.artifact)) paths.set(delivery.artifact, path.posix.join(base, delivery.path))
+    if (base === undefined) continue
+    const target = path.posix.join(base, delivery.path)
+    if (!paths.has(delivery.artifact)) paths.set(delivery.artifact, target)
+    else if (paths.get(delivery.artifact) !== target) {
+      if (!aliases.has(delivery.artifact)) aliases.set(delivery.artifact, new Set())
+      aliases.get(delivery.artifact)!.add(target)
+    }
   }
   for (const test of plan.publicRelease.publicTests) paths.set(test.artifact, test.path)
   // Locked browser inputs are reconstructed by npm ci, not copied into public
@@ -35,6 +42,7 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
   const mapping: SourceMapping = {
     artifacts: plan.artifacts.filter(artifact => paths.has(artifact.id)).map(artifact => ({
       id: artifact.id, source: paths.get(artifact.id)!, ...(artifact.sha256 ? {sha256:artifact.sha256} : {}),
+      ...(aliases.has(artifact.id) ? {aliases: [...aliases.get(artifact.id)!]} : {}),
     })),
     builds: plan.builds.filter(build => paths.has(build.artifact) && sourcePaths.has(build.entry)).map(build => ({
       ...build, entry: sourcePaths.get(build.entry)!,
