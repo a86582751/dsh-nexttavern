@@ -90,6 +90,8 @@ try {
   const alias = makePlan(projectedContext, request('file', ['preset/lib/request.js']));
   assert.deepEqual(ids(alias), ['loop-test'], 'delivery aliases select the canonical source feature');
   assert.deepEqual(alias.uncovered, []);
+  assert.throws(() => makePlan(projectedContext, request('mechanics')), /No mechanism checks/,
+    'an omitted private scope cannot report an empty successful check');
 
   // A changed source selects only its feature's lightweight tests and one shared
   // prerequisite. Heavy candidate, installer and Harness actions cannot leak in.

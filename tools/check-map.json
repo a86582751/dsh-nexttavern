@@ -29884,6 +29884,14 @@
     {
       "id": "quality-public-map",
       "source": "tools/check-map.json"
+    },
+    {
+      "id": "mvu-schema-test-dependencies-fixture-contract",
+      "source": "tests/mvu-schema-test-dependencies-fixture.mts"
+    },
+    {
+      "id": "mvu-native-data-test-dependencies-fixture",
+      "source": "tests/mvu-native-data-test-dependencies-fixture.mts"
     }
   ],
   "builds": [

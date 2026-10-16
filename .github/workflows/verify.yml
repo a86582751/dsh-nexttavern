@@ -32,6 +32,7 @@ jobs:
         run: |
           npm ci --prefix build-tools
           npm ci --prefix integrations/auth-webserver
+          node -e "require('node:fs').symlinkSync(require('node:path').resolve('build-tools/node_modules'), 'node_modules', 'junction')"
       - name: Same affected selector as local contributors
         shell: pwsh
         run: |

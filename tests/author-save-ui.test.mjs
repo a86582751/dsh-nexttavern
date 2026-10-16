@@ -13,14 +13,16 @@ function runner(){
   const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>Object.is(v,b[i]))
   const React={
     createElement:(type,props,...children)=>({type,props:{...(props??{}),children}}),
-    useState(initial){const id=index++;cells[id]??={value:typeof initial==='function'?initial():initial};return [cells[id].value,next=>{const value=typeof next==='function'?next(cells[id].value):next;if(!Object.is(value,cells[id].value)){cells[id].value=value;dirty=true}}]},
+    useState(initial){const id=index++,cell=cells[id]??={value:typeof initial==='function'?initial():initial};return [cell.value,next=>{if(cells[id]!==cell)return;const value=typeof next==='function'?next(cell.value):next;if(!Object.is(value,cell.value)){cell.value=value;dirty=true}}]},
     useRef(value){const id=index++;return cells[id]??={current:value}},
     useCallback(fn,deps){const id=index++;if(!same(cells[id]?.deps,deps))cells[id]={deps,fn};return cells[id].fn},
+    useMemo(fn,deps){const id=index++;if(!same(cells[id]?.deps,deps))cells[id]={deps,value:fn()};return cells[id].value},
     useEffect(fn,deps){const id=index++,old=cells[id];if(!same(old?.deps,deps))pending.push(()=>{old?.cleanup?.();cells[id]={deps,cleanup:fn()}})},
   }
   const resolve=node=>{if(node==null||typeof node!=='object')return node;if(Array.isArray(node))return node.map(resolve);if(typeof node.type==='function')return resolve(node.type(node.props));return {...node,props:{...node.props,children:resolve(node.props.children)}}}
   const render=()=>{index=0;dirty=false;seat=resolve(component(props));const work=pending;pending=[];work.forEach(fn=>fn())}
-  return {React,mount(fn,p){component=fn;props=p;render()},get seat(){return seat},async flush(){for(let i=0;i<40;i++){await Promise.resolve();if(dirty)render()}},render,unmount(){cells.forEach(cell=>cell?.cleanup?.());cells.length=0;pending=[]}}
+  const unmount=()=>{cells.forEach(cell=>cell?.cleanup?.());cells.length=0;pending=[]}
+  return {React,mount(fn,p){unmount();component=fn;props=p;render()},get seat(){return seat},async flush(){for(let i=0;i<40;i++){await Promise.resolve();if(dirty)render()}},render,unmount}
 }
 const walk=(node,out=[])=>{if(node==null)return out;if(Array.isArray(node)){node.forEach(n=>walk(n,out));return out}out.push(node);if(typeof node==='object')walk(node.props?.children,out);return out}
 const text=node=>walk(node).filter(v=>typeof v==='string').join('')
@@ -43,18 +45,26 @@ async function assertDraftSurvivesRemount(Panel,buttonLabel,fieldType,kind){
 await assertDraftSurvivesRemount(author.WorldbookPanel,'＋ 新增','textarea','worldbook')
 await assertDraftSurvivesRemount(author.CardsPanel,'＋ 新增人物','textarea','cards')
 const r=runner();let post=deferred();const toasts=[]
-globalThis.fetch=async(_url,init)=>init?.method==='POST'?post.promise:{json:async()=>({ok:true,userinfo:{name:'旧名',gender:'保密'}})}
-const UserInfo=createUserInfoSettings({React:r.React,toast:message=>toasts.push(message)})
+const personaData={schemaVersion:1,encoding:'native-account-persona-data-v1',revision:0,dataSha256:'a'.repeat(64),
+  selectedId:'legacy.png',defaultId:null,avatarIds:['legacy.png'],profiles:[{avatar_id:'legacy.png',avatar:'legacy.png',
+    name:'旧名',gender:'保密',title:'',description:'',position:0,depth:2,role:0,lorebook:'',connections:[],is_default:false}]}
+const personaStorage=new Map()
+const UserInfo=createUserInfoSettings({React:r.React,toast:message=>toasts.push(message),
+  storage:{getItem:key=>personaStorage.get(key)??null,setItem:(key,value)=>personaStorage.set(key,value),removeItem:key=>personaStorage.delete(key)},
+  fetch:async(_url,init)=>init?.method==='POST'?post.promise:{json:async()=>({ok:true,data:personaData})}})
 r.mount(UserInfo,{});await r.flush()
 const inputs=()=>walk(r.seat).filter(n=>n?.type==='input')
-const save=()=>walk(r.seat).find(n=>n?.type==='button'&&text(n)==='保存')
-assert.equal(inputs().length,2)
+const save=()=>walk(r.seat).find(n=>n?.type==='button'&&text(n)==='保存当前角色')
+assert.equal(inputs().length,3)
 inputs()[0].props.onChange({target:{value:'新名'}});await r.flush();save().props.onClick();await r.flush()
 assert.equal(inputs().every(n=>n.props.disabled===true),true,'userinfo fields lock while POST is pending')
 post.reject(new Error('synthetic failure'));await r.flush()
-assert.equal(inputs().every(n=>n.props.disabled!==true),true,'userinfo fields unlock after a failed POST')
-assert.match(toasts.at(-1),/保存失败/)
-console.log('author-save-ui=ok (worldbook/cards fieldset lock; userinfo deferred failure unlock)')
+assert.equal(inputs().every(n=>n.props.disabled===true),true,'an unconfirmed persona write retains its identity')
+assert.match(toasts.at(-1),/结果尚未确认/)
+walk(r.seat).find(n=>n?.type==='button'&&text(n)==='结束待确认操作').props.onClick();await r.flush()
+assert.equal(inputs().every(n=>n.props.disabled!==true),true,'explicit recovery unlocks the unconfirmed draft')
+assert.equal(inputs()[0].props.value,'新名')
+console.log('author-save-ui=ok (fresh component mounts; save locks and explicit persona recovery)')
 
 // Use the public factory and deterministic hooks to exercise the extracted pricing lifecycle.
 const originalSetTimeout = globalThis.setTimeout, originalClearTimeout = globalThis.clearTimeout

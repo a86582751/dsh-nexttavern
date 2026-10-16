@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {createManagementPanels} from '../lib/ui/management-panels.js'
+import {createCardImportPanel} from '../lib/ui/card-import-panel.js'
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}}
 function hooks(){
   const cells=[];let index=0,pending=[],dirty=false,component,props,seat
@@ -215,12 +216,13 @@ try{
       {sourcePointer:'/data/extensions/example',status:'preserved-unexecuted',reason:'extension-runtime-not-wired'},
       {sourcePointer:'/data/assets/0',status:'missing-external-resource',reason:'external-asset-not-bundled'},
       {sourcePointer:'/data/extensions/analysis',status:'requires-optional-analysis',reason:'optional-analysis-not-run'}]}
-    const p=panels(r,async url=>url.includes('/state?')?{cardImport:{capabilityReport:report}}:{candidates:[]})
-    r.mount(p.ResourcesPanel,{sessionId:'story'});await r.flush()
+    const CardImportPanel=createCardImportPanel({React:r.React,toast(){},
+      jsonFetch:async url=>url.includes('/state?')?{cardImport:{capabilityReport:report}}:{candidates:[]}})
+    r.mount(CardImportPanel,{sessionId:'story'});await r.flush()
     const displayed=text(r.seat)
-    for(const status of ['已解释为结构化资料：1','已保留，未执行：1','外部资源未随卡附带：1','需要可选分析：1'])
+    for(const status of ['1已整理为角色资料','1导入时保留，未运行','1缺少外部资源','1需要可选分析'])
       assert(displayed.includes(status),`capability status ${status} is visible`)
-    assert(displayed.includes('/data/assets/0 · 外部资源未随卡附带 · 卡内没有资源字节；未请求或验证外部 URL'))
+    assert(displayed.includes('媒体资源缺少外部资源 · 卡内未附带资源；外部地址尚未验证'))
     assert(!displayed.includes('URL 已验证'))
     r.unmount()
   }
