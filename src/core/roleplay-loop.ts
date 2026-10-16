@@ -196,6 +196,10 @@ export function registerRoleplayLoop({
       const internal=original.length>0&&original.every(message=>message.source?.kind==='roleplay-tasks'
         &&message.source.form==='phase'&&message.source.stage==='management')
       if(internal) {
+        // This wake submits the real rebuild task and then closes its status
+        // publication on the next step, without entering Story preparation.
+        try {await resumeStatusMaintenance(session,payload.agent)}
+        catch(error) {if(!isInlinePending(error))throw error}
         // The owning task host already supplied its complete actual envelope.
         // Replacing it with player-management prose loses the queued task
         // input and causes idle wake/retry loops. Never grant this exception
