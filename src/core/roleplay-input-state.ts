@@ -791,9 +791,18 @@ export function createRoleplayInputStateOwner(deps:{
     captureClosing,borrowHistorical,readPendingVariantFacts,readProgramAbsenceNamespaceFacts,
     readProgramOpeningPreparationFacts,
     captureSchema:<T>(id:string,compute:()=>T)=>read('schema',id,'verified-history',compute,true),
+    reuseSchema:<T>(id:string,matches:(data:T)=>boolean):RoleplayInputStateRead<T>|undefined=>{
+      const frame=slots.get('schema\0'+id+'\0verified-history')
+      if(!frame||!current(frame)||!matches(frame.data as T))return
+      // Only the matching historical cut borrows this dependency. A different
+      // cut must not become dependent on today's numerical head.
+      connect(frame)
+      return handle(frame,frame.data as T)
+    },
     captureSource:<T>(id:string,kind:RoleplaySourceRead,compute:()=>T,
       outputs?:RoleplayInputStateScope['outputRows'])=>read('source',id,kind,compute,true,undefined,outputs),
-    captureOriginal:<T>(id:string,identity:string,compute:()=>T)=>read('source',id,'schema-original',compute,true,identity),
+    captureOriginal:<T>(id:string,identity:string,compute:()=>T)=>
+      read('source',id,`schema-original:${identity}`,compute,true),
     captureSourceFrame,
     captureObservation:<T>(id:string,compute:()=>T,purpose='input-observation')=>
       read('observation',id,purpose,compute,true),

@@ -730,7 +730,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(matches.length!==1)fail('SCHEMA_HISTORICAL_TAIL_UNPROVEN')
     return matches[0]!
   }
-  function historicalCutData(selector:HistoricalCutSelector,cacheOriginal=true,session=deps.session(selector.sessionId))
+  function historicalCutData(selector:HistoricalCutSelector,session=deps.session(selector.sessionId))
     :{facts:HistoricalCutFacts;originalSha256:string} {
     if(!session||!currentSession(session)||!Number.isSafeInteger(selector.nativeCut)
       ||selector.nativeCut<1||selector.nativeCut>all(session).length)fail('SCHEMA_SESSION_INACTIVE')
@@ -760,7 +760,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       const intent=validateMvuSchemaOpeningIntent(matches[0]![1] as never)
       if(intent.status!=='completed'||!intent.initializationReceipt)fail('SCHEMA_OPENING_RECORD_INVALID')
       const captured=deps.source.captureCurrentOriginal(intent.preparation,
-        {sessionId:sid,table:prefixInputs.status,events:prefix},true,cacheOriginal)
+        {sessionId:sid,table:prefixInputs.status,events:prefix},true)
       ready=captured.ready
       original=captured.original
       if(original.schemaVersion===5)sourceOriginals.set(original.originalSha256,original)
@@ -789,20 +789,32 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         },
       })
     }
+    return historicalCutFacts(original,ready,session)
+  }
+  function historicalCutFacts(original:SchemaFrozenOriginal,ready:SchemaJournalReady,session:Session)
+    :{facts:HistoricalCutFacts;originalSha256:string} {
     return Object.freeze({facts:Object.freeze({authorInput:schemaOriginalReplayCompilationInput(original),
       ...original.schemaVersion===5&&original.preparation.compilation.schemaVersion===6
         ?{compilationResources:deps.source.captureOriginalCompilationResources(original)}:{},
       ready,frozen:ready.frozen,events:all(session)}),originalSha256:original.originalSha256})
   }
   async function captureHistoricalCut(selector:HistoricalCutSelector) {
-    const session=deps.session(selector.sessionId),{facts}=historicalCutData(selector,true,session)
+    const session=deps.session(selector.sessionId),{facts}=historicalCutData(selector,session)
     // Re-admit protected bytes for every waiter, including a cache hit.
     await protectedFor(facts.ready)
     return {...facts,events:all(session!)}
   }
   async function borrowHistoricalCut(selector:HistoricalCutSelector,signal?:AbortSignal):Promise<SchemaOwnedHistoricalCut> {
     signal?.throwIfAborted()
-    const read=deps.inputState.borrowHistorical(selector.sessionId,()=>historicalCutData(selector,false))
+    const read=deps.inputState.borrowHistorical(selector.sessionId,()=>{
+      const captured=deps.inputState.reuseSchema<SchemaReadData>(selector.sessionId,({history})=>
+        history.original.realmEpoch===selector.realmEpoch&&history.ready.frozen.nativeCut===selector.nativeCut)
+      // preflight has already folded this exact cut into its owned History.
+      // Replay still verifies it; rebuilding the same Source and numerical fold
+      // here only repeats that owner's work before the replay cache is consulted.
+      return captured?historicalCutFacts(captured.data.history.original,captured.data.history.ready,
+        captured.data.session):historicalCutData(selector)
+    })
     try {
       await protectedFor(read.data.facts.ready)
       signal?.throwIfAborted()
@@ -943,14 +955,9 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     signal?.throwIfAborted()
     const existing=views.get(sid)
     if(existing&&viewCurrent(existing))return
-    const read=captureSchemaRead(sid),{history}=read.data
-    const {driver:replay}=await engine(history.ready)
-    const verified=await replay.verifyHistorical({sessionId:sid,realmEpoch:history.original.realmEpoch,
-      nativeCut:history.ready.frozen.nativeCut},signal)
-    signal?.throwIfAborted()
-    if(verified.kind!=='verified')fail(verified.code)
-    // A captured DATA slot becomes readable only after actual historical
-    // replay succeeds and all captured dependencies still belong to this owner.
+    const read=captureSchemaRead(sid)
+    // Capture consumes the accepted Store/Native history; publication checks
+    // that its dependencies still belong to this owner without executing it again.
     publishSchemaRead(read)
   }
   function observation(sid:string):InputObservation|undefined {

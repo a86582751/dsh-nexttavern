@@ -397,7 +397,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
    * inputs continue through readFrozenOriginal's complete frozen validation.
    * The central owner retains immutable Original data until its exact inputs change. */
   function captureCurrentOriginal(input:MvuSchemaOpeningPreparation,current:SchemaCurrentOriginalRead,
-    historical=false,cacheOriginal=true):{ready:SchemaJournalReady;original:SchemaFrozenOriginal} {
+    historical=false):{ready:SchemaJournalReady;original:SchemaFrozenOriginal} {
     try {
       const preparation=validateMvuSchemaOpeningPreparation(input),sid=current.sessionId
       const journal=createRoleplayMvuSchemaJournal({markers,recordOwner:deps.inputState.schemaJournal,table:{
@@ -414,20 +414,15 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       // a foreign preparation cannot change journal addresses or first errors.
       if(ready.frozen.sessionId!==preparation.identity.sessionId
         ||ready.frozen.realmEpoch!==preparation.realmEpoch)fail('SCHEMA_NATIVE_CUT_UNPROVEN')
-      let original:SchemaFrozenOriginal,originalRead:RoleplayInputStateRead<SchemaFrozenOriginal>|undefined
-      // An outer historical borrow already owns the journal and immutable
-      // import reads. It must not acquire the replaceable current Original slot.
-      if(cacheOriginal) {
-        const first=ready.steps[0]!,refs=[ready.epochRef,first.dispatchRef,first.completionRef],
-          identity=recordSha256({preparation:preparation.preparationSha256,refs})
-        originalRead=deps.inputState.captureOriginal(sid,identity,()=>{
-          // The parsed journal is current, but the Original slot also needs exact
-          // dependency reads. Future numerical output does not replace this root.
-          for(const ref of refs)current.table.get(ref.key)
-          return originalFromCheckedJournal(preparation,ready,events)
-        })
-        original=originalRead.data
-      }else original=originalFromCheckedJournal(preparation,ready,events)
+      const first=ready.steps[0]!,refs=[ready.epochRef,first.dispatchRef,first.completionRef],
+        identity=recordSha256({preparation:preparation.preparationSha256,refs})
+      // Each immutable Original has its own owner slot. Reading an older realm
+      // therefore keeps the current realm's readers valid and shares these exact
+      // Import/journal dependencies with the enclosing historical borrow.
+      const originalRead=deps.inputState.captureOriginal(sid,identity,()=>{
+        for(const ref of refs)current.table.get(ref.key)
+        return originalFromCheckedJournal(preparation,ready,events)
+      }),original=originalRead.data
       parsedOriginals.set(original,originalRead)
       return {ready,original}
     } catch(error) {fail(codeOf(error))}
