@@ -103,16 +103,17 @@ export async function buildAuthorHostRuntimeAssetsV5(options:{repo:string;plan:A
       throw Error('AUTHOR_HOST_ASSET_OUTPUT_UNREGISTERED: '+output)
     }
   }
+  const sourceScope=options.historicalRebuild?createRuntimeAssetSourceScopeV1({repo,artifacts:options.plan.artifacts,
+    sourceBindings:options.historicalRebuild.sourceBindings}):undefined
   const lockArtifact=artifact(options.plan,recipe.lockArtifact),lockFile=inside(repo,lockArtifact.source)
-  const lockBytes=fs.readFileSync(lockFile),lock=JSON.parse(lockBytes.toString('utf8')) as {
+  const lockBytes=sourceScope?.input(sourceScope.entry(recipe.lockArtifact)).bytes??fs.readFileSync(lockFile)
+  const lock=JSON.parse(lockBytes.toString('utf8')) as {
     packages:Record<string,{version?:string}>}
   const require=createRequire(path.join(path.dirname(lockFile),'package.json'))
   const esbuild=require('esbuild') as typeof import('esbuild')
   if(esbuild.version!==recipe.builder.esbuildVersion||lock.packages['node_modules/esbuild']?.version!==esbuild.version) {
     throw Error('AUTHOR_HOST_ASSET_BUILDER_PIN_INVALID')
   }
-  const sourceScope=options.historicalRebuild?createRuntimeAssetSourceScopeV1({repo,artifacts:options.plan.artifacts,
-    sourceBindings:options.historicalRebuild.sourceBindings}):undefined
   const registered=sourceScope?undefined:new Map(options.plan.artifacts.map(row=>[path.resolve(inside(repo,row.source)),row]))
   const module=recipe.modules[0]!,entry=sourceScope?.entry(module.artifact)
     ??inside(repo,artifact(options.plan,module.artifact).source)

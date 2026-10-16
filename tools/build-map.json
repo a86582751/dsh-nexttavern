@@ -8035,6 +8035,11 @@
   "compilerPlan": {
     "artifacts": [
       {
+        "id": "server-candidates-v1-build-tools-lock-predecessor",
+        "source": "development/history/server-candidates-v1-source/build-tools/package-lock.json",
+        "canonicalSource": "runtime/alpha3/history/server-candidates-v1-source/build-tools/package-lock.json"
+      },
+      {
         "id": "source-music-license-TypeScript-Apache-2.0.txt",
         "source": "licenses/TypeScript-Apache-2.0.txt",
         "canonicalSource": "release/public/licenses/TypeScript-Apache-2.0.txt"
@@ -162048,6 +162053,11 @@
           "producer": "schema-runtime",
           "sourceBindings": [
             {
+              "logicalArtifact": "roleplay-data-typescript",
+              "sourceArtifact": "browser3-author-dialog-predecessor-013a87866360c4c27836",
+              "sha256": "822da30c42cf77f9df36da7b36b7cb04699af3afbed78f803cba5f8694bdceaf"
+            },
+            {
               "logicalArtifact": "tavern-mvu-schema-compiler-worker-v4-typescript",
               "sourceArtifact": "server-candidates-v1-compiler-worker-predecessor-source",
               "sha256": "bff6354b559c4ac9933c647e23aa2f053affe86bc53ab0ef24ab9524b92d3c3d"
@@ -162093,6 +162103,21 @@
               "logicalArtifact": "roleplay-mvu-schema-journal-typescript",
               "sourceArtifact": "browser3-author-dialog-predecessor-50f89e00f77cb4d6fef9",
               "sha256": "0da89de60d2d7a5399d5ea9ab3e098cfcd25b6452e13bd6c4e5fc4d623c7617e"
+            },
+            {
+              "logicalArtifact": "inventory-runtime-alpha3-build-tools-package-lock-json",
+              "sourceArtifact": "server-candidates-v1-build-tools-lock-predecessor",
+              "sha256": "599d76d6c944bb1523c2cdb20465f7c20a9e5556e26e4c32f748b869f14c4cfd"
+            },
+            {
+              "logicalArtifact": "roleplay-data-typescript",
+              "sourceArtifact": "browser3-author-dialog-predecessor-013a87866360c4c27836",
+              "sha256": "822da30c42cf77f9df36da7b36b7cb04699af3afbed78f803cba5f8694bdceaf"
+            },
+            {
+              "logicalArtifact": "tavern-author-combined-data-v6-typescript",
+              "sourceArtifact": "browser3-author-dialog-predecessor-35c2ca5c3704b0c8cfeb",
+              "sha256": "0e8237680610003cfc373c39d528a81af17e9bbd0e27ea898dad02ab91f47f64"
             },
             {
               "logicalArtifact": "tavern-author-host-provider-typescript",
@@ -179454,7 +179479,7 @@
               "path": "package.json"
             },
             {
-              "artifact": "roleplay-data-typescript",
+              "artifact": "browser3-author-dialog-predecessor-013a87866360c4c27836",
               "path": "src/core/roleplay-data.ts"
             },
             {

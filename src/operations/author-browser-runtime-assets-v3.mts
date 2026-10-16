@@ -61,11 +61,11 @@ export async function buildAuthorBrowserRuntimeAssetsV3(options:{repo:string;pla
     throw Error('AUTHOR_BROWSER_V3_BUILDER_PIN_INVALID')
   const resources=options.plan.product.packages.find(row=>row.packageArtifact===recipe.packageArtifact)?.resources
   if(!resources)throw Error('AUTHOR_BROWSER_V3_PACKAGE_UNREGISTERED')
-  const registered=new Map(options.plan.artifacts.map(item=>[path.resolve(inside(repo,item.source)),item]))
+  const registered=new Map(options.plan.artifacts.map(item=>[path.resolve(repo,item.source),item]))
   const root=path.resolve(options.packageRoot),libraries=fs.realpathSync(options.libraryRoot)
   // esbuild uses file names in its lazy-module functions. Keep their manifest
   // identity when public delivery moves the physical source and toolchain.
-  const canonicalLibraries=inside(repo,path.posix.dirname(find(recipe.lockArtifact).canonicalSource
+  const canonicalLibraries=path.resolve(repo,path.posix.dirname(find(recipe.lockArtifact).canonicalSource
     ??find(recipe.lockArtifact).source)+'/node_modules')
   const physicalByLogical=new Map<string,string>()
   const logicalFile=(physical:string)=>{
