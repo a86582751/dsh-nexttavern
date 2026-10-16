@@ -26,7 +26,9 @@ export async function installMvuNativeDataTestDependencies() {
       `export {validateNativeOpeningInvocationV1,validateNativeGeneratedOpeningReceiptV1,validateNativeOpeningClosingAckV1,validateNativeOpeningRequestAttemptV1}`+
         ` from ${JSON.stringify(opening)};`,
     ].join('\n'),resolveDir:fileURLToPath(new URL('../',import.meta.url)),sourcefile:'mvu-native-pure-data-entry.ts'},
-    bundle:true,platform:'node',format:'esm',write:false,plugins:[{name:'locked-mvu-native-data',setup(builder) {
+    bundle:true,platform:'node',format:'esm',write:false,
+    nodePaths:[fileURLToPath(new URL('../build-tools/node_modules/',import.meta.url))],
+    plugins:[{name:'locked-mvu-native-data',setup(builder) {
       builder.onResolve({filter:/^@deepseek-ai\/dsh-session\/surface$/},()=>({
         path:fileURLToPath(new URL('../development/session/src/surface.ts',import.meta.url))}))
       builder.onResolve({filter:/^@deepseek-ai\/dsh-brand$/},()=>({

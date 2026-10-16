@@ -45,26 +45,18 @@ async function assertDraftSurvivesRemount(Panel,buttonLabel,fieldType,kind){
 await assertDraftSurvivesRemount(author.WorldbookPanel,'＋ 新增','textarea','worldbook')
 await assertDraftSurvivesRemount(author.CardsPanel,'＋ 新增人物','textarea','cards')
 const r=runner();let post=deferred();const toasts=[]
-const personaData={schemaVersion:1,encoding:'native-account-persona-data-v1',revision:0,dataSha256:'a'.repeat(64),
-  selectedId:'legacy.png',defaultId:null,avatarIds:['legacy.png'],profiles:[{avatar_id:'legacy.png',avatar:'legacy.png',
-    name:'旧名',gender:'保密',title:'',description:'',position:0,depth:2,role:0,lorebook:'',connections:[],is_default:false}]}
-const personaStorage=new Map()
-const UserInfo=createUserInfoSettings({React:r.React,toast:message=>toasts.push(message),
-  storage:{getItem:key=>personaStorage.get(key)??null,setItem:(key,value)=>personaStorage.set(key,value),removeItem:key=>personaStorage.delete(key)},
-  fetch:async(_url,init)=>init?.method==='POST'?post.promise:{json:async()=>({ok:true,data:personaData})}})
+globalThis.fetch=async(_url,init)=>init?.method==='POST'?post.promise:{json:async()=>({ok:true,userinfo:{name:'旧名',gender:'保密'}})}
+const UserInfo=createUserInfoSettings({React:r.React,toast:message=>toasts.push(message)})
 r.mount(UserInfo,{});await r.flush()
 const inputs=()=>walk(r.seat).filter(n=>n?.type==='input')
-const save=()=>walk(r.seat).find(n=>n?.type==='button'&&text(n)==='保存当前角色')
-assert.equal(inputs().length,3)
+const save=()=>walk(r.seat).find(n=>n?.type==='button'&&text(n)==='保存')
+assert.equal(inputs().length,2)
 inputs()[0].props.onChange({target:{value:'新名'}});await r.flush();save().props.onClick();await r.flush()
 assert.equal(inputs().every(n=>n.props.disabled===true),true,'userinfo fields lock while POST is pending')
 post.reject(new Error('synthetic failure'));await r.flush()
-assert.equal(inputs().every(n=>n.props.disabled===true),true,'an unconfirmed persona write retains its identity')
-assert.match(toasts.at(-1),/结果尚未确认/)
-walk(r.seat).find(n=>n?.type==='button'&&text(n)==='结束待确认操作').props.onClick();await r.flush()
-assert.equal(inputs().every(n=>n.props.disabled!==true),true,'explicit recovery unlocks the unconfirmed draft')
-assert.equal(inputs()[0].props.value,'新名')
-console.log('author-save-ui=ok (fresh component mounts; save locks and explicit persona recovery)')
+assert.equal(inputs().every(n=>n.props.disabled!==true),true,'userinfo fields unlock after a failed POST')
+assert.match(toasts.at(-1),/保存失败/)
+console.log('author-save-ui=ok (fresh component mounts; worldbook/cards fieldset lock and userinfo failure unlock)')
 
 // Use the public factory and deterministic hooks to exercise the extracted pricing lifecycle.
 const originalSetTimeout = globalThis.setTimeout, originalClearTimeout = globalThis.clearTimeout

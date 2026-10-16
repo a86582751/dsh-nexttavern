@@ -235,7 +235,9 @@ try {
     write(id + '-expected.js', id);
   }
   const browserContext = {...context, audience: 'maintenance',
-    mapping: {...context.mapping, artifacts: browserArtifacts, builds: browserBuilds},
+    mapping: {...context.mapping, artifacts: browserArtifacts, builds: [...browserBuilds,
+      {id: 'typert', kind: 'subagent-typert', artifact: 'typert', entry: 'not-a-browser.ts',
+        builder: 'not-a-browser-builder.mjs', inputs: []}]},
     artifactPaths: new Map(browserArtifacts.map(item => [item.id, item.source])),
   };
   const browserTask = {id: 'bundle', action: 'bundle', modules: []};

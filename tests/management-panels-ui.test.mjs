@@ -220,8 +220,13 @@ try{
       jsonFetch:async url=>url.includes('/state?')?{cardImport:{capabilityReport:report}}:{candidates:[]}})
     r.mount(CardImportPanel,{sessionId:'story'});await r.flush()
     const displayed=text(r.seat)
-    for(const status of ['1已整理为角色资料','1导入时保留，未运行','1缺少外部资源','1需要可选分析'])
-      assert(displayed.includes(status),`capability status ${status} is visible`)
+    const capabilities=nodes(r.seat).filter(node=>node?.props?.['data-capability'])
+    assert.equal(capabilities.length,4)
+    for(const label of ['已整理为角色资料','导入时保留，未运行','缺少外部资源','需要可选分析']) {
+      const capability=capabilities.find(node=>text(node).includes(label))
+      assert(capability,`capability status ${label} is visible`)
+      assert.equal(nodes(capability).find(node=>node?.type==='strong').props.children[0],1)
+    }
     assert(displayed.includes('媒体资源缺少外部资源 · 卡内未附带资源；外部地址尚未验证'))
     assert(!displayed.includes('URL 已验证'))
     r.unmount()
