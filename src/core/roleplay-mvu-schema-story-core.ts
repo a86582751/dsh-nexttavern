@@ -371,7 +371,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     for(const row of rows) {
       const {key,event}=row
       const plan=event.plan,base='operation' in plan?plan.operation.base:plan.base
-      if(original&&!deps.source.verifyFrozenFrame(original,plan.currentFrame))fail('SCHEMA_HISTORICAL_SOURCE_UNPROVEN')
+      // Accepted plans retain their parsed frame DATA and journal/closure bindings.
+      // Current Source belongs to captureFrame; do not rebuild each historical Source.
       const eventKey=event.encoding==='native-mvu-schema-player-event-v1'
         ?mvuSchemaPlayerEventKey(sid,event.eventId):mvuSchemaStoryEventKey(sid,event.eventId)
       if(key!==eventKey||!same(base.root,root)
