@@ -246,7 +246,7 @@ try{
   let tick;globalThis.setInterval=fn=>(tick=fn,1);globalThis.clearInterval=()=>{}
   const old=deferred(),fresh=deferred();let gets=0;const e=hooks(),ep=panels(e,async(_,init)=>init?{}:gets++===0?old.promise:fresh.promise)
   e.mount(ep.ExportPanel,{sessionId:'story'});await e.flush();tick();assert.equal(gets,1,'slow polls must not overlap or starve every response')
-  const started=button(e,'导出完整小说').props.onClick();await e.flush()
+  const started=button(e,'导出小说原文').props.onClick();await e.flush()
   fresh.resolve({jobs:[{id:'j',kind:'novel-export',status:'completed',resourceId:'file'}]});await started;await e.flush()
   old.resolve({jobs:[{id:'j',kind:'novel-export',status:'running'}]});await e.flush()
   assert(text(e.seat).includes('下载文件'),'late jobs response must not erase completed download');e.unmount()
