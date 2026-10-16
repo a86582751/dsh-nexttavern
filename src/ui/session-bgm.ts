@@ -4,6 +4,8 @@ import {fetchRoleplayText} from './panel-state.js'
 export interface SessionAudioResource { id: string; name: string; type: string; url?:string }
 export interface SessionBgmState {
   sessionId: string | null
+  opened: boolean
+  panelPosition: {left: number; top: number}
   resource: SessionAudioResource | null
   playback: 'idle' | 'paused' | 'starting' | 'playing'
   volume: number
@@ -27,7 +29,8 @@ const messageOf = (error: unknown) => String(error instanceof Error ? error.mess
 
 /** The application owns playback. UI mounts and resource-list requests do not own it. */
 export function createSessionBgm(createAudio: () => AudioPort = () => new Audio()) {
-  let state: SessionBgmState = {sessionId: null, resource: null, playback: 'idle', volume: 0.5, error: ''}
+  let state: SessionBgmState = {sessionId: null, opened: false, panelPosition: {left: 16, top: 96},
+    resource: null, playback: 'idle', volume: 0.5, error: ''}
   let sourceIdentity: string | undefined
   let audio: AudioPort | null = null
   let removeAudioListeners: (() => void) | null = null
@@ -63,8 +66,9 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
       if (sessionId === state.sessionId) return
       release()
       sourceIdentity = undefined
-      publish({sessionId, resource: null, playback: 'idle', error: ''})
+      publish({sessionId, opened: false, resource: null, playback: 'idle', error: ''})
     },
+    open(opened: boolean, panelPosition = state.panelPosition) {publish({opened, panelPosition})},
     acceptSource(value: {sessionId?: string; cardImport?: unknown}) {
       if (value.sessionId !== state.sessionId) return
       const imported = value.cardImport as {sourceRecordSessionId?: string; importId?: string} | null | undefined
@@ -129,7 +133,7 @@ export function createSessionBgm(createAudio: () => AudioPort = () => new Audio(
     dispose() {
       release()
       sourceIdentity = undefined
-      publish({sessionId: null, resource: null, playback: 'idle', error: ''})
+      publish({sessionId: null, opened: false, resource: null, playback: 'idle', error: ''})
       listeners.clear()
     },
   }
@@ -144,7 +148,6 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
 }) {
   return function SessionBgmControls({sessionId}: {sessionId: string}) {
     const state = React.useSyncExternalStore(player.subscribe, player.getSnapshot, player.getSnapshot)
-    const [expanded, setExpanded] = React.useState(false)
     const [choosing, setChoosing] = React.useState(false)
     const [resources, setResources] = React.useState<SessionAudioResource[] | null>(null)
     const [loading, setLoading] = React.useState(false)
@@ -257,22 +260,21 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
       }
     }
     const h = React.createElement
+    if (!state.opened) return null
     return h('section', {
+      id: 'dsh-rp-bgm-panel',
       'aria-label': '会话背景音乐',
-      style: {position: 'fixed', bottom: 16, left: 16, zIndex: 1050, width: expanded ? 280 : 'auto',
+      style: {position: 'fixed', ...state.panelPosition, zIndex: 1050, width: 280,
         boxSizing: 'border-box',
-        maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto',
-        padding: expanded ? 12 : 0,
+        maxWidth: 'calc(100vw - 32px)', maxHeight: `calc(100dvh - ${state.panelPosition.top + 72}px)`, overflowY: 'auto',
+        padding: 12,
         border: '1px solid var(--dsw-alias-border-l2, #ccc)', borderRadius: 12,
         background: 'var(--dsw-alias-bg-layer-1, #fffaf6)', color: 'var(--dsw-alias-label-primary, #413a3d)',
         boxShadow: '0 3px 16px #0002'},
     },
-    !expanded ? h('button', {type: 'button', className: 'dsh-rp-btn', 'aria-expanded': false,
-      onClick: () => setExpanded(true)}, state.error ? '音乐播放失败' :
-        state.playback === 'playing' ? '背景音乐 · 正在播放' : '背景音乐') : h(React.Fragment, null,
     h('strong', null, '背景音乐'),
     h('button', {type: 'button', className: 'dsh-rp-btn', style: {float: 'right'},
-      'aria-expanded': true, onClick: () => setExpanded(false)}, '收起音乐'),
+      'aria-expanded': true, onClick: () => player.open(false)}, '收起音乐'),
     h('div', {style: {margin: '6px 0', overflowWrap: 'anywhere'}}, state.resource?.name ?? '尚未选择音乐'),
     h('div', {style: {display: 'flex', gap: 8, flexWrap: 'wrap'}},
       h('button', {type: 'button', className: 'dsh-rp-btn', onClick: () => {
@@ -324,6 +326,6 @@ export function createSessionBgmControls({React, player, jsonFetch, uploadFile}:
         onChange: (event: ReactAPI.ChangeEvent<HTMLSelectElement>) => {
           player.select(resources.find(resource => resource.id === event.currentTarget.value) ?? null)
         }}, h('option', {value: ''}, '请选择音乐'),
-      ...resources.map(resource => h('option', {key: resource.id, value: resource.id}, resource.name))) : null) : null))
+      ...resources.map(resource => h('option', {key: resource.id, value: resource.id}, resource.name))) : null) : null)
   }
 }

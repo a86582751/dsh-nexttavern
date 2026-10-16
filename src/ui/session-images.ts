@@ -14,6 +14,7 @@ type ImageLoad = 'loading' | 'ready' | 'failed'
 export interface SessionImagesState {
   sessionId: string | null
   opened: boolean
+  panelPosition: {left: number; top: number}
   catalog: SessionImageCatalog | null
   browserImages: readonly SessionBrowserImage[]
   refreshing: boolean
@@ -32,7 +33,8 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : S
 
 /** One application owner survives Reader mounts; Source identity comes from the catalog. */
 export function createSessionImages(jsonFetch: ImagesJsonFetch) {
-  let state: SessionImagesState = {sessionId: null, opened: false, catalog: null, browserImages: [], refreshing: false,
+  let state: SessionImagesState = {sessionId: null, opened: false, panelPosition: {left: 16, top: 96},
+    catalog: null, browserImages: [], refreshing: false,
     selecting: false, gallery: null, background: null, portrait: null, load: emptyLoad(), error: ''}
   const listeners = new Set<() => void>()
   let sourceImport: string | undefined
@@ -120,7 +122,7 @@ export function createSessionImages(jsonFetch: ImagesJsonFetch) {
       // State announces a refresh, but only the Source owner supplies a media hash.
       if (state.opened || state.gallery || state.background || state.portrait) void refresh()
     },
-    open(opened: boolean) {publish({opened}); if (opened) void refresh()},
+    open(opened: boolean, panelPosition = state.panelPosition) {publish({opened, panelPosition}); if (opened) void refresh()},
     refresh,
     acceptBrowserImages(sessionId: string, owner: object, pageId: string, images: readonly BrowserNativeImageV3[]) {
       if (disposed || state.sessionId !== sessionId) return
@@ -195,10 +197,10 @@ export function createSessionImages(jsonFetch: ImagesJsonFetch) {
 }
 
 export const SESSION_IMAGES_CSS = `
-.rp-images-controls{position:fixed;left:16px;top:80px;z-index:1049;color:#514039;font:13px/1.5 sans-serif}
+.rp-images-controls{position:fixed;z-index:1049;color:#514039;font:13px/1.5 sans-serif}
 .rp-images-controls button{border:1px solid #b7a59c;border-radius:7px;background:#fffaf4;color:inherit;padding:5px 9px;cursor:pointer}
 .rp-images-controls button:disabled{opacity:.5;cursor:default}
-.rp-images-panel{width:min(340px,calc(100vw - 32px));max-height:calc(100dvh - 150px);overflow:auto;padding:12px;background:#fffaf4;border:1px solid #c8b7ab;border-radius:12px;box-shadow:0 6px 26px #36231726}
+.rp-images-panel{box-sizing:border-box;width:min(340px,calc(100vw - 32px));overflow:auto;padding:12px;background:#fffaf4;border:1px solid #c8b7ab;border-radius:12px;box-shadow:0 6px 26px #36231726}
 .rp-images-actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 .rp-images-list{display:grid;gap:5px;max-height:180px;overflow:auto}
 .rp-images-candidate{text-align:left;overflow-wrap:anywhere}
@@ -225,10 +227,13 @@ export function createSessionImageComponents(deps: {React: typeof ReactAPI; imag
   function Controls() {
     const state = useImages()
     if (!state.sessionId) return null
-    return h('section', {className: 'rp-images-controls', 'aria-label': '角色卡图片'},
+    // Scene keeps its background/portrait styles after the controls close.
+    return h(React.Fragment, null,
       h('style', null, SESSION_IMAGES_CSS),
-      h('button', {type: 'button', onClick: () => images.open(!state.opened), 'aria-expanded': state.opened}, '图片'),
-      state.opened ? h('div', {className: 'rp-images-panel'},
+      state.opened ? h('section', {id: 'dsh-rp-images-panel', className: 'rp-images-controls', 'aria-label': '角色卡图片',
+      style: state.panelPosition},
+      h('div', {className: 'rp-images-panel', style: {maxHeight: `calc(100dvh - ${state.panelPosition.top + 72}px)`}},
+        h('strong', null, '图片'),
         h('div', {className: 'rp-images-actions'},
           h('button', {type: 'button', disabled: state.refreshing, onClick: () => void images.refresh()}, state.refreshing ? '读取中…' : '刷新图片'),
           h('button', {type: 'button', onClick: () => images.open(false)}, '收起')),
@@ -254,7 +259,7 @@ export function createSessionImageComponents(deps: {React: typeof ReactAPI; imag
             onClick: () => images.selectBrowser(candidate.candidateId)}, candidate.selection.name,
           h('small', null, '作者页面当前图片')))),
         state.catalog?.candidates.length === 0 && state.browserImages.length === 0
-          ? h('p', null, '当前角色卡没有可发现的图片。') : null) : null)
+          ? h('p', null, '当前角色卡没有可发现的图片。') : null)) : null)
   }
   function Scene(props: {sessionId?: string; children?: ReactAPI.ReactNode}) {
     const state = useImages()
