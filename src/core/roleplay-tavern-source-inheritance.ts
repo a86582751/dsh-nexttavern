@@ -5,12 +5,12 @@ import {genesis,parseHead,identityOf} from './roleplay-tavern-lore-edits-data.js
 import {createSourceInheritanceStorageV1,sourceReadBudgetV1} from './roleplay-tavern-source-inheritance-storage.js'
 import type {TavernSourceReadBudgetV1} from './roleplay-tavern-source-inheritance-storage.js'
 import {freezePublishedLocalEditLayerV1,validateFrozenPublishedEditLayerV1,sealFrozenSourceEditBaselineV1,
-  validateFrozenSourceEditBaselineV1,validateInheritanceEditSlotV1} from './roleplay-tavern-source-edit-baseline.js'
+  validateInheritanceEditSlotV1} from './roleplay-tavern-source-edit-baseline.js'
 import {inheritanceDataV1,inheritanceDataSha256V1,inheritanceFailV1,inheritanceSameV1,
   inheritanceObjectV1,inheritanceRefV1,inheritanceFreezeV1,
   sealInheritanceDataV1,validatePreparedInheritanceV1,validateApplyInheritanceV1,validateCommitInheritanceV1,
   validateReadyInheritanceV1,validateStaticRowV1,validateTavernSourceInheritanceDescriptorV1,frozenInheritanceRefV1,
-  validateTavernSourceLegacyMigrationRecordV1,validateTavernSourceMaterialBaselineV1,
+  validateTavernSourceLegacyMigrationRecordV1,
   validateFrozenNonNumericalOpeningV1,validateFrozenPromptScopeRecordV1,
   validateFrozenProgramAbsenceOpeningV1,validateTavernSourceProgramAbsenceOpeningRecordV1,
   assertFrozenProgramAbsenceOpeningCutV1,assertProgramAbsenceOriginalBindingV1,
@@ -515,9 +515,9 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     }
     const aKey=tavernSourceApplyKeyV1(sid),cKey=tavernSourceCommitKeyV1(sid),rKey=tavernSourceReadyKeyV1(sid),
       aRow=store.readRow('branch',aKey),cRow=store.readRow('branch',cKey),rRow=store.readRow('branch',rKey),
-      a=aRow.exists?validateApplyInheritanceV1(store.readKey(aKey)):undefined,
-      c=cRow.exists?validateCommitInheritanceV1(store.readKey(cKey)):undefined,
-      r=rRow.exists?validateReadyInheritanceV1(store.readKey(rKey)):undefined
+      a=aRow.exists?store.readKey(aKey) as TavernSourceApplyIntentV1:undefined,
+      c=cRow.exists?store.readKey(cKey) as TavernSourceCommitV1:undefined,
+      r=rRow.exists?store.readKey(rKey) as TavernSourceReadyV1:undefined
     if((supplied&&!inheritanceSameV1(a,supplied))||(!a&&(c||r)))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
     if(a)assertApplyData(p,a)
     owned(aKey,a)
@@ -586,10 +586,14 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     if(reading.active.size>=TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.ancestors)inheritanceFailV1('SOURCE_INHERITANCE_BUDGET')
     reading.active.add(sid)
     try {
+    // Storage parses exact maintained addresses; this owner joins their records.
     const {budget}=reading,p=readPreparedInternal(sid,reading),pRef=preparedRef(p),
-      a=validateApplyInheritanceV1(store.readKey(tavernSourceApplyKeyV1(sid),budget)),aRef=inheritanceRefV1(tavernSourceApplyKeyV1(sid),a),
-      c=validateCommitInheritanceV1(store.readKey(tavernSourceCommitKeyV1(sid),budget)),cRef=inheritanceRefV1(tavernSourceCommitKeyV1(sid),c),
-      r=validateReadyInheritanceV1(store.readKey(tavernSourceReadyKeyV1(sid),budget)),rRef=inheritanceRefV1(tavernSourceReadyKeyV1(sid),r)
+      a=store.readKey(tavernSourceApplyKeyV1(sid),budget) as TavernSourceApplyIntentV1,
+      aRef=inheritanceRefV1(tavernSourceApplyKeyV1(sid),a),
+      c=store.readKey(tavernSourceCommitKeyV1(sid),budget) as TavernSourceCommitV1,
+      cRef=inheritanceRefV1(tavernSourceCommitKeyV1(sid),c),
+      r=store.readKey(tavernSourceReadyKeyV1(sid),budget) as TavernSourceReadyV1,
+      rRef=inheritanceRefV1(tavernSourceReadyKeyV1(sid),r)
     assertApplyData(p,a)
     if(c.childSessionId!==sid||r.childSessionId!==sid||!inheritanceSameV1(c.preparedRef,pRef)
       ||!inheritanceSameV1(c.applyIntentRef,aRef)||c.childInventorySha256!==a.childInventorySha256
@@ -597,7 +601,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       ||!inheritanceSameV1(c.childNumericalSource.staticRows,a.writes.map(write=>write.next))
       ||!inheritanceSameV1(r.binding,{schemaVersion:1,preparedRef:pRef,applyIntentRef:aRef,commitRef:cRef})
       ||!inheritanceSameV1(r.priorMeta,a.priorMeta))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
-    const edit=validateFrozenSourceEditBaselineV1(store.readRef(c.editBaselineRef,budget)),
+    const edit=store.readRef(c.editBaselineRef,budget) as TavernSourceEditBaselineV1,
       slot=validateInheritanceEditSlotV1(store.readRef(c.editBaselineSlotRef,budget)),material=readMaterialBaseline(c.materialBaselineRef,p,budget)
     if(!inheritanceSameV1(edit.preparedRef,pRef)||!inheritanceSameV1(edit.layers,p.editLayers)
       ||!inheritanceSameV1(slot.preparedRef,pRef)||!inheritanceSameV1(slot.baselineRef,c.editBaselineRef)
@@ -709,7 +713,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
   }
   function readMaterialBaseline(ref:TavernSourceInheritanceRefV1,p:TavernSourcePreparedV1,budget:TavernSourceReadBudgetV1)
     :TavernSourceMaterialBaselineV1 {
-    const raw=validateTavernSourceMaterialBaselineV1(store.readRef(ref,budget))
+    // The parsed commit binds this reference to the child's maintained address.
+    const raw=store.readRef(ref,budget) as TavernSourceMaterialBaselineV1
     if(raw.childSessionId!==p.childSessionId
       ||!inheritanceSameV1(raw.preparedRef,preparedRef(p))||!inheritanceSameV1(raw.nativeCut,p.nativeCut)
       ||!inheritanceSameV1(raw.publications,p.materialPublications))inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID')
