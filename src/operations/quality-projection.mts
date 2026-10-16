@@ -67,7 +67,15 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
     if (!pattern.includes('/')) return [pattern]
     const expression = new RegExp('^' + pattern.split('*')
       .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$')
-    return [...sourcePaths].filter(([source]) => expression.test(source)).map(([, target]) => target)
+    return [...sourcePaths].filter(([source]) => expression.test(source)).map(([source, target]) => {
+      // Preserve directory globs when projection only relocates their prefix.
+      // Individual aliases remain exact paths when their layout really differs.
+      if (pattern.endsWith('*') && pattern.indexOf('*') === pattern.length - 1) {
+        const suffix = source.slice(pattern.length - 1)
+        if (suffix && target.endsWith(suffix)) return target.slice(0, -suffix.length) + '*'
+      }
+      return target
+    })
   }))]}))
   return {registry: {...registry, modules, tasks: tasks.filter(task => available.has(task.id))}, mapping}
 }

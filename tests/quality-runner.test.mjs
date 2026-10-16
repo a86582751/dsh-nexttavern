@@ -81,6 +81,7 @@ try {
   });
   assert.deepEqual(projected.registry.tasks.map(task => task.id), ['loop-test'],
     'public selection lists only shipped tasks with executable prerequisites');
+  assert.deepEqual(projected.registry.modules[0].patterns, ['development/agent-loop/*']);
   const projectedContext = {...context, registry: projected.registry, mapping: projected.mapping};
   const relocated = makePlan(projectedContext, request('file', ['development/agent-loop/src/request.ts']));
   assert.deepEqual(ids(relocated), ['loop-test'], 'relocated public sources retain their feature checks');
