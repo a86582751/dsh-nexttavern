@@ -31,7 +31,6 @@ Generated modules carry a source banner. Legacy CLI forwarding entries load the 
 ```sh
 npm ci --prefix build-tools --ignore-scripts --no-audit --no-fund
 npm ci --prefix integrations/auth-webserver --ignore-scripts --no-audit --no-fund
-node -e "const fs=require('node:fs'); fs.mkdirSync('node_modules',{recursive:true}); fs.symlinkSync(require('node:path').resolve('build-tools/node_modules/yaml'), 'node_modules/yaml', 'junction')"
 
 # Default: inspect only current Git changes.
 npm run check
