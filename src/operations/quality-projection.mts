@@ -50,10 +50,24 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
   }
   mapping.artifacts.push({id: 'quality-registry', source: 'tools/check-registry.json'},
     {id: 'quality-public-map', source: 'tools/check-map.json'})
-  const tasks = registry.tasks.map(task => {
+  const tasks = registry.tasks.filter(task => {
     const unsupported = task.requires?.includes('maintenance') || (task.artifact && !paths.has(task.artifact))
-    return unsupported ? {...task, artifact: undefined, inputs: [], unavailable: 'Maintainer-only facility; not part of this public delivery'}
-      : {...task, inputs: task.inputs?.filter(id => paths.has(id))}
-  })
-  return {registry: {...registry, tasks}, mapping}
+    return !unsupported && !task.unavailable
+  }).map(task => ({...task, inputs: task.inputs?.filter(id => paths.has(id))}))
+  // A public task cannot consume a prerequisite omitted from this delivery.
+  // Remove dependent tasks too, rather than publishing dangling task IDs.
+  let available = new Set(tasks.map(task => task.id))
+  while (true) {
+    const next = new Set(tasks.filter(task => available.has(task.id)
+      && (task.depends ?? []).every(id => available.has(id))).map(task => task.id))
+    if (next.size === available.size) break
+    available = next
+  }
+  const modules = registry.modules.map(module => ({...module, patterns: [...new Set(module.patterns.flatMap(pattern => {
+    if (!pattern.includes('/')) return [pattern]
+    const expression = new RegExp('^' + pattern.split('*')
+      .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$')
+    return [...sourcePaths].filter(([source]) => expression.test(source)).map(([, target]) => target)
+  }))]}))
+  return {registry: {...registry, modules, tasks: tasks.filter(task => available.has(task.id))}, mapping}
 }

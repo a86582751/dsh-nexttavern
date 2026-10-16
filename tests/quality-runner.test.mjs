@@ -7,6 +7,7 @@ import {makePlan} from '../lib/operations/quality-plan.mjs';
 import {executePlan} from '../lib/operations/quality-run.mjs';
 import {runProcess, capabilityProblem} from '../lib/operations/quality-process.mjs';
 import {executeTask} from '../lib/operations/quality-actions.mjs';
+import {projectChecks} from '../lib/operations/quality-projection.mjs';
 
 const root = createTestDirectory('quality-runner-');
 const write = (file, text = 'export {};\n') => {
@@ -61,6 +62,30 @@ const ids = plan => plan.tasks.map(item => item.id);
 const passed = {status: 0, timedOut: false, interrupted: false};
 
 try {
+  const projected = projectChecks({
+    artifacts: [
+      {id: 'source', source: 'runtime/alpha3/compat/agent-loop/src/request.ts', public: {path: 'development/agent-loop/src/request.ts'}},
+      {id: 'test', source: 'runtime/alpha3/tests/request.test.mjs', public: {path: 'tests/request.test.mjs'}},
+    ],
+    builds: [], deliveries: [], publicRelease: {layoutPaths: {}, publicTests: []},
+  }, {
+    schemaVersion: 1,
+    modules: [{id: 'loop', aliases: [], patterns: ['runtime/alpha3/compat/agent-loop/*']}],
+    tasks: [
+      {id: 'loop-test', action: 'test', artifact: 'test', modules: ['loop']},
+      {id: 'private', action: 'candidate', modules: [], requires: ['maintenance']},
+      {id: 'private-dependent', action: 'test', artifact: 'test', modules: [], depends: ['private']},
+      {id: 'private-transitive', action: 'test', artifact: 'test', modules: [], depends: ['private-dependent']},
+      {id: 'not-shipped', action: 'test', artifact: 'missing-test', modules: []},
+    ],
+  });
+  assert.deepEqual(projected.registry.tasks.map(task => task.id), ['loop-test'],
+    'public selection lists only shipped tasks with executable prerequisites');
+  const projectedContext = {...context, registry: projected.registry, mapping: projected.mapping};
+  const relocated = makePlan(projectedContext, request('file', ['development/agent-loop/src/request.ts']));
+  assert.deepEqual(ids(relocated), ['loop-test'], 'relocated public sources retain their feature checks');
+  assert.deepEqual(relocated.uncovered, []);
+
   // A changed source selects only its feature's lightweight tests and one shared
   // prerequisite. Heavy candidate, installer and Harness actions cannot leak in.
   const filePlan = makePlan(context, request('file', ['src/core/cards.ts']));

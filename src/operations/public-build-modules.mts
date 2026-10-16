@@ -27,6 +27,12 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
   const sources = new Set(map.modules.map(module => safe(module.source)))
   const outputs = new Set(map.modules.flatMap(module => module.outputs.map(output => {safe(output); return output})))
   const allowedOutputs = new Set([...outputs, ...map.bundles])
+  // Package resources may relocate an existing source into a legacy component's
+  // src/ tree. The package recipe, rather than a second compiler entry, owns it.
+  const packageResources = new Set((map.compilerPlan.product?.packages ?? []).flatMap(recipe => {
+    const metadata = map.compilerPlan.artifacts.find(artifact => artifact.id === recipe.packageArtifact)!
+    return (recipe.resources ?? []).map(resource => path.posix.join(path.posix.dirname(metadata.source), resource.path))
+  }))
   const generatedDeclarations = new Set(map.compilerPlan.builds.flatMap(recipe => {
     const output = recipe.kind === 'subagent-typert' ? recipe.artifact : recipe.declarationArtifact
     if (output === undefined) return []
@@ -57,6 +63,7 @@ export async function publicBuildModulesCli(args = process.argv.slice(2), root =
       const file = directory + '/' + item.name
       if (item.isSymbolicLink()) throw Error('Unexpected link in generated tree: ' + file)
       if (item.isDirectory()) {inspect(file, sourceTree); continue}
+      if (packageResources.has(file)) continue
       if (/\.(?:tsx?|mts)$/.test(file)
         && (sourceTree ? !sources.has(safe(file)) && !declarations.has(safe(file))
           : !generatedDeclarations.has(file))) throw Error('Unmapped TypeScript source: ' + file)
