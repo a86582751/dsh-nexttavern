@@ -2,13 +2,12 @@
  * records can explain a request; they cannot recreate this owner after resume. */
 import {nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
 import type {NativeInputAdmissionCheckV2,NativeInputRef,NativePreparationReceiptV1,
-  NativeRequestMaterialOwnerV1,NativeRequestMaterialPrepareInputV1,NativeRequestMaterialInputV1,
-  NativeRequestMaterialTransformV1,NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareDecisionV1} from '@deepseek-ai/dsh-agent-loop'
+  NativeRequestMaterialOwnerV2,NativeRequestMaterialPrepareInputV1,NativeRequestMaterialInputV1,
+  NativeRequestMaterialTransformV1,NativeRequestMaterialTransformV2,NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareDecisionV1} from '@deepseek-ai/dsh-agent-loop'
 import type {Session} from '@deepseek-ai/dsh-session'
 import type {InputPreparationCurrency,InputPreparationTable,RoleplayInputStep,
   OwnedNonNumericalInputBranchRowFactV1} from './roleplay-input-preparation.js'
 import {recordSha256,keyOf} from './roleplay-data.js'
-import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 
 /** One preparation budget covers lock waits, deterministic workers and record
  * publication. Nested work cannot renew it by starting another evaluator. */
@@ -45,6 +44,7 @@ export interface RoleplayInputMaterialBuildV1 {
   readonly sections:NativeRequestMaterialTransformV1['sections']
   readonly insertions:NativeRequestMaterialTransformV1['insertions']
   readonly anchoredInsertions?:NativeRequestMaterialTransformV1['anchoredInsertions']
+  readonly messageTextProjections?:NativeRequestMaterialTransformV2['messageTextProjections']
   /** Actual input owner and captured Source/state/settings/scope currency.
    * Native owns the changing request cut; the runtime admits template workers. */
   assertCurrent():void
@@ -83,6 +83,7 @@ interface Ready {
   readonly scope:RoleplayInputMaterialScopeV1
   readonly checks:Pick<RoleplayInputMaterialBuildV1,'assertCurrent'|'assertSelected'|'release'>
   readonly material:Pick<NativeRequestMaterialTransformV1,'requiredSections'|'sections'|'insertions'|'anchoredInsertions'>
+    &{readonly messageTextProjections?:NativeRequestMaterialTransformV2['messageTextProjections']}
   readonly materialSha256:string
   readonly snapshot:{key:string;sha256:string}
   readonly plan:{key:string;sha256:string}
@@ -132,7 +133,7 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
     if(owner.table.get(row.snapshot.key)!==row.records.snapshot
       ||owner.table.get(row.plan.key)!==row.records.plan)fail('INPUT_MATERIAL_RECORD_CHANGED')
   }
-  const requestMaterial:NativeRequestMaterialOwnerV1={schemaVersion:1,sectionNames:deps.sectionNames,
+  const requestMaterial:NativeRequestMaterialOwnerV2={schemaVersion:1,sectionNames:deps.sectionNames,
     prepare(input) {
       const controller=new AbortController()
       const began=performance.now()
@@ -191,10 +192,12 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
         // The recorded plan and the live transform must use the same detached,
         // frozen values. A producer's later array mutation cannot alter wire
         // content while the persisted explanatory record remains unchanged.
-        const material=freeze(cloneRoleplayTavernLoreDataV1({requiredSections:data.requiredSections,
+        // Layout owns the valid wire data; this publisher only detaches the
+        // transform so its record and live request retain the same values.
+        const material=freeze(structuredClone({requiredSections:data.requiredSections,
           sections:data.sections,insertions:data.insertions,
-          ...data.anchoredInsertions?{anchoredInsertions:data.anchoredInsertions}:{}},
-          4_194_304,{nodes:131072,depth:66}))
+          ...data.anchoredInsertions?{anchoredInsertions:data.anchoredInsertions}:{},
+          ...data.messageTextProjections?{messageTextProjections:data.messageTextProjections}:{}}))
         const materialSha256=nativeInputSha256(material)
         const basis={schemaVersion:1 as const,encoding:'core-input-material-record-v1' as const,
           authority:'consumer-data-only' as const,sessionId:scope.session.id,branchId:scope.session.id,
@@ -252,8 +255,11 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
         const route=nativeInputSha256(input.preparedRoute)
         if(row.routeSha256!==undefined&&row.routeSha256!==route)fail('INPUT_MATERIAL_ROUTE_CHANGED')
         row.routeSha256=route
-        const decision:NativeRequestMaterialTransformV1={kind:'transform',schemaVersion:1,
-          encoding:'native-request-material-owner-transform-v1',snapshot:row.snapshot,plan:row.plan,
+        const decision:NativeRequestMaterialTransformV1|NativeRequestMaterialTransformV2={kind:'transform',
+          ...row.material.messageTextProjections?{schemaVersion:2 as const,
+            encoding:'native-request-material-owner-transform-v2' as const,
+            messageTextProjections:row.material.messageTextProjections}:{schemaVersion:1 as const,
+            encoding:'native-request-material-owner-transform-v1' as const},snapshot:row.snapshot,plan:row.plan,
           captureSha256:row.captureSha256,expectedAssemblySha256:input.assemblySha256,
           expectedSelectedBaseSha256:input.selected.sha256,requiredSections:row.material.requiredSections,
           sections:row.material.sections,insertions:row.material.insertions,

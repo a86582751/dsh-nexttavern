@@ -1,8 +1,9 @@
 /** One actual Core step owns Source capture, variable preparation, selected
  * template evaluation and Native layout data. None of the persisted receipts
  * can recreate the original step, Source lock or Native selected capability. */
-import {assertNativeRequestMaterialSelectionV1,nativeInputSha256} from '@deepseek-ai/dsh-agent-loop'
-import type {NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,NativeOpeningMaterialPrepareInputV1}
+import {assertNativeRequestMaterialSelectionV1,nativeInputSha256,projectNativeMessageTextV2} from '@deepseek-ai/dsh-agent-loop'
+import type {NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,NativeOpeningMaterialPrepareInputV1,
+  NativeMaterialMessageTextProjectionV2}
   from '@deepseek-ai/dsh-agent-loop'
 import type {SessionMessageProjection} from '@deepseek-ai/dsh-session'
 import {recordSha256,sha256,textOf} from './roleplay-data.js'
@@ -131,6 +132,7 @@ interface Dependencies extends SourceDependencies {
   openingPreparation?(native:NativeOpeningMaterialPrepareInputV1,scope:RoleplayOpeningMaterialScopeV1,
     source:TavernOpeningPreparationSourceDataV1):TavernOpeningPreparationReadV1
 }
+const joinHistoryBlock=(messageIndex:number,blockIndex:number)=>`history-${messageIndex}-${blockIndex}`
 function fail(code:string):never {throw Error(code)}
 function freeze<T>(value:T):T {
   if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}
@@ -398,6 +400,31 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       author.push(await render.render('/native/current-author/examples',residual.examplesText,
         {macros:authorMacros,placement:1,phase:'late-author'}))
       if(author.some(row=>row.activationProposals.length))fail('INPUT_MATERIAL_LATE_AUTHOR_ACTIVATION_UNSUPPORTED')
+      // The existing chat-clock owner has already classified canonical prose.
+      // Native supplies the actual request selection; management/maintenance
+      // assistants never acquire AI_OUTPUT placement through continuity rows.
+      const canonicalAssistantIds=new Set(chatClock.data.rows.filter(row=>row.role==='assistant').map(row=>row.id)),
+        historyRows=invocation.kind==='player'?native.selected.messages.filter(row=>
+          row.role==='user'&&row.message.role==='user'&&row.message.source.kind==='user'
+          ||row.role==='assistant'&&canonicalAssistantIds.has(row.id)):[],
+        historyBlocks=historyRows.flatMap((selected,index)=>selected.message.content.flatMap((block,blockIndex)=>
+          block.type==='text'?[{key:joinHistoryBlock(index,blockIndex),text:block.text,
+            role:selected.role==='user'?'user' as const:'assistant' as const,
+            depth:historyRows.length-index-1}]:[])),
+        historyTexts=new Map((await render.transformHistoryContent(historyBlocks,authorMacros))
+          .map(row=>[row.key,row.text])),messageTextProjections:NativeMaterialMessageTextProjectionV2[]=[]
+      for(const [index,selected] of historyRows.entries()) {
+        const textEdits=selected.message.content.flatMap((block,blockIndex)=>{
+          const replacementText=historyTexts.get(joinHistoryBlock(index,blockIndex))
+          return block.type==='text'&&replacementText!==undefined&&replacementText!==block.text
+            ?[{blockIndex,replacementText}]:[]
+        })
+        if(!textEdits.length)continue
+        const projected=projectNativeMessageTextV2(selected.message,textEdits)
+        messageTextProjections.push({target:{id:selected.id,
+          role:selected.role==='user'?'user':'assistant',messageSha256:selected.messageSha256},
+          textEdits,projectionSha256:nativeInputSha256(projected)})
+      }
       const injectionTransaction=injections.transaction()
       assertCurrent()
       const layout=produceRoleplayTavernLayoutV1({native,original,residual,evaluation:evaluated.plan,finalLore,
@@ -411,6 +438,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       const {source:_editSource,...editData}=captured.edits,
         {source:_variableSource,...variableInput}=variables.input
       return {kind:'prepared-data' as const,...layout,
+        ...messageTextProjections.length?{messageTextProjections}:{},
         snapshot:freeze({schemaVersion:1,encoding:'native-tavern-prompt-capture-v1',authority:'consumer-data-only',
           policy,source,...authorPrompt?{authorPrompt}:{},...authorBrowser?{authorBrowser}:{},
           authorPolicy,authorPolicySha256,
@@ -426,6 +454,9 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         plan:freeze({schemaVersion:1,encoding:'native-tavern-prompt-plan-v1',authority:'consumer-data-only',
           policySha256:recordSha256(policy),tavernEvaluationPlan:evaluated.plan,
           finalLore,layout:layout.layout,variablePacketSha256:variables.packet.packetSha256,
+          ...messageTextProjections.length?{historyTextProjection:{
+            policy:'selected-real-user-and-canonical-assistant-per-text-block-prompt-regex-only-v1',
+            messageTextProjections}}:{},
           ...authorPrompt?{authorPromptOutputSha256:authorPrompt.output.outputSha256}:{},
           ...authorBrowser?{authorBrowserOutputSha256:authorBrowser.output.outputSha256}:{},
           injectionTransactionSha256:injectionTransaction.transactionSha256}),assertCurrent,release:inputCapture.release,
