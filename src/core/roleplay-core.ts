@@ -244,8 +244,8 @@ export const inject = [
 ]
 
 const DEFAULT_CONFIG = {
-  workerProvider: 'deepseek-official' as string | null,
-  workerModel: 'deepseek-flash' as string | null,
+  workerProvider: null as string | null,
+  workerModel: null as string | null,
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
