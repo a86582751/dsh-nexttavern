@@ -59,18 +59,20 @@ export function sealMvuSchemaInheritanceFact(body, key) {
 }
 function inheritanceValidator(validate) {
     const successes = new WeakMap();
-    return input => {
-        if (input && inheritanceClones.has(input)) {
-            const prior = successes.get(input);
-            if (prior)
-                return prior;
-        }
-        const result = validate(input);
+    const remember = (input, result) => {
         if (input && inheritanceClones.has(input))
             successes.set(input, result);
         successes.set(result, result);
         return result;
     };
+    return Object.assign((input) => {
+        if (input && inheritanceClones.has(input)) {
+            const prior = successes.get(input);
+            if (prior)
+                return prior;
+        }
+        return remember(input, validate(input));
+    }, { remember, peek: (input) => successes.get(input) });
 }
 function retainInheritanceChild(bounded, key, child) {
     // The whole new parent has already been charged. Preserve the concrete
@@ -93,12 +95,15 @@ export function validateMvuSchemaFrozenPrefix(input) {
 }
 function validateFrozenPrefixUncached(input) {
     const prefix = freezeMvuSchemaInheritanceData(input);
+    checksum(prefix, 'prefixSha256');
+    return validateFrozenPrefixFields(prefix);
+}
+function validateFrozenPrefixFields(prefix) {
     exact(prefix, ['schemaVersion', 'encoding', 'sessionId', 'inheritedEventCount', 'sourceSha256', 'original',
         'seed', 'initial', 'journal', 'eventKeys', 'snapshot', 'consumed', 'prefixSha256']);
-    checksum(prefix, 'prefixSha256');
     const initial = validateMvuSchemaNumericalSnapshot(prefix.initial), snapshot = validateMvuSchemaNumericalSnapshot(prefix.snapshot);
     if (prefix.schemaVersion !== 1 || prefix.encoding !== 'native-mvu-schema-frozen-prefix-v1' || !id(prefix.sessionId)
-        || !integer(prefix.inheritedEventCount) || !hash(prefix.sourceSha256)
+        || !integer(prefix.inheritedEventCount) || !hash(prefix.sourceSha256) || !hash(prefix.prefixSha256)
         || initial.sessionId !== prefix.sessionId || snapshot.sessionId !== prefix.sessionId
         || initial.sourceSha256 !== prefix.sourceSha256 || snapshot.sourceSha256 !== prefix.sourceSha256
         || !same(initial.root, snapshot.root) || prefix.journal.sessionId !== prefix.sessionId
@@ -144,15 +149,20 @@ export function validateMvuSchemaDerivedPrepared(input) {
 }
 function validateDerivedPreparedUncached(input) {
     const bounded = freezeMvuSchemaInheritanceData(input);
-    const prefix = validateMvuSchemaFrozenPrefix(inheritanceClones.has(input.prefix) ? input.prefix : bounded.prefix);
+    checksum(bounded, 'preparedSha256');
+    return validateDerivedPreparedFields(bounded);
+}
+function validateDerivedPreparedFields(bounded) {
+    // The outer persisted envelope has already covered this complete graph.
+    // Keep the child's field/cross-record joins without hashing its graph again.
+    const prefix = validateFrozenPrefixDescriptor.peek(bounded.prefix) ?? validateFrozenPrefixFields(bounded.prefix);
     const prepared = retainInheritanceChild(bounded, 'prefix', prefix);
     exact(prepared, ['schemaVersion', 'encoding', 'operationId', 'anchorSha256', 'parentSessionId', 'childSessionId',
         'seedLength', 'parentInheritedEventCount', 'parentSourceSha256', 'prefix', 'preparedSha256',
         ...(prepared.schemaVersion === 2 ? ['sourcePreparedRef', 'parentNumericDescriptorSha256', 'prefixClosureRef', 'forkReservationBinding'] : [])]);
-    checksum(prepared, 'preparedSha256');
     if ((prepared.schemaVersion === 1 ? prepared.encoding !== 'native-mvu-schema-derived-prepared-v1'
         : prepared.schemaVersion !== 2 || prepared.encoding !== 'native-mvu-schema-derived-prepared-v2')
-        || ![prepared.operationId, prepared.parentSessionId, prepared.childSessionId].every(id)
+        || !hash(prepared.preparedSha256) || ![prepared.operationId, prepared.parentSessionId, prepared.childSessionId].every(id)
         || prepared.parentSessionId === prepared.childSessionId || !hash(prepared.anchorSha256)
         || !integer(prepared.seedLength) || prepared.seedLength < 1 || !integer(prepared.parentInheritedEventCount)
         || prepared.parentInheritedEventCount >= prepared.seedLength || !hash(prepared.parentSourceSha256)
@@ -176,6 +186,7 @@ function validateDerivedPreparedUncached(input) {
             || !hash(bindingSha256) || bindingSha256 !== recordSha256(body))
             fail();
     }
+    validateFrozenPrefixDescriptor.remember(bounded.prefix, prefix);
     return prepared;
 }
 const validateDerivedBasisDescriptor = inheritanceValidator(validateDerivedBasisUncached);
@@ -184,10 +195,10 @@ export function validateMvuSchemaDerivedBasis(input) {
 }
 function validateDerivedBasisUncached(input) {
     const bounded = freezeMvuSchemaInheritanceData(input);
-    const prepared = validateMvuSchemaDerivedPrepared(inheritanceClones.has(input.prepared) ? input.prepared : bounded.prepared);
+    exact(bounded, ['schemaVersion', 'encoding', 'prepared', 'source', 'basisSha256']);
+    checksum(bounded, 'basisSha256');
+    const prepared = validateDerivedPreparedDescriptor.peek(bounded.prepared) ?? validateDerivedPreparedFields(bounded.prepared);
     const basis = retainInheritanceChild(bounded, 'prepared', prepared);
-    exact(basis, ['schemaVersion', 'encoding', 'prepared', 'source', 'basisSha256']);
-    checksum(basis, 'basisSha256');
     const source = basis.schemaVersion === 2
         ? validateMvuDerivedSourceProofUnion(basis.source) : validateMvuDerivedSourceProof(basis.source);
     if ((basis.schemaVersion === 1 ? basis.encoding !== 'native-mvu-schema-derived-basis-v1'
@@ -203,6 +214,7 @@ function validateDerivedBasisUncached(input) {
         || imported.coverageSha256 !== original.coverageSha256 || imported.transactionId !== original.transactionId
         || imported.recordSha256 !== originalSnapshot.importRecordSha256)
         fail();
+    validateDerivedPreparedDescriptor.remember(bounded.prepared, prepared);
     return basis;
 }
 export function mvuSchemaDerivedGenesis(input, inheritedReady) {
