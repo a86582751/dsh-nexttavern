@@ -1,5 +1,12 @@
 # Changelog
 
+## 文档 — 0.3 开发日志更新 — 2026-10-17
+
+- 补入10月8～17日复杂脚本、人物/世界书操作、原卡剧情、分支和重启恢复的限定进展，更新真实模型校准的当前阻断与下一步。
+- 受控回复、离线检查与自然模型质量分别说明；完整34卡玩法、操作矩阵和性能仍未完成。0.3尚未发布，GitHub latest为0.2.9-rc.3，npm latest仍为0.2.9。
+
+English: Update the 0.3 development log through October 17 with scoped script, UI, story and recovery results and the ongoing natural-model calibration. Full gameplay, operation coverage and performance remain incomplete; 0.3 is not released.
+
 ## 0.2.9-rc.3 — 安装与就绪修复 — 2026-10-13
 
 GitHub latest 与当前便携安装器／归档下载路径使用 rc.3，npm latest 仍为 0.2.9。
