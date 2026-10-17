@@ -217,6 +217,9 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
           if(sourceBinding)pendingSourceReady={lastTurn:0,lastSeq:-1}
           else await T.branch.put(keyOf(session.id, 'meta'), { createdAt: Date.now(), lastTurn: 0, lastSeq: -1 })
         }
+        // The inherited panel reads the committed Source for its fixed context.
+        // Publish its copied author data before deriving panel ownership.
+        if(pendingSourceReady)await deps.sourceInheritance!.publishSourceInheritanceReady(session.id,pendingSourceReady)
         // Native cloning copies a parent's durable panel, including its owner.
         // Rebind only an unchanged, proven prefix within this child's seed.
         // Also repairs ready records written by versions that copied the row
@@ -241,7 +244,6 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
                 ? { fixedContextHash: recordSha256(fixed) } : {}) } })
           }
         }
-        if(pendingSourceReady)await deps.sourceInheritance!.publishSourceInheritanceReady(session.id,pendingSourceReady)
         deps.sourceInheritance?.assertSourceInheritanceReady(session.id)
         st.branchReady = true
       } catch (error) {
