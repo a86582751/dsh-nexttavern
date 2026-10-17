@@ -69,6 +69,7 @@ export type CoreContext = {
   sessionController: {resolveAgent(id: string): Promise<{agent?: CoreAgent; error?: Error} | undefined>}
   get(name:'agentLoop'):{getInputAdmissionAgent(agent:unknown):object | undefined;
     getProgrammaticOpeningAgent(agent:unknown):import('@deepseek-ai/dsh-agent-loop').NativeProgrammaticOpeningAgentV1|undefined} | undefined
+  get(name:'agentPresets'):{serviceFor(agent:unknown,name:'roleplay'):unknown} | undefined
   storageDomain: {open(options: unknown): Promise<{table<K extends keyof CoreTables>(name: K): CoreTables[K]; close(): unknown}>}
   sessionQuery: Parameters<typeof createTelemetry>[0]['query']
   get(name: 'roleplay'): {nativeTask: NativeTask}
@@ -81,4 +82,6 @@ export type CoreContext = {
   on(name: 'session/disposed', hook: (session: CoreSession) => void, options: {global: boolean}): unknown
   on(name: 'agent/created', hook: (payload: {agent: CoreAgent; signal?: AbortSignal}) => Promise<undefined>, options: {global: boolean; prepend: boolean}): unknown
   on(name:'agent/disposed',hook:(payload:{agent:CoreAgent})=>void,options:{global:boolean}):unknown
+  on(name:'agent-preset/selected',hook:(sessionId:string,presetId:string)=>void,
+    options:{global:boolean;prepend?:boolean}):unknown
 } & StoryObservationServices<ContextEvent> & Intersection<ContextOf<ModuleDependencies>>

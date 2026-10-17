@@ -2743,6 +2743,21 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     for (const binding of inputBindings.values()) binding.dispose()
     inputBindings.clear()
   },'roleplay: native input owner')
+  // Preset selection commits after composition. Standing Core generations can
+  // survive the switch, so all old owners must release before any new one binds.
+  ctx.on('agent-preset/selected',sessionId=>{
+    for(const [owner,binding] of inputBindings) {
+      const agent=owner as CoreAgent
+      if(agent.session.id!==sessionId||ctx.get('agentPresets')?.serviceFor(agent,'roleplay')===svc)continue
+      binding.dispose()
+      inputBindings.delete(agent)
+    }
+  },{global:true,prepend:true})
+  ctx.on('agent-preset/selected',(sessionId,presetId)=>{
+    if(presetId!=='roleplay')return
+    const agent=ctx.agents?.list().find(candidate=>candidate.session.id===sessionId)
+    if(agent&&ctx.get('agentPresets')?.serviceFor(agent,'roleplay')===svc)attachInputOwner(agent)
+  },{global:true})
   // Remounting Core cannot invent a marker for an old turn. Register only the
   // actual retained Agent so its next native input can acquire its own marker.
   for (const agent of ctx.agents?.list() ?? []) {
