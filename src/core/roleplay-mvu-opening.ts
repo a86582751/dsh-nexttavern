@@ -66,7 +66,7 @@ export interface MvuOpeningDependencies {
   readProgramOpeningObservation?(sessionId:string,sourceSha256:string):InputObservation|undefined
   derivedBasisRequired?(sessionId:string):boolean
   schemaDerivedRequired?(sessionId:string):boolean
-  readSchemaDerivedGenesis?(sessionId:string,currentSource?:boolean):MvuSchemaDerivedGenesis|undefined
+  readSchemaDerivedGenesis?(sessionId:string):MvuSchemaDerivedGenesis|undefined
   readSchemaEditInvalidation?:MvuSchemaStoryCoreDeps['readEditInvalidation']
   /** Private actual product/Native owner. No persisted capability satisfies it. */
   promptTemplateRuntime?:PromptTemplateOnlyRuntimeOwnerV1

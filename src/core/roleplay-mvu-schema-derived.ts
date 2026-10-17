@@ -111,9 +111,6 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       ?current?frozenLineage.current(source):frozenLineage.verifyDenialBindingFacts(source):false
     return current?lineage.current(source):lineage.verifyDenialBindingFacts(source)
   }
-  function sourceProofCurrent(source:MvuDerivedSourceProofUnion):boolean {
-    return source.schemaVersion===2?frozenLineage?.currentProof(source)===true:lineage.currentProof(source)
-  }
   function verifyPrepared(input:MvuSchemaDerivedPrepared,events:readonly SessionEvent[],
     source:Successor,seen:Set<string>):{prepared:MvuSchemaDerivedPrepared;ready:SchemaJournalReady} {
     const prepared=validateMvuSchemaDerivedPrepared(input)
@@ -191,13 +188,13 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     const checked=verifyPrepared(basis.prepared,prefix(session,basis.prepared.seedLength),basis.source,new Set([sid]))
     return Object.freeze({basis,genesis:closedRows(basis,checked.ready)})
   }
-  function readGenesis(sid:string,currentSource=true):MvuSchemaDerivedGenesis|undefined {
+  function readGenesis(sid:string):MvuSchemaDerivedGenesis|undefined {
     try {
-      // Both modes consume one historical DATA object. Reusing it preserves
+      // Consume one historical DATA object. Reusing it preserves
       // inheritedReady's actual recovered-prefix association; today's Source
       // must never become a dependency of that frozen historical slot.
       const captured=deps.captureRead?deps.captureRead(sid,()=>captureGenesis(sid)).data:captureGenesis(sid)
-      if(!captured||currentSource&&!sourceProofCurrent(captured.basis.source))return
+      if(!captured)return
       return captured.genesis
     }catch {return undefined}
   }

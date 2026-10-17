@@ -2157,7 +2157,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       ||T.branch.get(mvuSchemaDerivedBasisKey(id))!==undefined,
     // Derived shares the frozen inherited DATA. Today's Source authority is
     // collected by the current waiter outside that historical footprint.
-    readSchemaDerivedGenesis:(id,currentSource)=>schemaDerived?.readGenesis(id,currentSource),
+    readSchemaDerivedGenesis:id=>schemaDerived?.readGenesis(id),
     readSchemaEditInvalidation:id=>mvuEdits.readInvalidation(id),
     branchReady:id => ensureState(id).branchReady,importActiveKey,importRecordKey,
     withSourceLock:(id,work) => withImportLock(id,'mvu-initialization',work),

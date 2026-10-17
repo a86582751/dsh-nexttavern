@@ -103,7 +103,7 @@ export interface MvuSchemaStoryCoreDeps {
   captureManualLedger?(sid:string):import('./roleplay-mvu-schema-player-types.js').MvuSchemaPlayerLedger|undefined
   manualEditBlockCode?(sid:string):string|undefined
   derivedRequired?(sid:string):boolean
-  readDerivedGenesis?(sid:string,currentSource?:boolean):MvuSchemaDerivedGenesis|undefined
+  readDerivedGenesis?(sid:string):MvuSchemaDerivedGenesis|undefined
   readEditInvalidation?(sid:string):MvuEditInvalidation
   projectPrefix:WorldlineMessageEdits['projectPrefix']
   editProtocol:MvuInheritedMessageEditProtocol
@@ -739,7 +739,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     // borrow today's active pointer, current numerical head or later material.
     const prefix=all(session).slice(0,selector.nativeCut)
     const sid=session.id,derivedRequired=deps.derivedRequired?.(sid)||session.inheritedEventCount||session.header.parentSession
-    const derived=derivedRequired?deps.readDerivedGenesis?.(sid,false):undefined
+    const derived=derivedRequired?deps.readDerivedGenesis?.(sid):undefined
     let original:SchemaFrozenOriginal,ready:SchemaJournalReady,ordinal=1,initial:MvuSchemaNumericalSnapshotV2|undefined
     let scopeSeed:ScopeFacts|undefined
     if(derivedRequired) {
@@ -1189,7 +1189,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       const session=deps.session(sid)
       if(!session)return undefined
       if(deps.derivedRequired?.(sid)) {
-        const genesis=deps.readDerivedGenesis?.(sid,false)
+        const genesis=deps.readDerivedGenesis?.(sid)
         return genesis?{root:genesis.snapshot.root,editFloorSeq:genesis.inheritedCut.nativeCut}:undefined
       }
       const raw=prefixInputs.status.get(mvuInitializationHeadKey(sid))
