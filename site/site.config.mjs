@@ -23,7 +23,7 @@ export const site = {
     issuesUrl: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose',
     licenseName: 'GPL-3.0-only',
     licenseUrl: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE',
-    releaseVersion: '0.2.9-rc.3',
+    releaseVersion: '0.2.9-rc.4',
     developmentLine: '0.3 开发中，抱歉让大家久等了',
     harnessLine: 'DeepSeek Harness 0.1.7-rc.2',
     hero: {
@@ -50,14 +50,14 @@ export const site = {
         primary: { label: '快速开始', href: 'quickstart.html' },
         secondary: { label: '核心能力', href: 'capabilities.html' },
         facts: [
-            { label: '最新发行', value: '0.2.9-rc.3' },
+            { label: '最新发行', value: '0.2.9-rc.4' },
             { label: '运行宿主', value: 'DeepSeek Harness' },
             { label: '许可证', value: 'GPL-3.0-only' }
         ]
     },
     quickInstall: {
         title: '一条命令开始',
-        lead: '0.2.9 修复安装分发与依赖脚本许可。先安装 Harness 0.1.7-rc.2，再从正式 npm 包 dsh-nexttavern 安装 web 酒馆；从 0.2.5 迁移时先导出并使用新目录。',
+        lead: 'GitHub 与 npm latest 均为 0.2.9-rc.4。此版修复长会话请求超限后的压缩恢复，以及持续推理被误判超时；保留 rc.3 的安装改进和慢模型首响应等待设置。先安装 Harness 0.1.7-rc.2，再从正式 npm 包 dsh-nexttavern 安装 web 酒馆；从 0.2.5 迁移时先导出并使用新目录。',
         tabs: [
             {
                 id: 'manual',
@@ -69,7 +69,7 @@ export const site = {
             {
                 id: 'windows',
                 label: 'Windows',
-                note: '0.2.9-rc.3 修复安装／就绪报告。请选新目录，ARM64 设备用 arm64 版本。',
+                note: '0.2.9-rc.4 延续安装／就绪修复并修复 Issue #17。请选新目录；ARM64 真机仍未验证。',
                 primary: { label: 'Windows 安装指南', href: 'install-windows.html' },
                 code: 'NextTavern-Setup.exe'
             },
@@ -78,7 +78,7 @@ export const site = {
                 label: 'Linux',
                 note: '自包含脚本，x86_64 与 aarch64（glibc），不需要 root，也不需要包管理器。',
                 primary: { label: 'Linux 安装指南', href: 'install-linux.html' },
-                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.9-rc.3"'
+                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.9-rc.4"'
             }
         ]
     },

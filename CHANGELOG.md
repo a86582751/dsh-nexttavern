@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.9-rc.4 — Issue #17 上下文容量与恢复修复 — 2026-10-19
+
+rc.4 是 GitHub 与 npm latest，延续 rc.3 安装／就绪修复和慢模型首响应配置。
+
+- 恢复角色扮演正常准备流程中的完整请求压力判断。首响应看门狗改为观察原生 `assistant-stream` 推理帧，推理持续输出时不再被误判为超时。
+- 需要压缩时，使用独立的同模型纯文本摘要请求，并沿用已有的 16,384 token 输出预算；不再要求超限的故事请求同时承担摘要。保留失败任务、显式重试和旧 pending 恢复；普通回合不增加模型请求。
+- provider 全局 256k 输出上限不变。有界摘要不保证任意大的非剧情前缀都能压缩到可用范围。
+
+English: rc.4 restores full-request pressure handling, watches native reasoning frames, and moves compaction summaries to a separate bounded request. It preserves task failure/retry recovery, adds no model request to ordinary turns, and does not change the provider-wide output limit. Arbitrarily large non-story prefixes are not guaranteed to fit.
+
 ## 0.2.9-rc.3 — 安装与就绪修复 — 2026-10-13
 
 GitHub latest 与当前便携安装器／归档下载路径使用 rc.3，npm latest 仍为 0.2.9。

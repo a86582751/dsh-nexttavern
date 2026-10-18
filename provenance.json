@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "audience": "public-nexttavern",
-  "version": "0.2.9-rc.3",
-  "sourceCommit": "60b9897acab4df2eaacf6bdf119e859956e42e81",
+  "version": "0.2.9-rc.4",
+  "sourceCommit": "5ac822235d3c8d292f1aa72951fdc9de5a3e3668",
   "dirty": false,
   "harnessLine": "0.1.7-rc.2",
-  "node": "v24.16.0",
+  "node": "v24.22.0",
   "compiler": "0.24.2",
   "product": true,
   "rootBundledLibraries": {
@@ -501,15 +501,15 @@
       "artifact": "roleplay-job-routes-types",
       "source": "runtime/alpha3/lib/core/roleplay-job-routes-types.js",
       "target": "preset/lib/core/roleplay-job-routes-types.js",
-      "sourceSha256": "ec0238011daaf790a44d36670717e00e8462127ef28b2ea84c741e30273e75f2",
+      "sourceSha256": "2e39723a0d572050a0ce91a1e97e02b2c5d13ca4240736f751cd0313db6c1597",
       "sha256": "2e39723a0d572050a0ce91a1e97e02b2c5d13ca4240736f751cd0313db6c1597"
     },
     {
       "artifact": "roleplay-job-routes",
       "source": "runtime/alpha3/lib/core/roleplay-job-routes.js",
       "target": "preset/lib/core/roleplay-job-routes.js",
-      "sourceSha256": "8eb3e22f59bf0f7ca75af84105384ce42a775eafe82431eb4f88b0a9bb9128fd",
-      "sha256": "d33059e76961d41a5a010fbc4cf12e764dc1d37f651a9d09babd61be6866402f"
+      "sourceSha256": "2a3187673906fc3a666a3a1ea8f56f050eff4785317270689b69973a9eefd83b",
+      "sha256": "2a3187673906fc3a666a3a1ea8f56f050eff4785317270689b69973a9eefd83b"
     },
     {
       "artifact": "roleplay-telemetry-routes-types",
@@ -648,8 +648,8 @@
       "artifact": "roleplay-loop",
       "source": "runtime/alpha3/lib/core/roleplay-loop.js",
       "target": "preset/lib/core/roleplay-loop.js",
-      "sourceSha256": "6e10c4b29a2fac8d7ae300a27d24f6bb87df67d1cca65bf482e69018f9522041",
-      "sha256": "6e10c4b29a2fac8d7ae300a27d24f6bb87df67d1cca65bf482e69018f9522041"
+      "sourceSha256": "8bbca373b17a7577b7a1a39ab94167dbaabaf7c4b9a2a630a064c8264eabbc9d",
+      "sha256": "8bbca373b17a7577b7a1a39ab94167dbaabaf7c4b9a2a630a064c8264eabbc9d"
     },
     {
       "artifact": "roleplay-task-host-types",
@@ -662,8 +662,8 @@
       "artifact": "roleplay-task-host",
       "source": "runtime/alpha3/lib/core/roleplay-task-host.js",
       "target": "preset/lib/core/roleplay-task-host.js",
-      "sourceSha256": "e3885871432e26735049ea1fd825ef8f5a28966cc0feaf49d8a464d69c8fc887",
-      "sha256": "f6042c4aeb55a46cdb39c3f2017ce0262f425338996fc6990661699271c64433"
+      "sourceSha256": "c35392af324de5c64e20ee4bb248012eb603c679a1ad43630d4b76835d92b4a5",
+      "sha256": "c35392af324de5c64e20ee4bb248012eb603c679a1ad43630d4b76835d92b4a5"
     },
     {
       "artifact": "roleplay-service-types",
@@ -767,8 +767,8 @@
       "artifact": "memory-compaction-js",
       "source": "runtime/alpha3/lib/memory/memory-compaction.js",
       "target": "preset/lib/memory/memory-compaction.js",
-      "sourceSha256": "7874a782e811458a37c605206f0f1d4d2e563c76cc2145a9141be3fe17e2da8f",
-      "sha256": "c626a6818faba4578ce2aa97597dc170865c13a5d9ec23246411a36a5c433eef"
+      "sourceSha256": "b35a0ea93191eb5f6e40ed7b2981b2e321bb266148b27f07c02343d2ce653b5b",
+      "sha256": "b35a0ea93191eb5f6e40ed7b2981b2e321bb266148b27f07c02343d2ce653b5b"
     },
     {
       "artifact": "memory-notes-writer-js",
@@ -788,8 +788,8 @@
       "artifact": "memory-summary-js",
       "source": "runtime/alpha3/lib/memory/memory-summary.js",
       "target": "preset/lib/memory/memory-summary.js",
-      "sourceSha256": "365f8b8d5c4ce131eb96941c2ef822cca12bca2e6da7c04db641660ee9935062",
-      "sha256": "4220c9e49dc7a587e404a17d105f0aeba94d36fdae28f2dd30a46891b9d644bd"
+      "sourceSha256": "2450dc51f1a6702dab2079c1f83528649d6af5e6bd361c137aecab19cb2bac88",
+      "sha256": "2450dc51f1a6702dab2079c1f83528649d6af5e6bd361c137aecab19cb2bac88"
     },
     {
       "artifact": "memory-history-js",
@@ -935,7 +935,7 @@
       "artifact": "roleplay-core",
       "source": "runtime/alpha3/lib/core/roleplay-core.js",
       "target": "preset/lib/core/roleplay-core.js",
-      "sourceSha256": "9c5d071d42a83f330463469431b5f34dc93f4d6999920a04d63d064d1bc225a5",
+      "sourceSha256": "6befe67aa494dc60aebcd550243e48ab6769ef28938a1367b3e47910f786badc",
       "sha256": "d0c60af1d421851561cecea773e4dc9c1a0b2852cf1740f3d26f10cbc977a880"
     },
     {
@@ -963,8 +963,8 @@
       "artifact": "roleplay-preparation",
       "source": "runtime/alpha3/lib/core/roleplay-preparation.js",
       "target": "preset/lib/core/roleplay-preparation.js",
-      "sourceSha256": "aa510785c8ef398c223e0ed2bcf07bcad9421fc97604a141ba5b30cf05076370",
-      "sha256": "cfe3a99b673216e789cd3d8dd5793a4d6f891b4b65604cb63ee3a52901ae3a24"
+      "sourceSha256": "afcbbc85b255dff10695c4ca23db24e6466088443f038eeb7eaf7fdeb53f468e",
+      "sha256": "afcbbc85b255dff10695c4ca23db24e6466088443f038eeb7eaf7fdeb53f468e"
     },
     {
       "artifact": "roleplay-completion-types",
@@ -1005,7 +1005,7 @@
       "artifact": "roleplay-context",
       "source": "runtime/alpha3/lib/core/roleplay-context.js",
       "target": "preset/lib/core/roleplay-context.js",
-      "sourceSha256": "43a59774d8c74f2b0cf54cbb4abe12ec93eb3bff33108f1f475098af9f44a04e",
+      "sourceSha256": "585750268c114f58b37e65d487f98248f67d4a43f3fb97a5044b45686038fef6",
       "sha256": "585750268c114f58b37e65d487f98248f67d4a43f3fb97a5044b45686038fef6"
     },
     {
@@ -1061,8 +1061,8 @@
       "artifact": "tavern-tasks",
       "source": "runtime/alpha3/lib/core/tavern-tasks.js",
       "target": "preset/lib/core/tavern-tasks.js",
-      "sourceSha256": "9cf0dd7a74c6c6f7fc30017361e600c98ab49381bf85a3446afc9adf09cbac5b",
-      "sha256": "ac1def694c922c376709fdfcc6e35b6e13566dc5b74bb6ed6b2ae2ac020a60c8"
+      "sourceSha256": "d4cfbc2cf05653bfcac062dc786c6f41827591aed3060b28911b7eaa0d61e720",
+      "sha256": "d4cfbc2cf05653bfcac062dc786c6f41827591aed3060b28911b7eaa0d61e720"
     },
     {
       "artifact": "tavern-telemetry",
@@ -1075,8 +1075,8 @@
       "artifact": "roleplay-memory",
       "source": "runtime/alpha3/lib/memory/roleplay-memory-engine.js",
       "target": "preset/lib/memory/roleplay-memory-engine.js",
-      "sourceSha256": "c5cf1aebf130155b2a8593d02cc6571a8440c9165b70150cbe1c22c661272da4",
-      "sha256": "09d77775ee41d32457a17dd35c2688bbf1481dcc387bcf1d7a26ce64985d1890"
+      "sourceSha256": "e5af783d4f029b7944592627d6547be31419ed11d71c6aa87717a729c60cb77a",
+      "sha256": "e5af783d4f029b7944592627d6547be31419ed11d71c6aa87717a729c60cb77a"
     },
     {
       "artifact": "roleplay-preset",
@@ -1173,8 +1173,8 @@
       "artifact": "nexttavern-product-package",
       "source": "runtime/alpha3/product/package.json",
       "target": "package.json",
-      "sourceSha256": "4609affd2ac96324dc6089b0d5b85e7e999bd79b849e8417171035b43ac9ba77",
-      "sha256": "cacd88e9e28295911f67c589aa8b46e3f2ba537265973151a006f35bf9754708"
+      "sourceSha256": "4c2d1c7472713b2756bbd844e0f5618ee7bf315fb0e4c9630088272b905990d5",
+      "sha256": "e0afc60a39b5ff9a318658af0ee83a185c100b8654b08db7fdc0cece41ef2543"
     },
     {
       "artifact": "nexttavern-product-patch",
@@ -1404,15 +1404,15 @@
       "artifact": "public-windows-setup-guide",
       "source": "release/public/INSTALL-WINDOWS.md",
       "target": "INSTALL-WINDOWS.md",
-      "sourceSha256": "2ec745d7de9604fab9a2eeb946f300879bae54dfb859d6fa775facdf1988e86d",
-      "sha256": "2ec745d7de9604fab9a2eeb946f300879bae54dfb859d6fa775facdf1988e86d"
+      "sourceSha256": "8c2ab47bdfc44b607a149cc2c4bedee1016fb7824553ab8d3eb3772c7c11e8f7",
+      "sha256": "8c2ab47bdfc44b607a149cc2c4bedee1016fb7824553ab8d3eb3772c7c11e8f7"
     },
     {
       "artifact": "public-linux-setup-guide",
       "source": "release/public/INSTALL-LINUX.md",
       "target": "INSTALL-LINUX.md",
-      "sourceSha256": "509fba2f4420cbce1c51a8d0b381328cdae74b6b1412e03a289550e42eb349c3",
-      "sha256": "509fba2f4420cbce1c51a8d0b381328cdae74b6b1412e03a289550e42eb349c3"
+      "sourceSha256": "5a8d882d50e3ad72b2dbd7b58b3fcf30c9288fb26c32b606e87c955b7f59e2b7",
+      "sha256": "5a8d882d50e3ad72b2dbd7b58b3fcf30c9288fb26c32b606e87c955b7f59e2b7"
     },
     {
       "artifact": "screenshot-skin-day",
@@ -2265,29 +2265,29 @@
       "artifact": "roleplay-job-routes-types-typescript",
       "source": "runtime/alpha3/src/core/roleplay-job-routes-types.ts",
       "target": "src/core/roleplay-job-routes-types.ts",
-      "sourceSha256": "a3d75dc3bcee1cab6321a46a41ab8b590538a5f4610df57b128bbbb647c8f18a",
-      "sha256": "dfa61708ac1c0b5b55968972837fe63f72048bdbc65417a09a6b2202d8aa626c"
+      "sourceSha256": "65b91dc8e0758fbf4838f91d4a514e12f783389f40174eac1b4456918cc9baa0",
+      "sha256": "c84ea2cffdaaa3869bcf75a788e31374513098509e9136a1abd123b2d40cc33e"
     },
     {
       "artifact": "roleplay-job-routes-types",
       "source": "runtime/alpha3/lib/core/roleplay-job-routes-types.js",
       "target": "lib/core/roleplay-job-routes-types.js",
-      "sourceSha256": "ec0238011daaf790a44d36670717e00e8462127ef28b2ea84c741e30273e75f2",
+      "sourceSha256": "2e39723a0d572050a0ce91a1e97e02b2c5d13ca4240736f751cd0313db6c1597",
       "sha256": "2e39723a0d572050a0ce91a1e97e02b2c5d13ca4240736f751cd0313db6c1597"
     },
     {
       "artifact": "roleplay-job-routes-typescript",
       "source": "runtime/alpha3/src/core/roleplay-job-routes.ts",
       "target": "src/core/roleplay-job-routes.ts",
-      "sourceSha256": "1b249ca0ae0e5220b00f68924f99f6731007d5886ea0d2d98173bbf4b69208f3",
-      "sha256": "a63f51cb1cb8c4586e97525ba3a3bfb693d33f910f9dc0aa7294c0c1190ebe51"
+      "sourceSha256": "9cfe21827db992b0a29b3cdb017df07a7614f8f3bcaa5758d62f2c4d107577e1",
+      "sha256": "54670ea09ea166390746656c0d53bbb196f2b3b9f5f4966a8eadbbc7206b5bbe"
     },
     {
       "artifact": "roleplay-job-routes",
       "source": "runtime/alpha3/lib/core/roleplay-job-routes.js",
       "target": "lib/core/roleplay-job-routes.js",
-      "sourceSha256": "8eb3e22f59bf0f7ca75af84105384ce42a775eafe82431eb4f88b0a9bb9128fd",
-      "sha256": "d33059e76961d41a5a010fbc4cf12e764dc1d37f651a9d09babd61be6866402f"
+      "sourceSha256": "2a3187673906fc3a666a3a1ea8f56f050eff4785317270689b69973a9eefd83b",
+      "sha256": "2a3187673906fc3a666a3a1ea8f56f050eff4785317270689b69973a9eefd83b"
     },
     {
       "artifact": "roleplay-telemetry-routes-types-typescript",
@@ -2545,8 +2545,8 @@
       "artifact": "roleplay-loop-types-typescript",
       "source": "runtime/alpha3/src/core/roleplay-loop-types.ts",
       "target": "src/core/roleplay-loop-types.ts",
-      "sourceSha256": "0f151407d917da966b365da8661c4231102ba31ee9dc52c2cbbd3cbdbb1f17a9",
-      "sha256": "be9bf4c250cb4bdbab208b86b16053eca623dacc6f8d1c375896be65fdd72cb2"
+      "sourceSha256": "089a8bb0967ac2fc1b24cf863406cff0525481e4a4ca680c5472f91e7f40c3d4",
+      "sha256": "4402a96340e4a489e66ccecb9506118a2aa05f664e5095bcaa059b779a222bd3"
     },
     {
       "artifact": "roleplay-loop-types",
@@ -2559,15 +2559,15 @@
       "artifact": "roleplay-loop-typescript",
       "source": "runtime/alpha3/src/core/roleplay-loop.ts",
       "target": "src/core/roleplay-loop.ts",
-      "sourceSha256": "0ebcef8d961706733dd53e31c720c2fbcbc95d30d61c8749346417fd2e458189",
-      "sha256": "50e76be2d11ef0845e2d9deb744a7d851f026ceb131c30d6bf42571d0e0b98c8"
+      "sourceSha256": "6ab9d3cb30cf37177e29a4da7244668579f37324e4d06e2328a8c49935551158",
+      "sha256": "13496d8fd7b766a2a9f3975ae84d1e154f07d506dab6ca26ec03afeecc7c1fdb"
     },
     {
       "artifact": "roleplay-loop",
       "source": "runtime/alpha3/lib/core/roleplay-loop.js",
       "target": "lib/core/roleplay-loop.js",
-      "sourceSha256": "6e10c4b29a2fac8d7ae300a27d24f6bb87df67d1cca65bf482e69018f9522041",
-      "sha256": "6e10c4b29a2fac8d7ae300a27d24f6bb87df67d1cca65bf482e69018f9522041"
+      "sourceSha256": "8bbca373b17a7577b7a1a39ab94167dbaabaf7c4b9a2a630a064c8264eabbc9d",
+      "sha256": "8bbca373b17a7577b7a1a39ab94167dbaabaf7c4b9a2a630a064c8264eabbc9d"
     },
     {
       "artifact": "roleplay-task-host-types-typescript",
@@ -2587,15 +2587,15 @@
       "artifact": "roleplay-task-host-typescript",
       "source": "runtime/alpha3/src/core/roleplay-task-host.ts",
       "target": "src/core/roleplay-task-host.ts",
-      "sourceSha256": "a3c410a16c2060ee34bf4546accb8dc867b71328e855f741443df4e798246c1a",
-      "sha256": "1ae82d377e792a2105585b3795057e70dcaa08f627cb8f2bb9659ff3de929878"
+      "sourceSha256": "fc7d0efd1f59670f92f806bc26b50affa8a1d7677f1bddabd3b0e1e9e6870155",
+      "sha256": "5ae11ed8388f6b5c3c3c1ed4cd832781f9802d990aa85533e05a336464e6c7ed"
     },
     {
       "artifact": "roleplay-task-host",
       "source": "runtime/alpha3/lib/core/roleplay-task-host.js",
       "target": "lib/core/roleplay-task-host.js",
-      "sourceSha256": "e3885871432e26735049ea1fd825ef8f5a28966cc0feaf49d8a464d69c8fc887",
-      "sha256": "f6042c4aeb55a46cdb39c3f2017ce0262f425338996fc6990661699271c64433"
+      "sourceSha256": "c35392af324de5c64e20ee4bb248012eb603c679a1ad43630d4b76835d92b4a5",
+      "sha256": "c35392af324de5c64e20ee4bb248012eb603c679a1ad43630d4b76835d92b4a5"
     },
     {
       "artifact": "roleplay-service-types-typescript",
@@ -2741,8 +2741,8 @@
       "artifact": "tavern-tasks-typescript",
       "source": "runtime/alpha3/src/core/tavern-tasks.ts",
       "target": "src/core/tavern-tasks.ts",
-      "sourceSha256": "9a2b6342e846becacde32a88cc70e63e70aa97dc203c7cb6485a8dd5c05e3593",
-      "sha256": "5d6655d6bc4dc3711c5559f61685d4f3cf5fbf1232d764285a84a0493bf9817b"
+      "sourceSha256": "a20450c833a1ffec343b96e9a5bc230dc479fe4fdf4eebea10e9a16242cf4f3b",
+      "sha256": "1cab20b8ebeed2b342532ed43181d96e4d8cf669b77d9a1b66fd7d7dacdcc166"
     },
     {
       "artifact": "tavern-task-types-typescript",
@@ -2804,15 +2804,15 @@
       "artifact": "memory-compaction-typescript",
       "source": "runtime/alpha3/src/memory/memory-compaction.ts",
       "target": "src/memory/memory-compaction.ts",
-      "sourceSha256": "feeaa882d285b00cf3570e5bb5aa5a907f6d8a70e0496d12cedc4f7a54dec6cd",
-      "sha256": "e4643d316e79b88f238f6624aa9bc8b012fdb967837c3635007baf65f21fd450"
+      "sourceSha256": "b2e44c87180ae6ee43b0f8e9926c6ad98990b3cc5f0d81346e8636b2fed44224",
+      "sha256": "2c73b8fe386080a3dbd8da756654e10d218b6b8b4e8876547bd8a7ad27b51519"
     },
     {
       "artifact": "memory-compaction-js",
       "source": "runtime/alpha3/lib/memory/memory-compaction.js",
       "target": "lib/memory/memory-compaction.js",
-      "sourceSha256": "7874a782e811458a37c605206f0f1d4d2e563c76cc2145a9141be3fe17e2da8f",
-      "sha256": "c626a6818faba4578ce2aa97597dc170865c13a5d9ec23246411a36a5c433eef"
+      "sourceSha256": "b35a0ea93191eb5f6e40ed7b2981b2e321bb266148b27f07c02343d2ce653b5b",
+      "sha256": "b35a0ea93191eb5f6e40ed7b2981b2e321bb266148b27f07c02343d2ce653b5b"
     },
     {
       "artifact": "memory-notes-writer-typescript",
@@ -2846,15 +2846,15 @@
       "artifact": "memory-summary-typescript",
       "source": "runtime/alpha3/src/memory/memory-summary.ts",
       "target": "src/memory/memory-summary.ts",
-      "sourceSha256": "a1b07fc364236673487aa090c383ed74ce6924e253b55dab15b40b02d0129946",
-      "sha256": "e38a8a57588b3a65587e4b824a428d087920c34ab68a56d07cbd2bfcfaeb6fc5"
+      "sourceSha256": "ef2112ebfb62ba5c56c00069452c313469151a7001c3c267f433889a9d2206ef",
+      "sha256": "eb3d851e59f9eac6ece95b3773fbd4d65586475af4ce188ca08b65603aa87d2a"
     },
     {
       "artifact": "memory-summary-js",
       "source": "runtime/alpha3/lib/memory/memory-summary.js",
       "target": "lib/memory/memory-summary.js",
-      "sourceSha256": "365f8b8d5c4ce131eb96941c2ef822cca12bca2e6da7c04db641660ee9935062",
-      "sha256": "4220c9e49dc7a587e404a17d105f0aeba94d36fdae28f2dd30a46891b9d644bd"
+      "sourceSha256": "2450dc51f1a6702dab2079c1f83528649d6af5e6bd361c137aecab19cb2bac88",
+      "sha256": "2450dc51f1a6702dab2079c1f83528649d6af5e6bd361c137aecab19cb2bac88"
     },
     {
       "artifact": "memory-history-typescript",
@@ -2965,7 +2965,7 @@
       "artifact": "roleplay-core",
       "source": "runtime/alpha3/lib/core/roleplay-core.js",
       "target": "lib/core/roleplay-core.js",
-      "sourceSha256": "9c5d071d42a83f330463469431b5f34dc93f4d6999920a04d63d064d1bc225a5",
+      "sourceSha256": "6befe67aa494dc60aebcd550243e48ab6769ef28938a1367b3e47910f786badc",
       "sha256": "d0c60af1d421851561cecea773e4dc9c1a0b2852cf1740f3d26f10cbc977a880"
     },
     {
@@ -3056,15 +3056,15 @@
       "artifact": "roleplay-preparation-typescript",
       "source": "runtime/alpha3/src/core/roleplay-preparation.ts",
       "target": "src/core/roleplay-preparation.ts",
-      "sourceSha256": "6720e92b36985c80fadcff2ccce18f7684d1439938646586cfebb9d4ed7aba5e",
-      "sha256": "0bde10ad03663f45ed5bdca291c447d1974e6e1517b8dad2c1a670352a5a9d70"
+      "sourceSha256": "35a18ec8b1391ac7213b291130e28e1902c3a2beafa62dcde8a18db20c36a1a2",
+      "sha256": "02dfee19109dfd6181da09046a3da1f0a23bbaa9e728565a315ae9d4800bf8b4"
     },
     {
       "artifact": "roleplay-preparation",
       "source": "runtime/alpha3/lib/core/roleplay-preparation.js",
       "target": "lib/core/roleplay-preparation.js",
-      "sourceSha256": "aa510785c8ef398c223e0ed2bcf07bcad9421fc97604a141ba5b30cf05076370",
-      "sha256": "cfe3a99b673216e789cd3d8dd5793a4d6f891b4b65604cb63ee3a52901ae3a24"
+      "sourceSha256": "afcbbc85b255dff10695c4ca23db24e6466088443f038eeb7eaf7fdeb53f468e",
+      "sha256": "afcbbc85b255dff10695c4ca23db24e6466088443f038eeb7eaf7fdeb53f468e"
     },
     {
       "artifact": "roleplay-completion-types-typescript",
@@ -3140,14 +3140,14 @@
       "artifact": "roleplay-context-typescript",
       "source": "runtime/alpha3/src/core/roleplay-context.ts",
       "target": "src/core/roleplay-context.ts",
-      "sourceSha256": "c27cbe311b52364198183ddefb3173fa6e3e2cd52e262ae67aeef0463e71b3a5",
-      "sha256": "40835a0b8a8c40092e29fccebb982aac5cbbbd015ca17fdbe598a7850a3d148e"
+      "sourceSha256": "19385e0d270059c3b47dc899dc72bf0b9e2a47f03250bff68f0167ee82640545",
+      "sha256": "8d10e05af9641d83b467e2bf539730d5271561026c7530266ee71798a79e14fd"
     },
     {
       "artifact": "roleplay-context",
       "source": "runtime/alpha3/lib/core/roleplay-context.js",
       "target": "lib/core/roleplay-context.js",
-      "sourceSha256": "43a59774d8c74f2b0cf54cbb4abe12ec93eb3bff33108f1f475098af9f44a04e",
+      "sourceSha256": "585750268c114f58b37e65d487f98248f67d4a43f3fb97a5044b45686038fef6",
       "sha256": "585750268c114f58b37e65d487f98248f67d4a43f3fb97a5044b45686038fef6"
     },
     {
@@ -3329,8 +3329,8 @@
       "artifact": "tavern-tasks",
       "source": "runtime/alpha3/lib/core/tavern-tasks.js",
       "target": "lib/core/tavern-tasks.js",
-      "sourceSha256": "9cf0dd7a74c6c6f7fc30017361e600c98ab49381bf85a3446afc9adf09cbac5b",
-      "sha256": "ac1def694c922c376709fdfcc6e35b6e13566dc5b74bb6ed6b2ae2ac020a60c8"
+      "sourceSha256": "d4cfbc2cf05653bfcac062dc786c6f41827591aed3060b28911b7eaa0d61e720",
+      "sha256": "d4cfbc2cf05653bfcac062dc786c6f41827591aed3060b28911b7eaa0d61e720"
     },
     {
       "artifact": "character-cluster",
@@ -3490,15 +3490,15 @@
       "artifact": "roleplay-memory",
       "source": "runtime/alpha3/lib/memory/roleplay-memory-engine.js",
       "target": "lib/memory/roleplay-memory-engine.js",
-      "sourceSha256": "c5cf1aebf130155b2a8593d02cc6571a8440c9165b70150cbe1c22c661272da4",
-      "sha256": "09d77775ee41d32457a17dd35c2688bbf1481dcc387bcf1d7a26ce64985d1890"
+      "sourceSha256": "e5af783d4f029b7944592627d6547be31419ed11d71c6aa87717a729c60cb77a",
+      "sha256": "e5af783d4f029b7944592627d6547be31419ed11d71c6aa87717a729c60cb77a"
     },
     {
       "artifact": "roleplay-memory-typescript",
       "source": "runtime/alpha3/src/memory/roleplay-memory-engine.ts",
       "target": "src/memory/roleplay-memory-engine.ts",
-      "sourceSha256": "8cc33dcbe23c9c0dce61bcc482fd84e156b7041180dade5bc397d46dc4d96fcc",
-      "sha256": "ad28d90636723b4f3dd278d56e2bcc631ebcc833c10dbb20c0fed24c08b55576"
+      "sourceSha256": "3196eb4d547ab5104916fddaa812fd935700cf8bd6b721ffabb4fa3c9aac0675",
+      "sha256": "ceb907b95cbb02d15cc63355a43a58128f87ea530827d66d0eaca68cd70f9a79"
     },
     {
       "artifact": "ask-user-decision-pr",
@@ -3679,8 +3679,8 @@
       "artifact": "public-readme-draft",
       "source": "release/public/README.md",
       "target": "README.md",
-      "sourceSha256": "9f55403ed28288fbac67211d8037a3a42d48b8aecdda400362291e5d8029c409",
-      "sha256": "9f55403ed28288fbac67211d8037a3a42d48b8aecdda400362291e5d8029c409"
+      "sourceSha256": "81796f4448aee5ccf56d50b33d797bc0bbaa804c86f45be55aa3239b9acc01cc",
+      "sha256": "81796f4448aee5ccf56d50b33d797bc0bbaa804c86f45be55aa3239b9acc01cc"
     },
     {
       "artifact": "public-cover",
@@ -3693,8 +3693,8 @@
       "artifact": "public-readme-english",
       "source": "release/public/README.en.md",
       "target": "README.en.md",
-      "sourceSha256": "add0ee5dca7b44ceb048e69e97e5796994de4393b1fc7f1a2145992a537be620",
-      "sha256": "add0ee5dca7b44ceb048e69e97e5796994de4393b1fc7f1a2145992a537be620"
+      "sourceSha256": "bf538eeab4e014eadb195bcf8f3914df58757c72daf45d94fa58258f1504cf3e",
+      "sha256": "bf538eeab4e014eadb195bcf8f3914df58757c72daf45d94fa58258f1504cf3e"
     },
     {
       "artifact": "public-notice-draft",
@@ -3721,8 +3721,8 @@
       "artifact": "public-changelog-draft",
       "source": "release/public/CHANGELOG.md",
       "target": "CHANGELOG.md",
-      "sourceSha256": "b9b537b6b70b9065690fef845709663a5f240fd822bd956b47bc4d4dea239b9c",
-      "sha256": "b9b537b6b70b9065690fef845709663a5f240fd822bd956b47bc4d4dea239b9c"
+      "sourceSha256": "54bc3745484dc238c15f8b55dc5cd3c0ee0ddc97b5f67793cdcb2e00cedafc89",
+      "sha256": "54bc3745484dc238c15f8b55dc5cd3c0ee0ddc97b5f67793cdcb2e00cedafc89"
     },
     {
       "artifact": "public-feedback",
@@ -3770,7 +3770,7 @@
       "artifact": "protected-packages",
       "source": "runtime/alpha3/lib/operations/protected-packages.mjs",
       "target": "lib/operations/protected-packages.mjs",
-      "sourceSha256": "7be4782f9670faf6fc9425300cb076bc926ecfc0687f7f3a31a90f0dbd68f9e7",
+      "sourceSha256": "8704b813eb403030329eafe3c4976974b358f9a2b1e15a4dc98c82383d2f4237",
       "sha256": "7be4782f9670faf6fc9425300cb076bc926ecfc0687f7f3a31a90f0dbd68f9e7"
     },
     {
@@ -3882,8 +3882,8 @@
       "artifact": "public-docs-site-config",
       "source": "release/public/site/site.config.mjs",
       "target": "site/site.config.mjs",
-      "sourceSha256": "0341052a5d6ecb03bf60b81e826cdbf72f552d563d5728d5911bcf1758ddea20",
-      "sha256": "0341052a5d6ecb03bf60b81e826cdbf72f552d563d5728d5911bcf1758ddea20"
+      "sourceSha256": "0d1510815a86d66d21c0b0351ec62567ad0b6e7e057881ff35a4f125d8fed95c",
+      "sha256": "0d1510815a86d66d21c0b0351ec62567ad0b6e7e057881ff35a4f125d8fed95c"
     },
     {
       "artifact": "public-docs-site-stylesheet",
@@ -5639,7 +5639,7 @@
       "artifact": "compat-presets-lib-composition-js",
       "source": "runtime/alpha3/compat/presets/lib/composition.js",
       "target": "development/presets/lib/composition.js",
-      "sourceSha256": "892ba94627e68dbae76afd4278d2a21b6f84b4ef17f7498a85b7d28905239b89",
+      "sourceSha256": "13ea109ea0e0ee87a12179a6421c3508cb24d1843adbea67822431d8f69d9327",
       "sha256": "892ba94627e68dbae76afd4278d2a21b6f84b4ef17f7498a85b7d28905239b89"
     },
     {
@@ -7900,8 +7900,8 @@
       "artifact": "nexttavern-product-package",
       "source": "runtime/alpha3/product/package.json",
       "target": "package.json",
-      "sourceSha256": "4609affd2ac96324dc6089b0d5b85e7e999bd79b849e8417171035b43ac9ba77",
-      "sha256": "cacd88e9e28295911f67c589aa8b46e3f2ba537265973151a006f35bf9754708"
+      "sourceSha256": "4c2d1c7472713b2756bbd844e0f5618ee7bf315fb0e4c9630088272b905990d5",
+      "sha256": "e0afc60a39b5ff9a318658af0ee83a185c100b8654b08db7fdc0cece41ef2543"
     },
     {
       "artifact": "nexttavern-product-patch",
@@ -8260,8 +8260,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "sha256": "b9b537b6b70b9065690fef845709663a5f240fd822bd956b47bc4d4dea239b9c",
-      "bytes": 33194
+      "sha256": "54bc3745484dc238c15f8b55dc5cd3c0ee0ddc97b5f67793cdcb2e00cedafc89",
+      "bytes": 34292
     },
     {
       "path": "CONTRIBUTING.md",
@@ -8275,13 +8275,13 @@
     },
     {
       "path": "INSTALL-LINUX.md",
-      "sha256": "509fba2f4420cbce1c51a8d0b381328cdae74b6b1412e03a289550e42eb349c3",
-      "bytes": 8728
+      "sha256": "5a8d882d50e3ad72b2dbd7b58b3fcf30c9288fb26c32b606e87c955b7f59e2b7",
+      "bytes": 8877
     },
     {
       "path": "INSTALL-WINDOWS.md",
-      "sha256": "2ec745d7de9604fab9a2eeb946f300879bae54dfb859d6fa775facdf1988e86d",
-      "bytes": 9949
+      "sha256": "8c2ab47bdfc44b607a149cc2c4bedee1016fb7824553ab8d3eb3772c7c11e8f7",
+      "bytes": 10144
     },
     {
       "path": "LICENSE",
@@ -8300,13 +8300,13 @@
     },
     {
       "path": "README.en.md",
-      "sha256": "add0ee5dca7b44ceb048e69e97e5796994de4393b1fc7f1a2145992a537be620",
-      "bytes": 42855
+      "sha256": "bf538eeab4e014eadb195bcf8f3914df58757c72daf45d94fa58258f1504cf3e",
+      "bytes": 42763
     },
     {
       "path": "README.md",
-      "sha256": "9f55403ed28288fbac67211d8037a3a42d48b8aecdda400362291e5d8029c409",
-      "bytes": 44660
+      "sha256": "81796f4448aee5ccf56d50b33d797bc0bbaa804c86f45be55aa3239b9acc01cc",
+      "bytes": 44515
     },
     {
       "path": "SCREENSHOTS.md",
@@ -13055,8 +13055,8 @@
     },
     {
       "path": "lib/core/roleplay-job-routes.js",
-      "sha256": "d33059e76961d41a5a010fbc4cf12e764dc1d37f651a9d09babd61be6866402f",
-      "bytes": 11676
+      "sha256": "2a3187673906fc3a666a3a1ea8f56f050eff4785317270689b69973a9eefd83b",
+      "bytes": 12214
     },
     {
       "path": "lib/core/roleplay-loop-types.js",
@@ -13065,8 +13065,8 @@
     },
     {
       "path": "lib/core/roleplay-loop.js",
-      "sha256": "6e10c4b29a2fac8d7ae300a27d24f6bb87df67d1cca65bf482e69018f9522041",
-      "bytes": 27201
+      "sha256": "8bbca373b17a7577b7a1a39ab94167dbaabaf7c4b9a2a630a064c8264eabbc9d",
+      "bytes": 27832
     },
     {
       "path": "lib/core/roleplay-message-view.js",
@@ -13090,8 +13090,8 @@
     },
     {
       "path": "lib/core/roleplay-preparation.js",
-      "sha256": "cfe3a99b673216e789cd3d8dd5793a4d6f891b4b65604cb63ee3a52901ae3a24",
-      "bytes": 25339
+      "sha256": "afcbbc85b255dff10695c4ca23db24e6466088443f038eeb7eaf7fdeb53f468e",
+      "bytes": 25071
     },
     {
       "path": "lib/core/roleplay-resource-bridge-types.js",
@@ -13175,8 +13175,8 @@
     },
     {
       "path": "lib/core/roleplay-task-host.js",
-      "sha256": "f6042c4aeb55a46cdb39c3f2017ce0262f425338996fc6990661699271c64433",
-      "bytes": 10693
+      "sha256": "c35392af324de5c64e20ee4bb248012eb603c679a1ad43630d4b76835d92b4a5",
+      "bytes": 12524
     },
     {
       "path": "lib/core/roleplay-task-tools-types.js",
@@ -13305,8 +13305,8 @@
     },
     {
       "path": "lib/core/tavern-tasks.js",
-      "sha256": "ac1def694c922c376709fdfcc6e35b6e13566dc5b74bb6ed6b2ae2ac020a60c8",
-      "bytes": 37215
+      "sha256": "d4cfbc2cf05653bfcac062dc786c6f41827591aed3060b28911b7eaa0d61e720",
+      "bytes": 38860
     },
     {
       "path": "lib/core/tavern-telemetry-aggregate.js",
@@ -13345,8 +13345,8 @@
     },
     {
       "path": "lib/memory/memory-compaction.js",
-      "sha256": "c626a6818faba4578ce2aa97597dc170865c13a5d9ec23246411a36a5c433eef",
-      "bytes": 26180
+      "sha256": "b35a0ea93191eb5f6e40ed7b2981b2e321bb266148b27f07c02343d2ce653b5b",
+      "bytes": 26298
     },
     {
       "path": "lib/memory/memory-embedding-api.js",
@@ -13400,8 +13400,8 @@
     },
     {
       "path": "lib/memory/memory-summary.js",
-      "sha256": "4220c9e49dc7a587e404a17d105f0aeba94d36fdae28f2dd30a46891b9d644bd",
-      "bytes": 9418
+      "sha256": "2450dc51f1a6702dab2079c1f83528649d6af5e6bd361c137aecab19cb2bac88",
+      "bytes": 9494
     },
     {
       "path": "lib/memory/memory-vector-worker.mjs",
@@ -13410,8 +13410,8 @@
     },
     {
       "path": "lib/memory/roleplay-memory-engine.js",
-      "sha256": "09d77775ee41d32457a17dd35c2688bbf1481dcc387bcf1d7a26ce64985d1890",
-      "bytes": 29556
+      "sha256": "e5af783d4f029b7944592627d6547be31419ed11d71c6aa87717a729c60cb77a",
+      "bytes": 29679
     },
     {
       "path": "lib/operations/build-typescript.mjs",
@@ -13765,7 +13765,7 @@
     },
     {
       "path": "nexttavern.dependencies.json",
-      "sha256": "80ac1bbaac4c5cab727dd5c073efb7872fb547c529f66c0070765c1b6005e15b",
+      "sha256": "9f41ce0ca56d7be8e015768e2f64c9499a49733afc4aa1e1097bedfeeb3afab3",
       "bytes": 3010673
     },
     {
@@ -76200,8 +76200,8 @@
     },
     {
       "path": "node_modules/dsh-nexttavern-presets/lib/composition.js",
-      "sha256": "892ba94627e68dbae76afd4278d2a21b6f84b4ef17f7498a85b7d28905239b89",
-      "bytes": 414
+      "sha256": "13ea109ea0e0ee87a12179a6421c3508cb24d1843adbea67822431d8f69d9327",
+      "bytes": 424
     },
     {
       "path": "node_modules/dsh-nexttavern-presets/lib/index.js",
@@ -99615,7 +99615,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "cacd88e9e28295911f67c589aa8b46e3f2ba537265973151a006f35bf9754708",
+      "sha256": "e0afc60a39b5ff9a318658af0ee83a185c100b8654b08db7fdc0cece41ef2543",
       "bytes": 8296
     },
     {
@@ -99935,8 +99935,8 @@
     },
     {
       "path": "preset/lib/core/roleplay-job-routes.js",
-      "sha256": "d33059e76961d41a5a010fbc4cf12e764dc1d37f651a9d09babd61be6866402f",
-      "bytes": 11676
+      "sha256": "2a3187673906fc3a666a3a1ea8f56f050eff4785317270689b69973a9eefd83b",
+      "bytes": 12214
     },
     {
       "path": "preset/lib/core/roleplay-loop-types.js",
@@ -99945,8 +99945,8 @@
     },
     {
       "path": "preset/lib/core/roleplay-loop.js",
-      "sha256": "6e10c4b29a2fac8d7ae300a27d24f6bb87df67d1cca65bf482e69018f9522041",
-      "bytes": 27201
+      "sha256": "8bbca373b17a7577b7a1a39ab94167dbaabaf7c4b9a2a630a064c8264eabbc9d",
+      "bytes": 27832
     },
     {
       "path": "preset/lib/core/roleplay-message-view.js",
@@ -99970,8 +99970,8 @@
     },
     {
       "path": "preset/lib/core/roleplay-preparation.js",
-      "sha256": "cfe3a99b673216e789cd3d8dd5793a4d6f891b4b65604cb63ee3a52901ae3a24",
-      "bytes": 25339
+      "sha256": "afcbbc85b255dff10695c4ca23db24e6466088443f038eeb7eaf7fdeb53f468e",
+      "bytes": 25071
     },
     {
       "path": "preset/lib/core/roleplay-resource-bridge-types.js",
@@ -100055,8 +100055,8 @@
     },
     {
       "path": "preset/lib/core/roleplay-task-host.js",
-      "sha256": "f6042c4aeb55a46cdb39c3f2017ce0262f425338996fc6990661699271c64433",
-      "bytes": 10693
+      "sha256": "c35392af324de5c64e20ee4bb248012eb603c679a1ad43630d4b76835d92b4a5",
+      "bytes": 12524
     },
     {
       "path": "preset/lib/core/roleplay-task-tools-types.js",
@@ -100185,8 +100185,8 @@
     },
     {
       "path": "preset/lib/core/tavern-tasks.js",
-      "sha256": "ac1def694c922c376709fdfcc6e35b6e13566dc5b74bb6ed6b2ae2ac020a60c8",
-      "bytes": 37215
+      "sha256": "d4cfbc2cf05653bfcac062dc786c6f41827591aed3060b28911b7eaa0d61e720",
+      "bytes": 38860
     },
     {
       "path": "preset/lib/core/tavern-telemetry-aggregate.js",
@@ -100220,8 +100220,8 @@
     },
     {
       "path": "preset/lib/memory/memory-compaction.js",
-      "sha256": "c626a6818faba4578ce2aa97597dc170865c13a5d9ec23246411a36a5c433eef",
-      "bytes": 26180
+      "sha256": "b35a0ea93191eb5f6e40ed7b2981b2e321bb266148b27f07c02343d2ce653b5b",
+      "bytes": 26298
     },
     {
       "path": "preset/lib/memory/memory-embedding-api.js",
@@ -100275,8 +100275,8 @@
     },
     {
       "path": "preset/lib/memory/memory-summary.js",
-      "sha256": "4220c9e49dc7a587e404a17d105f0aeba94d36fdae28f2dd30a46891b9d644bd",
-      "bytes": 9418
+      "sha256": "2450dc51f1a6702dab2079c1f83528649d6af5e6bd361c137aecab19cb2bac88",
+      "bytes": 9494
     },
     {
       "path": "preset/lib/memory/memory-vector-worker.mjs",
@@ -100285,8 +100285,8 @@
     },
     {
       "path": "preset/lib/memory/roleplay-memory-engine.js",
-      "sha256": "09d77775ee41d32457a17dd35c2688bbf1481dcc387bcf1d7a26ce64985d1890",
-      "bytes": 29556
+      "sha256": "e5af783d4f029b7944592627d6547be31419ed11d71c6aa87717a729c60cb77a",
+      "bytes": 29679
     },
     {
       "path": "preset/lib/preset/deescape-md.mjs",
@@ -100555,8 +100555,8 @@
     },
     {
       "path": "site/site.config.mjs",
-      "sha256": "0341052a5d6ecb03bf60b81e826cdbf72f552d563d5728d5911bcf1758ddea20",
-      "bytes": 14924
+      "sha256": "0d1510815a86d66d21c0b0351ec62567ad0b6e7e057881ff35a4f125d8fed95c",
+      "bytes": 15086
     },
     {
       "path": "site/theme/site.css",
@@ -100855,8 +100855,8 @@
     },
     {
       "path": "src/core/roleplay-context.ts",
-      "sha256": "40835a0b8a8c40092e29fccebb982aac5cbbbd015ca17fdbe598a7850a3d148e",
-      "bytes": 25567
+      "sha256": "8d10e05af9641d83b467e2bf539730d5271561026c7530266ee71798a79e14fd",
+      "bytes": 25620
     },
     {
       "path": "src/core/roleplay-core-types.ts",
@@ -100920,23 +100920,23 @@
     },
     {
       "path": "src/core/roleplay-job-routes-types.ts",
-      "sha256": "dfa61708ac1c0b5b55968972837fe63f72048bdbc65417a09a6b2202d8aa626c",
-      "bytes": 3797
+      "sha256": "c84ea2cffdaaa3869bcf75a788e31374513098509e9136a1abd123b2d40cc33e",
+      "bytes": 3898
     },
     {
       "path": "src/core/roleplay-job-routes.ts",
-      "sha256": "a63f51cb1cb8c4586e97525ba3a3bfb693d33f910f9dc0aa7294c0c1190ebe51",
-      "bytes": 10045
+      "sha256": "54670ea09ea166390746656c0d53bbb196f2b3b9f5f4966a8eadbbc7206b5bbe",
+      "bytes": 10476
     },
     {
       "path": "src/core/roleplay-loop-types.ts",
-      "sha256": "be9bf4c250cb4bdbab208b86b16053eca623dacc6f8d1c375896be65fdd72cb2",
-      "bytes": 5321
+      "sha256": "4402a96340e4a489e66ccecb9506118a2aa05f664e5095bcaa059b779a222bd3",
+      "bytes": 5719
     },
     {
       "path": "src/core/roleplay-loop.ts",
-      "sha256": "50e76be2d11ef0845e2d9deb744a7d851f026ceb131c30d6bf42571d0e0b98c8",
-      "bytes": 23919
+      "sha256": "13496d8fd7b766a2a9f3975ae84d1e154f07d506dab6ca26ec03afeecc7c1fdb",
+      "bytes": 24446
     },
     {
       "path": "src/core/roleplay-message-view.ts",
@@ -100960,8 +100960,8 @@
     },
     {
       "path": "src/core/roleplay-preparation.ts",
-      "sha256": "0bde10ad03663f45ed5bdca291c447d1974e6e1517b8dad2c1a670352a5a9d70",
-      "bytes": 24090
+      "sha256": "02dfee19109dfd6181da09046a3da1f0a23bbaa9e728565a315ae9d4800bf8b4",
+      "bytes": 23803
     },
     {
       "path": "src/core/roleplay-resource-bridge-types.ts",
@@ -101045,8 +101045,8 @@
     },
     {
       "path": "src/core/roleplay-task-host.ts",
-      "sha256": "1ae82d377e792a2105585b3795057e70dcaa08f627cb8f2bb9659ff3de929878",
-      "bytes": 9656
+      "sha256": "5ae11ed8388f6b5c3c3c1ed4cd832781f9802d990aa85533e05a336464e6c7ed",
+      "bytes": 11287
     },
     {
       "path": "src/core/roleplay-task-tools-types.ts",
@@ -101175,8 +101175,8 @@
     },
     {
       "path": "src/core/tavern-tasks.ts",
-      "sha256": "5d6655d6bc4dc3711c5559f61685d4f3cf5fbf1232d764285a84a0493bf9817b",
-      "bytes": 31212
+      "sha256": "1cab20b8ebeed2b342532ed43181d96e4d8cf669b77d9a1b66fd7d7dacdcc166",
+      "bytes": 32600
     },
     {
       "path": "src/core/tavern-telemetry-aggregate.ts",
@@ -101210,8 +101210,8 @@
     },
     {
       "path": "src/memory/memory-compaction.ts",
-      "sha256": "e4643d316e79b88f238f6624aa9bc8b012fdb967837c3635007baf65f21fd450",
-      "bytes": 27341
+      "sha256": "2c73b8fe386080a3dbd8da756654e10d218b6b8b4e8876547bd8a7ad27b51519",
+      "bytes": 27469
     },
     {
       "path": "src/memory/memory-embedding-api.ts",
@@ -101265,8 +101265,8 @@
     },
     {
       "path": "src/memory/memory-summary.ts",
-      "sha256": "e38a8a57588b3a65587e4b824a428d087920c34ab68a56d07cbd2bfcfaeb6fc5",
-      "bytes": 10930
+      "sha256": "eb3d851e59f9eac6ece95b3773fbd4d65586475af4ce188ca08b65603aa87d2a",
+      "bytes": 11045
     },
     {
       "path": "src/memory/memory-vector-worker.mts",
@@ -101275,8 +101275,8 @@
     },
     {
       "path": "src/memory/roleplay-memory-engine.ts",
-      "sha256": "ad28d90636723b4f3dd278d56e2bcc631ebcc833c10dbb20c0fed24c08b55576",
-      "bytes": 30055
+      "sha256": "ceb907b95cbb02d15cc63355a43a58128f87ea530827d66d0eaca68cd70f9a79",
+      "bytes": 30166
     },
     {
       "path": "src/operations/build-typescript.mts",
@@ -101720,8 +101720,8 @@
     },
     {
       "path": "tests/inline-maintenance-retirement.test.mts",
-      "sha256": "68fc1c04fc2da085b02a334936bee70177370345068a5c7f5ce6ce2f1ac9fa69",
-      "bytes": 30983
+      "sha256": "3d49adbfd2f6406988c8c710572ca9bcdd74fa5898e550f7ba14efabd0925e62",
+      "bytes": 31258
     },
     {
       "path": "tests/inline-task-delivery.test.mjs",
@@ -101880,8 +101880,8 @@
     },
     {
       "path": "tests/roleplay-memory-engine.test.mjs",
-      "sha256": "a6098cdbaee636412a6e9327009aa8ecd11c21bdcd939d9ef4a3ddfd1a594d6b",
-      "bytes": 69028
+      "sha256": "d0ad9a00a7327110660508cb8f97c47a3b5c694968f6227361adee85731760af",
+      "bytes": 85466
     },
     {
       "path": "tests/run.mjs",
@@ -101945,8 +101945,8 @@
     },
     {
       "path": "tests/tavern-loop.test.mjs",
-      "sha256": "050360e31270762061214f4a9c1a39dcb7180626f58172b6fb588d96bd6b5245",
-      "bytes": 95802
+      "sha256": "4241db4f106d9eef4dc5f709020dcb0be028c63c7ea3b15427f591247ea32ba0",
+      "bytes": 97450
     },
     {
       "path": "tests/tavern-pricing.test.mjs",

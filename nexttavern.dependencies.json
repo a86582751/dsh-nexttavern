@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "productVersion": "0.2.9-rc.3",
+  "productVersion": "0.2.9-rc.4",
   "packages": [
     {
       "name": "dsh-nexttavern-anydoc",
@@ -43934,7 +43934,7 @@
         },
         {
           "path": "lib/composition.js",
-          "sha256": "892ba94627e68dbae76afd4278d2a21b6f84b4ef17f7498a85b7d28905239b89"
+          "sha256": "13ea109ea0e0ee87a12179a6421c3508cb24d1843adbea67822431d8f69d9327"
         },
         {
           "path": "lib/index.js",
