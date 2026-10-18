@@ -51,16 +51,47 @@ if(scenario==='request-watchdog'||scenario==='request-watchdog-custom'){
   assert.equal(await request({agent,turn:1,step:1,signal:controller.signal},async()=>config),config,'request config is unchanged')
   mock.timers.tick(firstResponseTimeoutMs-1);assert.equal(calls.length,0)
   mock.timers.tick(1);assert.equal(calls.length,1);assert.equal(calls[0].cause.kind,'hook');assert.deepEqual(calls[0].options,{keepInbox:true})
+  const stream=frame=>{for(const fn of hooks.get('agent/assistant-stream'))fn({agent,frame})}
+  let turn=1
+  for(const type of ['text-delta','reasoning-delta','tool-call-delta','finish']){
+   controller=new AbortController();turn++
+   await request({agent,turn,step:1,signal:controller.signal},async()=>config)
+   const attemptId='main-'+turn
+   stream({type:'start',attemptId,turn,step:1})
+   const chunk=type==='finish'?{type,reason:{kind:'stop'}}
+    :type==='tool-call-delta'?{type,index:0,id:'tool-1',name:'run_code',argumentsDelta:'{}'}
+    :{type,index:0,text:'r'.repeat(9841)}
+   stream({type:'chunk',attemptId,chunk})
+   mock.timers.tick(firstResponseTimeoutMs+1)
+   assert.equal(calls.length,1,type+' disarms without a durable assistant/message or assistant/chunk')
+  }
+  let expectedCalls=1
+  for(const boundary of ['child-session','other-turn','other-step','stale-attempt','metadata-only']){
+   controller=new AbortController();turn++
+   await request({agent,turn,step:1,signal:controller.signal},async()=>config)
+   const attemptId='main-'+turn
+   const start={type:'start',attemptId,turn,step:1}
+   if(boundary==='child-session'){
+    const child={...agent,session:{id:'independent-child'},options:{...agent.options,subagentDepth:1}}
+    for(const fn of hooks.get('agent/assistant-stream')){
+     fn({agent:child,frame:start})
+     fn({agent:child,frame:{type:'chunk',attemptId,chunk:{type:'reasoning-delta',index:0,text:'child output'}}})
+    }
+   }else{
+    stream({...start,...(boundary==='other-turn'?{turn:turn-1}:{}),...(boundary==='other-step'?{step:2}:{})})
+    stream({type:'chunk',attemptId:boundary==='stale-attempt'?'old-attempt':attemptId,
+     chunk:boundary==='metadata-only'?{type:'block-start',index:0,blockType:'reasoning'}:{type:'reasoning-delta',index:0,text:'output'}})
+   }
+   mock.timers.tick(firstResponseTimeoutMs)
+   assert.equal(calls.length,++expectedCalls,boundary+' does not disarm this request')
+  }
   controller=new AbortController()
-  await request({agent,turn:2,step:1,signal:controller.signal},async()=>config)
-  for(const fn of hooks.get('session/event'))await fn(session,{type:'assistant/chunk',data:{turn:2,step:1,chunk:{type:'reasoning-delta'}}})
-  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,1,'first model output disarms the silence deadline')
   await request({agent:{...agent,options:{...agent.options,subagentDepth:1}},turn:3,step:1,signal:controller.signal},async()=>config)
-  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,1,'main watchdog never cancels an independent child')
+  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,expectedCalls,'main watchdog never cancels an independent child')
   await assert.rejects(request({agent,turn:4,step:1,signal:controller.signal},async()=>{throw Error('configuration failed')}),/configuration failed/)
-  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,1,'failed request preparation does not leave a timer')
+  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,expectedCalls,'failed request preparation does not leave a timer')
  }finally{mock.timers.reset();cleanup.reverse().forEach(fn=>fn())}
- console.log('tavern-loop='+scenario+'=ok (registered native request hook, first output, child boundary, no retry, preserved inbox)')
+ console.log('tavern-loop='+scenario+'=ok (native assistant-stream, turn/step/attempt boundaries, first output, child boundary, no retry, preserved inbox)')
  process.exit(0)
 }
 if(scenario==='coarse-model-admission'){

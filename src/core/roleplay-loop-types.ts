@@ -48,8 +48,14 @@ export interface PromptAssembly {
   tools: PromptPart[]
   [key: string]: unknown
 }
+/** Fields consumed from the pinned native assistant stream contract. */
+export type LoopAssistantStreamFrame =
+  | {type:'start';attemptId:string;turn:number;step:number}
+  | {type:'chunk';attemptId:string;chunk:{type:string}}
+  | {type:'end';attemptId:string}
 export interface LoopContext {
   on(name:'agent/request',hook:(payload:{agent:LoopAgent;turn:number;step:number;signal:AbortSignal},next:()=>Promise<unknown>)=>Promise<unknown>):unknown
+  on(name:'agent/assistant-stream',hook:(payload:{agent:LoopAgent;frame:LoopAssistantStreamFrame})=>void,options:{global:true}):unknown
   on(name:'session/event',hook:(session:ContextSession,event:ContextEvent)=>void,options:{global:true}):unknown
   on(name: 'system-prompt/assemble', hook: (assembly: PromptAssembly, context: {agent?: LoopAgent}, next: () => Promise<PromptAssembly>) => Promise<PromptAssembly>, options: {global: boolean}): unknown
   on(name: 'agent/pre-step', hook: (payload: LoopPayload, next: () => Promise<StepDecision>) => Promise<StepDecision>): unknown

@@ -8,7 +8,7 @@ import { keyOf, cloneRecord, recordSha256, textOf } from './roleplay-data.js'
 import { eventsOf, surfaceEvents, surfaceEntries, retireRoleplayContexts, retainRoleplayWindowContinuity, canonicalAssistantForTurn } from './roleplay-context.js'
 import { CHARACTER_PERSONA } from './character-cluster.js'
 import { tavernTaskToolBoundary, inlineTaskInstruction, taskPhaseMessage, retireCompletedTaskContexts, isInlinePending, inlineTaskMessages, internalTaskSeqs } from './tavern-tasks.js'
-import type { LoopSession, LoopPreparation, LoopDependencies } from './roleplay-loop-types.js'
+import type { LoopSession, LoopPreparation, LoopDependencies, LoopAssistantStreamFrame } from './roleplay-loop-types.js'
 import type { DecisionJob } from './roleplay-decision-types.js'
 import type { StoredTask } from './tavern-task-types.js'
 import type { HostSession } from './roleplay-task-host-types.js'
@@ -17,7 +17,7 @@ import type { CompletionSnapshot } from './roleplay-completion-types.js'
 /** Bound silence at the native request boundary without changing adapter
  * options, retrying a paid call or discarding queued player input. */
 export function createFirstResponseWatchdog(timeoutMs=90000) {
-  type Pending={turn:number;step:number;signal:AbortSignal;timer:ReturnType<typeof setTimeout>;abort:()=>void}
+  type Pending={turn:number;step:number;attemptId?:string;signal:AbortSignal;timer:ReturnType<typeof setTimeout>;abort:()=>void}
   const pending=new Map<string,Pending>()
   const clear=(id:string)=>{const item=pending.get(id);if(!item)return;clearTimeout(item.timer);item.signal.removeEventListener('abort',item.abort);pending.delete(id)}
   return {
@@ -31,9 +31,17 @@ export function createFirstResponseWatchdog(timeoutMs=90000) {
       },timeoutMs)}
       pending.set(id,item);signal.addEventListener('abort',abort,{once:true})
     },
-    observe(session:{id:string},event:{type:string;data?:{turn?:unknown;step?:unknown;chunk?:{type:string}}}){
+    observe(session:{id:string},event:{type:string;data?:{turn?:unknown;step?:unknown}}){
       const item=pending.get(session.id);if(!item||Number(event.data?.turn)!==item.turn)return
-      if(event.type==='turn/end'||(Number(event.data?.step)===item.step&&(event.type==='step/end'||event.type==='assistant/message'||event.type==='assistant/chunk'&&['text-delta','reasoning-delta','tool-call-delta','finish'].includes(event.data?.chunk?.type??''))))clear(session.id)
+      if(event.type==='turn/end'||(Number(event.data?.step)===item.step&&(event.type==='step/end'||event.type==='assistant/message')))clear(session.id)
+    },
+    observeStream(session:{id:string},frame:LoopAssistantStreamFrame){
+      const item=pending.get(session.id);if(!item)return
+      // Native chunk frames carry only attemptId; their start owns turn/step.
+      if(frame.type==='start'){
+        if(frame.turn===item.turn&&frame.step===item.step)item.attemptId=frame.attemptId
+      }else if(frame.type==='chunk'&&frame.attemptId===item.attemptId
+        &&['text-delta','reasoning-delta','tool-call-delta','finish'].includes(frame.chunk.type))clear(session.id)
     },
     dispose(){for(const id of pending.keys())clear(id)},
   }
@@ -59,6 +67,7 @@ export function registerRoleplayLoop({
     return config
   })
   ctx.on('session/event',(session,event)=>firstResponse.observe(session,event),{global:true})
+  ctx.on('agent/assistant-stream',({agent,frame})=>firstResponse.observeStream(agent.session,frame),{global:true})
   const authorPrompts=new WeakMap<HostSession,{revision:string;turn:unknown;parts:{name:string;text:string}[]}>()
   const currentTurn=(session:HostSession)=>{
     const events=eventsOf(session)

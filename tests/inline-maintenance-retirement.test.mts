@@ -44,15 +44,21 @@ for(const variant of ['saved','deferred','unproven-deferred','partial','wrong-ow
  if(reread)assert.ok(s.surface.nodes.includes(reread.output.seq),'earlier notes cannot retire later explicit reread')
  if(deferred)assert.equal(s.surface.nodes.includes(deferred.seq),variant==='unproven-deferred','deferred original needs matching delivered packet proof and later note')
 }
-for(const variant of ['silent','metadata-only','first-output','aborted','ended','superseded','disposed']){
+for(const variant of ['silent','metadata-only','first-output','aborted','ended','turn-ended','superseded','disposed']){
  const signal=new AbortController(),cancelled:{cause:unknown;options:unknown}[]=[],watch=createFirstResponseWatchdog(20)
  const agent={session:{id:'watch-'+variant},cancel(cause:unknown,options:unknown){cancelled.push({cause,options});signal.abort()}}
  watch.begin(agent,1,1,signal.signal)
- if(variant==='metadata-only')watch.observe(agent.session,{type:'assistant/chunk',data:{turn:1,step:1,chunk:{type:'text-start'}}})
- if(variant==='first-output')watch.observe(agent.session,{type:'assistant/chunk',data:{turn:1,step:1,chunk:{type:'reasoning-delta'}}})
+ watch.observeStream(agent.session,{type:'start',attemptId:'attempt-1',turn:1,step:1})
+ if(variant==='metadata-only')watch.observeStream(agent.session,{type:'chunk',attemptId:'attempt-1',chunk:{type:'block-start'}})
+ if(variant==='first-output')watch.observeStream(agent.session,{type:'chunk',attemptId:'attempt-1',chunk:{type:'reasoning-delta'}})
  if(variant==='aborted')signal.abort()
  if(variant==='ended')watch.observe(agent.session,{type:'step/end',data:{turn:1,step:1}})
- if(variant==='superseded'){watch.begin(agent,2,1,signal.signal);watch.observe(agent.session,{type:'assistant/chunk',data:{turn:2,step:1,chunk:{type:'tool-call-delta'}}})}
+ if(variant==='turn-ended')watch.observe(agent.session,{type:'turn/end',data:{turn:1}})
+ if(variant==='superseded'){
+  watch.begin(agent,2,1,signal.signal)
+  watch.observeStream(agent.session,{type:'start',attemptId:'attempt-2',turn:2,step:1})
+  watch.observeStream(agent.session,{type:'chunk',attemptId:'attempt-2',chunk:{type:'tool-call-delta'}})
+ }
  if(variant==='disposed')watch.dispose()
  await new Promise(resolve=>setTimeout(resolve,40))
  assert.equal(cancelled.length,['silent','metadata-only'].includes(variant)?1:0,variant+': bounded silence cancels only its exact native activity')
