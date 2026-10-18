@@ -4,7 +4,7 @@
 
 `NextTavern-Setup.exe` 是便携运行时安装入口：不用自己装运行时、不用自己配补丁，双击、选目录、等待，就能在自己的电脑上打开角色扮演工作台。
 
-**0.2.9-rc.3 Windows 安装修复版。** 本页下载链接指向 GitHub 最新发行 rc.3。请安装到新目录，例如 `%LOCALAPPDATA%\NextTavern-0.2.9-rc.3`；中文和空格路径可用，目录须有写入权限，`Program Files` 通常需要管理员权限。无需单独安装全局 pnpm。
+**0.2.9-rc.4 Windows 发行版。** 本页链接指向 GitHub 最新发行。它延续 rc.3 的安装／就绪修复与慢模型首响应配置，并修复 Issue #17 的角色扮演上下文容量和原生推理看门狗问题。请安装到新目录，例如 `%LOCALAPPDATA%\NextTavern-0.2.9-rc.4`；中文和空格路径可用，目录须有写入权限，`Program Files` 通常需要管理员权限。无需单独安装全局 pnpm，也不扩大便携安装器的跨版本原地升级范围。
 
 首次启动默认等待最多 600 秒。若提示仍在准备，进程会保留；再次使用启动入口可继续等待，需要停止时使用停止入口。更慢的存储可在启动前设置环境变量 `NEXTTAVERN_READY_TIMEOUT_MS` 为正整数毫秒，例如 `900000`。它只控制安装器就绪等待，与模型首响应设置分别生效。
 
@@ -110,8 +110,8 @@
 
 ## 下载
 
-- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup.exe)
-- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/NextTavern-Setup-arm64.exe)
-- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.3/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.3)
+- [NextTavern-Setup.exe（x64）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.exe)
+- [NextTavern-Setup-arm64.exe（Windows on ARM）](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup-arm64.exe)
+- [SHA256SUMS](https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/SHA256SUMS) 与[版本说明](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.4)
 
 已有 Node.js、需要固定端口或明确隔离新目录，请用首页的[官方插件安装步骤](README.md#安装)。无需沿用 alpha.3 的手工 preset 初始化和补丁命令。
