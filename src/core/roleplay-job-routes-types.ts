@@ -46,6 +46,7 @@ type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 type Resources = ReturnType<typeof createResourceBridge>
 export interface JobRoutesDependencies {
   ctx: {
+    get(name: 'compaction'): {compactNow(agent: HostAgent): PromiseLike<unknown>} | null | undefined
     effect(work: () => unknown, label: string): unknown
     connection: {fetch: {register(route: ConnectionFetchRoute): unknown}}
     sessionController: {resolveAgent(id: string): PromiseLike<{agent?: JobRouteAgent} | null | undefined>}

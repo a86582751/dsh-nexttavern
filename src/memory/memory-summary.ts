@@ -27,12 +27,13 @@ export interface NativeSummaryTask<S extends SummarySession> {
   validate: (value: unknown) => unknown
   taskStage?: string
   background: boolean
-  onResult: (job: { actualRoute?: unknown }) => void
+  onResult: (job: { id?: string; actualRoute?: unknown }) => void
 }
 export interface SummaryContext<S extends SummarySession> {
   get: (name: 'roleplay') => { nativeTask?: (options: NativeSummaryTask<S>) => Promise<unknown> } | null | undefined
 }
 export interface SummaryResult {
+  taskId?: string
   text: string
   summary: { type: 'text'; text: string }[]
   rawOutput: { type: 'text'; text: string }[]
@@ -115,10 +116,12 @@ async function summarize<S extends SummarySession>(ctx: SummaryContext<S>, {
     return value
   }
   let actualRoute: Record<string, unknown> | undefined
+  let taskId: string | undefined
   const result = await engine.nativeTask({
     session, system, user, kind: 'memory', format: background ? 'json' : 'text', maxTokens, timeoutMs, signal,
     validate: background ? validateCombined : validate, taskStage, background,
     onResult: job => {
+      taskId = job.id
       const route = job.actualRoute
       if (route && !object(route)) throw new Error('记忆任务返回的模型路由无效')
       actualRoute = object(route) ? { ...route } : undefined
@@ -129,7 +132,7 @@ async function summarize<S extends SummarySession>(ctx: SummaryContext<S>, {
   const combined = background ? validateCombined(result) : undefined
   const text = combined ? combined.text : validate(result)
   const summary: { type: 'text'; text: string }[] = [{ type: 'text', text }]
-  return { text, summary, rawOutput: summary, execution: 'native-task', actualRoute,
+  return { text, summary, rawOutput: summary, execution: 'native-task', actualRoute, ...(taskId ? {taskId} : {}),
     ...(combined ? { deltas: combined.deltas, conflicts: combined.conflicts } : {}) }
 }
 

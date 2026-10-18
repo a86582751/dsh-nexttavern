@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { keyOf, sha256, recordSha256, textOf, provenanceSeq, estimateTokens, durableSeq, stableJson, cloneRecord } from './roleplay-data.js'
 import { eventsOf, surfaceEvents, surfaceEntries, lastSeq, visibleCompactionCheckpoint, roleplayWindowCutStartIndex } from './roleplay-context.js'
 import { fenceCardContent } from './tavern-card.js'
-import { internalTaskSeqs, isInlinePending } from './tavern-tasks.js'
-import type { PreparationDependencies, PreparationSession, ContextWindow, WindowMetadata, MemoryPreparation, PreparationPayload, PreparationWriteState, PreparationSnapshot } from './roleplay-preparation-types.js'
+import { internalTaskSeqs } from './tavern-tasks.js'
+import type { PreparationDependencies, PreparationSession, ContextWindow, WindowMetadata, PreparationPayload, PreparationWriteState, PreparationSnapshot } from './roleplay-preparation-types.js'
 import type { ContextMessage } from './roleplay-context.js'
 import type { TaskAgent } from './tavern-task-types.js'
 import type { HostSession } from './roleplay-task-host-types.js'
@@ -203,13 +203,9 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     // Read only committed branch state. Background notes need not finish on
     // ordinary turns; eviction below is the sole strict notes-save barrier.
     await svc.awaitCommitted(branchId)
-    let memoryPreparation: MemoryPreparation = { status: 'ready' }
-    try {
-      memoryPreparation = await ctx.get('compaction')?.prepareForTurn?.(payload.agent, payload.signal) ?? memoryPreparation
-    } catch (error) {
-      if (isInlinePending(error) || payload.signal?.aborted || (error as { code?: string } | null)?.code === 'ROLEPLAY_SOURCE_CHANGED') throw error
-      memoryPreparation = { status: 'retry', branchId, reason: '当前分支持久记忆准备失败，可重试' }
-    }
+    // A failed pressure summary must stop preparation before the same oversized
+    // context is admitted to the main request. The loop owns failure recovery.
+    await ctx.get('compaction')?.prepareForTurn?.(payload.agent, payload.signal)
     assertStoryBranchActive(session)
     const userMsg = payload.messages.findLast((m) => m.role === 'user' && m.source?.kind === 'user')
     const userText = userMsg ? textOf(userMsg.content) : ''

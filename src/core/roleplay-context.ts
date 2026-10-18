@@ -28,6 +28,7 @@ export interface ContextEvent extends TaskEvent {
     title?: unknown
     compactionId?: string
     nativeTask?: unknown
+    taskReceipt?: {schemaVersion: 1; taskId: string}
     usage?: unknown
     error?: unknown
     failure?: unknown

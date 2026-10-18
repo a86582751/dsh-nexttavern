@@ -76,12 +76,26 @@ export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchI
     }
     if(agent)taskAgents.set(session.id,agent)
     kind=kind??(system===STATUS_SYSTEM?'status':system===DECISION_SYSTEM?'decision':system===ORGANIZE_WORKER_SYSTEM?'novel-export':'memory')
+    const compaction=kind==='memory'&&taskStage==='compaction'
     const preparation=T.branch.get(keyOf(session.id,'task-preparation'))
     const source=providedSource??{events:taskStory(session).map(e=>({seq:e.seq,hash:sha256(e.text)})),...(kind==='status'?{fixedHash:recordSha256(statusFixedContext(session))}:{}),
-      ...(!background&&preparation?.sessionId===session.id&&preparation.status==='preparing'?{preparationId:preparation.id}:{})}
+      // A compaction belongs to frozen story/prompt input across turns. A new
+      // preparation must neither rerun a failed summary nor lose a valid result.
+      ...(!background&&!compaction&&preparation?.sessionId===session.id&&preparation.status==='preparing'?{preparationId:preparation.id}:{})}
     // Nonces protect prompt boundaries, but are not a changing task input.
     const requestKey={system,user:String(user).replace(/(<\/?rp-content:)[0-9a-f]{36}(>)/g,'$1NONCE$2'),generationKey}
-    try {return await tavernTasks.request({session,agent:agent??taskAgents.get(session.id),kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,tools:allowedTools,onResult,onAdmission,
+    const consumeResult: typeof onResult=async job=>{
+      if(kind==='memory'&&taskStage==='compaction') {
+        const key=keyOf(session.id,'task-memory-resume'),record=T.branch.get(key)
+        // A newer frozen snapshot can supersede an rc.3 queued task. Keep the
+        // continuation attached to the result this transaction actually uses;
+        // only its later successful checkpoint proves the continuation done.
+        if(record?.status==='pending'&&record.taskStage==='compaction')
+          await T.branch.put(key,{...record,source:{taskId:job.id},updatedAt:Date.now()})
+      }
+      await onResult?.(job)
+    }
+    try {return await tavernTasks.request({session,agent:agent??taskAgents.get(session.id),kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,tools:allowedTools,onResult:consumeResult,onAdmission,
       validate:validate??(value=>{
         if(format==='text'){if(typeof value!=='string'||!value.trim())throw new Error('任务文本为空');return value}
         if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('任务需要 JSON 对象')
@@ -101,8 +115,19 @@ export function createRoleplayTaskHost({T, ctx, config, taskAgents, storyBranchI
     if(record?.sessionId!==session.id||record.status!=='pending')return
     const engine=ctx.get('compaction')
     if(typeof engine?.resumeTask!=='function')return
-    await engine.resumeTask(agent,signal,record.taskStage)
-    await T.branch.put(key,{...record,status:'completed',completedAt:Date.now()})
+    const taskId=(record.source as {taskId?: string}|undefined)?.taskId
+    const events=eventsOf(session)
+    const summary=record.taskStage==='compaction'&&taskId
+      ? events.findLast(event=>event.type==='compaction/summary'
+        &&event.data?.taskReceipt?.schemaVersion===1&&event.data.taskReceipt.taskId===taskId)
+      : undefined
+    // A manual independent retry may already have consumed the rc.3 inline
+    // result. The durable successful transaction, not a model result alone,
+    // proves this pending continuation has nothing left to archive.
+    const committed=summary&&events.some(event=>event.type==='compaction/end'
+      &&event.data?.compactionId===summary.data?.compactionId&&!event.data?.error)
+    if(!committed)await engine.resumeTask(agent,signal,record.taskStage)
+    await T.branch.put(key,{...T.branch.get(key),status:'completed',completedAt:Date.now()})
     const maintenance=getMaintenanceJob(session.id)
     if(maintenance?.kind==='notes'&&maintenance.state!=='completed'){maintenance.state='completed';maintenance.error=null;maintenance.finishedAt=Date.now()}
   }
