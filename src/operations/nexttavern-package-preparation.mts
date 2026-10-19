@@ -4,8 +4,8 @@ import type {Context} from '@deepseek-ai/cordis'
 import {dirname, join} from 'node:path'
 import {bootstrapBundledPackages, isWriterLockBusy, readBundleIdentity,
   type PeerManifestResolver} from './bundled-package-bootstrap.mjs'
-import {durableReferencesIntact, readPreparedProfile,
-  type PreparedReference} from './protected-packages.mjs'
+import {readDurableReferenceState, readPreparedProfile,
+  type DurableReferenceState, type PreparedReference} from './protected-packages.mjs'
 
 /**
  * The official manager holds this lock across its own operation, including the
@@ -225,11 +225,15 @@ function referencesCurrent(recorded: Map<string, PreparedReference>,
  * those records describe. No member's bytes are read here - that admission
  * stays in the locked transaction, which is also the only writer.
  */
-export function bundleReferencesCurrent(productRoot: string, home: string, profile: string): boolean {
+export function readBundleReferenceState(productRoot: string, home: string, profile: string): DurableReferenceState {
   const identity = readBundleIdentity(productRoot)
   const prepared = readPreparedProfile(home, profile)
-  return Boolean(prepared && referencesCurrent(prepared.references, [...identity.packages, ...identity.bundles])
-    && durableReferencesIntact(home, profile, prepared.references.values(), prepared.clientClaims))
+  if (!prepared || !referencesCurrent(prepared.references, [...identity.packages, ...identity.bundles])) return 'changed'
+  return readDurableReferenceState(home, profile, prepared.references.values(), prepared.clientClaims)
+}
+
+export function bundleReferencesCurrent(productRoot: string, home: string, profile: string): boolean {
+  return readBundleReferenceState(productRoot, home, profile) === 'current'
 }
 
 /**
@@ -254,7 +258,7 @@ export function createOwnedPackagePreparation(facts: OwnedPackageFacts): Package
     prepare: async (): Promise<PreparationOutcome> => {
       // A mismatch in either half of this read leaves the decision - and every
       // write - to the locked transaction below.
-      if (bundleReferencesCurrent(facts.productRoot, facts.home, facts.profile)) return {state: 'current'}
+      if (readBundleReferenceState(facts.productRoot, facts.home, facts.profile) === 'current') return {state: 'current'}
       let version: string
       try {
         const prepared = await bootstrapBundledPackages({

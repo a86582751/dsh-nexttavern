@@ -5,7 +5,7 @@ import {createRequire, findPackageJSON} from 'node:module'
 import {pathToFileURL} from 'node:url'
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from '../core/roleplay-author-host-types-v5.js'
 import {withFileLock} from '@deepseek-ai/dsh-atomic-write'
-import {contained} from './public-transaction.mjs'
+import {contained, isHomeTransactionBusy} from './public-transaction.mjs'
 import {prepareProtectedPackages, protectedGeneration, recoverProtectedPackages, verifyProtectedPackage,
   type ProtectedFile, type VerifiedProtectedSource} from './protected-packages.mjs'
 
@@ -36,7 +36,7 @@ interface BundleInventory {
   bundles?: BundledBundleSpec[]
   historicalComponents?:BundledHistoricalComponentSpec[]
   authorRuntimeHistory?:readonly {serverPackage:string;hostPackage:string;browserPackage:string;
-    hostComponent?:string;browserComponent?:string;
+    serverComponent?:string;hostComponent?:string;browserComponent?:string;
     promptPackage?:string;promptComponent?:string;
     browserPartitionPackage?:string;
     server:AuthorServerExecutorV4;host:AuthorHostIdentityV5}[]
@@ -60,7 +60,8 @@ export type PeerManifestResolver = (name: string, parentURL: string) => string |
  * instead of reporting a busy profile as a broken install.
  */
 export function isWriterLockBusy(error: unknown): boolean {
-  return error instanceof Error && error.message.includes('timed out waiting for the writer lock')
+  return isHomeTransactionBusy(error)
+    || error instanceof Error && error.message.includes('timed out waiting for the writer lock')
 }
 
 function peerPackage(anchor: string, name: string, optional: boolean, resolveManifest?: PeerManifestResolver): string | null {
@@ -278,8 +279,8 @@ export async function bootstrapBundledPackages(options: {
   if (!/^[a-zA-Z0-9_-]+$/.test(options.profile)) throw Error('Invalid profile name')
   const manifest = contained(fs.realpathSync(options.home), `profiles/${options.profile}/package.json`)
   const run = () => withFileLock(manifest, async () => {
-    const bundle = inspectBundledPackages(options.productRoot, options.hostAnchor, options.resolvePeerManifest)
     const recovered = recoverProtectedPackages(options.home)
+    const bundle = inspectBundledPackages(options.productRoot, options.hostAnchor, options.resolvePeerManifest)
     // This round's own admission is the verification the write plan reuses:
     // both run inside the same writer lock, so the plan never re-reads a tree
     // this call just hashed.
