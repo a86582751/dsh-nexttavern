@@ -17,15 +17,14 @@ import type {ChangeResult, PluginSpecInspection, Registry} from '@deepseek-ai/ds
 import {contained} from './public-transaction.mjs'
 import {inspectBundledPackages, isWriterLockBusy, type PeerManifestResolver}
   from './bundled-package-bootstrap.mjs'
-import {bundleReferencesCurrent, createPackagePreparation, type PackagePreparationScheduler,
+import {recoverProtectedPackages} from './protected-packages.mjs'
+import {readBundleReferenceState, createPackagePreparation, type PackagePreparationScheduler,
   type PreparationLogger, type PreparationOutcome} from './nexttavern-package-preparation.mjs'
 
 export const MARKET_PACKAGE = 'dshmarket'
 /** This product's own record of the market it installed; the profile's dependency stays the person's. */
 export const MARKET_RECORD = '.nexttavern-market.json'
 const RECORD_SCHEMA_VERSION = 1
-/** The profile files one pnpm run can rewrite, kept as this round found them. */
-const REWRITABLE_PROFILE_FILES = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml']
 
 /**
  * The part of the host plugin manager this round asks. A host that never
@@ -86,6 +85,10 @@ const DEFER_RETRY_LIMIT = 24
  * scheduler's line about durable references is never printed for the market.
  */
 export function createOwnedMarketInstallation(facts: MarketFacts): PackagePreparationScheduler {
+  // A manager may already have applied pnpm's edits when another profile owns
+  // the home. Keep this exact install's acceptance context until
+  // the scheduler can finish it, including across an exhausted timer budget.
+  let finishApplied: (() => PreparationOutcome) | undefined
   return createPackagePreparation({
     retryDelayMs: facts.retryDelayMs ?? DEFER_RETRY_DELAY_MS,
     maxRetryDelayMs: facts.maxRetryDelayMs ?? DEFER_MAX_RETRY_DELAY_MS,
@@ -93,9 +96,16 @@ export function createOwnedMarketInstallation(facts: MarketFacts): PackagePrepar
     inspect: () => ({installedVersion: readInstalledMarketVersion(facts.home, facts.profile)}),
     prepare: async (): Promise<PreparationOutcome> => {
       try {
-        return await round(facts)
+        const outcome = finishApplied ? finishApplied()
+          : await round(facts, finish => {finishApplied = finish})
+        if (outcome.state !== 'lock-busy') finishApplied = undefined
+        return outcome
       } catch (error) {
-        facts.logger?.warn('NextTavern did not install the upstream market', error)
+        const applied = finishApplied !== undefined
+        finishApplied = undefined
+        facts.logger?.warn(applied
+          ? 'NextTavern applied the upstream market installation but could not verify it'
+          : 'NextTavern did not install the upstream market', error)
         throw error
       }
     },
@@ -108,7 +118,8 @@ export function createOwnedMarketInstallation(facts: MarketFacts): PackagePrepar
  * the other order would leave the shipped skin and those references unlinked
  * until some later package-manager operation.
  */
-async function round(facts: MarketFacts): Promise<PreparationOutcome> {
+async function round(facts: MarketFacts,
+  retainApplied: (finish: () => PreparationOutcome) => void): Promise<PreparationOutcome> {
   await facts.references.settle()
   const references = facts.references.state()
   if (references.state === 'inspect-only') return {state: 'lock-busy'}
@@ -124,10 +135,11 @@ async function round(facts: MarketFacts): Promise<PreparationOutcome> {
     facts.logger?.info(`NextTavern keeps the ${MARKET_PACKAGE} already installed at ${installed}`)
     return {state: 'current'}
   }
-  return installMarket(facts)
+  return installMarket(facts, retainApplied)
 }
 
-async function installMarket(facts: MarketFacts): Promise<PreparationOutcome> {
+async function installMarket(facts: MarketFacts,
+  retainApplied: (finish: () => PreparationOutcome) => void): Promise<PreparationOutcome> {
   const manager = facts.manager()
   if (!manager) throw Error('NextTavern cannot resolve the upstream market without the host plugin manager')
   const resolution = await manager.inspect(MARKET_PACKAGE)
@@ -145,7 +157,6 @@ async function installMarket(facts: MarketFacts): Promise<PreparationOutcome> {
   // One installation must use one resolution: the spec above is that exact
   // version and the registry asked first is the one that answered for it.
   const source = await resolveRegistrySource(manager, resolution.registry)
-  const snapshot = readProfileFiles(facts.home, facts.profile)
   const result = await manager.installBundle(spec, {enabled: true, registry: resolution.registry})
   if (result.application !== 'applied') {
     const detail = describeChange(result)
@@ -154,26 +165,31 @@ async function installMarket(facts: MarketFacts): Promise<PreparationOutcome> {
     if (isWriterLockBusy(Error(detail))) return {state: 'lock-busy'}
     throw Error(`Installing ${spec} did not apply: ${detail}`)
   }
-  const problem = verifyInstalledMarket(facts, version)
-  if (problem !== undefined) {
-    const restored = restoreProfileFiles(snapshot)
-    throw Error(`Installing ${spec} ${problem}; the profile files this round may rewrite were restored`
-      + (restored.length ? ': ' + restored.join(', ') : ' (nothing had changed)'))
+  const finish = (): PreparationOutcome => {
+    const verification = verifyInstalledMarket(facts, version)
+    if (verification.state === 'pending-home-transaction') return {state: 'lock-busy'}
+    if (verification.state === 'changed') {
+      // The manager owns installation and its rollback. After it returns applied,
+      // this product can report acceptance but cannot undo its or a later user's edits.
+      throw Error(`The host manager applied ${spec}, but post-install verification failed: ${verification.problem}`)
+    }
+    const record: MarketRecord = {
+      schemaVersion: RECORD_SCHEMA_VERSION,
+      profile: facts.profile,
+      state: 'installed',
+      resolvedAt: (facts.now?.() ?? new Date()).toISOString(),
+      package: MARKET_PACKAGE,
+      version,
+      registry: source,
+      integrity: readLockfileIntegrity(facts.home, facts.profile, version),
+    }
+    writeMarketRecord(facts.home, record)
+    facts.logger?.info(`NextTavern installed the upstream market ${spec} from `
+      + `${source ?? "pnpm's configured registry"}; integrity ${record.integrity ?? 'not recorded'}`)
+    return {state: 'prepared', version}
   }
-  const record: MarketRecord = {
-    schemaVersion: RECORD_SCHEMA_VERSION,
-    profile: facts.profile,
-    state: 'installed',
-    resolvedAt: (facts.now?.() ?? new Date()).toISOString(),
-    package: MARKET_PACKAGE,
-    version,
-    registry: source,
-    integrity: readLockfileIntegrity(facts.home, facts.profile, version),
-  }
-  writeMarketRecord(facts.home, record)
-  facts.logger?.info(`NextTavern installed the upstream market ${spec} from `
-    + `${source ?? "pnpm's configured registry"}; integrity ${record.integrity ?? 'not recorded'}`)
-  return {state: 'prepared', version}
+  retainApplied(finish)
+  return finish()
 }
 
 /**
@@ -191,7 +207,7 @@ async function resolveRegistrySource(manager: MarketManager, asked: Registry): P
 }
 
 /**
- * Why this round cannot report an installed market, or undefined when it can.
+ * Distinguish a busy home from an accepted install and an actual changed graph.
  *
  * A market install runs pnpm over the same profile this product pinned its own
  * packages into, so the round proves afterwards that the profile still carries
@@ -199,23 +215,39 @@ async function resolveRegistrySource(manager: MarketManager, asked: Registry): P
  * name are untouched, and that every shared host peer still resolves to the
  * host's instance.
  */
-function verifyInstalledMarket(facts: MarketFacts, version: string): string | undefined {
+type MarketVerification = {state: 'verified'} | {state: 'pending-home-transaction'}
+  | {state: 'changed'; problem: string}
+
+function verifyInstalledMarket(facts: MarketFacts, version: string): MarketVerification {
+  let references = readBundleReferenceState(facts.productRoot, facts.home, facts.profile)
+  if (references === 'pending-home-transaction') {
+    try {
+      recoverProtectedPackages(facts.home)
+    } catch (error) {
+      if (isWriterLockBusy(error)) return {state: 'pending-home-transaction'}
+      throw error
+    }
+    // Recovery (or release since the read) changes the home owner condition.
+    references = readBundleReferenceState(facts.productRoot, facts.home, facts.profile)
+    if (references === 'pending-home-transaction') return {state: 'pending-home-transaction'}
+  }
   let installed: string | null
   try {
     installed = installedMarketVersion(facts.home, facts.profile)
   } catch (error) {
-    return 'left the profile manifest unreadable (' + text(error) + ')'
+    return {state: 'changed', problem: 'left the profile manifest unreadable (' + text(error) + ')'}
   }
-  if (installed !== version) return `did not leave ${MARKET_PACKAGE}@${version} in the profile dependencies`
-  if (!bundleReferencesCurrent(facts.productRoot, facts.home, facts.profile)) {
-    return 'changed the durable references this product prepared for its bundled packages'
+  if (installed !== version) return {state: 'changed',
+    problem: `did not leave ${MARKET_PACKAGE}@${version} in the profile dependencies`}
+  if (references === 'changed') {
+    return {state: 'changed', problem: 'changed the durable references this product prepared for its bundled packages'}
   }
   try {
     inspectBundledPackages(facts.productRoot, facts.hostAnchor, facts.resolvePeerManifest)
   } catch (error) {
-    return 'changed a protected package or the host instance it shares (' + text(error) + ')'
+    return {state: 'changed', problem: 'changed a protected package or the host instance it shares (' + text(error) + ')'}
   }
-  return undefined
+  return {state: 'verified'}
 }
 
 function describeChange(result: ChangeResult): string {
@@ -279,33 +311,6 @@ function readProfileManifest(home: string, profile: string): {dependencies?: Rec
 function profileDirectory(home: string, profile: string): string {
   if (!/^[a-zA-Z0-9_-]+$/.test(profile)) throw Error('Invalid profile name')
   return path.dirname(contained(fs.realpathSync(home), `profiles/${profile}/package.json`))
-}
-
-function readProfileFiles(home: string, profile: string) {
-  const directory = profileDirectory(home, profile)
-  return REWRITABLE_PROFILE_FILES.map(name => {
-    const file = path.join(directory, name)
-    return {file, bytes: fs.existsSync(file) ? fs.readFileSync(file) : null}
-  })
-}
-
-/** Put the profile files back as this round found them; returns the names it changed. */
-function restoreProfileFiles(snapshot: ReturnType<typeof readProfileFiles>): string[] {
-  const restored: string[] = []
-  for (const {file, bytes} of snapshot) {
-    const current = fs.existsSync(file) ? fs.readFileSync(file) : null
-    const same = bytes === null ? current === null : current !== null && current.equals(bytes)
-    if (same) continue
-    if (bytes === null) {
-      fs.rmSync(file, {force: true})
-    } else {
-      const temporary = file + '.nexttavern-market-restore'
-      fs.writeFileSync(temporary, bytes)
-      fs.renameSync(temporary, file)
-    }
-    restored.push(path.basename(file))
-  }
-  return restored
 }
 
 /**
