@@ -42,12 +42,20 @@ export function contained(root: string, relative: string) {
   return target;
 }
 interface LockOwner {schemaVersion?: 1; backup: string; pid: number; purpose?: string; phase?: 'preparing' | 'writing'}
+/** The home owner alone classifies contention, including across bundled copies. */
+export class HomeTransactionBusyError extends Error {
+  readonly code = 'NEXTTAVERN_HOME_TRANSACTION_BUSY';
+}
+export function isHomeTransactionBusy(error: unknown): boolean {
+  return typeof error === 'object' && error !== null
+    && 'code' in error && error.code === 'NEXTTAVERN_HOME_TRANSACTION_BUSY';
+}
 function requireDeadOwner(owner: LockOwner) {
   if (owner.schemaVersion !== undefined && owner.schemaVersion !== 1) throw Error('Unsupported transaction lock version');
   if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0) throw Error('Invalid transaction owner');
   let alive = true;
   try {process.kill(owner.pid, 0);} catch (error) {if ((error as NodeJS.ErrnoException).code === 'ESRCH') alive = false;}
-  if (alive) throw Error('Transaction process is still running');
+  if (alive) throw new HomeTransactionBusyError('Transaction process is still running');
 }
 function locked(root: string, backup: string, recover = false, purpose?: string, phase: LockOwner['phase'] = 'writing') {
   const lock = path.join(root, '.nexttavern-transaction.lock');
@@ -57,7 +65,13 @@ function locked(root: string, backup: string, recover = false, purpose?: string,
     requireDeadOwner(owner);
     fs.unlinkSync(lock);
   }
-  const fd = fs.openSync(lock, 'wx', 0o600);
+  let fd: number;
+  try {fd = fs.openSync(lock, 'wx', 0o600);} catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new HomeTransactionBusyError('Another home transaction owns this target');
+    }
+    throw error;
+  }
   const owner: LockOwner = {schemaVersion: 1, pid: process.pid, backup, purpose, phase};
   // Exclusivity comes from the wx-created pathname. Close the handle so
   // Windows can atomically replace its phase metadata without deleting the lock.
@@ -68,6 +82,14 @@ function locked(root: string, backup: string, recover = false, purpose?: string,
     // A dead 'preparing' owner therefore cannot have changed a target file.
     save(lock, {...owner, phase: 'writing'});
   }});
+}
+/** Read shared generations while their writer/rollback owner is excluded.
+ * This lock never promotes to writing and has no backup. A dead preparing
+ * owner is already recoverable without reading a journal or touching targets. */
+export function readTransactionTarget<T>(root: string, purpose: string, readTarget: () => T): T {
+  root = fs.realpathSync(root);
+  const release = locked(root, root, false, purpose, 'preparing');
+  try {return readTarget();} finally {release();}
 }
 function restore(root: string, backup: string, journal: TransactionJournal) {
   for (const item of journal.files) {
@@ -109,18 +131,20 @@ export function applyTransaction({root, backup, files, purpose, assertUnchanged,
   if (backup === root || backup.startsWith(root + path.sep) || root.startsWith(backup + path.sep) || fs.existsSync(backup)) throw Error('Backup must be a new directory outside target');
   const seen = new Set<string>();
   for (const file of files) {
-    const target = contained(root, file.path);
     if (seen.has(file.path) || !(file.bytes === null || Buffer.isBuffer(file.bytes))) throw Error('Invalid or duplicate transaction file');
     seen.add(file.path);
-    if (hashAt(target) !== file.before) throw Error('Drift since audit: ' + file.path);
   }
   const release = locked(root, backup, false, purpose, 'preparing');
   const journal: TransactionJournal = {schemaVersion: 1, state: 'prepared', root, purpose, files: []};
   try {
     fs.mkdirSync(backup, {recursive: true, mode: 0o700});
     assertUnchanged?.();
+    // The home lock owns the write set until release. Resolve its targets and
+    // check the audited before-state once, before capturing the recovery map.
+    const targets = files.map(file => contained(root, file.path));
     for (const [index, file] of files.entries()) {
-      const target = contained(root, file.path);
+      const target = targets[index]!;
+      if (hashAt(target) !== file.before) throw Error('Drift since audit: ' + file.path);
       const stat = file.before === null ? null : fs.statSync(target);
       const name = stat ? index + '.before' : null;
       if (name) {
@@ -133,8 +157,7 @@ export function applyTransaction({root, backup, files, purpose, assertUnchanged,
     release.beginWrites();
     let checkpointed = 0;
     for (const [index, file] of files.entries()) {
-      const target = contained(root, file.path), item = journal.files[index]!;
-      if (hashAt(target) !== file.before) throw Error('Target changed before write: ' + file.path);
+      const target = targets[index]!, item = journal.files[index]!;
       fs.mkdirSync(path.dirname(target), {recursive: true});
       if (file.bytes === null) {
         if (fs.existsSync(target)) fs.unlinkSync(target);
@@ -145,7 +168,8 @@ export function applyTransaction({root, backup, files, purpose, assertUnchanged,
         if (process.platform !== 'win32' && item.uid !== null) fs.chownSync(temporary, item.uid, item.gid!);
         fs.renameSync(temporary, target);
       }
-      if (hashAt(target) !== item.after) throw Error('Installed digest mismatch: ' + file.path);
+      // Successful write/rename consumed the journal's exact Buffer. A later
+      // rollback checks future disk state; rereading our own write proves no new fact.
       if (index + 1 >= crashAfter) process.exit(86);
       item.applied = true;
       // Checkpoint on a bounded cadence and always on the last member, so the
