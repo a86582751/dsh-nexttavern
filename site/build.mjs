@@ -393,6 +393,30 @@ function bodyFor(page) {
     }
     return parts.join('\n\n');
 }
+/* The original website takes its exact greeting list from the amber skin.
+ * Keep that source relationship instead of maintaining a second slogan list. */
+const skinClientCandidates = [
+    path.join(publicRoot, 'skins/dsh-nexttavern-amber/src/client.ts'),
+    path.join(publicRoot, 'skins/dsh-nexttavern-amber/lib/client.js'),
+    path.join(repoRoot, 'runtime/alpha3/preset/skins/nexttavern-amber/src/client.ts'),
+    path.join(repoRoot, 'runtime/alpha3/preset/skins/nexttavern-amber/lib/client.js')
+];
+const skinClient = skinClientCandidates.find(file => fs.existsSync(file));
+const heroTaglines = (() => {
+    if (!skinClient) {
+        problems.push('Skin source not found for HEADLINE_GROUPS');
+        return [];
+    }
+    const client = readText(skinClient);
+    const anchor = client.indexOf('HEADLINE_GROUPS');
+    const open = anchor === -1 ? -1 : client.indexOf('= [', anchor);
+    const close = open === -1 ? -1 : client.indexOf('\n]', open);
+    if (open === -1 || close === -1) {
+        problems.push('HEADLINE_GROUPS not found in the skin source');
+        return [];
+    }
+    return [...client.slice(open, close).matchAll(/'([^']*)'/g)].map(match => match[1]);
+})();
 /** Intrinsic WebP size, so the hero art keeps its box before it decodes. */
 function webpSize(buffer) {
     if (buffer.length < 30 || buffer.toString('ascii', 0, 4) !== 'RIFF')
@@ -412,7 +436,7 @@ function webpSize(buffer) {
 }
 /**
  * Committed concept illustrations are copied verbatim. Their provenance lives
- * in art/README.md; theme switching selects a matching hero without a carousel.
+ * in art/README.md. Day and night keep independent postcard carousels.
  */
 const artRoot = path.join(here, 'art');
 const heroArt = [];
@@ -869,7 +893,8 @@ function renderPage(page, position) {
 /* ------------------------------------------------------------- landing */
 function landingPage() {
     const hero = site.hero;
-    const [heroFirst, heroSecond] = hero.title.split('，');
+    const firstTagline = heroTaglines[0] ?? hero.title;
+    const formatTagline = (line) => line.replace('，', '，\n');
     const tabs = site.quickInstall.tabs.map((tab, index) => '<button type="button" role="tab" id="tab-' + tab.id + '" aria-selected="' + (index === 0) +
         '" tabindex="' + (index === 0 ? '0' : '-1') + '" aria-controls="install-' + tab.id + '">' +
         icon(tab.id === 'windows' ? 'windows' : tab.id === 'linux' ? 'linux' : 'terminal') +
@@ -890,6 +915,26 @@ function landingPage() {
             '" width="' + (art?.width ?? 1536) + '" height="' + (art?.height ?? 1024) +
             '" decoding="async" ' + (eager ? 'fetchpriority="high"' : 'loading="lazy"') + '>';
     };
+    const carousels = ['light', 'dark'].map(theme => {
+        const frames = heroArt.filter(item => item.theme === theme);
+        const label = theme === 'light' ? '日间冒险手账' : '夜间星海酒馆';
+        return [
+            '<div class="hero-carousel" data-hero-carousel="' + theme + '" role="region" aria-roledescription="轮播" aria-label="' + label + '">',
+            '<div class="hero-picture">' + frames.map((frame, index) => '<img class="carousel-frame' + (index === 0 ? ' is-active' : '') + '" data-src="' + frame.url +
+                '" alt="' + escapeHtml(frame.alt) + '" width="' + (frame.width ?? 1536) + '" height="' + (frame.height ?? 1024) +
+                '" decoding="async" loading="lazy"' + (index === 0 ? ' fetchpriority="high"' : '') +
+                ' aria-hidden="' + (index !== 0) + '">').join('') +
+                '<noscript>' + image(frames[0].file, 'carousel-fallback', true) + '</noscript></div>',
+            '<div class="carousel-controls" hidden><div class="carousel-navigation">',
+            '<button type="button" data-carousel-prev aria-label="' + label + '上一张">←</button>',
+            '<output class="carousel-count" aria-live="polite" aria-atomic="true">01 / ' + String(frames.length).padStart(2, '0') + '</output>',
+            '<button type="button" data-carousel-next aria-label="' + label + '下一张">→</button>',
+            '<button type="button" class="carousel-pause" data-carousel-pause aria-pressed="false">暂停</button></div>',
+            '<div class="carousel-pages" role="group" aria-label="' + label + '选择页码">' + frames.map((_, index) => '<button type="button" data-carousel-page="' + index + '" aria-label="第 ' + (index + 1) + ' 张" aria-pressed="' +
+                (index === 0) + '">' + String(index + 1).padStart(2, '0') + '</button>').join('') + '</div>',
+            '</div></div>'
+        ].join('\n');
+    }).join('\n');
     const chapters = [
         {
             number: '01', kicker: 'MEMORY · 留住来时的路', title: '伏笔有迹可循，\n故事才有回响。',
@@ -911,7 +956,8 @@ function landingPage() {
         }
     ].map(chapter => [
         '<article class="chapter chapter-' + chapter.number + '">',
-        '<figure class="chapter-art">' + image(chapter.file, 'concept-art') +
+        '<figure class="chapter-art"><div class="concept-pair">' + image(chapter.file, 'concept-art concept-day') +
+            image(chapter.file.replace('.webp', '-night.webp'), 'concept-art concept-night') + '</div>' +
             '<figcaption>' + chapter.note + '</figcaption><span class="paper-pin" aria-hidden="true"></span></figure>',
         '<div class="chapter-copy"><span class="chapter-number" aria-hidden="true">' + chapter.number + '</span>',
         '<p class="eyebrow">' + chapter.kicker + '</p>',
@@ -921,7 +967,7 @@ function landingPage() {
         '<a class="text-link" href="' + chapter.href + '">' + chapter.label + ' <span>↗</span></a></div>',
         '</article>'
     ].join('\n')).join('\n');
-    const extraFeatures = site.features.filter(feature => !['memory', 'branch', 'agents', 'install'].includes(feature.icon)).map(feature => [
+    const extraFeatures = site.features.filter(feature => !['memory', 'branch', 'agents'].includes(feature.icon)).map(feature => [
         '<a class="field-entry" href="' + feature.href + '"><span class="field-icon">' + icon(feature.icon) + '</span>',
         '<span><b>' + escapeHtml(feature.title) + '</b><span>' +
             feature.text.replace(/`([^`]+)`/g, '$1') + '</span></span><span class="entry-arrow">↗</span></a>'
@@ -935,15 +981,16 @@ function landingPage() {
         '<main id="content" class="journal-home">',
         '<section class="journal-hero">',
         '<div class="hero-copy"><p class="eyebrow">' + escapeHtml(hero.eyebrow) + '</p>',
-        '<h1>' + escapeHtml(heroFirst) + '，<br><span>' + escapeHtml(heroSecond) + '</span><i aria-hidden="true">。</i></h1>',
+        '<h1 class="hero-title" aria-label="' + escapeHtml(firstTagline) + '"><span data-hero-typed aria-hidden="true">' +
+            escapeHtml(formatTagline(firstTagline)) + '</span></h1>',
+        '<script type="application/json" id="hero-taglines">' + JSON.stringify(heroTaglines).replace(/</g, '\\u003c') + '</script>',
         '<p class="hero-lead">' + escapeHtml(hero.lead) + '</p>',
         '<div class="cta-row"><a class="button primary" href="' + hero.primary.href + '">' +
             escapeHtml(hero.primary.label) + ' <span>↗</span></a><a class="text-link" href="' + hero.secondary.href + '">' +
             escapeHtml(hero.secondary.label) + ' <span>→</span></a></div>',
         '<p class="hero-footnote"><span class="status-dot"></span> 开源 · 本地运行 · 由你选择模型</p></div>',
         '<figure class="hero-postcard"><span class="postcard-stamp" aria-hidden="true">NEXT<br>TAVERN<br>✦</span>',
-        '<div class="hero-picture">' + image('journal-day.webp', 'art-day', true) +
-            image('journal-night.webp', 'art-night', true) + '</div>',
+        carousels,
         '<figcaption><span>POSTCARD № 001</span>' + escapeHtml(hero.artCaption) + '</figcaption>',
         '<span class="tape tape-one" aria-hidden="true"></span><span class="tape tape-two" aria-hidden="true"></span>',
         '</figure><span class="hero-coordinate" aria-hidden="true">A NEW CHAPTER AWAITS · EST. 2026</span></section>',

@@ -30,10 +30,37 @@ export const site = {
         artCaption: '一盏灯，一本未完的故事。下一页，由你写下。',
         art: [
             { file: 'journal-day.webp', theme: 'light', alt: '冒险手账里的日间酒馆：鲸鱼娘与打开的故事书' },
+            ...[
+                '身穿水手服的鲸鱼娘，日间冒险手账封面',
+                '身穿现代运动装的鲸鱼娘在林间徒步',
+                '身穿学者长外套的鲸鱼娘，日间旅途',
+                '身穿园艺背带裤的鲸鱼娘，日间旅途',
+                '身穿汉服的鲸鱼娘漫游中式水乡',
+                '身穿飞行夹克的鲸鱼娘，日间旅途',
+                '身穿经典女仆装的鲸鱼娘，日间酒馆'
+            ].map((alt, index) => ({
+                file: 'journal-day-' + String(index + 2).padStart(2, '0') + '.webp',
+                theme: 'light', alt
+            })),
             { file: 'journal-night.webp', theme: 'dark', alt: '星海酒馆里的夜间故事：鲸鱼娘、灯火与星空' },
+            ...[
+                '身穿水手服的鲸鱼娘，夜间冒险手账封面',
+                '身穿现代运动装的鲸鱼娘在夜色中露营',
+                '身穿学者长外套的鲸鱼娘，夜间旅途',
+                '身穿园艺背带裤的鲸鱼娘，夜间旅途',
+                '身穿汉服的鲸鱼娘漫游夜色中的中式水乡',
+                '身穿飞行夹克的鲸鱼娘，夜间旅途',
+                '灯下夜读的鲸鱼娘，星海酒馆'
+            ].map((alt, index) => ({
+                file: 'journal-night-' + String(index + 2).padStart(2, '0') + '.webp',
+                theme: 'dark', alt
+            })),
             { file: 'memory-atlas.webp', theme: 'feature', alt: '以纸页、书签和线索连接的记忆档案概念插画' },
+            { file: 'memory-atlas-night.webp', theme: 'feature-night', alt: '星海夜色中由纸页、书签和线索连接的记忆档案' },
             { file: 'worldline-atlas.webp', theme: 'feature', alt: '从一处起点延伸出多条旅程的世界线概念插画' },
-            { file: 'character-atlas.webp', theme: 'feature', alt: '不同角色各自书写、共同构成故事的角色集群概念插画' }
+            { file: 'worldline-atlas-night.webp', theme: 'feature-night', alt: '星光下从起点延伸出不同旅程的世界线地图' },
+            { file: 'character-atlas.webp', theme: 'feature', alt: '不同角色各自书写、共同构成故事的角色集群概念插画' },
+            { file: 'character-atlas-night.webp', theme: 'feature-night', alt: '夜间酒馆中不同角色的视角交织成共同的故事' }
         ],
         lead: '带上一张角色卡，走进一个值得停留的世界。让 AI 查阅设定、整理记忆、推演人物；你掌握故事的方向，把每一次相遇写成下一章。',
         primary: { label: '开始你的故事', href: '#install' },

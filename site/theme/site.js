@@ -18,6 +18,7 @@
     function applyTheme(theme) {
         root.dataset.theme = theme;
         document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f5efdf' : '#111d30');
+        document.dispatchEvent(new Event('nexttavern-theme'));
     }
     applyTheme(readTheme());
     document.addEventListener('click', event => {
@@ -30,6 +31,218 @@
         }
         catch { /* Keep this page's selection. */ }
     });
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    const typed = document.querySelector('[data-hero-typed]');
+    if (typed) {
+        // Match the original site's timing and exact skin-sourced slogan order.
+        const lines = JSON.parse(document.getElementById('hero-taglines').textContent);
+        const heading = typed.closest('h1');
+        let position = 0;
+        let column = lines[0].length;
+        let deleting = true;
+        let delay = 4500;
+        let timer;
+        const format = (line) => line.replace('，', '，\n');
+        const sizeLine = (line) => {
+            const longest = Math.max(...format(line).split('\n').map(part => Array.from(part).reduce((width, character) => width + (/^[\x20-\x7e]$/.test(character) ? .58 : 1), 0)));
+            // Fit each intentional line while the box keeps a fixed two-line height.
+            heading.style.setProperty('--headline-columns', String(Math.max(7, longest + .45)));
+        };
+        sizeLine(lines[0]);
+        const schedule = () => {
+            clearTimeout(timer);
+            root.classList.toggle('has-hero-motion', !reducedMotion.matches && !document.hidden);
+            if (reducedMotion.matches || document.hidden)
+                return;
+            timer = window.setTimeout(step, delay);
+        };
+        const step = () => {
+            const line = lines[position];
+            if (deleting) {
+                column -= 1;
+                typed.textContent = format(line.slice(0, Math.max(0, column)));
+                if (column <= 0) {
+                    deleting = false;
+                    position = (position + 1) % lines.length;
+                    sizeLine(lines[position]);
+                    delay = 620;
+                }
+                else
+                    delay = 55;
+            }
+            else {
+                column += 1;
+                typed.textContent = format(line.slice(0, column));
+                if (column >= line.length) {
+                    deleting = true;
+                    delay = 4500;
+                }
+                else
+                    delay = 105;
+            }
+            schedule();
+        };
+        reducedMotion.addEventListener('change', () => {
+            if (reducedMotion.matches) {
+                column = lines[position].length;
+                deleting = true;
+                delay = 4500;
+                typed.textContent = format(lines[position]);
+            }
+            schedule();
+        });
+        document.addEventListener('visibilitychange', schedule);
+        schedule();
+    }
+    class PostcardCarousel {
+        element;
+        frames;
+        pages;
+        pause;
+        count;
+        current = 0;
+        requested = 0;
+        paused = false;
+        pending = false;
+        revision = 0;
+        timer;
+        constructor(element) {
+            this.element = element;
+            this.frames = [...element.querySelectorAll('.carousel-frame')];
+            this.pages = [...element.querySelectorAll('[data-carousel-page]')];
+            this.pause = element.querySelector('[data-carousel-pause]');
+            this.count = element.querySelector('output');
+            element.querySelector('.carousel-controls').hidden = false;
+            element.querySelector('[data-carousel-prev]').addEventListener('click', () => {
+                void this.show(this.requested - 1);
+            });
+            element.querySelector('[data-carousel-next]').addEventListener('click', () => {
+                void this.show(this.requested + 1);
+            });
+            this.pages.forEach((page, index) => page.addEventListener('click', () => { void this.show(index); }));
+            this.pause.addEventListener('click', () => { this.paused = !this.paused; this.refresh(); });
+            document.addEventListener('nexttavern-theme', () => this.refresh());
+            document.addEventListener('visibilitychange', () => this.refresh());
+            reducedMotion.addEventListener('change', () => this.refresh());
+            this.refresh();
+        }
+        active() {
+            return this.element.dataset.heroCarousel === root.dataset.theme;
+        }
+        schedule() {
+            clearTimeout(this.timer);
+            if (!this.active() || document.hidden || reducedMotion.matches || this.paused || this.pending)
+                return;
+            this.timer = window.setTimeout(() => { void this.show(this.current + 1); }, 7000);
+        }
+        async show(index) {
+            clearTimeout(this.timer);
+            const revision = ++this.revision;
+            this.requested = (index + this.frames.length) % this.frames.length;
+            const target = this.requested;
+            const image = this.frames[target];
+            this.pending = true;
+            // Only the active theme's first frame is requested at startup. Every other
+            // image is requested on its first visit, then reused from this DOM node.
+            if (!image.hasAttribute('src')) {
+                image.loading = 'eager';
+                image.src = image.dataset.src;
+            }
+            try {
+                await image.decode();
+            }
+            catch {
+                if (revision !== this.revision)
+                    return;
+                this.pending = false;
+                this.requested = this.current;
+                this.count.textContent = '图片暂未载入';
+                this.schedule();
+                return;
+            }
+            // Fast repeated page choices must not let a slower earlier load win.
+            if (revision !== this.revision)
+                return;
+            this.frames[this.current].classList.remove('is-active');
+            this.frames[this.current].setAttribute('aria-hidden', 'true');
+            this.current = target;
+            this.pending = false;
+            image.classList.add('is-loaded', 'is-active');
+            image.setAttribute('aria-hidden', 'false');
+            this.pages.forEach((page, position) => page.setAttribute('aria-pressed', String(position === target)));
+            this.count.textContent = String(target + 1).padStart(2, '0') + ' / ' + String(this.frames.length).padStart(2, '0');
+            this.schedule();
+        }
+        refresh() {
+            this.pause.textContent = reducedMotion.matches ? '静态模式' : this.paused ? '播放' : '暂停';
+            this.pause.disabled = reducedMotion.matches;
+            this.pause.setAttribute('aria-pressed', String(this.paused || reducedMotion.matches));
+            if (this.active() && !document.hidden && !this.frames[this.current].hasAttribute('src') && !this.pending) {
+                void this.show(this.current);
+            }
+            else
+                this.schedule();
+        }
+    }
+    document.querySelectorAll('[data-hero-carousel]').forEach(element => new PostcardCarousel(element));
+    const markVisibility = () => root.classList.toggle('page-hidden', document.hidden);
+    document.addEventListener('visibilitychange', markVisibility);
+    markVisibility();
+    if (!reducedMotion.matches) {
+        const reveals = [...document.querySelectorAll('.chapter, .section-heading, .field-entry, .install-section, .map-column, .screenshot-invitation, .article > h2')];
+        const observer = new IntersectionObserver(entries => {
+            for (const entry of entries) {
+                if (!entry.isIntersecting)
+                    continue;
+                entry.target.classList.add('is-revealed');
+                observer.unobserve(entry.target);
+            }
+        }, { threshold: .06, rootMargin: '0px 0px -24px 0px' });
+        root.classList.add('has-scroll-effects');
+        reveals.forEach((element, index) => {
+            element.classList.add('reveal-target');
+            element.style.setProperty('--reveal-delay', String(index % 3 * 55) + 'ms');
+            observer.observe(element);
+        });
+        reducedMotion.addEventListener('change', () => {
+            if (!reducedMotion.matches)
+                return;
+            observer.disconnect();
+            root.classList.remove('has-scroll-effects');
+        });
+    }
+    const hero = document.querySelector('.journal-hero');
+    if (hero) {
+        const pointer = matchMedia('(hover: hover) and (pointer: fine) and (min-width: 941px)');
+        let frame = 0;
+        let x = 0;
+        let y = 0;
+        const reset = () => {
+            cancelAnimationFrame(frame);
+            frame = 0;
+            hero.style.setProperty('--pointer-x', '0');
+            hero.style.setProperty('--pointer-y', '0');
+        };
+        hero.addEventListener('pointermove', event => {
+            if (reducedMotion.matches || !pointer.matches)
+                return;
+            x = event.clientX;
+            y = event.clientY;
+            if (frame)
+                return;
+            frame = requestAnimationFrame(() => {
+                frame = 0;
+                const box = hero.getBoundingClientRect();
+                hero.style.setProperty('--pointer-x', String((x - box.left) / box.width - .5));
+                hero.style.setProperty('--pointer-y', String((y - box.top) / box.height - .5));
+            });
+        });
+        hero.addEventListener('pointerleave', reset);
+        pointer.addEventListener('change', reset);
+        reducedMotion.addEventListener('change', reset);
+        document.addEventListener('visibilitychange', () => { if (document.hidden)
+            reset(); });
+    }
     const navButton = document.querySelector('[data-nav-toggle]');
     function setNav(open) {
         body.dataset.nav = open ? 'open' : 'closed';

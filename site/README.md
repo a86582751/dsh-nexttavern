@@ -36,9 +36,9 @@ node site/build.mjs --check
 
 日间采用冒险手账：奶油纸、陶土橙、鼠尾草、宋体标题、细线与拼贴纸页。夜间采用星海酒馆：海军蓝与香槟金。两者共用排版、交互和本地字体栈，优先遵从已保存主题，其次遵从系统配色。
 
-首页以概念插画呈现记忆、世界线、角色集群，不把概念画当成实机界面。首屏分别使用 `art/journal-day.webp` 和 `art/journal-night.webp`；三章配图为 `memory-atlas.webp`、`worldline-atlas.webp`、`character-atlas.webp`。素材原样复制到 `assets/art`，来源见 `art/README.md`。看板娘头像沿用 `brand-mark.webp`，品牌名称由可访问文字排版，标签图标使用 `favicon.png`。
+首页以概念插画呈现记忆、世界线、角色集群，不把概念画当成实机界面。首屏按主题分别提供八张独立插画：日间从 `journal-day.webp` 到 `journal-day-08.webp`，夜间从 `journal-night.webp` 到 `journal-night-08.webp`。两个主题各自轮播，可点选页码、前后切换或暂停；页面可见且未启用减少动态效果时，每 7 秒自动前进。只有当前主题的首帧会在首屏初始化时请求，其余轮播帧在首次访问时加载并复用。三章配图同时提供昼夜版本：`memory-atlas.webp`／`memory-atlas-night.webp`、`worldline-atlas.webp`／`worldline-atlas-night.webp`、`character-atlas.webp`／`character-atlas-night.webp`；由主题决定显示，使用浏览器延迟加载。素材原样复制到 `assets/art`，来源见 `art/README.md`。看板娘头像沿用 `brand-mark.webp`，品牌名称由可访问文字排版，标签图标使用 `favicon.png`。
 
-实机截图集中于 `screenshots.html`，首页仅保留入口。支持范围和安装说明沿用公开文档；当前发行与 GitHub/npm 口径对齐，0.3 明确保留“开发中，尚未发布”。页面重设计不增加运行时模型请求。
+首页标语从皮肤 `HEADLINE_GROUPS` 的 12 条原文中取用，按打字机效果依序展示；启用减少动态效果时显示完整静态文案并停用自动动画。页面隐藏时也会暂停自动轮播。实机截图集中于 `screenshots.html`，首页仅保留入口。支持范围和安装说明沿用公开文档；当前发行与 GitHub/npm 口径对齐，0.3 明确保留“开发中，尚未发布”。页面重设计不增加运行时模型请求。
 
 正文来自 `README.md`、`INSTALL-WINDOWS.md`、`INSTALL-LINUX.md`、`PUBLIC-ACCESS.md`、`ARCHITECTURE.md`、`SCREENSHOTS.md`、`CHANGELOG.md`、`DEVELOPMENT-0.3.md` 和 `CONTRIBUTING.md`。配置中的章节选择器是精确 H2 标题，章节消失会使生成失败。文档内页继续保留侧边导航、面包屑、页内目录与前后页。
 
