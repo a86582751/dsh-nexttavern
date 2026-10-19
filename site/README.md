@@ -1,45 +1,49 @@
-# 文档站
+# NextTavern 文档站
 
-本目录是公开仓库 [`a86582751/dsh-nexttavern`](https://github.com/a86582751/dsh-nexttavern) 文档站的生成器。站点由仓库自己已经公开的 Markdown 渲染而成，不引入任何第三方依赖、字体或外部服务。
+本目录是公开仓库 [`a86582751/dsh-nexttavern`](https://github.com/a86582751/dsh-nexttavern) 的静态文档站。正文取自仓库已经公开的 Markdown，不引入第三方依赖、在线字体或外部服务。
 
-- `build.mjs`：静态站点生成器（Markdown → HTML、图片压缩、离线搜索索引、链接与锚点校验）。
-- `site.config.mjs`：导航分组、落地页文案与每个页面引用的章节选择器。
-- `theme/site.css`、`theme/site.js`：主题与交互（深浅色、目录抽屉、搜索、截图灯箱、代码复制）。
-- `art/`：首页轮换用的鲸鱼娘立绘，来源与出图批次见 `art/README.md`。
-- `art/brand-mark.webp`、`art/brand-word.webp`、`art/favicon.png`：顶栏／页脚品牌标识
-  （应用图标式的看板娘半身像＋她倚着的「Next Tavern」木牌）与标签图标，同样取自
-  皮肤自有出图；三个文件都是提交进仓库的成品字节，生成器只做原样复制。
+## 维护入口
 
-首页不使用第二份口径的宣传语：标语打字机从皮肤 `dsh-nexttavern-amber` 的源码里读
-`HEADLINE_GROUPS`（缺锚点即构建失败），首图轮换用 `art/` 里的自有立绘——两者都和
-皮肤保持同一来源。首图下方的说明是一句固定文案（`hero.artCaption`），不逐图改字：
-皮肤包为了体积只收录了少数几张立绘，逐图点名会对不上。标语区的标题按两行预留高度
-（CSS 变量 `--hero-title-lines`），因为打字机轮换的句子长短不一，不预留就会让下方
-文案与按钮在每次换句时跳一下。
+只维护 TypeScript 源码；原路径 JavaScript 是生成物，Pages 工作流直接运行已提交的生成物。
 
-## 运行
+| 维护源码 | 生成物 | 职责 |
+| --- | --- | --- |
+| `src/build.mts` | `build.mjs` | Markdown 渲染、首页、页面外壳、媒体处理、搜索索引与链接检查 |
+| `src/site.config.mts` | `site.config.mjs` | 导航、章节选择器、发行与安装文案 |
+| `src/site.ts` | `theme/site.js` | 主题、导航、目录、搜索、复制、安装页签与截图灯箱 |
+
+`theme/site.css` 是共用样式。源码、生成物及公开投影映射统一登记在维护库 `release/source-manifest.json`，不要另建清单或手改生成物。使用维护库既有 `build-typescript.mjs` 对已登记入口定点生成。
 
 ```powershell
-# 维护仓库：内容源是 release/public/，输出到 artifacts/public-site-preview
+# 在维护库中，根据 manifest 定点生成站点 JavaScript
+node runtime/alpha3/lib/operations/build-typescript.mjs release/public/site/src/build.mts release/public/site/build.mjs
+node runtime/alpha3/lib/operations/build-typescript.mjs release/public/site/src/site.config.mts release/public/site/site.config.mjs
+node runtime/alpha3/lib/operations/build-typescript.mjs release/public/site/src/site.ts release/public/site/theme/site.js
+
+# 维护库：公开 Markdown 位于 release/public，默认输出 artifacts/public-site-preview
 node release/public/site/build.mjs
 
-# 公开仓库：内容源是仓库根目录，输出到 artifacts/site（该目录已在 .gitignore 内）
+# 公开库：公开 Markdown 位于仓库根目录，默认输出 artifacts/site
 node site/build.mjs
 
-# 只做一次检查（渲染到临时目录并校验链接）
+# 渲染并检查链接/锚点；临时目录在项目 artifacts/test-temp，结束时清理
 node site/build.mjs --check
 ```
 
-生成器默认使用 ffmpeg 把截图压成 WebP 并写入 `assets/media/`；缺少 ffmpeg 时直接复制原图，站点仍然可用。维护仓库与公开仓库共用同一份源码，区别只在于 Markdown 的位置（`release/public/` 或仓库根目录）。
+生成器默认通过 ffmpeg 将截图压成 WebP；缺少 ffmpeg 时复制原图。`--no-optimize` 跳过压缩，`--out <目录>` 指定输出位置。
 
-## 页面从哪里来
+## 设计与内容
 
-页面正文全部取自仓库里既有的公开文档：`README.md`、`INSTALL-WINDOWS.md`、`INSTALL-LINUX.md`、`PUBLIC-ACCESS.md`、`ARCHITECTURE.md`、`SCREENSHOTS.md`、`CHANGELOG.md`、`DEVELOPMENT-0.3.md`、`CONTRIBUTING.md`。`site.config.mjs` 只声明分章方式与导航标题；章节标题写错或消失时构建会直接失败，避免站点与文档悄悄脱节。
+日间采用冒险手账：奶油纸、陶土橙、鼠尾草、宋体标题、细线与拼贴纸页。夜间采用星海酒馆：海军蓝与香槟金。两者共用排版、交互和本地字体栈，优先遵从已保存主题，其次遵从系统配色。
+
+首页以概念插画呈现记忆、世界线、角色集群，不把概念画当成实机界面。首屏分别使用 `art/journal-day.webp` 和 `art/journal-night.webp`；三章配图为 `memory-atlas.webp`、`worldline-atlas.webp`、`character-atlas.webp`。素材原样复制到 `assets/art`，来源见 `art/README.md`。看板娘头像沿用 `brand-mark.webp`，品牌名称由可访问文字排版，标签图标使用 `favicon.png`。
+
+实机截图集中于 `screenshots.html`，首页仅保留入口。支持范围和安装说明沿用公开文档；当前发行与 GitHub/npm 口径对齐，0.3 明确保留“开发中，尚未发布”。页面重设计不增加运行时模型请求。
+
+正文来自 `README.md`、`INSTALL-WINDOWS.md`、`INSTALL-LINUX.md`、`PUBLIC-ACCESS.md`、`ARCHITECTURE.md`、`SCREENSHOTS.md`、`CHANGELOG.md`、`DEVELOPMENT-0.3.md` 和 `CONTRIBUTING.md`。配置中的章节选择器是精确 H2 标题，章节消失会使生成失败。文档内页继续保留侧边导航、面包屑、页内目录与前后页。
 
 ## 发布
 
-`.github/workflows/pages.yml` 在 `main` 上的文档或本站源码变化时渲染站点并把 `artifacts/site` 作为 Pages 制品发布，不需要密钥，也不修改 npm 包内容。
+`.github/workflows/pages.yml` 在 `main` 的文档或站点内容变化时渲染并将 `artifacts/site` 发布至 Pages，不改变 npm 包。可选 ffmpeg 安装限时 90 秒；超时使用复制原图的回退。
 
-可选 ffmpeg 安装限时 90 秒；超时沿用生成器复制原图的回退，不能让 apt 镜像阻塞发布。带 `[skip ci]` 的提交不会自动部署，已授权发布时手动 dispatch 一次 Pages，等待同一任务成功；不重复本地构建和云端验证同一输入。发布前保存上一轮精确 artifact，发布后按本次 head 的 artifact 字节核对受影响线上页面与资源，CLI／workflow 成功不能替代 HTTP 健康读回。
-
-当前发行版本与安装入口在 `site.config.mjs` 和对应 Markdown 对齐；更广泛的 0.3 兼容仍在开发时保留首页延期说明，不因补丁发布丢掉这段玩家沟通。文档站只描述已公开的支持范围，不改变固定 npm 版本或 Release 归档。
+带 `[skip ci]` 的提交不自动部署。已获当次发布授权时手动 dispatch 一次 Pages，复用该任务，不对同一输入重复本地与云端全量验证。发布前保存上一轮精确 artifact，发布后按本次 head 的 artifact 字节核对线上页面与资源；workflow 成功不能替代 HTTP 读回。
