@@ -25,7 +25,7 @@ import type {TavernSourceInheritanceDepsV1,TavernSourceInheritanceOwnerV1,Tavern
   TavernSourceApplyIntentV1,TavernSourceNativeCutV1,TavernSourceCommitV1,TavernSourceReadyV1,
   TavernSourceMaterialBaselineV1,TavernSourceInheritanceReadyBindingV1,TavernSourceInheritanceLayerRefV1,
   TavernSourceInheritanceDescriptorV1,TavernSourceInheritanceRefV1,TavernSourceOwnedRowFactsV1,
-  TavernSourceStaticRowV1,TavernSourceInheritanceTableV1,TavernSourceProgramAbsenceObservationV1}
+  TavernSourceStaticRowV1,TavernSourceProgramAbsenceObservationV1}
   from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernSourceStaticTransactionV1,TavernSourceEditBaselineV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernSourcePrepareAuthorChatForkSeedsV2,TavernSourceAuthorChatForkSeedCaptureV2}
@@ -49,6 +49,10 @@ interface SourceClosedCaptureV1 {
   readonly facts:TavernSourceOwnedRowFactsV1
   readonly opening:TavernSourceProgramAbsenceObservationV1|undefined
 }
+interface SourceClosedRowsV1 {
+  readonly state:SourceClosedStateV1
+  readonly metaRow:TavernSourceStaticRowV1
+}
 type SourceClosedConsumerV1=(facts:TavernSourceOwnedRowFactsV1,state:SourceClosedStateV1,
   opening:TavernSourceProgramAbsenceObservationV1|undefined)=>unknown
 const sourceLineageReadV1=(subjectSessionId:string,dependencyOnly=false):SourceLineageReadV1=>
@@ -61,38 +65,17 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
   const preparedRef=(p:TavernSourcePreparedV1)=>inheritanceRefV1(tavernSourcePreparedKeyV1(p.childSessionId),p)
   // The registry belongs to this exact installed factory. No serialized or
   // foreign frozen observation can survive a callback or authenticate itself.
-  const activeRowFacts=new WeakMap<TavernSourceOwnedRowFactsV1,()=>void>()
-  // Data origin only. A final collect output can seed a readonly comparison
-  // plan; this weak set cannot make a facts object active or prove currentness.
-  const collectedRowFacts=new WeakSet<TavernSourceOwnedRowFactsV1>()
+  const activeRowFacts=new WeakSet<TavernSourceOwnedRowFactsV1>()
   let rowFactsDepth=0
   // This is only the DATA already validated for the current synchronous
   // consumer. It is unavailable during the Native/namespace callback itself.
   let consumerSource:SourceClosedStateV1|undefined
-  const factoryBindings=()=>[deps.tables,deps.source,deps.source.capture,deps.source.current,
-    deps.withSourceLock,deps.ensureParentBranch,deps.readNativeSession,deps.readOpeningContext,deps.readNumericalSourceCapture,
-    deps.readPublishedLocalEditJournal,deps.captureMaterialPublications,deps.assertMaterialPublications,
-    deps.captureNonNumericalOpening,deps.assertNonNumericalOpening,
-    deps.captureProgramAbsenceOpening,deps.assertProgramAbsenceOpening,
-    deps.captureAuthorChatForkSeed,deps.applyAuthorChatForkSeed,
-    deps.captureAuthorChatForkSeedsV2,deps.applyAuthorChatForkSeedsV2,
-    ...(['cards','worldbook','rules','opening','status','branch'] as const).flatMap(name=>{
-      const table:TavernSourceInheritanceTableV1=deps.tables[name]
-      return [table,table.get,table.entries,table.put]
-    })]
-  const installedBindings=factoryBindings()
-  function assertFactoryCurrent() {
-    const actual=factoryBindings()
-    if(actual.length!==installedBindings.length||actual.some((value,index)=>value!==installedBindings[index]))
-      inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
-  }
   function assertNoRowFactsReentry() {
     if(rowFactsDepth)inheritanceFailV1('SOURCE_INHERITANCE_INVALID','Source closed-read re-entry from an active row-facts frame')
   }
   function assertOwnedRowFactsCurrent(facts:TavernSourceOwnedRowFactsV1) {
-    const assertCurrent=activeRowFacts.get(facts)
-    if(!assertCurrent)inheritanceFailV1('SOURCE_INHERITANCE_INVALID','inactive or foreign Source row-facts frame')
-    assertCurrent()
+    if(!activeRowFacts.has(facts))
+      inheritanceFailV1('SOURCE_INHERITANCE_INVALID','inactive or foreign Source row-facts frame')
   }
   function assertSynchronousResult(result:unknown):void {
     if(result===null||typeof result!=='object'&&typeof result!=='function')return
@@ -107,48 +90,13 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       prototype=Object.getPrototypeOf(prototype)
     }
   }
-  function withActiveRowFacts<T>(facts:TavernSourceOwnedRowFactsV1,p:TavernSourcePreparedV1,consume:()=>T,
-    capturedCurrent?:()=>void):T {
-    assertFactoryCurrent()
-    if(capturedCurrent) {
-      // The completed Source capture already owns these exact row subscriptions.
-      // Native carrier/namespace readers consume them without rehashing Source.
-      activeRowFacts.set(facts,capturedCurrent);rowFactsDepth++
-      try {
-        capturedCurrent()
-        const result=consume()
-        assertSynchronousResult(result);capturedCurrent()
-        return result
-      }finally {activeRowFacts.delete(facts);rowFactsDepth--}
-    }
-    const applyRow=facts.validatedRecords.find(row=>row.key===tavernSourceApplyKeyV1(p.childSessionId)),
-      apply=applyRow?validateApplyInheritanceV1(applyRow.value):undefined
-    assertNativeCut(p,apply)
-    const native=store.native(p.childSessionId),nativeSha256=recordSha256({header:inheritanceDataV1(native.header),
-      inheritedEventCount:native.inheritedEventCount,events:inheritanceDataV1(native.snapshotEvents())})
-    const footprint=[...facts.validatedRecords,...facts.missingRecords,...facts.observations],
-      compareRow=store.createReadonlyRowComparisonV1(collectedRowFacts.has(facts)?footprint:[],facts.validatedRecords)
-    const assertCurrent=()=>{
-      assertFactoryCurrent()
-      for(const expected of footprint) {
-        if(!compareRow(expected))inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED',expected.key)
-        // Storage also owns the independent second read of validated branch
-        // rows, preserving strict Native spelling and same-raw diagnostics.
-      }
-      const actualNative=store.native(p.childSessionId)
-      assertNativeCut(p,apply)
-      if(recordSha256({header:inheritanceDataV1(actualNative.header),inheritedEventCount:actualNative.inheritedEventCount,
-        events:inheritanceDataV1(actualNative.snapshotEvents())})!==nativeSha256)
-        inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED')
-    }
-    activeRowFacts.set(facts,assertCurrent);rowFactsDepth++
+  function withActiveRowFacts<T>(facts:TavernSourceOwnedRowFactsV1,consume:()=>T):T {
+    // Source already decoded and joined these rows. This synchronous consumer
+    // stays in the same owner frame; InputState owns later dependency changes.
+    activeRowFacts.add(facts);rowFactsDepth++
     try {
-      assertOwnedRowFactsCurrent(facts)
       const result=consume()
-      // These callbacks provide immediate current-state evidence. Async work
-      // cannot extend the lifetime of the factory's live observation.
       assertSynchronousResult(result)
-      assertOwnedRowFactsCurrent(facts)
       return result
     }finally {activeRowFacts.delete(facts);rowFactsDepth--}
   }
@@ -308,7 +256,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
   }
   function assertChildNative(p:TavernSourcePreparedV1,apply?:TavernSourceApplyIntentV1,
     reading=sourceLineageReadV1(p.childSessionId),
-    consume?:(facts:TavernSourceOwnedRowFactsV1,opening:TavernSourceProgramAbsenceObservationV1|undefined)=>unknown) {
+    consume?:(facts:TavernSourceOwnedRowFactsV1,opening:TavernSourceProgramAbsenceObservationV1|undefined)=>unknown,
+    closed?:SourceClosedRowsV1) {
     assertNativeCut(p,apply)
     deps.assertMaterialPublications(p.childSessionId,p.materialPublications)
     if(p.frozenNonNumericalOpeningV1!==undefined) {
@@ -318,8 +267,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     if(p.frozenProgramAbsenceOpeningV1!==undefined||consume) {
       if(p.frozenProgramAbsenceOpeningV1!==undefined&&!deps.assertProgramAbsenceOpening)
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_UNAVAILABLE')
-      const facts=collectOwnedRowFacts(p,apply,reading)
-      return withActiveRowFacts(facts,p,()=>{
+      const facts=collectOwnedRowFacts(p,apply,reading,closed)
+      return withActiveRowFacts(facts,()=>{
         const opening=p.frozenProgramAbsenceOpeningV1===undefined?undefined:
           deps.assertProgramAbsenceOpening!(p.childSessionId,p.frozenProgramAbsenceOpeningV1,p.nativeCut,facts)
         assertSynchronousResult(opening)
@@ -360,6 +309,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       if(capture.kind==='outside-declared-domain'&&['ACTIVE_SOURCE_MISSING','LEGACY_SOURCE_OUTSIDE_DOMAIN']
         .includes(capture.code))return {kind:'legacy-unchanged' as const}
       if(capture.kind!=='captured-data')inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
+      // The synchronous reservation consumes this Source capture under its FIFO.
       const source=capture.source,native=store.native(parent),events=native.snapshotEvents(),
         inherited=Number(native.inheritedEventCount)
       if(!Number.isSafeInteger(inherited)||inherited<0||seedLength>events.length)
@@ -387,7 +337,6 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         preparedRef:source.inheritance.preparedRef,applyIntentRef:source.inheritance.applyIntentRef,
         commitRef:source.inheritance.commitRef,readyRef:source.inheritance.readyRef}]:[]
       const materialPublications=store.publications(deps.captureMaterialPublications(parent,seedLength))
-      if(!deps.source.current(source))inheritanceFailV1('SOURCE_INHERITANCE_SOURCE_CHANGED')
       const capturedProgramAbsence=deps.captureProgramAbsenceOpening?.(parent,nativeCut)
       if(capturedProgramAbsence!==undefined&&!deps.assertProgramAbsenceOpening)
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_UNAVAILABLE')
@@ -396,7 +345,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         inheritanceFailV1('SOURCE_INHERITANCE_OPENING_UNAVAILABLE')
       const frozenOpening=await store.freezeNonNumericalOpening(parent,child,nativeCut,capturedOpening)
       const frozenProgramAbsence=await store.freezeProgramAbsenceOpening(parent,child,nativeCut,capturedProgramAbsence)
-      const p=validatePreparedInheritanceV1(sealInheritanceDataV1({schemaVersion:1,
+      const p:TavernSourcePreparedV1=sealInheritanceDataV1({schemaVersion:1 as const,
         encoding:'native-tavern-source-inheritance-prepared-v1',origin:'core-reservation',operationId:operation.operationId,
         operationKey:`fork-op-${operation.operationId}`,anchorSha256:recordSha256({...operation.anchor,expectedSeedLength:seedLength}),
         parentSessionId:parent,childSessionId:child,nativeCut,parentSource:source,
@@ -407,7 +356,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         materialPublications,ancestors,...(frozenOpening===undefined?{}:{frozenNonNumericalOpeningV1:frozenOpening}),
         ...(frozenProgramAbsence===undefined?{}:{frozenProgramAbsenceOpeningV1:frozenProgramAbsence}),
         ...(frozenAuthorChatSeed===undefined?{}:{frozenAuthorChatSeedV1:frozenAuthorChatSeed}),
-        ...(frozenAuthorChatSeeds===undefined?{}:{frozenAuthorChatSeedsV2:frozenAuthorChatSeeds})},'preparedSha256'))
+        ...(frozenAuthorChatSeeds===undefined?{}:{frozenAuthorChatSeedsV2:frozenAuthorChatSeeds})},'preparedSha256')
       assertPreparedData(p)
       assertOperation(p)
       await store.putExact('branch',tavernSourcePreparedKeyV1(child),p)
@@ -484,18 +433,28 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         ?{freshBranchFrom:p.parentSessionId}:{inheritedFrom:p.parentSessionId})}
   }
   function collectOwnedRowFacts(p:TavernSourcePreparedV1,supplied:TavernSourceApplyIntentV1|undefined,
-    reading:SourceLineageReadV1):TavernSourceOwnedRowFactsV1 {
-    const sid=p.childSessionId,pRef=preparedRef(p),validatedRecords:TavernSourceStaticRowV1[]=[],
+    reading:SourceLineageReadV1,closed?:SourceClosedRowsV1):TavernSourceOwnedRowFactsV1 {
+    const sid=p.childSessionId,pRef=closed?.state.inheritance.preparedRef??preparedRef(p),
+      validatedRecords:TavernSourceStaticRowV1[]=[],
       missingRecords:TavernSourceStaticRowV1[]=[],observed=new Map<string,TavernSourceStaticRowV1>()
     const observe=(table:TavernSourceStaticRowV1['table'],key:string)=>{
       const row=store.readRow(table,key);observed.set(`${table}:${key}`,row);return row
     }
+    const ownedRow=(key:string):TavernSourceStaticRowV1=>{
+      if(!closed)return store.readRow('branch',key)
+      // The closed reader already decoded and joined this exact maintained row.
+      // Its budget retains the first observation; projecting it adds no new read.
+      const row=reading.budget.refs.get(key)!
+      return {table:'branch',key,exists:true,sha256:row.sha256,
+        value:row.value as Readonly<Record<string,unknown>>}
+    }
     const owned=(key:string,expected:unknown,required=false)=>{
-      const row=store.readRow('branch',key)
+      const row=ownedRow(key)
       if(!row.exists) {
         if(required)inheritanceFailV1('SOURCE_INHERITANCE_MISSING',key)
         missingRecords.push(row);return false
       }
+      if(closed){validatedRecords.push(Object.freeze(row));return true}
       const actual=store.readKey(key)
       if(expected===undefined||!inheritanceSameV1(actual,expected))inheritanceFailV1('SOURCE_INHERITANCE_INVALID',key)
       validatedRecords.push(inheritanceFreezeV1({...row,value:actual as Readonly<Record<string,unknown>>}));return true
@@ -514,17 +473,23 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       if(!row.exists)missingRecords.push(row)
     }
     const aKey=tavernSourceApplyKeyV1(sid),cKey=tavernSourceCommitKeyV1(sid),rKey=tavernSourceReadyKeyV1(sid),
-      aRow=store.readRow('branch',aKey),cRow=store.readRow('branch',cKey),rRow=store.readRow('branch',rKey),
-      a=aRow.exists?store.readKey(aKey) as TavernSourceApplyIntentV1:undefined,
-      c=cRow.exists?store.readKey(cKey) as TavernSourceCommitV1:undefined,
-      r=rRow.exists?store.readKey(rKey) as TavernSourceReadyV1:undefined
-    if((supplied&&!inheritanceSameV1(a,supplied))||(!a&&(c||r)))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
-    if(a)assertApplyData(p,a)
+      aRow=ownedRow(aKey),cRow=ownedRow(cKey),rRow=ownedRow(rKey),
+      a=closed?.state.applyIntent??(aRow.exists?store.readKey(aKey) as TavernSourceApplyIntentV1:undefined),
+      c=closed?.state.commit??(cRow.exists?store.readKey(cKey) as TavernSourceCommitV1:undefined),
+      r=closed?.state.ready??(rRow.exists?store.readKey(rKey) as TavernSourceReadyV1:undefined)
+    if(!closed) {
+      if((supplied&&!inheritanceSameV1(a,supplied))||(!a&&(c||r)))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
+      if(a)assertApplyData(p,a)
+    }
     owned(aKey,a)
-    const baselines=baselinesFor(p),hasEdit=owned(baselines.editRef.key,a?baselines.edit:undefined),
+    const baselines=closed?{edit:closed.state.edit,editRef:closed.state.commit.editBaselineRef,
+      slot:reading.budget.refs.get(closed.state.commit.editBaselineSlotRef.key)!.value,
+      slotRef:closed.state.commit.editBaselineSlotRef,material:closed.state.material,
+      materialRef:closed.state.commit.materialBaselineRef}:baselinesFor(p),
+      hasEdit=owned(baselines.editRef.key,a?baselines.edit:undefined),
       hasSlot=owned(baselines.slotRef.key,a?baselines.slot:undefined),
       hasMaterial=owned(baselines.materialRef.key,a?baselines.material:undefined)
-    if(c) {
+    if(c&&!closed) {
       if(!a||!hasEdit||!hasSlot||!hasMaterial||c.childSessionId!==sid
         ||!inheritanceSameV1(c.preparedRef,pRef)||!inheritanceSameV1(c.applyIntentRef,inheritanceRefV1(aKey,a))
         ||!inheritanceSameV1(c.editBaselineRef,baselines.editRef)||!inheritanceSameV1(c.editBaselineSlotRef,baselines.slotRef)
@@ -534,14 +499,16 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
     }
     owned(cKey,c)
-    if(r) {
+    if(r&&!closed) {
       if(!a||!c||r.childSessionId!==sid||!inheritanceSameV1(r.priorMeta,a.priorMeta)
         ||!inheritanceSameV1(r.binding,{schemaVersion:1,preparedRef:pRef,
           applyIntentRef:inheritanceRefV1(aKey,a),commitRef:inheritanceRefV1(cKey,c)})
         ||!inheritanceSameV1(r.metadata,readyMetadata(p,a)))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
     }
     owned(rKey,r)
-    const meta=observe('branch',`${sid}__meta`),pointer=observe('branch',`${sid}__import-active`)
+    const meta=closed?.metaRow??observe('branch',`${sid}__meta`)
+    if(closed)observed.set(`branch:${meta.key}`,meta)
+    const pointer=observe('branch',`${sid}__import-active`)
     observe('branch',`${sid}__settings`);observe('status',`${sid}__spec`)
     // The ordinary panel is a turn output. A Source reader that actually uses
     // a panel fallback owns that dependency; the inherited static rows do not.
@@ -560,7 +527,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       &&['inheritedFrom','freshBranchFrom','inheritedAtSeedLength'].every(key=>meta.value?.[key]===r.metadata[key]))
     const associatedControlRecords:TavernSourceStaticRowV1[]=[]
     if(migrationRow.exists) {
-      const migration=validateTavernSourceLegacyMigrationRecordV1(store.readKey(migrationRow.key))
+      const migration=migrationRow.value as ReturnType<typeof validateTavernSourceLegacyMigrationRecordV1>
       if(!r||migration.childSessionId!==sid||!inheritanceSameV1(migration.readyBinding,
         {...r.binding,readyRef:inheritanceRefV1(rKey,r)}))inheritanceFailV1('SOURCE_INHERITANCE_INVALID',migrationRow.key)
       // This is a historical control DTO joined to the exact closed records.
@@ -573,9 +540,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       phase:r?(ready?'closed-ready':'closed-unpublished'):a?'apply-partial':'prepared',preparedRef:pRef,
       validatedRecords,missingRecords,observations:[...observed.values()],
       ...(associatedControlRecords.length?{associatedControlRecords}:{})}
-    const collected=inheritanceFreezeV1(facts)
-    collectedRowFacts.add(collected)
-    return collected
+    return inheritanceFreezeV1(facts)
   }
   function readStaticInLineage(sid:string,requireReady:boolean,reading:SourceLineageReadV1,
     consume?:SourceClosedConsumerV1):SourceClosedStateV1 {
@@ -606,13 +571,14 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     if(!inheritanceSameV1(edit.preparedRef,pRef)||!inheritanceSameV1(edit.layers,p.editLayers)
       ||!inheritanceSameV1(slot.preparedRef,pRef)||!inheritanceSameV1(slot.baselineRef,c.editBaselineRef)
       ||c.editBaselineSlotRef.key!==tavernSourceEditSlotKeyV1(slot.identitySha256)
-      ||slot.identity.sessionId!==sid||slot.identity.sourceRecordSessionId!==p.originalBinding.sourceRecordSessionId
-      ||slot.identity.importId!==p.originalBinding.importId||slot.identity.rawSha256!==p.originalBinding.rawSha256
-      ||slot.identity.transactionId!==p.originalBinding.transactionId
-      ||slot.identity.documentSha256!==p.originalBinding.documentSha256
-      ||slot.identity.bookSha256!==p.parentSource.original.primary.bookSha256)
+      ||!inheritanceSameV1(slot.identity,{schemaVersion:1,encoding:'tavern-lore-edit-original-identity-v1',
+        sessionId:sid,sourceRecordSessionId:p.originalBinding.sourceRecordSessionId,importId:p.originalBinding.importId,
+        rawSha256:p.originalBinding.rawSha256,transactionId:p.originalBinding.transactionId,
+        documentSha256:p.originalBinding.documentSha256,bookPointer:'/data/character_book',
+        bookSha256:p.parentSource.original.primary.bookSha256}))
       inheritanceFailV1('SOURCE_INHERITANCE_JOURNAL_INVALID')
-    const binding:TavernSourceInheritanceReadyBindingV1={...r.binding,readyRef:rRef},meta=store.readRow('branch',`${sid}__meta`).value
+    const binding:TavernSourceInheritanceReadyBindingV1={...r.binding,readyRef:rRef},
+      metaRow=store.readRow('branch',`${sid}__meta`),meta=metaRow.value
     if(requireReady&&(!inheritanceObjectV1(meta)||meta.inheritanceState!=='ready'
       ||!inheritanceSameV1(meta.sourceInheritance,binding)))inheritanceFailV1('SOURCE_INHERITANCE_NOT_READY')
     const expectedMetadata={createdAt:a.createdAt,lastTurn:0,lastSeq:-1,inheritanceState:'ready',
@@ -640,11 +606,10 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     // the live callback. The closed cache is populated only after it succeeds.
     assertChildNative(p,a,reading,consume?(facts,opening)=>{
       // The full Source joins and original Program reader precede this DATA
-      // projection. Keep the same row/Native baseline through the consumer's
-      // closing check; a second capture would lose its original preimage.
+      // projection. Consume their captured data in this same owner frame.
       consumerSource=result
       try {return consume(facts,result,opening)}finally {consumerSource=undefined}
-    }:undefined)
+    }:undefined,{state:result,metaRow})
     reading.closed.set(sid,result)
     return result
     }finally {reading.active.delete(sid)}
@@ -668,7 +633,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     assertNativeCut(p,state.applyIntent)
     if(p.frozenNonNumericalOpeningV1!==undefined)
       deps.assertNonNumericalOpening!(sid,p.frozenNonNumericalOpeningV1,p.nativeCut)
-    return withActiveRowFacts(facts,p,()=>{
+    return withActiveRowFacts(facts,()=>{
       const observed=p.frozenProgramAbsenceOpeningV1===undefined?undefined:
         deps.assertProgramAbsenceOpening!(sid,p.frozenProgramAbsenceOpeningV1,p.nativeCut,facts,capture.opening)
       assertSynchronousResult(observed)
@@ -680,7 +645,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         assertNativeCut(p,state.applyIntent)
         return result
       }finally {consumerSource=undefined}
-    },()=>{assertFactoryCurrent();read.assertCurrent()})
+    })
   }
   function readStatic(sid:string,requireReady=true) {
     return requireReady&&deps.captureClosedRead?consumeClosedSource(sid,capture=>capture.state):
@@ -742,6 +707,11 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       return null
     }
     return deps.withSourceLock(sid,async()=>{
+      const meta=branch.get(`${sid}__meta`),requireReady=inheritanceObjectV1(meta)&&meta.inheritanceState==='ready'
+      // A completed transaction owns its prepared/commit/baseline joins and
+      // Native cut in one read. Replaying its writer would repeat those joins.
+      if(branch.get(tavernSourceCommitKeyV1(sid))!==undefined&&branch.get(tavernSourceReadyKeyV1(sid))!==undefined)
+        return readStatic(sid,requireReady).binding
       const p=readPreparedSourceInheritance(sid),pRef=preparedRef(p)
       if(branch.get(tavernSourceCommitKeyV1(sid))!==undefined) {
         const a=validateApplyInheritanceV1(branch.get(tavernSourceApplyKeyV1(sid))),
@@ -753,7 +723,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         // before the callback or a recovered ready record can be written.
         assertChildNative(p,a)
         await writeReadyRecord(p,a,c)
-        return readStatic(sid,false).binding
+        return readStatic(sid,requireReady).binding
       }
       assertOperation(p)
       let a:TavernSourceApplyIntentV1

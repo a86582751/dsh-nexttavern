@@ -4,6 +4,7 @@ import { eventsOf, surfaceEntries, visibleCompactionCheckpoint, canonicalAssista
 import { importActiveKey } from './roleplay-import.js'
 import type { InheritanceDependencies, InheritanceDecision, InheritanceSession, InheritanceOptions, TruncationBoundaryCarry } from './roleplay-inheritance-types.js'
 import type { DirectorNotes } from '../memory/memory-history.js'
+import type {TavernSourceInheritanceReadyBindingV1} from './roleplay-tavern-source-inheritance-types.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 
 export function createRoleplayInheritance(deps: InheritanceDependencies) {
@@ -19,11 +20,12 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
     }
     st.branchPreparing = (async () => {
       try {
-        let pendingSourceReady:Readonly<Record<string,unknown>>|undefined
+        let pendingSourceReady:Readonly<Record<string,unknown>>|undefined,
+          sourceBinding:TavernSourceInheritanceReadyBindingV1|null|undefined
         const parent = session.header?.parentSession
         if (parent) {
             const meta = cloneBranchRecord(T.branch.get(keyOf(session.id, 'meta')))
-            const sourceBinding=await deps.sourceInheritance?.applyPreparedSourceInheritance(session.id)
+            sourceBinding=await deps.sourceInheritance?.applyPreparedSourceInheritance(session.id)
             // A previous process can die after writing a provisional marker.
             // Existence alone is not an inheritance commit: only the explicit
             // ready marker permits skipping the copy/replay pass.
@@ -213,7 +215,7 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
           // Native may initialize a reserved fresh Session before the worldline
           // attach route. Use the same frozen writer rather than minting a
           // generic meta row that would conflict with that reservation.
-          const sourceBinding=await deps.sourceInheritance?.applyPreparedSourceInheritance(session.id)
+          sourceBinding=await deps.sourceInheritance?.applyPreparedSourceInheritance(session.id)
           if(sourceBinding)pendingSourceReady={lastTurn:0,lastSeq:-1}
           else await T.branch.put(keyOf(session.id, 'meta'), { createdAt: Date.now(), lastTurn: 0, lastSeq: -1 })
         }
@@ -244,7 +246,9 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
                 ? { fixedContextHash: recordSha256(fixed) } : {}) } })
           }
         }
-        deps.sourceInheritance?.assertSourceInheritanceReady(session.id)
+        // A returned binding is closed by its Source owner, either on resume
+        // or by publishSourceInheritanceReady above. Do not rebuild it here.
+        if(!sourceBinding)deps.sourceInheritance?.assertSourceInheritanceReady(session.id)
         st.branchReady = true
       } catch (error) {
         ctx.logger?.warn?.(`roleplay: branch inherit failed for ${session.id}: ${String(error)}`)
