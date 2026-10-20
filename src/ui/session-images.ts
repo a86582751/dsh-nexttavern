@@ -6,10 +6,22 @@ export type SessionImageCandidate = SourceImageCandidateV1
 export type SessionImageCatalog = SourceImageCatalogV1
 export interface SessionImageResource {id: string; name: string; type: string; url?: string}
 export type SessionImageSelection =
-  | {kind: 'source'; resource: SessionImageResource; name: string; url: string; sourceHash: string}
+  | {kind: 'source'; resource: SessionImageResource; name: string; url: string; sourceHash: string; candidateId: string}
   | {kind: 'browser'; owner: object; pageId: string; image: BrowserNativeImageV3; name: string; url: string; candidateId: string}
 export interface SessionBrowserImage {candidateId: string; selection: Extract<SessionImageSelection, {kind: 'browser'}>}
 type ImageUse = 'gallery' | 'background' | 'portrait'
+type DisplayUse = Exclude<ImageUse, 'gallery'>
+type ImagePreferenceStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+interface StaticImagePreference {
+  candidateId: string
+  resource: Pick<SessionImageResource, 'id' | 'name' | 'type'>
+}
+interface ImagePreferencesV1 {
+  schemaVersion: 1
+  sourceHash: string
+  background: StaticImagePreference | null
+  portrait: StaticImagePreference | null
+}
 type ImageLoad = 'loading' | 'ready' | 'failed'
 export interface SessionImagesState {
   sessionId: string | null
@@ -30,9 +42,12 @@ export interface ImagesJsonFetch {
 }
 const emptyLoad = (): Record<ImageUse, ImageLoad> => ({gallery: 'loading', background: 'loading', portrait: 'loading'})
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error)
+const preferenceKey = (sessionId: string) => 'dsh-roleplay-ui.images:v1:' + sessionId
+const resourceUrl = (sessionId: string, resource: SessionImageResource) => resource.url
+  ?? '/api/roleplay/download?sessionId=' + encodeURIComponent(sessionId) + '&resourceId=' + encodeURIComponent(resource.id)
 
 /** One application owner survives Reader mounts; Source identity comes from the catalog. */
-export function createSessionImages(jsonFetch: ImagesJsonFetch) {
+export function createSessionImages(jsonFetch: ImagesJsonFetch, storage?: ImagePreferenceStorage) {
   let state: SessionImagesState = {sessionId: null, opened: false, panelPosition: {left: 16, top: 96},
     catalog: null, browserImages: [], refreshing: false,
     selecting: false, gallery: null, background: null, portrait: null, load: emptyLoad(), error: ''}
@@ -43,17 +58,53 @@ export function createSessionImages(jsonFetch: ImagesJsonFetch) {
   let selectionRequest: object | undefined
   let disposed = false
   let nextBrowserImage = 0
+  let preferences: ImagePreferencesV1 | undefined
   const publish = (patch: Partial<SessionImagesState>) => {
     state = {...state, ...patch}
     for (const listener of listeners) listener()
   }
+  const persistPreferences = () => {
+    if (!state.sessionId) return
+    try {
+      const target = storage ?? globalThis.localStorage, key = preferenceKey(state.sessionId)
+      if (preferences?.background || preferences?.portrait) target?.setItem(key, JSON.stringify(preferences))
+      else target?.removeItem(key)
+    } catch (error) {
+      publish({error: '图片选择已应用，但无法保存浏览器偏好：' + errorText(error)})
+    }
+  }
+  const forgetPreferences = () => {preferences = undefined; persistPreferences()}
+  const rememberUse = (purpose: DisplayUse, image: SessionImageSelection | null) => {
+    if (image?.kind === 'source') {
+      if (preferences?.sourceHash !== image.sourceHash) preferences = {
+        schemaVersion: 1, sourceHash: image.sourceHash, background: null, portrait: null,
+      }
+      const {id, name, type} = image.resource
+      preferences[purpose] = {candidateId: image.candidateId, resource: {id, name, type}}
+    } else if (preferences) preferences[purpose] = null
+    persistPreferences()
+  }
   const clearImages = () => {
     selectionRequest = undefined
+    forgetPreferences()
     publish({gallery: null, background: null, portrait: null, selecting: false, load: emptyLoad()})
   }
   const acceptCatalog = (catalog: SessionImageCatalog) => {
     if (state.catalog?.sourceHash !== catalog.sourceHash) clearSelections(image => image.kind === 'source')
-    publish({catalog})
+    if (preferences && preferences.sourceHash !== catalog.sourceHash) forgetPreferences()
+    const restored: Partial<SessionImagesState> = {}
+    for (const purpose of ['background', 'portrait'] as const) {
+      const saved = preferences?.[purpose]
+      if (!saved || state[purpose]) continue
+      const candidate = catalog.candidates.find(value => value.candidateId === saved.candidateId)
+      if (!candidate || candidate.storage === 'unresolved') continue
+      // Library resource IDs survive app restarts. Remote addresses come from
+      // the current Source catalog; saved preferences never retain a page URL.
+      const resource = {...saved.resource, ...(candidate.storage === 'remote' ? {url: candidate.uri} : {})}
+      restored[purpose] = {kind: 'source', resource, candidateId: saved.candidateId,
+        sourceHash: preferences!.sourceHash, name: candidate.name, url: resourceUrl(state.sessionId!, resource)}
+    }
+    publish({catalog, ...restored})
   }
   function clearSelections(matches: (image: SessionImageSelection) => boolean) {
     const patch: Partial<SessionImagesState> = {}, load = {...state.load}
@@ -107,8 +158,16 @@ export function createSessionImages(jsonFetch: ImagesJsonFetch) {
     setSession(sessionId: string | null) {
       if (state.sessionId === sessionId) return
       pendingRefresh = undefined; refreshAgain = false; selectionRequest = undefined; sourceImport = undefined
+      preferences = undefined
+      let preferenceError = ''
+      if (sessionId) try {
+        const saved = (storage ?? globalThis.localStorage)?.getItem(preferenceKey(sessionId))
+        const value = saved ? JSON.parse(saved) as ImagePreferencesV1 : null
+        if (value?.schemaVersion === 1) preferences = value
+      } catch (error) {preferenceError = '无法读取浏览器中的图片选择：' + errorText(error)}
       publish({sessionId, opened: false, catalog: null, browserImages: [], refreshing: false, selecting: false,
-        gallery: null, background: null, portrait: null, load: emptyLoad(), error: ''})
+        gallery: null, background: null, portrait: null, load: emptyLoad(), error: preferenceError})
+      if (preferences?.background || preferences?.portrait) void refresh()
     },
     acceptState(value: {sessionId?: string; cardImport?: unknown}) {
       if (value.sessionId !== state.sessionId) return
@@ -164,9 +223,7 @@ export function createSessionImages(jsonFetch: ImagesJsonFetch) {
         if (disposed || selectionRequest !== request || state.sessionId !== sid
           || state.catalog?.sourceHash !== catalog.sourceHash) return
         const image: SessionImageSelection = {kind: 'source', resource, name: catalog.candidates.find(candidate => candidate.candidateId === candidateId)!.name,
-          sourceHash: catalog.sourceHash,
-          url: resource.url ?? '/api/roleplay/download?sessionId=' + encodeURIComponent(sid)
-            + '&resourceId=' + encodeURIComponent(resource.id)}
+          sourceHash: catalog.sourceHash, candidateId, url: resourceUrl(sid, resource)}
         publish({gallery: image, load: {...state.load, gallery: 'loading'}})
       } catch (error) {
         if (!disposed && selectionRequest === request && state.sessionId === sid) publish({error: errorText(error)})
@@ -177,8 +234,12 @@ export function createSessionImages(jsonFetch: ImagesJsonFetch) {
     useAs(purpose: 'background' | 'portrait') {
       if (!state.gallery) return
       publish({[purpose]: state.gallery, load: {...state.load, [purpose]: 'loading'}})
+      rememberUse(purpose, state.gallery)
     },
-    clear(purpose: ImageUse) {publish({[purpose]: null, error: ''})},
+    clear(purpose: ImageUse) {
+      publish({[purpose]: null, error: ''})
+      if (purpose !== 'gallery') rememberUse(purpose, null)
+    },
     imageResult(purpose: ImageUse, image: SessionImageSelection, result: ImageLoad) {
       const current = state[purpose]
       if (disposed || !current) return
@@ -189,6 +250,7 @@ export function createSessionImages(jsonFetch: ImagesJsonFetch) {
     },
     dispose() {
       disposed = true; pendingRefresh = undefined; refreshAgain = false; selectionRequest = undefined
+      preferences = undefined
       publish({sessionId: null, catalog: null, browserImages: [], opened: false, refreshing: false, selecting: false,
         gallery: null, background: null, portrait: null, load: emptyLoad(), error: ''})
       listeners.clear()
