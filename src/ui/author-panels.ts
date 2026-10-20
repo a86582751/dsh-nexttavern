@@ -66,6 +66,7 @@ interface AuthorDraft extends PanelDraft {
     beautyCss?: string | null;
     beautyJs?: string | null;
     beautyRules?: string | null;
+    worldbookBudgetTokens?: string | null;
 }
 interface MemoryPolicy {
     defaults: Record<string, number>;
@@ -80,6 +81,9 @@ interface MemoryPolicy {
 }
 export interface AuthorState extends StateReply {
     recordVersions?: RecordVersions;
+    settings?: {
+        worldbookBudgetTokens?: number | null;
+    };
     directorNotes?: {
         text?: string;
     };
@@ -997,6 +1001,7 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
         const [beautyCss, setBeautyCss] = React.useState<string | null>(null);
         const [beautyJs, setBeautyJs] = React.useState<string | null>(null);
         const [beautyRules, setBeautyRules] = React.useState<string | null>(null);
+        const [worldbookBudgetTokens, setWorldbookBudgetTokens] = React.useState<string | null>(null);
         const [saving, setSaving] = React.useState(false);
         const rememberSettings = (patch: PanelDraft) => {
             const prior = sessionDrafts.get(`${sessionId}:settings`);
@@ -1021,7 +1026,8 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
                 ['opening', setOpening],
                 ['beautyCss', setBeautyCss],
                 ['beautyJs', setBeautyJs],
-                ['beautyRules', setBeautyRules]
+                ['beautyRules', setBeautyRules],
+                ['worldbookBudgetTokens', setWorldbookBudgetTokens]
             ] as const)
                 if (draft[key] !== undefined)
                     setter(draft[key]);
@@ -1039,6 +1045,7 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
                 setOpening(data.opening?.text ?? '');
                 setBeautyCss(data.rules?.beauty?.css ?? '');
                 setBeautyJs(data.rules?.beauty?.js ?? '');
+                setWorldbookBudgetTokens(data.settings?.worldbookBudgetTokens?.toString() ?? '');
             }
             if (statusText === null)
                 setStatusText(data.statusSpec?.text ?? '');
@@ -1058,6 +1065,8 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
                 setBeautyCss(data.rules?.beauty?.css ?? '');
             if (beautyJs === null)
                 setBeautyJs(data.rules?.beauty?.js ?? '');
+            if (worldbookBudgetTokens === null)
+                setWorldbookBudgetTokens(data.settings?.worldbookBudgetTokens?.toString() ?? '');
             if (beautyRules === null) {
                 const rr = Array.isArray(data.rules?.beauty?.regexRules) ? data.rules.beauty.regexRules : [];
                 setBeautyRules(rr.length ? JSON.stringify(rr,
@@ -1072,7 +1081,8 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
             setSaving(true);
             try {
                 const draft = sessionDrafts.get(`${sessionId}:settings`);
-                const fields = body.kind === 'status' ? ['statusText'] : body.kind === 'opening' ? ['opening'] : body.beauty ? ['beautyRules',
+                const fields = body.kind === 'settings' ? ['worldbookBudgetTokens'] :
+                    body.kind === 'status' ? ['statusText'] : body.kind === 'opening' ? ['opening'] : body.beauty ? ['beautyRules',
                      'beautyCss',
                      'beautyJs'] : [
                     ...(body.core !== undefined ? ['core'] : []),
@@ -1108,7 +1118,22 @@ export function createAuthorPanels({ React, sessionDrafts, fetchState, invalidat
         });
         return React.createElement(PanelShell, {
             title: '自定义规则', visible, sessionId, error, refresh
-        }, React.createElement('h4', null, '状态栏设定（正文后生成状态栏的格式）'), ta(statusText, value => {
+        }, React.createElement('h4', null, '世界书自动注入预算'),
+        React.createElement('p', null, '留空或填 0 使用默认 2048 tokens。提高预算可容纳更多条目，也会增加模型输入和费用；从下一次生成起生效。'),
+        React.createElement('input', {
+            type: 'number', min: 0, max: 10000000, step: 1,
+            'aria-label': '世界书自动注入总预算',
+            value: worldbookBudgetTokens ?? '',
+            onChange: (e: ReactAPI.ChangeEvent<HTMLInputElement>) => {
+                setWorldbookBudgetTokens(e.target.value);
+                rememberSettings({ worldbookBudgetTokens: e.target.value });
+            }
+        }), React.createElement('div', { className: 'dsh-rp-row' },
+        btn(saving ? '…' : '保存世界书预算', () => save({
+            kind: 'settings', worldbookBudgetTokens: worldbookBudgetTokens ?? '',
+            expectedRevision: data?.recordVersions?.settings ?? 'missing'
+        }, '世界书预算已保存'), { disabled: saving })),
+        React.createElement('h4', null, '状态栏设定（正文后生成状态栏的格式）'), ta(statusText, value => {
             setStatusText(value);
             rememberSettings({
                 statusText: value

@@ -21,7 +21,7 @@ import type {TavernPromptMacroSnapshotV1} from './tavern-prompt-transform-types.
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 
 /** Native has no ST global settings store. Archived character-book settings
- * remain importer metadata; both consumers use this explicit content policy. */
+ * remain importer metadata; absent session overrides use this content policy. */
 export const TAVERN_NATIVE_PROMPT_SETTINGS_V1:Readonly<TavernLoreFrozenSettingsV1>=Object.freeze({
   policy:'owned-st-single-book-scan-feedback-v1',provenance:'explicit-native-fallback-v1',
   caseSensitive:false,matchWholeWords:false,scanDepth:2,useGroupScoring:false,recursiveScanning:true,
@@ -32,6 +32,14 @@ export const TAVERN_NATIVE_PROMPT_SETTINGS_V1:Readonly<TavernLoreFrozenSettingsV
 
 type Render=Awaited<ReturnType<typeof prepareRoleplayTavernRenderCatalogV1>>
 type SourceData=Exclude<ReturnType<typeof captureRoleplayTavernPromptSourceDataV1>,{kind:'outside-declared-domain'}>
+/** The settings owner admits the value; Source has already captured that row.
+ * Both consumers freeze the same effective budget without reading live state. */
+export function resolveCapturedTavernPromptSettingsV1(source:SourceData['source']):Readonly<TavernLoreFrozenSettingsV1> {
+  const row=source.current.rows.find(row=>row.ref.table==='branch'&&row.ref.key===
+    `${source.sessionId}__settings`),budget=row?.value?.worldbookBudgetTokens as number|null|undefined
+  return budget==null?TAVERN_NATIVE_PROMPT_SETTINGS_V1:
+    {...TAVERN_NATIVE_PROMPT_SETTINGS_V1,provenance:'actual-runtime-settings',budgetTokens:budget}
+}
 type ScopeData=ReturnType<typeof captureRoleplayTavernPromptScopesV1>
 type RenderInput=Parameters<typeof prepareRoleplayTavernRenderCatalogV1>[0]
 /** A caller with an additional captured evaluation domain supplies both

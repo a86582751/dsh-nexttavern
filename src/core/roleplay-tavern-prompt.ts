@@ -31,6 +31,7 @@ import {validateTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
 import type {TavernLoreFrozenSettingsV1,TavernLoreFrozenSnapshotV1,
   TavernLoreVisibleMessageV1} from './tavern-lore-evaluator-types.mjs'
 import {createRoleplayTavernTokenCountV1} from './roleplay-tavern-token-count.js'
+import {resolveCapturedTavernPromptSettingsV1} from './roleplay-tavern-content.js'
 import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
 import {produceRoleplayTavernLayoutV1,TAVERN_NATIVE_OWNED_SECTION_NAMES_V1} from './roleplay-tavern-layout.js'
 import type {AdmittedTavernTemplateComponentV1} from './roleplay-tavern-template-assets.js'
@@ -329,7 +330,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       const bindings=[...scopeData.bindings,...[variables.packet.initial,variables.packet.cache]
         .flatMap(value=>value.kind==='bound'?[value.binding]:[])]
       render.bindVariableScopes(bindings)
-      const tokenCount=createRoleplayTavernTokenCountV1(assertSignal,scope.signal),settings=TAVERN_NATIVE_PROMPT_SETTINGS_V1,
+      const tokenCount=createRoleplayTavernTokenCountV1(assertSignal,scope.signal),settings=resolveCapturedTavernPromptSettingsV1(source),
         context=source.current.openingContext.context
       if(typeof context.user!=='string'||typeof context.char!=='string')fail('INPUT_MATERIAL_OPENING_NAMES_UNAVAILABLE')
       const visibleMessages:TavernLoreVisibleMessageV1[]=[...chatClock.scanRows].reverse().map(row=>{

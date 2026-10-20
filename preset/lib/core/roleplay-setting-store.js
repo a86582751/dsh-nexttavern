@@ -128,6 +128,12 @@ export async function savePanelSetting({ ctx, T, recordVersionsFor, svc, RULE_TE
                         throw new Error(`${field} 必须为至少 1000 的整数；0 或 null 表示继承全局值`);
                     patch[field] = value || null;
                 }
+            if (body.worldbookBudgetTokens !== undefined) {
+                const value = body.worldbookBudgetTokens === null ? 0 : Number(body.worldbookBudgetTokens);
+                if (!Number.isSafeInteger(value) || value < 0 || value > 10_000_000)
+                    throw new Error('worldbookBudgetTokens 必须为 0 到 10000000 的整数；0 或 null 表示使用默认值');
+                patch.worldbookBudgetTokens = value || null;
+            }
             await svc.setSettings(session.id, patch);
         }
         else if (kind === 'status') {

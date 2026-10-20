@@ -7,7 +7,7 @@ import { captureReadonlyAuthorDialogChatClockV1 } from './roleplay-tavern-chat-c
 import { captureRoleplayTavernMaterialHistoryV1 } from './roleplay-tavern-material-history.js';
 import { captureRoleplayTavernTimedHistoryV2 } from './roleplay-tavern-lore-timed-lineage.js';
 import { produceRoleplayTavernMacroSnapshotV1, captureRoleplayTavernScopedRegexV1 } from './roleplay-tavern-prompt-macros.js';
-import { prepareRoleplayTavernContentV1, produceTavernPromptVariableRefV1, TAVERN_NATIVE_PROMPT_SETTINGS_V1 } from './roleplay-tavern-content.js';
+import { prepareRoleplayTavernContentV1, produceTavernPromptVariableRefV1, resolveCapturedTavernPromptSettingsV1 } from './roleplay-tavern-content.js';
 import { ST_LORE_ENTRY_DEFAULTS_V1 } from './tavern-lore-fixed-profile.mjs';
 import { AUTHOR_DIALOG_HOST_SLOTS_V1, freezeAuthorDialogPromptV1 } from './roleplay-author-dialog.js';
 export const AUTHOR_DIALOG_CONTENT_POLICY_V1 = Object.freeze({ schemaVersion: 1,
@@ -72,7 +72,7 @@ export function createRoleplayAuthorDialogContentV1(deps) {
         try {
             read.assertCurrent();
             const { captured, scopeData, clock, timed, binding, authorChat, includeCardStyle, contentExecution } = read.data, { source, compilation } = captured, assertCurrent = () => { read.assertCurrent(); contentExecution?.assertCurrent(); }, attemptId = `author-dialog:${operationId}`, seed = recordSha256({ policySha256, operationId,
-                sourceSha256: source.sourceSha256, scopeEvidence: scopeData.evidence, authorChat: authorChat.captureSha256 }), clockEpochMs = Date.now(), settings = TAVERN_NATIVE_PROMPT_SETTINGS_V1, declaredOutlets = compilation.plan.entries.flatMap(entry => {
+                sourceSha256: source.sourceSha256, scopeEvidence: scopeData.evidence, authorChat: authorChat.captureSha256 }), clockEpochMs = Date.now(), settings = resolveCapturedTavernPromptSettingsV1(source), declaredOutlets = compilation.plan.entries.flatMap(entry => {
                 const semantic = { ...ST_LORE_ENTRY_DEFAULTS_V1, ...entry.semanticOverrides };
                 return semantic.position === 'named-outlet' && semantic.outletName ? [semantic.outletName] : [];
             });
