@@ -761,12 +761,13 @@ def execute_player_worldline(args, plan, call):
         if main and main.get('provider') and main.get('model'):
             call(rpc('session/selectModel', {'sessionId': child, **{k: main[k] for k in ['provider', 'model', 'reasoningEffort'] if main.get(k)}}))
         text = text_input(args) if args.command == 'edit-send' else prepared['promptText']
-        call(rest('branch',
+        registered = call(rest('branch',
                  {'action': 'register',
                      'operationId': prepared['operationId'],
                      'childSessionId': child,
                      'requestId': progress['requestId'],
                      'promptText': text}))
+        text = registered['promptText']
         result = call(rpc('session/prompt',
                  {'sessionId': child,
                      'requestId': progress['requestId'],
