@@ -1,5 +1,12 @@
 # Changelog
 
+## 文档 — Native 原生卡与高级人物功能边界 — 2026-10-21
+
+- 更新 [0.3 开发日志](DEVELOPMENT-0.3.md)，说明显式转换、原生作者卡、原件／当前设定两种导出、DOCX 来源和高级人物资料的开发进展。
+- 明确部分动态规则的角色协作限制及受控验证范围；普通剧情继续读取原卡。完整玩法与分类质量仍在验证，不发布 0.3、npm 包或更新运行服务。
+
+English: Document development progress for explicit Native conversion, authoring, original-file exports, DOCX provenance and advanced character material. Disclose partial dynamic-rule limitations and scoped validation; this documentation update does not release 0.3 or deploy a service.
+
 ## 0.2.9-rc.4 — Issue #17 上下文容量与恢复修复 — 2026-10-19
 
 rc.4 是 GitHub 与 npm latest，延续 rc.3 安装／就绪修复和慢模型首响应配置。
