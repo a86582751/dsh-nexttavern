@@ -1,6 +1,8 @@
 // Generated from runtime/alpha3/src/core/tavern-telemetry-fold.ts; edit the TypeScript source.
 import { sessionEvents } from './session-history.js';
 import { createHash } from 'node:crypto';
+import { textOf } from './roleplay-data.js';
+import { inlineTaskEnvelope } from './tavern-task-context.js';
 import { normalizeUsage as usageOf, failureText as reasonText, telemetryOutcome as outcome } from './tavern-telemetry-normalize.js';
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const events = (session) => sessionEvents(session);
@@ -9,6 +11,7 @@ const events = (session) => sessionEvents(session);
 export function foldSessionCalls(session) {
     const out = [], seed = Number(session.inheritedEventCount ?? 0);
     let current = null, route = {}, phase = 'narrative';
+    let taskPhase = [];
     const finish = (time, status, error) => { if (!current)
         return; if (time != null) {
         current.completedAt = time;
@@ -20,6 +23,8 @@ export function foldSessionCalls(session) {
         if (typeof e.time !== 'number' || !Number.isFinite(e.time))
             continue;
         const d = e.data ?? {};
+        if (e.type === 'turn/start' || e.type === 'turn/end')
+            taskPhase = [];
         if (e.type === 'compaction/summary' && d.usage && !d.nativeTask && e.seq >= seed)
             out.push({ schemaVersion: 1, id: hash([session.id, 'compaction', d.compactionId ?? e.seq]), sessionId: session.id, ownerSessionId: session.id, kind: 'compaction', provider: d.provider ?? null, model: d.model ?? null, status: 'completed', startedAt: e.time, completedAt: e.time, durationMs: null, firstTokenMs: null, usage: usageOf(d.usage), source: { kind: 'compaction-summary', sessionId: session.id, startSeq: e.seq, evidenceSeq: e.seq } });
         if (e.type === 'request/header') {
@@ -40,14 +45,30 @@ export function foldSessionCalls(session) {
             if (e.seq >= seed)
                 out.push(current);
         }
+        if (e.type === 'user/message' && d.source?.kind === 'roleplay-tasks'
+            && d.source.form === 'phase' && d.source.schemaVersion === 1) {
+            // Later steps can submit the remainder of the same durable Core phase.
+            // Retain its identities until replacement or the turn boundary; this
+            // accounting never recovers a live task grant or consults pending jobs.
+            taskPhase = [];
+            try {
+                const tasks = inlineTaskEnvelope(textOf(d.content));
+                if (Array.isArray(tasks))
+                    taskPhase = tasks;
+            }
+            catch { }
+        }
         if (!current)
             continue;
         current.source.evidenceSeq = e.seq;
         if (e.type === 'tool/call' && ['rp_task_read', 'rp_task_submit'].includes(d.name)) {
             try {
                 const args = (typeof d.arguments === 'string' ? JSON.parse(d.arguments) : d.arguments);
-                if (typeof args?.id === 'string' && /^[a-f0-9]{64}$/.test(args.id))
-                    current.source.taskIds = [...new Set([...(current.source.taskIds ?? []), args.id])];
+                const matches = d.name === 'rp_task_submit' && (args?.kind === 'status' || args?.kind === 'decision')
+                    ? taskPhase.filter(task => task?.kind === args.kind) : [];
+                const id = args?.id ?? (matches.length === 1 ? matches[0].id : undefined);
+                if (typeof id === 'string' && /^[a-f0-9]{64}$/.test(id))
+                    current.source.taskIds = [...new Set([...(current.source.taskIds ?? []), id])];
             }
             catch { }
         }
