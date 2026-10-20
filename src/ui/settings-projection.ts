@@ -18,9 +18,8 @@ export function sortLibraryResources<R extends LibraryResource>(resources: reado
 export const MODEL_PURPOSE_IDS = Object.freeze(['memory', 'card-import', 'card-export', 'status', 'decision', 'novel-export'])
 
 export function buildModelSettings(allMain: unknown, routes?: Record<string, Route | null> | null) {
-  const normalized: Record<string, Route | null> = {}
-  for (const id of MODEL_PURPOSE_IDS) {
-    const route = routes?.[id]
+  const normalized: Record<string, Route | null> = Object.fromEntries(MODEL_PURPOSE_IDS.map(id => [id, null]))
+  for (const [id, route] of Object.entries(routes ?? {})) {
     normalized[id] = route && typeof route.provider === 'string' && typeof route.model === 'string'
       ? { provider: route.provider, model: route.model, ...(route.reasoningEffort ? { reasoningEffort: route.reasoningEffort } : {}) }
       : null

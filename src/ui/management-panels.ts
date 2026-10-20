@@ -9,7 +9,6 @@ import {
     buildReasoningEffortOptions,
     sortLibraryResources,
     isCardReadableResource,
-    MODEL_PURPOSE_IDS,
 } from './settings-projection.js';
 const errorMessage = (error: unknown) => error && typeof error === 'object' && 'message' in error ? error.message : error;
 export interface ModelRoute {
@@ -468,10 +467,8 @@ export function createManagementPanels({
             onChange: (e: ReactAPI.ChangeEvent<HTMLInputElement>) => rememberModel(e.target.checked, routes)
         }), '全部使用主模型（保留用途配置）'), React.createElement('div', {
             className: 'dsh-rp-muted'
-        }, `当前主模型：${data.main?.model ?? data.effective?.main?.model ?? '未设置'}`), MODEL_PURPOSE_IDS.map(id => {
-            const purpose = (data.purposes ?? []).find(p => p.id === id) ?? {
-                id, label: id
-            };
+        }, `当前主模型：${data.main?.model ?? data.effective?.main?.model ?? '未设置'}`), (data.purposes ?? []).map(purpose => {
+            const id = purpose.id;
             const current = routes[id] ?? null;
             const model = catalog.find(route => route.provider === current?.provider && route.model === current?.model);
             const effortOptions = buildReasoningEffortOptions(model, current?.reasoningEffort);
