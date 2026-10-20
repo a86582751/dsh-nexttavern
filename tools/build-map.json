@@ -43590,6 +43590,1296 @@
         "id": "public-docs-site-art-character-atlas-night",
         "source": "site/art/character-atlas-night.webp",
         "canonicalSource": "release/public/site/art/character-atlas-night.webp"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c693279643b8cd5d2481",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-53337bf7ea91d782c573",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/NOTICE.md",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/NOTICE.md"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ddae27dcc4b6517292d7",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/assets/emscripten-module.wasm",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/assets/emscripten-module.wasm"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-8304f28009f74edb89c3",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/assets/runtime.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/assets/runtime.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c1399fa3f0647f003493",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/assets/source-inputs.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2f7e8cbbeed3b55af446",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/dist/browser-ast-worker.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/dist/browser-ast-worker.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-1fa27a11644a040f25b6",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/dist/browser-execution-worker.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/dist/browser-execution-worker.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2bf70ead4f52d013ec9f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/dist/index.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2eac44951531147c8ee2",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/lib/tavern-author-browser-provider.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/lib/tavern-author-browser-provider.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-fbd41185954c23b7d7bb",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/licenses/css-tree-LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/licenses/css-tree-LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-f5a781c4ba4c8fb954bf",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/licenses/entities-LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/licenses/entities-LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e90ede5abbf4db098d87",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/licenses/mdn-data-LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/licenses/mdn-data-LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-07b62a14163ff1bcd3b0",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/licenses/parse5-LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/licenses/parse5-LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b8887b862ecf99f242bf",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/licenses/source-map-js-LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/licenses/source-map-js-LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ba4ea2ca76851b9803fb",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-9a51f2f624c37937586e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/README.md",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/README.md"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-75454d55dff3857bb3b6",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.d.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.d.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d9aa77bfb251c9697c1f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-961ba1387e1c208d5244",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-fb679be9e447eaee7544",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.js.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.js.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ff4be0e9a30c179be496",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-661cfed26392c5772f92",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.mjs.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/dist/index.mjs.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d6123682e15a4f87cce3",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/package.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-ffi-types/package.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-547614d937d099b9e55e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e96d60f9a9dfc2e2f754",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/README.md",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/README.md"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-502468477bf05ef4f90d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.browser.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.browser.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-bc00241ef15d8bee426b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.browser.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.browser.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b93a5d3bb9ae5813fa1a",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.cjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.cjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e8fe36251adc4921b0ce",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.cloudflare.cjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.cloudflare.cjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-24f9f3afab49505f069e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.cloudflare.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.cloudflare.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-6183cfe64682e8d8c03d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-f6ac6cd96c688b9a68db",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c7fe2a087c1d25a90d1f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.wasm",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/emscripten-module.wasm"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-8fdb7556174b4bf108fe",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.d.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.d.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d68a37e8a60a93262357",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b6848eb7a11692a40e79",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-82cd54239bf6f91cc2e5",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.js.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.js.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-54289cc218f3f5d0625a",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-602ea401b976b5e7cdca",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.mjs.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/ffi.mjs.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-3a8a937fce4b4e4798e9",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.d.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.d.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4b98e737c32a1c917f57",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-1d158f4b1806fd6c01b8",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e693e3861d47c18af7b2",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.js.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.js.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-19a371d38ad1619b843b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ff53e0ca7bba9ed5b194",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.mjs.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/dist/index.mjs.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-1248ddf05f6732a73a29",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/package.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/@jitl/quickjs-wasmfile-release-asyncify/package.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2ca10002dade257e6a0d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-12f6e5ee3dc25176e17b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/README.md",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/README.md"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c31abae5f596c0d87703",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/README.template.md",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/README.template.md"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4f5d5439921c34a9d41b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-5c19e91364944e11c3d8",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/chunk-TAV5CUKK.mjs.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e1d8eb4a0f21c9753f59",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b0751f29626aa1c1a052",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/chunk-V2S4ZYJR.mjs.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e8c0be2beaef0216ac89",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.d.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.d.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-135d6697d8c6513fdc6f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-f00f8fc022b898ff9249",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e50f23e4d064027c585a",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.js.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.js.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4b3930c3ed089d933a3e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-11ad045dadc465707169",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.mjs.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/index.mjs.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d66a5bfeaaf9c136f95f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-0c033da4221cdcbaeef1",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/module-ES6BEMUI.mjs.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-daf5cc03822154882b28",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d3e09e880db89db771cf",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs.map",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/dist/module-asyncify-2EFITU5U.mjs.map"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ed70109a37844df75303",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/package.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/quickjs-emscripten-core/package.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-0c825781d71ef3230ebd",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/LICENSE.txt",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/LICENSE.txt"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-5dc91ef7dc3a054b6db7",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/README.md",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/README.md"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-3e45c668659acc59ad22",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/SECURITY.md",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/SECURITY.md"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-234661300eed1676a707",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/ThirdPartyNoticeText.txt",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/ThirdPartyNoticeText.txt"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-f272a676b5f7170ca569",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/bin/tsc",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/bin/tsc"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ae6ed32091c40c895b23",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/bin/tsserver",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/bin/tsserver"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ae3080a81cd0bf9a05f0",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/_tsc.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/_tsc.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-3fc2e3268bd3d4bd810d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/_tsserver.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/_tsserver.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-899c9f04b5ff57f31573",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/_typingsInstaller.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/_typingsInstaller.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e49bc5467800555c0ccf",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/cs/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/cs/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-22d1eb951b013f31e451",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/de/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/de/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-0aa5363d803a0a1f0c3b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/es/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/es/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-84b8c52f3805cd41ab20",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/fr/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/fr/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-679c1ce5d6b9ac9442e4",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/it/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/it/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2ec93fedfa0fe3472516",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/ja/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/ja/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-6e0a9b72bd8810935757",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/ko/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/ko/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-8b528a80d05cb41312f0",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-86c0799d9ca7d1c76e4c",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.decorators.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.decorators.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-27efd8aca16b3632da21",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.decorators.legacy.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.decorators.legacy.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-878d2989aa10efbab975",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.dom.asynciterable.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.dom.asynciterable.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-505512065a5046791c16",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.dom.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.dom.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-1d83b166e62fa03257dd",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.dom.iterable.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.dom.iterable.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-8c3e3192c77de1f53744",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.collection.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.collection.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-1a95a320764a2729a9a3",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.core.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.core.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-73ae438c4df3710d71e7",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-826cd90d41d6acddfc7a",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.generator.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.generator.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ed0eadca7970a013871e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.iterable.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.iterable.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-f2d63b7c910f0252710e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.promise.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.promise.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-7297d41a18154686fa50",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.proxy.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.proxy.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-aa47241daac493d89ac1",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.reflect.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.reflect.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-39a455bfdf285e926a1d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.symbol.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.symbol.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-250b562afc6946821863",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.symbol.wellknown.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2015.symbol.wellknown.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-a9f2f43480954e697f06",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2016.array.include.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2016.array.include.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-f8ad06fd512e7cf3fd35",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2016.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2016.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-9af50b05a9a6fe536bae",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2016.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2016.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4de6ec11efcd7a63f39c",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2016.intl.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2016.intl.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-5311fc595b72da454749",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.arraybuffer.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.arraybuffer.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-7200c71903c525f2c2c5",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-a12499f420b9f4820531",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.date.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.date.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-a296da8d9ec85fd07f86",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-0b7d04f961bb2f740250",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.intl.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.intl.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-a3156115e365e7f57285",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.object.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.object.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-cb3ba06fb8ab49b9ae94",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.sharedmemory.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.sharedmemory.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b2a31d3e0df081aaacb5",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.string.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.string.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b1de2f52416a232639a8",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.typedarrays.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2017.typedarrays.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-9ff6dc9babc12c6e88c1",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.asyncgenerator.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.asyncgenerator.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-7a155561942c05b0d89d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.asynciterable.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.asynciterable.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-f2d2f972101f77a38e92",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b0b492f1ae94f8ccf400",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-1bf5fb62778e43accb97",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.intl.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.intl.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c446afdc40bd1dacfe2e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.promise.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.promise.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-75c1358688133ea9092e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.regexp.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2018.regexp.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ffc02db053fea19c0dbf",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.array.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.array.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-f71b1afe843fc5fc0150",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4a260341587521fdd430",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d6498f5f6fadef730180",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.intl.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.intl.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-23becd2aea7e0eb569e1",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.object.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.object.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-98f8ada9cebdb293b16d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.string.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.string.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d90a46863dd17e3e7b1b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.symbol.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2019.symbol.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-88ec50a90a833d1595ff",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.bigint.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.bigint.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-3459ad538e04b276ee06",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-da46883b6456e47353f3",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.date.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.date.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4cf94f4ea4a748542179",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4d129e81266b6fdf0a63",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.intl.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.intl.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-df7c0c8a61b0f2f0a37b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.number.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.number.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d71214d037dba704b0fd",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.promise.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.promise.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c67a22634a0357a98e79",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.sharedmemory.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.sharedmemory.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b9cd284bf85378235ae5",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.string.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.string.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-a485ef4e4ebbe09916d5",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.symbol.wellknown.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2020.symbol.wellknown.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-8a8a1702d660af314b5b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-6f6d59ec0d2c87ab4ece",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-67c68a688fdeef414a8c",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.intl.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.intl.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-06f2b4c1d62dad41a2e1",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.promise.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.promise.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-89acaaeec504130c735f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.string.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.string.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4779433a6e522d9f41ad",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.weakref.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2021.weakref.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-a94d408a4c2e937cf5c5",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.array.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.array.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-0d0b7fd25d5ff4e12d6a",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-79ab26f02f223289c1bc",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.error.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.error.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2748bad2d71cf847bdcf",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-cce561225316b53ed708",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.intl.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.intl.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ce6990a62d3efec44d72",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.object.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.object.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d544e962f02953475f7b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.regexp.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.regexp.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-7d8de681459f1bf142ce",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.string.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2022.string.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-3eacf09f1a6f4f1dc42e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.array.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.array.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-30d915ad8a2240b20e16",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.collection.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.collection.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2696e5f6ddcfae65f3ab",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-f3c4b8621b784a188674",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-25036606b61770683107",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.intl.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2023.intl.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ad7afb895938952dcd2a",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.arraybuffer.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.arraybuffer.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-12016a21bf6f7c753f2a",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.collection.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.collection.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e0ca3a535520acdd03cf",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4ab6106fb239a9bb3a2a",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4a5825d5ddcbad9da7c4",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.object.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.object.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e443296bc37c330a7416",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.promise.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.promise.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ede77f17fede82305889",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.regexp.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.regexp.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c1dd1df87e96fb592229",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.sharedmemory.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.sharedmemory.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d3302304f183eecf179c",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.string.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es2024.string.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-a2abca410979afdcecbb",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es5.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es5.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c1b1ade6badeb7a36010",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es6.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.es6.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b62ca5ccd3f94f0097d5",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.array.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.array.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b88a97295a979cb99a10",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.collection.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.collection.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-9ead1f15b730601bcd77",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-226e5b952cf037f4cc1c",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.decorators.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.decorators.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-9cc8281dffdd69412db1",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.disposable.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.disposable.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-1e3f0370e9a1880db5d6",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.error.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.error.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-056373cb8c12abda914b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.float16.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.float16.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-586d060a4ee5b40188d3",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.full.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.full.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2401a92b70a44504d303",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.intl.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.intl.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-b94fc4c7b3e01ca787ab",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.iterator.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.iterator.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-3c89c8e22fc523e70d58",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.promise.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.promise.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c7a4370db1a26474c28b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.sharedmemory.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.esnext.sharedmemory.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-96349e878e6f51e70559",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.scripthost.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.scripthost.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d392f1e00bf3f513da81",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.webworker.asynciterable.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.webworker.asynciterable.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-327ff81db87802db3756",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.webworker.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.webworker.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ec57ae7f8ba83b6d0649",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.webworker.importscripts.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.webworker.importscripts.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-64e77a0dee358d3319d3",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.webworker.iterable.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/lib.webworker.iterable.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c55dc3a1bfde1459adaf",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/pl/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/pl/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e0fa8591ac991f9d834c",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/pt-br/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/pt-br/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-81f40b776a03e0e1f153",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/ru/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/ru/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-96f2452148ad487e8249",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tr/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tr/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d47aa9292819faecd0cd",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tsc.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tsc.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-486260e838b37291e028",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tsserver.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tsserver.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-cc1d2189a4a1498f5bd9",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tsserverlibrary.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tsserverlibrary.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ef8d24e12be61dc2da44",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tsserverlibrary.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/tsserverlibrary.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-8e55f5549fda40378e2d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/typesMap.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/typesMap.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-6f250794764ef4b18eaa",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/typescript.d.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/typescript.d.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-e02527242a6654577e40",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/typescript.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/typescript.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-65decbe925f29f7e1638",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/typingsInstaller.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/typingsInstaller.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-0570d8160d065a55fdea",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/watchGuard.js",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/watchGuard.js"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-a331c55443bb4ce06db2",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/zh-cn/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/zh-cn/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-10ef1a335156c55e7b62",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/zh-tw/diagnosticMessages.generated.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/lib/zh-tw/diagnosticMessages.generated.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d5ca89ed665a70b6714f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/package.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/vendor/typescript/package.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-package-json",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/package.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/package.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-20dcf4706e67e98aa252",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/roleplay-data.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/roleplay-data.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-048cbf96525300087b4f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/roleplay-userinfo.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/roleplay-userinfo.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-8f5290ad1a64c4e85461",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-adapter-v2.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-adapter-v2.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-3c4197a6f5d882d4ef4f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-adapter-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-adapter-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-0329372ffad265dce323",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-artifact-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-artifact-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2c318b8fdf0d8bfc6723",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-ast-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-ast-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-0173e0c4945a6ac60ea6",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-ast-worker-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-ast-worker-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-960bd99f88316f394804",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-attachment-worker-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-attachment-worker-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-d3950ff3c2f2fc428d21",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-budget.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-budget.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-40976504302c29c1e8ec",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-compiler-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-compiler-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-475a3006f365be7c4111",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-descriptor-v2.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-descriptor-v2.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-ddb2512c8eeb332be928",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-descriptor-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-descriptor-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c0d5d2403a57cabaf5ee",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-execution-worker-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-execution-worker-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-70d476f1f951cb3c5456",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-page-guest-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-page-guest-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-2663d519bd1a962908e4",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-page-worker-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-page-worker-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-4e67fe2312a5f2bb0237",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-partition-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-partition-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-be4b6bab4721cad0b819",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-profile-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-profile-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-45a3ff23cd8303257603",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-renderer-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-renderer-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-9d58c905d8f3fac010ac",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-source-guest-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-browser-source-guest-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-8692d2156abda80c6e30",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-html-compiler-v1.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-author-html-compiler-v1.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-c1d7896307ad41f36b87",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-display-html.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/core/tavern-display-html.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-browser-bc04bdcf47839de9ecb3",
+        "source": "development/history/reader-regex-document-predecessor-20261020/browser/src/tavern-author-browser-provider.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/browser/src/tavern-author-browser-provider.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-c693279643b8cd5d2481",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/LICENSE",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/LICENSE"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-53337bf7ea91d782c573",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/NOTICE.md",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/NOTICE.md"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-c1399fa3f0647f003493",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/assets/source-inputs.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-2bf70ead4f52d013ec9f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/dist/index.mjs"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-package-json",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/package.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/package.json"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-20dcf4706e67e98aa252",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-data.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-data.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-34faeff571516759f9ed",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-schema-executor-types.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-schema-executor-types.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-ce1ad63033a8892ab86d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-schema-journal.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-schema-journal.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-e88420ea43ec09ed8f71",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-schema-replay.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-schema-replay.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-7cdb93853c1c4e40663b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-update-v2.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-update-v2.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-0d8b63587dcde0001d0b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-update.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-mvu-update.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-048cbf96525300087b4f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-userinfo.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/roleplay-userinfo.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-f4c5140bdb3c7efe465e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-artifact-v2.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-artifact-v2.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-d3950ff3c2f2fc428d21",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-budget.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-budget.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-fa07f53b01dd175d08ae",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-child-v2.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-child-v2.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-1c105adff842708a2a92",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-compiler-v2.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-compiler-v2.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-475a3006f365be7c4111",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-descriptor-v2.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-descriptor-v2.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-a2829f1c01523baa229e",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-profile-v2.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-profile-v2.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-b574550c57d00cf4114d",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-source-projection-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-browser-source-projection-v3.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-d5bea7c06ab8a5f9994b",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-compiler-v6.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-compiler-v6.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-97716faca383c3131274",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-data-v5.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-data-v5.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-5da7d7fc263d38f94fdf",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-data-v6.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-data-v6.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-0dfeef32283c2f9aa7c0",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-data.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-data.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-87e73c459df71651b8be",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-types-v6.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-combined-types-v6.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-ff7a6e2e78b1a32ef16a",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-host-provider.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-host-provider.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-2decd8c3ea30a3f94748",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-prompt-data.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-prompt-data.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-7e1d6b744aeff18c69a9",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-prompt-profile.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-author-prompt-profile.mts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-c1d7896307ad41f36b87",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-display-html.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-display-html.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-00a400ca943e7779cf75",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-data.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-data.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-8b58f2788db25c36043f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-import-policy.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-import-policy.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-3f83a131e2816124e140",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-program-v4.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-program-v4.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-e63a97e13350fa459080",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-runner-v2.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-runner-v2.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-32a6d447332096ddc8a9",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-runner-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-runner-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-b98e99c357c2a1ab68a7",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-runner-v4.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-runner-v4.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-7bcd8871da3fb641ac08",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-types.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-types.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-2134920fab88d4a698f1",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-schema-update-effects-v2.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-7f617186670363687760",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-scope-read-types.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-scope-read-types.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-5689fd13cd4ffa30f005",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-scope-read.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-scope-read.ts"
+      },
+      {
+        "id": "reader-regex-document-predecessor-20261020-host-04de19597076786efc3f",
+        "source": "development/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-predecessor-20261020/host/src/core/tavern-mvu-state-loader-policy-v4.mts"
       }
     ],
     "publicRelease": {
