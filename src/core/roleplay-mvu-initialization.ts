@@ -84,8 +84,8 @@ export interface MvuInitializationDeps {
   table: MvuInitializationTable
   /** Shared source/import owner lock. Do not invoke publish while already holding this non-reentrant lock. */
   withSourceLock<T>(sessionId: string, action: () => Promise<T>): Promise<T>
-  /** Actual activated source/binding currency, independent of the opening intent owner. */
-  isCurrent(identity: MvuOpeningIdentity): boolean
+  /** Completed reads bind the original active source; publication also binds today's rendered context. */
+  isCurrent(identity: MvuOpeningIdentity, lifetime?:'publication'|'completed'): boolean
   /** Synchronously read the durable versioned native-committed/completed opening intent.
    * Match its complete operation/message/source identity, frozen plan and acknowledged native turn.
    * Source currency alone must never authorize a replaced intent to install the session-level head. */
@@ -270,7 +270,7 @@ export function createRoleplayMvuInitialization(deps: MvuInitializationDeps) {
       && deps.isSourceSnapshotCurrent(plan.sourceSnapshot))
   const read = (plan: FrozenMvuOpeningInitialization): MvuInitializationReadiness => {
     try { validatePlan(plan) } catch { return {kind: 'blocked', code: 'RECORD_INVALID'} }
-    if (!deps.isCurrent(plan.identity)) return {kind: 'blocked', code: 'SOURCE_CHANGED'}
+    if (!deps.isCurrent(plan.identity,'completed')) return {kind: 'blocked', code: 'SOURCE_CHANGED'}
     const id = hash(`${plan.identity.sessionId}\0${plan.identity.operationId}\0${plan.planSha256}`)
     const stored = deps.table.get(mvuInitializationEventKey(plan.identity.sessionId, id)) as MvuInitializationEvent | undefined
     if (stored === undefined) return {kind: 'blocked', code: 'EVENT_MISSING'}
@@ -279,7 +279,10 @@ export function createRoleplayMvuInitialization(deps: MvuInitializationDeps) {
       if (!validNative(stored.native, plan.identity) || !same(stored, eventFor(plan, stored.native))) {
         return {kind: 'blocked', code: 'RECORD_INVALID'}
       }
-      if (!current(plan, stored.native.turn) || !deps.isNativeCurrent(stored.native)) {
+      // Reading a sealed opening does not republish its old Source snapshot.
+      // The active opening identity and actual Native span still own this read;
+      // publication below retains the full current Source and fresh-basis gates.
+      if (!deps.isOpeningCurrent(plan, stored.native.turn) || !deps.isNativeCurrent(stored.native)) {
         return {kind: 'blocked', code: 'SOURCE_CHANGED'}
       }
     } catch { return {kind: 'blocked', code: 'RECORD_INVALID'} }
@@ -307,7 +310,6 @@ export function createRoleplayMvuInitialization(deps: MvuInitializationDeps) {
       if (!Number.isSafeInteger(acknowledgedNativeTurn) || acknowledgedNativeTurn <= 0) {
         return {kind: 'blocked', code: 'NATIVE_NOT_COMMITTED'}
       }
-      if (!current(plan, acknowledgedNativeTurn)) return {kind: 'blocked', code: 'SOURCE_CHANGED'}
       if (!current(plan, acknowledgedNativeTurn)) return {kind: 'blocked', code: 'SOURCE_CHANGED'}
       if (found.status !== 'committed' || !validNative(found.receipt, plan.identity)
         || found.receipt.turn !== acknowledgedNativeTurn) {

@@ -191,12 +191,13 @@ function uniqueManual(input) {
  * story/manual association and ordering strict rather than creating a second
  * program-only publication interpretation. */
 function localPublications(input) {
-    const { states, settlements } = input;
+    const { settlements, settlementSnapshots } = input;
     const stories = [], manuals = [];
     for (const settlement of settlements.values()) {
-        const base = states.get(settlement.intent.base.headSha256), result = states.get(settlement.result.headSha256);
-        if (!base || !result)
+        const captured = settlementSnapshots.get(settlement.intent.intentSha256);
+        if (!captured)
             fail('PROMPT_NUMERICAL_RESULT_INVALID');
+        const { base, result } = captured;
         if (settlement.encoding === 'native-mvu-state-publisher-settlement-v1')
             stories.push(story({ settlement, base, result }));
         else
@@ -205,9 +206,7 @@ function localPublications(input) {
     return { stories, manuals };
 }
 export function formatLocalMvuPromptFactsV1(input) {
-    const { genesis, state, states, rows } = input, initial = [...states.values()].find(row => row.revision === 1);
-    if (!initial)
-        fail('PROMPT_NUMERICAL_RESULT_INVALID');
+    const { genesis, state, states, rows, genesisSnapshot: initial } = input;
     const { stories, manuals } = localPublications(input);
     const opening = 'initEvent' in genesis ? genesis.initEvent : undefined;
     const body = { schemaVersion: 1, encoding: 'native-json-prompt-numerical-facts-v1',
@@ -224,8 +223,8 @@ export function formatLocalMvuPromptFactsV1(input) {
     return frozenFacts({ ...body, factsSha256: recordSha256(body) });
 }
 export function formatLocalMvuPromptFactsV2(input) {
-    const { state, states, rows } = input, genesis = validateProgramMvuGenesisFactsV1(input.genesis.programEvent, input.genesis.programHead), event = genesis.programEvent, head = genesis.programHead, plan = event.plan, initial = [...states.values()].find(row => row.revision === 1);
-    if (!equal(genesis, input.genesis) || genesis.sessionId !== state.sessionId || genesis.sourceSha256 !== state.sourceSha256
+    const { state, states, rows } = input, genesis = validateProgramMvuGenesisFactsV1(input.genesis.programEvent, input.genesis.programHead), event = genesis.programEvent, head = genesis.programHead, plan = event.plan, initial = input.genesisSnapshot;
+    if (!equal(genesis, input.genesis) || genesis.sessionId !== state.sessionId
         || !initial || initial.sessionId !== genesis.sessionId || initial.sourceSha256 !== genesis.sourceSha256
         || !equal(initial.currentHead, head) || !equal(initial.values, event.finalValues)
         || initial.valuesSha256 !== event.valuesSha256 || !('encoding' in initial.root)
@@ -400,7 +399,6 @@ export function formatInheritedMvuPromptFactsV2(input) {
     for (const row of programs) {
         const identity = row.source.program.importTuple, key = `${row.ownerSessionId}:${row.canonical.seq}:${row.canonical.versionSha256}`, layer = input.layers.find(item => item.prepared.table === row.archiveProvenance.table
             && item.prepared.key === row.archiveProvenance.key && item.prepared.recordSha256 === row.archiveProvenance.recordSha256), prefix = input.prefixes.find(item => item.ownerSessionId === row.ownerSessionId
-            && item.numericalSourceSha256 === row.numericalSourceSha256
             && item.genesisSnapshotSha256 === row.resultSnapshotSha256 && row.canonical.seq < item.inheritedPrefixLength);
         if (known.has(key) || previous.storyPublications.some(item => item.ownerSessionId === row.ownerSessionId
             && item.canonical.seq === row.canonical.seq && item.canonical.versionSha256 === row.canonical.versionSha256)) {

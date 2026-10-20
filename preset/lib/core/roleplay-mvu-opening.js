@@ -50,8 +50,11 @@ export function createRoleplayMvuOpening(deps) {
             throw Error('PROMPT_TEMPLATE_SOURCE_CHANGED');
         const intentSha256 = recordSha256(raw), previous = templateCaptures.get(sessionId);
         if (previous?.session === session && previous.intentKey === key && previous.intentSha256 === intentSha256) {
-            previous.assertCurrent();
-            return previous;
+            try {
+                previous.assertCurrent();
+                return previous;
+            }
+            catch { /* This operation expired; a new current capture owns the next request. */ }
         }
         const intent = freezePromptTemplateOnlyDataV1(validatePromptTemplateOnlyOpeningIntentV6(raw));
         if (intent.status !== 'completed' || !intent.nativeReceipt)
@@ -108,19 +111,15 @@ export function createRoleplayMvuOpening(deps) {
     async function preflightPromptTemplateRuntime(proof, signal) {
         const saved = validatePromptTemplateOnlySourceProofV1(proof), id = saved.sourceSnapshot.source.sessionId;
         signal?.throwIfAborted();
-        await deps.withSourceLock(id, async () => {
-            if (!promptTemplateSource.current(saved))
-                throw Error('PROMPT_TEMPLATE_SOURCE_CHANGED');
-        });
         if (!deps.promptTemplateRuntime)
             throw Error('PROMPT_TEMPLATE_RUNTIME_REQUIRED');
         // Asset load/Agent material readiness must not hold the Source FIFO. The
         // callback is an actual owner method, not a serialized generation claim.
+        // Pending selection owns Source equality around this await; a retained
+        // completed receipt does not expire when current prompt rows change.
         await deps.promptTemplateRuntime.preflight(runtimeRequest(saved), signal);
         signal?.throwIfAborted();
         await deps.withSourceLock(id, async () => {
-            if (!promptTemplateSource.current(saved))
-                throw Error('PROMPT_TEMPLATE_SOURCE_CHANGED');
             if (!promptTemplateRuntimeCurrent(saved))
                 throw Error('PROMPT_TEMPLATE_PROTOCOL_UNAVAILABLE');
         });
@@ -210,13 +209,13 @@ export function createRoleplayMvuOpening(deps) {
             return { kind: 'blocked', code: 'SCHEMA_OPENING_RECORD_INVALID' };
         }
     }
-    function sourceCurrent(identity) {
+    function sourceCurrent(identity, lifetime = 'publication') {
         try {
             const actual = deps.catalog(identity.sessionId);
             const selected = actual.candidates.find(candidate => candidate.index === identity.index);
             return same(actual.source, identity.source) && selected?.sourcePointer === identity.sourcePointer
                 && selected.sourceSha256 === identity.sourceSha256
-                && sha256(selected.renderedText) === identity.renderedSha256;
+                && (lifetime === 'completed' || sha256(selected.renderedText) === identity.renderedSha256);
         }
         catch {
             return false;
@@ -373,11 +372,11 @@ export function createRoleplayMvuOpening(deps) {
         try {
             const captured = captureTemplateObservation(sessionId);
             if (captured) {
-                const proof = captured.proof;
+                const proof = captured.intent.promptTemplateSourceProof, inventory = captured.proof.sourceSnapshot.scopeInventory;
                 return { kind: 'story', sourceSha256, absenceScopeRef: { kind: 'prompt-template-only-domain',
                         sha256: recordSha256({ schemaVersion: 1, encoding: 'native-prompt-template-only-domain-ref-v1',
                             sourceProofSha256: proof.proofSha256, native: captured.intent.nativeReceipt,
-                            scopeInventorySha256: proof.sourceSnapshot.scopeInventory.inventorySha256 }) } };
+                            scopeInventorySha256: inventory.inventorySha256 }) } };
             }
             const catalog = deps.catalog(sessionId), selectedIntent = observedIntent(catalog.source);
             if (!selectedIntent)
@@ -418,7 +417,7 @@ export function createRoleplayMvuOpening(deps) {
                     headRef: { kind: 'numerical-head', sha256: recordSha256(readiness.head) } } : management(readiness.code);
             }
             if (selectedIntent.mode === 'plain' && selectedIntent.absenceScopeProof) {
-                // Selection owns the completed receipt and Source currency. Author
+                // Selection owns the completed receipt and active import identity. Author
                 // edits supply current prose through history; they do not undo this
                 // plain opening or initialize numerical state.
                 return { kind: 'story', sourceSha256, absenceScopeRef: { kind: 'plain-absence',
@@ -546,7 +545,7 @@ export function createRoleplayMvuOpening(deps) {
                 const body = { schemaVersion: 1, encoding: 'native-prompt-template-only-scope-facts-v1',
                     authority: 'consumer-data-only', sessionId, sourceSha256: observation.sourceSha256, sourceIdentity: intent.source,
                     domainRef: { kind: 'prompt-template-only-domain', sha256: observation.absenceScopeRef.sha256 },
-                    sourceProof: proof, nativeOpening: intent.nativeReceipt, inventory,
+                    sourceProof: intent.promptTemplateSourceProof, nativeOpening: intent.nativeReceipt, inventory,
                     variables: { global: 'readonly-absent', chat: 'readonly-absent', card: 'readonly-absent',
                         script: 'unavailable-no-executing-script', messages: 'readonly-uninitialized-selected-cut' } };
                 const data = freezePromptTemplateOnlyDataV1({ ...body, factsSha256: recordSha256(body) });
@@ -587,7 +586,7 @@ export function createRoleplayMvuOpening(deps) {
                 if (intent?.schemaVersion !== 4 || intent.status !== 'completed' || intent.mode !== 'plain' || !intent.absenceScopeProof)
                     return undefined;
                 const proof = structuredClone(intent.absenceScopeProof), opening = intent.nativeReceipt;
-                if (!opening || !source.current(proof.sourceSnapshot))
+                if (!opening)
                     return undefined;
                 const data = { schemaVersion: 1, encoding: 'native-plain-prompt-scope-facts-v1',
                     authority: 'consumer-data-only', sessionId: id, sourceSha256: observation.sourceSha256,
@@ -597,7 +596,7 @@ export function createRoleplayMvuOpening(deps) {
                 // this record never grants a schema guest or a Native execution cut.
                 const current = () => {
                     const now = readInputObservation(id);
-                    return source.current(proof.sourceSnapshot) && now.kind === 'story'
+                    return now.kind === 'story'
                         && now.sourceSha256 === observation.sourceSha256 && same(now.absenceScopeRef, observation.absenceScopeRef);
                 };
                 return current() ? { data, current } : undefined;

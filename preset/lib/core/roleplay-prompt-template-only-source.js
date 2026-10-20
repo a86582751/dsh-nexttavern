@@ -155,133 +155,135 @@ export function inspectPromptTemplateCurrentRowsV1(source, owned, context) {
 }
 export function createRoleplayPromptTemplateOnlySourceV1(deps) {
     const lore = createRoleplayTavernLoreSourceV1(deps);
+    function produceCaptured(request, captured) {
+        const sessionId = request.catalog.source.sessionId;
+        if (captured.kind !== 'captured-data') {
+            if (captured.kind === 'outside-declared-domain' && captured.code === 'INHERITED_SOURCE_EVIDENCE_MISSING') {
+                fail('PROMPT_TEMPLATE_INHERITANCE_UNPROVEN', '/source/inheritance');
+            }
+            fail('PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN', '/source');
+        }
+        const { source, contributionInput } = captured, record = contributionInput.activeImport;
+        const decoded = readStructuredImportDataV1(record).decoded;
+        // Own author rows use the dynamic program Source domain. Keep this old
+        // NoBook proof and its six-field normalization contract unchanged.
+        if (decoded.format === 'json-nexttavern-v1')
+            return { kind: 'not-applicable' };
+        if (!['json-v2', 'json-v3', 'png-v2', 'png-v3', 'json-nexttavern-v1'].includes(decoded.format) || decoded.document.data !== decoded.data
+            || record.mode === 'merge' || record.mode !== undefined && record.mode !== 'replace'
+            || source.sourceRecordSessionId !== sessionId || Object.hasOwn(source.original.activePointer, 'inheritedFrom')) {
+            if (source.sourceRecordSessionId !== sessionId || Object.hasOwn(source.original.activePointer, 'inheritedFrom')) {
+                fail('PROMPT_TEMPLATE_INHERITANCE_UNPROVEN', '/source/inheritance');
+            }
+            fail('PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN', '/source');
+        }
+        const containsTemplate = PROMPT_TEMPLATE_ONLY_FIELDS_V1.some(field => typeof decoded.data[field] === 'string'
+            && String(decoded.data[field]).includes('<%'));
+        if (!containsTemplate)
+            return { kind: 'not-applicable' };
+        if (Object.hasOwn(decoded.data, 'character_book') || source.original.primary.binding !== 'proven-absence') {
+            fail('PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN', '/data/character_book');
+        }
+        const primary = source.original.primary;
+        validateTavernLoreAbsentSourceReferenceV1({ schemaVersion: 1, encoding: 'st-character-book-source-reference-v1',
+            ownerSessionId: sessionId, sourceRecordSessionId: source.sourceRecordSessionId, importId: record.importId,
+            rawSourceSha256: record.rawSha256, importRecordSha256: source.original.importRecordRef.sha256,
+            sourceSnapshotSha256: source.sourceSha256, documentSha256: source.original.documentSha256,
+            bookPointer: primary.bookPointer, bookValueSha256: primary.bookSha256,
+            sourceFormat: decoded.format === 'json-nexttavern-v1' ? 'nexttavern-character-book'
+                : decoded.format.endsWith('v3') ? 'ccv3-character-book' : 'ccv2-character-book',
+            bookPresence: 'proven-absence', absenceProof: primary.absenceProof });
+        const inventory = readPromptTemplateOnlyScopeInventoryV1(deps, sessionId);
+        const context = source.current.openingContext.context, candidates = compileTavernOpeningCandidates(decoded, context);
+        for (const [name, value] of Object.entries(context))
+            literal(String(value), context, `/openingContext/${escape(name)}`, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
+        const active = source.original.activePointer;
+        const openingSource = { sessionId, importId: record.importId, sourceRecordSessionId: source.sourceRecordSessionId,
+            rawSha256: record.rawSha256, normalizedSha256: record.normalizedSha256, transactionId: source.original.transactionId,
+            coverageSha256: source.original.coverageSha256, pointer: active };
+        const selected = candidates.find(candidate => candidate.index === request.candidate.index);
+        if (!selected || !same(request.catalog, { source: openingSource, candidates }) || !same(request.candidate, selected)) {
+            fail('PROMPT_TEMPLATE_SOURCE_CHANGED', '/selected');
+        }
+        knownKeys(decoded.document, ['spec', 'spec_version', 'data'], '/document');
+        knownKeys(decoded.data, ['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example', 'system_prompt',
+            'post_history_instructions', 'creator_notes', 'tags', 'creator', 'character_version', 'alternate_greetings', 'extensions'], '/data');
+        for (const key of ['spec', 'spec_version'])
+            literal(String(decoded.document[key]), context, `/${key}`, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
+        extension(decoded.data.extensions, '/data/extensions', context);
+        for (const [key, value] of Object.entries(decoded.data)) {
+            if (PROMPT_TEMPLATE_ONLY_FIELDS_V1.some(field => field === key) || ['extensions', 'first_mes', 'alternate_greetings'].includes(key))
+                continue;
+            const texts = key === 'tags' && Array.isArray(value) ? value : [value];
+            for (const text of texts) {
+                if (typeof text !== 'string')
+                    fail('PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN', `/data/${escape(key)}`);
+                literal(text, context, `/data/${escape(key)}`, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
+            }
+        }
+        for (const candidate of candidates) {
+            literal(candidate.rawText, context, candidate.sourcePointer, 'PROMPT_TEMPLATE_OPENING_UNSUPPORTED');
+            literal(candidate.renderedText, context, candidate.sourcePointer, 'PROMPT_TEMPLATE_OPENING_UNSUPPORTED');
+        }
+        const origins = mapPromptTemplateOnlyOriginsV1({ decoded, record, source });
+        let programCount = 0, sourceBytes = 0;
+        for (const field of origins.fields) {
+            if (field.rawText === null)
+                continue;
+            sourceBytes += Buffer.byteLength(field.rawText, 'utf8');
+            for (const part of field.segments) {
+                if (part.kind === 'literal')
+                    literal(field.rawText.slice(part.start, part.end), context, field.sourcePointer, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
+                else {
+                    programCount++;
+                    programDiagnostic(field.rawText.slice(part.program.bodyStart, part.program.bodyEnd), field.sourcePointer);
+                }
+            }
+            for (const part of field.normalizedSegments) {
+                if (part.kind === 'literal')
+                    literal(field.normalizedText.slice(part.start, part.end), context, field.sourcePointer, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
+                else
+                    programDiagnostic(field.normalizedText.slice(part.program.bodyStart, part.program.bodyEnd), field.sourcePointer);
+            }
+        }
+        if (programCount === 0 || programCount > TEMPLATE_LIMITS_V1.templateEvaluations
+            || sourceBytes > TEMPLATE_LIMITS_V1.cumulativeSourceBytes)
+            fail('PROMPT_TEMPLATE_BUDGET', '/templateFields');
+        const excluded = inspectPromptTemplateCurrentRowsV1(source, origins.owned, context);
+        const materialRows = source.current.rows.filter(row => !(row.ref.table === 'branch' && row.ref.key === `${sessionId}__meta`))
+            .map(row => row.ref);
+        const snapshotBody = { schemaVersion: 1, encoding: 'native-prompt-template-only-source-snapshot-v1',
+            source: openingSource, normalizer: source.normalizer,
+            documentSha256: source.original.documentSha256,
+            dataSha256: source.original.dataSha256, pointerSha256: source.original.activePointerRef.sha256,
+            importRecordSha256: source.original.importRecordRef.sha256, coverageSha256: source.original.coverageSha256,
+            materialRows, materialRowsSha256: recordSha256(materialRows),
+            membership: { cards: source.current.cards, worldbook: source.current.worldbook, rules: source.current.rules,
+                settings: source.current.settings, membershipSha256: source.current.membershipSha256 },
+            selected: { index: selected.index, pointer: selected.sourcePointer, sourceSha256: selected.sourceSha256,
+                renderedSha256: sha256(selected.renderedText) },
+            swipes: candidates.map(candidate => ({ index: candidate.index, pointer: candidate.sourcePointer,
+                sourceSha256: candidate.sourceSha256, renderedSha256: sha256(candidate.renderedText) })),
+            openingContext: source.current.openingContext, scopeInventory: inventory };
+        const sourceSnapshot = { ...snapshotBody, snapshotSha256: recordSha256(snapshotBody) };
+        const body = { schemaVersion: 1, encoding: 'native-prompt-template-only-source-proof-v1',
+            authority: 'consumer-data-only', policySha256: PROMPT_TEMPLATE_ONLY_POLICY_SHA256, sourceSnapshot,
+            primaryBookAbsence: primary.absenceProof, templateFields: origins.fields,
+            fieldInventorySha256: recordSha256(origins.fields),
+            exclusionInventorySha256: recordSha256({ documentSha256: source.original.documentSha256,
+                sections: origins.sectionInventory, current: excluded, root: inventory.root }),
+            initialization: { kind: 'none', scopeInventorySha256: inventory.inventorySha256 },
+            requiredPromptRuntime: { protocol: 'owned-template-v1', policySha256: TEMPLATE_POLICY_SHA256 } };
+        const proof = validatePromptTemplateOnlySourceProofV1({ ...body, proofSha256: recordSha256(body) });
+        return freezePromptTemplateOnlyDataV1({ kind: 'prompt-template-only', proof });
+    }
     function produce(supplied) {
         try {
             const request = clonePromptTemplateOnlyDataV1(supplied);
             if (!object(request) || !object(request.catalog) || !object(request.candidate))
                 fail('PROMPT_TEMPLATE_RECORD_INVALID', '/request');
             knownKeys(request, ['catalog', 'candidate'], '/request');
-            const sessionId = request.catalog.source.sessionId;
-            const captured = lore.capture(sessionId);
-            if (captured.kind !== 'captured-data') {
-                if (captured.kind === 'outside-declared-domain' && captured.code === 'INHERITED_SOURCE_EVIDENCE_MISSING') {
-                    fail('PROMPT_TEMPLATE_INHERITANCE_UNPROVEN', '/source/inheritance');
-                }
-                fail('PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN', '/source');
-            }
-            const { source, contributionInput } = captured, record = contributionInput.activeImport;
-            const decoded = readStructuredImportDataV1(record).decoded;
-            // Own author rows use the dynamic program Source domain. Keep this old
-            // NoBook proof and its six-field normalization contract unchanged.
-            if (decoded.format === 'json-nexttavern-v1')
-                return { kind: 'not-applicable' };
-            if (!['json-v2', 'json-v3', 'png-v2', 'png-v3', 'json-nexttavern-v1'].includes(decoded.format) || decoded.document.data !== decoded.data
-                || record.mode === 'merge' || record.mode !== undefined && record.mode !== 'replace'
-                || source.sourceRecordSessionId !== sessionId || Object.hasOwn(source.original.activePointer, 'inheritedFrom')) {
-                if (source.sourceRecordSessionId !== sessionId || Object.hasOwn(source.original.activePointer, 'inheritedFrom')) {
-                    fail('PROMPT_TEMPLATE_INHERITANCE_UNPROVEN', '/source/inheritance');
-                }
-                fail('PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN', '/source');
-            }
-            const containsTemplate = PROMPT_TEMPLATE_ONLY_FIELDS_V1.some(field => typeof decoded.data[field] === 'string'
-                && String(decoded.data[field]).includes('<%'));
-            if (!containsTemplate)
-                return { kind: 'not-applicable' };
-            if (Object.hasOwn(decoded.data, 'character_book') || source.original.primary.binding !== 'proven-absence') {
-                fail('PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN', '/data/character_book');
-            }
-            const primary = source.original.primary;
-            validateTavernLoreAbsentSourceReferenceV1({ schemaVersion: 1, encoding: 'st-character-book-source-reference-v1',
-                ownerSessionId: sessionId, sourceRecordSessionId: source.sourceRecordSessionId, importId: record.importId,
-                rawSourceSha256: record.rawSha256, importRecordSha256: source.original.importRecordRef.sha256,
-                sourceSnapshotSha256: source.sourceSha256, documentSha256: source.original.documentSha256,
-                bookPointer: primary.bookPointer, bookValueSha256: primary.bookSha256,
-                sourceFormat: decoded.format === 'json-nexttavern-v1' ? 'nexttavern-character-book'
-                    : decoded.format.endsWith('v3') ? 'ccv3-character-book' : 'ccv2-character-book',
-                bookPresence: 'proven-absence', absenceProof: primary.absenceProof });
-            const inventory = readPromptTemplateOnlyScopeInventoryV1(deps, sessionId);
-            const context = source.current.openingContext.context, candidates = compileTavernOpeningCandidates(decoded, context);
-            for (const [name, value] of Object.entries(context))
-                literal(String(value), context, `/openingContext/${escape(name)}`, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
-            const active = source.original.activePointer;
-            const openingSource = { sessionId, importId: record.importId, sourceRecordSessionId: source.sourceRecordSessionId,
-                rawSha256: record.rawSha256, normalizedSha256: record.normalizedSha256, transactionId: source.original.transactionId,
-                coverageSha256: source.original.coverageSha256, pointer: active };
-            const selected = candidates.find(candidate => candidate.index === request.candidate.index);
-            if (!selected || !same(request.catalog, { source: openingSource, candidates }) || !same(request.candidate, selected)) {
-                fail('PROMPT_TEMPLATE_SOURCE_CHANGED', '/selected');
-            }
-            knownKeys(decoded.document, ['spec', 'spec_version', 'data'], '/document');
-            knownKeys(decoded.data, ['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example', 'system_prompt',
-                'post_history_instructions', 'creator_notes', 'tags', 'creator', 'character_version', 'alternate_greetings', 'extensions'], '/data');
-            for (const key of ['spec', 'spec_version'])
-                literal(String(decoded.document[key]), context, `/${key}`, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
-            extension(decoded.data.extensions, '/data/extensions', context);
-            for (const [key, value] of Object.entries(decoded.data)) {
-                if (PROMPT_TEMPLATE_ONLY_FIELDS_V1.some(field => field === key) || ['extensions', 'first_mes', 'alternate_greetings'].includes(key))
-                    continue;
-                const texts = key === 'tags' && Array.isArray(value) ? value : [value];
-                for (const text of texts) {
-                    if (typeof text !== 'string')
-                        fail('PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN', `/data/${escape(key)}`);
-                    literal(text, context, `/data/${escape(key)}`, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
-                }
-            }
-            for (const candidate of candidates) {
-                literal(candidate.rawText, context, candidate.sourcePointer, 'PROMPT_TEMPLATE_OPENING_UNSUPPORTED');
-                literal(candidate.renderedText, context, candidate.sourcePointer, 'PROMPT_TEMPLATE_OPENING_UNSUPPORTED');
-            }
-            const origins = mapPromptTemplateOnlyOriginsV1({ decoded, record, source });
-            let programCount = 0, sourceBytes = 0;
-            for (const field of origins.fields) {
-                if (field.rawText === null)
-                    continue;
-                sourceBytes += Buffer.byteLength(field.rawText, 'utf8');
-                for (const part of field.segments) {
-                    if (part.kind === 'literal')
-                        literal(field.rawText.slice(part.start, part.end), context, field.sourcePointer, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
-                    else {
-                        programCount++;
-                        programDiagnostic(field.rawText.slice(part.program.bodyStart, part.program.bodyEnd), field.sourcePointer);
-                    }
-                }
-                for (const part of field.normalizedSegments) {
-                    if (part.kind === 'literal')
-                        literal(field.normalizedText.slice(part.start, part.end), context, field.sourcePointer, 'PROMPT_TEMPLATE_SOURCE_OUTSIDE_DOMAIN');
-                    else
-                        programDiagnostic(field.normalizedText.slice(part.program.bodyStart, part.program.bodyEnd), field.sourcePointer);
-                }
-            }
-            if (programCount === 0 || programCount > TEMPLATE_LIMITS_V1.templateEvaluations
-                || sourceBytes > TEMPLATE_LIMITS_V1.cumulativeSourceBytes)
-                fail('PROMPT_TEMPLATE_BUDGET', '/templateFields');
-            const excluded = inspectPromptTemplateCurrentRowsV1(source, origins.owned, context);
-            const materialRows = source.current.rows.filter(row => !(row.ref.table === 'branch' && row.ref.key === `${sessionId}__meta`))
-                .map(row => row.ref);
-            const snapshotBody = { schemaVersion: 1, encoding: 'native-prompt-template-only-source-snapshot-v1',
-                source: openingSource, normalizer: source.normalizer,
-                documentSha256: source.original.documentSha256,
-                dataSha256: source.original.dataSha256, pointerSha256: source.original.activePointerRef.sha256,
-                importRecordSha256: source.original.importRecordRef.sha256, coverageSha256: source.original.coverageSha256,
-                materialRows, materialRowsSha256: recordSha256(materialRows),
-                membership: { cards: source.current.cards, worldbook: source.current.worldbook, rules: source.current.rules,
-                    settings: source.current.settings, membershipSha256: source.current.membershipSha256 },
-                selected: { index: selected.index, pointer: selected.sourcePointer, sourceSha256: selected.sourceSha256,
-                    renderedSha256: sha256(selected.renderedText) },
-                swipes: candidates.map(candidate => ({ index: candidate.index, pointer: candidate.sourcePointer,
-                    sourceSha256: candidate.sourceSha256, renderedSha256: sha256(candidate.renderedText) })),
-                openingContext: source.current.openingContext, scopeInventory: inventory };
-            const sourceSnapshot = { ...snapshotBody, snapshotSha256: recordSha256(snapshotBody) };
-            const body = { schemaVersion: 1, encoding: 'native-prompt-template-only-source-proof-v1',
-                authority: 'consumer-data-only', policySha256: PROMPT_TEMPLATE_ONLY_POLICY_SHA256, sourceSnapshot,
-                primaryBookAbsence: primary.absenceProof, templateFields: origins.fields,
-                fieldInventorySha256: recordSha256(origins.fields),
-                exclusionInventorySha256: recordSha256({ documentSha256: source.original.documentSha256,
-                    sections: origins.sectionInventory, current: excluded, root: inventory.root }),
-                initialization: { kind: 'none', scopeInventorySha256: inventory.inventorySha256 },
-                requiredPromptRuntime: { protocol: 'owned-template-v1', policySha256: TEMPLATE_POLICY_SHA256 } };
-            const proof = validatePromptTemplateOnlySourceProofV1({ ...body, proofSha256: recordSha256(body) });
-            return freezePromptTemplateOnlyDataV1({ kind: 'prompt-template-only', proof });
+            return produceCaptured(request, lore.capture(request.catalog.source.sessionId));
         }
         catch (error) {
             const diagnostic = error instanceof PromptTemplateOnlyRefusalV1 ? { code: error.code, pointer: error.pointer }
@@ -309,18 +311,27 @@ export function createRoleplayPromptTemplateOnlySourceV1(deps) {
     }
     function captureCurrent(input) {
         const saved = freezePromptTemplateOnlyDataV1(validatePromptTemplateOnlySourceProofV1(input)), sid = saved.sourceSnapshot.source.sessionId, actualSession = deps.session(sid), live = lore.captureCurrent(sid);
-        if (live.captured.kind !== 'captured-data' || !current(saved))
+        if (live.captured.kind !== 'captured-data')
             fail('PROMPT_TEMPLATE_SOURCE_CHANGED', '/source');
+        const candidates = compileTavernOpeningCandidates(readStructuredImportDataV1(live.captured.contributionInput.activeImport).decoded, live.captured.source.current.openingContext.context), candidate = candidates.find(row => row.index === saved.sourceSnapshot.selected.index);
+        if (!candidate)
+            fail('PROMPT_TEMPLATE_SOURCE_CHANGED', '/selected');
+        // The retained source identity anchors the import; ordinary current rows
+        // belong to this operation's newly captured proof, never the old receipt.
+        const decision = produceCaptured({ catalog: { source: saved.sourceSnapshot.source, candidates }, candidate }, live.captured);
+        if (decision.kind !== 'prompt-template-only')
+            fail('PROMPT_TEMPLATE_SOURCE_CHANGED', '/source');
+        const proof = decision.proof;
         const assertCurrent = () => {
             if (deps.session(sid) !== actualSession)
                 fail('PROMPT_TEMPLATE_INHERITANCE_UNPROVEN', '/source');
             live.assertCurrent();
-            if (!same(readPromptTemplateOnlyScopeInventoryV1(deps, sid), saved.sourceSnapshot.scopeInventory)) {
+            if (!same(readPromptTemplateOnlyScopeInventoryV1(deps, sid), proof.sourceSnapshot.scopeInventory)) {
                 fail('PROMPT_TEMPLATE_NUMERICAL_STATE_PRESENT', '/scopeInventory');
             }
         };
         assertCurrent();
-        return { proof: saved, assertCurrent };
+        return { proof, assertCurrent };
     }
     return { produce, current, captureCurrent,
         readScopeInventory: (sessionId) => readPromptTemplateOnlyScopeInventoryV1(deps, sessionId) };

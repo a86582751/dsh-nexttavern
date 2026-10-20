@@ -344,11 +344,13 @@ export function createRoleplayOpeningSelection(deps) {
             if (!current(source) || !sameRecord(intent.source, source))
                 return null;
             checkIntent(intent, source.sessionId, source.importId);
+            if (intent.status === 'completed')
+                return completedProjection(intent);
             if (!sourceCurrent(intent))
                 return blockedProjection(intent, 'PROMPT_TEMPLATE_SOURCE_CHANGED');
             if (!runtimeCurrent(intent))
                 return blockedProjection(intent, 'PROMPT_TEMPLATE_RUNTIME_REQUIRED');
-            return intent.status === 'completed' ? completedProjection(intent) : intent;
+            return intent;
         }
         if (intent?.schemaVersion === 5) {
             if (!current(source) || !sameRecord(intent.source, source))
@@ -475,12 +477,9 @@ export function createRoleplayOpeningSelection(deps) {
         return { kind: 'blocked', code: 'NATIVE_NOT_COMMITTED' };
     };
     const completedProjection = (intent) => {
-        // A retained receipt is historical when its import source has changed, even
-        // if the numerical head/native receipt still matches this frozen plan.
-        if (!sourceCurrent(intent))
-            return blockedProjection(intent, 'SOURCE_CHANGED');
         // Plain completion records the original append. A later author edit does
-        // not undo it; current Native permissions retain their own version check.
+        // not undo it; readIntent owns active import identity, and current Native
+        // permissions retain their own version check.
         if (intent.schemaVersion === 4 && intent.mode === 'plain')
             return intent;
         if (intent.schemaVersion === 6) {
@@ -491,6 +490,8 @@ export function createRoleplayOpeningSelection(deps) {
                 return blockedProjection(intent, native.code);
             return sameRecord(native.receipt, intent.nativeReceipt) ? intent : blockedProjection(intent, 'INITIALIZATION_RECEIPT_INVALID');
         }
+        // Completed numerical reads retain their sealed initialization and actual
+        // Native receipt. New input and unfinished publication own current Source.
         if (intent.schemaVersion === 4) {
             const native = nativeReady(intent);
             if (native.kind !== 'ready')
@@ -706,6 +707,10 @@ export function createRoleplayOpeningSelection(deps) {
                     || previous.source.rawSha256 !== catalog.source.rawSha256)
                     throw new Error('已存在不同的开场选择；需先完成或显式迁移');
                 if (previous.schemaVersion === 6) {
+                    if (previous.status === 'completed') {
+                        const projected = completedProjection(previous);
+                        return projected.status === 'completed' ? projected : { status: 'busy', intent: projected };
+                    }
                     if (!sourceCurrent(previous))
                         return { status: 'busy',
                             intent: blockedProjection(previous, 'PROMPT_TEMPLATE_SOURCE_CHANGED') };
@@ -738,12 +743,12 @@ export function createRoleplayOpeningSelection(deps) {
                 if (previous.schemaVersion !== 2) {
                     if (previous.status === 'blocked')
                         return { status: 'busy', intent: previous };
-                    if (!sourceCurrent(previous))
-                        return { status: 'busy', intent: blockedProjection(previous, 'SOURCE_CHANGED') };
                     if (previous.status === 'completed') {
                         const projected = completedProjection(previous);
                         return projected.status === 'completed' ? projected : { status: 'busy', intent: projected };
                     }
+                    if (!sourceCurrent(previous))
+                        return { status: 'busy', intent: blockedProjection(previous, 'SOURCE_CHANGED') };
                     if (previous.status === 'native-committed')
                         return { finish: structuredClone(previous) };
                 }
@@ -891,10 +896,10 @@ export function createRoleplayOpeningSelection(deps) {
             if (intent.schemaVersion !== 2) {
                 if (intent.status === 'blocked')
                     return intent;
-                if (!sourceCurrent(intent))
-                    return blockedProjection(intent, 'SOURCE_CHANGED');
                 if (intent.status === 'completed')
                     return completedProjection(intent);
+                if (!sourceCurrent(intent))
+                    return blockedProjection(intent, 'SOURCE_CHANGED');
                 if (intent.status === 'native-committed')
                     return { finish: structuredClone(intent) };
             }

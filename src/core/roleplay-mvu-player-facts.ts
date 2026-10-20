@@ -143,6 +143,7 @@ export interface MvuPlayerOperationFactsInput {
   status:MvuPlayerFactTable
   events:readonly SessionEvent[]
   sessionId:string
+  /** Source of this historical operation/Native marker, not today's admission. */
   sourceSha256:string
   marker:SessionEvent
   verifySettlementFacts(input:MvuConsumedManualSettlementFactsInput):boolean
@@ -168,7 +169,7 @@ export function readMvuPlayerOperationFacts(input:MvuPlayerOperationFactsInput) 
     fail('MVU_PLAYER_COMPLETION_UNPROVEN')
   }
   const resultBody={schemaVersion:1 as const,encoding:'native-mvu-state-snapshot-v1' as const,
-    sessionId:sid,sourceSha256:input.sourceSha256,root:base.root,currentHead:settlement.result.head,
+    sessionId:sid,sourceSha256:base.sourceSha256,root:base.root,currentHead:settlement.result.head,
     revision:settlement.result.revision,headSha256:settlement.result.headSha256,values:replacement.values,
     valuesSha256:settlement.result.valuesSha256}
   const result={...resultBody,stateSnapshotSha256:recordSha256(resultBody)}

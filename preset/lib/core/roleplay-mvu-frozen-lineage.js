@@ -31,14 +31,21 @@ const fields = ['schemaVersion', 'encoding', 'operationId', 'anchorSha256', 'par
     'expectedSeedLength', 'parentInheritedEventCount', 'parentSourceSha256', 'childSourceSha256', 'parentPointerSha256',
     'childPointerSha256', 'sourceInheritance', 'numericalProjection', 'originalImport', 'materialRows', 'macroContext', 'proofSha256'];
 export function validateMvuFrozenDerivedSourceProofV2(raw) {
+    return validateFrozenSourceProof(raw, 2);
+}
+export function validateMvuFrozenDerivedSourceProofV3(raw) {
+    return validateFrozenSourceProof(raw, 3);
+}
+function validateFrozenSourceProof(raw, version) {
     const value = inheritanceDataV1(raw);
     inheritanceExactV1(value, fields);
-    if (value.schemaVersion !== 2 || value.encoding !== 'native-mvu-derived-source-proof-v2'
+    if (value.schemaVersion !== version || value.encoding !== `native-mvu-derived-source-proof-v${version}`
         || !['operationId', 'parentSessionId', 'childSessionId'].every(key => inheritanceIdV1(value[key]))
         || value.parentSessionId === value.childSessionId
         || !Number.isSafeInteger(value.expectedSeedLength) || Number(value.expectedSeedLength) < 1
         || !Number.isSafeInteger(value.parentInheritedEventCount) || Number(value.parentInheritedEventCount) < 0
-        || Number(value.parentInheritedEventCount) >= Number(value.expectedSeedLength)
+        || (version === 2 ? Number(value.parentInheritedEventCount) >= Number(value.expectedSeedLength)
+            : Number(value.parentInheritedEventCount) < Number(value.expectedSeedLength))
         || !['anchorSha256', 'parentSourceSha256', 'childSourceSha256', 'parentPointerSha256', 'childPointerSha256', 'proofSha256']
             .every(key => inheritanceHashV1(value[key])))
         fail();
@@ -102,22 +109,26 @@ export function validateMvuFrozenDerivedSourceProofV2(raw) {
 }
 export function validateMvuDerivedSourceProofUnion(raw) {
     const value = inheritanceDataV1(raw);
-    return value.schemaVersion === 2 ? validateMvuFrozenDerivedSourceProofV2(value) : validateMvuDerivedSourceProof(value);
+    return value.schemaVersion === 2 ? validateMvuFrozenDerivedSourceProofV2(value)
+        : value.schemaVersion === 3 ? validateMvuFrozenDerivedSourceProofV3(value) : validateMvuDerivedSourceProof(value);
 }
 const descriptor = (raw) => describeRoleplayInputSourceV1(validateNumericalCaptureV1(raw).inputSource);
 export function createRoleplayMvuFrozenLineage(deps) {
     const old = createRoleplayMvuLineage(deps);
     const owner = () => { const current = deps.sourceInheritance(); if (!current)
         fail('FROZEN_SOURCE_OWNER_UNAVAILABLE'); return current; };
-    function prepared(childId) {
-        const frozen = owner().readPreparedSourceInheritance(childId), ref = frozenInheritanceRefV1(frozen), parentDescriptor = descriptor(frozen.parentNumericalSource);
+    function preparedData(frozen) {
+        const ref = frozenInheritanceRefV1(frozen), parentDescriptor = descriptor(frozen.parentNumericalSource);
         if (frozen.nativeCut.kind !== 'native-fork')
             fail('FROZEN_SOURCE_NATIVE_FORK_REQUIRED');
         return { frozen, ref, parentDescriptor, parentSourceSha256: recordSha256(parentDescriptor) };
     }
-    function capture(childId, sourcePreparedRef) {
-        const current = owner().readCommittedStaticSourceInheritance(childId), { prepared: parent, commit, inheritance } = current, frozen = prepared(childId);
-        if (!same(frozen.ref, sourcePreparedRef) || !same(inheritance.preparedRef, sourcePreparedRef.preparedRef))
+    function prepared(childId) { return preparedData(owner().readPreparedSourceInheritance(childId)); }
+    function captureFromTransaction(childId, sourcePreparedRef, current, version) {
+        const { prepared: parent, commit, inheritance } = current, ref = frozenInheritanceRefV1(parent);
+        if (parent.nativeCut.kind !== 'native-fork')
+            fail('FROZEN_SOURCE_NATIVE_FORK_REQUIRED');
+        if (!same(ref, sourcePreparedRef) || !same(inheritance.preparedRef, sourcePreparedRef.preparedRef))
             fail('FROZEN_SOURCE_PREPARED_CHANGED');
         const before = parent.parentNumericalSource, after = commit.childNumericalSource, parentDescriptor = descriptor(before), childDescriptor = descriptor(after), original = parent.originalBinding, activation = before.inputSource.imported?.['activation'];
         if (!activation?.writeDigests || after.staticRows.length !== before.staticRows.length
@@ -136,7 +147,7 @@ export function createRoleplayMvuFrozenLineage(deps) {
         });
         const originalImport = { ownerSessionId: original.sourceRecordSessionId, importId: original.importId,
             rawSha256: original.rawSha256, normalizedSha256: original.normalizedSha256, transactionId: original.transactionId,
-            coverageSha256: original.coverageSha256, recordSha256: original.importRecordRef.sha256, activationSha256: original.activationSha256 }, body = { schemaVersion: 2, encoding: 'native-mvu-derived-source-proof-v2',
+            coverageSha256: original.coverageSha256, recordSha256: original.importRecordRef.sha256, activationSha256: original.activationSha256 }, body = { schemaVersion: version, encoding: `native-mvu-derived-source-proof-v${version}`,
             operationId: parent.operationId, anchorSha256: parent.anchorSha256, parentSessionId: parent.parentSessionId,
             childSessionId: childId, expectedSeedLength: parent.nativeCut.seedLength,
             parentInheritedEventCount: parent.nativeCut.parentInheritedEventCount,
@@ -147,13 +158,29 @@ export function createRoleplayMvuFrozenLineage(deps) {
                 copyRelationPolicy: 'exact-static-copy-with-declared-owner-rebinding-v1' }, originalImport, materialRows,
             macroContext: { parentBindingSha256: before.openingContext.bindingSha256,
                 childBindingSha256: after.openingContext.bindingSha256, valuesSha256: recordSha256(after.openingContext.context) } };
-        return validateMvuFrozenDerivedSourceProofV2({ ...body, proofSha256: recordSha256(body) });
+        return validateFrozenSourceProof({ ...body, proofSha256: recordSha256(body) }, version);
     }
-    function historicalProof(raw) {
-        const proof = validateMvuFrozenDerivedSourceProofV2(raw), current = owner().readCommittedStaticSourceInheritance(proof.childSessionId), expected = capture(proof.childSessionId, frozenInheritanceRefV1(current.prepared));
+    function capture(childId, sourcePreparedRef, version = 2) {
+        return captureFromTransaction(childId, sourcePreparedRef, owner().readCommittedStaticSourceInheritance(childId), version);
+    }
+    function historicalProof(raw, subjectSessionId) {
+        const proof = validateMvuDerivedSourceProofUnion(raw), subject = subjectSessionId ?? proof.childSessionId, source = owner();
+        if (proof.schemaVersion === 1)
+            fail();
+        // An ancestor is already part of this live consumer's verified Source
+        // lineage. Reading it as a new live subject would require an inactive Agent.
+        const current = proof.childSessionId === subject ? source.readCommittedStaticSourceInheritance(subject)
+            : source.readCommittedSourceLineage(subject).ancestors.find(row => row.prepared.childSessionId === proof.childSessionId);
+        if (!current)
+            fail('FROZEN_SOURCE_COMMIT_CHANGED');
+        const expected = captureFromTransaction(proof.childSessionId, frozenInheritanceRefV1(current.prepared), current, proof.schemaVersion);
         if (!same(proof, expected))
             fail('FROZEN_SOURCE_COMMIT_CHANGED');
-        return proof;
+        return { proof, current };
+    }
+    function readHistorical(raw, subjectSessionId) {
+        const { proof, current } = historicalProof(raw, subjectSessionId);
+        return { proof, prepared: preparedData(current.prepared) };
     }
     /** The frozen transaction was established by historicalProof. Current
      * callers consume only today's numerical Source dependencies here. */
@@ -168,43 +195,70 @@ export function createRoleplayMvuFrozenLineage(deps) {
     }
     function current(raw) {
         try {
-            return currentProof(historicalProof(raw));
+            return currentProof(historicalProof(raw).proof);
         }
         catch {
             return false;
         }
     }
-    function historical(priorRaw, successorRaw) {
+    /** Completed numerical roots keep their birth transaction while editable
+     * settings and material evolve. A replacement active import is still a
+     * different origin. New inheritance publication uses current() above. */
+    function completedOrigin(raw) {
         try {
-            const successor = historicalProof(successorRaw), prior = validateMvuDerivedSourceProofUnion(priorRaw);
-            if (successor.parentSessionId !== prior.childSessionId
-                || successor.parentSourceSha256 !== prior.childSourceSha256
+            const { proof, current } = historicalProof(raw), original = describeRoleplayInputSourceV1(current.commit.childNumericalSource.inputSource), actual = deps.readSourceDescriptor(proof.childSessionId);
+            return same(actual.pointer, original.pointer) && same(actual.importIdentity, original.importIdentity);
+        }
+        catch {
+            return false;
+        }
+    }
+    function historical(priorRaw, successorRaw, subjectSessionId) {
+        try {
+            const closed = historicalProof(successorRaw, subjectSessionId), successor = closed.proof, prior = validateMvuDerivedSourceProofUnion(priorRaw);
+            if (successor.parentSessionId !== prior.childSessionId)
+                return false;
+            if (prior.schemaVersion !== 1) {
+                // Source owns the direct ancestor transaction. Settings and editable
+                // material can change between forks without rewriting that genesis.
+                if (!same(closed.current.prepared.parentSource.inheritance, prior.sourceInheritance))
+                    return false;
+                historicalProof(prior, subjectSessionId ?? successor.childSessionId);
+                return true;
+            }
+            if (successor.parentSourceSha256 !== prior.childSourceSha256
                 || successor.parentPointerSha256 !== prior.childPointerSha256
                 || !same(successor.originalImport, prior.originalImport)
                 || !same(successor.macroContext.valuesSha256, prior.macroContext.valuesSha256)
                 || successor.macroContext.parentBindingSha256 !== prior.macroContext.childBindingSha256)
                 return false;
-            if (prior.schemaVersion === 1 && !old.verifyDenialBindingFacts(prior))
+            if (!old.verifyDenialBindingFacts(prior))
                 return false;
-            if (prior.schemaVersion === 2)
-                historicalProof(prior);
             const rows = new Map(successor.materialRows.map(row => [`${row.table}:${row.parentKey}`, row]));
             return prior.materialRows.length === rows.size && prior.materialRows.every(row => {
                 const next = rows.get(`${row.table}:${row.childKey}`);
-                return !!next && next.exists === row.exists && next.parentValueSha256 === (prior.schemaVersion === 1
-                    ? row.sha256
-                    : row.childValueSha256);
+                return !!next && next.exists === row.exists && next.parentValueSha256 === row.sha256;
             });
         }
         catch {
             return false;
         }
     }
-    function historicalPrepared(priorRaw, successorRef) {
+    function historicalPrepared(priorRaw, successorRef, subjectSessionId) {
         try {
             const successor = prepared(successorRef.childSessionId), prior = validateMvuDerivedSourceProofUnion(priorRaw), parent = successor.frozen.parentNumericalSource, original = successor.frozen.originalBinding;
-            if (!same(successor.ref, successorRef) || successor.frozen.parentSessionId !== prior.childSessionId
-                || successor.parentSourceSha256 !== prior.childSourceSha256
+            if (!same(successor.ref, successorRef) || successor.frozen.parentSessionId !== prior.childSessionId)
+                return false;
+            if (prior.schemaVersion !== 1) {
+                // The frozen Source owner already closed this exact ancestor. Its
+                // historical numerical proof is checked against that transaction,
+                // rather than requiring today's parent rows to match its birth rows.
+                if (!same(successor.frozen.parentSource.inheritance, prior.sourceInheritance))
+                    return false;
+                historicalProof(prior, subjectSessionId);
+                return true;
+            }
+            if (successor.parentSourceSha256 !== prior.childSourceSha256
                 || recordSha256(parent.pointer) !== prior.childPointerSha256
                 || parent.openingContext.bindingSha256 !== prior.macroContext.childBindingSha256
                 || recordSha256(parent.openingContext.context) !== prior.macroContext.valuesSha256
@@ -214,29 +268,27 @@ export function createRoleplayMvuFrozenLineage(deps) {
                 || original.importRecordRef.sha256 !== prior.originalImport.recordSha256
                 || original.activationSha256 !== prior.originalImport.activationSha256)
                 return false;
-            if (prior.schemaVersion === 1 && !old.verifyDenialBindingFacts(prior))
+            if (!old.verifyDenialBindingFacts(prior))
                 return false;
-            if (prior.schemaVersion === 2)
-                historicalProof(prior);
             const rows = new Map(parent.staticRows.map(row => [`${row.table}:${row.key}`, row]));
             return prior.materialRows.length === rows.size && prior.materialRows.every(row => {
                 const next = rows.get(`${row.table}:${row.childKey}`);
-                return !!next && next.exists === row.exists && next.sha256 === (prior.schemaVersion === 1
-                    ? row.sha256
-                    : row.childValueSha256);
+                return !!next && next.exists === row.exists && next.sha256 === row.sha256;
             });
         }
         catch {
             return false;
         }
     }
-    const denial = (raw) => { try {
-        historicalProof(raw);
-        return true;
-    }
-    catch {
-        return false;
-    } };
-    return { prepared, capture, current, currentProof, historical, historicalPrepared, verifyDenialBindingFacts: denial,
+    const denial = (raw, subjectSessionId) => {
+        try {
+            historicalProof(raw, subjectSessionId);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    };
+    return { prepared, capture, current, currentProof, completedOrigin, historical, historicalPrepared, readHistorical, verifyDenialBindingFacts: denial,
         validate: validateMvuFrozenDerivedSourceProofV2 };
 }

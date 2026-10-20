@@ -160,8 +160,8 @@ function joinProgramInheritedNumericalSource(data, local, source) {
     const original = data.originalImport, tuple = source.original;
     // The numerical producers own replay and its frozen DATA. This consumer
     // joins that result to today's independently captured author Source.
-    if (data.childSessionId !== source.sessionId || data.numericalSourceSha256 !== local.numericalSourceSha256
-        || data.source.childSessionId !== source.sessionId || data.source.childSourceSha256 !== local.numericalSourceSha256
+    if (data.childSessionId !== source.sessionId || data.source.childSessionId !== source.sessionId
+        || !('derivedEvent' in local.genesis) || recordSha256(data.genesis) !== recordSha256(local.genesis)
         || original.ownerSessionId !== source.sourceRecordSessionId || original.importId !== tuple.activePointer.importId
         || original.rawSha256 !== tuple.rawSha256 || original.normalizedSha256 !== tuple.normalizedSha256
         || original.transactionId !== tuple.transactionId || original.coverageSha256 !== tuple.coverageSha256
@@ -307,7 +307,7 @@ export function captureRoleplayTavernPromptScopesV1(input) {
                 fail('INPUT_MATERIAL_NUMERICAL_SCOPE_SOURCE_MISMATCH');
         }
         else {
-            if (!inherited || inherited.childSessionId !== source.sessionId || inherited.numericalSourceSha256 !== local.numericalSourceSha256
+            if (!inherited || inherited.childSessionId !== source.sessionId
                 || !('derivedEvent' in local.genesis) || inherited.genesis.derivedEvent.basisSha256 !== local.sourceIdentity.basisSha256
                 || recordSha256(inherited.genesis) !== recordSha256(local.genesis))
                 fail('INPUT_MATERIAL_NUMERICAL_INHERITED_BASIS_MISMATCH');

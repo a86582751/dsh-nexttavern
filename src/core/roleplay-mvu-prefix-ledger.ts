@@ -251,12 +251,20 @@ function snapshotValid(value: unknown, sid: string, source: string): asserts val
   exact(value, ['schemaVersion', 'encoding', 'sessionId', 'sourceSha256', 'root', 'currentHead', 'revision',
     'headSha256', 'values', 'valuesSha256', 'stateSnapshotSha256'])
   if (value.schemaVersion !== 1 || value.encoding !== 'native-mvu-state-snapshot-v1'
-    || value.sessionId !== sid || value.sourceSha256 !== source || !object(value.root) || !object(value.currentHead)
+    || value.sessionId !== sid || !hash(value.sourceSha256) || value.sourceSha256 !== source
+    || !object(value.root) || !object(value.currentHead)
     || !object(value.values) || !integer(value.revision, 1) || value.currentHead.sessionId !== sid
     || value.currentHead.revision !== value.revision || value.currentHead.valuesSha256 !== value.valuesSha256
     || value.headSha256 !== recordSha256(value.currentHead) || value.valuesSha256 !== recordSha256(value.values)) fail('NUMERICAL_SNAPSHOT_INVALID')
   const {stateSnapshotSha256, ...body} = value
   if (!hash(stateSnapshotSha256) || stateSnapshotSha256 !== recordSha256(body)) fail('NUMERICAL_SNAPSHOT_INVALID')
+}
+/** An operation's Source selects its snapshot identity; the head retains the
+ * Source of its sealed producing event. Never rewrite either persisted row. */
+function projectSnapshotSource(value:MvuNumericalSnapshot,sourceSha256:string):MvuNumericalSnapshot {
+  if(value.sourceSha256===sourceSha256)return value
+  const {stateSnapshotSha256:_sha,...body}=value,projected={...body,sourceSha256}
+  return {...projected,stateSnapshotSha256:recordSha256(projected)}
 }
 function validateRefs(value: unknown, sid: string): asserts value is readonly NativeInputRef[] {
   if (!Array.isArray(value) || !value.length || value.length > 64) fail('WORK_REFS_INVALID')
@@ -389,7 +397,7 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
       if (!id(sid) || !hash(request.sourceSha256) || !integer(request.ownerInheritedEventCount)
         || !Array.isArray(request.events) || cut > 100_000 || request.ownerInheritedEventCount > cut
         || request.events.some((event, index) => event.seq !== index || typeof event.type !== 'string')) fail('PREFIX_REQUEST_INVALID')
-      snapshotValid(request.genesis, sid, request.sourceSha256)
+      snapshotValid(request.genesis, sid, request.genesis.sourceSha256)
       if (request.genesis.revision !== 1) fail('GENESIS_REQUIRED')
       let programRead:Extract<ProgramDerivedOpeningAtCutReadV1,{kind:'verified-program-opening'}>|undefined,
         programClosure:ProgramDerivedOpeningClosureV1|undefined,programFloor=-1
@@ -408,7 +416,7 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         result.assertCurrent()
         programClosure=validateProgramDerivedOpeningClosureV1(result.closure,opening.genesis,result.native)
         if(!same(programClosure,opening.closure)||!same(result.native,opening.native)
-          ||opening.genesis.sessionId!==sid||opening.genesis.sourceSha256!==request.sourceSha256
+          ||opening.genesis.sessionId!==sid
           ||!same(programDerivedGenesisSnapshotV1(opening.genesis),request.genesis))
           fail('PREFIX_PROGRAM_GENESIS_CHANGED')
         programFloor=programDerivedOpeningFloorSeqV1(result.native)
@@ -551,7 +559,7 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         try {
           assertMvuPlayerEditEvent(marker)
           facts = readMvuPlayerOperationFacts({branch: deps.branch, status: deps.status,
-            events: request.events as readonly SessionEvent[], sessionId: sid, sourceSha256: request.sourceSha256,
+            events: request.events as readonly SessionEvent[], sessionId: sid, sourceSha256: marker.data.sourceSha256,
             marker, verifySettlementFacts: deps.verifyManualSettlementFacts})
         } catch (error) {
           // Preserve the maintained protocol's explicit refusal; never fall back
@@ -602,8 +610,9 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
           fail('PREFIX_PROGRAM_GENESIS_REPLAY_REFUSED')
         if (entry.kind === 'player') {
           const {operation, completion, intent, base, settlement, result} = entry.item
-          snapshotValid(base, sid, request.sourceSha256)
-          snapshotValid(result, sid, request.sourceSha256)
+          snapshotValid(base, sid, intent.sourceSha256)
+          snapshotValid(result, sid, intent.sourceSha256)
+          current=projectSnapshotSource(current,intent.sourceSha256)
           if (!same(base, current)) fail('PREFIX_CHAIN_DISCONTINUOUS')
           const settlementKey = mvuStateSettlementKey(sid, intent.intentSha256)
           const storedSettlement = read(deps.status, settlementKey, settlement)
@@ -642,7 +651,7 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         exact(scope.currency, ['schemaVersion', 'preparationId', 'credentialSha256', 'receiptGeneration',
           'attemptGeneration', 'source', 'snapshot'])
         if (work.status !== 'active' || work.stop !== undefined || work.transition !== undefined || work.unclaimedRefusal !== undefined
-          || work.terminalRequired !== true || work.source.kind !== 'story' || work.source.sourceSha256 !== request.sourceSha256
+          || work.terminalRequired !== true || work.source.kind !== 'story' || work.source.sourceSha256 !== intent.sourceSha256
           || work.source.headRef?.kind !== 'numerical-head' || !work.checkpoint || !work.attempt?.prepared
           || !integer(work.attemptGeneration, 1) || work.attempt.turn !== scope.receipt.checkpoint.actualTurn
           || !same(work.checkpoint, scope.receipt.checkpoint) || !same(work.refs, scope.receipt.checkpoint.refs)
@@ -655,7 +664,8 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
           if (stop.refs.some(ref => work.refs.some(owned => same(ref, owned)))
             || object(stop.notice) && object(stop.notice.preparation) && same(stop.notice.preparation, work.preparation)) fail('PREFIX_STOPPED_WORK')
         }
-        snapshotValid(base, sid, request.sourceSha256)
+        snapshotValid(base, sid, intent.sourceSha256)
+        current=projectSnapshotSource(current,intent.sourceSha256)
         if (!same(base, current) || work.source.headRef.sha256 !== base.headSha256) fail('PREFIX_CHAIN_DISCONTINUOUS')
         const snapshotRef = scope.currency.snapshot
         if (!snapshotRef || snapshotRef.key !== `${sid}__task-input-snapshot-${work.preparationId}-${work.attemptGeneration}`
@@ -684,7 +694,7 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         const {intentSha256, ...intentBody} = intent
         const {schemaVersion: _schema, encoding: _encoding, sessionId: _sid, sourceSha256: _source, values: _values, ...baseIdentity} = base
         if (expectedProposal.kind === 'rejected' || !same(expectedProposal, proposal) || !hash(intentSha256)
-          || recordSha256(intentBody) !== intentSha256 || intent.sessionId !== sid || intent.sourceSha256 !== request.sourceSha256
+          || recordSha256(intentBody) !== intentSha256 || intent.sessionId !== sid
           || intent.preparationId !== work.preparationId || intent.credentialSha256 !== work.credentialSha256
           || intent.receiptGeneration !== work.receiptGeneration || intent.attemptGeneration !== work.attemptGeneration
           || intent.stopGeneration !== scope.stopGeneration || !same(intent.preparationSnapshot, snapshotRef)
@@ -700,11 +710,11 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         const settlement = storedSettlement as MvuStatePublisherSettlement
         const resultValues = proposal.kind === 'prepared' ? proposal.values : base.values
         const resultBody = {schemaVersion: 1 as const, encoding: 'native-mvu-state-snapshot-v1' as const,
-          sessionId: sid, sourceSha256: request.sourceSha256, root: base.root, currentHead: settlement.result.head,
+          sessionId: sid, sourceSha256: intent.sourceSha256, root: base.root, currentHead: settlement.result.head,
           revision: settlement.result.revision, headSha256: settlement.result.headSha256,
           values: structuredClone(resultValues), valuesSha256: settlement.result.valuesSha256}
         const result = {...resultBody, stateSnapshotSha256: recordSha256(resultBody)}
-        snapshotValid(result, sid, request.sourceSha256)
+        snapshotValid(result, sid, intent.sourceSha256)
         const step: MvuPrefixLedgerStep = {preparationId: work.preparationId, receiptTurnEndSeq: scope.receipt.turnEndSeq,
           scopeSha256: recordSha256(scope), intentSha256: intent.intentSha256,
           work: {key: item.key, sha256: recordSha256(read(deps.branch, item.key, work))},
@@ -730,6 +740,7 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         }
         steps.push(step); mixedSteps.push({kind: 'story', ...step}); current = result
       }
+      current=projectSnapshotSource(current,request.sourceSha256)
       if(programClosure&&programRead&&request.programOpening) {
         const body={schemaVersion:3 as const,encoding:'native-program-mvu-prefix-ledger-proof-v3' as const,
           ownerSessionId:sid,ownerInheritedEventCount:request.ownerInheritedEventCount,inheritedPrefixLength:cut,

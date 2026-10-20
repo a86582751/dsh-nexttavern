@@ -3,8 +3,6 @@
  * The Source reservation owns the immutable predecessor. It never resolves
  * an ancestor Agent or borrows its current numerical head. */
 import { recordSha256 } from './roleplay-data.js';
-import { describeRoleplayInputSourceV1 } from './roleplay-input-source-data.js';
-import { tavernLoreSourceCurrentIdentityV1 } from './roleplay-tavern-lore-source.js';
 import { frozenInheritanceRefV1 } from './roleplay-tavern-source-inheritance-data.js';
 import { validateProgramDerivedOpeningClosureV1 } from './roleplay-mvu-prefix-ledger.js';
 import { readProgramGeneratedNativeObservationV1, readProgramCardCopyNativeV1 } from './roleplay-program-native-reader.js';
@@ -61,13 +59,14 @@ export function createProgramOpeningAtCutReaderV1(deps) {
                 fail('PROGRAM_HISTORY_NATIVE_RECEIPT_REQUIRED');
             closure = validateProgramDerivedOpeningClosureV1(closure, request.genesis, expected);
             const tuple = input.source.program.importTuple, original = source.originalBinding;
+            // The original packet describes the completed opening. The Source
+            // reservation independently captures today's budget and lore at the cut.
             if (seed.sessionId !== request.ownerSessionId || input.numericalSourceSha256 !== request.genesis.sourceSha256
-                || recordSha256(describeRoleplayInputSourceV1(source.parentNumericalSource.inputSource)) !== request.genesis.sourceSha256
                 || tuple.sourceRecordSessionId !== original.sourceRecordSessionId || tuple.importId !== original.importId
                 || tuple.rawSha256 !== original.rawSha256 || tuple.normalizedSha256 !== original.normalizedSha256
                 || tuple.coverageSha256 !== original.coverageSha256 || tuple.transactionId !== original.transactionId
-                || !same(tuple.importRecordRef, original.importRecordRef) || tuple.activationSha256 !== original.activationSha256
-                || input.source.program.sourceCurrentIdentitySha256 !== recordSha256(tavernLoreSourceCurrentIdentityV1(source.parentSource))
+                || !same(tuple.importRecordRef, { table: 'branch', exists: true, ...original.importRecordRef })
+                || tuple.activationSha256 !== original.activationSha256
                 || !same(input.source.context.values, source.parentNumericalSource.openingContext.context)
                 || input.source.context.bindingSha256 !== source.parentNumericalSource.openingContext.bindingSha256)
                 fail('PROGRAM_HISTORY_ORIGINAL_SOURCE_CHANGED');

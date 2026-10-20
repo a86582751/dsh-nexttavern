@@ -414,8 +414,9 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
           valuesSha256:recordSha256(values)}
       expectedInitial={...descriptor,stateSnapshotSha256:recordSha256(descriptor)}
     }
-    if(g.sessionId!==prepared.parentSessionId||g.sourceSha256!==prepared.parentSourceSha256
-      ||!same(prepared.initial,expectedInitial))fail('DERIVED_INITIAL_BASIS_INVALID')
+    // The sealed genesis retains its historical Source. The frozen parent
+    // descriptor independently owns the Source at this later fork cut.
+    if(g.sessionId!==prepared.parentSessionId||!same(prepared.initial,expectedInitial))fail('DERIVED_INITIAL_BASIS_INVALID')
     const request={ownerSessionId:prepared.parentSessionId,
       ownerInheritedEventCount:prepared.parentInheritedEventCount,events,sourceSha256:prepared.parentSourceSha256,
       genesis:prepared.initial,...prepared.schemaVersion===4?{
@@ -496,7 +497,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
           ||source.frozen.parentSessionId!==owner.id||source.frozen.nativeCut.seedLength!==reservation.seedLength
           ||source.frozen.nativeCut.parentInheritedEventCount!==owner.inheritedEventCount
           ||source.frozen.nativeCut.prefixSha256!==recordSha256(events)||source.parentSourceSha256!==sourceSha256
-          ||g.sourceSha256!==sourceSha256||!same(deps.readSourceDescriptor!(owner.id),source.parentDescriptor))
+          ||!same(deps.readSourceDescriptor!(owner.id),source.parentDescriptor))
           fail('DERIVED_FROZEN_SOURCE_CHANGED')
       }
       if('programEvent' in g&&!source)fail('DERIVED_PROGRAM_FROZEN_SOURCE_REQUIRED')
@@ -579,13 +580,14 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
   function historicalSource(source:MvuDerivedSourceProofUnion,successor:HistoricalSuccessor):boolean {
     if(successor.encoding==='native-tavern-source-inheritance-frozen-ref-v1')
       return frozenLineage?.historicalPrepared(source,successor)===true
-    if(successor.schemaVersion===2)return frozenLineage?.historical(source,successor)===true
+    if(successor.schemaVersion!==1)return frozenLineage?.historical(source,successor)===true
     return source.schemaVersion===1&&lineage.historical(source,successor)
   }
-  function sourceReadable(source:MvuDerivedSourceProofUnion,currentSource:boolean):boolean {
-    if(source.schemaVersion===2)return (currentSource?frozenLineage?.current(source)
-      :frozenLineage?.verifyDenialBindingFacts(source))===true
-    return currentSource?lineage.current(source):lineage.verifyDenialBindingFacts(source)
+  type SourceReadMode='current'|'completed'|'denial'
+  function sourceReadable(source:MvuDerivedSourceProofUnion,mode:SourceReadMode):boolean {
+    if(source.schemaVersion!==1)return (mode==='current'?frozenLineage?.current(source)
+      :mode==='completed'?frozenLineage?.completedOrigin(source):frozenLineage?.verifyDenialBindingFacts(source))===true
+    return mode!=='denial'?lineage.current(source):lineage.verifyDenialBindingFacts(source)
   }
   /** The descendant's actual Source anchors the chain. Older sources are
    * checked against the next generation and Native headers, not today's
@@ -620,7 +622,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
       return undefined
     }
   }
-  function readClosedGenesis(sid:string,currentSource:boolean,seen=new Set<string>(),prompt?:PromptCollection)
+  function readClosedGenesis(sid:string,mode:SourceReadMode,seen=new Set<string>(),prompt?:PromptCollection)
     :VerifiedMvuDerivedGenesis | undefined {
     try {
       if(seen.size>=32||seen.has(sid))return
@@ -632,7 +634,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
       const {basisSha256,...body}=basis
       if(!basisVersion(basis)||recordSha256(body)!==basisSha256
         ||basis.prepared.childSessionId!==sid||!same(deps.branch.get(mvuDerivedPreparedKey(sid)),basis.prepared)
-        ||!sourceReadable(basis.source,currentSource)
+        ||!sourceReadable(basis.source,mode)
         ||basis.source.parentSourceSha256!==basis.prepared.parentSourceSha256
         ||basis.source.parentSessionId!==basis.prepared.parentSessionId||basis.source.childSessionId!==sid
         ||basis.source.expectedSeedLength!==basis.prepared.seedLength||!sourceMatchesGenesis(basis))return
@@ -652,7 +654,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
   /** A changed current Source cannot erase the immutable numerical root's denial
    * identity. Expose neither values nor a VerifiedGenesis to an authority reader. */
   function readDenialBasis(sid:string):{root:MvuStateRoot;editFloorSeq:number}|undefined {
-    const genesis=readClosedGenesis(sid,false),session=deps.session(sid)
+    const genesis=readClosedGenesis(sid,'denial'),session=deps.session(sid)
     if(!genesis||!session||!Number.isSafeInteger(session.inheritedEventCount))return
     const event=genesis.derivedEvent,head=genesis.derivedHead
     return {root:{schemaVersion:1,encoding:'native-mvu-derived-state-root-v1',
@@ -704,7 +706,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
   function promptInheritedData(sid:string,session:ReadBranchSession)
     :MvuPromptInheritedNumericalFactsV1|MvuPromptInheritedNumericalFactsV2 {
     if(deps.session(sid)!==session)fail('PROMPT_NUMERICAL_SESSION_CHANGED')
-    const prompt=promptCollection(),g=readClosedGenesis(sid,true,new Set(),prompt)
+    const prompt=promptCollection(),g=readClosedGenesis(sid,'completed',new Set(),prompt)
     const layer=prompt.layers.find(row=>row.childSessionId===sid)
     if(!g||!layer)fail(prompt.failure??'PROMPT_NUMERICAL_INHERITED_UNAVAILABLE')
     const input={childSessionId:sid,genesis:g,source:layer.source,
@@ -732,7 +734,7 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
     if(raw===undefined)return
     await deps.withSourceLock(child.id,async()=>{
       const existing=deps.branch.get(mvuDerivedBasisKey(child.id))
-      if(existing!==undefined) {if(!readClosedGenesis(child.id,true))fail('DERIVED_READY_INVALID');return}
+      if(existing!==undefined) {if(!readClosedGenesis(child.id,'current'))fail('DERIVED_READY_INVALID');return}
       const candidate=data(raw) as MvuDerivedPrepared
       const source=frozenPrepared(candidate)
         ?frozenLineage?.capture(child.id,candidate.sourcePreparedRef)
@@ -768,10 +770,10 @@ export function createRoleplayMvuDerived(deps:MvuDerivedDeps) {
       await putExact(deps.status,mvuDerivedHeadKey(child.id),g.derivedHead)
       if(!operationCurrent(prepared))fail('DERIVED_OPERATION_MISMATCH')
       await putExact(deps.branch,mvuDerivedBasisKey(child.id),basis)
-      if(!readClosedGenesis(child.id,true))fail('DERIVED_READY_UNCONFIRMED')
+      if(!readClosedGenesis(child.id,'current'))fail('DERIVED_READY_UNCONFIRMED')
     })
   }
-  return {prepare,commit,readGenesis:(sid:string)=>readClosedGenesis(sid,true),readDenialBasis,capturePromptInheritedFacts,
+  return {prepare,commit,readGenesis:(sid:string)=>readClosedGenesis(sid,'completed'),readDenialBasis,capturePromptInheritedFacts,
     required:(sid:string)=>deps.branch.get(mvuDerivedPreparedKey(sid))!==undefined
       ||deps.branch.get(mvuDerivedBasisKey(sid))!==undefined}
 }

@@ -2357,6 +2357,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     }),withSourceLock:(id,work)=>withImportLock(id,'mvu-edit-invalidation',work)})
   const mvuState:ReturnType<typeof createRoleplayMvuState>=createRoleplayMvuState({table:T.status,
     readGenesis:id=>mvuDerived.required(id)?mvuDerived.readGenesis(id):readOwnNumericalGenesis(id),
+    readSourceSha256:mvuOpening.readSourceSha256,
     captureInheritedDisplayUpdates:(id,genesis)=>{
       if(!mvuDerived.required(id))return undefined
       const captured=mvuDerived.capturePromptInheritedFacts(id)
