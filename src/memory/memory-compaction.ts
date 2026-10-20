@@ -72,6 +72,7 @@ export interface ArchiveRange {
 interface SurfaceNode { seq: number; position: number; event: CompactionEvent | undefined; measurement: MeasuredNode | undefined; story: boolean; context: boolean }
 interface Lifecycle extends Record<string, unknown> { compactionId: string; sourceCommandId?: unknown; turn: number | null }
 interface CompactionSummary {
+  taskId?: string
   text: string
   summary: { type: 'text'; text: string }[]
   reused?: boolean
@@ -477,6 +478,7 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
         ...(sourceCommandId === undefined ? {} : { sourceCommandId }),
         summary: summaryBlocks,
         ...(summaryResult.reused ? {} : { rawOutput: summaryResult.rawOutput, nativeTask: true }),
+        ...(summaryResult.taskId ? { taskReceipt: { schemaVersion: 1, taskId: summaryResult.taskId } } : {}),
         shadowedRange: { start: range.start, end: range.end },
         shadowedSeqs: [...range.shadowedSeqs],
         shadowedTokenCount: range.shadowedTokenCount,

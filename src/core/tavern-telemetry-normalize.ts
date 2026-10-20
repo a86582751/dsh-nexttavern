@@ -44,6 +44,8 @@ export interface TelemetryCallSource {
   workspaceId?: string
 }
 export interface TelemetryCallRecord {
+  /** Numeric final-input estimate, independent from provider usage/output. */
+  requestMeasurement?:import('@deepseek-ai/dsh-agent-loop').NativeRequestMeasurementV1
   schemaVersion: 1
   id: string
   sessionId: string | null

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "community-preset-variables.v1.json",
+  "title": "CommunityPresetVariablesV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "global", "globalBase", "publications", "configurationApplied", "conversations"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "number"},
+    "global": {"$ref": "#/$defs/jsonRecord"},
+    "globalBase": {"$ref": "#/$defs/jsonRecord"},
+    "publications": {"type": "array", "items": {"$ref": "#/$defs/publication"}},
+    "configurationApplied": {"$ref": "#/$defs/stringArray"},
+    "conversations": {"type": "object", "additionalProperties": {"$ref": "#/$defs/variableRecord"}}
+  },
+  "$defs": {
+    "json": {"$ref": "community-presets.v1.json#/$defs/json"},
+    "jsonRecord": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/json"}
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "baselineRecord": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/jsonRecord"}
+    },
+    "acceptedAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "values", "configurationApplied"],
+      "properties": {
+        "digest": {"type": "string"},
+        "values": {"$ref": "#/$defs/jsonRecord"},
+        "configurationApplied": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "variableRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "revision", "values", "baselines", "globalBaselines", "accepted", "configurationApplied"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "revision": {"type": "number"},
+        "values": {"$ref": "#/$defs/jsonRecord"},
+        "baselines": {"$ref": "#/$defs/baselineRecord"},
+        "globalBaselines": {"$ref": "#/$defs/baselineRecord"},
+        "accepted": {"type": "object", "additionalProperties": {"$ref": "#/$defs/acceptedAttempt"}},
+        "configurationApplied": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "macroWrite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "key", "operation", "value"],
+      "properties": {
+        "scope": {"enum": ["chat", "global"]},
+        "key": {"type": "string"},
+        "operation": {"enum": ["set", "add", "append", "delete"]},
+        "value": {"$ref": "#/$defs/json"}
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "writes"],
+      "properties": {
+        "source": {"type": "string"},
+        "writes": {"type": "array", "items": {"$ref": "#/$defs/macroWrite"}}
+      }
+    }
+  }
+}

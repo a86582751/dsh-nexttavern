@@ -79,9 +79,10 @@ export async function prepareRoleplayTavernContentV1(deps) {
             .flatMap(value => value.kind === 'bound' ? [value.binding] : [])];
     render.bindVariableScopes(bindings);
     const tokenCount = createRoleplayTavernTokenCountV1(assertSignal, signal), card = captured.cardData, text = (value) => typeof value === 'string' ? value : '', aliases = readTavernCardMacroFields(card, source.original.decodedFormat), macros = renderInput.macros, globalScanData = { personaDescription: macros.card?.find(value => value.key === 'persona')?.value ?? '',
-        characterDescription: text(aliases.description), characterPersonality: text(aliases.personality),
+        characterDescription: deps.currentCardFields?.description ?? text(aliases.description),
+        characterPersonality: deps.currentCardFields?.personality ?? text(aliases.personality),
         characterDepthPrompt: macros.card?.find(value => value.key === 'charDepthPrompt')?.value ?? '',
-        scenario: text(aliases.scenario), creatorNotes: text(card.creator_notes) };
+        scenario: deps.currentCardFields?.scenario ?? text(aliases.scenario), creatorNotes: text(card.creator_notes) };
     const emptyCounts = { schemaVersion: 1, encoding: 'owned-frozen-token-count-ledger-v1',
         identity: tokenCount.identity, implementationSha256: tokenCount.implementationSha256, method: tokenCount.method, counts: [] };
     const body = { schemaVersion: 1,

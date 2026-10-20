@@ -33,6 +33,7 @@ export function produceRoleplayTavernMacroSnapshotV1(input:{
   /** Every declared outlet, including inactive entries, is retained. */
   declaredOutlets:readonly string[];
   preparedRoute?:{model:string;configSha256:string};
+  currentCardFields?:Readonly<Record<'description'|'personality'|'scenario'|'persona',string>>;
 }) {
   const {source,includeCardStyle}=input,card=cloneRoleplayTavernLoreDataV1(input.cardData,8_388_608),
     scopes=cloneRoleplayTavernLoreDataV1(input.scopes,4_194_304),
@@ -63,7 +64,8 @@ export function produceRoleplayTavernMacroSnapshotV1(input:{
     charInstruction:includeCardStyle?text(aliases.post_history_instructions).trim():'',
     description:text(aliases.description).trim(),personality:text(aliases.personality).trim(),scenario:text(aliases.scenario).trim(),
     persona,mesExamples:parsedExamples,mesExamplesRaw:examples,charVersion:text(card.character_version),
-    char_version:text(card.character_version),charDepthPrompt:depth,creatorNotes:text(card.creator_notes).trim()}
+    char_version:text(card.character_version),charDepthPrompt:depth,creatorNotes:text(card.creator_notes).trim(),
+    ...input.currentCardFields}
   const variableBindings=(scopeName:'chat'|'global')=>{
     const scope=scopes.find(row=>row.scope===scopeName)
     if(!scope)return []

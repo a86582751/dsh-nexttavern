@@ -281,6 +281,7 @@ export function createRoleplayTaskHost({
     }
     assertIdleRecovery()
     kind=kind??(system===STATUS_SYSTEM?'status':system===DECISION_SYSTEM?'decision':system===ORGANIZE_WORKER_SYSTEM?'novel-export':'memory')
+    const compaction=kind==='memory'&&taskStage==='compaction'
     // Nonces protect prompt boundaries, but are not a changing task input.
     const requestKey={system,user:String(user).replace(/(<\/?rp-content:)[0-9a-f]{36}(>)/g,'$1NONCE$2'),generationKey}
     // A Status obligation can resume after the next input has replaced hot
@@ -294,14 +295,24 @@ export function createRoleplayTaskHost({
       // Explicit rebuilding owns its durable generation, not the completed
       // Story's hot input, which the actual management wake must replace.
       const preparation=T.branch.get(keyOf(session.id,'task-preparation')),
-        currency=kind==='status'&&generationKey!==undefined||taskStage==='native-card-conversion'
+        currency=compaction||kind==='status'&&generationKey!==undefined||taskStage==='native-card-conversion'
           ?undefined:inputCurrency?.(session)
       return {...(providedSource??{events:taskStory(session).map(e=>({seq:e.seq,hash:sha256(e.text)})),
         ...(kind==='status'?{fixedHash:recordSha256(statusFixedContext(session))}:{}),
-        ...(!background&&preparation?.sessionId===session.id&&preparation.status==='preparing'
+        ...(!background&&!compaction&&preparation?.sessionId===session.id&&preparation.status==='preparing'
           ?{preparationId:preparation.id}:{})}),...(currency?{inputPreparation:currency}:{})}
     })()
-    try {return await tavernTasks.request({session,agent:main,kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,tools:allowedTools,onResult,onAdmission,
+    // Frozen compaction input survives a new hot preparation. Its later
+    // checkpoint transaction, not a completed summary alone, closes recovery.
+    const consumeResult:typeof onResult=async job=>{
+      if(compaction) {
+        const key=keyOf(session.id,'task-memory-resume'),record=T.branch.get(key)
+        if(record?.status==='pending'&&record.taskStage==='compaction')
+          await T.branch.put(key,{...record,source:{taskId:job.id},updatedAt:Date.now()})
+      }
+      await onResult?.(job)
+    }
+    try {return await tavernTasks.request({session,agent:main,kind,source,input:{system,user,format,taskStage},promptContext,requestKey,format,signal,timeoutMs,maxTokens,selection,background,tools:allowedTools,onResult:consumeResult,onAdmission,
       validate:validate??(value=>{
         if(format==='text'){if(typeof value!=='string'||!value.trim())throw new Error('任务文本为空');return value}
         if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('任务需要 JSON 对象')
@@ -342,8 +353,16 @@ export function createRoleplayTaskHost({
     if(record?.sessionId!==session.id||record.status!=='pending')return
     const engine=ctx.get('compaction')
     if(typeof engine?.resumeTask!=='function')return
-    await engine.resumeTask(agent,signal,record.taskStage)
-    await T.branch.put(key,{...record,status:'completed',completedAt:Date.now()})
+    const taskId=(record.source as {taskId?:string}|undefined)?.taskId
+    const events=eventsOf(session)
+    const summary=record.taskStage==='compaction'&&taskId
+      ?events.findLast(event=>event.type==='compaction/summary'
+        &&event.data?.taskReceipt?.schemaVersion===1&&event.data.taskReceipt.taskId===taskId)
+      :undefined
+    const committed=summary&&events.some(event=>event.type==='compaction/end'
+      &&event.data?.compactionId===summary.data?.compactionId&&!event.data?.error)
+    if(!committed)await engine.resumeTask(agent,signal,record.taskStage)
+    await T.branch.put(key,{...T.branch.get(key),status:'completed',completedAt:Date.now()})
     const maintenance=getMaintenanceJob(session.id)
     if(maintenance?.kind==='notes'&&maintenance.state!=='completed'){maintenance.state='completed';maintenance.error=null;maintenance.finishedAt=Date.now()}
   }

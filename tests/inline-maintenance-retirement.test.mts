@@ -1,22 +1,51 @@
 import assert from 'node:assert/strict'
-import * as context from '../lib/core/tavern-task-context.js'
 import type {TaskEvent,InlineContextJob} from '../lib/core/tavern-task-context.js'
-import {retireDeliveredDraft,retireCoarseResearchReads} from '../lib/core/card-adaptation-context.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import {createHash} from 'node:crypto'
 import {createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
-import {canonicalAssistantForTurn,surfaceEntries} from '../lib/core/roleplay-context.js'
-import {importManagementInputs} from '../lib/memory/memory-history.js'
-import {createFirstResponseWatchdog} from '../lib/core/roleplay-loop.js'
+import {registerHooks} from 'node:module'
+import {pathToFileURL} from 'node:url'
+import {ownedPackages} from './plugin-owned-packages-fixture.mts'
+import {mountMaintainedPeer} from './native-request-material-fixture.mts'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
+
+const closeSchemaPeers=installSchemaTestDependencies()
+process.once('exit',closeSchemaPeers)
+const formatFixture=await ownedPackages(['session-format'],[],{localSession:true})
+await mountMaintainedPeer(formatFixture,'llm')
+await mountMaintainedPeer(formatFixture,'agent-loop')
+const generatedCore=new URL('../lib/core/',import.meta.url).href
+const formatHook=registerHooks({resolve(specifier,context,next){
+ if(['dsh-nexttavern-session-format/mvu-player-marker','@deepseek-ai/dsh-session',
+   '@deepseek-ai/dsh-session/surface','@deepseek-ai/dsh-agent-loop','@deepseek-ai/dsh-llm',
+   '@deepseek-ai/dsh-tools'].includes(specifier)&&context.parentURL?.startsWith(generatedCore))
+  return {url:pathToFileURL(formatFixture.require.resolve(specifier)).href,shortCircuit:true}
+ return next(specifier,context)
+}})
+process.once('exit',()=>{formatHook.deregister();formatFixture.close()})
+const context=await import('../lib/core/tavern-task-context.js')
+const {retireDeliveredDraft,retireCoarseResearchReads}=await import('../lib/core/card-adaptation-context.js')
+const {canonicalAssistantForTurn,surfaceEntries}=await import('../lib/core/roleplay-context.js')
+const {importManagementInputs}=await import('../lib/memory/memory-history.js')
+const {createFirstResponseWatchdog}=await import('../lib/core/roleplay-loop.js')
 const native=process.env.DSH_NATIVE_SESSION_MODULE?await import(process.env.DSH_NATIVE_SESSION_MODULE):null
 function fixture(id:string){const events:TaskEvent[]=[],surface={nodes:[] as number[]};return {id,events,surface,
  append(type:string,data:TaskEvent['data'],options?:{surfaceOp:'append'|{op:string;startSeq:number;endSeq:number};sourceEventSeqs?:number[]}){
   const e={seq:events.length,type,data,...options};events.push(e)
   if(options?.surfaceOp==='append')surface.nodes.push(e.seq)
   else if(options?.surfaceOp){const a=surface.nodes.indexOf(options.surfaceOp.startSeq),b=surface.nodes.indexOf(options.surfaceOp.endSeq);assert.ok(a>=0&&b>=a);surface.nodes.splice(a,b-a+1,e.seq)}return e
- },deriveMessages(){return surface.nodes.map(seq=>{const e=events[seq]!;return e.type==='user/message'?e.data:e.data?.message})}}}
-const create=(id:string)=>native?native.Session.create(id):fixture(id)
+ },deriveMessages(){return surface.nodes.flatMap(seq=>{const e=events[seq]!,message=e.type==='user/message'?e.data:e.data?.message;return message?.content?.length===0&&(e.type!=='user/message'||message.source?.kind==='roleplay-tasks'&&typeof message.source.sourceReceiptSeq==='number')?[]:[message]})}}}
+const create=(id:string)=>{
+ if(!native)return fixture(id)
+ const session=native.Session.create(id)
+ // Journal accepted events for this legacy seam without reading Native's
+ // private log or bypassing its surface/source validation.
+ const events:TaskEvent[]=[],append=session.append.bind(session)
+ session.append=(...args:unknown[])=>{const event=append(...args);events.push(event);return event}
+ Object.defineProperty(session,'events',{get:()=>events})
+ return session
+}
 const model={kind:'model',provider:'fixture',model:'fixture'}
 const toolResult=(id:string,error=false)=>({turn:1,step:2,message:{id:'result-'+id,role:'tool',toolCallId:id,source:{kind:'tool',callId:id},isError:error,content:[{type:'text',text:error?'INITIAL_VALIDATION_ERROR':'{"ok":true}'}]}})
 for(const variant of ['saved','deferred','unproven-deferred','partial','wrong-owner','wrong-source','wrong-generation','wrong-hash','failed-note','early-note','reread','hidden-note','mixed']){
@@ -44,18 +73,26 @@ for(const variant of ['saved','deferred','unproven-deferred','partial','wrong-ow
  if(reread)assert.ok(s.surface.nodes.includes(reread.output.seq),'earlier notes cannot retire later explicit reread')
  if(deferred)assert.equal(s.surface.nodes.includes(deferred.seq),variant==='unproven-deferred','deferred original needs matching delivered packet proof and later note')
 }
-for(const variant of ['silent','metadata-only','first-output','aborted','ended','superseded','disposed']){
+for(const variant of ['silent','metadata-only','first-output','stream-ended','stale-end','aborted','ended','turn-ended','superseded','disposed']){
  const signal=new AbortController(),cancelled:{cause:unknown;options:unknown}[]=[],watch=createFirstResponseWatchdog(20)
  const agent={session:{id:'watch-'+variant},cancel(cause:unknown,options:unknown){cancelled.push({cause,options});signal.abort()}}
  watch.begin(agent,1,1,signal.signal)
- if(variant==='metadata-only')watch.observe(agent.session,{type:'assistant/chunk',data:{turn:1,step:1,chunk:{type:'text-start'}}})
- if(variant==='first-output')watch.observe(agent.session,{type:'assistant/chunk',data:{turn:1,step:1,chunk:{type:'reasoning-delta'}}})
+ watch.observeStream(agent.session,{type:'start',attemptId:'attempt-1',turn:1,step:1})
+ if(variant==='metadata-only')watch.observeStream(agent.session,{type:'chunk',attemptId:'attempt-1',chunk:{type:'block-start'}})
+ if(variant==='first-output')watch.observeStream(agent.session,{type:'chunk',attemptId:'attempt-1',chunk:{type:'reasoning-delta'}})
+ if(variant==='stream-ended')watch.observeStream(agent.session,{type:'end',attemptId:'attempt-1'})
+ if(variant==='stale-end')watch.observeStream(agent.session,{type:'end',attemptId:'attempt-old'})
  if(variant==='aborted')signal.abort()
  if(variant==='ended')watch.observe(agent.session,{type:'step/end',data:{turn:1,step:1}})
- if(variant==='superseded'){watch.begin(agent,2,1,signal.signal);watch.observe(agent.session,{type:'assistant/chunk',data:{turn:2,step:1,chunk:{type:'tool-call-delta'}}})}
+ if(variant==='turn-ended')watch.observe(agent.session,{type:'turn/end',data:{turn:1}})
+ if(variant==='superseded'){
+  watch.begin(agent,2,1,signal.signal)
+  watch.observeStream(agent.session,{type:'start',attemptId:'attempt-2',turn:2,step:1})
+  watch.observeStream(agent.session,{type:'chunk',attemptId:'attempt-2',chunk:{type:'tool-call-delta'}})
+ }
  if(variant==='disposed')watch.dispose()
  await new Promise(resolve=>setTimeout(resolve,40))
- assert.equal(cancelled.length,['silent','metadata-only'].includes(variant)?1:0,variant+': bounded silence cancels only its exact native activity')
+ assert.equal(cancelled.length,['silent','metadata-only','stale-end'].includes(variant)?1:0,variant+': bounded silence cancels only its exact native activity')
  if(cancelled.length)assert.deepEqual(cancelled[0]!.options,{keepInbox:true},'timeout keeps queued player input')
  watch.dispose()
 }
@@ -175,8 +212,8 @@ for(const variant of ['activated','active-current','coarse-current','wrong-curre
  }else assert.match(after,/NOVEL_RESEARCH_ONLY/,variant+': retain research without a completed matching workflow')
  assert.equal(JSON.stringify(s.events.slice(0,length)),before,'research audit is append-only')
 }
-const settles=new Set(['completed','failed','cancelled','cancel-generation','stale','error-then-success','retry-generation','retry-same-ended-turn','unrelated-pending','missing-result'])
-for(const variant of [...settles,'pending','current','not-ended','external-late-result','wrong-source-hash']){
+const settles=new Set(['completed','failed','cancelled','cancel-generation','stale','error-then-success','retry-generation','retry-same-ended-turn','unrelated-pending','missing-result','setting-list','setting-read','setting-repair','setting-jobs'])
+for(const variant of [...settles,'pending','current','not-ended','external-late-result','wrong-source-hash','setting-patch']){
  const s=create('inline-retire-'+variant),add=(type:string,data:unknown,visible=true)=>s.append(type,data,visible?{surfaceOp:'append'}:undefined)
  add('turn/start',{turn:1},false)
  const player=add('user/message',{id:'player',role:'user',source:{kind:'user'},content:[{type:'text',text:'Open the door.'}]})
@@ -197,6 +234,10 @@ for(const variant of [...settles,'pending','current','not-ended','external-late-
  if(variant==='external-late-result'){
   add('user/message',{id:'foreign',role:'user',source:{kind:'user'},content:[{type:'text',text:'Keep this player correction.'}]})
   add('tool/result',toolResult('decision'))
+ }
+ if(variant.startsWith('setting-')){
+  add('assistant/message',{turn:1,step:3,message:{id:'setting-call',role:'assistant',source:model,content:[{type:'tool-call',id:'setting',name:'rp_setting',arguments:JSON.stringify({action:variant.slice(8)})}]}})
+  add('tool/result',toolResult('setting'))
  }
  add('assistant/message',{turn:1,step:4,message:{id:'ack',role:'assistant',source:model,content:[{type:'text',text:'Maintenance finished.'}]}})
  if(variant==='retry-same-ended-turn'){
@@ -258,7 +299,7 @@ for(const variant of [...settles,'pending','current','not-ended','external-late-
  }else assert.equal(after,before,variant+': uncertain/pending/current evidence stays exact')
 }
 
-for(const variant of ['used','just-returned','same-turn','body-not-completed','no-proof','proof-before-read','missing-result','novel-read']){
+for(const variant of ['used','failed-read','just-returned','same-turn','body-not-completed','no-proof','proof-before-read','missing-result','novel-read']){
  const s=create('read-retire-'+variant),add=(type:string,data:unknown,visible=true)=>s.append(type,data,visible?{surfaceOp:'append'}:undefined)
  const story=()=>add('assistant/message',{turn:1,step:3,message:{id:'body',role:'assistant',source:model,content:[{type:'text',text:'The key from the earlier clue opens the door.'}]}})
  const prove=(body:TaskEvent)=>add('user/message',context.taskPhaseMessage('after-story','Story committed.',{storySeq:body.seq,turn:1}))
@@ -271,19 +312,20 @@ for(const variant of ['used','just-returned','same-turn','body-not-completed','n
  for(const [i,name] of tools.entries()){
   add('tool/call',{turn:1,step:2,callId:'read-'+i,name,arguments:'{}'},false)
   if(variant==='missing-result'&&i===tools.length-1)continue
-  const result=toolResult('read-'+i);result.message.content[0]!.text='READ_EVIDENCE_ONLY '.repeat(2500);add('tool/result',result)
+  const result=toolResult('read-'+i,variant==='failed-read'&&i===0);result.message.content[0]!.text='READ_EVIDENCE_ONLY '.repeat(2500);add('tool/result',result)
  }
  if(!['just-returned','proof-before-read'].includes(variant)){body=story();if(variant!=='no-proof')prove(body)}
  if(variant!=='just-returned')add('turn/end',{turn:1,reason:{kind:variant==='body-not-completed'?'failed':'completed'}},false)
  const raw=JSON.stringify(s.events),before=JSON.stringify(s.deriveMessages()),count=s.events.length
  const retired=context.retireUsedStoryReads(s,variant==='same-turn'?1:2),after=JSON.stringify(s.deriveMessages())
- assert.equal(retired>0,variant==='used',variant);assert.equal(JSON.stringify(s.events.slice(0,count)),raw,variant+': append-only read audit')
+ assert.equal(retired>0,['used','failed-read'].includes(variant),variant);assert.equal(JSON.stringify(s.events.slice(0,count)),raw,variant+': append-only read audit')
  assert.ok(s.surface.nodes.includes(player.seq));if(body)assert.ok(s.surface.nodes.includes(body.seq),'story preserved')
- if(variant==='used'){
+ if(['used','failed-read'].includes(variant)){
   assert.ok(!s.surface.nodes.includes(calls.seq));assert.doesNotMatch(after,/READ_EVIDENCE_ONLY/);assert.ok(after.length<before.length-100000)
   const receipt=s.events.at(-1)
   assert.equal(receipt.data.source.form,'read-evidence-receipt');assert.equal(receipt.data.source.schemaVersion,1)
   assert.equal(receipt.data.source.bodySeq,body!.seq);assert.deepEqual(receipt.data.source.tools,tools);assert.ok(receipt.sourceEventSeqs.includes(calls.seq))
+  if(variant==='failed-read'){assert.match(after,/read-0/);assert.match(after,/重新调用/)}
   assert.equal(context.retireUsedStoryReads(s,3),0);assert.equal(JSON.stringify(s.deriveMessages()),after)
  }else assert.equal(after,before,variant+': read evidence remains until later committed/completed story proof')
 }
@@ -315,3 +357,49 @@ for(const variant of ['shared','resident','suffix-garbage','suffix-shape','pendi
  else assert.equal(requestAfter,requestBefore,'malformed or pending compact inputs remain exact')
 }
 console.log('inline maintenance retirement: '+(native?'native':'fixture')+' terminal/retry/failure receipts, compact suffixes, source pairing and completed-story read retention PASS')
+
+// Fixed business state: only successful maintenance/read bookkeeping grows.
+// The same seam runs against the maintained Native Session when supplied.
+for (const mode of ['maintenance', 'read'] as const) for(const outcome of ['success','failure-first']) {
+ const s=create('receipt-growth-'+mode+(outcome==='success'?'':'-'+outcome)),jobs:InlineContextJob[]=[],samples:unknown[]=[]
+ const add=(type:string,data:unknown,visible=true)=>s.append(type,data,visible?{surfaceOp:'append'}:undefined)
+ for(let turn=1;turn<=20;turn++){
+  add('turn/start',{turn},false)
+  if(mode==='maintenance'){
+   const job:InlineContextJob={id:'status-'+turn,sessionId:s.id,kind:'status',execution:'inline',status:'running',generation:'g',sourceHash:'unchanged-state',input:{material:'SETTLED_PAYLOAD'.repeat(100)}}
+   jobs.push(job)
+   add('user/message',context.taskPhaseMessage('prepare',context.inlineTaskInstruction([job])))
+   add('assistant/message',{turn,step:1,stream:[],message:{id:'submit-'+turn,role:'assistant',source:model,content:[{type:'tool-call',id:'call-'+turn,name:'rp_task_submit',arguments:'{}'}]}})
+  }else{
+   add('assistant/message',{turn,step:1,stream:[],message:{id:'read-'+turn,role:'assistant',source:model,content:[{type:'tool-call',id:'call-'+turn,name:'rp_history',arguments:'{}'}]}})
+  }
+  const failed=outcome==='failure-first'&&turn===1
+  const result=toolResult('call-'+turn,failed);result.turn=turn;result.message.content[0]!.text='SETTLED_PAYLOAD'.repeat(100)
+  add('tool/result',result)
+  if(mode==='read'){
+   const body=add('assistant/message',{turn,step:3,stream:[],message:{id:'body-'+turn,role:'assistant',source:model,content:[{type:'text',text:'Unchanged scene.'}]}})
+   add('user/message',context.taskPhaseMessage('after-story','Committed.',{storySeq:body.seq,turn}))
+  }
+  add('turn/end',{turn,reason:{kind:'completed'}},false)
+  const before=JSON.stringify(s.events),count=s.events.length,toolsBefore=native?JSON.stringify(s.toolHistory()):''
+  if(mode==='maintenance'){jobs.at(-1)!.status=failed?'failed':'completed';if(failed)jobs.at(-1)!.error='timeout PRIVATE_STACK'.repeat(1000);context.retireSettledInlineContexts(s,turn+1,jobs)}
+  else context.retireUsedStoryReads(s,turn+1)
+  assert.equal(JSON.stringify(s.events.slice(0,count)),before,'growth sample keeps raw history append-only')
+  const receipts=s.deriveMessages().filter((m:any)=>m?.source?.kind==='roleplay-tasks'&&m.source.form.endsWith('-receipt'))
+  assert.ok(receipts.length<=(outcome==='success'?1:2),'only latest success and unresolved failure stay model-visible')
+  if(outcome==='failure-first')assert.match(JSON.stringify(receipts),mode==='maintenance'?/"status-1"/:/"call-1"/,'failure recovery identity remains visible')
+  if([1,10,20].includes(turn))samples.push({turn,receipts:receipts.length,receiptBytes:Buffer.byteLength(JSON.stringify(receipts))})
+  assert.doesNotMatch(JSON.stringify(receipts),/SETTLED_PAYLOAD/)
+  assert.doesNotMatch(JSON.stringify(receipts),/PRIVATE_STACK/)
+  if(native){
+   assert.ok(s.deriveMessages().every((message:any)=>message.content.length>0),'empty retirement nodes add no wire placeholders')
+   assert.equal(JSON.stringify(s.toolHistory()),toolsBefore,'receipt retirement creates no tool catalog updates')
+   if(turn===20){
+    const restored=native.Session.create(s.id,s.events)
+    assert.deepEqual(restored.deriveMessages(),s.deriveMessages(),'cold replay retains exact visible receipts and hides empty nodes')
+    assert.deepEqual(restored.toolHistory(),s.toolHistory(),'cold replay retains tool definitions without receipt updates')
+   }
+  }
+ }
+ console.log('receipt-growth '+(native?'native':'fixture')+' '+mode+' '+outcome+' '+JSON.stringify(samples))
+}

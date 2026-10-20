@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "community-presets.v1.json",
+  "title": "CommunityPresetV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "id", "name", "source", "prompts", "promptOrder", "characterId", "regexes", "regexSource", "parameters", "profile"],
+  "properties": {
+    "schema": {"const": "community-presets.v1"},
+    "version": {"const": 1},
+    "id": {"type": "string"},
+    "name": {"type": "string"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sha256", "version", "rawText", "raw"],
+      "properties": {
+        "fileName": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "version": {"$ref": "#/$defs/json"},
+        "rawText": {"type": "string"},
+        "raw": {"$ref": "#/$defs/data"}
+      }
+    },
+    "prompts": {"type": "array", "items": {"$ref": "#/$defs/prompt"}},
+    "promptOrder": {"type": "array", "items": {"$ref": "#/$defs/order"}},
+    "characterId": {"type": ["number", "null"]},
+    "regexes": {"type": "array", "items": {"$ref": "#/$defs/regex"}},
+    "regexSource": {"enum": ["native", "spreset", "legacy", "none"]},
+    "parameters": {"$ref": "#/$defs/data"},
+    "profile": {"$ref": "#/$defs/profile"}
+  },
+  "$defs": {
+    "json": {
+      "anyOf": [
+        {"type": "null"},
+        {"type": "boolean"},
+        {"type": "number"},
+        {"type": "string"},
+        {"type": "array", "items": {"$ref": "#/$defs/json"}},
+        {"$ref": "#/$defs/data"}
+      ]
+    },
+    "data": {"type": "object", "additionalProperties": {"$ref": "#/$defs/json"}},
+    "strings": {"type": "array", "items": {"type": "string"}},
+    "layer": {"enum": ["structure", "function", "style"]},
+    "section": {"enum": ["plain", "tail", "armor", "tucao", "thinking", "extra"]},
+    "order": {
+      "type": "object", "additionalProperties": false, "required": ["identifier", "enabled"],
+      "properties": {"identifier": {"type": "string"}, "enabled": {"type": "boolean"}}
+    },
+    "prompt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["identifier", "name", "content", "role", "enabled", "marker", "injectionPosition", "injectionDepth", "injectionOrder", "readOnly", "hidden", "configurationOnly", "unused", "raw"],
+      "properties": {
+        "identifier": {"type": "string"}, "name": {"type": "string"}, "content": {"type": "string"},
+        "role": {"enum": ["system", "user", "assistant"]}, "enabled": {"type": "boolean"},
+        "marker": {"enum": [null, "worldInfoBefore", "worldInfoAfter", "charDescription", "charPersonality", "scenario", "personaDescription", "dialogueExamples", "chatHistory"]},
+        "injectionPosition": {"type": "number"}, "injectionDepth": {"type": "number"}, "injectionOrder": {"type": "number"},
+        "readOnly": {"type": "boolean"}, "hidden": {"type": "boolean"},
+        "configurationOnly": {"type": "boolean"}, "unused": {"type": "boolean"},
+        "sectionBoundary": {"type": "boolean"}, "layer": {"$ref": "#/$defs/layer"},
+        "section": {"$ref": "#/$defs/section"}, "raw": {"$ref": "#/$defs/data"}
+      }
+    },
+    "regex": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "scriptName", "findRegex", "replaceString", "trimStrings", "placement", "disabled", "markdownOnly", "promptOnly", "runOnEdit", "substituteRegex", "minDepth", "maxDepth", "raw"],
+      "properties": {
+        "id": {"type": "string"}, "scriptName": {"type": "string"}, "findRegex": {"type": "string"},
+        "replaceString": {"type": "string"}, "trimStrings": {"$ref": "#/$defs/strings"},
+        "placement": {"type": "array", "items": {"type": "number"}},
+        "disabled": {"type": "boolean"}, "markdownOnly": {"type": "boolean"}, "promptOnly": {"type": "boolean"},
+        "runOnEdit": {"type": "boolean"}, "substituteRegex": {"type": "number"},
+        "minDepth": {"type": ["number", "null"]}, "maxDepth": {"type": ["number", "null"]},
+        "raw": {"$ref": "#/$defs/data"}
+      }
+    },
+    "option": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "label", "type", "enable", "disable", "raw"],
+      "properties": {
+        "id": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string"},
+        "enable": {"$ref": "#/$defs/strings"}, "disable": {"$ref": "#/$defs/strings"},
+        "variableId": {"type": "string"}, "raw": {"$ref": "#/$defs/data"},
+        "match": {
+          "type": "object", "additionalProperties": false, "required": ["below", "above"],
+          "properties": {"below": {"type": "string"}, "above": {"type": "string"}}
+        }
+      }
+    },
+    "group": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "label", "mode", "options", "enableGroup", "disableGroup", "raw"],
+      "properties": {
+        "id": {"type": "string"}, "label": {"type": "string"}, "mode": {"enum": ["single", "multiple"]},
+        "options": {"type": "array", "items": {"$ref": "#/$defs/option"}},
+        "enableGroup": {"$ref": "#/$defs/strings"}, "disableGroup": {"$ref": "#/$defs/strings"},
+        "raw": {"$ref": "#/$defs/data"}
+      }
+    },
+    "profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "groups", "configuration", "transport", "actions"],
+      "properties": {
+        "id": {"enum": ["standard", "dream", "kemini", "reborn", "izumi"]}, "version": {"const": 1},
+        "groups": {"type": "array", "items": {"$ref": "#/$defs/group"}},
+        "configuration": {"$ref": "#/$defs/data"}, "transport": {"$ref": "#/$defs/data"},
+        "actions": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "status", "reason"],
+            "properties": {"id": {"type": "string"}, "status": {"const": "deferred"}, "reason": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "planEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sameNameIndex", "enabled", "raw"],
+      "properties": {
+        "id": {"type": "string"}, "name": {"type": "string"}, "sameNameIndex": {"type": "number"},
+        "enabled": {"type": "boolean"}, "raw": {"$ref": "#/$defs/data"}
+      }
+    },
+    "plan": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "layer", "section", "strict", "entries", "raw"],
+      "properties": {
+        "id": {"type": "string"}, "name": {"type": "string"}, "layer": {"$ref": "#/$defs/layer"},
+        "section": {"type": "string"}, "strict": {"type": "boolean"},
+        "entries": {"type": "array", "items": {"$ref": "#/$defs/planEntry"}}, "raw": {"$ref": "#/$defs/data"}
+      }
+    },
+    "planPack": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "version", "plans", "active", "quickSlots", "raw"],
+      "properties": {
+        "schema": {"const": "izumi-layer-plan-pack"}, "version": {"const": 2},
+        "plans": {"type": "array", "items": {"$ref": "#/$defs/plan"}},
+        "active": {"$ref": "#/$defs/data"}, "quickSlots": {"type": "array", "items": {"$ref": "#/$defs/json"}},
+        "raw": {"$ref": "#/$defs/data"}
+      }
+    }
+  }
+}

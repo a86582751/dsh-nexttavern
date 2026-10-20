@@ -7,6 +7,7 @@ import type {NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,Na
   from '@deepseek-ai/dsh-agent-loop'
 import type {SessionMessageProjection} from '@deepseek-ai/dsh-session'
 import {recordSha256,sha256,textOf} from './roleplay-data.js'
+import {createStableRoleplayFence} from './roleplay-context.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
 import {captureRoleplayTavernPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
@@ -39,6 +40,11 @@ import type {PromptProgramV1,PromptCaptureV1,PromptExecutionV1,PromptExecutionOu
 import type {BrowserGenerationOutput,AuthorBrowserPreparationFacts} from './roleplay-author-browser-generation-types.js'
 import type {BrowserProgramV2} from './tavern-author-browser-types-v2.mjs'
 import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
+import {prepareCommunityPresetMaterial} from './community-preset-material.js'
+import type {CommunityMaterialDependencies} from './community-preset-material.js'
+import {produceCommunityPresetCardMaterialV1,produceCommunityNativeCardMaterialV1} from './community-preset-card-material.js'
+import type {CommunityCardFieldMappingV1,CommunityCardMarkerV1} from './community-preset-card-material.js'
+import {authorContributionTextsV1,produceAuthorContributionDataV1} from './roleplay-author-contributions.js'
 import type {TavernRenderedAuthorMaterialV1} from './roleplay-tavern-prompt-types.js'
 import type {TavernLoreDerivedSnapshotV1} from './tavern-lore-derived.mjs'
 
@@ -86,6 +92,8 @@ export interface TavernOpeningPreparationReadV1 {
   assertCurrent():void
 }
 interface Dependencies extends SourceDependencies {
+  readonly tables:Parameters<typeof produceAuthorContributionDataV1>[0]
+  readonly community?:CommunityMaterialDependencies
   readonly inputState:RoleplayInputStateOwner
   /** Exact pending publications supplied by their actual producer. */
   readonly pendingOutputRows:(sessionId:string)=>readonly {readonly table:string;readonly key:string}[]
@@ -121,12 +129,29 @@ interface Dependencies extends SourceDependencies {
     source:TavernOpeningPreparationSourceDataV1):TavernOpeningPreparationReadV1
 }
 const joinHistoryBlock=(messageIndex:number,blockIndex:number)=>`history-${messageIndex}-${blockIndex}`
+type CommunityMaterial=ReturnType<Awaited<ReturnType<typeof prepareCommunityPresetMaterial>>['finish']>
+/** Community owns its history transform once. Keep structural groups in its
+ * original projection and publish text edits through Native's per-block V2. */
+function communityMaterialV2(selected:NativeMaterialSelectedBaseV1,material:CommunityMaterial) {
+  const {messageProjection,...rest}=material
+  const messages=new Map(selected.messages.map(row=>[row.id,row]))
+  const messageTextProjections:NativeMaterialMessageTextProjectionV2[]=(messageProjection?.textEdits??[]).map(edit=>{
+    const row=messages.get(edit.target.id)!,textEdits=edit.blocks.map(block=>({
+      blockIndex:block.index,replacementText:block.text}))
+    return {target:{...edit.target,role:row.role as 'user'|'assistant'},textEdits,
+      projectionSha256:nativeInputSha256(projectNativeMessageTextV2(row.message,textEdits))}
+  })
+  return {...rest,messageTextProjections,...messageProjection?.groups.length
+    ?{messageProjection:{schemaVersion:messageProjection.schemaVersion,
+      encoding:messageProjection.encoding,groups:messageProjection.groups}}:{}}
+}
 function fail(code:string):never {throw Error(code)}
 function freeze<T>(value:T):T {
   if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}
   return value
 }
 function phaseASnapshot(deps:Dependencies,scope:RoleplayInputMaterialScopeV1):Omit<PreparationSnapshot,'agent'> {
+  if(scope.phaseA)return scope.phaseA.current().snapshot
   const ref=scope.currency.snapshot
   if(!ref)fail('INPUT_MATERIAL_PHASE_A_SNAPSHOT_MISSING')
   const snapshot=deps.branch.get(ref.key) as Omit<PreparationSnapshot,'agent'>|undefined
@@ -139,12 +164,23 @@ function phaseASnapshot(deps:Dependencies,scope:RoleplayInputMaterialScopeV1):Om
 type MaterialInvocation={readonly kind:'player';readonly scope:RoleplayInputMaterialScopeV1}
   |{readonly kind:'program-opening';readonly scope:RoleplayOpeningMaterialScopeV1;
     readonly native:NativeOpeningMaterialPrepareInputV1}
+interface TavernGenerationMemo {
+  readonly attemptId:string
+  readonly seed:string
+  readonly clockEpochMs:number
+  readonly hookCapture:PromptCaptureV1|undefined
+  authorPrompt?:{readonly capture:PromptCaptureV1;readonly output:PromptExecutionOutputV1}
+  authorBrowser?:{readonly capture:PromptCaptureV1;readonly output:BrowserGenerationOutput}
+}
 export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):RoleplayInputMaterialDependenciesV1&{
   prepareOpening(native:NativeOpeningMaterialPrepareInputV1,scope:RoleplayOpeningMaterialScopeV1)
     :ReturnType<RoleplayInputMaterialDependenciesV1['prepare']>
 } {
+  // Replanning a window is still the same actual generation. Source callbacks
+  // and once listeners run once; only their immutable output enters each plan.
+  const generations=new WeakMap<RoleplayInputMaterialScopeV1['stepToken'],TavernGenerationMemo>()
   const prepare=async(native:ActualNativePreparation,invocation:MaterialInvocation)=>{
-    const scope=invocation.scope
+    const scope=invocation.scope,communityPolicy=deps.community?.presets.policy(invocation.scope.session.id)
     const assertOwnerFactsCurrent=scope.assertOwnerFactsCurrent.bind(scope)
     const assertSignal=()=>scope.signal.throwIfAborted()
     const inputCapture=await deps.withSourceLock(scope.session.id,async()=>{
@@ -155,11 +191,15 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         assertOwnerFactsCurrent,outputRows:[...scope.outputRows??[],...deps.pendingOutputRows(scope.session.id)]},()=>{
         const author=deps.inputState.captureSource(scope.session.id,'tavern-author',()=>{
           const includeCardStyle=deps.includeCardStyle(scope.session.id),
+            accountPersona=communityPolicy?.preset?deps.community?.persona?.()??[]:[],
             authorPolicy=cloneRoleplayTavernLoreDataV1(deps.authorPolicy(scope.session.id),262_144),
             authorPolicySha256=recordSha256(authorPolicy),
             captured=captureRoleplayTavernPromptSourceDataV1(deps,scope.session.id,includeCardStyle)
-          if(captured.kind==='outside-declared-domain')return captured
-          return {kind:'author-data' as const,includeCardStyle,authorPolicy,authorPolicySha256,captured}
+          if(captured.kind==='outside-declared-domain')return {...captured,accountPersona,
+            plainAuthor:produceAuthorContributionDataV1(deps.tables,scope.session.id,includeCardStyle),
+            cardRows:[...deps.tables.cards.entries()].filter(([key])=>key.startsWith(scope.session.id+'__'))
+              .map(([key,value])=>({identity:`cards:${key}`,value}))}
+          return {kind:'author-data' as const,includeCardStyle,authorPolicy,authorPolicySha256,captured,accountPersona}
         }).data
         if(author.kind==='outside-declared-domain')return author
         const opening=invocation.kind==='program-opening'
@@ -203,22 +243,98 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
     },scope.signal)
       if(inputCapture.data.kind==='outside-declared-domain') {
         const outside=inputCapture.data
+        if(['ACTIVE_SOURCE_MISSING','LEGACY_SOURCE_OUTSIDE_DOMAIN'].includes(outside.reason)) {
+          if(!deps.community){inputCapture.release();return outside}
+          const policy=communityPolicy!
+          if(!policy.preset&&!policy.regexes.some(library=>library.rules.some(rule=>!rule.disabled))){inputCapture.release();return outside}
+          try {
+          const partition=policy.preset?produceCommunityNativeCardMaterialV1({parts:outside.plainAuthor.parts,
+            cardRows:outside.cardRows,persona:outside.accountPersona,
+            mappingScope:{sessionId:scope.session.id,conversationId:policy.conversationId},
+            override:policy.effective.features.nativeCardMapping as unknown as CommunityCardFieldMappingV1|undefined}):undefined
+          if(partition?.kind==='mapping-required')fail('COMMUNITY_CARD_MAPPING_REQUIRED')
+          const mapped=partition?.kind==='mapped'?partition:undefined,
+            currentFields:Record<string,string>=mapped?{description:mapped.markers.charDescription.map(part=>part.text).join('\n\n'),
+              personality:mapped.markers.charPersonality.map(part=>part.text).join('\n\n'),
+              scenario:mapped.markers.scenario.map(part=>part.text).join('\n\n'),persona:mapped.markers.personaDescription.map(part=>part.text).join('\n\n')}:{}
+          const player=invocation.kind==='player'?invocation.scope:undefined,
+            snapshot=player?phaseASnapshot(deps,player):undefined,
+            generationKey=player?.stepToken,previous=generationKey?generations.get(generationKey):undefined,
+            attemptId=previous?.attemptId??(player?`${player.currency.preparationId}:${player.currency.attemptGeneration}`:
+              `${scope.session.id}:opening:${scope.turn}:${scope.step}`),
+            seed=previous?.seed??recordSha256({attemptId,selected:native.selected.sha256}),
+            storyRows=deps.storyRows(scope,native.selected),clockEpochMs=previous?.clockEpochMs??Date.now(),
+            aliases=deps.community.aliases(scope.session.id)
+          // The same plain-community generation can be repriced after its
+          // checkpoint. Rebuild selected-history groups with this new cut,
+          // while its random stream and clock retain their original basis.
+          if(generationKey&&!previous)generations.set(generationKey,{attemptId,seed,clockEpochMs,hookCapture:undefined})
+          const material=await prepareCommunityPresetMaterial(deps.community,{session:scope.session,policy,selected:native.selected,
+            historyRows:storyRows,seed,clockEpochMs,inputText:snapshot?.userText??'',aliases:{...aliases,
+              ...currentFields,turn:String(scope.turn),turnPlus1:String(scope.turn+1),chatMessageCount:String(storyRows.length)},
+            cardData:{},inputId:snapshot?.userMessageId??attemptId,attemptId,scopedRules:[]},scope.signal)
+          const remaining=mapped?authorContributionTextsV1([...mapped.residualCards,...mapped.residualRules,
+            ...outside.plainAuthor.parts.filter(part=>part.kind==='examples')],true):outside.plainAuthor
+          const renderPlain=(text:string)=>{
+            if(!policy.preset)return text
+            if(text.includes('<%'))fail('COMMUNITY_NATIVE_TEMPLATE_REQUIRES_SOURCE')
+            return material.renderPlainAuthor(text)
+          }
+          const renderedMarkers:Partial<Record<CommunityCardMarkerV1,string>>={}
+          if(mapped&&policy.preset){
+            const byId=new Map(policy.preset.prompts.map(prompt=>[prompt.identifier,prompt])),seen=new Set<string>()
+            const ordered=policy.preset.promptOrder.length?policy.preset.promptOrder.map(row=>byId.get(row.identifier)!):policy.preset.prompts
+            for(const prompt of ordered)if(prompt?.enabled&&!prompt.unused&&!prompt.configurationOnly&&prompt.marker
+              &&Object.hasOwn(mapped.markers,prompt.marker)&&!seen.has(prompt.marker)){
+              seen.add(prompt.marker);renderedMarkers[prompt.marker as CommunityCardMarkerV1]=
+                mapped.markers[prompt.marker as CommunityCardMarkerV1].map(part=>renderPlain(part.text)).join('\n\n')
+            }
+          }
+          const renderedAuthor={cardsText:renderPlain(remaining.cardsText),rulesText:renderPlain(remaining.rulesText),
+            examplesText:policy.preset&&!policy.preset.prompts.some(prompt=>prompt.marker==='dialogueExamples'&&prompt.enabled&&!prompt.unused)
+              ?'':renderPlain(remaining.examplesText)}
+          const fence=createStableRoleplayFence()
+          const replacement:Record<string,string>=policy.preset?{
+            'roleplay:cards':renderedAuthor.cardsText.trim()?fence(renderedAuthor.cardsText,'card'):'',
+            'roleplay:rules':renderedAuthor.rulesText?fence(renderedAuthor.rulesText,'rules'):'',
+            'roleplay:examples':renderedAuthor.examplesText?fence(renderedAuthor.examplesText,'examples'):''}:{}
+          const names=new Set(TAVERN_NATIVE_OWNED_SECTION_NAMES_V1),sections=native.finalAssembly.sections.filter(section=>names.has(section.name)),
+            base={requiredSections:sections.map(section=>({name:section.name,sha256:nativeInputSha256(section)})),
+              sections:sections.map(section=>({name:section.name,expectedSectionSha256:nativeInputSha256(section),
+                replacementText:replacement[section.name]??section.text,interpolate:false as const})),insertions:[],anchoredInsertions:[],layout:{outlets:[]}},
+            transformed=communityMaterialV2(native.selected,
+              material.finish({native,layout:base,finalLore:[],evaluation:{placements:[]},renderedMarkers,renderedAuthor}))
+          const versions=storyRows.map(row=>({id:row.id,messageSha256:row.messageSha256})),initial=nativeInputSha256(native.selected)
+          return {kind:'prepared-data' as const,...transformed,
+            snapshot:freeze({schemaVersion:1,encoding:'community-preset-plain-capture-v1',initialNativeSelected:native.selected,
+              seed,clockEpochMs,sourceDomain:outside.reason,...mapped?{communityCardMaterial:mapped}:{}}),
+            plan:freeze({schemaVersion:1,encoding:'community-preset-plain-plan-v1',...transformed.record?{community:transformed.record}:{}}),
+            assertCurrent:inputCapture.assertCurrent,release:inputCapture.release,assertSelected(selected:NativeMaterialSelectedBaseV1,firstAttempt:boolean) {
+              if(selected===native.selected){if(!firstAttempt||nativeInputSha256(selected)!==initial)fail('INPUT_MATERIAL_INITIAL_SELECTION_CHANGED')}
+              else assertNativeRequestMaterialSelectionV1(native.selected,selected)
+              const actual=selected.messages.filter(row=>versions.some(version=>version.id===row.id))
+                .map(row=>({id:row.id,messageSha256:row.messageSha256}))
+              if(recordSha256(actual)!==recordSha256(versions))fail('INPUT_MATERIAL_STORY_SELECTION_CHANGED')
+            }}
+          }catch(error){inputCapture.release();throw error}
+        }
         inputCapture.release()
-        if(['ACTIVE_SOURCE_MISSING','LEGACY_SOURCE_OUTSIDE_DOMAIN'].includes(outside.reason))return outside
         fail(`INPUT_MATERIAL_${outside.reason}`)
       }
       const {captured,opening,player,playerSnapshot,snapshot,storyRows,initialSelectedSha256,
         scopeData,materialHistory,chatClock,timed,authorPromptFacts,authorBrowserFacts,
-        includeCardStyle,authorPolicy,authorPolicySha256,derived}=inputCapture.data,
+        includeCardStyle,authorPolicy,authorPolicySha256,accountPersona,derived}=inputCapture.data,
         {source,compilation,original,residual}=captured,
         assertCurrent=()=>{inputCapture.assertCurrent();derived?.assertCurrent()}
       try {
       assertCurrent()
-      const attemptId=opening?.attempt.attemptId??`${player!.currency.preparationId}:${player!.currency.attemptGeneration}`,
-        turnId=String(scope.turn),seed=opening?recordSha256(opening.attempt.seed):
+      const generationKey=invocation.kind==='player'?invocation.scope.stepToken:undefined,
+        previous=generationKey?generations.get(generationKey):undefined,
+        attemptId=previous?.attemptId??opening?.attempt.attemptId??`${player!.currency.preparationId}:${player!.currency.attemptGeneration}`,
+        turnId=String(scope.turn),seed=previous?.seed??(opening?recordSha256(opening.attempt.seed):
           recordSha256({schemaVersion:1,encoding:'native-tavern-attempt-seed-v1',
-            currency:player!.currency,sourceSha256:source.sourceSha256,selectedSha256:native.selected.sha256}),
-        clockEpochMs=Date.now(),packageSha256=source.original.documentSha256,
+            currency:player!.currency,sourceSha256:source.sourceSha256,selectedSha256:native.selected.sha256})),
+        clockEpochMs=previous?.clockEpochMs??Date.now(),packageSha256=source.original.documentSha256,
         browserGeneration=authorBrowserFacts?.program.requiredCapabilities.includes('owned-generation-callbacks')===true,
         policy=browserGeneration?(authorBrowserFacts?.program.schemaVersion===3
           ?TAVERN_NATIVE_PROMPT_POLICY_V4:TAVERN_NATIVE_PROMPT_POLICY_V3):
@@ -227,35 +343,88 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         const semantic={...ST_LORE_ENTRY_DEFAULTS_V1,...entry.semanticOverrides}
         return semantic.position==='named-outlet'&&semantic.outletName?[semantic.outletName]:[]
       })
+      const model=deps.community?.modelName(scope.session.id),preparedRoute=model?{model,configSha256:recordSha256({model})}:undefined
+      const cardMaterial=communityPolicy?.preset?produceCommunityPresetCardMaterialV1({captured,persona:accountPersona,
+        mappingScope:{sessionId:scope.session.id,conversationId:communityPolicy.conversationId},
+        override:communityPolicy.effective.features.nativeCardMapping as unknown as CommunityCardFieldMappingV1|undefined}):undefined
+      if(cardMaterial?.kind==='mapping-required')fail('COMMUNITY_CARD_MAPPING_REQUIRED')
+      const mapped=cardMaterial?.kind==='mapped'?cardMaterial:undefined
+      const currentCardFields=mapped?{description:mapped.markers.charDescription.map(part=>part.text).join('\n\n'),
+        personality:mapped.markers.charPersonality.map(part=>part.text).join('\n\n'),
+        scenario:mapped.markers.scenario.map(part=>part.text).join('\n\n'),
+        persona:mapped.markers.personaDescription.map(part=>part.text).join('\n\n')}:undefined
+      const baseMacros=produceRoleplayTavernMacroSnapshotV1({source,cardData:captured.cardData,includeCardStyle,
+        inputText:playerSnapshot?playerSnapshot.userText:null,scopes:scopeData.bindings,outlets:[],declaredOutlets,
+        ...preparedRoute?{preparedRoute}:{},currentCardFields}).snapshot
+      const aliases=Object.fromEntries([...Object.values(baseMacros.names),...baseMacros.card??[],...baseMacros.dynamic??[]]
+        .filter(binding=>binding.value!==null).map(binding=>[binding.key,binding.value!]))
+      const community=deps.community?await prepareCommunityPresetMaterial(deps.community,{session:scope.session,policy:communityPolicy,
+        selected:native.selected,historyRows:storyRows,seed,clockEpochMs,inputText:playerSnapshot?.userText??'',
+        aliases:{...aliases,turn:String(scope.turn),turnPlus1:String(scope.turn+1),chatMessageCount:String(chatClock.scanRows.length)},
+        cardData:captured.cardData,inputId:playerSnapshot?.userMessageId??player?.currency.preparationId??opening!.attempt.attemptId,
+        attemptId,scopedRules:captureRoleplayTavernScopedRegexV1(captured.cardData,source.sourceSha256,true),
+        loreEntries:compilation.plan.entries.map(entry=>{
+          const collection=compilation.plan.rawBook?.entries,
+            raw=(Array.isArray(collection)?collection[entry.ordinal]:collection&&typeof collection==='object'?collection[entry.sourceKey]:null),
+            metadata=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{}
+          return {entryId:entry.entryId,name:String(metadata.comment??metadata.name??''),
+            constant:entry.semanticOverrides.constant===true,dynamic:JSON.stringify(raw).includes('<%')}
+        })},scope.signal):undefined
+      const initialBindings=community?.scopes(scopeData.bindings)??scopeData.bindings
       const macrosFor=(scopes:readonly TavernTemplateScopeBindingV1[],outlets:readonly {name:string;text:string;versionSha256:string}[]=[])=>
         produceRoleplayTavernMacroSnapshotV1({source,cardData:captured.cardData,includeCardStyle,
-          inputText:playerSnapshot?playerSnapshot.userText:null,scopes,outlets,declaredOutlets}).snapshot
-      const macros=macrosFor(scopeData.bindings),rules=captureRoleplayTavernScopedRegexV1(captured.cardData,source.sourceSha256,true)
+          inputText:playerSnapshot?playerSnapshot.userText:null,scopes:community?.scopes(scopes)??scopes,outlets,declaredOutlets,
+          ...preparedRoute?{preparedRoute}:{},currentCardFields}).snapshot
+      const macros=macrosFor(initialBindings),rules=community?.rules??captureRoleplayTavernScopedRegexV1(captured.cardData,source.sourceSha256,true)
       const component=await deps.loadTemplate(scope.signal)
       assertCurrent()
-      let authorPrompt:{readonly capture:PromptCaptureV1;readonly output:PromptExecutionOutputV1}|undefined
-      let authorBrowser:{readonly capture:PromptCaptureV1;readonly output:BrowserGenerationOutput}|undefined
       const hookFacts=authorPromptFacts??authorBrowserFacts,
-        hookCapture=hookFacts?produceAuthorPromptCaptureV1({history:chatClock,scopes:hookFacts.scopes,
-          opening:hookFacts.opening,attemptId,clockEpochMs,randomSeed:seed}):undefined
-      if(authorBrowserFacts&&browserGeneration) {
+        hookCapture=previous?.hookCapture??(hookFacts?produceAuthorPromptCaptureV1({history:chatClock,scopes:hookFacts.scopes,
+          opening:hookFacts.opening,attemptId,clockEpochMs,randomSeed:seed}):undefined),
+        generation:TavernGenerationMemo=previous??{attemptId,seed,clockEpochMs,hookCapture}
+      if(generationKey&&!previous)generations.set(generationKey,generation)
+      let authorPrompt=generation.authorPrompt,authorBrowser=generation.authorBrowser
+      if(authorBrowserFacts&&browserGeneration&&!authorBrowser) {
         if(!deps.executeAuthorBrowser)fail('INPUT_MATERIAL_AUTHOR_BROWSER_UNAVAILABLE')
         const output=await deps.executeAuthorBrowser(scope.session.id,authorBrowserFacts.program,
           hookCapture!,authorBrowserFacts,scope.signal)
         assertCurrent()
         authorBrowser={capture:hookCapture!,output}
+        generation.authorBrowser=authorBrowser
       }
-      if(authorPromptFacts) {
+      if(authorPromptFacts&&!authorPrompt) {
         const capture=hookCapture!
         const execution=await deps.executeAuthorPrompt(scope.session.id,authorPromptFacts.program,capture,scope.signal)
         assertCurrent()
         if(execution.kind!=='executed')fail(execution.diagnostics[0]?.code??'INPUT_MATERIAL_AUTHOR_PROMPT_REFUSED')
         authorPrompt={capture,output:execution.output}
+        generation.authorPrompt=authorPrompt
       }
+      const markerInputs:{pointer:string;text:string;marker:CommunityCardMarkerV1}[]=[]
+      if(mapped&&community?.preset){
+        const preset=community.preset,byId=new Map(preset.prompts.map(prompt=>[prompt.identifier,prompt]))
+        const ordered=preset.promptOrder.length?preset.promptOrder.map(row=>byId.get(row.identifier)!):preset.prompts
+        const seen=new Set<string>()
+        for(const prompt of ordered)if(prompt?.enabled&&!prompt.unused&&!prompt.configurationOnly&&prompt.marker
+          &&Object.hasOwn(mapped.markers,prompt.marker)&&!seen.has(prompt.marker)){
+          seen.add(prompt.marker)
+          for(const part of mapped.markers[prompt.marker as CommunityCardMarkerV1])markerInputs.push({
+            pointer:part.pointer,text:part.text,marker:prompt.marker as CommunityCardMarkerV1})
+        }
+      }
+      const remainingParts=mapped?[...mapped.residualCards,...mapped.residualRules,
+        ...residual.parts.filter(part=>part.kind==='examples')]:residual.parts
+      const remaining=mapped?authorContributionTextsV1(remainingParts,true):residual
+      const exampleEnabled=!community?.preset||community.preset.prompts.some(prompt=>prompt.marker==='dialogueExamples'
+        &&prompt.enabled&&!prompt.unused&&!prompt.configurationOnly)
+      const residualInputs=[{pointer:'/native/current-author/cards',text:remaining.cardsText},
+        {pointer:'/native/current-author/rules',text:remaining.rulesText},
+        {pointer:'/native/current-author/examples',text:exampleEnabled?remaining.examplesText:''}]
+      const authorInputs=[...markerInputs,...residualInputs]
       const note=snapshot.contextMessageRefs?.refs.find(row=>row.form==='director-notes'),
         noteIndex=note?native.selected.messages.findIndex(row=>row.id===note.id&&row.messageSha256===note.messageSha256):-1
       const definitions=captureRoleplayTavernInjectionDefinitionsV1(source,compilation.plan,residual,
-        authorPromptFacts?.program,authorBrowserFacts?.program),
+        authorPromptFacts?.program,authorBrowserFacts?.program,authorInputs),
         injections=createRoleplayTavernInjectionRegistryV1({sessionId:scope.session.id,turn:scope.turn,step:scope.step,
           attemptId,history:materialHistory,definitions:definitions.definitions,promptDefinition:definitions.promptDefinition,
           browserDefinition:definitions.browserDefinition,component,assertCurrent,signal:scope.signal})
@@ -285,10 +454,12 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
           scanPolicy:'owner-captured-st-message-string-v1',scanText,scanTextSha256:sha256(scanText)}
       })
       const {render,initialCatalog,variables,evaluated,finalLore,authorMacros}=await prepareRoleplayTavernContentV1({
-        captured,scopeData,attempt,timed:timed.timed,visibleMessages,settings,macrosFor,
+        captured,scopeData:{...scopeData,bindings:initialBindings},attempt,timed:timed.timed,
+        visibleMessages,settings,macrosFor,currentCardFields,
         ...derived?{execution:createRoleplayTavernDerivedContentExecutionV1(compilation.plan,derived)}:{},
         renderInput:{source,plan:compilation.plan,macros,rules,
-          component,scopes:scopeData.bindings,authorsNoteDepth:noteIndex<0?0:native.selected.messages.length-noteIndex-1,
+          component,scopes:initialBindings,...community?{scriptOrder:community.regexOrder}:{},
+          authorsNoteDepth:noteIndex<0?0:native.selected.messages.length-noteIndex-1,
           basis:{sessionId:scope.session.id,branchId:scope.session.id,revision:timed.timed.revision,turnId,attemptId,
             packageSha256,sourceSnapshotSha256:source.sourceSha256,stateSnapshotSha256:scopeData.stateSnapshotSha256,
             clockEpochMs,randomSeed:seed},assertCurrent,signal:scope.signal,definitionFor:definitions.definitionFor,
@@ -316,38 +487,46 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       if(injectedChat.activationProposals.length)fail('INPUT_MATERIAL_POST_LORE_INJECTION_ACTIVATION_REQUIRES_FEEDBACK')
       // These calls share an ordered execution journal; serial invocation keeps
       // each source pointer, macro receipt and standalone output unambiguous.
-      const author=[]
-      author.push(await render.render('/native/current-author/cards',residual.cardsText,
-        {macros:authorMacros,placement:1,phase:'late-author'}))
-      author.push(await render.render('/native/current-author/rules',residual.rulesText,
-        {macros:authorMacros,placement:1,phase:'late-author'}))
-      author.push(await render.render('/native/current-author/examples',residual.examplesText,
-        {macros:authorMacros,placement:1,phase:'late-author'}))
-      if(author.some(row=>row.activationProposals.length))fail('INPUT_MATERIAL_LATE_AUTHOR_ACTIVATION_UNSUPPORTED')
-      // The existing chat-clock owner has already classified canonical prose.
-      // Native supplies the actual request selection; management/maintenance
-      // assistants never acquire AI_OUTPUT placement through continuity rows.
-      const canonicalAssistantIds=new Set(chatClock.data.rows.filter(row=>row.role==='assistant').map(row=>row.id)),
-        historyRows=invocation.kind==='player'?native.selected.messages.filter(row=>
-          row.role==='user'&&row.message.role==='user'&&row.message.source.kind==='user'
-          ||row.role==='assistant'&&canonicalAssistantIds.has(row.id)):[],
-        historyBlocks=historyRows.flatMap((selected,index)=>selected.message.content.flatMap((block,blockIndex)=>
-          block.type==='text'?[{key:joinHistoryBlock(index,blockIndex),text:block.text,
-            role:selected.role==='user'?'user' as const:'assistant' as const,
-            depth:historyRows.length-index-1}]:[])),
-        historyTexts=new Map((await render.transformHistoryContent(historyBlocks,authorMacros))
-          .map(row=>[row.key,row.text])),messageTextProjections:NativeMaterialMessageTextProjectionV2[]=[]
-      for(const [index,selected] of historyRows.entries()) {
-        const textEdits=selected.message.content.flatMap((block,blockIndex)=>{
-          const replacementText=historyTexts.get(joinHistoryBlock(index,blockIndex))
-          return block.type==='text'&&replacementText!==undefined&&replacementText!==block.text
-            ?[{blockIndex,replacementText}]:[]
-        })
-        if(!textEdits.length)continue
-        const projected=projectNativeMessageTextV2(selected.message,textEdits)
-        messageTextProjections.push({target:{id:selected.id,
-          role:selected.role==='user'?'user':'assistant',messageSha256:selected.messageSha256},
-          textEdits,projectionSha256:nativeInputSha256(projected)})
+      const renderedMarkers:Partial<Record<CommunityCardMarkerV1,string>>={},rendered=[]
+      for(const input of authorInputs){
+        const output=await render.render(input.pointer,input.text,{macros:authorMacros,placement:1,phase:'late-author'})
+        if(output.activationProposals.length)fail('INPUT_MATERIAL_LATE_AUTHOR_ACTIVATION_UNSUPPORTED')
+        rendered.push(output)
+        if('marker' in input){
+          const marker=input.marker as CommunityCardMarkerV1
+          renderedMarkers[marker]=[renderedMarkers[marker],output.renderedText].filter(Boolean).join('\n\n')
+        }
+      }
+      const author=rendered.slice(markerInputs.length)
+      const messageTextProjections:NativeMaterialMessageTextProjectionV2[]=[]
+      // The community bridge already transformed these selected history rows
+      // with the merged global/preset/scoped registry. Legacy independent
+      // callers retain the original Native V2 path instead of running it twice.
+      if(!community) {
+        // The chat-clock owner classified canonical prose; a maintenance
+        // assistant never acquires AI_OUTPUT placement through continuity rows.
+        const canonicalAssistantIds=new Set(chatClock.data.rows.filter(row=>row.role==='assistant').map(row=>row.id)),
+          historyRows=invocation.kind==='player'?native.selected.messages.filter(row=>
+            row.role==='user'&&row.message.role==='user'&&row.message.source.kind==='user'
+            ||row.role==='assistant'&&canonicalAssistantIds.has(row.id)):[],
+          historyBlocks=historyRows.flatMap((selected,index)=>selected.message.content.flatMap((block,blockIndex)=>
+            block.type==='text'?[{key:joinHistoryBlock(index,blockIndex),text:block.text,
+              role:selected.role==='user'?'user' as const:'assistant' as const,
+              depth:historyRows.length-index-1}]:[])),
+          historyTexts=new Map((await render.transformHistoryContent(historyBlocks,authorMacros))
+            .map(row=>[row.key,row.text]))
+        for(const [index,selected] of historyRows.entries()) {
+          const textEdits=selected.message.content.flatMap((block,blockIndex)=>{
+            const replacementText=historyTexts.get(joinHistoryBlock(index,blockIndex))
+            return block.type==='text'&&replacementText!==undefined&&replacementText!==block.text
+              ?[{blockIndex,replacementText}]:[]
+          })
+          if(!textEdits.length)continue
+          const projected=projectNativeMessageTextV2(selected.message,textEdits)
+          messageTextProjections.push({target:{id:selected.id,
+            role:selected.role==='user'?'user':'assistant',messageSha256:selected.messageSha256},
+            textEdits,projectionSha256:nativeInputSha256(projected)})
+        }
       }
       const injectionTransaction=injections.transaction()
       assertCurrent()
@@ -361,19 +540,26 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         semanticStoryIds=new Set(semanticStory.map(row=>row.id)),semanticStorySha256=recordSha256(semanticStory)
       const {source:_editSource,...editData}=captured.edits,
         {source:_variableSource,...variableInput}=variables.input
+      const communityMaterial=community?communityMaterialV2(native.selected,
+        community.finish({native,layout,finalLore,evaluation:evaluated.plan,renderedMarkers,
+          renderedAuthor:{cardsText:author[0]!.renderedText,rulesText:author[1]!.renderedText,
+            examplesText:author[2]!.renderedText}})):undefined
       const renderedAuthorMaterial:TavernRenderedAuthorMaterialV1=freeze({
         sourceCurrentIdentitySha256:captured.currentIdentitySha256,
-        authorGroups:[
+        // Mapped fields leave partial author outputs that must not replace a
+        // complete persona. A future bridge needs producer partition coverage
+        // and execution outputs, rather than attribution inferred from pointers.
+        authorGroups:mapped?[]:[
           {id:'/native/current-author/cards',text:author[0]!.renderedText,
-            parts:residual.parts.filter(part=>part.kind==='card')},
+            parts:remainingParts.filter(part=>part.kind==='card')},
           {id:'/native/current-author/rules',text:author[1]!.renderedText,
-            parts:residual.parts.filter(part=>part.kind!=='card'&&part.kind!=='examples')},
+            parts:remainingParts.filter(part=>part.kind!=='card'&&part.kind!=='examples')},
           {id:'/native/current-author/examples',text:author[2]!.renderedText,
-            parts:residual.parts.filter(part=>part.kind==='examples')},
+            parts:remainingParts.filter(part=>part.kind==='examples')},
         ],finalLore,compilationEntries:compilation.plan.entries.map(({entryId,ordinal,sourceKey,sourcePointer})=>
           ({entryId,ordinal,sourceKey,sourcePointer})),currentNativeMembership:!!compilation.plan.currentNativeMembership,
       })
-      return {kind:'prepared-data' as const,...layout,
+      return {kind:'prepared-data' as const,...layout,...communityMaterial,
         renderedAuthorMaterial,
         ...messageTextProjections.length?{messageTextProjections}:{},
         snapshot:freeze({schemaVersion:1,encoding:'native-tavern-prompt-capture-v1',authority:'consumer-data-only',
@@ -383,11 +569,11 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
           initialCatalogReceipt:initialCatalog.receipt,
           variablesInput:{...variableInput,sourceRef:{sourceSha256:source.sourceSha256}},variables:variables.packet,
           scopes:scopeData.evidence,timed:timed.evidence,canonicalChatClock:chatClock.data,
-          originalAuthor:original,residualAuthor:residual,
+          originalAuthor:original,residualAuthor:residual,...mapped?{communityCardMaterial:mapped}:{},
           injections:injectionTransaction,injectionAudit:injections.audit(),
           tavernEvaluationInput:evaluated.input,render:render.audit(),initialNativeSelected:native.selected,
           ...opening?{openingPreparation:{snapshotRef:opening.snapshotRef,ownedBranchRefs:opening.ownedBranchRefs,scopeFacts:opening.scopes.data,
-            attempt:opening.attempt}}:{phaseASnapshotRef:player!.currency.snapshot}}),
+            attempt:opening.attempt}}:{phaseASnapshotRef:player!.phaseA?.current().reference??player!.currency.snapshot}}),
         plan:freeze({schemaVersion:1,encoding:'native-tavern-prompt-plan-v1',authority:'consumer-data-only',
           policySha256:recordSha256(policy),tavernEvaluationPlan:evaluated.plan,
           finalLore,layout:layout.layout,variablePacketSha256:variables.packet.packetSha256,
@@ -396,7 +582,8 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
             messageTextProjections}}:{},
           ...authorPrompt?{authorPromptOutputSha256:authorPrompt.output.outputSha256}:{},
           ...authorBrowser?{authorBrowserOutputSha256:authorBrowser.output.outputSha256}:{},
-          injectionTransactionSha256:injectionTransaction.transactionSha256}),assertCurrent,
+          injectionTransactionSha256:injectionTransaction.transactionSha256,
+          ...communityMaterial?.record?{community:communityMaterial.record}:{}}),assertCurrent,
         release(){derived?.release();inputCapture.release()},
         assertSelected(selected:NativeMaterialSelectedBaseV1,firstAttempt:boolean) {
           // Only the original callback object is accepted during preparation,
@@ -412,7 +599,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         }}
       }catch(error) {derived?.release();inputCapture.release();throw error}
   }
-  return {sectionNames:TAVERN_NATIVE_OWNED_SECTION_NAMES_V1,
+  return {sectionNames:[...TAVERN_NATIVE_OWNED_SECTION_NAMES_V1,...deps.community?['roleplay:community-preset']:[]],
     prepare:(native,scope)=>prepare(native,{kind:'player',scope}),
     prepareOpening:(native,scope)=>prepare(native,{kind:'program-opening',scope,native})}
 }

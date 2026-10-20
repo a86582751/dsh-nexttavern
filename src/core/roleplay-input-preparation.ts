@@ -12,7 +12,7 @@ import type {ColdInputMaterialHistoryV1,ColdNonNumericalInputBranchRowFactV1}
 export type {ColdInputMaterialHistoryV1,ColdNonNumericalInputBranchRowFactV1}
   from './roleplay-input-cold-row-facts.js'
 import type {RoleplayInputMaterialDependenciesV1,RoleplayInputMaterialScopeV1,
-  RoleplayInputMaterialScopeInputV1} from './roleplay-input-material.js'
+  RoleplayInputMaterialScopeInputV1,RoleplayPhaseAStageV1} from './roleplay-input-material.js'
 import type {Session as NativeSession} from '@deepseek-ai/dsh-session'
 import type {InputCompletionProcessor,InputCompletionScope} from './roleplay-input-completion.js'
 import type {MvuStateTerminalIntent} from './roleplay-mvu-state.js'
@@ -136,6 +136,8 @@ export interface RoleplayInputBinding {
   beginStep(input: {turn: number; step: number; signal: AbortSignal; legacyPreparationId?: string}): Promise<RoleplayInputStep>
   checkCurrency(step: RoleplayInputStep): {kind: 'allow'} | {kind: 'blocked'; code: string}
   prepare(step: RoleplayInputStep, snapshot?: InputPreparationSnapshotRef): Promise<InputPreparationCurrency>
+  /** Stage data for the exact hot step; this never marks the Work prepared. */
+  stagePhaseA(step:RoleplayInputStep,candidate:RoleplayPhaseAStageV1):boolean
   checkSnapshot(currency: InputPreparationCurrency): {kind: 'allow'} | {kind: 'blocked'; code: string}
   checkAttempt(currency: InputPreparationCurrency): {kind: 'allow'} | {kind: 'blocked'; code: string}
   persistedCurrency(): InputPreparationCurrency | undefined
@@ -147,6 +149,7 @@ export interface RoleplayInputBinding {
   readClaimedInputSource(): InputSourceObservation | undefined
   /** Already checked Native maintenance input; assembly does not create authority. */
   readClaimedMaintenanceInput(): ClaimedMaintenanceInput | undefined
+  readClaimedMessages():NativeInputAdmissionCheckV2['claim']['messages']|undefined
   existingTransition(): {lease: RoleplayInputTransitionLease; proof: InputTransitionProof;
     legacyRecord?:InputLegacyMergeReference} | undefined
   originalMessages(step: RoleplayInputStep): NativeInputAdmissionCheckV2['claim']['messages']
@@ -781,7 +784,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       void enqueue(() => save(target)).catch(report)
     }
     type MaterialInput=RoleplayInputMaterialScopeInputV1
-    function materialOriginal(input:MaterialInput) {
+    const phaseACandidates=new WeakMap<RoleplayInputStep,RoleplayPhaseAStageV1>()
+    function materialOriginal(input:MaterialInput,candidate=false) {
       const work=hot,token=currentStep,entry=token&&steps.get(token)
       if(!work||!token||!entry||entry.work!==work) {
         fail('INPUT_MATERIAL_ORIGINAL_OWNER_UNPROVEN')
@@ -789,8 +793,9 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       // Reuse the original Native-input joins for both guards. These compare
       // the actual input against this binder; Native still owns its private
       // selected capability, claim/checkpoint, dispatch and closing checks.
+      const stage=candidate?phaseACandidates.get(token):undefined
       const assertOriginalInput=()=>{
-        if(!work.attempt?.prepared||!claim||input.admission.identity!==work
+        if(!work.attempt||!stage&&!work.attempt.prepared||!claim||input.admission.identity!==work
           ||!equal(input.admission.preparation,work.preparation)||!equal(input.admission.claim,claim)
           ||!equal(claim.refs,work.refs)
           ||input.admission.receipt!==undefined&&!equal(input.admission.receipt,work.checkpoint)) {
@@ -801,17 +806,18 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       }
       assertOriginalInput()
       if(!work.attempt)fail('INPUT_MATERIAL_ORIGINAL_OWNER_UNPROVEN')
-      const currency=currencyOf(work),turn=work.attempt.turn,step=work.attempt.step
+      const currency=stage?clone(token.currency):currencyOf(work),turn=work.attempt.turn,step=work.attempt.step
       const assertIdentity=()=>{
         const code=stepIdentityCurrency(token)
         if(code)fail(code)
+        const actualCurrency=currencyOf(work),{snapshot:_snapshot,...candidateCurrency}=actualCurrency
         if(hot!==work||currentStep!==token||steps.get(token)!==entry||entry.signal.aborted
           ||agent.session!==actualSession||sessionOwners.get(sid)!==agent||owners.get(agent)!==binding
-          ||!equal(currency,currencyOf(work))||!work.attempt?.prepared
-          ||work.attempt.turn!==turn||work.attempt.step!==step)fail('INPUT_MATERIAL_ORIGINAL_OWNER_CHANGED')
+          ||!equal(currency,stage?candidateCurrency:actualCurrency)||!stage&&!work.attempt?.prepared
+          ||work.attempt?.turn!==turn||work.attempt?.step!==step)fail('INPUT_MATERIAL_ORIGINAL_OWNER_CHANGED')
         assertOriginalInput()
       }
-      return {work,token,entry,currency,turn,step,assertIdentity}
+      return {work,token,entry,currency,turn,step,assertIdentity,stage}
     }
     const materialOwner=material?createRoleplayInputMaterialOwnerV1(material,{table,enqueue,
       registerNonNumericalBranchRow(input,scope,row) {
@@ -839,8 +845,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         registerPendingRow(actualSession,Object.freeze({key:row.key,value:row.value,
           sha256:row.sha256,kind:row.kind,phase:'writing' as const}))
       },
-      scope(input):RoleplayInputMaterialScopeV1 {
-        const {work,token,entry,currency,turn,step,assertIdentity}=materialOriginal(input)
+      scope(input,candidate=false):RoleplayInputMaterialScopeV1 {
+        const {work,token,entry,currency,turn,step,assertIdentity,stage}=materialOriginal(input,candidate)
         const assertCurrent=()=>{
           const code=stepCurrency(token)
           if(code)fail(code)
@@ -855,7 +861,9 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         return {session:agent.session as NativeSession,stepToken:token,currency:clone(currency),
           preparation:clone(work.preparation),originalInputRefs:clone(work.refs),turn,step,
           signal:entry.signal,assertCurrent,assertOwnerFactsCurrent,
-          outputRows:[{table:'branch',key:workKey(sid,work.refs)},{table:'branch',key:currentKey(sid)}]}
+          ...(stage?{phaseA:stage}:{}),
+          outputRows:[{table:'branch',key:workKey(sid,work.refs)},{table:'branch',key:currentKey(sid)},
+            ...stage?.current().outputRows??[]]}
       },
     }):undefined
     const hook: NativeInputAdmissionHookV2 = {
@@ -998,6 +1006,20 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       ...(terminal?{completedWork:terminal.complete}:{}),
     }
     const unregister = agent.registerInputAdmission(hook)
+    const currentOpenClaim=()=>{
+      try {
+        const work=hot
+        if(!live||revoked||!work||!claim||work.transition||continuation.isMaintenance()
+          ||!equal(claim.refs,work.refs))return undefined
+        // A closed claim is not a current assembly source, even while Native
+        // still retains its original frozen messages for recovery.
+        const events=agent.session.snapshotEvents(),index=events.findLastIndex(event=>event.type==='turn/start'),
+          start=events[index]
+        if(start?.type!=='turn/start'||start.data.turn!==claim.turn
+          ||events.slice(index+1).some(event=>event.type==='turn/end')||baseCurrency(work))return undefined
+        return claim
+      }catch{return undefined}
+    }
     const binding: RoleplayInputBinding = {
       async beginStep({turn, step, signal, legacyPreparationId}: {
         turn: number; step: number; signal: AbortSignal; legacyPreparationId?: string
@@ -1026,6 +1048,13 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         })
       },
       checkCurrency(step: RoleplayInputStep) {const code = stepCurrency(step); return code ? blocked(code) : allowed},
+      stagePhaseA(step,candidate) {
+        if(!materialOwner||step.kind!=='story')return false
+        const code=stepCurrency(step)
+        if(code)fail(code)
+        phaseACandidates.set(step,candidate)
+        return true
+      },
       async prepare(step: RoleplayInputStep, snapshot?: InputPreparationSnapshotRef) {
         return enqueue(async () => {
           const code = stepCurrency(step)
@@ -1080,19 +1109,9 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       releaseMaterialStep(turn,step) {materialOwner?.releaseStep(turn,step)},
       readClaimedMaintenanceInput() {return claimedMaintenance},
       readClaimedInputSource() {
-        try {
-          const work=hot
-          if(!live||revoked||!work||!claim||work.transition||continuation.isMaintenance()
-            ||!equal(claim.refs,work.refs))return undefined
-          // check may retain its claim after closing. Only the actual latest
-          // open Native turn, already started before assembly, supplies Source.
-          const events=agent.session.snapshotEvents(),index=events.findLastIndex(event=>event.type==='turn/start'),
-            start=events[index]
-          if(start?.type!=='turn/start'||start.data.turn!==claim.turn
-            ||events.slice(index+1).some(event=>event.type==='turn/end')||baseCurrency(work))return undefined
-          return clone(work.source)
-        }catch{return undefined}
+        return currentOpenClaim()?clone(hot!.source):undefined
       },
+      readClaimedMessages(){return currentOpenClaim()?.messages},
       existingTransition() {
         return hot?.transition && currentLease && !baseCurrency(hot)
           ? {lease: currentLease, proof: clone(hot.transition.reservation.proof),

@@ -443,7 +443,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
                 fail('HEAD_MISSING');
             const head = validateMvuSchemaOpeningHead(storedHead);
             const opening = validateMvuSchemaOpeningEvent(prefixInputs.status.get(mvuInitializationEventKey(sid, head.eventId)));
-            if (!deps.verifyOpening(intent))
+            if (!verifyMvuSchemaInheritedOpeningFacts({ intent, event: opening, head, events }, { projectPrefix: deps.projectPrefix }))
                 fail('SCHEMA_OPENING_RECORD_INVALID');
             if (historical) {
                 // Frozen caller/history selection retains its existing merge, full
@@ -1015,7 +1015,7 @@ export function createRoleplayMvuSchemaStoryCore(deps) {
             authority: 'consumer-data-only', sessionId: sid, sourceSnapshotSha256: view.frame.snapshotSha256,
             materialSha256: view.frame.materialSha256, numericalSnapshotSha256: view.history.snapshot.stateSnapshotSha256,
             nativeCut: events.length, nativePrefixSha256: recordSha256(events) });
-        const frame = buildSchemaScopeReadFrame(source, recordSha256(basis), schemaOriginalServerScripts(view.history.original), facts.chat, schemaScopeVisibleMessages(events, deps.projectPrefix, source, seq => scopeOwnerForSeq(facts, seq), facts.messages));
+        const frame = buildSchemaScopeReadFrame(source, recordSha256(basis), schemaOriginalServerScripts(view.history.original), facts.chat, schemaScopeVisibleMessages(events, deps.projectPrefix, source, seq => scopeOwnerForSeq(facts, seq), facts.messages, 'canonical-chat'));
         const data = Object.freeze({ schemaVersion: 1, encoding: 'native-mvu-prompt-scope-read-data-v1',
             authority: 'consumer-data-only', basis, frame, readDataSha256: recordSha256({ basis, frame }) });
         // A later own pending input or interrupted provider attempt does not change

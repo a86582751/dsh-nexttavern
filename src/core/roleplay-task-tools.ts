@@ -93,19 +93,35 @@ export function assertSteeringAgent(agent: HostAgent | undefined): asserts agent
   if (!agent || typeof agent.steer !== 'function') throw new Error('当前会话代理尚未就绪')
 }
 
-export const simpleTool = <A, E, R>(name: string, description: string, parameters: unknown, execute: (args: A, exec: E) => R) => ({
+export const simpleTool = <A, E, R>(name: string, description: string, parameters: unknown,
+  execute: (args: A, exec: E) => R, projectOutput?: (args: A, value: Awaited<R>) => unknown) => ({
     name,
     description,
     parameters,
     output: {
       schema: { type: 'object', additionalProperties: true },
-      render: (_args: unknown, value: unknown) => [
-        { type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) },
-      ],
+      render: (args: A, value: Awaited<R>) => {
+        const projected=projectOutput ? projectOutput(args,value) : value
+        return [{type:'text',text:typeof projected==='string'?projected:JSON.stringify(projected,null,2)}]
+      },
     },
     execute,
     timeoutMs: 120000,
   })
+
+function taskSubmissionReceipt(args: TaskSubmitArguments, value: unknown) {
+  if(!value||typeof value!=='object'||!('ok' in value)||value.ok!==true)return value
+  const result='result' in value ? value.result : undefined
+  const fields=result&&typeof result==='object' ? result as Record<string,unknown> : {}
+  // The submitter already supplied the complete result. Program consumers read
+  // job.result directly; source pagination does not pretend to read that result.
+  return {ok:true,...'kind' in args?{kind:args.kind}:{id:args.id,generation:args.generation},
+    status:'completed',resultStored:true,
+    ...(Object.hasOwn(fields,'partial')?{partial:fields.partial}:{}),
+    ...(Object.hasOwn(fields,'error')?{error:fields.error}:{}),
+    ...'kind' in args?{}:{sourceReadWith:{tool:'rp_task_read',id:args.id,contains:'frozen-input-only'}},
+    resultLocation:'酒馆管理日志'}
+}
 
 export function registerTaskTools({
   ctx,T,clusterJob,resolveRoleplaySession,storyBranchIsActive,characterCluster,cardWorkflowKey,isRoleplaySession,
@@ -159,7 +175,8 @@ export function registerTaskTools({
       const identity='kind' in args?submissionBindings.resolve(exec,args.kind):args
       return {ok:true,result:await tavernTasks.submit({session:await sessionOf(exec),
         id:identity.id,generation:identity.generation,value:args.result})}
-    })), 'roleplay: task submit tool')
+    },
+    taskSubmissionReceipt)), 'roleplay: task submit tool')
 
   ctx.effect(() => ctx.tools.register(simpleTool<TaskToolArguments, TaskToolExecution, Promise<unknown>>(
     'rp_history',

@@ -123,6 +123,13 @@ export function createRoleplayOpeningMaterialOwnerV1(deps, owner) {
         return readback;
     }
     const requestMaterial = { schemaVersion: 1, sectionNames,
+        story: { schemaVersion: 1,
+            normalizeText: text => { const row = active && ready.get(active.key); return row?.responseHooks?.normalizeText?.(text) ?? text; },
+            recoverText: blocks => { const row = active && ready.get(active.key); return row?.responseHooks?.recoverText?.(blocks); },
+            createTextTransform: () => {
+                const row = active && ready.get(active.key);
+                return row?.responseHooks?.createTextTransform?.() ?? { push: text => text, finish: () => '' };
+            } },
         prepare(input) {
             try {
                 prepareIdentity(input);
@@ -182,7 +189,8 @@ export function createRoleplayOpeningMaterialOwnerV1(deps, owner) {
                         release: built.release.bind(built) };
                     checks.assertSelected(input.selected, true);
                     const material = data({ requiredSections: built.requiredSections, sections: built.sections, insertions: built.insertions,
-                        ...built.anchoredInsertions ? { anchoredInsertions: built.anchoredInsertions } : {} }, 4_194_304), materialSha256 = nativeInputSha256(material), basis = { schemaVersion: 1,
+                        ...built.anchoredInsertions ? { anchoredInsertions: built.anchoredInsertions } : {},
+                        ...built.messageProjection ? { messageProjection: built.messageProjection } : {}, ...built.story ? { story: built.story } : {} }, 4_194_304), materialSha256 = nativeInputSha256(material), basis = { schemaVersion: 1,
                         encoding: 'core-program-opening-material-record-v1', authority: 'consumer-data-only',
                         sessionId: String(session.id), identity, seedRef, inputRef, nativeOwner: input.owner, turn: input.turn, step: input.step }, snapshot = Object.freeze({ ...basis, kind: 'snapshot', payload: built.snapshot }), plan = Object.freeze({ ...basis, kind: 'plan', payload: Object.freeze({ promptPlan: built.plan, nativeTransform: material,
                             nativeTransformSha256: materialSha256 }) }), snapshotRow = Object.freeze({ key: keys.snapshot, sha256: recordSha256(snapshot), value: snapshot }), planRow = Object.freeze({ key: keys.plan, sha256: recordSha256(plan), value: plan });
@@ -196,7 +204,7 @@ export function createRoleplayOpeningMaterialOwnerV1(deps, owner) {
                             checks.assertCurrent();
                         }
                     });
-                    const row = { initial: input, scope, checks, material, materialSha256,
+                    const row = { initial: input, scope, checks, material, materialSha256, responseHooks: built.responseHooks,
                         records: { snapshot: records.snapshot, plan: records.plan },
                         snapshot: { key: snapshotRow.key, sha256: snapshotRow.sha256 }, plan: { key: planRow.key, sha256: planRow.sha256 },
                         captureSha256: recordSha256({ schemaVersion: 1, encoding: 'core-program-opening-material-capture-v1',
@@ -250,7 +258,9 @@ export function createRoleplayOpeningMaterialOwnerV1(deps, owner) {
                     captureSha256: row.captureSha256, expectedAssemblySha256: input.assemblySha256,
                     expectedSelectedBaseSha256: input.selected.sha256, requiredSections: row.material.requiredSections,
                     sections: row.material.sections, insertions: row.material.insertions,
-                    ...row.material.anchoredInsertions ? { anchoredInsertions: row.material.anchoredInsertions } : {} };
+                    ...row.material.anchoredInsertions ? { anchoredInsertions: row.material.anchoredInsertions } : {},
+                    ...row.material.messageProjection ? { messageProjection: row.material.messageProjection } : {},
+                    ...row.material.story ? { story: row.material.story } : {} };
                 row.transformed = { decisionSha256: nativeInputSha256(decision), firstAttempt: input.firstAttempt, attempt: input.attempt };
                 return decision;
             }

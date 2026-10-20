@@ -110,6 +110,8 @@ export interface TavernPromptTransformInputV1 {
   readonly authority:'consumer-data-only'
   readonly sourceSnapshotSha256:string
   readonly regexDisabled:boolean
+  /** The effective registry owns source order. Omitted inputs retain ST order. */
+  readonly scriptOrder?:readonly ('global'|'preset'|'scoped')[]
   readonly macros:TavernPromptMacroSnapshotV1
   /** Owner supplies authorized scripts in ST global/preset/scoped order. */
   readonly rules:readonly TavernPromptRegexRuleV1[]

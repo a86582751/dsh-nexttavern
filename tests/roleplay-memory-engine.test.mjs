@@ -1,8 +1,29 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import {registerHooks} from 'node:module'
+import {pathToFileURL} from 'node:url'
+import {ownedPackages} from './plugin-owned-packages-fixture.mts'
+import {mountMaintainedPeer} from './native-request-material-fixture.mts'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
 import { apply, directorNotesForBranch, durableCompactionArchives, filterMemoryRecordForBranch, queryStoryHistory, readStoryHistory, selectedStoryHistory, memoryNotesCadence } from '../lib/memory/roleplay-memory-engine.js'
 import { legacyCadenceSlots, storyCadenceSlots } from '../lib/memory/roleplay-memory-engine.js'
+const closeSchemaPeers=installSchemaTestDependencies()
+const packages=await ownedPackages(['session-format'],[],{localSession:true})
+await mountMaintainedPeer(packages,'llm')
+await mountMaintainedPeer(packages,'agent-loop')
+const generatedCore=new URL('../lib/core/',import.meta.url).href
+const peers=registerHooks({resolve(specifier,context,next){
+ if(['dsh-nexttavern-session-format/mvu-player-marker','@deepseek-ai/dsh-session',
+   '@deepseek-ai/dsh-session/surface','@deepseek-ai/dsh-agent-loop','@deepseek-ai/dsh-llm',
+   '@deepseek-ai/dsh-tools'].includes(specifier)&&context.parentURL?.startsWith(generatedCore))
+  return {url:pathToFileURL(packages.require.resolve(specifier)).href,shortCircuit:true}
+ return next(specifier,context)
+}})
+process.once('exit',()=>{peers.deregister();closeSchemaPeers();packages.close()})
+const {createRoleplayTaskHost}=await import('../lib/core/roleplay-task-host.js')
+const {createRoleplayPreparation}=await import('../lib/core/roleplay-preparation.js')
+const {registerJobRoutes}=await import('../lib/core/roleplay-job-routes.js')
 
 {
  const fixture=JSON.parse(readFileSync(new URL('./fixtures/memory-history-legacy-v1.json',import.meta.url),'utf8'))
@@ -1089,14 +1110,18 @@ async function testWindowEvictionRequiresAllCanonicalEvidence() {
  assert.ok(session.surface.nodes.includes(changed.seq),'failed save cannot evict the edited body')
  assert.equal(svc.directorNotes(session),null,'the old source checkpoint is no longer eligible')
 }
-async function testOwnedHardWindowSkipsAutomaticCompaction() {
+async function testOwnedPreparationChecksCompletePressure() {
  const session=makeSession('owned-window',completedStoryEvents(),[1,2,3,6,7])
+ session.append('turn/start',{turn:3})
  const h=makeHarness({session,baseTokens:999999})
  h.roleplay.ownsMemoryPreparation=true
  await apply(h.ctx,{...defaultConfig,auto:true,autoNotes:false})
- await h.services.get('compaction').prepareForTurn({session})
- assert.equal(h.requests.length,0,'hard-window owner does not run a competing pressure summary before story')
- assert.equal(session.events.some(e=>e.type==='compaction/start'),false)
+ const agent={session}
+ await h.handlers.get('agent/pre-step')({agent,step:1,messages:[{role:'user',source:{kind:'user'}}]},()=>{})
+ assert.equal(h.requests.length,0,'the separate hook defers to the preparation owner')
+ await h.services.get('compaction').prepareForTurn(agent)
+ assert.equal(h.requests.length,1,'complete pressure triggers even when the short story is below its own window limit')
+ assert.equal(session.events.filter(e=>e.type==='compaction/end'&&!e.data.error).length,1)
 }
 async function testEvictionFinishesTailAfterRunningSnapshot() {
  const session=makeSession('eviction-running',completedStoryEvents(),[1,2,3,6,7])
@@ -1126,11 +1151,286 @@ async function testResumeCompactionInsideOpenTurn(){
  assert.equal(session.events.findLast(e=>e.type==='compaction/start').data.turn,3)
  assert.equal(session.events.findLast(e=>e.type==='compaction/end').data.error,undefined)
 }
+// Keep the compactor, durable task store, host adapter and retry route real.
+// Only the Native child transport and the parent's exclusive reservation are
+// fixtures, so an inline handoff cannot masquerade as completed compaction.
+async function makeNativeCompactionHarness(id, { pressure = false } = {}) {
+ const session=makeSession(id,completedStoryEvents(),[1,2,3,6,7])
+ const h=makeHarness({session,baseTokens:pressure?999999:100})
+ class Table extends Map {async put(key,value){this.set(key,structuredClone(value))}}
+ const branch=new Table(),cards=new Table(),taskAgents=new Map(),routes=new Map(),children=[]
+ let reserved=false,maintenanceCalls=0,steers=0,disposals=0,childOutcome='completed'
+ const currencyFor=turn=>({schemaVersion:2,preparationId:`preparation-${turn}`,
+  credentialSha256:createHash('sha256').update(`${id}:${turn}`).digest('hex'),
+  receiptGeneration:turn,attemptGeneration:turn,
+  source:{kind:'story',sourceSha256:'1'.repeat(64),headRef:{kind:'numerical-head',sha256:'2'.repeat(64)}}})
+ let currentCurrency=currencyFor(0)
+ const route={provider:'test-provider',model:'test-model'}
+ const agent={session,options:{...route,maxTokens:256000},get status(){return 'idle'},
+  steer(){steers++},
+  runMaintenance(job){
+   if(reserved)throw Error('agent already has active work')
+   reserved=true;maintenanceCalls++
+   return (async()=>{try{return await job(new AbortController().signal)}finally{reserved=false}})()
+  },
+ }
+ h.ctx.sessions.get=id=>id===session.id?session:undefined
+ h.ctx.sessionController={async resolveAgent(){return {agent}}}
+ h.ctx.agentDefaultModel.currentSelection=()=>route
+ h.ctx.effect=effect=>effect()
+ h.ctx.connection={fetch:{register(spec){routes.set(spec.path,spec.fetch)}}}
+ h.ctx.subagents={async start(mode,request){
+  assert.equal(mode,'spawn')
+  children.push({request,reserved})
+  const failed=childOutcome==='failed'
+  return {id:`${id}-child-${children.length}`,
+   localAgent:{session:{events:failed?[{seq:0,type:'turn/end',data:{reason:{kind:'error',failure:{code:'PROVIDER_UNAVAILABLE'}}}}]:[]}},
+   result:Promise.resolve(failed?{stopReason:'error',output:[]}:{stopReason:'completed',output:text(h.summaryText)}),
+   async dispose(){disposals++},
+  }
+ }}
+ const host=createRoleplayTaskHost({T:{branch,cards},ctx:h.ctx,config:{},taskAgents,
+  inputCurrency:()=>currentCurrency,
+  inputCurrencyCurrent:(_session,currency)=>JSON.stringify(currency)===JSON.stringify(currentCurrency),
+  inputHistoricalCurrencyCurrent:(_session,currency)=>JSON.stringify(currency)===JSON.stringify(currentCurrency),
+  storyBranchIsActive:()=>true,statusFixedContext:()=>'',taskDependenciesCurrent:()=>true,
+  taskInstruction:()=>'',getMaintenanceJob:()=>undefined,runStatusObligation:async()=>{},
+  STATUS_SYSTEM:'status-system',DECISION_SYSTEM:'decision-system',ORGANIZE_WORKER_SYSTEM:'novel-system'})
+ Object.assign(h.roleplay,host,{ownsMemoryPreparation:true})
+ await apply(h.ctx,{...defaultConfig,maxSummaryTokens:16384,auto:pressure,autoNotes:false})
+ const compaction=h.services.get('compaction')
+ registerJobRoutes({ctx:h.ctx,T:{branch},resolveRoleplaySession:async id=>id===session.id?session:null,
+  novelExports:{list:()=>[],refresh:async()=>[]},cardWorkflows:()=>[],cardWorkflowKey:id=>id,
+  tavernTasks:host.tavernTasks,taskAgents,modelPolicy:host.modelPolicy})
+ return {h,session,agent,host,branch,compaction,children,
+  async beginPreparation(turn){
+   currentCurrency=currencyFor(turn)
+   await branch.put(session.id+'__task-preparation',{schemaVersion:1,sessionId:session.id,
+    id:`preparation-${turn}`,turn,status:'preparing'})
+   await host.tavernTasks.invalidate(session)
+  },
+  setChildOutcome(value){childOutcome=value},
+  get inputCurrency(){return structuredClone(currentCurrency)},
+  get reserved(){return reserved},get maintenanceCalls(){return maintenanceCalls},
+  get steers(){return steers},get disposals(){return disposals},
+  async retry(id){return routes.get('/api/roleplay/jobs')(new Request('https://fixture.invalid/api/roleplay/jobs',{
+   method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:session.id,action:'retry',jobId:id})}))},
+ }
+}
+
+async function testManualCompactionAwaitsIsolatedNativeChild() {
+ const f=await makeNativeCompactionHarness('manual-native-compaction')
+ const original=[...f.session.surface.nodes]
+ const result=await f.compaction.compactNow(f.agent,undefined,'manual-native-command')
+ assert.ok(result,'manual command awaits an actual archive receipt')
+ assert.equal(f.maintenanceCalls,1)
+ assert.equal(f.reserved,false,'the manual maintenance reservation is released')
+ assert.equal(f.children.length,1)
+ assert.equal(f.children[0].reserved,true,'the independent child runs while the parent owns maintenance')
+ const request=f.children[0].request
+ assert.equal(request.parent,f.agent)
+ assert.equal(request.agentOptions.maxTokens,16384,'the summary cap replaces the parent 256k output cap')
+ assert.equal(request.agentOptions.model,f.agent.options.model)
+ assert.deepEqual(request.toolFilter,{allow:[]})
+ const frozen=JSON.parse(request.prompt[0].text)
+ assert.equal(frozen.format,'text','compaction retains its text result contract')
+ assert.equal(frozen.taskStage,'compaction')
+ assert.match(frozen.user,/玩家走进雨夜车站/)
+ assert.match(frozen.user,/她收起伞/)
+ assert.ok(!JSON.stringify(request.prompt).includes('SECRET_CARD'),'card context is not copied into the child prompt')
+ assert.ok(!JSON.stringify(request.prompt).includes('UNSELECTED_BRANCH'),'discarded branches are not copied into the child prompt')
+ assert.ok(!JSON.stringify(request.prompt).includes('两人穿过检票口'),'the retained story tail is outside the frozen archive batch')
+ assert.notDeepEqual(f.session.surface.nodes,original)
+ const task=f.host.tavernTasks.list(f.session)[0]
+ assert.equal(task.status,'completed');assert.equal(task.execution,'spawn')
+ assert.deepEqual(f.session.events.find(e=>e.type==='compaction/summary').data.taskReceipt,{schemaVersion:1,taskId:task.id})
+ assert.equal(f.host.tavernTasks.pending(f.session).length,0)
+ assert.equal(f.branch.get(f.session.id+'__task-memory-resume'),undefined)
+ assert.equal(f.steers,0,'manual completion requires no main-loop handoff')
+ assert.equal(f.disposals,1)
+}
+
+async function testFailedIsolatedCompactionRetriesThroughJobsRoute() {
+ const f=await makeNativeCompactionHarness('failed-native-compaction')
+ f.setChildOutcome('failed')
+ const original=[...f.session.surface.nodes]
+ await assert.rejects(f.compaction.compactNow(f.agent),error=>error.code!=='TAVERN_INLINE_PENDING')
+ const task=f.host.tavernTasks.list(f.session)[0]
+ assert.equal(task.status,'failed');assert.equal(task.execution,'spawn')
+ assert.ok(task.failedAt)
+ assert.deepEqual(f.session.surface.nodes,original)
+ assert.ok(f.session.events.findLast(e=>e.type==='compaction/end').data.error)
+ assert.equal(f.host.tavernTasks.pending(f.session).length,0)
+ await assert.rejects(f.compaction.compactNow(f.agent),'a failed frozen task needs explicit management retry')
+ assert.equal(f.children.length,1,'neither failure nor another command silently retries the provider')
+ f.setChildOutcome('completed')
+ const response=await f.retry(task.id)
+ assert.equal(response.status,200)
+ const body=await response.json()
+ assert.equal(body.job.status,'completed')
+ assert.equal(f.children.length,2,'the actual jobs POST retry performs exactly one new child call')
+ assert.equal(f.steers,0,'compaction retry executes the isolated request instead of steering a full-history main loop')
+ assert.equal(f.session.events.filter(e=>e.type==='compaction/end'&&!e.data.error).length,1)
+ assert.ok(f.session.events.some(e=>e.type==='user/message'&&e.data.source?.kind==='compact-checkpoint'))
+ const replay=await f.retry(task.id)
+ assert.equal(replay.status,200)
+ assert.equal((await replay.json()).job.status,'completed')
+ assert.equal(f.children.length,2,'replaying the completed retry POST does not call the provider again')
+ assert.equal(f.session.events.filter(e=>e.type==='compaction/end'&&!e.data.error).length,1,
+  'replaying the completed retry POST does not archive the retained story tail')
+}
+
+async function seedLegacyInlineCompaction(f) {
+ // Generate an exact frozen record with the current request builder, then
+ // project its durable fields to the rc.3 queued-inline shape. No checkpoint
+ // was committed by the seed failure and the live story remains unchanged.
+ f.setChildOutcome('failed')
+ await assert.rejects(f.compaction.compactNow(f.agent))
+ const current=f.host.tavernTasks.list(f.session)[0]
+ const legacy={...current,execution:'inline',status:'queued',error:null,failure:null,failedAt:null}
+ await f.branch.put('tavern_job__'+legacy.id,legacy)
+ await f.branch.put(f.session.id+'__task-memory-resume',{schemaVersion:1,sessionId:f.session.id,
+  status:'pending',taskStage:'compaction',source:{taskId:legacy.id},updatedAt:Date.now()})
+ f.setChildOutcome('completed')
+ return legacy
+}
+
+async function testLegacyInlineCompactionResumesOnlyOnceAfterManualRecovery() {
+ const f=await makeNativeCompactionHarness('legacy-inline-compaction')
+ const legacy=await seedLegacyInlineCompaction(f)
+ assert.equal(f.host.tavernTasks.pending(f.session).length,1)
+ await f.beginPreparation(3)
+ await f.compaction.compactNow(f.agent)
+ const recovered=f.host.tavernTasks.list(f.session).find(task=>task.id===legacy.id)
+ assert.equal(recovered.status,'completed');assert.equal(recovered.execution,'spawn')
+ assert.notEqual(recovered.generation,legacy.generation,'old inline submissions cannot publish after promotion')
+ const successful=f.session.events.filter(e=>e.type==='compaction/end'&&!e.data.error).length
+ const calls=f.children.length
+ // This is a JSON fixture round trip, not a Native cold-session claim.
+ f.session.events=JSON.parse(JSON.stringify(f.session.events))
+ assert.deepEqual(f.session.events.find(e=>e.type==='compaction/summary').data.taskReceipt,
+  {schemaVersion:1,taskId:recovered.id},'the versioned task receipt survives persisted event serialization')
+ f.session.append('turn/start',{turn:3})
+ await f.beginPreparation(4)
+ await f.host.resumeMemoryWork(f.session,f.agent)
+ assert.equal(f.branch.get(f.session.id+'__task-memory-resume').status,'completed')
+ assert.equal(f.children.length,calls)
+ assert.equal(f.session.events.filter(e=>e.type==='compaction/end'&&!e.data.error).length,successful,
+  'a matching committed task receipt consumes the legacy marker without compacting the remaining tail again')
+ assert.equal(f.steers,0)
+}
+
+async function testLegacyMarkerFollowsCompactionWithNewerSnapshot() {
+ const f=await makeNativeCompactionHarness('legacy-newer-snapshot')
+ const legacy=await seedLegacyInlineCompaction(f)
+ f.session.append('turn/start',{turn:3})
+ f.session.append('user/message',{id:'u3',role:'user',source:{kind:'user'},content:text('玩家在钟楼前停下')},{surfaceOp:'append'})
+ f.session.append('assistant/message',{turn:3,message:{id:'a3',role:'assistant',content:text('钟楼守卫认出了那枚旧怀表。')}},{surfaceOp:'append'})
+ f.session.append('turn/end',{turn:3,reason:{kind:'completed'}})
+ await f.compaction.compactNow(f.agent)
+ const tasks=f.host.tavernTasks.list(f.session),obsolete=tasks.find(task=>task.id===legacy.id)
+ const completed=tasks.find(task=>task.status==='completed')
+ assert.ok(completed)
+ assert.notEqual(completed.id,legacy.id,'a changed canonical snapshot owns a new frozen task')
+ assert.equal(obsolete.status,'stale')
+ assert.equal(obsolete.supersededBy,completed.id)
+ const marker=f.branch.get(f.session.id+'__task-memory-resume')
+ assert.equal(marker.status,'pending','a returned model result alone does not acknowledge the old continuation')
+ assert.equal(marker.source.taskId,completed.id,'the continuation follows the task actually consumed by this compaction')
+ const calls=f.children.length,successful=f.session.events.filter(e=>e.type==='compaction/end'&&!e.data.error).length
+ f.session.append('turn/start',{turn:4})
+ await f.host.resumeMemoryWork(f.session,f.agent)
+ assert.equal(f.branch.get(f.session.id+'__task-memory-resume').status,'completed')
+ assert.equal(f.children.length,calls)
+ assert.equal(f.session.events.filter(e=>e.type==='compaction/end'&&!e.data.error).length,successful,
+  'the newer task receipt consumes the marker without compacting the remaining new story')
+ assert.equal(f.steers,0)
+}
+
+async function testFailedCheckpointDoesNotCompleteLegacyResumeMarker() {
+ const f=await makeNativeCompactionHarness('legacy-failed-checkpoint')
+ await seedLegacyInlineCompaction(f)
+ await f.beginPreparation(3)
+ const append=f.session.append.bind(f.session)
+ f.session.append=(type,data,options)=>{
+  if(type==='user/message'&&data.source?.kind==='compact-checkpoint')throw Error('simulated checkpoint append failure')
+  return append(type,data,options)
+ }
+ await assert.rejects(f.compaction.compactNow(f.agent),/checkpoint append failure/)
+ const task=f.host.tavernTasks.list(f.session)[0],firstCurrency=f.inputCurrency
+ assert.equal(task.status,'completed','the model result exists before the surface writer fails')
+ assert.equal(Object.hasOwn(task.source,'inputPreparation'),false,'frozen compaction is independent of the hot Native input')
+ assert.equal(Object.hasOwn(task.source,'preparationId'),false,'frozen compaction is independent of the current Phase-A preparation')
+ assert.ok(f.session.events.some(e=>e.type==='compaction/summary'&&e.data.taskReceipt))
+ assert.equal(f.session.events.filter(e=>e.type==='compaction/end'&&!e.data.error).length,0)
+ f.session.events=JSON.parse(JSON.stringify(f.session.events))
+ assert.deepEqual(f.session.events.find(e=>e.type==='compaction/summary').data.taskReceipt,
+  {schemaVersion:1,taskId:f.host.tavernTasks.list(f.session)[0].id})
+ f.session.append('turn/start',{turn:3})
+ await f.beginPreparation(4)
+ assert.notDeepEqual(f.inputCurrency,firstCurrency,'the next preparation replaces actual host input currency')
+ await assert.rejects(f.host.resumeMemoryWork(f.session,f.agent),/checkpoint append failure/)
+ assert.equal(f.branch.get(f.session.id+'__task-memory-resume').status,'pending',
+  'a task result and a summary event alone cannot acknowledge an uncommitted surface checkpoint')
+ assert.equal(f.children.length,2,'retrying the surface commit reuses the valid frozen result')
+ assert.equal(f.host.tavernTasks.list(f.session)[0].id,task.id,'changed Native currency retains the same completed frozen task')
+ f.session.append=append
+ f.session.append('turn/end',{turn:3,reason:{kind:'error'}})
+ await f.beginPreparation(5)
+ await f.compaction.compactNow(f.agent)
+ assert.equal(f.children.length,2,'repeating /compact commits the retained result without another paid summary')
+ assert.deepEqual(f.host.tavernTasks.list(f.session).map(job=>job.id),[task.id])
+ assert.equal(f.session.events.filter(e=>e.type==='compaction/end'&&!e.data.error).length,1)
+}
+
+async function testFailedPressurePreparationCannotAdmitStory() {
+ const f=await makeNativeCompactionHarness('failed-native-pressure',{pressure:true})
+ f.session.append('turn/start',{turn:3})
+ f.setChildOutcome('failed')
+ let storyStateReads=0
+ const preparation=createRoleplayPreparation({T:{branch:f.branch},ctx:f.h.ctx,cfg:{contextWindowEnabled:true},
+  assertStoryBranchActive(){},ensureBranch:async()=>{},reconcileCanonicalPlayerVariants:async()=>{},
+  buildForkLookupIndex:()=>new Map(),svc:{awaitCommitted:async()=>{}},
+  userValues(){storyStateReads++;throw Error('story state must remain unreachable')},selectedStatusRecord:()=>null})
+ const original=[...f.session.surface.nodes]
+ await f.beginPreparation(3)
+ await assert.rejects(preparation.buildPhaseA(f.session,{agent:f.agent,turn:3,step:1,
+  messages:[{role:'user',source:{kind:'user'},content:text('继续剧情')}],signal:new AbortController().signal},{}),
+  /辅助模型未完成/,'the provider failure itself must propagate through preparation')
+ assert.equal(f.children.length,1)
+ const failedTask=f.host.tavernTasks.list(f.session)[0],failedCurrency=f.inputCurrency
+ assert.equal(failedTask.status,'failed')
+ assert.equal(Object.hasOwn(failedTask.source,'inputPreparation'),false)
+ assert.equal(Object.hasOwn(failedTask.source,'preparationId'),false)
+ assert.equal(storyStateReads,0)
+ assert.equal(f.branch.get(f.session.id+'__context-window'),undefined,'no story window is committed after failed pressure preparation')
+ assert.deepEqual(f.session.surface.nodes,original)
+ await f.beginPreparation(4)
+ assert.notDeepEqual(f.inputCurrency,failedCurrency,'a later turn exposes a different actual host input currency')
+ await assert.rejects(f.compaction.prepareForTurn(f.agent,new AbortController().signal))
+ assert.equal(f.children.length,1,'a new preparation cannot bypass the explicit retry requirement')
+ assert.equal(f.host.tavernTasks.list(f.session).length,1,'unchanged frozen input keeps its identity across turns')
+ assert.equal(f.host.tavernTasks.list(f.session)[0].id,failedTask.id)
+ f.session.append('turn/end',{turn:3,reason:{kind:'error'}})
+ f.setChildOutcome('completed')
+ const retry=await f.retry(f.host.tavernTasks.list(f.session)[0].id)
+ assert.equal(retry.status,200,'a failed pressure task remains explicitly retryable in a later preparation')
+ assert.equal((await retry.json()).job.status,'completed')
+ assert.equal(f.children.length,2)
+ assert.deepEqual(f.host.tavernTasks.list(f.session).map(job=>job.id),[failedTask.id])
+}
+
+await testManualCompactionAwaitsIsolatedNativeChild()
+await testFailedIsolatedCompactionRetriesThroughJobsRoute()
+await testLegacyInlineCompactionResumesOnlyOnceAfterManualRecovery()
+await testLegacyMarkerFollowsCompactionWithNewerSnapshot()
+await testFailedCheckpointDoesNotCompleteLegacyResumeMarker()
+await testFailedPressurePreparationCannotAdmitStory()
 await testResumeCompactionInsideOpenTurn()
 await testThreeCanonicalTurnsRunAcrossForegroundTurns()
 await testBackgroundRejectsInventedEvidenceBeforeCommit()
 await testWindowEvictionRequiresAllCanonicalEvidence()
-await testOwnedHardWindowSkipsAutomaticCompaction()
+await testOwnedPreparationChecksCompletePressure()
 await testEvictionFinishesTailAfterRunningSnapshot()
 await testDirectorNotesAppendOnlyNewEvidence()
 await testNotesFinishBeforeTurnEnd()

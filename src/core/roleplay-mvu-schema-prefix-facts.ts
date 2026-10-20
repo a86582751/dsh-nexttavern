@@ -287,7 +287,7 @@ function readStoryPlanFacts(request:MvuSchemaInheritedStoryPlanRequest,
     const phaseKey=`${sid}__phaseb-${checkpoint.actualTurn}`,phaseB=read(deps.branch,phaseKey)
     if(!object(phaseB)||phaseB.state!=='completed'||phaseB.sessionId!==sid||phaseB.turnId!==checkpoint.actualTurn
       ||phaseB.assistantSeq!==plan.canonical.seq)fail()
-    const canonical=deps.readProjectedCanonical(events,checkpoint.actualTurn)
+    const canonical=deps.readProjectedCanonical(events.slice(0,receipt.turnEndSeq+1),checkpoint.actualTurn)
     inspect(canonical)
     if(!canonical)fail()
     const projected=frozen(canonical),{narrative:_narrative,...nativeCanonical}=plan.canonical
@@ -392,7 +392,9 @@ export function verifyMvuSchemaInheritedOpeningFacts(request:MvuSchemaInheritedO
       ||span.filter(row=>row.type==='turn/start').length!==1||span.filter(row=>row.type==='turn/end').length!==1
       ||span.filter(row=>row.type==='assistant/message').length!==1
       ||span.some(row=>!['turn/start','step/start','system/message','assistant/message','step/end','turn/end'].includes(row.type)))return false
-    const projected=deps.projectPrefix(events as readonly StoryEvent[])
+    // This proof owns the original completed copy. A later context-window
+    // replacement may retire it from Main without changing that Native span.
+    const projected=deps.projectPrefix(events.slice(0,receipt.turnEndSeq+1) as readonly StoryEvent[])
     return projected.nodes.includes(body.seq)&&!projected.projectedMessageAt(body.seq)
       &&!events.some(row=>row.type==='roleplay/message-edit'&&object(row.data)
         &&(row.data.targetSeq===body.seq||row.data.messageId===identity.messageId))

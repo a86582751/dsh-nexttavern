@@ -4,7 +4,7 @@ import type { TaskAgent } from './tavern-task-types.js'
 import type { StatusRecord } from './roleplay-status-types.js'
 import type { DirectorNotes } from '../memory/memory-history.js'
 import type { MemoryRecordProjection } from '../memory/memory-provenance.js'
-import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
+import type {InputPreparationCurrency,InputPreparationSnapshotRef} from './roleplay-input-preparation.js'
 import type {MvuNumericalSnapshot} from './roleplay-mvu-state.js'
 import type {MvuSchemaNumericalSnapshotV2} from './roleplay-mvu-schema-story-types.js'
 import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js'
@@ -121,6 +121,30 @@ export interface PreparationWriteState {
   snapshot: unknown
   pendingTurn: number | null
   pendingScene: unknown
+}
+/** Process-local candidate from one original Phase-A input. Its deterministic
+ * reference describes the row this same writer will commit, not a grant. */
+export interface PhaseACandidate {
+  readonly snapshot:Readonly<Omit<PreparationSnapshot,'agent'>>&{readonly schemaVersion:1;readonly sessionId:string}
+  readonly anchors:readonly ContextMessage[]
+  readonly reference:InputPreparationSnapshotRef|undefined
+  readonly outputRows:readonly {readonly table:'branch';readonly key:string}[]
+  readonly needsCheckpoint:boolean
+  readonly windowEnabled:boolean
+  readonly storyWindowLimit:number
+  readonly storyMessages:readonly {readonly id:string;readonly eventSeq:number}[]
+  readonly continuityTailTokens:number
+  checkpoint(options?:PhaseACheckpointOptions):Promise<PhaseACandidate>
+  commit():Promise<void>
+}
+/** Meter input tokens and the established story-window estimate are separate
+ * units. The checkpoint independently applies each complete-message limit. */
+export interface PhaseACheckpointOptions {
+  readonly fullRequestAllowance:number
+  /** Native may allocate a projected group's price across its original rows.
+   * These estimates select complete tail messages; only the final full-request
+   * projection determines whether the rebuilt candidate fits. */
+  readonly messageCosts:readonly {readonly id:string;readonly eventSeq:number|null;readonly tokens:number}[]
 }
 export interface PreparationDependencies {
   /** Actual Core writer provenance only; never a restored preparation grant. */

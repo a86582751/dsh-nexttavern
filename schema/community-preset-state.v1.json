@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "community-preset-state.v1.json",
+  "title": "CommunityPresetStateV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "presets", "global", "conversations", "planPacks", "regexes", "configurationWrites"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "number"},
+    "presets": {"type": "array", "items": {"$ref": "community-presets.v1.json"}},
+    "global": {"$ref": "#/$defs/selection"},
+    "conversations": {"type": "object", "additionalProperties": {"$ref": "#/$defs/selection"}},
+    "planPacks": {
+      "type": "object",
+      "additionalProperties": {"$ref": "community-presets.v1.json#/$defs/planPack"}
+    },
+    "regexes": {"type": "array", "items": {"$ref": "#/$defs/regexLibraryEntry"}},
+    "configurationWrites": {"type": "array", "items": {"$ref": "#/$defs/configurationWrite"}}
+  },
+  "$defs": {
+    "json": {"$ref": "community-presets.v1.json#/$defs/json"},
+    "jsonRecord": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/json"}
+    },
+    "booleanRecord": {
+      "type": "object",
+      "additionalProperties": {"type": "boolean"}
+    },
+    "stringRecord": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["presetId", "applySampling", "prompts", "features", "regexes", "regexOrder", "contents"],
+      "properties": {
+        "presetId": {"type": ["string", "null"]},
+        "applySampling": {"type": "boolean"},
+        "prompts": {"$ref": "#/$defs/booleanRecord"},
+        "features": {"$ref": "#/$defs/jsonRecord"},
+        "regexes": {"$ref": "#/$defs/booleanRecord"},
+        "regexOrder": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "array",
+              "items": {"enum": ["global", "preset", "scoped"]},
+              "minItems": 3,
+              "maxItems": 3,
+              "uniqueItems": true
+            }
+          ]
+        },
+        "contents": {"$ref": "#/$defs/stringRecord"}
+      }
+    },
+    "regexLibraryEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "rules", "binding"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "rules": {"type": "array", "items": {"$ref": "community-presets.v1.json#/$defs/regex"}},
+        "binding": {"$ref": "#/$defs/binding"}
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "id"],
+      "properties": {
+        "scope": {"enum": ["global", "conversation", "preset"]},
+        "id": {"type": ["string", "null"]}
+      }
+    },
+    "macroWrite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "key", "operation", "value"],
+      "properties": {
+        "scope": {"enum": ["chat", "global"]},
+        "key": {"type": "string"},
+        "operation": {"enum": ["set", "add", "append", "delete"]},
+        "value": {"$ref": "#/$defs/json"}
+      }
+    },
+    "configurationWrite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "presetId", "conversationId", "writes"],
+      "properties": {
+        "id": {"type": "string"},
+        "presetId": {"type": "string"},
+        "conversationId": {"type": ["string", "null"]},
+        "writes": {"type": "array", "items": {"$ref": "#/$defs/macroWrite"}}
+      }
+    }
+  }
+}

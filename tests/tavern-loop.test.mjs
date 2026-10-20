@@ -1,21 +1,38 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { registerHooks } from 'node:module'
 import {mkdtempSync,writeFileSync,rmSync} from 'node:fs'
 import {testTempRoot as tmpdir, createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
 import {join} from 'node:path'
-import { apply } from '../lib/core/roleplay-core.js'
 import {ownedPackages} from './plugin-owned-packages-fixture.mts'
+import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
+import {mountMaintainedPeer} from './native-request-material-fixture.mts'
 
-const formatFixture = await ownedPackages(['session-format'])
-process.once('exit', () => formatFixture.close())
+const closeSchemaPeers=installSchemaTestDependencies()
+process.once('exit',closeSchemaPeers)
+
+const formatFixture = await ownedPackages(['session-format'],[],{localSession:true})
+await mountMaintainedPeer(formatFixture,'llm')
+await mountMaintainedPeer(formatFixture,'agent-loop')
+const generatedCore=new URL('../lib/core/',import.meta.url).href
+const formatHook=registerHooks({resolve(specifier,context,next){
+ if(['dsh-nexttavern-session-format/mvu-player-marker','@deepseek-ai/dsh-session',
+   '@deepseek-ai/dsh-session/surface','@deepseek-ai/dsh-agent-loop','@deepseek-ai/dsh-llm',
+   '@deepseek-ai/dsh-tools'].includes(specifier)
+   &&context.parentURL?.startsWith(generatedCore))
+  return {url:pathToFileURL(formatFixture.require.resolve(specifier)).href,shortCircuit:true}
+ return next(specifier,context)
+}})
+process.once('exit', () => {formatHook.deregister();formatFixture.close()})
+const {apply}=await import('../lib/core/roleplay-core.js')
 const {appendMessageEdit, latestMessageEdit, currentMessageEdits} = await formatFixture.load('dsh-nexttavern-session-format')
-import { internalTaskSeqs, InlinePending } from '../lib/core/tavern-tasks.js'
-import { inlineTaskInstruction } from '../lib/core/tavern-task-context.js'
-import { recordSha256, rollLogEntries, stableImportId } from '../lib/core/roleplay-data.js'
-import { registerAvatarRoute } from '../lib/core/roleplay-panel-routes.js'
-import { registerMaintenanceRoute } from '../lib/core/roleplay-job-routes.js'
+const {internalTaskSeqs,InlinePending}=await import('../lib/core/tavern-tasks.js')
+const {inlineTaskInstruction}=await import('../lib/core/tavern-task-context.js')
+const {recordSha256,rollLogEntries,stableImportId}=await import('../lib/core/roleplay-data.js')
+const {registerAvatarRoute}=await import('../lib/core/roleplay-panel-routes.js')
+const {registerMaintenanceRoute}=await import('../lib/core/roleplay-job-routes.js')
 const scenario=process.argv[2]
 if(!scenario){for(const name of ['core-contracts','request-watchdog','request-watchdog-custom','coarse-model-admission','maintenance-route','panel-routes','settings-routes','authoring','diagnosis','task-tools','session-actions','author-tools','loop-contract','status-special','decision-special','same-route','authoring-opening','status-fallback','status-delayed','status-delayed-fallback','status-delayed-cancel','background-memory','shared-special','shared-fallback'])execFileSync(process.execPath,[fileURLToPath(import.meta.url),name],{stdio:'inherit'});process.exit(0)}
 const statusModel=['status-special','status-fallback','status-delayed','status-delayed-fallback','status-delayed-cancel','shared-special','shared-fallback'].includes(scenario)?'status-special':'main'
@@ -41,26 +58,103 @@ const ctx={storageDomain:{async open(){return {table,close(){}}}},sessions:{get:
   effect:fn=>{const c=fn();if(typeof c==='function')cleanup.push(c)},on:(name,fn)=>{if(!hooks.has(name))hooks.set(name,[]);hooks.get(name).push(fn);return()=>{}},provide:(n,v)=>services.set(n,v),get:n=>services.get(n)}
 const firstResponseTimeoutMs=scenario==='request-watchdog-custom'?600000:90000
 await apply(ctx,{statusRetryMs:60000,...(scenario==='request-watchdog-custom'?{firstResponseTimeoutMs}:{})})
+if(scenario==='context-baseline'||scenario==='context-story-surface'){
+ const definitions=[...tools.values()].map(({name,description,parameters})=>({name,description,parameters}))
+ if(scenario==='context-story-surface'){
+  const workspace=createTestDirectory('context-story-surface-')
+  session.header.cwd=workspace
+  try{
+  let assembly={tools:definitions,contexts:[],sections:definitions.map(tool=>({name:'tool:'+tool.name,text:tool.description})),variables:{}}
+  for(const hook of hooks.get('system-prompt/assemble')??[]){const previous=assembly;assembly=await hook(previous,{agent},async()=>previous)}
+  const visible=new Set(assembly.tools.map(tool=>tool.name)),schemaBytes=Buffer.byteLength(JSON.stringify(assembly.tools))
+  assert.ok(schemaBytes<45765,'actual story schemas below frozen pre-B/D registration baseline')
+  assert.ok(visible.has('rp_card_import_begin')&&visible.has('rp_card_export_begin')&&visible.has('rp_source_begin'),
+   'player can still start each existing management workflow')
+  const removedNames=definitions.map(tool=>tool.name).filter(name=>!visible.has(name))
+  assert.ok(removedNames.includes('rp_source_research')&&removedNames.includes('rp_card_import_stage'))
+  assert.equal(assembly.sections.some(section=>removedNames.includes(section.name.slice(5))),false)
+  console.log(JSON.stringify({schemaVersion:1,scope:'actual-core-story-tool-surface',toolCount:assembly.tools.length,schemaBytes,
+   baselineSchemaBytes:45765,removedNames,tools:assembly.tools.map(tool=>({name:tool.name,schemaBytes:Buffer.byteLength(JSON.stringify(tool))}))}))
+  }finally{cleanup.reverse().forEach(fn=>fn());cleanupTestDirectory(workspace)}
+  process.exit(0)
+ }
+ console.log(JSON.stringify({schemaVersion:1,scope:'actual-core-registration-fixture',
+  excludes:'host tools and separately assembled system context',
+  tools:definitions.map(tool=>({name:tool.name,schemaBytes:Buffer.byteLength(JSON.stringify(tool))})),
+  toolCount:definitions.length,schemaBytes:Buffer.byteLength(JSON.stringify(definitions))}))
+ cleanup.reverse().forEach(fn=>fn())
+ process.exit(0)
+}
 if(scenario==='request-watchdog'||scenario==='request-watchdog-custom'){
  const {mock}=await import('node:test'),calls=[]
  let controller=new AbortController()
  agent.cancel=(cause,options)=>{calls.push({cause,options});controller.abort(cause)}
  const request=hooks.get('agent/request')[0],config={provider:'fixture',model:'main'}
+ const stream=(frame,actual=agent)=>{for(const fn of hooks.get('agent/assistant-stream'))fn({agent:actual,frame})}
  mock.timers.enable({apis:['setTimeout']})
  try{
   assert.equal(await request({agent,turn:1,step:1,signal:controller.signal},async()=>config),config,'request config is unchanged')
+  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,0,'route/candidate preparation has no model silence timer')
+  stream({type:'start',attemptId:'main-1',turn:1,step:1})
   mock.timers.tick(firstResponseTimeoutMs-1);assert.equal(calls.length,0)
   mock.timers.tick(1);assert.equal(calls.length,1);assert.equal(calls[0].cause.kind,'hook');assert.deepEqual(calls[0].options,{keepInbox:true})
+  let turn=1
+  for(const type of ['text-delta','reasoning-delta','tool-call-delta','finish']){
+   controller=new AbortController();turn++
+   await request({agent,turn,step:1,signal:controller.signal},async()=>config)
+   const attemptId='main-'+turn
+   stream({type:'start',attemptId,turn,step:1})
+   const chunk=type==='finish'?{type,reason:{kind:'stop'}}
+    :type==='tool-call-delta'?{type,index:0,id:'tool-1',name:'run_code',argumentsDelta:'{}'}
+    :{type,index:0,text:'r'.repeat(9841)}
+   stream({type:'chunk',attemptId,chunk})
+   mock.timers.tick(firstResponseTimeoutMs+1)
+   assert.equal(calls.length,1,type+' disarms without a durable assistant/message or assistant/chunk')
+  }
+  let expectedCalls=1
+  for(const boundary of ['child-session','other-turn','other-step','stale-attempt','stale-end','metadata-only']){
+   controller=new AbortController();turn++
+   await request({agent,turn,step:1,signal:controller.signal},async()=>config)
+   const attemptId='main-'+turn
+   const start={type:'start',attemptId,turn,step:1}
+   stream(start)
+   if(boundary==='child-session'){
+    const child={...agent,session:{id:'independent-child'},options:{...agent.options,subagentDepth:1}}
+    stream(start,child)
+    stream({type:'chunk',attemptId,chunk:{type:'reasoning-delta',index:0,text:'child output'}},child)
+   }else if(boundary==='other-turn'||boundary==='other-step'){
+    stream({...start,attemptId:'foreign-attempt',...(boundary==='other-turn'?{turn:turn-1}:{step:2})})
+    stream({type:'chunk',attemptId:'foreign-attempt',chunk:{type:'reasoning-delta',index:0,text:'foreign output'}})
+   }else if(boundary==='stale-end'){
+    stream({type:'end',attemptId:'old-attempt'})
+   }else{
+    stream({type:'chunk',attemptId:boundary==='stale-attempt'?'old-attempt':attemptId,
+     chunk:boundary==='metadata-only'?{type:'block-start',index:0,blockType:'reasoning'}:{type:'reasoning-delta',index:0,text:'output'}})
+   }
+   mock.timers.tick(firstResponseTimeoutMs)
+   assert.equal(calls.length,++expectedCalls,boundary+' does not disarm this request')
+  }
+  for(const ending of ['stream-end','aborted','step-ended','turn-ended']){
+   controller=new AbortController();turn++
+   await request({agent,turn,step:1,signal:controller.signal},async()=>config)
+   const attemptId='main-'+turn
+   stream({type:'start',attemptId,turn,step:1})
+   if(ending==='stream-end')stream({type:'end',attemptId})
+   if(ending==='aborted')controller.abort()
+   if(ending==='step-ended'||ending==='turn-ended')for(const fn of hooks.get('session/event'))
+    await fn(session,{type:ending==='step-ended'?'step/end':'turn/end',data:{turn,step:1}})
+   mock.timers.tick(firstResponseTimeoutMs+1)
+   assert.equal(calls.length,expectedCalls,ending+' releases the pending first-response timer')
+  }
   controller=new AbortController()
-  await request({agent,turn:2,step:1,signal:controller.signal},async()=>config)
-  for(const fn of hooks.get('session/event'))await fn(session,{type:'assistant/chunk',data:{turn:2,step:1,chunk:{type:'reasoning-delta'}}})
-  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,1,'first model output disarms the silence deadline')
-  await request({agent:{...agent,options:{...agent.options,subagentDepth:1}},turn:3,step:1,signal:controller.signal},async()=>config)
-  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,1,'main watchdog never cancels an independent child')
+  const child={...agent,options:{...agent.options,subagentDepth:1}}
+  await request({agent:child,turn:3,step:1,signal:controller.signal},async()=>config)
+  stream({type:'start',attemptId:'child-3',turn:3,step:1},child)
+  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,expectedCalls,'main watchdog never cancels an independent child')
   await assert.rejects(request({agent,turn:4,step:1,signal:controller.signal},async()=>{throw Error('configuration failed')}),/configuration failed/)
-  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,1,'failed request preparation does not leave a timer')
+  mock.timers.tick(firstResponseTimeoutMs+1);assert.equal(calls.length,expectedCalls,'failed request preparation does not leave a timer')
  }finally{mock.timers.reset();cleanup.reverse().forEach(fn=>fn())}
- console.log('tavern-loop='+scenario+'=ok (registered native request hook, first output, child boundary, no retry, preserved inbox)')
+ console.log('tavern-loop='+scenario+'=ok (native assistant-stream, turn/step/attempt boundaries, first output, child boundary, no retry, preserved inbox)')
  process.exit(0)
 }
 if(scenario==='coarse-model-admission'){

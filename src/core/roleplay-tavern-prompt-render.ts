@@ -36,6 +36,7 @@ interface Dependencies {
   readonly evaluationComposition?:TavernLoreEvaluationCompositionV1
   readonly macros:TavernPromptMacroSnapshotV1
   readonly rules:readonly TavernPromptRegexRuleV1[]
+  readonly scriptOrder?:readonly ('global'|'preset'|'scoped')[]
   readonly scopes:readonly TavernTemplateScopeBindingV1[]
   readonly basis:SnapshotBasis
   /** Exact initial selected note distance captured by Core, not a guessed
@@ -87,7 +88,7 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     ownerCheckpoint()
     const result=await applyTavernPromptTransformsV1({schemaVersion:1,encoding:'owned-tavern-prompt-transform-v1',
       authority:'consumer-data-only',sourceSnapshotSha256:source.sourceSha256,regexDisabled:false,
-      macros,rules:deps.rules,entries:rows},{assertCurrent:checkpoint,signal})
+      macros,rules:deps.rules,entries:rows,...deps.scriptOrder?{scriptOrder:deps.scriptOrder}:{}},{assertCurrent:checkpoint,signal})
     ownerCheckpoint()
     if(result.kind!=='transformed')fail(result.diagnostics[0]?.code??'INPUT_MATERIAL_PROMPT_TRANSFORM_REFUSED')
     const {entries:fullEntries,...metadata}=result.output

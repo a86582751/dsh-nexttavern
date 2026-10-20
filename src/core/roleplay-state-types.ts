@@ -47,6 +47,7 @@ export interface StateDependencies extends StateWorldlines {
     |Promise<import('./roleplay-mvu-player-types.js').MvuStateObservation>
   readerDisplay?(session:StateSession,messages:readonly ReaderDisplayMessageRef[],signal:AbortSignal):Promise<ReaderDisplayResponse>
   readerDisplayContextVersion?(sessionId:string):string
+  communityPresets?(sessionId:string):{fingerprint:string;presetId:string|null;name:string|null;regexes:number}
   preparationRecordKey(id: string): string
   tavernTasks: ReturnType<typeof createRoleplayTaskHost>['tavernTasks']
   memoryForContext(session: StateSession): unknown

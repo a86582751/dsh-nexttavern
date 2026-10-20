@@ -14,7 +14,8 @@ import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
 
 export function captureRoleplayTavernInjectionDefinitionsV1(source:TavernLoreSourceDataV1,
   plan:TavernLorePlanV1,residual:AuthorContributionDataV1,promptProgram?:PromptProgramV1,
-  browserProgram?:BrowserProgramV2|BrowserProgramV3) {
+  browserProgram?:BrowserProgramV2|BrowserProgramV3,
+  authorSources?:readonly {pointer:string;text:string}[]) {
   const owner=recordSha256({schemaVersion:1,encoding:'native-logical-template-Source-owner-v1',
     sessionId:source.sessionId,sourceRecordSessionId:source.sourceRecordSessionId,
     importId:source.original.activePointer.importId,rawSha256:source.original.rawSha256,
@@ -29,9 +30,13 @@ export function captureRoleplayTavernInjectionDefinitionsV1(source:TavernLoreSou
     byKey.set(entry.entryId,Object.freeze({logicalOwnerId,definitionSha256:recordSha256({logicalOwnerId,
       rawEntrySha256:entry.rawEntrySha256,contentSha256:content.contentSha256,controls})}))
   }
-  const author=[['cards',residual.cardsText],['rules',residual.rulesText],['examples',residual.examplesText]] as const
-  for(const [field,text] of author) {
-    const pointer=`/native/current-author/${field}`,logicalOwnerId=`source-${owner}:author-${field}`
+  const author=authorSources??[['cards',residual.cardsText],['rules',residual.rulesText],['examples',residual.examplesText]]
+    .map(([field,text])=>({pointer:`/native/current-author/${field}`,text:text!}))
+  for(const {pointer,text} of author) {
+    // Retain accepted aggregate identities; field Sources use their full pointer
+    // so /data/description and /data/personality cannot share an empty owner.
+    const field=pointer.match(/^\/native\/current-author\/(cards|rules|examples)$/)?.[1]??recordSha256({pointer}),
+      logicalOwnerId=`source-${owner}:author-${field}`
     byKey.set(pointer,Object.freeze({logicalOwnerId,definitionSha256:recordSha256({logicalOwnerId,
       text,includeCardStyle:residual.includeCardStyle})}))
   }

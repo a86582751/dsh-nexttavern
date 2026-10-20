@@ -313,6 +313,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
   }
   async function request(spec: TaskSpec<S,A>): Promise<unknown> {
     const {session,agent,kind,source,input,signal}=spec
+    const isolatedCompaction=kind==='memory'&&input.taskStage==='compaction'
     const authorDialog=kind==='author-dialog'&&input?.taskStage==='author-dialog-submit'?spec.authorDialog:undefined
     const rubyTask=kind==='ruby-analysis'&&input?.taskStage==='ruby-analysis'?spec.rubyTask:undefined
     if(kind==='author-dialog'&&(!authorDialog||spec.background!==true||spec.format!=='text'))
@@ -328,15 +329,19 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     // A restart may be followed by newer canonical prose before idle recovery.
     // Rebuild that batch from the new snapshot instead of leaving an orphaned
     // old "running" row forever. Live in-process work is never superseded here.
-    if(spec.background)for(const previous of list(session)) {
-      if(previous.id===id||!previous.background||previous.status!=='running'||running.has(previous.id)
+    if(spec.background||isolatedCompaction)for(const previous of list(session)) {
+      const obsoleteCompaction=isolatedCompaction&&previous.kind==='memory'
+        &&previous.input?.taskStage==='compaction'&&!terminal.has(previous.status)
+      const interruptedBackground=spec.background&&previous.background&&previous.status==='running'
+      if(previous.id===id||!(obsoleteCompaction||interruptedBackground)
+        ||running.has(previous.id)||admissions.has(previous.id)
         ||(['author-dialog','ruby-analysis'].includes(kind)||['author-dialog','ruby-analysis'].includes(previous.kind))
           &&previous.kind!==kind)continue
       await lock(previous.id,async()=>{
         const live=owned(session,previous.id)
-        if(live.status==='running'&&!running.has(live.id))await table.put(keyOf(live.id),{
+        if((isolatedCompaction?!terminal.has(live.status):live.status==='running')&&!running.has(live.id))await table.put(keyOf(live.id),{
           ...live,status:'stale',generation:randomUUID(),supersededBy:id,
-          recovery:'runtime-restart-new-snapshot',updatedAt:Date.now(),
+          recovery:isolatedCompaction?'compaction-new-snapshot':'runtime-restart-new-snapshot',updatedAt:Date.now(),
         })
       })
     }
@@ -359,7 +364,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         found=rubyTask
           ? {...found,status:'failed',error:'RUBY_NATIVE_COMPLETION_UNKNOWN',
               failure:{code:'RUBY_NATIVE_COMPLETION_UNKNOWN'},failedAt:Date.now(),updatedAt:Date.now()}
-          : found.background
+          : found.background||isolatedCompaction
           ? {...found,generation:randomUUID(),status:'queued',recoveredAt:Date.now(),updatedAt:Date.now()}
           : {...found,generation:randomUUID(),execution:'inline',actualRoute:copy(found.main),status:'queued',
             fallback:{from:found.actualRoute,reason:'runtime-restart',at:Date.now()},updatedAt:Date.now()}
@@ -368,7 +373,16 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       if (!found) {
         const selection=spec.selection??await policy.resolve(session,kind,agent)
         found={schemaVersion:1,id,sessionId:session.id,branchId:session.id,kind,source:copy(source),sourceHash:taskHash(source),input:copy(input),allowedTools:copy(spec.tools??[]),
-          ...selection,...(spec.promptContext?{promptContext:copy(spec.promptContext)}:{}),...(spec.background===true?{background:true,execution:'spawn'}:{}),generationOptions:spec.maxTokens===undefined?{}:{maxTokens:spec.maxTokens},status:'queued',generation:randomUUID(),progress:{done:0,total:1},createdAt:Date.now(),updatedAt:Date.now()}
+          ...selection,...(spec.promptContext?{promptContext:copy(spec.promptContext)}:{}),
+          ...(spec.background===true?{background:true,execution:'spawn'}:{}),
+          ...(isolatedCompaction?{execution:'spawn'}:{}),
+          generationOptions:spec.maxTokens===undefined?{}:{maxTokens:spec.maxTokens},
+          status:'queued',generation:randomUUID(),progress:{done:0,total:1},createdAt:Date.now(),updatedAt:Date.now()}
+        await table.put(key,found)
+      }
+      if(isolatedCompaction&&found.execution==='inline'&&!terminal.has(found.status)) {
+        found={...found,execution:'spawn',status:'queued',generation:randomUUID(),
+          generationOptions:spec.maxTokens===undefined?found.generationOptions:{maxTokens:spec.maxTokens},updatedAt:Date.now()}
         await table.put(key,found)
       }
       if(found.allowedTools===undefined) {
@@ -391,7 +405,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     // Normal non-main work is admitted for one event-loop turn.  A caller can
     // hold the session gate while it admits a dependent status/decision pair;
     // this never waits for a native result and background memory is excluded.
-    if(!job.background&&spec.format!=='workflow') {
+    if(!job.background&&!isolatedCompaction&&spec.format!=='workflow') {
       const admission=enqueue(session,job,spec)
       await spec.onAdmission?.(copy(job))
       admission.readyForDispatch()
@@ -489,13 +503,13 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
           const live=owned(session,id)
           if (live.generation!==job.generation || terminal.has(live.status)) {superseded=true;return}
           const failure=taskFailureDetails(ac.signal.aborted?ac.signal.reason:error)
-          if(live.background) {
+          if(live.background||isolatedCompaction) {
             await table.put(key,{...live,status:'failed',failure,error:failure.label,failedAt:Date.now(),updatedAt:Date.now()})
             return
           }
           await table.put(key,{...live,execution:'inline',actualRoute:copy(live.main),status:'queued',fallback:{from:job.actualRoute,to:copy(live.main),at:Date.now(),reason:failure.category==='timeout'?'timeout':'failed',failure},error:`${failure.label}，已交回主循环`,updatedAt:Date.now()})
         })
-        if (job.background || signal?.aborted || superseded) throw error
+        if (job.background || isolatedCompaction || signal?.aborted || superseded) throw error
         throw new InlinePending(id)
       } finally {
         clearTimeout(timer);signal?.removeEventListener('abort',abort)

@@ -8,6 +8,24 @@ class IdentityTable extends Map {
 const event=(seq,type,data,time=1000+seq*100)=>({seq,type,data,time})
 const usage={inputTokens:100,outputTokens:20,cacheReadTokens:900,cacheWriteTokens:0}
 {
+ const table=new Table(),s={id:'measured-stream',header:{id:'measured-stream',agentPreset:'roleplay'},events:[]}
+ const api=createTelemetry({table,sessions:{get:id=>id===s.id?s:null,list:()=>[s]}})
+ const measurement={schemaVersion:1,encoding:'native-final-request-measurement-v1',sourceSha256:'a'.repeat(64),
+  provider:'p',model:'m',estimate:{inputTokens:10,messageTokens:[10],messageParts:[[]],systemTokens:0,toolTokens:0,
+   schemaBytes:0,toolCount:0,imageCount:0,imagePricing:'none'},components:{systemFixed:0,authorEffective:0,dynamicState:0,
+   storyPlayer:10,toolSchemas:0,toolCatalog:0,toolResults:0,maintenanceInput:0,receipts:0,unattributed:0},
+  capacity:{status:'unknown',reason:'uncalibrated'}}
+ for await(const _chunk of api.observe({sessionId:s.id,provider:'p',model:'m'},async function*(){
+  yield {type:'usage',usage};yield {type:'finish',reason:{kind:'stop'}}
+ },()=>measurement)){}
+ const saved=[...table.values()].find(row=>row.source?.kind==='stream')
+ assert.deepEqual(saved.requestMeasurement,measurement,'the existing stream row stores the owning numeric request measurement')
+ assert.deepEqual(saved.usage,{...usage,totalTokens:null},'provider usage remains separate from input estimate')
+ const cold=createTelemetry({table,sessions:{get:id=>id===s.id?s:null,list:()=>[s]}})
+ assert.deepEqual(cold.calls()[0].requestMeasurement,measurement,'cold read preserves the versioned additive diagnostic')
+ assert.equal(saved.schemaVersion,1)
+}
+{
  const table=new Table(),s={id:'mixed-jobs',header:{agentPreset:'roleplay'},events:[event(0,'step/start',{}),event(1,'assistant/message',{usage})]}
  const valid={id:'valid',sessionId:s.id,childSessionId:s.id,kind:'status',status:'completed',createdAt:1}
  const jobs=[valid,null,7,{...valid,id:'broken',childSessionIds:{}},{...valid,id:'bad-time',createdAt:'yesterday'}]

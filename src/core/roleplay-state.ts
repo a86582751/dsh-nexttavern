@@ -45,7 +45,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   nativeBranchGroupsFor,nativePlayerGroupsFor,assistantMessageId,userForkContext,locatePlayerRecoveryTarget,
   failedForkMembership,isRecoverySourceMember,backfillRecoverySourceMember,importRecordKey,preparationRecordKey,
   tavernTasks,memoryForContext,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,
-  importSummary,chatImportProjection,numericalState,readerDisplay,readerDisplayContextVersion,
+  importSummary,chatImportProjection,numericalState,readerDisplay,readerDisplayContextVersion,communityPresets,
   deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
   normalizeDecisionRecord,userValues,svc,resolveRoleplaySession}:StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
@@ -229,9 +229,10 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       statusSpec: T.status.get(keyOf(session.id, 'spec')) ?? null,
       statusPanel: selectedStatusRecord(session),
       statusGeneration: selectedStatusGeneration(session),
-       numericalState:numericalObservation,
-       readerDisplay:{enabled:activeSourceRecord?.extensionInventory?.entries
-         .some(entry=>entry.key==='regex_scripts'&&entry.valueType==='array')??false},
+      numericalState:numericalObservation,
+      readerDisplay:{enabled:activeSourceRecord?.extensionInventory?.entries
+        .some(entry=>entry.key==='regex_scripts'&&entry.valueType==='array')??false},
+      communityPresets:communityPresets?.(session.id)??null,
       rules:currentRules?{...currentRules,...authorCoreData
         ?{core:authorCoreData.text,coreOrigin:authorCoreData.kind}:{}}:null,
       opening: T.opening.get(keyOf(session.id, 'scene')) ?? null,

@@ -212,11 +212,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       readEditInvalidation:deps.readSchemaEditInvalidation,
       projectPrefix:events=>deps.messageEdits.projectPrefix(events),editProtocol:deps.messageEdits,
       activePointer:id=>deps.tables.branch.get(deps.importActiveKey(id)),sourceSha256:id=>inputSource(id).sourceSha256,
-      protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock,
-      verifyOpening:intent=>{
-        const found=native.read(intent.initialization!.identity,intent.committedTurn!)
-        return found.status==='committed'&&same(found.receipt,intent.nativeReceipt)
-      }})
+      protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock})
     schemaPlayer??=createRoleplayMvuSchemaPlayerCore({...common,story:schemaStory,
       observe:deps.schema.observe,playerMarkers:deps.schema.playerMarkers})
     return schemaStory

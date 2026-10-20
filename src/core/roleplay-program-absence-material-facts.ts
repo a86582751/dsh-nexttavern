@@ -11,6 +11,7 @@ import {validateRoleplayPhaseABranchRowDataV1} from './roleplay-phase-a-row-fact
 import type {PhaseABranchRowKindV1} from './roleplay-phase-a-row-facts.js'
 import {inputSnapshotReferenceCurrent} from './roleplay-preparation.js'
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
+import type {ColdNonNumericalInputBranchRowFactV1} from './roleplay-input-cold-row-facts.js'
 import {roleplayOpeningMaterialKeysV1} from './roleplay-opening-material.js'
 import {validateProgramOpeningSeedV1,validateProgramOpeningInputV1} from './roleplay-program-opening-records.js'
 
@@ -23,7 +24,8 @@ export interface ProgramAbsenceMaterialRowFactV1 {
   readonly value:Readonly<Record<string,unknown>>
   readonly sha256:string
   readonly family:'native-material'|'phase-a'
-  readonly evidenceKind:'native-bound-exact-row'
+  readonly evidenceKind:'native-bound-exact-row'|'typed-local-preparation-data'
+  readonly executionAuthority?:'none'
   readonly kind:FactKindV1
   readonly bindings:readonly {readonly publication:{readonly seq:number;readonly sha256:string};
     readonly snapshotRef:DataRefV1;readonly relation:'material-row'|'bound-phase-a'|'identical-task-alias'|'opening-owned-ref'}[]
@@ -246,20 +248,27 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
       }
       return value
     }
+    function materialEnvelope(value:Readonly<Record<string,unknown>>,kind:'snapshot'|'plan') {
+      const opening=value['encoding']==='core-program-opening-material-record-v1'
+      exact(value,opening?['schemaVersion','encoding','authority','sessionId','identity','seedRef','inputRef','nativeOwner',
+        'turn','step','kind','payload']:['schemaVersion','encoding','authority','sessionId','branchId','preparation',
+        'currency','originalInputRefs','turn','step','kind','payload'])
+      if(value['schemaVersion']!==1||value['authority']!=='consumer-data-only'||value['sessionId']!==sid
+        ||value['kind']!==kind||!count(value['turn'],1)||!count(value['step'],1)) {
+        fail('PROGRAM_ABSENCE_MATERIAL_FACT_MATERIAL_INVALID')
+      }
+      if(kind==='plan')exact(value['payload'],['promptPlan','nativeTransform','nativeTransformSha256'])
+      return value
+    }
     for(const {event,snapshot,plan} of history.publications) {
       if(event.seq<inherited)fail('PROGRAM_ABSENCE_MATERIAL_FACT_INHERITED_OWNER_INVALID')
       const snapshotRef=dataRef(event.data.snapshot),planRef=dataRef(event.data.plan),
         publication={seq:Number(event.seq),sha256:nativeInputSha256(event)},
         materialBinding:Binding={publication,snapshotRef,relation:'material-row'}
       const checkMaterial=(row:TavernBoundCoreMaterialRowV1,ref:DataRefV1,kind:'snapshot'|'plan')=>{
-        const value=exactRow(ref),opening=row.encoding==='core-program-opening-material-record-v1'
-        exact(value,opening?['schemaVersion','encoding','authority','sessionId','identity','seedRef','inputRef','nativeOwner',
-          'turn','step','kind','payload']:['schemaVersion','encoding','authority','sessionId','branchId','preparation',
-          'currency','originalInputRefs','turn','step','kind','payload'])
-        if(!sameRowData(row,value)||value['sessionId']!==sid||value['kind']!==kind
-          ||!count(value['turn'],1)||!count(value['step'],1))fail('PROGRAM_ABSENCE_MATERIAL_FACT_MATERIAL_INVALID')
-        if(kind==='plan')exact(value['payload'],['promptPlan','nativeTransform','nativeTransformSha256'])
-        return value
+        const value=exactRow(ref)
+        if(!sameRowData(row,value))fail('PROGRAM_ABSENCE_MATERIAL_FACT_MATERIAL_INVALID')
+        return materialEnvelope(value,kind)
       }
       const material=checkMaterial(snapshot,snapshotRef,'snapshot'),planned=checkMaterial(plan,planRef,'plan'),payload=material['payload']
       if(!object(payload)||payload['schemaVersion']!==1||payload['encoding']!=='native-tavern-prompt-capture-v1'
@@ -359,12 +368,77 @@ export function createRoleplayProgramAbsenceMaterialFactsV1(deps:ProgramAbsenceM
     assertCurrent()
     const output=Object.freeze([...facts.values()].sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0)
       .map(row=>Object.freeze({...row,bindings:freeze(row.bindings)})))
+    /** A real producer may persist preparation before Native publishes a
+     * request. These current bytes explain namespace membership only; neither
+     * a local work reference nor a missing publication proves no dispatch. */
+    function preparedInputRows(inputFacts:readonly ColdNonNumericalInputBranchRowFactV1[])
+      :readonly ProgramAbsenceMaterialRowFactV1[] {
+      const prepared=new Map<string,ProgramAbsenceMaterialRowFactV1>()
+      const local=(ref:DataRefV1,value:Readonly<Record<string,unknown>>,kind:FactKindV1)=>{
+        if(facts.has(ref.key))return
+        prepared.set(ref.key,{table:'branch',key:ref.key,value,sha256:ref.sha256,
+          family:kind==='material-snapshot'||kind==='material-plan'?'native-material':'phase-a',kind,
+          evidenceKind:'typed-local-preparation-data',executionAuthority:'none',bindings:[]})
+      }
+      for(const fact of inputFacts) {
+        if(fact.kind!=='input-work')continue
+        const work=fact.value,attempt=work['attempt'] as Record<string,unknown>|undefined
+        if(!attempt?.['snapshot'])continue
+        const ref=attempt['snapshot'] as unknown as DataRefV1,
+          base={schemaVersion:2,preparationId:work['preparationId'],credentialSha256:work['credentialSha256'],
+            receiptGeneration:work['receiptGeneration'],attemptGeneration:work['attemptGeneration'],source:work['source']},
+          bound=phase(ref,'task-input-snapshot',Number(attempt['turn']))
+        if(!sameRowData(bound['inputPreparation'],base)) {
+          fail('PROGRAM_ABSENCE_MATERIAL_FACT_PHASE_A_BINDING_CHANGED')
+        }
+        local(ref,bound,'task-input-snapshot')
+        const alias=materialRow(`${sid}__task-snapshot-${attempt['turn']}`)
+        if(alias&&alias.sha256===ref.sha256&&sameRowData(alias.value,bound)) {
+          const value=validateRoleplayPhaseABranchRowDataV1(session,alias.key,'task-snapshot',alias.value)
+          local(alias,value,'task-snapshot')
+        }
+        const preparation=materialRow(`${sid}__task-preparation`)
+        if(preparation) {
+          const value=validateRoleplayPhaseABranchRowDataV1(session,preparation.key,'task-preparation',preparation.value)
+          if(value['inputPreparation']!==undefined) {
+            const currency=value['inputPreparation'] as Record<string,unknown>,source=currency['source'] as Record<string,unknown>
+            if(Object.hasOwn(source,'headRef'))fail('PROGRAM_ABSENCE_MATERIAL_FACT_PHASE_A_OUTSIDE_DOMAIN')
+            if(sameRowData(currency,base)&&value['turn']===attempt['turn']
+              &&Array.isArray(value['messages'])&&!value['messages'].length) {
+              local(preparation,value,'task-preparation')
+            }
+          }
+        }
+        const prefix=`${sid}__tavern-prompt-v1-${work['preparationId']}-${work['attemptGeneration']}-${attempt['step']}`,
+          expectedCurrency={...base,snapshot:ref}
+        for(const kind of ['snapshot','plan'] as const) {
+          const current=materialRow(prefix+'-'+kind)
+          if(!current)continue
+          if(!object(current.value))fail('PROGRAM_ABSENCE_MATERIAL_FACT_MATERIAL_INVALID')
+          const value=materialEnvelope(current.value,kind)
+          if(value['encoding']!=='core-input-material-record-v1'||value['branchId']!==sid
+            ||value['turn']!==attempt['turn']||value['step']!==attempt['step']
+            ||!sameRowData(value['currency'],expectedCurrency)||!sameRowData(value['preparation'],work['preparation'])
+            ||!sameRowData(value['originalInputRefs'],work['refs']))fail('PROGRAM_ABSENCE_MATERIAL_FACT_CURRENCY_INVALID')
+          if(kind==='snapshot') {
+            const payload=value['payload']
+            if(!object(payload)||payload['schemaVersion']!==1||payload['encoding']!=='native-tavern-prompt-capture-v1'
+              ||payload['authority']!=='consumer-data-only'||!sameRowData(payload['phaseASnapshotRef'],ref)) {
+              fail('PROGRAM_ABSENCE_MATERIAL_FACT_PAYLOAD_INVALID')
+            }
+          }
+          local(current,value,kind==='snapshot'?'material-snapshot':'material-plan')
+        }
+      }
+      assertCurrent()
+      return Object.freeze([...prepared.values()].map(row=>Object.freeze({...row,bindings:Object.freeze([])})))
+    }
     return {rows:output,publications:history.publications,
       evidence:freeze({schemaVersion:1,encoding:'native-bound-program-absence-material-row-facts-v1',
       authority:'consumer-data-only',sessionId:sid,historySha256,historyLength:events.length,inheritedEventCount:inherited,
       // These are consumed dependencies, not a complete namespace snapshot.
       namespaceRows:[...rows.values()].map(row=>({table:row.table,key:row.key,sha256:row.sha256})),
-      material:history.evidence}),assertCurrent,assertOwnerFactsCurrent:assertIdentity}
+      material:history.evidence}),assertCurrent,assertOwnerFactsCurrent:assertIdentity,preparedInputRows}
   }
   return {capture}
 }

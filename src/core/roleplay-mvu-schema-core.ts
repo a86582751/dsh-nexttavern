@@ -18,8 +18,9 @@ import {createRoleplayMvuSchemaJournal,freezeSchemaJournalData,schemaEpochExecut
 import {createRoleplayMvuSchemaReplay,schemaExecutionProgramSha256,schemaExecutionServerTailSha256,
   schemaExecutionHostFrontierSha256} from './roleplay-mvu-schema-replay.js'
 import {deriveAuthorHostOpeningExecutionV5,deriveAuthorHostOpeningExecutionV6,sealMvuSchemaOpeningFact,validateMvuSchemaOpeningPreparation,
-  validateMvuSchemaOpeningPlan,validateMvuSchemaOpeningIntent,verifyMvuSchemaOpeningFacts}
+  validateMvuSchemaOpeningPlan,validateMvuSchemaOpeningIntent}
   from './roleplay-mvu-schema-opening-types.js'
+import {verifyMvuSchemaInheritedOpeningFacts} from './roleplay-mvu-schema-prefix-facts.js'
 import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
 import type {NativeInputAdmissionAgentV2} from '@deepseek-ai/dsh-agent-loop'
 import type {mvuSchemaMarkers} from 'dsh-nexttavern-session-format/mvu-schema-marker'
@@ -604,11 +605,12 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
   }
   async function verifyHistorical(intent:OpeningIntentV5,event:MvuSchemaOpeningEventV2,head:MvuSchemaOpeningHeadV2) {
     try {
-      if(!verifyMvuSchemaOpeningFacts(intent,event,head)||!sourceCurrent(intent.preparation))fail('SCHEMA_OPENING_RECORD_INVALID')
       const session=deps.session(intent.sessionId),plan=intent.initialization!
       if(!session||!deps.active(session))fail('SCHEMA_SESSION_INACTIVE')
+      if(!verifyMvuSchemaInheritedOpeningFacts({intent,event,head,events:events(session)},
+        {projectPrefix:deps.projectPrefix})||!sourceCurrent(intent.preparation))fail('SCHEMA_OPENING_RECORD_INVALID')
       const incarnation=deps.agent(session),stopSha256=recordSha256(incarnation?.lookupInputStop())
-      // The journal and Native receipt prove the completed opening at its own
+      // The journal and closed Native span prove the completed opening at its own
       // cut. Later Story metadata and MVU rows do not restore a fresh-session
       // prerequisite or grant another initialization/publication permission.
       const before=recordSha256({events:events(session),intent:retained(intent.preparation),event,head})
@@ -633,12 +635,10 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
         ||load.clockEpochMs!==intent.preparation.clockEpochMs||load.randomSeed!==intent.preparation.randomSeed
         ||frame.input.clockEpochMs!==intent.preparation.clockEpochMs||frame.input.randomSeed!==intent.preparation.randomSeed)fail('SCHEMA_LOAD_SOURCE_MISMATCH')
       const verified=await driver.verifyHistorical({sessionId:session.id,realmEpoch:plan.execution.realmEpoch,nativeCut:cut})
-      const actualNative=deps.nativeRead(plan.identity,intent.committedTurn!)
       if(verified.kind!=='verified')return verified
-      if(disposed||deps.session(session.id)!==session||!sourceCurrent(intent.preparation)
+      if(disposed||deps.session(session.id)!==session||!deps.active(session)||!sourceCurrent(intent.preparation)
         ||deps.agent(session)!==incarnation||recordSha256(incarnation?.lookupInputStop())!==stopSha256
-        ||before!==recordSha256({events:events(session),intent:retained(intent.preparation),event,head})
-        ||actualNative.status!=='committed'||!same(actualNative.receipt,event.native))fail('SCHEMA_HISTORICAL_FACTS_CHANGED')
+        ||before!==recordSha256({events:events(session),intent:retained(intent.preparation),event,head}))fail('SCHEMA_HISTORICAL_FACTS_CHANGED')
       // Historical execution grants a read view only. It never restores a hot
       // owner, writes a head, completes an intent or dispatches another event.
       return {kind:'verified' as const}

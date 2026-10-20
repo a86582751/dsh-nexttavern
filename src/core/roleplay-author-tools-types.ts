@@ -17,6 +17,9 @@ export interface AuthorToolArguments extends Record<string, unknown> {
   query?: string
   always_on?: boolean
   locked?: boolean
+  offset?: number
+  limit?: number
+  source_hash?: string
 }
 export interface AuthorToolExecution {
   agent?: {session?: ContextSession}
@@ -33,7 +36,9 @@ export interface AuthorToolTable {
 export interface AuthorToolsDependencies {
   ctx: {effect(work: () => unknown, label: string): unknown; tools: {register(tool: unknown): unknown}}
   T: {cards: AuthorToolTable; worldbook: AuthorToolTable; branch: Pick<AuthorToolTable, 'put'>}
-  simpleTool(name: string, description: string, parameters: unknown, execute: (args: AuthorToolArguments, execution: AuthorToolExecution) => Promise<unknown>): unknown
+  simpleTool(name: string, description: string, parameters: unknown,
+    execute: (args: AuthorToolArguments, execution: AuthorToolExecution) => Promise<unknown>,
+    projectOutput?: (args: AuthorToolArguments, value: unknown) => unknown): unknown
   sessionOf(execution: AuthorToolExecution): Promise<ContextSession>
   /** Core supplies the existing Source lock and rechecks this captured Session inside it. */
   mutateSource?<Result>(session: ContextSession, work: () => Promise<Result>,signal?:AbortSignal): Promise<Result>

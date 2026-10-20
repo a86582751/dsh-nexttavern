@@ -8,7 +8,17 @@ import { createSourceMusicV1 } from './roleplay-source-music.js';
 import { registerSourceMusicRoutesV1 } from './roleplay-source-music-routes.js';
 import { createSourceImagesV1 } from './roleplay-source-images.js';
 import { registerSourceImagesRoutesV1 } from './roleplay-source-images-routes.js';
+import { createCommunityPresets } from './community-presets.js';
+import { createCommunityPresetVariables } from './community-preset-variables.js';
+import { createCommunityPresetSettlement } from './community-preset-settlement.js';
+import { registerCommunityPresetRoutes } from './community-preset-routes.js';
+import { captureRoleplayTavernPromptSourceDataV1 } from './roleplay-tavern-prompt-source.js';
+import { produceCommunityPresetCardMaterialV1, produceCommunityNativeCardMaterialV1 } from './community-preset-card-material.js';
+import { produceAuthorContributionDataV1 } from './roleplay-author-contributions.js';
+import { captureRoleplayTavernScopedRegexV1 } from './roleplay-tavern-prompt-macros.js';
+import { selectedMainRoute } from './tavern-model-policy.js';
 import { decodeTavernCard } from './tavern-card.js';
+import { readTavernCardMacroFields } from './nexttavern-card.js';
 import { keyOf, textOf, durableSeq, provenanceSeq, sha256, safeId, cloneRecord, recordSha256, readUserInfo, passthroughSchema, rollsSchema, } from './roleplay-data.js';
 import { eventsOf, sessionEventsIfReady, surfaceEvents, surfaceEntries, isCompletedTurnEnd, canonicalAssistantForTurn, recentWindowSince, roleplayWindowCutStartIndex, retainRoleplayWindowContinuity, assertWorkspaceSession, } from './roleplay-context.js';
 import { decodeTaskSelection } from './tavern-task-primitives.js';
@@ -98,7 +108,7 @@ import { createRoleplayTavernTemplateAssetOwnerV1 } from './roleplay-tavern-temp
 import { TEMPLATE_POLICY_SHA256 } from './tavern-template-data.mjs';
 import { registerTavernLoreEditorRoutesV1 } from './roleplay-tavern-lore-editor-routes.js';
 import { createRoleplayImportInputTransition } from './roleplay-input-import.js';
-import { nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
+import { nativeInputSha256, readNativeRequestMeasurementV1 } from '@deepseek-ai/dsh-agent-loop';
 import { registerOpeningRoutes } from './roleplay-opening-routes.js';
 import { createRoleplayService } from './roleplay-service.js';
 import { createSessionHistory, ensureSessionHistory } from './session-history.js';
@@ -464,12 +474,16 @@ export async function apply(ctx, config = {}) {
             }
         };
         const materialOrPhaseAddress = /^(?:tavern-prompt-v1-|program-opening-material-|task-(?:snapshot-|input-snapshot-|preparation$)|context-window$)/;
+        let coldMaterial;
         if (missing.some(key => materialOrPhaseAddress.test(key.slice(prefix.length)))) {
-            const cold = programAbsenceMaterialFacts.capture(actual);
-            appendMissing(cold.rows);
+            coldMaterial = programAbsenceMaterialFacts.capture(actual);
+            appendMissing(coldMaterial.rows);
         }
         if (missing.some(key => key.startsWith(prefix + 'native-input-v2-'))) {
-            appendMissing(inputOwner?.readColdNonNumericalBranchRowFacts(actual) ?? []);
+            const coldInput = inputOwner?.readColdNonNumericalBranchRowFacts(actual) ?? [];
+            appendMissing(coldInput);
+            if (coldMaterial)
+                appendMissing(coldMaterial.preparedInputRows(coldInput));
         }
         if (['task-preparation', 'context-window'].some(suffix => T.branch.get(prefix + suffix) !== undefined
             && !known.has('branch:' + prefix + suffix))) {
@@ -803,7 +817,7 @@ export async function apply(ctx, config = {}) {
     });
     // Observe every supported native LLM entry, including retries, regeneration,
     // auxiliary calls and child sessions. Never filter by current story surface.
-    ctx.on('llm/stream', (options, next) => telemetry.observe(options, next), { global: true });
+    ctx.on('llm/stream', (options, next) => telemetry.observe(options, next, () => readNativeRequestMeasurementV1(options)), { global: true });
     ctx.on('session/event', (session, event) => {
         if (event?.type === 'step/end') {
             const agent = taskAgents.get(session.id);
@@ -1162,7 +1176,7 @@ export async function apply(ctx, config = {}) {
             }
         }
     }
-    const { memorySettingsPolicy, contextWindowKey, cloneContextWindow, buildPhaseA, storyWindowSettings, memoryForContext, contextWindowFor, memorySettingFields, } = createRoleplayPreparation({
+    const { memorySettingsPolicy, contextWindowKey, cloneContextWindow, buildPhaseA, buildPhaseACandidate, storyWindowSettings, memoryForContext, contextWindowFor, memorySettingFields, } = createRoleplayPreparation({
         T,
         rowFacts: phaseARowFacts,
         ctx,
@@ -1444,6 +1458,21 @@ export async function apply(ctx, config = {}) {
     // ── systemPrompt：{{user}}/{{user_gender}} 变量 + 角色卡 section ─────────────
     // 优先级：用户信息（设置页填写）> 玩家角色卡名 > 默认「用户」。
     const narrativePresets = createNarrativePresets(T.branch, id => ctx.get('tavernConversations')?.rootOf(id) ?? id);
+    const communityPresets = createCommunityPresets(T.branch, id => ctx.get('tavernConversations')?.rootOf(id) ?? id);
+    const communityAccountPersona = () => {
+        const data = readNativePersonas(), selected = data.profiles.find(profile => profile.avatar_id === data.selectedId);
+        return selected?.description ? [{ key: `account-persona:${selected.avatar_id}`,
+                pointer: `/native/account/personas/${encodeURIComponent(selected.avatar_id)}/description`, text: selected.description }] : [];
+    };
+    const communityVariables = createCommunityPresetVariables(T.branch);
+    const communitySettlement = createCommunityPresetSettlement(T.branch, communityVariables);
+    ctx.on('session/event', async (session, event) => {
+        if (event.type === 'turn/end' && event.data?.reason?.kind === 'completed') {
+            await communitySettlement.reconcile(session);
+        }
+    }, { global: true });
+    ctx.effect(() => ctx.systemPrompt.section({ name: 'roleplay:community-preset', order: 148,
+        text: '', interpolate: false }), 'roleplay: community preset material slot');
     registerAuthorPrompts({
         ctx,
         T,
@@ -1517,7 +1546,7 @@ export async function apply(ctx, config = {}) {
         resumeCardWorkflows,
         reconcileCanonicalPlayerVariants,
         buildForkLookupIndex,
-        resumeNovelExports, ensureBranch, buildPhaseA, characterRoster, storyWindowSettings, runStatusObligation,
+        resumeNovelExports, ensureBranch, buildPhaseA, buildPhaseACandidate, characterRoster, storyWindowSettings, runStatusObligation,
         withImportLock: (...args) => withImportLock(...args),
         publishTurnDecision: (...args) => publishTurnDecision(...args),
         runPhaseBC: (...args) => runPhaseBC(...args),
@@ -2628,9 +2657,14 @@ export async function apply(ctx, config = {}) {
         }) });
     ctx.effect(() => () => rubyOwner?.dispose(), 'roleplay: Ruby analysis owner lifetime');
     const tavernMaterial = createRoleplayTavernPromptMaterialV1({ branch: T.branch, inputState,
+        community: { presets: communityPresets, variables: communityVariables, settlement: communitySettlement, persona: communityAccountPersona,
+            modelName: id => selectedMainRoute(ctx.sessions.get(id), taskAgents.get(id), ctx.agentDefaultModel.currentSelection()).model,
+            aliases: id => ({ user: userValues(id).name, user_gender: userValues(id).gender,
+                char: String([...T.cards.entries()].filter(([key, card]) => key.startsWith(id + '__') && card?.kind !== 'user')
+                    .sort(([a], [b]) => a.localeCompare(b))[0]?.[1]?.name ?? '角色') }) },
         derivedSnapshot: id => rubyOwner?.snapshot(id),
         pendingOutputRows: readPendingStatusOutputRows,
-        source: tavernSource, edits: tavernLoreEdits,
+        tables: T, source: tavernSource, edits: tavernLoreEdits,
         withSourceLock: (id, work, signal) => withImportLock(id, 'tavern-prompt-material', work, signal),
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
         authorPolicy: id => {
@@ -3158,7 +3192,14 @@ export async function apply(ctx, config = {}) {
                     versionSha256: actual.snapshot.stateSnapshotSha256, values, valuesSha256: recordSha256(values) }],
             versionSha256: actual.snapshot.stateSnapshotSha256, displayUpdates: actual.displayUpdates };
     }, 'reader-display-scopes');
+    const communityDisplayVariables = (id, presetId) => {
+        const session = ctx.sessions.get(id);
+        if (!session)
+            throw Error('READER_DISPLAY_SESSION_INACTIVE');
+        return communityVariables.capture(presetId, id, 'display', 'display', communitySettlement.attemptIds(eventsOf(session)));
+    };
     const readerDisplay = createRoleplayReaderDisplay({ inputState, source: tavernSource,
+        community: { policy: communityPresets.policy, variables: communityDisplayVariables },
         session: id => ctx.sessions.get(id), messageEdits: ctx.nexttavernMessageEdits,
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
         scopes: id => readerDisplayScopes(id).data,
@@ -3202,10 +3243,13 @@ export async function apply(ctx, config = {}) {
             }
             return readerDisplay.capture(session.id, messages, signal);
         },
-        readerDisplayContextVersion: id => recordSha256({
-            scopes: readerDisplayScopes(id).data?.versionSha256 ?? null,
-            cardStyle: narrativePresets.policy(id).effective.mode !== 'system'
-        }),
+        readerDisplayContextVersion: id => {
+            const policy = communityPresets.policy(id);
+            return recordSha256({ scopes: readerDisplayScopes(id).data?.versionSha256 ?? null,
+                cardStyle: narrativePresets.policy(id).effective.mode !== 'system', community: policy.fingerprint,
+                variables: policy.preset ? communityDisplayVariables(id, policy.preset.id) : null });
+        },
+        communityPresets: communityPresets.summary,
         chatImportProjection: (session, record) => {
             // A historical attachment receipt alone must never open a choice for a
             // cancelled, replaced, inherited or incompletely activated import.
@@ -3443,6 +3487,45 @@ export async function apply(ctx, config = {}) {
         narrativePresets,
         mutateSource,
     });
+    registerCommunityPresetRoutes({ ctx, resolveRoleplaySession, communityPresets,
+        cardMappingInput: id => withImportLock(id, 'community-card-mapping', async () => {
+            const policy = communityPresets.policy(id), mapping = policy.effective.features.nativeCardMapping, captured = captureRoleplayTavernPromptSourceDataV1({ source: tavernSource, edits: tavernLoreEdits }, id, narrativePresets.policy(id).effective.mode !== 'system');
+            const mappingScope = { sessionId: id, conversationId: policy.conversationId };
+            return { revision: policy.revision, effective: policy.effective, mapping: mapping ?? null, presetActive: !!policy.preset,
+                material: captured.kind === 'captured-data' ? produceCommunityPresetCardMaterialV1({ captured, override: mapping, persona: communityAccountPersona(), mappingScope }) :
+                    produceCommunityNativeCardMaterialV1({ parts: produceAuthorContributionDataV1(T, id, narrativePresets.policy(id).effective.mode !== 'system').parts,
+                        cardRows: [...T.cards.entries()].filter(([key]) => key.startsWith(id + '__')).map(([key, value]) => ({ identity: `cards:${key}`, value })),
+                        override: mapping, persona: communityAccountPersona(), mappingScope }) };
+        }),
+        configureVariables: async (id, presetId) => {
+            const session = await resolveRoleplaySession(id);
+            if (!session)
+                throw Error('角色扮演对话不存在');
+            await communityVariables.configure(presetId, id, communityPresets.configurations(id, presetId), communitySettlement.attemptIds(eventsOf(session)));
+        },
+        displayInput: async (id) => {
+            const session = await resolveRoleplaySession(id);
+            if (!session)
+                throw Error('角色扮演对话不存在');
+            const source = tavernSource.capture(id), policy = communityPresets.policy(id);
+            if (source.kind === 'refused')
+                throw Error(source.diagnostics[0]?.code ?? '社区显示来源不可用');
+            const selected = surfaceEvents(session), selectedMessages = selected.flatMap(event => event.type === 'user/message' ? [event.data] :
+                event.type === 'assistant/message' && !event.data?.interrupted ? [event.data?.message] : []).filter(Boolean), kept = new Set(retainRoleplayWindowContinuity(session, selectedMessages, Number.MAX_SAFE_INTEGER).map(message => String(message.id))), story = selected.filter(event => kept.has(String(event.data?.message?.id ?? event.data?.id ?? '')));
+            const messages = story.map((event, index) => ({ seq: Number(event.seq),
+                messageId: String(event.data?.message?.id ?? event.data?.id ?? ''),
+                role: event.type === 'user/message' ? 'user' : 'assistant',
+                text: textOf(event.data?.message?.content ?? event.data?.content), depth: story.length - index - 1,
+                isEdit: event.type === 'roleplay/message-edit' }));
+            const input = policy.preset ? communityVariables.capture(policy.preset.id, id, 'display', 'display', communitySettlement.attemptIds(eventsOf(session))) : null;
+            const names = source.kind === 'captured-data' ? source.source.current.openingContext.context : null;
+            const fields = source.kind === 'captured-data' ? readTavernCardMacroFields(source.contributionInput.rawDecoded.data, source.source.original.decodedFormat) : {}, inputText = messages.findLast(message => message.role === 'user')?.text ?? '';
+            return { messages, aliases: { ...Object.fromEntries(Object.entries(fields).filter((entry) => typeof entry[1] === 'string')),
+                    user: names?.user ?? userValues(id).name, char: names?.char ?? '角色', user_gender: names?.user_gender ?? userValues(id).gender,
+                    model: selectedMainRoute(session, taskAgents.get(id), ctx.agentDefaultModel.currentSelection()).model, input: inputText, lastUserMessage: inputText },
+                chat: input?.chat ?? {}, global: input?.global ?? {}, scopedRules: source.kind === 'captured-data'
+                    ? captureRoleplayTavernScopedRegexV1(source.contributionInput.rawDecoded.data, source.source.sourceSha256, true) : [] };
+        } });
     registerAvatarRoute({
         ctx,
         T,

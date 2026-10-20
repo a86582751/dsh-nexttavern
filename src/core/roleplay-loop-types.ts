@@ -5,13 +5,14 @@ import type { HostAgent, HostSession } from './roleplay-task-host-types.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { CompletionSnapshot, CompletionState } from './roleplay-completion-types.js'
 import type { DecisionJob, DecisionRecord } from './roleplay-decision-types.js'
-import type { PreparationTable } from './roleplay-preparation-types.js'
+import type { PreparationTable,PhaseACandidate } from './roleplay-preparation-types.js'
 import type { createRoleplayStatus } from './roleplay-status.js'
 import type {RoleplayInputBinding,InputPreparationCurrency} from './roleplay-input-preparation.js'
 import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js'
 import type {ForkLookup} from './roleplay-worldline-types.js'
 import type {TaskSubmissionBindings} from './roleplay-task-tools-types.js'
 import type {GenerateOptions,StreamChunk} from '@deepseek-ai/dsh-llm'
+import type {ToolRuntime} from '@deepseek-ai/dsh-tools'
 
 export interface LoopSession extends HostSession {
   append(type: string, data: TaskMessage, options: {
@@ -57,17 +58,26 @@ export interface PromptAssembly {
   tools: PromptPart[]
   [key: string]: unknown
 }
+/** Fields consumed from the pinned native assistant stream contract. */
+export type LoopAssistantStreamFrame =
+  | {type:'start';attemptId:string;turn:number;step:number}
+  | {type:'chunk';attemptId:string;chunk:{type:string}}
+  | {type:'end';attemptId:string}
 export interface LoopContext {
   on(name:'llm/stream',hook:(options:GenerateOptions,next:()=>AsyncIterable<StreamChunk>)=>AsyncIterable<StreamChunk>,options:{global:boolean}):unknown
   on(name:'agent/request',hook:(payload:{agent:LoopAgent;turn:number;step:number;signal:AbortSignal},next:()=>Promise<unknown>)=>Promise<unknown>):unknown
+  on(name:'agent/assistant-stream',hook:(payload:{agent:LoopAgent;frame:LoopAssistantStreamFrame})=>void,options:{global:true}):unknown
   on(name:'session/event',hook:(session:ContextSession,event:ContextEvent)=>void,options:{global:true}):unknown
   on(name: 'system-prompt/assemble', hook: (assembly: PromptAssembly, context: {agent?: LoopAgent}, next: () => Promise<PromptAssembly>) => Promise<PromptAssembly>, options: {global: boolean}): unknown
   on(name: 'agent/pre-step', hook: (payload: LoopPayload, next: () => Promise<StepDecision>) => Promise<StepDecision>): unknown
   on(name: 'agent/turn-stopping', hook: (payload: {agent?: LoopAgent; turn: number; signal?: AbortSignal}) => Promise<void>): unknown
   effect(work: () => unknown, label: string): unknown
-  tools: {guard?(hook: (execution: {agent?: LoopAgent; name: string; arguments?:unknown}) => string | undefined): unknown}
+  tools: Partial<Pick<ToolRuntime, 'schemas' | 'get'>> & {
+    guard?(hook: (execution: {agent?: LoopAgent; name: string; arguments?:unknown}) => string | undefined): unknown
+  }
   logger?: {warn?(message: string): void; info?(message:string):void}
   get(name: 'compaction'): {finishTurn?(agent: LoopAgent, signal?: AbortSignal): PromiseLike<unknown>} | null | undefined
+  get(name: 'ptcRuntime'): {readonly language: string} | null | undefined
 }
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface LoopDependencies {
@@ -81,7 +91,7 @@ export interface LoopDependencies {
   adaptationScope?(session:LoopSession):string
   importPromptCheckpoint?(session:LoopSession):{importId:string;normalizedSha256:string;opening:string;openingChoicePending?:boolean}|null
   ctx: LoopContext
-  T: {branch: PreparationTable; decision: PreparationTable<DecisionRecord>}
+  T: {branch: PreparationTable & {entries(): Iterable<[string, Record<string, unknown>]>}; decision: PreparationTable<DecisionRecord>}
   tavernTasks: TaskHost['tavernTasks']
   clusterJob: TaskHost['clusterJob']
   clusterPhase: TaskHost['clusterPhase']
@@ -89,7 +99,7 @@ export interface LoopDependencies {
   characterRoster: TaskHost['characterRoster']
   taskAgents: Map<string, HostAgent>
   isRoleplaySession(session: ContextSession | null | undefined): boolean
-  activeCardWorkflow(session: LoopSession): {kind: string} | null | undefined
+  activeCardWorkflow(session: LoopSession): {kind: string; id?: string} | null | undefined
   ensureState(id: string): LoopState
   withDecisionMutationLock<T>(id: string, work: () => Promise<T>): Promise<T>
   normalizeDecisionRecord(value: DecisionRecord | null | undefined): DecisionRecord | null
@@ -102,6 +112,7 @@ export interface LoopDependencies {
   reconcileCanonicalPlayerVariants(session:LoopSession,index:ForkLookup):Promise<unknown>
   buildForkLookupIndex(session:LoopSession):ForkLookup
   buildPhaseA(session: LoopSession, payload: LoopPayload, state: LoopState): Promise<readonly ContextMessage[]>
+  buildPhaseACandidate(session:LoopSession,payload:LoopPayload,state:LoopState):Promise<PhaseACandidate>
   storyWindowSettings(session: LoopSession): {tail: number}
   /** First-output deadline per model request; omitted keeps the 90-second default. */
   firstResponseTimeoutMs?: number

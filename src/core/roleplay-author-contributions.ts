@@ -4,6 +4,8 @@ import {keyOf,recordSha256,sha256} from './roleplay-data.js'
 import {statusAuthorRules} from '../status-template.js'
 import type {AuthorRecord,AuthorTables,AuthorTable} from './roleplay-author-context-types.js'
 
+export const renderCoreContributionV1=(content:string)=>content?'【核心设定·固定世界基础】\n'+content:''
+
 export interface AuthorContributionRowV1 {
   readonly table:'cards'|'worldbook'|'rules'|'status'
   readonly key:string
@@ -78,6 +80,20 @@ export function renderCards(T:Pick<AuthorTables,'cards'>,branchId:string):string
   }).join('\n\n')
 }
 
+/** Field partitioning can move owned card/scenario spans into community
+ * markers. The remaining parts use exactly the ordinary author grouping. */
+export function authorContributionTextsV1(parts:readonly AuthorContributionPartV1[],splitExamples:boolean) {
+  const pinned=parts.filter(part=>part.kind==='always-on'),rules:string[]=[]
+  for(const part of parts) {
+    if(part.kind==='card')continue
+    if(part.kind==='always-on') {
+      if(part===pinned[0])rules.push('【核心设定·旧卡常驻标记兼容投影】\n以下原文由旧constant/always_on标记明确指定为常驻，按核心设定保留；其余世界书条目只按本轮查询读取。\n'+pinned.map(item=>item.text).join('\n\n'))
+    }else if(part.kind!=='examples'||!splitExamples)rules.push(part.text)
+  }
+  return {cardsText:parts.filter(part=>part.kind==='card').map(part=>part.text).join('\n\n'),rulesText:rules.join('\n\n'),
+    examplesText:splitExamples?parts.filter(part=>part.kind==='examples').map(part=>part.text).join('\n\n'):''}
+}
+
 export function produceAuthorContributionDataV1(T:Tables,sessionId:string,includeCardStyle:boolean,
   projection?:AuthorContributionProjectionV1):AuthorContributionDataV1 {
   const specKey=keyOf(sessionId,'spec'),rules=T.rules.get(specKey),status=T.status.get(specKey)
@@ -111,7 +127,7 @@ export function produceAuthorContributionDataV1(T:Tables,sessionId:string,includ
     add('card',`cards:${key}`,rowRef('cards',key,value),'content',text(value.content),renderCards(single,sessionId))
   }
   const core=projection?projection.residualCore:rules?.core?String(rules.core):''
-  if(core)add('core',`rules:${specKey}/core`,rulesRef,'core',text(rules?.core),'【核心设定·固定世界基础】\n'+core)
+  if(core)add('core',`rules:${specKey}/core`,rulesRef,'core',text(rules?.core),renderCoreContributionV1(core))
   const pinned=worldbook.filter(([key,value])=>value&&value.enabled!==false&&value.alwaysOn===true&&!excluded.has(key))
   const pinnedParts=pinned.map(([key,value])=>add('always-on',`worldbook:${key}`,rowRef('worldbook',key,value),
     'content',text(value.content),renderWorldbookEntry(value)))
@@ -127,18 +143,9 @@ export function produceAuthorContributionDataV1(T:Tables,sessionId:string,includ
   const statusRules=statusAuthorRules(status?.text)
   if(statusRules)add('status',`status:${specKey}/text`,statusRef,'text',text(status?.text),
     '【状态规则·创作参考】（状态栏是叙事展示，不构成原生数值状态权威；本轮存在 native-mvu-state 完整锚点时，数值基准与更新格式以该锚点为准。状态栏及行动建议由程序在正文落盘后交给维护任务生成；主代理不生成面板或调用 rp_status_set。）\n'+statusRules)
-  const ruleParts:string[]=[]
-  for(const part of parts) {
-    if(part.kind==='card')continue
-    if(part.kind==='always-on') {
-      if(part===pinnedParts[0])ruleParts.push('【核心设定·旧卡常驻标记兼容投影】\n以下原文由旧constant/always_on标记明确指定为常驻，按核心设定保留；其余世界书条目只按本轮查询读取。\n'+pinnedParts.map(item=>item.text).join('\n\n'))
-    }else if(part.kind!=='examples'||!projection?.splitExamples)ruleParts.push(part.text)
-  }
   const body={schemaVersion:1 as const,encoding:'roleplay-author-field-contributions-v1' as const,
     authority:'consumer-data-only' as const,sessionId,includeCardStyle,
-    cardsText:parts.filter(part=>part.kind==='card').map(part=>part.text).join('\n\n'),
-    rulesText:ruleParts.join('\n\n'),examplesText:projection?.splitExamples
-      ?parts.filter(part=>part.kind==='examples').map(part=>part.text).join('\n\n'):'',parts,
+    ...authorContributionTextsV1(parts,projection?.splitExamples===true),parts,
     residentParts:[{section:'roleplay:cards',name:'roleplay:cards',text:renderCards(T,sessionId)},
       {section:'roleplay:rules',name:'roleplay:rules / 核心设定',text:projection?projection.residualCore:text(rules?.core)},
       {section:'roleplay:rules',name:'roleplay:rules / 剧情指引',text:text(rules?.plot)},

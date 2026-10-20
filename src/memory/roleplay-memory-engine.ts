@@ -300,7 +300,9 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
       const active = compactor.pending(session.id)
       if (active) { try { await active } catch (error) { if (signal?.aborted) throw error } }
       signal?.throwIfAborted?.()
-      if (getEngine()?.ownsMemoryPreparation !== true && cfg.auto !== false && branchTokensAboveThreshold(session)) {
+      // Roleplay calls this inside its owned preparation. Ownership suppresses
+      // the separate pre-step hook, not this complete-request pressure gate.
+      if (cfg.auto !== false && branchTokensAboveThreshold(session)) {
         await compact(session, agent, signal, undefined, { manual: false })
       }
       if (cfg.autoNotes !== false) scheduleNotes(agent)

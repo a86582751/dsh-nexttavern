@@ -97,7 +97,6 @@ export interface MvuSchemaStoryCoreDeps {
   withSourceLock<T>(sid:string,action:()=>Promise<T>):Promise<T>
   flush(session:Session):Promise<boolean>
   markers:typeof mvuSchemaMarkers
-  verifyOpening(intent:ReturnType<typeof validateMvuSchemaOpeningIntent>):boolean
   verifyNative(scope:InputCompletionScope):boolean
   verifyConsumedScope(scope:InputCompletionScope):boolean
   readCanonical(sid:string,turn:number):CompletedStoryBody|undefined
@@ -533,7 +532,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       if(storedHead===undefined)fail('HEAD_MISSING')
       const head=validateMvuSchemaOpeningHead(storedHead as never)
       const opening=validateMvuSchemaOpeningEvent(prefixInputs.status.get(mvuInitializationEventKey(sid,head.eventId)) as never)
-      if(!deps.verifyOpening(intent))fail('SCHEMA_OPENING_RECORD_INVALID')
+      if(!verifyMvuSchemaInheritedOpeningFacts({intent,event:opening,head,events},
+        {projectPrefix:deps.projectPrefix}))fail('SCHEMA_OPENING_RECORD_INVALID')
       if(historical) {
         // Frozen caller/history selection retains its existing merge, full
         // validation and failure contract; it is not owned current capture.
@@ -1037,7 +1037,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       nativeCut:events.length,nativePrefixSha256:recordSha256(events)})
     const frame=buildSchemaScopeReadFrame(source,recordSha256(basis),schemaOriginalServerScripts(view.history.original),
       facts.chat,schemaScopeVisibleMessages(events,deps.projectPrefix,source,
-        seq=>scopeOwnerForSeq(facts,seq),facts.messages))
+        seq=>scopeOwnerForSeq(facts,seq),facts.messages,'canonical-chat'))
     const data=Object.freeze({schemaVersion:1 as const,encoding:'native-mvu-prompt-scope-read-data-v1' as const,
       authority:'consumer-data-only' as const,basis,frame,readDataSha256:recordSha256({basis,frame})})
     // A later own pending input or interrupted provider attempt does not change

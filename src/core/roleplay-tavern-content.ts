@@ -57,11 +57,14 @@ export function produceTavernPromptVariableRefV1(ownerId:string,versionSha256:st
 }
 interface Dependencies {
   readonly captured:SourceData
-  readonly scopeData:Pick<ScopeData,'scopes'|'history'|'bindings'|'evidence'|'stateSnapshotSha256'>
+  readonly scopeData:Pick<ScopeData,'scopes'|'history'|'evidence'|'stateSnapshotSha256'>&{
+    readonly bindings:readonly TavernTemplateScopeBindingV1[]
+  }
   readonly attempt:TavernPromptVariableAttemptV1
   readonly timed:TavernLoreBranchTimedInputV1
   readonly visibleMessages:readonly TavernLoreVisibleMessageV1[]
   readonly settings:Readonly<TavernLoreFrozenSettingsV1>
+  readonly currentCardFields?:Readonly<Record<'description'|'personality'|'scenario'|'persona',string>>
   readonly renderInput:RenderInput
   readonly execution?:TavernContentExecutionV1
   macrosFor(scopes:readonly TavernTemplateScopeBindingV1[],
@@ -117,9 +120,10 @@ export async function prepareRoleplayTavernContentV1(deps:Dependencies) {
     text=(value:unknown)=>typeof value==='string'?value:'',
     aliases=readTavernCardMacroFields(card,source.original.decodedFormat),macros=renderInput.macros,
     globalScanData={personaDescription:macros.card?.find(value=>value.key==='persona')?.value??'',
-      characterDescription:text(aliases.description),characterPersonality:text(aliases.personality),
+      characterDescription:deps.currentCardFields?.description??text(aliases.description),
+      characterPersonality:deps.currentCardFields?.personality??text(aliases.personality),
       characterDepthPrompt:macros.card?.find(value=>value.key==='charDepthPrompt')?.value??'',
-      scenario:text(aliases.scenario),creatorNotes:text(card.creator_notes)}
+      scenario:deps.currentCardFields?.scenario??text(aliases.scenario),creatorNotes:text(card.creator_notes)}
   const emptyCounts={schemaVersion:1 as const,encoding:'owned-frozen-token-count-ledger-v1' as const,
     identity:tokenCount.identity,implementationSha256:tokenCount.implementationSha256,method:tokenCount.method,counts:[]}
   const body:Omit<TavernLoreFrozenSnapshotV1,'snapshotSha256'>={schemaVersion:1,

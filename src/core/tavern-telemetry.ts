@@ -604,7 +604,8 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
         await put(row);
         return row;
     }
-    async function* observe<C extends TelemetryChunk>(options: ObserveOptions, next: () => AsyncIterable<C>): AsyncGenerator<C> {
+    async function* observe<C extends TelemetryChunk>(options: ObserveOptions, next: () => AsyncIterable<C>,
+        requestMeasurement?:()=>import('@deepseek-ai/dsh-agent-loop').NativeRequestMeasurementV1|undefined): AsyncGenerator<C> {
         if (options.sessionId) await ensureSessionHistory(sessions.get(options.sessionId));
         const liveSession = options.sessionId ? sessions.get(options.sessionId) : undefined, s: SessionView = liveSession ?? {
             id: options.sessionId ?? null, header: {
@@ -679,6 +680,8 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
             throw error;
         }
         finally {
+            const measurement=requestMeasurement?.()
+            if(measurement)call.requestMeasurement=measurement
             if (call.status === 'running')
                 call.status = options.signal?.aborted ? 'cancelled' : 'unknown';
             call.completedAt = Date.now();

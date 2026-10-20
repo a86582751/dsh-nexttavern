@@ -6,6 +6,41 @@ import { recordSha256, keyOf } from './roleplay-data.js';
 /** One preparation budget covers lock waits, deterministic workers and record
  * publication. Nested work cannot renew it by starting another evaluator. */
 export const ROLEPLAY_INPUT_MATERIAL_LIMITS_V1 = Object.freeze({ deadlineMs: 15_000 });
+function candidateTransform(row) {
+    return { kind: 'transform', ...row.material.messageTextProjections ? {
+            schemaVersion: 2, encoding: 'native-request-material-owner-transform-v2',
+            messageTextProjections: row.material.messageTextProjections
+        } : {
+            schemaVersion: 1, encoding: 'native-request-material-owner-transform-v1'
+        },
+        ...row.refs, captureSha256: row.captureSha256, expectedAssemblySha256: row.initial.assemblySha256,
+        expectedSelectedBaseSha256: row.initial.selected.sha256, requiredSections: row.material.requiredSections,
+        sections: row.material.sections, insertions: row.material.insertions,
+        ...row.material.anchoredInsertions ? { anchoredInsertions: row.material.anchoredInsertions } : {},
+        ...row.material.messageProjection ? { messageProjection: row.material.messageProjection } : {},
+        ...row.material.story ? { story: row.material.story } : {} };
+}
+function checkpointForPreview(candidate, basis, preview) {
+    const measurement = preview.measurement;
+    if (!measurement || measurement.capacity.status === 'unknown' || measurement.capacity.excess <= 0)
+        return candidate.needsCheckpoint ? {} : undefined;
+    if (!candidate.windowEnabled)
+        fail('INPUT_REQUEST_CONTEXT_WINDOW_DISABLED');
+    const storyRefs = new Map(candidate.storyMessages.map(row => [row.id, row.eventSeq])), costs = new Map(preview.messageCosts.map(row => [row.id, row]));
+    let storyTokens = 0;
+    for (const row of basis.selected.messages) {
+        if (row.eventSeq === null || storyRefs.get(row.id) !== row.eventSeq)
+            continue;
+        const cost = costs.get(row.id);
+        if (!cost || cost.eventSeq !== row.eventSeq)
+            fail('INPUT_REQUEST_STORY_COST_UNKNOWN');
+        storyTokens += cost.tokens;
+    }
+    const requiredTokens = measurement.estimate.inputTokens - storyTokens, available = measurement.capacity.availableInput;
+    if (requiredTokens > available)
+        fail('INPUT_REQUEST_REQUIRED_CONTEXT_EXCEEDS_CAPACITY');
+    return { options: { fullRequestAllowance: Math.max(0, available - requiredTokens), messageCosts: preview.messageCosts } };
+}
 function fail(code) { throw Error(code); }
 const codeOf = (error) => error instanceof Error && /^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
     ? error.message : 'INPUT_MATERIAL_PREPARATION_REFUSED';
@@ -41,16 +76,26 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
             fail('INPUT_MATERIAL_RECORD_CHANGED');
     }
     const requestMaterial = { schemaVersion: 1, sectionNames: deps.sectionNames,
+        story: { schemaVersion: 1,
+            normalizeText: text => ready?.responseHooks?.normalizeText?.(text) ?? text,
+            recoverText: blocks => ready?.responseHooks?.recoverText?.(blocks),
+            createTextTransform: () => ready?.responseHooks?.createTextTransform?.() ?? { push: text => text, finish: () => '' } },
         prepare(input) {
             const controller = new AbortController();
-            const began = performance.now();
-            let preparing = true;
-            const timer = setTimeout(() => controller.abort(Error('INPUT_MATERIAL_PREPARATION_DEADLINE')), ROLEPLAY_INPUT_MATERIAL_LIMITS_V1.deadlineMs);
+            let began = performance.now(), spent = 0, preparing = true, running = true;
+            const expire = () => controller.abort(Error('INPUT_MATERIAL_PREPARATION_DEADLINE'));
+            let timer = setTimeout(expire, ROLEPLAY_INPUT_MATERIAL_LIMITS_V1.deadlineMs);
+            const pauseBudget = () => { spent += performance.now() - began; running = false; clearTimeout(timer); };
+            const resumeBudget = () => {
+                began = performance.now();
+                running = true;
+                timer = setTimeout(expire, Math.max(0, ROLEPLAY_INPUT_MATERIAL_LIMITS_V1.deadlineMs - spent));
+            };
             controllers.add(controller);
             const operation = (async () => {
                 let releaseBuild;
                 try {
-                    const original = owner.scope(input);
+                    const original = owner.scope(input, true);
                     if (disposal.signal.aborted)
                         fail('INPUT_MATERIAL_OWNER_DISPOSED');
                     if (original.stepToken.kind !== 'story') {
@@ -70,7 +115,7 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                     const signal = AbortSignal.any([original.signal, disposal.signal, controller.signal]);
                     const assertBudgetAndSignal = () => {
                         signal.throwIfAborted();
-                        if (preparing && performance.now() - began >= ROLEPLAY_INPUT_MATERIAL_LIMITS_V1.deadlineMs) {
+                        if (preparing && spent + (running ? performance.now() - began : 0) >= ROLEPLAY_INPUT_MATERIAL_LIMITS_V1.deadlineMs) {
                             controller.abort(Error('INPUT_MATERIAL_PREPARATION_DEADLINE'));
                             signal.throwIfAborted();
                         }
@@ -88,39 +133,97 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                             assertBudgetAndSignal();
                             original.assertOwnerFactsCurrent();
                         } };
-                    const data = await deps.prepare(input, scope);
-                    if (data.kind === 'prepared-data')
-                        releaseBuild = data.release.bind(data);
-                    scope.signal.throwIfAborted();
-                    scope.assertOwnerFactsCurrent();
-                    if (data.kind === 'refused')
-                        return { kind: 'blocked', code: data.code };
-                    if (data.kind === 'outside-declared-domain') {
+                    const construct = async (initial, preparedRoute) => {
+                        const data = await deps.prepare(initial, scope);
+                        if (data.kind === 'prepared-data')
+                            releaseBuild = data.release.bind(data);
+                        scope.signal.throwIfAborted();
+                        scope.assertOwnerFactsCurrent();
+                        if (data.kind !== 'prepared-data')
+                            return data;
+                        const checks = { assertCurrent: data.assertCurrent.bind(data), assertSelected: data.assertSelected.bind(data),
+                            release: data.release.bind(data) };
+                        checks.assertSelected(initial.selected, true);
+                        // The recorded plan and the live transform must use the same detached,
+                        // frozen values. A producer's later array mutation cannot alter wire
+                        // content while the persisted explanatory record remains unchanged.
+                        // Layout owns the valid wire data; this publisher only detaches the
+                        // transform so its record and live request retain the same values.
+                        const material = freeze(structuredClone({ requiredSections: data.requiredSections,
+                            sections: data.sections, insertions: data.insertions,
+                            ...data.anchoredInsertions ? { anchoredInsertions: data.anchoredInsertions } : {},
+                            ...data.messageTextProjections ? { messageTextProjections: data.messageTextProjections } : {},
+                            ...data.messageProjection ? { messageProjection: data.messageProjection } : {}, ...data.story ? { story: data.story } : {} }));
+                        const materialSha256 = nativeInputSha256(material);
+                        const basis = { schemaVersion: 1, encoding: 'core-input-material-record-v1',
+                            authority: 'consumer-data-only', sessionId: scope.session.id, branchId: scope.session.id,
+                            preparation: scope.preparation, currency: scope.phaseA?.current().reference
+                                ? { ...scope.currency, snapshot: scope.phaseA.current().reference } : scope.currency,
+                            originalInputRefs: scope.originalInputRefs,
+                            turn: scope.turn, step: scope.step };
+                        const snapshot = Object.freeze({ ...basis, kind: 'snapshot', payload: data.snapshot });
+                        const plan = Object.freeze({ ...basis, kind: 'plan', payload: Object.freeze({ promptPlan: data.plan,
+                                nativeTransform: material, nativeTransformSha256: materialSha256 }) });
+                        const refs = { snapshot: { key: prefix + '-snapshot', sha256: recordSha256(snapshot) },
+                            plan: { key: prefix + '-plan', sha256: recordSha256(plan) } };
+                        return { kind: 'material-candidate', initial, scope, checks, material, responseHooks: data.responseHooks,
+                            ...data.renderedAuthorMaterial ? { renderedAuthorMaterial: data.renderedAuthorMaterial } : {},
+                            materialSha256, snapshot, plan, refs,
+                            ...(preparedRoute ? { routeSha256: nativeInputSha256(preparedRoute) } : {}),
+                            captureSha256: recordSha256({ schemaVersion: 1, encoding: 'core-input-material-capture-v1',
+                                ...refs, nativeSelectedSha256: initial.selected.sha256, assemblySha256: initial.assemblySha256 }) };
+                    };
+                    let chosen;
+                    if (scope.phaseA && input.candidate) {
+                        let selectedBasis;
+                        const preview = async () => input.candidate.preview(scope.phaseA.messages(), async (basis) => {
+                            selectedBasis = basis;
+                            chosen = await construct({ ...input, selected: basis.selected, finalAssembly: basis.finalAssembly,
+                                assemblySha256: basis.assemblySha256 }, basis.preparedRoute);
+                            if (chosen.kind === 'refused')
+                                fail(chosen.code);
+                            return chosen.kind === 'outside-declared-domain' ? { kind: 'unchanged' } : candidateTransform(chosen);
+                        });
+                        const first = await preview();
+                        assertBudgetAndSignal();
+                        const checkpoint = checkpointForPreview(scope.phaseA.current(), selectedBasis, first);
+                        if (checkpoint) {
+                            // The existing notes-save owner keeps its own signal/deadline.
+                            // Releasing the old DATA baseline makes its writes visible to the
+                            // next capture without replaying author generation callbacks.
+                            releaseBuild?.();
+                            releaseBuild = undefined;
+                            pauseBudget();
+                            await scope.phaseA.checkpoint(checkpoint.options);
+                            resumeBudget();
+                            assertBudgetAndSignal();
+                            const final = await preview();
+                            if (final.measurement?.capacity.status === 'known' && final.measurement.capacity.excess > 0)
+                                fail('INPUT_REQUEST_CONTEXT_TOO_LARGE_AFTER_CHECKPOINT');
+                        }
+                        await scope.phaseA.commit();
+                    }
+                    else {
+                        if (scope.phaseA) {
+                            if (scope.phaseA.current().needsCheckpoint) {
+                                pauseBudget();
+                                await scope.phaseA.checkpoint();
+                                resumeBudget();
+                                assertBudgetAndSignal();
+                            }
+                            await scope.phaseA.commit();
+                        }
+                        chosen = await construct(input);
+                    }
+                    if (!chosen)
+                        fail('INPUT_MATERIAL_PREPARATION_MISSING');
+                    if (chosen.kind === 'refused')
+                        return { kind: 'blocked', code: chosen.code };
+                    if (chosen.kind === 'outside-declared-domain') {
                         outside.add(scope.stepToken);
                         return { kind: 'unchanged' };
                     }
-                    const checks = { assertCurrent: data.assertCurrent.bind(data), assertSelected: data.assertSelected.bind(data),
-                        release: data.release.bind(data) };
-                    checks.assertSelected(input.selected, true);
-                    // The recorded plan and the live transform must use the same detached,
-                    // frozen values. A producer's later array mutation cannot alter wire
-                    // content while the persisted explanatory record remains unchanged.
-                    // Layout owns the valid wire data; this publisher only detaches the
-                    // transform so its record and live request retain the same values.
-                    const material = freeze(structuredClone({ requiredSections: data.requiredSections,
-                        sections: data.sections, insertions: data.insertions,
-                        ...data.anchoredInsertions ? { anchoredInsertions: data.anchoredInsertions } : {},
-                        ...data.messageTextProjections ? { messageTextProjections: data.messageTextProjections } : {} }));
-                    const materialSha256 = nativeInputSha256(material);
-                    const basis = { schemaVersion: 1, encoding: 'core-input-material-record-v1',
-                        authority: 'consumer-data-only', sessionId: scope.session.id, branchId: scope.session.id,
-                        preparation: scope.preparation, currency: scope.currency, originalInputRefs: scope.originalInputRefs,
-                        turn: scope.turn, step: scope.step };
-                    const snapshot = Object.freeze({ ...basis, kind: 'snapshot', payload: data.snapshot });
-                    const plan = Object.freeze({ ...basis, kind: 'plan', payload: Object.freeze({ promptPlan: data.plan,
-                            nativeTransform: material, nativeTransformSha256: materialSha256 }) });
-                    const refs = { snapshot: { key: prefix + '-snapshot', sha256: recordSha256(snapshot) },
-                        plan: { key: prefix + '-plan', sha256: recordSha256(plan) } };
+                    const { checks, material, materialSha256, snapshot, plan, refs, captureSha256 } = chosen, publishedScope = owner.scope(input);
                     const records = {};
                     await owner.enqueue(async () => {
                         checks.assertCurrent();
@@ -132,24 +235,25 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                                 kind: kind === 'snapshot' ? 'input-material-snapshot' : 'input-material-plan' };
                             // Only this original writer registers the explanatory output. A
                             // thrown put leaves writing data and never becomes Ready.
-                            owner.registerNonNumericalBranchRow?.(input, scope, { ...fact, phase: 'writing' });
+                            owner.registerNonNumericalBranchRow?.(input, publishedScope, { ...fact, phase: 'writing' });
                             if (old === undefined || old === null)
                                 await owner.table.put(ref.key, record);
                             const readback = owner.table.get(ref.key);
                             if (recordSha256(readback) !== ref.sha256)
                                 fail('INPUT_MATERIAL_WRITE_UNCONFIRMED');
                             records[kind] = readback;
-                            owner.registerNonNumericalBranchRow?.(input, scope, { ...fact, phase: 'written' });
+                            owner.registerNonNumericalBranchRow?.(input, publishedScope, { ...fact, phase: 'written' });
                             // Readback precedes the cheap owner checkpoint. Both rows must
                             // complete before any Ready object can reach Native.
                             checks.assertCurrent();
                         }
                     });
-                    const row = { token: scope.stepToken, scope, initial: input, checks, material, materialSha256, ...refs,
-                        ...data.renderedAuthorMaterial ? { renderedAuthorMaterial: data.renderedAuthorMaterial } : {},
+                    const row = { token: scope.stepToken, scope: publishedScope, initial: chosen.initial, checks, material, materialSha256, ...refs,
+                        responseHooks: chosen.responseHooks,
+                        ...chosen.renderedAuthorMaterial ? { renderedAuthorMaterial: chosen.renderedAuthorMaterial } : {},
                         records: { snapshot: records.snapshot, plan: records.plan },
-                        captureSha256: recordSha256({ schemaVersion: 1, encoding: 'core-input-material-capture-v1',
-                            ...refs, nativeSelectedSha256: input.selected.sha256, assemblySha256: input.assemblySha256 }) };
+                        captureSha256, ...chosen.routeSha256 ? { routeSha256: chosen.routeSha256,
+                            transformed: { decisionSha256: nativeInputSha256(candidateTransform(chosen)) } } : {} };
                     current(row);
                     ready = row;
                     releaseBuild = undefined;
@@ -190,7 +294,9 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
                     captureSha256: row.captureSha256, expectedAssemblySha256: input.assemblySha256,
                     expectedSelectedBaseSha256: input.selected.sha256, requiredSections: row.material.requiredSections,
                     sections: row.material.sections, insertions: row.material.insertions,
-                    ...row.material.anchoredInsertions ? { anchoredInsertions: row.material.anchoredInsertions } : {} };
+                    ...row.material.anchoredInsertions ? { anchoredInsertions: row.material.anchoredInsertions } : {},
+                    ...row.material.messageProjection ? { messageProjection: row.material.messageProjection } : {},
+                    ...row.material.story ? { story: row.material.story } : {} };
                 row.transformed = { decisionSha256: nativeInputSha256(decision) };
                 return decision;
             }

@@ -101,9 +101,19 @@ export function createAdaptationStore(table: AdaptationTable) {
       {schemaVersion:1,
       owner,
       sourceId:id})}
-  function selected(owner:string){const item=table.get(selectedKey(owner)) as {schemaVersion:number;owner:string;sourceId:string}|undefined
-    if(item){if(item.schemaVersion!==1||item.owner!==owner)throw Error('当前研究来源记录损坏');load(owner,item.sourceId);return item.sourceId}
-    const ids=catalog(owner);if(ids.length===1)return ids[0];return undefined
+  function selection(owner:string){const item=table.get(selectedKey(owner)) as {schemaVersion:number;owner:string;sourceId:string}|undefined
+    if(item){if(item.schemaVersion!==1||item.owner!==owner)throw Error('当前研究来源记录损坏');return {sourceId:item.sourceId,explicit:true}}
+    const ids=catalog(owner);return ids.length===1?{sourceId:ids[0]!,explicit:false}:undefined
+  }
+  function selected(owner:string){const current=selection(owner)
+    if(current?.explicit)load(owner,current.sourceId)
+    return current?.sourceId
+  }
+  /** Capability selection consumes small owner-maintained progress, not another full novel integrity/read pass. */
+  function selectedProgress(owner:string){const current=selection(owner)
+    if(!current)return undefined
+    const state=table.get(stateKey(owner,current.sourceId)) as AdaptationState|undefined
+    return state?Object.freeze({sourceId:current.sourceId,status:state.status,indexPolicy:state.indexPolicy??'idle'}):undefined
   }
   function indexSettings(){
     const saved=table.get(indexSettingsKey) as {schemaVersion:number;revision:number;autoIndexNewSources:boolean;autoRebuildLocalOnActive?:boolean}|undefined
@@ -564,6 +574,7 @@ export function createAdaptationStore(table: AdaptationTable) {
       catalog,
       select,
       selected,
+      selectedProgress,
       summary,
       library,
       shared,

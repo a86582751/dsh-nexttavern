@@ -2,8 +2,32 @@ import { keyOf, recordSha256 } from './roleplay-data.js'
 import { lastSeq, eventsOf } from './roleplay-context.js'
 import { retrieveWorldbook } from './roleplay-author-context.js'
 import { fenceCardContent } from './tavern-card.js'
-import type { AuthorToolsDependencies } from './roleplay-author-tools-types.js'
+import type { AuthorToolsDependencies, AuthorToolArguments } from './roleplay-author-tools-types.js'
 import { SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1 } from './roleplay-tavern-legacy-write-target-types.js'
+
+interface WorldbookListResult {
+  entries: readonly Record<string,unknown>[]
+  count: number
+  sourceHash?: string
+  policy?: string
+}
+function worldbookListPage(args: AuthorToolArguments, result: WorldbookListResult) {
+  const total=result.entries.length,offset=Math.min(total,Math.max(0,Math.trunc(Number(args.offset)||0)))
+  const limit=Math.max(1,Math.min(100,Math.trunc(Number(args.limit)||24)))
+  const sourceHash=result.sourceHash??recordSha256(result.entries)
+  if(args.source_hash!==undefined&&args.source_hash!==sourceHash)
+    return {ok:false,code:'WORLDBOOK_SOURCE_CHANGED',error:'世界书来源已变化，请从 offset=0 重新读取。',
+      sourceHash,total,complete:false,nextOffset:0}
+  const end=Math.min(total,offset+limit)
+  return {...result,entries:result.entries.slice(offset,end),sourceHash,offset,limit,total,
+    complete:end===total,nextOffset:end<total?end:null}
+}
+function projectWorldbookList(args: AuthorToolArguments, value: unknown) {
+  const result=value as WorldbookListResult&{complete?:boolean}
+  // An explicitly requested page or source-change error is already final.
+  if(!result||!Array.isArray(result.entries)||typeof result.complete==='boolean')return value
+  return worldbookListPage(args,result)
+}
 
 export function registerAuthorTools({ctx,T,simpleTool,sessionOf,storyBranchIsActive,mutateSource,captureSourceRead,
   checkLegacyWorldbookWriteTarget}: AuthorToolsDependencies) {
@@ -206,19 +230,20 @@ export function registerAuthorTools({ctx,T,simpleTool,sessionOf,storyBranchIsAct
     ctx.tools.register(
       simpleTool(
         'rp_worldbook_list',
-        '列出当前分支的世界书条目摘要（供查重与触发条件管理）。',
-        { type: 'object', properties: {}, additionalProperties: false },
-        async (_args, exec) => {
+        '列出当前分支的世界书条目摘要，供查重与触发条件管理。展示默认每页24项；按nextOffset、limit与sourceHash（传source_hash）续读。complete仅表示摘要列表读完，不表示已读条目正文；来源变化须从0重读。',
+        { type: 'object', properties: {
+          offset:{type:'integer',minimum:0,description:'从第几项继续；首次为0'},
+          limit:{type:'integer',minimum:1,maximum:100,description:'每页条目数，默认24'},
+          source_hash:{type:'string',description:'续页带回上页sourceHash；来源变化时从0重读'},
+        }, additionalProperties: false },
+        async (args, exec) => {
           const session = await sessionOf(exec)
           const prefix = `${session.id}__`
           const out = []
           const projected=captureSourceRead?.(session)
           if(projected) {
             projected.assertCurrent()
-            return {entries:projected.entries,count:projected.entries.length,
-              sourceHash:projected.sourceProjectionSha256,policy:'native-worldbook-automatic'}
-          }
-          for (const [k, v] of T.worldbook.entries()) {
+          }else for (const [k, v] of T.worldbook.entries()) {
             if (!k.startsWith(prefix) || !v) continue
             out.push({
               id: v.id,
@@ -232,8 +257,15 @@ export function registerAuthorTools({ctx,T,simpleTool,sessionOf,storyBranchIsAct
               version: v.version,
             })
           }
-          return { entries: out, count: out.length }
-        }
+          const result:WorldbookListResult=projected
+            ?{entries:projected.entries,count:projected.entries.length,
+              sourceHash:projected.sourceProjectionSha256,policy:'native-worldbook-automatic'}
+            :{entries:out,count:out.length}
+          // Legacy SDK callers without page parameters keep the complete DTO.
+          return args.offset!==undefined||args.limit!==undefined||args.source_hash!==undefined
+            ?worldbookListPage(args,result):result
+        },
+        projectWorldbookList
       )
     ),
     'roleplay: tool rp_worldbook_list'

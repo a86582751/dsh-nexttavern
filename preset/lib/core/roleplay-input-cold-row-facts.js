@@ -137,11 +137,12 @@ function stop(value, sid) {
 }
 function work(value, sid, deps) {
     exact(value, ['schemaVersion', 'namespace', 'sessionId', 'branchId', 'preparationId', 'receiptGeneration', 'refs',
-        'credentialSha256', 'preparation', 'status', 'source', 'attemptGeneration', 'checkpoint'], ['attempt', 'stop', 'transition']);
+        'credentialSha256', 'preparation', 'status', 'source', 'attemptGeneration'], ['checkpoint', 'attempt', 'stop', 'transition']);
     refs(value.refs, sid);
     preparation(value.preparation);
-    receipt(value.checkpoint, sid);
     source(value.source, deps);
+    if (value.checkpoint !== undefined)
+        receipt(value.checkpoint, sid);
     if (!deps.isWork(value, sid) || !id(value.preparationId) || !integer(value.attemptGeneration)
         || !['active', 'stopped', 'unknown'].includes(String(value.status)))
         fail('INPUT_COLD_WORK_INVALID');
@@ -248,11 +249,13 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
         if (event.type === 'turn/end')
             ends.set(event.data.turn, index + 1);
     }
-    const lastStart = [...starts.values()].at(-1), verified = new Map();
+    const lastStart = [...starts.values()].at(-1), workFacts = new Map();
     const result = [];
     const make = (key, value, kind, workKeys, association, nativeFields, materialFields, controlFields) => Object.freeze({ schemaVersion: 1,
-        evidenceKind: 'native-associated-typed-local-data', family: 'input', table: 'branch',
-        key, value, sha256: recordSha256(value), kind, evidenceGrade: kind === 'input-work'
+        evidenceKind: association === 'not-proven' ? 'typed-local-control-data' : 'native-associated-typed-local-data',
+        family: 'input', table: 'branch',
+        key, value, sha256: recordSha256(value), kind, evidenceGrade: association === 'not-proven'
+            ? 'local-control-metadata' : kind === 'input-work'
             ? materialFields.length ? 'native-and-published-material-association'
                 : 'native-identity-associated-control-metadata' : 'associated-control-metadata',
         nativeBoundFields: Object.freeze([...nativeFields]), materialBoundFields: Object.freeze([...materialFields]),
@@ -262,8 +265,19 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
         if (!key.startsWith(`${nativePrefix}work-`))
             continue;
         work(value, sid, deps);
-        const originalRefs = value.refs, checkpoint = value.checkpoint;
-        if (key !== deps.workKey(sid, originalRefs) || checkpoint.startSeq < birth || starts.get(checkpoint.actualTurn) !== checkpoint.startSeq
+        const originalRefs = value.refs;
+        if (key !== deps.workKey(sid, originalRefs))
+            fail('INPUT_COLD_WORK_ADDRESS_INVALID');
+        if (value.checkpoint === undefined) {
+            // Admission or material preparation can fail before Native writes its
+            // checkpoint. Keep the writer's row as control DATA; its absence proves
+            // neither unclaimed input nor a closed Native/material association.
+            workFacts.set(key, { value, association: 'not-proven', materialFields: [] });
+            result.push(make(key, value, 'input-work', [key], 'not-proven', [], [], Object.keys(value)));
+            continue;
+        }
+        const checkpoint = value.checkpoint;
+        if (checkpoint.startSeq < birth || starts.get(checkpoint.actualTurn) !== checkpoint.startSeq
             || !same(checkpoint.preparation, value.preparation) || !same(checkpoint.refs, originalRefs))
             fail('INPUT_COLD_WORK_ADDRESS_INVALID');
         const end = ends.get(checkpoint.actualTurn);
@@ -278,7 +292,10 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
         }
         const lookup = folded.durableWork({ preparation: value.preparation, refs: originalRefs });
         if (lookup.status === 'unknown' || !same(lookup.receipt, checkpoint)
-            || originalRefs.some(ref => native.ownership(ref).status === 'unknown' || native.ownership(ref).status === 'pending'))
+            || originalRefs.some(ref => {
+                const status = folded.ownership(ref).status;
+                return status === 'unknown' || status === 'pending';
+            }))
             fail('INPUT_COLD_NATIVE_ASSOCIATION_UNPROVEN');
         const materialFields = [];
         if (value.source.kind === 'story') {
@@ -295,7 +312,8 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
                     && same(snapshot.preparation, value.preparation) && same(plan.preparation, value.preparation)
                     && same(snapshot.originalInputRefs, originalRefs) && same(plan.originalInputRefs, originalRefs);
             });
-            if (!matchingPublications.length)
+            if (!matchingPublications.length && events.some(event => event.type === 'request/material'
+                && event.data.turn === checkpoint.actualTurn))
                 fail('INPUT_COLD_SOURCE_PUBLICATION_UNPROVEN');
             // Material capture already checks real request reconstruction. Pin both
             // actual rows and the actual event again; never accept a copied catalog.
@@ -308,18 +326,20 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
                     || recordSha256(publication.plan) !== event.data.plan.sha256)
                     fail('INPUT_COLD_MATERIAL_CHANGED');
             }
-            materialFields.push('source', 'attemptGeneration', ...(value.attempt?.snapshot ? ['attempt.snapshot'] : []));
+            if (matchingPublications.length) {
+                materialFields.push('source', 'attemptGeneration', ...(value.attempt?.snapshot ? ['attempt.snapshot'] : []));
+            }
         }
         const association = checkpoint.startSeq === lastStart ? 'latest-native-closed-turn' : 'historical-closed-turn';
-        verified.set(key, { value, receipt: checkpoint, association, materialFields });
+        workFacts.set(key, { value, receipt: checkpoint, association, materialFields });
         result.push(make(key, value, 'input-work', [key], association, ['schemaVersion', 'namespace', 'sessionId', 'branchId', 'preparationId', 'receiptGeneration', 'refs', 'credentialSha256',
             'preparation', 'checkpoint'], materialFields, ['status', 'attempt.turn', 'attempt.step', 'attempt.prepared', 'attempt.legacyPreparationId', 'stop',
             // Import transitions are retained writer metadata. Cold facts bind the
             // real Native checkpoint below; they never resume this transition.
             ...(value.transition !== undefined ? ['transition'] : []),
-            ...(value.source.kind !== 'story' ? ['source', 'attemptGeneration', 'attempt.snapshot'] : [])]));
+            ...(!materialFields.length ? ['source', 'attemptGeneration', 'attempt.snapshot'] : [])]));
     }
-    const matching = (noticeValue) => [...verified].filter(([, item]) => {
+    const matching = (noticeValue) => [...workFacts].filter(([, item]) => {
         const workRefs = item.value.refs;
         return noticeValue.refs.some(ref => workRefs.some(own => same(ref, own)));
     });
@@ -328,11 +348,11 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
         if (!matches.length || noticeValue.refs.some(ref => !matches.some(([, item]) => item.value.refs.some(own => same(ref, own)))))
             fail('INPUT_COLD_STOP_WORK_UNPROVEN');
         if (noticeValue.preparation !== undefined && !matches.some(([, item]) => same(item.value.preparation, noticeValue.preparation))
-            || noticeValue.receipt !== undefined && !matches.some(([, item]) => same(item.receipt, noticeValue.receipt)))
+            || noticeValue.receipt !== undefined && !matches.some(([, item]) => item.receipt !== undefined && same(item.receipt, noticeValue.receipt)))
             fail('INPUT_COLD_STOP_CHECKPOINT_UNPROVEN');
         return matches;
     };
-    for (const [key, item] of verified) {
+    for (const [key, item] of workFacts) {
         const workStop = item.value.stop;
         if (workStop?.notice !== undefined) {
             const associated = verifyNoticeAssociation(workStop.notice);
@@ -341,13 +361,13 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
         }
     }
     for (const [key, value] of captured) {
-        if (verified.has(key))
+        if (workFacts.has(key))
             continue;
         if (key === deps.currentKey(sid)) {
             exact(value, ['schemaVersion', 'preparationId', 'credentialSha256']);
             if (value.schemaVersion !== 2 || !id(value.preparationId) || !sha(value.credentialSha256))
                 fail('INPUT_COLD_CURRENT_INVALID');
-            const matches = [...verified].filter(([, item]) => item.value.preparationId === value.preparationId
+            const matches = [...workFacts].filter(([, item]) => item.value.preparationId === value.preparationId
                 && item.value.credentialSha256 === value.credentialSha256);
             if (matches.length !== 1)
                 fail('INPUT_COLD_CURRENT_WORK_UNPROVEN');
@@ -363,8 +383,9 @@ export function readColdNonNumericalInputBranchRowFactsV1(session, deps) {
                 || key !== `${nativePrefix}stop-${deps.digest({ stopNonce: noticeValue.stopNonce, stopSequence: noticeValue.stopSequence })}`)
                 fail('INPUT_COLD_STOP_ADDRESS_INVALID');
             const matches = verifyNoticeAssociation(noticeValue);
-            result.push(make(key, value, 'input-stop', matches.map(([workKey]) => workKey), matches.every(([, item]) => item.association === 'latest-native-closed-turn')
-                ? 'latest-native-closed-turn' : 'historical-closed-turn', [], [], Object.keys(value)));
+            result.push(make(key, value, 'input-stop', matches.map(([workKey]) => workKey), matches.some(([, item]) => item.association === 'not-proven') ? 'not-proven'
+                : matches.every(([, item]) => item.association === 'latest-native-closed-turn')
+                    ? 'latest-native-closed-turn' : 'historical-closed-turn', [], [], Object.keys(value)));
         }
         else
             fail('INPUT_COLD_UNKNOWN_ROW');

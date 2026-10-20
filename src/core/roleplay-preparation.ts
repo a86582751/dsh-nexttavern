@@ -4,9 +4,9 @@ import { keyOf, sha256, recordSha256, textOf, provenanceSeq, estimateTokens, dur
 import { eventsOf, surfaceEvents, surfaceEntries, lastSeq, visibleCompactionCheckpoint, roleplayWindowCutStartIndex } from './roleplay-context.js'
 import { fenceCardContent } from './tavern-card.js'
 import { activeOpeningSource } from './roleplay-import.js'
-import { internalTaskSeqs, isInlinePending } from './tavern-tasks.js'
+import { internalTaskSeqs } from './tavern-tasks.js'
 import {nativeMvuAuthorRules,nativeMvuLegacyAuthorRules} from './roleplay-author-context.js'
-import type { PreparationDependencies, PreparationSession, ContextWindow, WindowMetadata, MemoryPreparation, PreparationPayload, PreparationWriteState, PreparationSnapshot } from './roleplay-preparation-types.js'
+import type { PreparationDependencies, PreparationSession, ContextWindow, WindowMetadata, PreparationPayload, PreparationWriteState, PreparationSnapshot, PhaseACandidate, PhaseACheckpointOptions } from './roleplay-preparation-types.js'
 import type { ContextMessage } from './roleplay-context.js'
 import type { TaskAgent } from './tavern-task-types.js'
 import type { HostSession } from './roleplay-task-host-types.js'
@@ -117,14 +117,16 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     .map((event) => Number(event.seq))
   }
 
-  async function installRoleplayWindowCheckpoint(session: PreparationSession, previousWindow: ContextWindow, activeWindow: ContextWindow, continuityTailTokens: number, agent: TaskAgent, signal?: AbortSignal) {
+  async function installRoleplayWindowCheckpoint(session: PreparationSession, previousWindow: ContextWindow,
+    activeWindow: ContextWindow, continuityTailTokens: number, agent: TaskAgent, signal?: AbortSignal,
+    pricedTail?:{seqs:readonly number[];tokens:number}) {
     if (!session?.append || !previousWindow || !activeWindow || previousWindow.windowId === activeWindow.windowId) return null
     const surface = surfaceEvents(session)
     const storySeqs = visibleStorySurfaceSeqs(session)
     if (storySeqs.length < 2) return null
-    const tail = []
-    let used = 0
-    for (let index = storySeqs.length - 1; index >= 0; index -= 1) {
+    const tail = pricedTail?[...pricedTail.seqs]:[]
+    let used = pricedTail?.tokens??0
+    for (let index = pricedTail?-1:storySeqs.length - 1; index >= 0; index -= 1) {
       const event = eventsOf(session)[storySeqs[index]!]
       const text = event?.type === 'assistant/message' ? textOf(event.data?.message?.content) : textOf(event?.data?.content)
       const cost = estimateTokens(text)
@@ -132,7 +134,7 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
       tail.push(storySeqs[index]!)
       used += cost
     }
-    tail.reverse()
+    if(!pricedTail)tail.reverse()
     const tailSeqs = new Set(tail)
     const cutStory = storySeqs.filter((seq) => !tailSeqs.has(seq))
     if (!cutStory.length) return null
@@ -156,10 +158,12 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     if (sourceFingerprint !== recordSha256(surfaceEvents(session).map(event => ({ seq:event.seq, type:event.type, data:event.data })))) {
       throw new Error('保存期间窗口来源已变化，保留当前窗口；请重试')
     }
+    const continuityNotice=tail.length?`当前窗口保留最近 ${tail.length} 条完整剧情消息。`
+      :'当前窗口未保留旧剧情正文；请以随后最新笔记检查点为准。'
     const checkpoint = session.append('user/message', {
       id: randomUUID(),
       role: 'user',
-      content: [{ type: 'text', text: `[角色扮演上下文窗口 ${activeWindow.windowNumber}] 旧剧情已保存在只读历史。当前窗口保留最新 ${continuityTailTokens} tokens 的完整正文；需要旧事实时调用 rp_history。` }],
+      content: [{ type: 'text', text: `[角色扮演上下文窗口 ${activeWindow.windowNumber}] 旧剧情已保存在只读历史。${continuityNotice}需要旧事实时调用 rp_history。` }],
       source: { kind: 'roleplay-context-window', form: 'snapshot', schemaVersion: 1,
         checkpointGeneration: proof.generationId, checkpointSourceKeys: proof.sourceKeys,
         checkpointSourceSeqs: proof.sourceSeqs },
@@ -247,7 +251,52 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     }
   }
 
-  async function buildPhaseA(session: PreparationSession, payload: PreparationPayload, st: PreparationWriteState) {
+  async function applyStoryWindowCheckpoint(session:PreparationSession,payload:PreparationPayload,
+    current:ContextWindow,baseRevision:number,storyTokens:number,tailTokens:number,
+    options?:PhaseACheckpointOptions) {
+    const draft=await rolloverContextWindow(session,{reason:'roleplay-story-window-pressure',
+      startSeq:baseRevision,previousStoryTokens:storyTokens,continuityTailTokens:tailTokens},{persist:false})
+    let pricedTail:{seqs:number[];tokens:number}|undefined
+    if(options) {
+      const costs=new Map(options.messageCosts.map(row=>[row.id,row])),storySeqs=new Set(visibleStorySurfaceSeqs(session)),
+        currentUser=payload.messages.findLast(message=>message.role==='user'&&message.source?.kind==='user'),
+        entries=surfaceEntries(session).filter(entry=>storySeqs.has(entry.seq)&&entry.messageId
+          &&costs.get(entry.messageId)?.eventSeq===entry.seq)
+      const seqs:number[]=[]
+      let tokens=0,requestTokens=0
+      for(let index=entries.length-1;index>=0;index--) {
+        const entry=entries[index]!,storyCost=estimateTokens(entry.text),
+          requestCost=entry.messageId===currentUser?.id?0:costs.get(entry.messageId!)!.tokens
+        // The original story setting and Native's request meter have different
+        // units. Apply both limits independently to complete story messages;
+        // the current player input already belongs to required request cost.
+        if(seqs.length&&tokens+storyCost>tailTokens
+          ||requestTokens+requestCost>options.fullRequestAllowance)break
+        seqs.push(entry.seq);tokens+=storyCost;requestTokens+=requestCost
+      }
+      pricedTail={seqs:seqs.reverse(),tokens}
+    }
+    try {
+      const checkpoint=await installRoleplayWindowCheckpoint(session,current,draft,tailTokens,
+        payload.agent,payload.signal,pricedTail)
+      if(!checkpoint)return current
+      const committed={...draft,startSeq:checkpoint.tailSeqs.length?checkpoint.tailSeqs[0]!-1:draft.startSeq,
+        checkpointSeq:checkpoint.checkpointSeq,shadowedSeqs:checkpoint.shadowedSeqs,
+        tailSeqs:checkpoint.tailSeqs,continuityTokens:checkpoint.usedTokens}
+      const stored=deps.rowFacts?cloneRoleplayTavernLoreDataV1(committed,16_777_216,{nodes:131072,depth:66}):committed,
+        key=contextWindowKey(session.id),written=deps.rowFacts?.beforeWrite(session,key,'context-window',stored)
+      await T.branch.put(key,stored)
+      written?.readback()
+      payload.assertInputCurrent?.()
+      return committed
+    }catch(error) {
+      ctx.logger?.warn?.(`roleplay: context-window checkpoint failed; keeping previous window: ${String(error)}`)
+      throw error
+    }
+  }
+
+  async function buildPhaseACandidate(session: PreparationSession, payload: PreparationPayload,
+    st: PreparationWriteState):Promise<PhaseACandidate> {
     payload.assertInputCurrent?.()
     assertStoryBranchActive(session)
     const phaseAStartedAt = Date.now()
@@ -258,91 +307,36 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     // ordinary turns; eviction below is the sole strict notes-save barrier.
     await svc.awaitCommitted(branchId)
     payload.assertInputCurrent?.()
-    let memoryPreparation: MemoryPreparation = { status: 'ready' }
-    try {
-      memoryPreparation = await ctx.get('compaction')?.prepareForTurn?.(payload.agent, payload.signal) ?? memoryPreparation
-    } catch (error) {
-      if (isInlinePending(error) || payload.signal?.aborted || (error as { code?: string } | null)?.code === 'ROLEPLAY_SOURCE_CHANGED') throw error
-      memoryPreparation = { status: 'retry', branchId, reason: '当前分支持久记忆准备失败，可重试' }
-    }
+    // A failed pressure summary must stop preparation before the same oversized
+    // context is admitted to the main request. The loop owns failure recovery.
+    await ctx.get('compaction')?.prepareForTurn?.(payload.agent, payload.signal)
     assertStoryBranchActive(session)
     payload.assertInputCurrent?.()
     const userMsg = payload.messages.findLast((m) => m.role === 'user' && m.source?.kind === 'user')
     const userText = userMsg ? textOf(userMsg.content) : ''
-    const mem = memoryForContext(session)
-    let directorNotes = ctx.get('compaction')?.directorNotes?.(session)
-
-    // 快照（不可变；worker 只读）
+    // These inputs belong to the original claim and are never recaptured after
+    // saving notes. Only the window-dependent context below can be rebuilt.
     const baseRevision = lastSeq(session)
-    const currentContextWindow = await ensureContextWindow(session, 'initial')
-    const storyStartSeq = Number.isSafeInteger(currentContextWindow.startSeq)
-      ? currentContextWindow.startSeq
-      : -1
+    const numericalState = numericalStateFor(branchId, payload)
+    const values = userValues(branchId),statusPanelRec=selectedStatusRecord(session)
+    const windowSettings=storyWindowSettings(session)
+    let activeContextWindow=await ensureContextWindow(session,'initial'),didRollover=false,prefetchStarted=false,
+      continuityTailTokens=windowSettings.tail
+    const assemble=():PhaseACandidate=>{
+    const mem=memoryForContext(session),directorNotes=ctx.get('compaction')?.directorNotes?.(session)
+    const storyStartSeq=Number.isSafeInteger(activeContextWindow.startSeq)?activeContextWindow.startSeq:-1
     const storySinceWindow = surfaceEntries(session)
       .filter((entry) => entry.seq > storyStartSeq)
     const storySinceTokens = storySinceWindow.reduce((sum, entry) => sum + estimateTokens(entry.text), 0)
-    const windowSettings=storyWindowSettings(session)
     const rolloverNeeded = cfg.contextWindowEnabled !== false
       && storySinceTokens >= windowSettings.limit
-    if (!rolloverNeeded && cfg.contextWindowEnabled !== false
+    if (!prefetchStarted&&!rolloverNeeded && cfg.contextWindowEnabled !== false
       && storySinceTokens >= windowSettings.limit * 0.9) {
+      prefetchStarted=true
       Promise.resolve(ctx.get('compaction')?.prefetchWindowCheckpoint?.(payload.agent))
         .catch(() => ctx.logger?.warn?.('roleplay: early checkpoint save failed; window retained'))
     }
-    let activeContextWindow = rolloverNeeded
-      ? await rolloverContextWindow(session, {
-          reason: 'roleplay-story-window-pressure',
-          // The old window is cut before this turn.  The current turn's user
-          // message is admitted into the new prompt and the continuity tail
-          // is selected from the retained downstream messages below.
-          startSeq: baseRevision,
-          previousStoryTokens: storySinceTokens,
-          continuityTailTokens: windowSettings.tail,
-        }, { persist: false })
-      : currentContextWindow
-    let didRollover = false
-    if (rolloverNeeded) {
-      try {
-        const checkpoint = await installRoleplayWindowCheckpoint(
-          session,
-          currentContextWindow,
-          activeContextWindow,
-          windowSettings.tail,
-          payload.agent, payload.signal,
-        )
-        if (checkpoint) {
-          const committedWindow = {
-            ...activeContextWindow,
-            // The continuity tail is part of the new model window.  Advance
-            // the boundary to just before its first visible story node;
-            // using the pre-rollover lastSeq here would drop the tail on the
-            // very next request.
-            startSeq: checkpoint.tailSeqs.length > 0
-              ? Number(checkpoint.tailSeqs[0]) - 1
-              : activeContextWindow.startSeq,
-            checkpointSeq: checkpoint.checkpointSeq,
-            shadowedSeqs: checkpoint.shadowedSeqs,
-            tailSeqs: checkpoint.tailSeqs,
-            continuityTokens: checkpoint.usedTokens,
-          }
-          const stored=deps.rowFacts?cloneRoleplayTavernLoreDataV1(committedWindow,16_777_216,{nodes:131072,depth:66}):committedWindow,
-            key=contextWindowKey(session.id),written=deps.rowFacts?.beforeWrite(session,key,'context-window',stored)
-          await T.branch.put(key,stored)
-          written?.readback()
-          activeContextWindow = committedWindow
-          didRollover = true
-          directorNotes = ctx.get('compaction')?.directorNotes?.(session)
-        } else {
-          activeContextWindow = currentContextWindow
-        }
-      } catch (error) {
-        activeContextWindow = currentContextWindow
-        ctx.logger?.warn?.(`roleplay: context-window checkpoint failed; keeping previous window: ${String(error)}`)
-        throw error
-      }
-    }
     payload.assertInputCurrent?.()
-    const numericalState = numericalStateFor(branchId, payload)
     const snapshot: PreparationSnapshot = {
       ...(payload.inputPreparation ? {inputPreparation:payload.inputPreparation} : {}),
       ...(numericalState ? {numericalState} : {}),
@@ -378,7 +372,6 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
       id: randomUUID(), role: 'user', content: [{ type: 'text', text: body }],
       source: { kind: 'roleplay-context', form, schemaVersion: 1, branchId, ...source },
     })
-    const values = userValues(branchId)
     const renderContextText = (value: unknown) => String(value ?? '')
       .replace(/\{\{\s*(?:user|user_name)\s*\}\}/gi, values.name)
       .replace(/\{\{\s*(?:user[_-]gender|userGender)\s*\}\}/gi, values.gender)
@@ -434,7 +427,6 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
 
     // Narrative display and options never substitute for the independent
     // numerical base frozen above; maintenance updates this display separately.
-    const statusPanelRec = selectedStatusRecord(session)
     const statusPanel = statusPanelRec?.stale ? null : statusPanelRec?.panel
     if (statusPanel && (statusPanel.rawText || (statusPanel.fields ?? []).length || (statusPanel.options ?? []).length)) {
       const lines = []
@@ -471,11 +463,29 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
 
     // 记录本轮快照与阶段 A 产出（阶段 C 提交时使用）
     const {agent: snapshotAgent, ...durableSnapshot}=snapshot
-    const storedSnapshot={schemaVersion:1,sessionId:session.id,...cloneRecord(durableSnapshot)}
+    const storedSnapshot={schemaVersion:1 as const,sessionId:session.id,...cloneRecord(durableSnapshot)}
+    const input=payload.inputPreparation,
+      reference=input?{key:keyOf(session.id,`task-input-snapshot-${input.preparationId}-${input.attemptGeneration}`),
+        sha256:recordSha256(storedSnapshot)}:undefined,
+      snapshotKey=keyOf(session.id,`task-snapshot-${payload.turn}`)
+    return {snapshot:storedSnapshot,anchors,reference,
+      outputRows:[{table:'branch',key:snapshotKey},{table:'branch',key:keyOf(session.id,'task-preparation')},
+        ...(reference?[{table:'branch' as const,key:reference.key}]:[])],
+      needsCheckpoint:rolloverNeeded,windowEnabled:cfg.contextWindowEnabled!==false,
+      storyWindowLimit:windowSettings.limit,
+      storyMessages:storySinceWindow.filter(entry=>entry.messageId&&entry.messageId!==snapshot.userMessageId)
+        .map(entry=>({id:entry.messageId!,eventSeq:entry.seq})),continuityTailTokens,
+      async checkpoint(options) {
+        const previous=activeContextWindow
+        activeContextWindow=await applyStoryWindowCheckpoint(session,payload,previous,baseRevision,
+          storySinceTokens,windowSettings.tail,options)
+        didRollover=activeContextWindow.windowId!==previous.windowId
+        if(didRollover)continuityTailTokens=windowSettings.tail
+        return assemble()
+      },async commit() {
     payload.assertInputCurrent?.()
     if (payload.inputPreparation) {
-      const input=payload.inputPreparation
-      const attemptKey=keyOf(session.id,`task-input-snapshot-${input.preparationId}-${input.attemptGeneration}`)
+      const attemptKey=reference!.key
       const prior=T.branch.get(attemptKey)
       if (prior && recordSha256(prior)!==recordSha256(storedSnapshot)) throw new Error('INPUT_SNAPSHOT_IDENTITY_CONFLICT')
       if (!prior) {
@@ -487,8 +497,7 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
       }
       payload.assertInputCurrent?.()
     }
-    const snapshotKey=keyOf(session.id,`task-snapshot-${payload.turn}`),
-      written=deps.rowFacts?.beforeWrite(session,snapshotKey,'task-snapshot',storedSnapshot)
+    const written=deps.rowFacts?.beforeWrite(session,snapshotKey,'task-snapshot',storedSnapshot)
     await T.branch.put(snapshotKey,storedSnapshot)
     written?.readback()
     payload.assertInputCurrent?.()
@@ -499,7 +508,16 @@ export function createRoleplayPreparation(deps: PreparationDependencies) {
     st.pendingScene = st.pendingScenes.get(Number(payload.turn))
     ctx.logger?.info?.(`roleplay: context assembled in ${Date.now() - phaseAStartedAt}ms (turn ${payload.turn})`)
 
-    return anchors
+    }}
+    }
+    return assemble()
   }
-  return { memorySettingsPolicy, contextWindowKey, cloneContextWindow, buildPhaseA, storyWindowSettings, memoryForContext, contextWindowFor, memorySettingFields }
+  async function buildPhaseA(session:PreparationSession,payload:PreparationPayload,st:PreparationWriteState) {
+    let candidate=await buildPhaseACandidate(session,payload,st)
+    if(candidate.needsCheckpoint)candidate=await candidate.checkpoint()
+    await candidate.commit()
+    return candidate.anchors
+  }
+  return { memorySettingsPolicy, contextWindowKey, cloneContextWindow, buildPhaseA, buildPhaseACandidate,
+    storyWindowSettings, memoryForContext, contextWindowFor, memorySettingFields }
 }

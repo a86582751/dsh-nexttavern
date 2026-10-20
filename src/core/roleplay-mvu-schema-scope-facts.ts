@@ -3,6 +3,8 @@
  * Core supplies a completed verified fold before exposing any of its values. */
 import {recordSha256,sha256} from './roleplay-data.js'
 import {surfaceEntries} from './roleplay-context.js'
+import {selectedCanonicalChatHistory} from '../memory/memory-history.js'
+import type {StorySession} from '../memory/memory-history.js'
 import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {compileSchemaMvuInitData} from './tavern-mvu-initvar.js'
 import {validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
@@ -161,22 +163,26 @@ export const schemaScopeMessageKey=(ownerSessionId:string,nativeSeq:number,messa
   recordSha256({ownerSessionId,nativeSeq,messageId,versionSha256})
 export function schemaScopeVisibleMessages(events:readonly SessionEvent[],projectPrefix:WorldlineMessageEdits['projectPrefix'],
   source:MvuScopeSourceIdentityV1,ownerForSeq:(seq:number)=>string,
-  published:ReadonlyMap<string,MvuScopeVariablesV1>):readonly MvuScopedMessageV1[] {
+  published:ReadonlyMap<string,MvuScopeVariablesV1>,selection:'visible'|'canonical-chat'='visible'):readonly MvuScopedMessageV1[] {
   const projected=projectPrefix(events as never)
   const session={id:source.sessionId,events,surface:{nodes:projected.nodes},
     deriveEventMessage:(entry:ContextEvent)=>projected.projectedMessageAt(entry.seq)} as ContextSession
-  return surfaceEntries(session).map((entry,position)=>{
+  // Prompt/Browser getters share the chat clock's logical history, including
+  // provenance-backed archived story. Schema execution keeps its visible cut.
+  const entries=selection==='canonical-chat'
+    ?selectedCanonicalChatHistory(session as unknown as StorySession):surfaceEntries(session)
+  return entries.map((entry,position)=>{
     const event=events[entry.seq]
     // The format projector returns only an edit override. An unchanged Native
     // message remains in its original event; absence is not a missing message.
     const original=event?.type==='assistant/message'?event.data.message:event?.type==='user/message'?event.data:undefined
     const message=projected.projectedMessageAt(entry.seq)??original,ownerSessionId=ownerForSeq(entry.seq)
     if(!message||message.id!==entry.messageId||!ownerSessionId)fail('SCHEMA_SCOPE_MESSAGE_UNPROVEN')
-    const messageVersionSha256=recordSha256(message)
-    const key=schemaScopeMessageKey(ownerSessionId,entry.seq,entry.messageId,messageVersionSha256)
-    const owner=schemaScopeOwner(source,'message',entry.messageId,ownerSessionId)
+    const messageId=message.id as string,messageVersionSha256=recordSha256(message)
+    const key=schemaScopeMessageKey(ownerSessionId,entry.seq,messageId,messageVersionSha256)
+    const owner=schemaScopeOwner(source,'message',messageId,ownerSessionId)
     const variables=schemaScopeReowner(published.get(key)??schemaScopeEmpty(owner),owner)
-    return {position,ownerSessionId,nativeSeq:entry.seq,messageId:entry.messageId,messageVersionSha256,
+    return {position,ownerSessionId,nativeSeq:entry.seq,messageId,messageVersionSha256,
       selectedVariant:messageVersionSha256,isSystem:false,variables}
   })
 }

@@ -30,7 +30,7 @@ export function captureRoleplayRecordVersionsV1(T, sessionId) {
         opening: recordSha256(T.opening.get(keyOf(sessionId, 'scene'))),
     };
 }
-export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, carryTruncationBoundary, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, importSummary, chatImportProjection, numericalState, readerDisplay, readerDisplayContextVersion, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession }) {
+export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, carryTruncationBoundary, buildForkLookupIndex, reconcileCanonicalPlayerVariants, statusRecoveredSessions, recoverStatusObligations, nativeBranchGroupsFor, nativePlayerGroupsFor, assistantMessageId, userForkContext, locatePlayerRecoveryTarget, failedForkMembership, isRecoverySourceMember, backfillRecoverySourceMember, importRecordKey, preparationRecordKey, tavernTasks, memoryForContext, cloneContextWindow, contextWindowFor, selectedStatusRecord, selectedStatusGeneration, importSummary, chatImportProjection, numericalState, readerDisplay, readerDisplayContextVersion, communityPresets, deletedBranchMessageIdsFor, inheritedAssistantMessageIdsFor, normalizeDecisionRecord, userValues, svc, resolveRoleplaySession }) {
     const collectBranchRecords = (session) => {
         const prefix = `${session.id}__`;
         const cards = [];
@@ -221,6 +221,7 @@ export function createRoleplayState({ ctx, T, awaitImportBarrier, ensureBranch, 
             numericalState: numericalObservation,
             readerDisplay: { enabled: activeSourceRecord?.extensionInventory?.entries
                     .some(entry => entry.key === 'regex_scripts' && entry.valueType === 'array') ?? false },
+            communityPresets: communityPresets?.(session.id) ?? null,
             rules: currentRules ? { ...currentRules, ...authorCoreData
                     ? { core: authorCoreData.text, coreOrigin: authorCoreData.kind } : {} } : null,
             opening: T.opening.get(keyOf(session.id, 'scene')) ?? null,

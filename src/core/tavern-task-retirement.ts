@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { taskHash } from './tavern-task-primitives.js';
 import { retireFinishedAdaptation, retireDeliveredDraft } from './card-adaptation-context.js';
 import { taskValidationFailure, taskFailureDetails, FAILURE_LABELS } from './tavern-task-support.js';
-import type { TaskContextSession, TaskEvent, TaskBlock, InlineContextJob } from './tavern-task-context.js';
+import type { TaskContextSession, TaskEvent, TaskBlock, TaskMessage, InlineContextJob } from './tavern-task-context.js';
 interface TurnGroup {
     turn?: number;
     export: boolean;
@@ -89,6 +89,50 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
     internalTaskSeqs(session: TaskContextSession): Set<number>;
     inlineTaskEnvelope(text: string): unknown;
 }) {
+    /** Keep one successful receipt per projection kind. Empty owned user nodes
+     * retain replay anchors before the next step opens, without wire messages. */
+    function retireSuccessfulReceipts(session: TaskContextSession, form: string) {
+        const lookup = new Map(sessionEvents(session).map(event => [event.seq, event]));
+        const successful = [...(session.surface?.nodes ?? [])].filter(seq => {
+            const event = lookup.get(seq), source = event?.type === 'user/message' ? event.data?.source : undefined;
+            if (source?.kind !== 'roleplay-tasks' || source.form !== form || source.schemaVersion !== 1)
+                return false;
+            // Empty replacement markers are already retired, not new receipts.
+            if ((event!.data as TaskMessage).content?.length === 0) return false;
+            if (form === 'maintenance-receipt')
+                return Array.isArray(source.attempts) && source.attempts.length > 0
+                    && source.attempts.every(attempt => taskContextRecord(attempt)?.state === 'completed');
+            // Earlier receipts predate explicit failure metadata. Their source
+            // events, rather than a later successful read, prove their outcome.
+            return Array.isArray(event!.sourceEventSeqs) && event!.sourceEventSeqs.length > 0
+                && event!.sourceEventSeqs.every((seq: number) => {
+                    const result = lookup.get(seq);
+                    return !!result && (result.type !== 'tool/result' || !result.data?.message?.isError
+                        && !(result.data?.message?.content ?? []).some(block => block.type === 'tool-result' && block.isError));
+                });
+        });
+        for (const seq of successful.slice(0, -1)) {
+            session.append!('user/message', {
+                id: randomUUID(),
+                role: 'user',
+                source: {
+                    kind: 'roleplay-tasks', form, schemaVersion: 1,
+                    sessionId: session.id, sourceReceiptSeq: seq
+                },
+                content: []
+            }, {surfaceOp: {op: 'replace', startSeq: seq, endSeq: seq}, sourceEventSeqs: [seq]});
+        }
+        return Math.max(0, successful.length - 1);
+    }
+
+    function allowedMaintenanceCall(block: TaskBlock) {
+        if (['rp_task_read', 'rp_task_submit', 'run_code'].includes(block.name ?? '')) return true;
+        if (block.name !== 'rp_setting') return false;
+        try {
+            const args = taskContextRecord(typeof block.arguments === 'string' ? JSON.parse(block.arguments) : block.arguments);
+            return ['list', 'read', 'repair', 'jobs'].includes(String(args?.action));
+        } catch { return false; }
+    }
     function completedImportSpan(nodes: number[], lookup: Map<number, TaskEvent>) {
         const callsOf = (e: TaskEvent | undefined) => e?.type === 'assistant/message' ? (e.data?.message?.content
             ?? []).filter(b => b.type === 'tool-call') : [];
@@ -439,7 +483,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                     for (const b of e.data?.message?.content ?? [])
                         if (b.type === 'tool-call') {
                             if (typeof b.id !== 'string' || calls.has(b.id)
-                                || !['rp_task_read', 'rp_task_submit', 'run_code'].includes(b.name ?? '')) {
+                                || !allowedMaintenanceCall(b)) {
                                 valid = false;
                                 break;
                             }
@@ -506,7 +550,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             });
             retired += selected.length;
         }
-        return retired;
+        return retired + retireSuccessfulReceipts(session, 'maintenance-receipt');
     }
     /** Read evidence survives the request that needs it. At a later player turn,
      * retire pure read groups only after a committed body and completed turn. */
@@ -573,6 +617,11 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             if (pending.size)
                 continue;
             const start = selected[0]!, end = selected.at(-1)!, tools = [...new Set(blocks.map(b => b.name!))];
+            const failedCalls = selected.slice(1).flatMap(seq => {
+                const message = lookup.get(seq)!.data?.message;
+                return message?.isError || (message?.content ?? []).some(block => block.type === 'tool-result' && block.isError)
+                    ? [String(message?.source?.callId)] : [];
+            });
             session.append('user/message', {
                 id: randomUUID(),
                 role: 'user',
@@ -584,12 +633,13 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
                     sourceTurn: owner,
                     bodySeq: body,
                     tools,
+                    ...(failedCalls.length ? {failedCalls} : {}),
                     sourceSha256: taskHash(selected.map(seq => lookup.get(seq)))
                 },
                 content: [
                     {
                         type: 'text',
-                        text: `先前 ${tools.join(' / ')} 读取已完成本轮使用；原始调用与结果保留于历史 seq ${start}–${end}。需要旧事实或世界知识时重新按当前世界线查阅，读取记录本身不是已发生剧情；失败结果不作事实依据。`
+                        text: `先前 ${tools.join(' / ')} 读取已完成本轮使用；原始调用与结果保留于历史 seq ${start}–${end}。需要旧事实或世界知识时重新按当前世界线查阅，读取记录本身不是已发生剧情；失败结果不作事实依据。${failedCalls.length ? `读取失败调用：${failedCalls.slice(0, 8).join(' / ')}${failedCalls.length > 8 ? '；其余见原始历史' : ''}。需要该证据时按当前世界线重新调用原工具。` : ''}`
                     }
                 ]
             }, {
@@ -601,7 +651,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             retired += selected.length;
             i = j - 1;
         }
-        return retired;
+        return retired + retireSuccessfulReceipts(session, 'read-evidence-receipt');
     }
     return {
         retireCompletedTaskContexts, retireSettledInlineContexts, retireUsedStoryReads

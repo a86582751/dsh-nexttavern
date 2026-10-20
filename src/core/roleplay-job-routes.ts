@@ -74,7 +74,7 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
       if(body.action) {
         if(body.action!=='retry'&&body.action!=='cancel')throw new Error('未知任务操作')
         const novel=novelExports.list(session).find(j=>j.id===body.jobId),card=cardWorkflows(session).find(j=>j.id===body.jobId)
-        let job: {id: string; generation?: string}
+        let job: {id: string; generation?: string;status?:string}
         if(novel)job=await novelExports[body.action](session,body.jobId!)
         else if(card){
           const controlled=await controlCardWorkflow(session,card.id,body.action)
@@ -88,8 +88,14 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
         }else if(body.action==='retry'&&card?.execution==='deterministic'){
           await resumeCardWorkflows(session,agent)
           job=T.branch.get(cardWorkflowKey(card.id)) as typeof job
-        }else if(body.action==='retry')agent!.steer(taskPhaseMessage('management','继续尚未完成的酒馆任务。',
-          novel||card?{jobId:job.id,jobKind:novel?'novel-export':card!.kind}:{}))
+        }else if(body.action==='retry') {
+          const task=novel||card?undefined:tavernTasks.list(session).find(item=>item.id===job.id)
+          if(task?.kind==='memory'&&task.input?.taskStage==='compaction') {
+            if(job.status!=='completed')await ctx.get('compaction')!.compactNow(agent!)
+            job=tavernTasks.list(session).find(item=>item.id===job.id)!
+          }else agent!.steer(taskPhaseMessage('management','继续尚未完成的酒馆任务。',
+            novel||card?{jobId:job.id,jobKind:novel?'novel-export':card!.kind}:{}))
+        }
         return jsonResponse(200,{ok:true,job:publicJob(job)})
       }
       if(!['novel-export','card-export','card-import','card-convert'].includes(body.kind))throw new Error('未知任务用途')
