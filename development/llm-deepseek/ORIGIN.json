@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/dsh-llm-deepseek",
+  "upstreamPackage": "@deepseek-ai/dsh-llm-deepseek",
+  "upstreamVersion": "0.1.7-rc.2",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "license": "MIT",
+  "files": [
+    {
+      "upstream": "packages/llm/llm-deepseek/src/adapter.ts",
+      "upstreamSha256": "68d03fbaa3dd5f04a55ff48d7cd0f2ef125077f8144977459c15432e1464cf8f",
+      "source": "src/adapter.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/config.ts",
+      "upstreamSha256": "73f802bf72663ace689782db8a4031791864e9a97c995de620ac4c9ce683a30b",
+      "source": "src/config.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/defaults.ts",
+      "upstreamSha256": "f0c753f0d4188f615182d7d25eabed7bc24021ece255524ac5cb8089718b0520",
+      "source": "src/defaults.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/file-id.ts",
+      "upstreamSha256": "27aff248186c4e7230a6ddbd803bdee4eadb655607a859c350e77bb29cb9c269",
+      "source": "src/file-id.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/file-store.ts",
+      "upstreamSha256": "d02c57fcc14fa5440344a6ff36f4d00980fd133c6eb4922efd02f1cae60920ef",
+      "source": "src/file-store.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/files-api.ts",
+      "upstreamSha256": "0f38622c30c85266bf17db38e0171a130bbee5ce0404327a1de949b1393eca26",
+      "source": "src/files-api.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/host.ts",
+      "upstreamSha256": "41661b74ab93198ad37945ef7933de92f0d7738ec33fe67f4d733eb80f745fcc",
+      "source": "src/host.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/image-tokens.ts",
+      "upstreamSha256": "9a7e16b2fd451f99a99b36a39eda33aa1d26f0d3243545f0152ec7f802ec064a",
+      "source": "src/image-tokens.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/images.ts",
+      "upstreamSha256": "bf72a07169a9db4ad9944d76f5f0788ad83ef627d4911e92e9273f565dfd0e1f",
+      "source": "src/images.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/index.ts",
+      "upstreamSha256": "fbaef7f24ef9d2816490f92982bbf7f02362b96425c6d3bf35ec5885b10c6ad5",
+      "source": "src/index.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/messages-api.ts",
+      "upstreamSha256": "c4f2036fc3b561690f05426f308bbee525a4a5ae121e47ebf61b7bc3a7b8656c",
+      "source": "src/messages-api.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/model-info.ts",
+      "upstreamSha256": "b173d9dd4aa63405f7c30e3fe5844fc59b5117d3e1ed58476a09b72eb2fbff70",
+      "source": "src/model-info.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/models.ts",
+      "upstreamSha256": "fbd13439754e6eb9f81463b31cff26fded69d249ae8a768054a3236c5ff0c108",
+      "source": "src/models.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/replay.ts",
+      "upstreamSha256": "3edd01ffaedc422a148e1a66e8e93203ac07cb5aa558e35485501e564216f148",
+      "source": "src/replay.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/request-extensions.ts",
+      "upstreamSha256": "03607973027a1126869e43bbdb67653482a5196536ffa70d73ada9c123baa28d",
+      "source": "src/request-extensions.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/request-files.ts",
+      "upstreamSha256": "fb8c4f0351509a8db7bccff855972caa5f1805353bea739748cf56759b910d65",
+      "source": "src/request-files.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/request-pricing.ts",
+      "upstreamSha256": "8dcbb62ffcdb7f45eecc176c5219bc1dd424e36c4c9b469d5cb6223b1a503d8d",
+      "source": "src/request-pricing.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/serialize.ts",
+      "upstreamSha256": "5468bea545731cf5e8057296559aa0b648174900ca86821d022ffe3b468cf29c",
+      "source": "src/serialize.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/sse.ts",
+      "upstreamSha256": "7ffcba377583018aa1a7f86c6d757b7dd6c1955ad8252103e2f33a4ceb90a741",
+      "source": "src/sse.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/translate.ts",
+      "upstreamSha256": "254f4b8fe292dadc5c24df3375b01920f5e5b345be09eae4290e91e9e810c1ba",
+      "source": "src/translate.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/transport.ts",
+      "upstreamSha256": "7d1f6ed8fe861ee71ba2d0c6a2a9e8512ddc1b6dc17d43a8795ab520a38746b6",
+      "source": "src/transport.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/types.ts",
+      "upstreamSha256": "40928b7866ad5b7f4b79ce5f190319c079b8ea3445fd4f3ea84e039d4c6d1e02",
+      "source": "src/types.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/upload-index.ts",
+      "upstreamSha256": "2ceb5d7a1563631e61eda9c292b6cda1c8a9ccaece6e5045ac3fd6c2c2b72f8c",
+      "source": "src/upload-index.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/src/wire-types.ts",
+      "upstreamSha256": "38ea37c292c8ba4be2cf0f24f08e2cd62f70c3d437485293fa48909a5bea341d",
+      "source": "src/wire-types.ts"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/README.md",
+      "upstreamSha256": "eff34ebedca576f14f4a78e969e557689a01182acb1086f97e8f33ac8726b493",
+      "source": "README.md"
+    },
+    {
+      "upstream": "packages/llm/llm-deepseek/package.json",
+      "upstreamSha256": "e9bd5311a69aad557f0aaef56017ab05982f75003940ab59423359387f1950df",
+      "source": "package.json"
+    },
+    {
+      "upstream": "LICENSE",
+      "upstreamSha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+      "source": "LICENSE.upstream"
+    }
+  ],
+  "changes": [
+    "Generated .js import paths and maintained same-name package identity",
+    "Declare request-only user text and flush preceding system/tool updates before its serializer position",
+    "Consume the existing Native request guard immediately before each Messages fetch"
+  ],
+  "formalForkSynchronized": false
+}

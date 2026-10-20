@@ -9,7 +9,8 @@
     "lib": [
       "ES2024",
       "DOM",
-      "DOM.Iterable"
+      "DOM.Iterable",
+      "DOM.AsyncIterable"
     ],
     "strict": true,
     "noUncheckedIndexedAccess": true,

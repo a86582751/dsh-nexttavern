@@ -149,7 +149,9 @@
     "yaml": "2.8.1",
     "zustand": "4.4.7",
     "@jitl/quickjs-wasmfile-release-asyncify": "0.32.0",
-    "undici-http-proxy": "npm:undici@8.11.0"
+    "undici-http-proxy": "npm:undici@8.11.0",
+    "@deepseek-ai/dsh-anonymous-user-id": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-deepseek-llm-api-extensions": "0.1.7-rc.2"
   },
   "overrides": {
     "@deepseek-ai/cordis": "4.0.4",

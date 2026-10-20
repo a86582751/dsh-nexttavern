@@ -8226,6 +8226,222 @@
         "lib/core/roleplay-tavern-derived-content-execution.js",
         "preset/lib/core/roleplay-tavern-derived-content-execution.js"
       ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-adapter-js",
+      "source": "development/llm-deepseek/src/adapter.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/adapter.ts",
+      "primaryOutput": "development/llm-deepseek/lib/adapter.js",
+      "outputs": [
+        "development/llm-deepseek/lib/adapter.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-config-js",
+      "source": "development/llm-deepseek/src/config.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/config.ts",
+      "primaryOutput": "development/llm-deepseek/lib/config.js",
+      "outputs": [
+        "development/llm-deepseek/lib/config.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-defaults-js",
+      "source": "development/llm-deepseek/src/defaults.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/defaults.ts",
+      "primaryOutput": "development/llm-deepseek/lib/defaults.js",
+      "outputs": [
+        "development/llm-deepseek/lib/defaults.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-file-id-js",
+      "source": "development/llm-deepseek/src/file-id.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/file-id.ts",
+      "primaryOutput": "development/llm-deepseek/lib/file-id.js",
+      "outputs": [
+        "development/llm-deepseek/lib/file-id.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-file-store-js",
+      "source": "development/llm-deepseek/src/file-store.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/file-store.ts",
+      "primaryOutput": "development/llm-deepseek/lib/file-store.js",
+      "outputs": [
+        "development/llm-deepseek/lib/file-store.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-files-api-js",
+      "source": "development/llm-deepseek/src/files-api.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/files-api.ts",
+      "primaryOutput": "development/llm-deepseek/lib/files-api.js",
+      "outputs": [
+        "development/llm-deepseek/lib/files-api.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-host-js",
+      "source": "development/llm-deepseek/src/host.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/host.ts",
+      "primaryOutput": "development/llm-deepseek/lib/host.js",
+      "outputs": [
+        "development/llm-deepseek/lib/host.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-image-tokens-js",
+      "source": "development/llm-deepseek/src/image-tokens.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/image-tokens.ts",
+      "primaryOutput": "development/llm-deepseek/lib/image-tokens.js",
+      "outputs": [
+        "development/llm-deepseek/lib/image-tokens.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-images-js",
+      "source": "development/llm-deepseek/src/images.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/images.ts",
+      "primaryOutput": "development/llm-deepseek/lib/images.js",
+      "outputs": [
+        "development/llm-deepseek/lib/images.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-index-js",
+      "source": "development/llm-deepseek/src/index.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/index.ts",
+      "primaryOutput": "development/llm-deepseek/lib/index.js",
+      "outputs": [
+        "development/llm-deepseek/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-messages-api-js",
+      "source": "development/llm-deepseek/src/messages-api.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/messages-api.ts",
+      "primaryOutput": "development/llm-deepseek/lib/messages-api.js",
+      "outputs": [
+        "development/llm-deepseek/lib/messages-api.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-model-info-js",
+      "source": "development/llm-deepseek/src/model-info.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/model-info.ts",
+      "primaryOutput": "development/llm-deepseek/lib/model-info.js",
+      "outputs": [
+        "development/llm-deepseek/lib/model-info.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-models-js",
+      "source": "development/llm-deepseek/src/models.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/models.ts",
+      "primaryOutput": "development/llm-deepseek/lib/models.js",
+      "outputs": [
+        "development/llm-deepseek/lib/models.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-replay-js",
+      "source": "development/llm-deepseek/src/replay.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/replay.ts",
+      "primaryOutput": "development/llm-deepseek/lib/replay.js",
+      "outputs": [
+        "development/llm-deepseek/lib/replay.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-request-extensions-js",
+      "source": "development/llm-deepseek/src/request-extensions.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/request-extensions.ts",
+      "primaryOutput": "development/llm-deepseek/lib/request-extensions.js",
+      "outputs": [
+        "development/llm-deepseek/lib/request-extensions.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-request-files-js",
+      "source": "development/llm-deepseek/src/request-files.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/request-files.ts",
+      "primaryOutput": "development/llm-deepseek/lib/request-files.js",
+      "outputs": [
+        "development/llm-deepseek/lib/request-files.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-request-pricing-js",
+      "source": "development/llm-deepseek/src/request-pricing.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/request-pricing.ts",
+      "primaryOutput": "development/llm-deepseek/lib/request-pricing.js",
+      "outputs": [
+        "development/llm-deepseek/lib/request-pricing.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-serialize-js",
+      "source": "development/llm-deepseek/src/serialize.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/serialize.ts",
+      "primaryOutput": "development/llm-deepseek/lib/serialize.js",
+      "outputs": [
+        "development/llm-deepseek/lib/serialize.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-sse-js",
+      "source": "development/llm-deepseek/src/sse.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/sse.ts",
+      "primaryOutput": "development/llm-deepseek/lib/sse.js",
+      "outputs": [
+        "development/llm-deepseek/lib/sse.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-translate-js",
+      "source": "development/llm-deepseek/src/translate.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/translate.ts",
+      "primaryOutput": "development/llm-deepseek/lib/translate.js",
+      "outputs": [
+        "development/llm-deepseek/lib/translate.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-transport-js",
+      "source": "development/llm-deepseek/src/transport.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/transport.ts",
+      "primaryOutput": "development/llm-deepseek/lib/transport.js",
+      "outputs": [
+        "development/llm-deepseek/lib/transport.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-types-js",
+      "source": "development/llm-deepseek/src/types.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/types.ts",
+      "primaryOutput": "development/llm-deepseek/lib/types.js",
+      "outputs": [
+        "development/llm-deepseek/lib/types.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-upload-index-js",
+      "source": "development/llm-deepseek/src/upload-index.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/upload-index.ts",
+      "primaryOutput": "development/llm-deepseek/lib/upload-index.js",
+      "outputs": [
+        "development/llm-deepseek/lib/upload-index.js"
+      ]
+    },
+    {
+      "artifact": "compat-llm-deepseek-wire-types-js",
+      "source": "development/llm-deepseek/src/wire-types.ts",
+      "banner": "runtime/alpha3/compat/llm-deepseek/src/wire-types.ts",
+      "primaryOutput": "development/llm-deepseek/lib/wire-types.js",
+      "outputs": [
+        "development/llm-deepseek/lib/wire-types.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -45199,6 +45415,276 @@
         "id": "roleplay-tavern-derived-content-execution-js",
         "source": "lib/core/roleplay-tavern-derived-content-execution.js",
         "canonicalSource": "runtime/alpha3/lib/core/roleplay-tavern-derived-content-execution.js"
+      },
+      {
+        "id": "compat-llm-deepseek-adapter-ts",
+        "source": "development/llm-deepseek/src/adapter.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/adapter.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-adapter-js",
+        "source": "development/llm-deepseek/lib/adapter.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/adapter.js"
+      },
+      {
+        "id": "compat-llm-deepseek-config-ts",
+        "source": "development/llm-deepseek/src/config.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/config.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-config-js",
+        "source": "development/llm-deepseek/lib/config.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/config.js"
+      },
+      {
+        "id": "compat-llm-deepseek-defaults-ts",
+        "source": "development/llm-deepseek/src/defaults.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/defaults.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-defaults-js",
+        "source": "development/llm-deepseek/lib/defaults.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/defaults.js"
+      },
+      {
+        "id": "compat-llm-deepseek-file-id-ts",
+        "source": "development/llm-deepseek/src/file-id.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/file-id.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-file-id-js",
+        "source": "development/llm-deepseek/lib/file-id.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/file-id.js"
+      },
+      {
+        "id": "compat-llm-deepseek-file-store-ts",
+        "source": "development/llm-deepseek/src/file-store.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/file-store.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-file-store-js",
+        "source": "development/llm-deepseek/lib/file-store.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/file-store.js"
+      },
+      {
+        "id": "compat-llm-deepseek-files-api-ts",
+        "source": "development/llm-deepseek/src/files-api.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/files-api.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-files-api-js",
+        "source": "development/llm-deepseek/lib/files-api.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/files-api.js"
+      },
+      {
+        "id": "compat-llm-deepseek-host-ts",
+        "source": "development/llm-deepseek/src/host.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/host.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-host-js",
+        "source": "development/llm-deepseek/lib/host.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/host.js"
+      },
+      {
+        "id": "compat-llm-deepseek-image-tokens-ts",
+        "source": "development/llm-deepseek/src/image-tokens.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/image-tokens.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-image-tokens-js",
+        "source": "development/llm-deepseek/lib/image-tokens.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/image-tokens.js"
+      },
+      {
+        "id": "compat-llm-deepseek-images-ts",
+        "source": "development/llm-deepseek/src/images.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/images.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-images-js",
+        "source": "development/llm-deepseek/lib/images.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/images.js"
+      },
+      {
+        "id": "compat-llm-deepseek-index-ts",
+        "source": "development/llm-deepseek/src/index.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/index.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-index-js",
+        "source": "development/llm-deepseek/lib/index.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/index.js"
+      },
+      {
+        "id": "compat-llm-deepseek-messages-api-ts",
+        "source": "development/llm-deepseek/src/messages-api.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/messages-api.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-messages-api-js",
+        "source": "development/llm-deepseek/lib/messages-api.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/messages-api.js"
+      },
+      {
+        "id": "compat-llm-deepseek-model-info-ts",
+        "source": "development/llm-deepseek/src/model-info.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/model-info.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-model-info-js",
+        "source": "development/llm-deepseek/lib/model-info.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/model-info.js"
+      },
+      {
+        "id": "compat-llm-deepseek-models-ts",
+        "source": "development/llm-deepseek/src/models.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/models.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-models-js",
+        "source": "development/llm-deepseek/lib/models.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/models.js"
+      },
+      {
+        "id": "compat-llm-deepseek-replay-ts",
+        "source": "development/llm-deepseek/src/replay.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/replay.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-replay-js",
+        "source": "development/llm-deepseek/lib/replay.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/replay.js"
+      },
+      {
+        "id": "compat-llm-deepseek-request-extensions-ts",
+        "source": "development/llm-deepseek/src/request-extensions.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/request-extensions.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-request-extensions-js",
+        "source": "development/llm-deepseek/lib/request-extensions.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/request-extensions.js"
+      },
+      {
+        "id": "compat-llm-deepseek-request-files-ts",
+        "source": "development/llm-deepseek/src/request-files.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/request-files.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-request-files-js",
+        "source": "development/llm-deepseek/lib/request-files.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/request-files.js"
+      },
+      {
+        "id": "compat-llm-deepseek-request-pricing-ts",
+        "source": "development/llm-deepseek/src/request-pricing.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/request-pricing.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-request-pricing-js",
+        "source": "development/llm-deepseek/lib/request-pricing.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/request-pricing.js"
+      },
+      {
+        "id": "compat-llm-deepseek-serialize-ts",
+        "source": "development/llm-deepseek/src/serialize.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/serialize.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-serialize-js",
+        "source": "development/llm-deepseek/lib/serialize.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/serialize.js"
+      },
+      {
+        "id": "compat-llm-deepseek-sse-ts",
+        "source": "development/llm-deepseek/src/sse.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/sse.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-sse-js",
+        "source": "development/llm-deepseek/lib/sse.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/sse.js"
+      },
+      {
+        "id": "compat-llm-deepseek-translate-ts",
+        "source": "development/llm-deepseek/src/translate.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/translate.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-translate-js",
+        "source": "development/llm-deepseek/lib/translate.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/translate.js"
+      },
+      {
+        "id": "compat-llm-deepseek-transport-ts",
+        "source": "development/llm-deepseek/src/transport.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/transport.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-transport-js",
+        "source": "development/llm-deepseek/lib/transport.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/transport.js"
+      },
+      {
+        "id": "compat-llm-deepseek-types-ts",
+        "source": "development/llm-deepseek/src/types.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/types.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-types-js",
+        "source": "development/llm-deepseek/lib/types.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/types.js"
+      },
+      {
+        "id": "compat-llm-deepseek-upload-index-ts",
+        "source": "development/llm-deepseek/src/upload-index.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/upload-index.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-upload-index-js",
+        "source": "development/llm-deepseek/lib/upload-index.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/upload-index.js"
+      },
+      {
+        "id": "compat-llm-deepseek-wire-types-ts",
+        "source": "development/llm-deepseek/src/wire-types.ts",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/src/wire-types.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-wire-types-js",
+        "source": "development/llm-deepseek/lib/wire-types.js",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/lib/wire-types.js"
+      },
+      {
+        "id": "compat-llm-deepseek-package-json",
+        "source": "development/llm-deepseek/package.json",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/package.json"
+      },
+      {
+        "id": "compat-llm-deepseek-readme-md",
+        "source": "development/llm-deepseek/README.md",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/README.md"
+      },
+      {
+        "id": "compat-llm-deepseek-license",
+        "source": "development/llm-deepseek/LICENSE",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/LICENSE"
+      },
+      {
+        "id": "compat-llm-deepseek-license-upstream",
+        "source": "development/llm-deepseek/LICENSE.upstream",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/LICENSE.upstream"
+      },
+      {
+        "id": "compat-llm-deepseek-notice",
+        "source": "development/llm-deepseek/NOTICE",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/NOTICE"
+      },
+      {
+        "id": "compat-llm-deepseek-origin-json",
+        "source": "development/llm-deepseek/ORIGIN.json",
+        "canonicalSource": "runtime/alpha3/compat/llm-deepseek/ORIGIN.json"
       }
     ],
     "publicRelease": {
@@ -166349,6 +166835,1038 @@
           "src/core/roleplay-tavern-derived-content-execution.ts"
         ],
         "banner": "runtime/alpha3/src/core/roleplay-tavern-derived-content-execution.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-adapter-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-adapter-js",
+        "entry": "development/llm-deepseek/src/adapter.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/adapter.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-config-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-config-js",
+        "entry": "development/llm-deepseek/src/config.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/config.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-defaults-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-defaults-js",
+        "entry": "development/llm-deepseek/src/defaults.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/defaults.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-file-id-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-file-id-js",
+        "entry": "development/llm-deepseek/src/file-id.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/file-id.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-file-store-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-file-store-js",
+        "entry": "development/llm-deepseek/src/file-store.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/file-store.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-files-api-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-files-api-js",
+        "entry": "development/llm-deepseek/src/files-api.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/files-api.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-host-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-host-js",
+        "entry": "development/llm-deepseek/src/host.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/host.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-image-tokens-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-image-tokens-js",
+        "entry": "development/llm-deepseek/src/image-tokens.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/image-tokens.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-images-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-images-js",
+        "entry": "development/llm-deepseek/src/images.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/images.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-index-js",
+        "entry": "development/llm-deepseek/src/index.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/index.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-messages-api-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-messages-api-js",
+        "entry": "development/llm-deepseek/src/messages-api.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/messages-api.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-model-info-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-model-info-js",
+        "entry": "development/llm-deepseek/src/model-info.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/model-info.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-models-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-models-js",
+        "entry": "development/llm-deepseek/src/models.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/models.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-replay-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-replay-js",
+        "entry": "development/llm-deepseek/src/replay.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/replay.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-request-extensions-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-request-extensions-js",
+        "entry": "development/llm-deepseek/src/request-extensions.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/request-extensions.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-request-files-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-request-files-js",
+        "entry": "development/llm-deepseek/src/request-files.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/request-files.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-request-pricing-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-request-pricing-js",
+        "entry": "development/llm-deepseek/src/request-pricing.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/request-pricing.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-serialize-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-serialize-js",
+        "entry": "development/llm-deepseek/src/serialize.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/serialize.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-sse-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-sse-js",
+        "entry": "development/llm-deepseek/src/sse.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/sse.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-translate-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-translate-js",
+        "entry": "development/llm-deepseek/src/translate.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/translate.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-transport-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-transport-js",
+        "entry": "development/llm-deepseek/src/transport.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/transport.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-types-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-types-js",
+        "entry": "development/llm-deepseek/src/types.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/types.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-upload-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-upload-index-js",
+        "entry": "development/llm-deepseek/src/upload-index.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/upload-index.ts"
+      },
+      {
+        "id": "compat-llm-deepseek-wire-types-build",
+        "kind": "typescript-module",
+        "artifact": "compat-llm-deepseek-wire-types-js",
+        "entry": "development/llm-deepseek/src/wire-types.ts",
+        "typeContext": "deepseek-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/llm-deepseek/src/adapter.ts",
+          "development/llm-deepseek/src/config.ts",
+          "development/llm-deepseek/src/defaults.ts",
+          "development/llm-deepseek/src/file-id.ts",
+          "development/llm-deepseek/src/file-store.ts",
+          "development/llm-deepseek/src/files-api.ts",
+          "development/llm-deepseek/src/host.ts",
+          "development/llm-deepseek/src/image-tokens.ts",
+          "development/llm-deepseek/src/images.ts",
+          "development/llm-deepseek/src/index.ts",
+          "development/llm-deepseek/src/messages-api.ts",
+          "development/llm-deepseek/src/model-info.ts",
+          "development/llm-deepseek/src/models.ts",
+          "development/llm-deepseek/src/replay.ts",
+          "development/llm-deepseek/src/request-extensions.ts",
+          "development/llm-deepseek/src/request-files.ts",
+          "development/llm-deepseek/src/request-pricing.ts",
+          "development/llm-deepseek/src/serialize.ts",
+          "development/llm-deepseek/src/sse.ts",
+          "development/llm-deepseek/src/translate.ts",
+          "development/llm-deepseek/src/transport.ts",
+          "development/llm-deepseek/src/types.ts",
+          "development/llm-deepseek/src/upload-index.ts",
+          "development/llm-deepseek/src/wire-types.ts",
+          "development/llm/src/index.ts",
+          "development/llm/src/invariant.ts",
+          "development/llm/src/types.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/llm-deepseek/src/wire-types.ts"
       }
     ],
     "typeScript": {
@@ -166752,6 +168270,95 @@
             ]
           },
           "rewriteRelativeImportExtensions": true
+        },
+        "deepseek-compat": {
+          "paths": {
+            "@deepseek-ai/dsh-llm": [
+              "../development/llm/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-llm/*": [
+              "../development/llm/src/*.ts"
+            ],
+            "@deepseek-ai/dsh-agent-loop": [
+              "../development/agent-loop/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-agent-loop/*": [
+              "../development/agent-loop/src/*.ts"
+            ],
+            "@deepseek-ai/dsh-session": [
+              "../development/session/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-session/*": [
+              "../development/session/src/*.ts"
+            ],
+            "dsh-nexttavern-pi-ai/api/openai-ordered-input": [
+              "../development/pi-ai/src/api/openai-ordered-input.ts"
+            ],
+            "dsh-nexttavern-pi-ai/api/openai-completions": [
+              "../development/pi-ai/src/api/openai-completions.ts"
+            ],
+            "@deepseek-ai/dsh-subagent": [
+              "../development/subagent/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-subagent/*": [
+              "../development/subagent/src/*.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-in-process-driver": [
+              "../development/subagent-in-process-driver/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-in-process-driver/*": [
+              "../development/subagent-in-process-driver/src/*.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-spawn-in-process": [
+              "../development/subagent-spawn-in-process/src/index.ts"
+            ],
+            "@deepseek-ai/dsh-subagent-spawn-in-process/*": [
+              "../development/subagent-spawn-in-process/src/*.ts"
+            ],
+            "@deepseek-ai/dsh-llm-deepseek": [
+              "../development/llm-deepseek/src/index.ts"
+            ]
+          },
+          "rootDirs": [
+            "development/pi-ai/src",
+            "build-tools/node_modules/@earendil-works/pi-ai/dist"
+          ],
+          "declarationFallbacks": [
+            {
+              "from": [
+                "../../../node_modules/undici-types/index.d.ts",
+                "../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../../../../../node_modules/undici-types/index.d.ts"
+              ],
+              "sha256": "4197754295292fa49d4d4df8e7f1bf9c52c0f62178df4a63117af302f5eda72f",
+              "to": "undici-types",
+              "file": "build-tools/node_modules/@anthropic-ai/sdk/internal/types.d.ts"
+            },
+            {
+              "from": [
+                "../../../node_modules/undici-types/index.d.ts",
+                "../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../../../../node_modules/undici-types/index.d.ts",
+                "../../../../../../../../../../node_modules/undici-types/index.d.ts"
+              ],
+              "sha256": "83a0b649876342273326e44f55cf9ca8585c5557b2a6ebca593b619ebcf9ac4b",
+              "to": "undici-types",
+              "file": "build-tools/node_modules/@anthropic-ai/sdk/internal/types.d.mts"
+            }
+          ],
+          "rewriteRelativeImportExtensions": true,
+          "ambientDeclarations": [
+            "build-tools/node_modules/@deepseek-ai/dsh-agent/lib/types/types.d.ts"
+          ]
         }
       }
     },
