@@ -31093,6 +31093,257 @@
       ]
     },
     {
+      "id": "community-preset-import-typescript",
+      "source": "src/core/community-preset-import.ts"
+    },
+    {
+      "id": "community-preset-import",
+      "source": "lib/core/community-preset-import.js",
+      "aliases": [
+        "preset/lib/core/community-preset-import.js"
+      ]
+    },
+    {
+      "id": "community-preset-macros-typescript",
+      "source": "src/core/community-preset-macros.ts"
+    },
+    {
+      "id": "community-preset-macros",
+      "source": "lib/core/community-preset-macros.js",
+      "aliases": [
+        "preset/lib/core/community-preset-macros.js"
+      ]
+    },
+    {
+      "id": "community-preset-plans-typescript",
+      "source": "src/core/community-preset-plans.ts"
+    },
+    {
+      "id": "community-preset-plans",
+      "source": "lib/core/community-preset-plans.js",
+      "aliases": [
+        "preset/lib/core/community-preset-plans.js"
+      ]
+    },
+    {
+      "id": "community-preset-profiles-typescript",
+      "source": "src/core/community-preset-profiles.ts"
+    },
+    {
+      "id": "community-preset-profiles",
+      "source": "lib/core/community-preset-profiles.js",
+      "aliases": [
+        "preset/lib/core/community-preset-profiles.js"
+      ]
+    },
+    {
+      "id": "community-preset-response-typescript",
+      "source": "src/core/community-preset-response.ts"
+    },
+    {
+      "id": "community-preset-response",
+      "source": "lib/core/community-preset-response.js",
+      "aliases": [
+        "preset/lib/core/community-preset-response.js"
+      ]
+    },
+    {
+      "id": "community-preset-static-typescript",
+      "source": "src/core/community-preset-static.ts"
+    },
+    {
+      "id": "community-preset-static",
+      "source": "lib/core/community-preset-static.js",
+      "aliases": [
+        "preset/lib/core/community-preset-static.js"
+      ]
+    },
+    {
+      "id": "community-preset-types-typescript",
+      "source": "src/core/community-preset-types.ts"
+    },
+    {
+      "id": "community-preset-types",
+      "source": "lib/core/community-preset-types.js",
+      "aliases": [
+        "preset/lib/core/community-preset-types.js"
+      ]
+    },
+    {
+      "id": "community-preset-variables-typescript",
+      "source": "src/core/community-preset-variables.ts"
+    },
+    {
+      "id": "community-preset-variables",
+      "source": "lib/core/community-preset-variables.js",
+      "aliases": [
+        "preset/lib/core/community-preset-variables.js"
+      ]
+    },
+    {
+      "id": "community-presets-typescript",
+      "source": "src/core/community-presets.ts"
+    },
+    {
+      "id": "community-presets",
+      "source": "lib/core/community-presets.js",
+      "aliases": [
+        "preset/lib/core/community-presets.js"
+      ]
+    },
+    {
+      "id": "community-regex-typescript",
+      "source": "src/core/community-regex.ts"
+    },
+    {
+      "id": "community-regex",
+      "source": "lib/core/community-regex.js",
+      "aliases": [
+        "preset/lib/core/community-regex.js"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-story-request-ts",
+      "source": "development/agent-loop/src/story-request.ts"
+    },
+    {
+      "id": "compat-agent-loop-story-request-js",
+      "source": "development/agent-loop/lib/story-request.js"
+    },
+    {
+      "id": "community-presets-schema",
+      "source": "schema/community-presets.v1.json"
+    },
+    {
+      "id": "compat-session-response-material-ts",
+      "source": "development/session/src/response-material.ts"
+    },
+    {
+      "id": "compat-session-response-material-js",
+      "source": "development/session/lib/response-material.js"
+    },
+    {
+      "id": "community-preset-controls-typescript",
+      "source": "src/core/community-preset-controls.ts"
+    },
+    {
+      "id": "community-preset-controls",
+      "source": "lib/core/community-preset-controls.js",
+      "aliases": [
+        "preset/lib/core/community-preset-controls.js"
+      ]
+    },
+    {
+      "id": "community-preset-routes-typescript",
+      "source": "src/core/community-preset-routes.ts"
+    },
+    {
+      "id": "community-preset-routes",
+      "source": "lib/core/community-preset-routes.js",
+      "aliases": [
+        "preset/lib/core/community-preset-routes.js"
+      ]
+    },
+    {
+      "id": "community-preset-settlement-typescript",
+      "source": "src/core/community-preset-settlement.ts"
+    },
+    {
+      "id": "community-preset-settlement",
+      "source": "lib/core/community-preset-settlement.js",
+      "aliases": [
+        "preset/lib/core/community-preset-settlement.js"
+      ]
+    },
+    {
+      "id": "community-preset-panel-typescript",
+      "source": "src/ui/community-preset-panel.ts"
+    },
+    {
+      "id": "community-preset-panel",
+      "source": "lib/ui/community-preset-panel.js"
+    },
+    {
+      "id": "community-regex-panel-typescript",
+      "source": "src/ui/community-regex-panel.ts"
+    },
+    {
+      "id": "community-regex-panel",
+      "source": "lib/ui/community-regex-panel.js"
+    },
+    {
+      "id": "community-preset-display-typescript",
+      "source": "src/core/community-preset-display.ts"
+    },
+    {
+      "id": "community-preset-display",
+      "source": "lib/core/community-preset-display.js",
+      "aliases": [
+        "preset/lib/core/community-preset-display.js"
+      ]
+    },
+    {
+      "id": "community-preset-execution-typescript",
+      "source": "src/core/community-preset-execution.ts"
+    },
+    {
+      "id": "community-preset-execution",
+      "source": "lib/core/community-preset-execution.js",
+      "aliases": [
+        "preset/lib/core/community-preset-execution.js"
+      ]
+    },
+    {
+      "id": "reader-community-typescript",
+      "source": "src/ui/reader-community.ts"
+    },
+    {
+      "id": "reader-community",
+      "source": "lib/ui/reader-community.js"
+    },
+    {
+      "id": "community-preset-material-typescript",
+      "source": "src/core/community-preset-material.ts"
+    },
+    {
+      "id": "community-preset-material",
+      "source": "lib/core/community-preset-material.js",
+      "aliases": [
+        "preset/lib/core/community-preset-material.js"
+      ]
+    },
+    {
+      "id": "community-preset-state-schema",
+      "source": "schema/community-preset-state.v1.json"
+    },
+    {
+      "id": "community-preset-variables-schema",
+      "source": "schema/community-preset-variables.v1.json"
+    },
+    {
+      "id": "community-preset-card-material-typescript",
+      "source": "src/core/community-preset-card-material.ts"
+    },
+    {
+      "id": "community-preset-card-material",
+      "source": "lib/core/community-preset-card-material.js",
+      "aliases": [
+        "preset/lib/core/community-preset-card-material.js"
+      ]
+    },
+    {
+      "id": "community-card-mapping-panel-typescript",
+      "source": "src/ui/community-card-mapping-panel.ts"
+    },
+    {
+      "id": "community-card-mapping-panel",
+      "source": "lib/ui/community-card-mapping-panel.js"
+    },
+    {
+      "id": "author-host-runtime-v5-author-dialog-v1-build-lock",
+      "source": "development/history/author-host-runtime-v5-author-dialog-v1-build/package-lock.json"
+    },
+    {
       "id": "roleplay-ruby-capture-js",
       "source": "lib/core/roleplay-ruby-capture.js",
       "aliases": [
@@ -31209,6 +31460,14 @@
       "aliases": [
         "preset/lib/core/roleplay-tavern-derived-content-execution.js"
       ]
+    },
+    {
+      "id": "compat-agent-loop-request-budget-ts",
+      "source": "development/agent-loop/src/request-budget.ts"
+    },
+    {
+      "id": "compat-agent-loop-request-budget-js",
+      "source": "development/agent-loop/lib/request-budget.js"
     },
     {
       "id": "native-card-advanced-material-typescript",
@@ -32148,7 +32407,9 @@
         "src/ui/author-browser-pending.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -32477,7 +32738,9 @@
         "src/core/roleplay-author-browser-generation-types.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -32790,7 +33053,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -33197,7 +33462,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -34274,7 +34541,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -34861,7 +35130,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -36100,7 +36371,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -36144,7 +36417,9 @@
         "development/session/src/request-preview.ts",
         "development/agent-loop/src/opening-generation.ts",
         "development/agent-loop/src/opening-record-hashes.ts",
-        "src/operations/build-typescript.mts"
+        "src/operations/build-typescript.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -36271,7 +36546,9 @@
         "development/session/src/request-preview.ts",
         "development/agent-loop/src/opening-generation.ts",
         "development/agent-loop/src/opening-record-hashes.ts",
-        "src/operations/build-typescript.mts"
+        "src/operations/build-typescript.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -47887,7 +48164,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -51285,7 +51564,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -57110,7 +57391,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -60172,7 +60455,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -63259,7 +63544,9 @@
         "src/ui/status-rendering.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -63536,7 +63823,9 @@
         "src/core/roleplay-author-browser-generation.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -63801,7 +64090,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -64067,7 +64358,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -64335,7 +64628,9 @@
         "src/core/roleplay-author-browser-generation-types.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -64600,7 +64895,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -64910,7 +65207,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -65390,7 +65689,9 @@
         "src/operations/build-typescript.mts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -65656,7 +65957,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -65935,7 +66238,9 @@
         "src/operations/build-typescript.mts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -66211,7 +66516,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -66689,7 +66996,9 @@
         "src/ui/user-info.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -66983,7 +67292,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -67464,7 +67775,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -67760,7 +68073,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -68061,7 +68376,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -68354,7 +68671,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -68929,7 +69248,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -69156,7 +69477,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -69448,7 +69771,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -69740,7 +70065,9 @@
         "src/core/nexttavern-card.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -70032,7 +70359,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -70323,7 +70652,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -70618,7 +70949,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -70912,7 +71245,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -71454,7 +71789,9 @@
         "src/core/roleplay-source-images-routes.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -71858,7 +72195,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -72250,7 +72589,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -72545,7 +72886,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -72941,7 +73284,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -73242,7 +73587,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -73534,7 +73881,9 @@
         "src/core/nexttavern-card.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -73825,7 +74174,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -74116,7 +74467,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -74411,7 +74764,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -74705,7 +75060,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -74937,7 +75294,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -75234,7 +75593,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -75532,7 +75893,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -75830,7 +76193,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -76128,7 +76493,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -76361,7 +76728,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -76658,7 +77027,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -76988,7 +77359,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -77296,7 +77669,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -77594,7 +77969,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -77898,7 +78275,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -78200,7 +78579,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -78759,7 +79140,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -79056,7 +79439,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -79354,7 +79739,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -79667,7 +80054,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -79900,7 +80289,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -80190,7 +80581,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "entry": "src/core/roleplay-mvu-initialization.ts",
       "artifact": "roleplay-mvu-initialization-js",
@@ -80492,7 +80885,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -80789,7 +81184,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -81064,7 +81461,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -81359,7 +81758,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -81656,7 +82057,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -81952,7 +82355,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -82259,7 +82664,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -82558,7 +82965,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -82737,7 +83146,9 @@
         "development/session/src/request-preview.ts",
         "src/operations/build-typescript.mts",
         "src/core/roleplay-mvu-display-facts.ts",
-        "src/core/roleplay-tavern-lore-export.ts"
+        "src/core/roleplay-tavern-lore-export.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -83035,7 +83446,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -83268,7 +83681,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -83716,7 +84131,9 @@
         "development/subagent/src/owned-ruby-task.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -84164,7 +84581,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -84610,7 +85029,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -85055,7 +85476,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -85351,7 +85774,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -85646,7 +86071,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -85879,7 +86306,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -86175,7 +86604,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -86618,7 +87049,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -87063,7 +87496,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -87506,7 +87941,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -87951,7 +88388,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -88220,7 +88659,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -88663,7 +89104,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -89106,7 +89549,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -89549,7 +89994,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -89845,7 +90292,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -90288,7 +90737,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -90732,7 +91183,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -91000,7 +91453,9 @@
         "src/core/roleplay-author-browser-generation-types.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -91446,7 +91901,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -91741,7 +92198,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -92135,7 +92594,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -92433,7 +92894,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -92724,7 +93187,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "entry": "src/core/roleplay-mvu-update.ts",
       "artifact": "roleplay-mvu-update-js",
@@ -93020,7 +93485,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "entry": "src/core/roleplay-mvu-update-v2.ts",
       "artifact": "roleplay-mvu-update-v2-js",
@@ -93293,7 +93760,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -93639,7 +94108,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -93934,7 +94405,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -94244,7 +94717,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -94549,7 +95024,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -94859,7 +95336,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -95152,7 +95631,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -95401,7 +95882,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -95630,7 +96113,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -95863,7 +96348,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -96096,7 +96583,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -96328,7 +96817,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -96560,7 +97051,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -96793,7 +97286,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -97025,7 +97520,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -97262,7 +97759,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -97495,7 +97994,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -97728,7 +98229,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -97960,7 +98463,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -98235,7 +98740,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -98577,7 +99084,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -98811,7 +99320,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -99046,7 +99557,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -99278,7 +99791,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -99526,7 +100041,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -99758,7 +100275,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -99990,7 +100509,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -100222,7 +100743,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -100454,7 +100977,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -100688,7 +101213,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -100920,7 +101447,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -101153,7 +101682,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -101386,7 +101917,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -101618,7 +102151,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -101910,7 +102445,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -102201,7 +102738,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -102498,7 +103037,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -102794,7 +103335,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -103089,7 +103632,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -103553,7 +104098,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -103862,7 +104409,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -104164,7 +104713,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -104459,7 +105010,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -104775,7 +105328,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -105076,7 +105631,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -105309,7 +105866,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -105605,7 +106164,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -105899,7 +106460,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -106192,7 +106755,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -106486,7 +107051,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -106779,7 +107346,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -107075,7 +107644,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -107370,7 +107941,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -107446,7 +108019,9 @@
         "src/core/nexttavern-card.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -107678,7 +108253,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -107924,7 +108501,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -108170,7 +108749,9 @@
         "src/core/roleplay-author-browser-generation-types.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -108402,7 +108983,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -108635,7 +109218,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -108876,7 +109461,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -109131,7 +109718,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -109364,7 +109953,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -109596,7 +110187,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -109828,7 +110421,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -110060,7 +110655,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -110328,7 +110925,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -110557,7 +111156,9 @@
         "src/core/roleplay-tavern-lore-edits.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -110811,7 +111412,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -111043,7 +111646,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -111279,7 +111884,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -111517,7 +112124,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -111749,7 +112358,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -112023,7 +112634,9 @@
         "src/core/roleplay-author-browser-generation-types.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -112261,7 +112874,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -112495,7 +113110,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -112729,7 +113346,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -112976,7 +113595,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -113216,7 +113837,9 @@
         "src/core/roleplay-author-browser-generation-types.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -113448,7 +114071,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -113686,7 +114311,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -113922,7 +114549,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -114159,7 +114788,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -114392,7 +115023,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -114624,7 +115257,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -114858,7 +115493,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -115090,7 +115727,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -115323,7 +115962,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -115555,7 +116196,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -115788,7 +116431,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -116035,7 +116680,9 @@
         "development/subagent/src/owned-ruby-task.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -116268,7 +116915,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -116581,7 +117230,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -116886,7 +117537,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -117197,7 +117850,9 @@
         "src/ui/session-images.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -117679,7 +118334,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -117974,7 +118631,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -118269,7 +118928,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -119274,7 +119935,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -119898,7 +120561,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -120203,7 +120868,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -120521,7 +121188,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -120790,7 +121459,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -121060,7 +121731,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -121404,7 +122077,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -121734,7 +122409,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -122018,7 +122695,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -122303,7 +122982,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -122600,7 +123281,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -122865,7 +123548,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -123165,7 +123850,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -123431,7 +124118,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -123697,7 +124386,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -123963,7 +124654,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -124274,7 +124967,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -124550,7 +125245,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -124856,7 +125553,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -125132,7 +125831,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -125408,7 +126109,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -125685,7 +126388,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -126594,7 +127299,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -126829,7 +127536,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -127062,7 +127771,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -127300,7 +128011,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -127532,7 +128245,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -127764,7 +128479,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -127997,7 +128714,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -128229,7 +128948,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -128463,7 +129184,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -128697,7 +129420,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -128933,7 +129658,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -129167,7 +129894,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -129596,7 +130325,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -129892,7 +130623,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -130182,7 +130915,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "entry": "src/core/tavern-mvu-initvar.ts",
       "artifact": "tavern-mvu-initvar-js",
@@ -130483,7 +131218,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -130780,7 +131517,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -131077,7 +131816,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -131373,7 +132114,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -131670,7 +132413,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -131965,7 +132710,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -132262,7 +133009,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -132707,7 +133456,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -133003,7 +133754,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -133300,7 +134053,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -133596,7 +134351,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -133893,7 +134650,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -134189,7 +134948,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -134484,7 +135245,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -134780,7 +135543,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -135077,7 +135842,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -135373,7 +136140,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -135668,7 +136437,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -135966,7 +136737,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -136262,7 +137035,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "builder": "tools/build-modules.mjs"
     },
@@ -136559,7 +137334,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -136855,7 +137632,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -137151,7 +137930,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -137447,7 +138228,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -137743,7 +138526,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -138038,7 +138823,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ],
       "typeContext": "default"
     },
@@ -138577,7 +139364,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -138809,7 +139598,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -139274,7 +140065,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -139507,7 +140300,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -141290,7 +142085,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -141524,7 +142321,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -141764,7 +142563,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -141997,7 +142798,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -142231,7 +143034,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -142464,7 +143269,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -142698,7 +143505,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -142939,7 +143748,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -143191,7 +144002,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -143430,7 +144243,9 @@
         "src/core/roleplay-tavern-lore-export.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -144424,7 +145239,9 @@
         "src/operations/protected-packages.mts",
         "src/operations/public-transaction.mts",
         "src/status-template.ts",
-        "src/core/reader-regex-document-types.mts"
+        "src/core/reader-regex-document-types.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -144935,7 +145752,9 @@
         "development/mvu-schema-runtime-v4-policy-save-continuous-v1/src/descriptor.ts",
         "development/mvu-schema-runtime-v4-policy-save-codec-v1/src/index.ts",
         "development/mvu-schema-runtime-v4-policy-save-codec-v1/src/descriptor.ts",
-        "src/core/reader-regex-document-types.mts"
+        "src/core/reader-regex-document-types.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -145442,7 +146261,9 @@
         "development/mvu-schema-runtime-v4-policy-save-step-facts-v1/src/descriptor.ts",
         "development/mvu-schema-runtime-v4-policy-save-continuous-v1/src/index.ts",
         "development/mvu-schema-runtime-v4-policy-save-continuous-v1/src/descriptor.ts",
-        "src/core/reader-regex-document-types.mts"
+        "src/core/reader-regex-document-types.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -145941,7 +146762,9 @@
         "development/mvu-schema-runtime-v4-policy-save-joins-v1/src/descriptor.ts",
         "development/mvu-schema-runtime-v4-policy-save-facts-v1/src/index.ts",
         "development/mvu-schema-runtime-v4-policy-save-facts-v1/src/descriptor.ts",
-        "src/core/reader-regex-document-types.mts"
+        "src/core/reader-regex-document-types.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -146436,7 +147259,9 @@
         "development/mvu-schema-runtime-v4-policy-save-next-v1/src/descriptor.ts",
         "development/mvu-schema-runtime-v4-policy-save-joins-v1/src/index.ts",
         "development/mvu-schema-runtime-v4-policy-save-joins-v1/src/descriptor.ts",
-        "src/core/reader-regex-document-types.mts"
+        "src/core/reader-regex-document-types.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -146951,7 +147776,9 @@
         "development/mvu-schema-runtime-v4-policy-save-codec-v1/src/descriptor.ts",
         "development/mvu-schema-runtime-v4-policy-save-material-owner-v1/src/index.ts",
         "development/mvu-schema-runtime-v4-policy-save-material-owner-v1/src/descriptor.ts",
-        "src/core/reader-regex-document-types.mts"
+        "src/core/reader-regex-document-types.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -147442,7 +148269,9 @@
         "src/status-template.ts",
         "development/mvu-schema-runtime-v4-policy-save-next-v1/src/index.ts",
         "development/mvu-schema-runtime-v4-policy-save-next-v1/src/descriptor.ts",
-        "src/core/reader-regex-document-types.mts"
+        "src/core/reader-regex-document-types.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -147945,7 +148774,9 @@
         "development/mvu-schema-runtime-v4-policy-save-facts-v1/src/descriptor.ts",
         "development/mvu-schema-runtime-v4-policy-save-step-facts-v1/src/index.ts",
         "development/mvu-schema-runtime-v4-policy-save-step-facts-v1/src/descriptor.ts",
-        "src/core/reader-regex-document-types.mts"
+        "src/core/reader-regex-document-types.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -148460,7 +149291,9 @@
         "development/mvu-schema-runtime-v4-policy-save-codec-v1/src/descriptor.ts",
         "development/mvu-schema-runtime-v4-server-candidates-v1/src/index.ts",
         "development/mvu-schema-runtime-v4-server-candidates-v1/src/descriptor.ts",
-        "src/core/reader-regex-document-types.mts"
+        "src/core/reader-regex-document-types.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -148972,7 +149805,9 @@
         "development/mvu-schema-runtime-v4-server-candidates-v2/src/descriptor.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -149263,7 +150098,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -149549,7 +150386,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -149822,7 +150661,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -150095,7 +150936,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -150367,7 +151210,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -150639,7 +151484,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -150914,7 +151761,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -151187,7 +152036,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -151488,7 +152339,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -151760,7 +152613,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -152066,7 +152921,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -152355,7 +153212,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -152727,7 +153586,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -153028,7 +153889,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -153301,7 +154164,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -153599,7 +154464,9 @@
         "src/status-template.ts",
         "src/core/reader-regex-document-types.mts",
         "src/core/roleplay-reader-display.ts",
-        "src/core/roleplay-reader-narrative-display.ts"
+        "src/core/roleplay-reader-narrative-display.ts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {
@@ -154814,6 +155681,330 @@
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "community-preset-import-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-import",
+      "entry": "src/core/community-preset-import.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-import.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-macros-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-macros",
+      "entry": "src/core/community-preset-macros.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-macros.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-plans-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-plans",
+      "entry": "src/core/community-preset-plans.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-plans.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-profiles-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-profiles",
+      "entry": "src/core/community-preset-profiles.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-profiles.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-response-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-response",
+      "entry": "src/core/community-preset-response.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-response.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-static-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-static",
+      "entry": "src/core/community-preset-static.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-static.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-types-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-types",
+      "entry": "src/core/community-preset-types.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-types.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-variables-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-variables",
+      "entry": "src/core/community-preset-variables.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-variables.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-presets-build",
+      "kind": "typescript-module",
+      "artifact": "community-presets",
+      "entry": "src/core/community-presets.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-presets.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-regex-build",
+      "kind": "typescript-module",
+      "artifact": "community-regex",
+      "entry": "src/core/community-regex.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-regex.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-story-request-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-story-request-js",
+      "entry": "development/agent-loop/src/story-request.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/agent-loop/src/story-request.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "compat-session-response-material-build",
+      "kind": "typescript-module",
+      "artifact": "compat-session-response-material-js",
+      "entry": "development/session/src/response-material.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/session/src/response-material.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ],
+      "typeContext": "fork-compat"
+    },
+    {
+      "id": "community-preset-controls-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-controls",
+      "entry": "src/core/community-preset-controls.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-controls.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-routes-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-routes",
+      "entry": "src/core/community-preset-routes.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-routes.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-settlement-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-settlement",
+      "entry": "src/core/community-preset-settlement.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-settlement.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-panel-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-panel",
+      "entry": "src/ui/community-preset-panel.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/community-preset-panel.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-regex-panel-build",
+      "kind": "typescript-module",
+      "artifact": "community-regex-panel",
+      "entry": "src/ui/community-regex-panel.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/community-regex-panel.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-display-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-display",
+      "entry": "src/core/community-preset-display.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-display.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-execution-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-execution",
+      "entry": "src/core/community-preset-execution.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-execution.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "reader-community-build",
+      "kind": "typescript-module",
+      "artifact": "reader-community",
+      "entry": "src/ui/reader-community.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/reader-community.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-material-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-material",
+      "entry": "src/core/community-preset-material.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-material.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-preset-card-material-build",
+      "kind": "typescript-module",
+      "artifact": "community-preset-card-material",
+      "entry": "src/core/community-preset-card-material.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/community-preset-card-material.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "community-card-mapping-panel-build",
+      "kind": "typescript-module",
+      "artifact": "community-card-mapping-panel",
+      "entry": "src/ui/community-card-mapping-panel.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/community-card-mapping-panel.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     },
     {
@@ -156360,6 +157551,46 @@
         "src/operations/public-transaction.mts",
         "src/status-template.ts",
         "src/core/roleplay-tavern-derived-content-execution.ts"
+      ]
+    },
+    {
+      "id": "compat-agent-loop-request-budget-build",
+      "kind": "typescript-module",
+      "artifact": "compat-agent-loop-request-budget-js",
+      "entry": "development/agent-loop/src/request-budget.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/agent-loop/src/constants.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/tool-history.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "development/agent-loop/src/request-envelope.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/types.ts",
+        "development/session/src/index.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/request-material-types.ts",
+        "development/session/src/request-preview.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/types.ts",
+        "src/operations/build-typescript.mts",
+        "development/agent-loop/src/request-budget.ts",
+        "development/token-meter/src/types.ts"
       ]
     },
     {

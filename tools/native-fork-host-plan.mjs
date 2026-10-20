@@ -154,15 +154,20 @@ export function planNativeForkHost(input) {
             break;
         }
         const directory = path.dirname(real);
+        // Dependency contents are not replaced. Their resolved identity and version
+        // above are sufficient; only fork destinations need a rollback fingerprint.
         let fingerprint;
-        try {
-            fingerprint = packageTreeSha256(directory);
+        if (members.includes(name)) {
+            try {
+                fingerprint = packageTreeSha256(directory);
+            }
+            catch (e) {
+                errors.push(String(e));
+                continue;
+            }
         }
-        catch (e) {
-            errors.push(String(e));
-            continue;
-        }
-        packages.push({ name, version: pkg.version ?? '', manifestPath: real, sha256: fingerprint });
+        packages.push({ name, version: pkg.version ?? '', manifestPath: real,
+            ...(fingerprint ? { sha256: fingerprint } : {}) });
         for (const [dependency, version] of Object.entries({ ...pkg.dependencies, ...pkg.peerDependencies, ...pkg.optionalDependencies })) {
             queue.push({ name: dependency, anchor: real, range: version,
                 optional: dependency in (pkg.optionalDependencies ?? {}) || pkg.peerDependenciesMeta?.[dependency]?.optional === true });

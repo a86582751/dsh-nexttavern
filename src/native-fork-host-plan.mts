@@ -34,7 +34,7 @@ type PlanStep = {action:'backup'|'replace'|'verify'|'remove-replacement'|'rollba
 export type HostForkResult = {
   ok:boolean
   errors:string[]
-  packages:{name:string,version:string,manifestPath:string,sha256:string}[]
+  packages:{name:string,version:string,manifestPath:string,sha256?:string}[]
   applySteps:PlanStep[]
   rollbackSteps:PlanStep[]
 }
@@ -136,9 +136,14 @@ export function planNativeForkHost(input:HostForkInput):HostForkResult {
     planned.add(real)
     if(planned.size>1000){errors.push('Dependency graph exceeds 1000 packages');break}
     const directory=path.dirname(real)
-    let fingerprint:string
-    try {fingerprint=packageTreeSha256(directory)}catch(e){errors.push(String(e));continue}
-    packages.push({name,version:pkg.version??'',manifestPath:real,sha256:fingerprint})
+    // Dependency contents are not replaced. Their resolved identity and version
+    // above are sufficient; only fork destinations need a rollback fingerprint.
+    let fingerprint:string|undefined
+    if(members.includes(name)){
+      try {fingerprint=packageTreeSha256(directory)}catch(e){errors.push(String(e));continue}
+    }
+    packages.push({name,version:pkg.version??'',manifestPath:real,
+      ...(fingerprint?{sha256:fingerprint}:{})})
     for(const [dependency,version] of Object.entries({...pkg.dependencies,...pkg.peerDependencies,...pkg.optionalDependencies})){
       queue.push({name:dependency,anchor:real,range:version,
         optional:dependency in (pkg.optionalDependencies??{})||pkg.peerDependenciesMeta?.[dependency]?.optional===true})

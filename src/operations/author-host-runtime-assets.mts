@@ -34,6 +34,8 @@ export interface AuthorHostRuntimeAssetRecipeV5 {
   modules:readonly {role:'provider';artifact:string;output:'dist/index.mjs'}[]
   sourceInputOutput:'assets/source-inputs.json'
   lockArtifact:string
+  /** This generation's complete lock preimage when the shared tool lock advances. */
+  lockSourceArtifact?:string
   dependencies:Record<string,string>
   builder:{esbuildVersion:'0.24.2';target:'es2023';bundle:true;write:false;legalComments:'none'}
   sourceGraph:'esbuild-metafile-input-sha256'
@@ -106,7 +108,8 @@ export async function buildAuthorHostRuntimeAssetsV5(options:{repo:string;plan:A
   const sourceScope=options.historicalRebuild?createRuntimeAssetSourceScopeV1({repo,artifacts:options.plan.artifacts,
     sourceBindings:options.historicalRebuild.sourceBindings}):undefined
   const lockArtifact=artifact(options.plan,recipe.lockArtifact),lockFile=inside(repo,lockArtifact.source)
-  const lockBytes=sourceScope?.input(sourceScope.entry(recipe.lockArtifact)).bytes??fs.readFileSync(lockFile)
+  const lockSource=artifact(options.plan,recipe.lockSourceArtifact??recipe.lockArtifact)
+  const lockBytes=sourceScope?.input(sourceScope.entry(lockSource.id)).bytes??fs.readFileSync(inside(repo,lockSource.source))
   const lock=JSON.parse(lockBytes.toString('utf8')) as {
     packages:Record<string,{version?:string}>}
   const require=createRequire(path.join(path.dirname(lockFile),'package.json'))

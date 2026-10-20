@@ -179,7 +179,14 @@
         "context-supersession*",
         "worldline-*",
         "roleplay-program-*",
-        "roleplay-phase-a-row-facts*"
+        "roleplay-phase-a-row-facts*",
+        "src/core/community-*",
+        "lib/core/community-*",
+        "schema/community-*",
+        "native-story-*",
+        "native-request-material-fixture*",
+        "roleplay-opening-material*",
+        "roleplay-tavern-injection-definitions*"
       ]
     },
     {
@@ -261,7 +268,10 @@
         "tavern-author-browser*",
         "development/author-browser-runtime*",
         "author-browser-*",
-        "card-import-panel*"
+        "card-import-panel*",
+        "src/ui/community-*",
+        "lib/ui/community-*",
+        "tavern-author-host-provider*"
       ]
     },
     {
@@ -1141,7 +1151,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -1665,7 +1677,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -2543,7 +2557,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -3069,7 +3085,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -3514,7 +3532,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -4087,7 +4107,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -4553,7 +4575,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -5046,7 +5070,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -5546,7 +5572,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -5995,7 +6023,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -6440,7 +6470,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -6952,7 +6984,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -7399,7 +7433,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -7990,7 +8026,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -8479,7 +8517,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {
@@ -8945,7 +8985,9 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "inventory-runtime-alpha3-build-tools-package-lock-json",
         "roleplay-tavern-lore-export-typescript",
-        "roleplay-tavern-lore-export-js"
+        "roleplay-tavern-lore-export-js",
+        "compat-agent-loop-request-budget-ts",
+        "compat-agent-loop-request-budget-js"
       ]
     },
     {

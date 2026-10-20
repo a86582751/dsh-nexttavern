@@ -194,16 +194,20 @@ export function activateHostForks(input:HostActivationInput,audit:HostActivation
   control:HostActivationControl):HostActivationReceipt{
   return controlled(control,()=>{
     if(exists(control.receiptPath))throw Error('Host activation receipt already exists')
-    const fresh=auditHostActivation(input)
-    if(JSON.stringify(fresh)!==JSON.stringify(audit))throw Error('Host activation audit changed')
     const verified=payload(input)
+    const hostInput={hostRoot:verified.hostRoot,anchors:verified.anchors,sources:verified.sources,
+      ...(verified.hostForkProfile?{hostForkProfile:verified.hostForkProfile}:{})}
+    if(verified.payloadSha256!==audit.payloadSha256||
+      JSON.stringify(hostInput)!==JSON.stringify(audit.input))throw Error('Host activation audit changed')
+    // The apply owner compares the current plan before writing. Repeating that
+    // dependency walk here would not add a distinct source or target guarantee.
     const receipt:HostActivationReceipt={schemaVersion:1,state:'prepared',
       packageRoot:verified.packageRoot,hostRoot:verified.hostRoot,anchors:verified.anchors,
-      payloadSha256:fresh.payloadSha256,plan:fresh.plan}
+      payloadSha256:audit.payloadSha256,plan:audit.plan}
     saveReceipt(control.receiptPath,receipt)
     try{
       control.assertIdle()
-      const applied=applyNativeForkHost(fresh.input,fresh.plan)
+      const applied=applyNativeForkHost(hostInput,audit.plan)
       receipt.apply=applied
       receipt.state=applied.ok?'applied':applied.backups.length===0?'failed':'recovery-required'
       if(!applied.ok)receipt.error=applied.errors.join('; ')
