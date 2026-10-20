@@ -77,7 +77,7 @@ function discover(data) {
         html(data.status.text, '/data/status/text');
     const beauty = data.rules.beauty;
     if (typeof beauty?.js === 'string')
-        script(beauty.js, '/data/rules/beauty/js');
+        script(beauty.js, `${rulesPointer}/beauty/js`);
     const extensions = data.extensions;
     const helper = object(extensions) && extensions.tavern_helper;
     const scriptTree = (values, position) => values.forEach((value, index) => {

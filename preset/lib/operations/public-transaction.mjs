@@ -23,6 +23,14 @@ export function contained(root, relative) {
     }
     return target;
 }
+/** The home owner alone classifies contention, including across bundled copies. */
+export class HomeTransactionBusyError extends Error {
+    code = 'NEXTTAVERN_HOME_TRANSACTION_BUSY';
+}
+export function isHomeTransactionBusy(error) {
+    return typeof error === 'object' && error !== null
+        && 'code' in error && error.code === 'NEXTTAVERN_HOME_TRANSACTION_BUSY';
+}
 function requireDeadOwner(owner) {
     if (owner.schemaVersion !== undefined && owner.schemaVersion !== 1)
         throw Error('Unsupported transaction lock version');
@@ -37,7 +45,7 @@ function requireDeadOwner(owner) {
             alive = false;
     }
     if (alive)
-        throw Error('Transaction process is still running');
+        throw new HomeTransactionBusyError('Transaction process is still running');
 }
 function locked(root, backup, recover = false, purpose, phase = 'writing') {
     const lock = path.join(root, '.nexttavern-transaction.lock');
@@ -48,7 +56,16 @@ function locked(root, backup, recover = false, purpose, phase = 'writing') {
         requireDeadOwner(owner);
         fs.unlinkSync(lock);
     }
-    const fd = fs.openSync(lock, 'wx', 0o600);
+    let fd;
+    try {
+        fd = fs.openSync(lock, 'wx', 0o600);
+    }
+    catch (error) {
+        if (error.code === 'EEXIST') {
+            throw new HomeTransactionBusyError('Another home transaction owns this target');
+        }
+        throw error;
+    }
     const owner = { schemaVersion: 1, pid: process.pid, backup, purpose, phase };
     // Exclusivity comes from the wx-created pathname. Close the handle so
     // Windows can atomically replace its phase metadata without deleting the lock.
@@ -64,6 +81,19 @@ function locked(root, backup, recover = false, purpose, phase = 'writing') {
             // A dead 'preparing' owner therefore cannot have changed a target file.
             save(lock, { ...owner, phase: 'writing' });
         } });
+}
+/** Read shared generations while their writer/rollback owner is excluded.
+ * This lock never promotes to writing and has no backup. A dead preparing
+ * owner is already recoverable without reading a journal or touching targets. */
+export function readTransactionTarget(root, purpose, readTarget) {
+    root = fs.realpathSync(root);
+    const release = locked(root, root, false, purpose, 'preparing');
+    try {
+        return readTarget();
+    }
+    finally {
+        release();
+    }
 }
 function restore(root, backup, journal) {
     for (const item of journal.files) {
@@ -111,20 +141,22 @@ export function applyTransaction({ root, backup, files, purpose, assertUnchanged
         throw Error('Backup must be a new directory outside target');
     const seen = new Set();
     for (const file of files) {
-        const target = contained(root, file.path);
         if (seen.has(file.path) || !(file.bytes === null || Buffer.isBuffer(file.bytes)))
             throw Error('Invalid or duplicate transaction file');
         seen.add(file.path);
-        if (hashAt(target) !== file.before)
-            throw Error('Drift since audit: ' + file.path);
     }
     const release = locked(root, backup, false, purpose, 'preparing');
     const journal = { schemaVersion: 1, state: 'prepared', root, purpose, files: [] };
     try {
         fs.mkdirSync(backup, { recursive: true, mode: 0o700 });
         assertUnchanged?.();
+        // The home lock owns the write set until release. Resolve its targets and
+        // check the audited before-state once, before capturing the recovery map.
+        const targets = files.map(file => contained(root, file.path));
         for (const [index, file] of files.entries()) {
-            const target = contained(root, file.path);
+            const target = targets[index];
+            if (hashAt(target) !== file.before)
+                throw Error('Drift since audit: ' + file.path);
             const stat = file.before === null ? null : fs.statSync(target);
             const name = stat ? index + '.before' : null;
             if (name) {
@@ -138,9 +170,7 @@ export function applyTransaction({ root, backup, files, purpose, assertUnchanged
         release.beginWrites();
         let checkpointed = 0;
         for (const [index, file] of files.entries()) {
-            const target = contained(root, file.path), item = journal.files[index];
-            if (hashAt(target) !== file.before)
-                throw Error('Target changed before write: ' + file.path);
+            const target = targets[index], item = journal.files[index];
             fs.mkdirSync(path.dirname(target), { recursive: true });
             if (file.bytes === null) {
                 if (fs.existsSync(target))
@@ -154,8 +184,8 @@ export function applyTransaction({ root, backup, files, purpose, assertUnchanged
                     fs.chownSync(temporary, item.uid, item.gid);
                 fs.renameSync(temporary, target);
             }
-            if (hashAt(target) !== item.after)
-                throw Error('Installed digest mismatch: ' + file.path);
+            // Successful write/rename consumed the journal's exact Buffer. A later
+            // rollback checks future disk state; rereading our own write proves no new fact.
             if (index + 1 >= crashAfter)
                 process.exit(86);
             item.applied = true;

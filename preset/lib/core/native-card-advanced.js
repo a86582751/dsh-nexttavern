@@ -2,6 +2,7 @@
 /** Classification binds beside the current Source. Applying it never reimports
  * author text, replays an opening or mutates author/editor tables. */
 import { materializeNativeCardConversionV1, validateNativeCardClassificationV1 } from './native-card-conversion.js';
+import { nextTavernExecutionAuthorData } from './nexttavern-card.js';
 export const nativeCardAdvancedKeyV1 = (sessionId) => `${sessionId}__native-card-classification-v1`;
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 export function createNativeCardAdvancedV1(deps) {
@@ -53,11 +54,18 @@ export function createNativeCardAdvancedV1(deps) {
             return prior.value;
         const sourceDocument = classification ? materializeNativeCardConversionV1(snapshot, classification) : snapshot.document;
         // This is an advanced-context view, never the portable execution document.
-        // Dynamic rules arrive only from the actual request's rendered material.
+        // Joined author rules have one execution owner, so their dynamic fields
+        // cannot be separated for advanced use. Independently rendered examples
+        // and admitted lore may still supply rules in the actual request.
         const rules = { ...sourceDocument.data.rules };
-        for (const field of ['core', 'plot', 'narrative', 'reply', 'style'])
+        const authorRules = nextTavernExecutionAuthorData(snapshot.document.data).rules;
+        let dynamicRules = false;
+        for (const field of ['core', 'plot', 'narrative', 'reply', 'style']) {
+            if (authorRules[field]?.includes('<%'))
+                dynamicRules = true;
             if (rules[field]?.includes('<%'))
                 delete rules[field];
+        }
         const document = { ...sourceDocument, data: { ...sourceDocument.data, rules } };
         const dynamic = new Set();
         if (classification) {
@@ -83,7 +91,10 @@ export function createNativeCardAdvancedV1(deps) {
         const staticReady = characters.length === expected;
         const value = { state: 'ready', sourceSha256: snapshot.sourceSha256, nativeAuthoring, document,
             ...classification ? { classification } : {}, characters, staticReady,
-            ...!staticReady ? { reason: '部分人物需要已渲染的动态人设或缺少可用正文' } : {},
+            ...!staticReady || dynamicRules ? { reason: [
+                    ...!staticReady ? ['部分人物需要本轮已渲染的人设或缺少可用正文。'] : [],
+                    ...dynamicRules ? ['部分动态规则暂不用于角色协作；普通剧情仍按原卡执行。'] : [],
+                ].join('') } : {},
             ...resolved?.resourceId ? { resourceId: resolved.resourceId } : {} };
         views.set(snapshot, { resolved, nativeAuthoring, value });
         return value;

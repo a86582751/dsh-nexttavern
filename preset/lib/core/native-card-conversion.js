@@ -41,7 +41,11 @@ export function freezeNativeCardConversionV1(document) {
         units.push({ id: `source-${units.length + 1}`, pointer, text, sha256: sha256(text),
             lineCount: sourceLines(text).length, kind, atomic: text.includes('<%') });
     };
-    data.cards.forEach((row, index) => add(`/data/compatibility/authorExecution/cards/${index}/content`, row.content, 'author'));
+    data.cards.forEach((row, index) => {
+        if (row.enabled === false || row.kind === 'user')
+            return;
+        add(`/data/compatibility/authorExecution/cards/${index}/content`, row.content, 'author');
+    });
     for (const field of ruleFields)
         if (data.rules[field] !== undefined) {
             add(`/data/compatibility/authorExecution/rules/${field}`, data.rules[field], 'author');
