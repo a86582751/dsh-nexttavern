@@ -31516,6 +31516,10 @@
     {
       "id": "quality-public-map",
       "source": "tools/check-map.json"
+    },
+    {
+      "id": "quality-public-build-map",
+      "source": "tools/build-map.json"
     }
   ],
   "builds": [

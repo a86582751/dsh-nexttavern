@@ -57,7 +57,8 @@ export function projectChecks(plan: ProjectionPlan, registry: CheckRegistry): {
       })},
   }
   mapping.artifacts.push({id: 'quality-registry', source: 'tools/check-registry.json'},
-    {id: 'quality-public-map', source: 'tools/check-map.json'})
+    {id: 'quality-public-map', source: 'tools/check-map.json'},
+    {id: 'quality-public-build-map', source: 'tools/build-map.json'})
   const tasks = registry.tasks.filter(task => {
     const unsupported = task.requires?.includes('maintenance') || (task.artifact && !paths.has(task.artifact))
     return !unsupported && !task.unavailable

@@ -71,16 +71,20 @@ try {
     publicRelease: {layoutPaths: {preset: 'preset'}, publicTests: []},
   }, {
     schemaVersion: 1,
-    modules: [{id: 'loop', aliases: [], patterns: ['runtime/alpha3/compat/agent-loop/*']}],
+    modules: [
+      {id: 'loop', aliases: [], patterns: ['runtime/alpha3/compat/agent-loop/*']},
+      {id: 'operations', aliases: [], patterns: ['build-*']},
+    ],
     tasks: [
       {id: 'loop-test', action: 'test', artifact: 'test', modules: ['loop']},
+      {id: 'tools-test', action: 'test', artifact: 'test', modules: ['operations']},
       {id: 'private', action: 'candidate', modules: [], requires: ['maintenance']},
       {id: 'private-dependent', action: 'test', artifact: 'test', modules: [], depends: ['private']},
       {id: 'private-transitive', action: 'test', artifact: 'test', modules: [], depends: ['private-dependent']},
       {id: 'not-shipped', action: 'test', artifact: 'missing-test', modules: []},
     ],
   });
-  assert.deepEqual(projected.registry.tasks.map(task => task.id), ['loop-test'],
+  assert.deepEqual(projected.registry.tasks.map(task => task.id), ['loop-test', 'tools-test'],
     'public selection lists only shipped tasks with executable prerequisites');
   assert.deepEqual(projected.registry.modules[0].patterns, ['development/agent-loop/*']);
   const projectedContext = {...context, registry: projected.registry, mapping: projected.mapping};
@@ -90,6 +94,9 @@ try {
   const alias = makePlan(projectedContext, request('file', ['preset/lib/request.js']));
   assert.deepEqual(ids(alias), ['loop-test'], 'delivery aliases select the canonical source feature');
   assert.deepEqual(alias.uncovered, []);
+  const buildMap = makePlan(projectedContext, request('file', ['tools/build-map.json']));
+  assert.deepEqual(ids(buildMap), ['tools-test'], 'the public build map selects its existing operations checks');
+  assert.deepEqual(buildMap.uncovered, []);
   assert.throws(() => makePlan(projectedContext, request('mechanics')), /No mechanism checks/,
     'an omitted private scope cannot report an empty successful check');
 

@@ -3522,7 +3522,8 @@
       "action": "test",
       "artifact": "tavern-card-test",
       "modules": [
-        "card-import"
+        "card-import",
+        "worldbook"
       ],
       "depends": [
         "generated"
@@ -6959,7 +6960,8 @@
       "action": "test",
       "artifact": "bounded-regex-test",
       "modules": [
-        "reader"
+        "reader",
+        "worldbook"
       ],
       "depends": [
         "generated"
