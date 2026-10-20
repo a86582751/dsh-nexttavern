@@ -27,6 +27,14 @@ export interface NextTavernRulesRow extends Record<string, unknown> {
 export interface NextTavernCharacterBook extends Record<string, unknown> {
   entries?: Record<string, unknown>[] | Record<string, Record<string, unknown>>
 }
+/** Converted cards classify author prose without executing that prose twice.
+ * The ordinary editor and Native prompt still own these original author rows. */
+export interface NextTavernAuthorExecutionV1 {
+  schemaVersion: 1
+  mode: 'preserved-author'
+  cards: NextTavernAuthorRow[]
+  rules: NextTavernRulesRow
+}
 export interface NextTavernCardData extends Record<string, unknown> {
   name: string
   cards: NextTavernAuthorRow[]
@@ -36,7 +44,10 @@ export interface NextTavernCardData extends Record<string, unknown> {
   opening?: NextTavernTextRow
   settings?: Record<string, unknown>
   character_book?: NextTavernCharacterBook
-  compatibility?:Record<string,unknown>&{sillytavernMacroFields?:Record<string,string>}
+  compatibility?:Record<string,unknown>&{
+    sillytavernMacroFields?:Record<string,string>
+    authorExecution?:NextTavernAuthorExecutionV1
+  }
 }
 export interface NextTavernCardArchive extends Record<string, unknown> {
   documents?: unknown[]
@@ -44,7 +55,7 @@ export interface NextTavernCardArchive extends Record<string, unknown> {
 }
 export interface NextTavernCardDocument extends Record<string, unknown> {
   spec: 'nexttavern_card'
-  spec_version: '1.0'
+  spec_version: '1.0' | '1.1'
   data: NextTavernCardData
   archive: NextTavernCardArchive
 }
@@ -101,7 +112,18 @@ export function portableNextTavernAuthorFields(row: Record<string, unknown>): Re
 // This is a format discriminator. The JSON decoder owns input validation once.
 export function isNextTavernCardDocument(document: unknown): document is NextTavernCardDocument {
   return object(document) && document.spec === 'nexttavern_card'
-    && document.spec_version === '1.0' && object(document.data)
+    && (document.spec_version === '1.0' || document.spec_version === '1.1') && object(document.data)
+}
+
+/** Read only after the decoder has validated the versioned execution mode. */
+export function nextTavernExecutionAuthorData(data:NextTavernCardData):NextTavernCardData {
+  const execution=data.compatibility?.authorExecution
+  return execution ? {...data,cards:execution.cards,rules:execution.rules} : data
+}
+
+export function nextTavernExecutionAuthorPointer(data:NextTavernCardData,field:string):string {
+  const preserved=data.compatibility?.authorExecution&&/^(?:cards|rules)(?:\/|$)/.test(field)
+  return `/data/${preserved?'compatibility/authorExecution/':''}${field}`
 }
 
 export function isNativeTavernCardDocument(document:unknown):document is NativeTavernCardDocument {
@@ -140,7 +162,7 @@ export function nativeNextTavernExecutionDocumentV1(document:NativeTavernCardDoc
     {...document.data,extensions:{...document.data.extensions}}
   for(const field of [...standardTextFields,...nativeAuthorFields])delete data[field]
   delete data.extensions[NATIVE_NEXTTAVERN_AUTHOR_EXTENSION_KEY]
-  return {spec:'nexttavern_card',spec_version:'1.0',
+  return {spec:'nexttavern_card',spec_version:extension.author.compatibility?.authorExecution?'1.1':'1.0',
     data:{...data,...extension.author} as NextTavernCardData,archive:extension.archive}
 }
 
@@ -192,7 +214,7 @@ export function projectNextTavernCard(
   decoded: NextTavernCardProjectionInput, worldbookMetadata?: WorldbookEntry[],
   includeSourceArchive=true,
 ): {text: string; assignments: CardAssignment[]; worldbook: WorldbookEntry[]; cardId: string; warnings: string[]} {
-  const data = decoded.data as NextTavernCardData
+  const data = nextTavernExecutionAuthorData(decoded.data as NextTavernCardData)
   const cardId = nextTavernCardSourceIdV1(decoded.document)
   const worldbook = worldbookMetadata ?? projectBookMetadata(data, cardId)
   const assignments: CardAssignment[] = [], sections: string[] = []

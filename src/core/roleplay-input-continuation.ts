@@ -1,4 +1,4 @@
-/** Hot nomination of actual Native after-story messages under one unchanged
+/** Hot nomination of actual Native cast and after-story messages under one unchanged
  * prepared work. Owns reference tokens only; never an inbox, body or cold grant. */
 import {recordSha256} from './roleplay-data.js'
 import type {NativeOwnedContinuationControlV1,NativeInputSupplementProposalV1,
@@ -8,6 +8,7 @@ import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 
 type Message=Parameters<NativeOwnedContinuationControlV1['steerOwnedContinuation']>[0]
 export type OwnedContinuationResult=ReturnType<NativeOwnedContinuationControlV1['steerOwnedContinuation']>
+type ContinuationPurpose='character-cast'|'after-story'
 export interface RoleplayContinuationScope {
   currency:InputPreparationCurrency
   checkpoint:NativeDurableInputWorkReceiptV1
@@ -19,7 +20,7 @@ interface Nomination {
   turn:number
   messageId:string
   messageSha256:string
-  purpose:'after-story'
+  purpose:ContinuationPurpose
   ref?:NativeInputRef
   claimSha256?:string
   blocked?:true
@@ -27,12 +28,15 @@ interface Nomination {
 const blocked=(code:string)=>({kind:'blocked' as const,code})
 const allow={kind:'allow' as const}
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
-function purpose(message:Message,turn:number) {
+function purpose(message:Message,turn:number):ContinuationPurpose|undefined {
   // Core's producer is outside Native's closed source union. Inspect the
   // actual producer fields without extending that upstream public union.
   const source=message.source as unknown as Record<string,unknown>|undefined
-  return source?.kind==='roleplay-tasks'&&source.form==='phase'
-    &&source.stage==='after-story'&&source.turn===turn
+  if(source?.kind!=='roleplay-tasks'||source.form!=='phase'||source.turn!==turn)return undefined
+  if(source.stage==='after-story')return 'after-story'
+  if(source.stage==='character-cast'&&source.castReminder===true)return 'character-cast'
+  if(source.stage==='story'&&source.characterCast===true)return 'character-cast'
+  return undefined
 }
 
 export function createRoleplayInputContinuation({current,checkCurrent}: {
@@ -61,7 +65,7 @@ export function createRoleplayInputContinuation({current,checkCurrent}: {
   function actual(entry:Nomination,ref:NativeInputRef,message:Message,turn:number) {
     return !!entry.ref&&same(entry.ref,ref)&&message.id===entry.messageId
       &&recordSha256(message)===entry.messageSha256&&ref.messageId===message.id
-      &&ref.messageSha256===entry.messageSha256&&purpose(message,turn)
+      &&ref.messageSha256===entry.messageSha256&&entry.purpose===purpose(message,turn)
   }
   return {
     setControl(value:NativeOwnedContinuationControlV1) {control=value},
@@ -74,8 +78,8 @@ export function createRoleplayInputContinuation({current,checkCurrent}: {
     },
     isMaintenance() {return maintenance&&!!scope()},
     steer(message:Message,turn:number):OwnedContinuationResult {
-      const live=scope()
-      if(!live||!control||live.checkpoint.actualTurn!==turn||!purpose(message,turn)) {
+      const live=scope(),nominatedPurpose=purpose(message,turn)
+      if(!live||!control||live.checkpoint.actualTurn!==turn||!nominatedPurpose) {
         return blocked('INPUT_CONTINUATION_SCOPE_INVALID')
       }
       for(const nominated of active) {
@@ -85,7 +89,7 @@ export function createRoleplayInputContinuation({current,checkCurrent}: {
       }
       const token=Object.freeze({}),entry:Nomination={epoch,currencySha256:recordSha256(live.currency),
         parentSha256:recordSha256(live.checkpoint),turn,messageId:message.id,
-        messageSha256:recordSha256(message),purpose:'after-story'}
+        messageSha256:recordSha256(message),purpose:nominatedPurpose}
       tokens.set(token,entry);active.add(token)
       let result:OwnedContinuationResult
       try {result=control.steerOwnedContinuation(message,{parent:live.checkpoint,ownerToken:token})}
@@ -141,7 +145,9 @@ export function createRoleplayInputContinuation({current,checkCurrent}: {
       // No partial consumption on a later invalid entry. Repeated checks of the
       // same actual claim are allowed; recognize never authorizes another claim.
       for(const {entry,sha256} of claimed)entry.claimSha256=sha256
-      maintenance=true
+      // Cast still owes the original Story. Only the later after-story claim
+      // changes the consumer phase; earlier cumulative cast claims stay bound.
+      maintenance=claimed.at(-1)!.entry.purpose==='after-story'
       return allow
     },
   }

@@ -47,7 +47,8 @@ export function formatFallbackText(fallback?: Fallback | null) {
 export function isCardReadableResource(resource?: CardResource | null) {
   const sources=Array.isArray(resource?.sources)?resource.sources:[resource?.source]
   if(sources.some(source=>source?.kind==='novel-export'))return false
-  return ['image/png','application/json','text/markdown','text/plain'].includes(String(resource?.type??'').split(';')[0]!)
+  return ['image/png','application/json','text/markdown','text/plain',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(String(resource?.type??'').split(';')[0]!)
 }
 
 export function normalizePricingSettings(raw?: PricingSettings | null) {

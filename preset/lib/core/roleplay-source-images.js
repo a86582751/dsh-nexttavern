@@ -2,6 +2,7 @@
 /** Source owns discovery currency; Library owns selected embedded image bytes. */
 import { sourceImageTextLiteralsV1, sourceImageScriptLiteralsV1, sourceImageCssLiteralsV1 } from './roleplay-source-images-parser.mjs';
 import { recordSha256 } from './roleplay-data.js';
+import { nextTavernExecutionAuthorData, nextTavernExecutionAuthorPointer } from './nexttavern-card.js';
 const object = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 const pointer = (value) => value.replace(/~/g, '~0').replace(/\//g, '~1');
 const imageData = /^data:(image\/[a-z0-9.+-]+)((?:;[^,]*)?),(.*)$/is;
@@ -36,6 +37,8 @@ function classify(uri, forceImage, hint) {
 }
 function discover(data) {
     const items = [], diagnostics = [];
+    const author = nextTavernExecutionAuthorData(data);
+    const authorPointer = (field) => nextTavernExecutionAuthorPointer(data, field);
     const add = (literal, forceImage = literal.carrier === 'html'
         || literal.carrier === 'markdown' || literal.imageSink === true, hint) => {
         const uri = literal.uri.trim(), media = classify(uri, forceImage, hint);
@@ -63,6 +66,8 @@ function discover(data) {
         }
         if (!object(value))
             return;
+        if (value.purpose === 'card-cover')
+            return;
         const declared = typeof value.type === 'string' && value.type.startsWith('image/') ? value.type
             : typeof value.mime === 'string' && value.mime.startsWith('image/') ? value.mime : undefined;
         const extension = typeof value.ext === 'string' ? imageTypes[value.ext.toLowerCase()] : undefined;
@@ -78,7 +83,7 @@ function discover(data) {
     };
     assets(data.assets, '/data/assets');
     for (const field of ['cards', 'worldbook'])
-        data[field].forEach((row, index) => text(row.content, `/data/${field}/${index}/content`));
+        author[field].forEach((row, index) => text(row.content, authorPointer(`${field}/${index}/content`)));
     for (const [key, entry] of Object.entries(data.character_book?.entries ?? {})) {
         if (object(entry) && typeof entry.content === 'string')
             text(entry.content, '/data/character_book/entries/' + pointer(key) + '/content');
@@ -91,16 +96,16 @@ function discover(data) {
                     text(value.rawText, '/data/opening/catalog/' + index + '/rawText');
             });
     }
-    for (const [key, value] of Object.entries(data.rules))
+    for (const [key, value] of Object.entries(author.rules))
         if (typeof value === 'string')
-            text(value, '/data/rules/' + pointer(key));
+            text(value, authorPointer('rules/' + pointer(key)));
     if (data.status)
         text(data.status.text, '/data/status/text');
-    const beauty = data.rules.beauty;
+    const beauty = author.rules.beauty;
     if (typeof beauty?.css === 'string')
-        parsed(sourceImageCssLiteralsV1(beauty.css, '/data/rules/beauty/css'));
+        parsed(sourceImageCssLiteralsV1(beauty.css, authorPointer('rules/beauty/css')));
     if (typeof beauty?.js === 'string')
-        script(beauty.js, '/data/rules/beauty/js');
+        script(beauty.js, authorPointer('rules/beauty/js'));
     const helper = object(data.extensions) && data.extensions.tavern_helper;
     const scripts = (values, position) => values.forEach((value, index) => {
         if (!object(value))

@@ -217,10 +217,35 @@ export function registerRoleplayLoop({
       const internal=original.length>0&&original.every(message=>message.source?.kind==='roleplay-tasks'
         &&message.source.form==='phase'&&message.source.stage==='management')
       if(internal) {
+        const workflowWake=original.some(message=>message.source?.jobId
+          &&['card-import','card-export','card-convert','novel-export'].includes(String(message.source.jobKind)))
+        if(workflowWake) {
+          // HTTP only queues the owner. Register its real task/validator before
+          // the first request, then resume it after submission to publish output.
+          try {
+            await resumeCardWorkflows(session,payload.agent,payload.signal)
+            await resumeNovelExports(session,payload.agent,payload.signal)
+          } catch(error) {
+            if(!isInlinePending(error))throw error
+            assertInput()
+            // Native keeps the original kickoff claim across steps. Replace
+            // that generic text with the current task, including after reads.
+            return {...decision,messages:inlineTaskMessages(session,'management',tavernTasks.pending(session),
+              {force:true,resident:residentContext(session)})}
+          }
+        }
         // This wake submits the real rebuild task and then closes its status
         // publication on the next step, without entering Story preparation.
         try {await resumeStatusMaintenance(session,payload.agent)}
         catch(error) {if(!isInlinePending(error))throw error}
+        // A dedicated card task can finish before this kickoff spends its
+        // first request. Native's empty entrance closes that internal turn.
+        // Keep the ordinary driver when another input arrived while waiting.
+        const settledCardKickoff=payload.step===1&&original.every(message=>message.source?.jobId
+          &&['card-export','card-convert'].includes(String(message.source.jobKind)))
+          &&!activeCardWorkflow(session)&&tavernTasks.pending(session).length===0
+          &&!payload.agent.inbox.hasPending
+        if(settledCardKickoff)return {...decision,messages:[]}
         // The owning task host already supplied its complete actual envelope.
         // Replacing it with player-management prose loses the queued task
         // input and causes idle wake/retry loops. Never grant this exception
@@ -397,7 +422,10 @@ export function registerRoleplayLoop({
       const management=turnEvents.some(e=>e.type==='tool/call'&&(/^(rp_source_|rp_preset$|rp_card_(import|export|draft)|rp_commit_card|rp_diagnose|rp_novel_export|ask_user_question)/.test(e.data?.name??'')||isSettingManagementCall(e.data)))
       if(!management){
         if(phase.castReminder===true)throw new Error('主代理未完成角色选角，本轮未进入正文；可重试或关闭角色集群')
-        agent.steer(taskPhaseMessage('character-cast','尚未完成选角，以上文字不是正式剧情。现在调用 rp_character_cast，传主要人物 ID；不要再输出正文或完成报告。',{turn,castReminder:true}))
+        const message=taskPhaseMessage('character-cast','尚未完成选角，以上文字不是正式剧情。现在调用 rp_character_cast，传主要人物 ID；不要再输出正文或完成报告。',{turn,castReminder:true})
+        if(!input)throw new Error('INPUT_CONTINUATION_SCOPE_INVALID')
+        const result=input.steerOwnedContinuation(message,turn)
+        if(result.kind==='blocked')throw new Error(result.code)
         return
       }
     }

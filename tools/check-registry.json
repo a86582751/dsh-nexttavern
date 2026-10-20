@@ -48,6 +48,8 @@
         "native-input-stop*",
         "development/http-proxy/*",
         "http-proxy-native-fetch-compat*",
+        "development/llm-deepseek/*",
+        "deepseek-request-material*",
         "development/tool-skill/*"
       ]
     },
@@ -74,7 +76,10 @@
         "author-panels*",
         "roleplay-card-workflow*",
         "nexttavern-card*",
-        "roleplay-native-card-export*"
+        "roleplay-native-card-export*",
+        "native-card-conversion*",
+        "native-card-advanced*",
+        "native-card-authoring*"
       ]
     },
     {
@@ -99,7 +104,8 @@
         "roleplay-tavern-lore-contributions*",
         "roleplay-input-cold-row-facts*",
         "nexttavern-program-source*",
-        "roleplay-prompt-opening-*"
+        "roleplay-prompt-opening-*",
+        "native-card-docx-import-record*"
       ]
     },
     {
@@ -108,7 +114,8 @@
         "角色卡下载"
       ],
       "patterns": [
-        "card-export*"
+        "card-export*",
+        "native-card-original-download*"
       ]
     },
     {

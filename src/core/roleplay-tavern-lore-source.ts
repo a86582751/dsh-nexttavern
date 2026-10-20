@@ -22,6 +22,14 @@ import type {TavernLoreSourceDepsV1, TavernLoreSourceDataV1, TavernLoreSourceRow
   TavernLoreSourceDiagnosticV1,TavernLoreSourceCounterWitnessV1} from './roleplay-tavern-lore-source-types.js'
 export type * from './roleplay-tavern-lore-source-types.js'
 
+interface CapturedTavernCoverV1 {readonly base64:string;readonly sha256:string}
+// Reuse the decoder's accepted cover without putting its bytes in Source DATA
+// or re-reading the PNG. The weak key follows this exact live capture only.
+const capturedCovers=new WeakMap<DecodedTavernCard,CapturedTavernCoverV1>()
+export function readCapturedTavernCoverV1(capture:TavernLoreSourceCaptureV1):CapturedTavernCoverV1|undefined {
+  return capture.kind==='captured-data'?capturedCovers.get(capture.contributionInput.rawDecoded):undefined
+}
+
 export const TAVERN_LORE_SOURCE_BOUNDS_V1 = Object.freeze({...TAVERN_LORE_DATA_BOUNDS_V1,rows:4096})
 const ID = /^[a-zA-Z0-9_-]{1,128}$/
 const IMPORT_ID = /^[a-zA-Z0-9_-]{1,64}$/
@@ -233,6 +241,9 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   const {document:decodedDocument,data:_decodedData,avatarBase64:_avatar,...decodedMetadata}=decoded
   const document=cloneData(decodedDocument,'/rawDecoded/document')
   const rawDecoded:DecodedTavernCard={...decodedMetadata,document,data:document.data as DecodedTavernCard['data']}
+  if(decoded.avatarBase64)capturedCovers.set(rawDecoded,Object.freeze({
+    base64:decoded.avatarBase64,sha256:decoded.avatarSha256!,
+  }))
   const book=hasBook ? cloneData(rawBook as Record<string,unknown>,bookPointer) : null
   const bookSha256=recordSha256(book)
   let absenceProof:TavernLoreBookAbsenceProofV1|undefined

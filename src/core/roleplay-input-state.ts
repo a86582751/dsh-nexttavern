@@ -23,6 +23,8 @@ type Slot='schema'|'source'|'author-identity'|'observation'|'control'|'input'|'c
 export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'|'card-export'|'reader-display-author'
   |'author-worldbook'
   |'source-images'
+  |'card-avatar'
+  |'native-card-conversion'
   |'tavern-inheritance'
   |'schema-derived-genesis'
   |`program-opening:${number}:${boolean}`

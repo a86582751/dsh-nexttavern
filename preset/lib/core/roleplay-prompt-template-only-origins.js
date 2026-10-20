@@ -133,6 +133,7 @@ export function mapPromptTemplateOnlyOriginsV1(input) {
     return { fields, owned, sectionInventory: sections.map((section, index) => ({ assignmentIndex: index, target: section.target,
             field: section.field, textSha256: sha256(section.text), disposition: section.field ? 'owned-author-prompt' : 'strict-literal-or-archive-only' })) };
 }
+import { nextTavernExecutionAuthorData, nextTavernExecutionAuthorPointer } from './nexttavern-card.js';
 /** Match the maintained stage's classification shape, while full portable
  * author controls remain in DATA. This does not copy author provenance. */
 function portableAssignmentShape(expected) {
@@ -147,11 +148,12 @@ function portableAssignmentShape(expected) {
 /** DATA owns exact author bytes; assignment spans own only the normalized
  * classifier receipt. Raw book content is independently owned by its compiler. */
 function mapNextTavernPromptAuthorOriginsV1(input, projection, inventory) {
-    const { decoded, record, source } = input, data = decoded.data;
+    const { decoded, record, source } = input, data = nextTavernExecutionAuthorData(decoded.data);
     const fields = [], groups = [];
     const rowOf = (table, key) => source.current.rows.find(row => row.ref.table === table && row.ref.key === key);
-    const add = (field, raw, table, key, rowField, assignmentIndex) => {
-        const originalPointer = `/data/${field}`;
+    const add = (logicalField, raw, table, key, rowField, assignmentIndex) => {
+        const originalPointer = nextTavernExecutionAuthorPointer(data, logicalField);
+        const field = originalPointer.slice('/data/'.length);
         if (raw === '') {
             fields.push({ field, originalPointer, presence: 'text', rawText: '', normalizedText: '', assignment: null,
                 currentGroupId: null, originalGroupSpan: null });

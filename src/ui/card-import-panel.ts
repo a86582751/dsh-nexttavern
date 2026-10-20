@@ -1,5 +1,6 @@
 import {createOpeningPanel} from './opening-panel.js'
 import {createCardUploadPanel} from './card-upload-panel.js'
+import {createNativeCardConversionPanel} from './native-card-conversion-panel.js'
 import type {CardUploadPanelDependencies} from './card-upload-panel.js'
 
 type CapabilityStatus = 'interpreted' | 'preserved-unexecuted' | 'missing-external-resource' | 'requires-optional-analysis'
@@ -36,6 +37,7 @@ export function createCardImportPanel(deps:CardUploadPanelDependencies) {
   const {React,jsonFetch,toast} = deps
   const Upload = createCardUploadPanel(deps)
   const Opening = createOpeningPanel({React,jsonFetch,toast})
+  const Conversion=createNativeCardConversionPanel({React,jsonFetch,toast})
   return function CardImportPanel({sessionId}:{sessionId:string}) {
     const [refresh,setRefresh] = React.useState(0)
     const [report,setReport] = React.useState<CapabilityReport | null>(null)
@@ -65,6 +67,7 @@ export function createCardImportPanel(deps:CardUploadPanelDependencies) {
         h('div',null,h('h3',null,'让角色卡进入这段故事'),
           h('p',null,'在聊天中上传角色卡，再说“导入这张卡”；也可以在这里选择文件并确认导入。'))),
       h(Upload,{sessionId,onImported:() => setRefresh(value => value + 1)}),
+      h(Conversion,{sessionId}),
       h('section',{className:'dsh-rp-card-import-section','aria-label':'选择开场'},
         h('div',{className:'dsh-rp-card-import-heading'},h('span',null,'选择开场'),h('small',null,'导入后，从作者提供的开场中选一个')),
         h(Opening,{sessionId,refreshToken:refresh})),

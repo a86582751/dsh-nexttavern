@@ -3,6 +3,8 @@ import type { TaskAgent, TaskSelection, StoredTask } from './tavern-task-types.j
 import type { ResourceRecord } from './roleplay-resource-bridge-types.js'
 import type { createTavernLibrary } from './tavern-library.js'
 import type {NextTavernCardExportDocument} from './nexttavern-card.js'
+import type {NativeCardConversionSnapshotV1,NativeCardClassificationV1} from './native-card-conversion.js'
+import type {resolveImportSource} from './roleplay-import-record.js'
 
 export interface CardWorkflowSession extends ContextSession { header: {cwd: string; seedLength?: unknown} }
 export interface CardWorkflowAgent extends TaskAgent { steer?(message: ContextMessage): unknown }
@@ -11,6 +13,16 @@ export interface CardWorkflowRecord extends ResourceRecord {
   workflowGeneration?: string
 }
 export interface CardWorkflowResult extends Record<string, unknown> { resourceId?: unknown }
+export interface NativeCardAuthoringOriginV1 {schemaVersion:1;kind:'native-authoring'}
+export type CardWorkflowResourceSourceV1=ReturnType<typeof resolveImportSource>
+export interface CardWorkflowExportStartSourceV1 {
+  sha256:string
+  document?:NextTavernCardExportDocument
+  conversionSnapshot?:NativeCardConversionSnapshotV1
+  conversionClassification?:NativeCardClassificationV1
+  nativeAuthoring?:boolean
+  assertCurrent():void
+}
 export interface CardWorkflowJob extends Record<string, unknown> {
   id: string
   kind: string
@@ -19,12 +31,16 @@ export interface CardWorkflowJob extends Record<string, unknown> {
   status: string
   selection?: TaskSelection
   execution: TaskSelection['execution'] | 'deterministic'
-  source: {sourceFile: string | null; sha256: string}
+  source: {sourceFile: string | null; sha256: string;fileSha256?:string}
   clientRequestId?: string
   toolCallIds?: string[]
   openingRequested?: boolean
   mode?: 'original'|'organized'
   exportDocument?: NextTavernCardExportDocument
+  conversionSnapshot?:NativeCardConversionSnapshotV1
+  conversionClassification?:NativeCardClassificationV1
+  nativeAuthoring?:boolean
+  authoringOrigin?:NativeCardAuthoringOriginV1
 }
 export interface CardWorkflowDependencies {
   T: {
@@ -40,7 +56,13 @@ export interface CardWorkflowDependencies {
   statusFixedContext(session: CardWorkflowSession): unknown
   /** Startup DATA fingerprint only; final export/source and Actor checks remain with their owners. */
   captureExportStartSource?(session: CardWorkflowSession,mode:'original'|'organized'):
-    {sha256: string; document?:NextTavernCardExportDocument; assertCurrent(): void}
+    CardWorkflowExportStartSourceV1
+  /** A frozen library file supplies its own author DATA. This must not import,
+   * activate or read the current conversation's author/editor tables. */
+  captureResourceConversionSource?(session:CardWorkflowSession,source:CardWorkflowResourceSourceV1):
+    CardWorkflowExportStartSourceV1|PromiseLike<CardWorkflowExportStartSourceV1>
+  driveNativeConversion?(session:CardWorkflowSession,job:CardWorkflowJob,
+    agent?:CardWorkflowAgent,signal?:AbortSignal):Promise<CardWorkflowResult>
   nativeTask(options: {
     session: CardWorkflowSession; agent?: CardWorkflowAgent; kind: string; format: string; selection: TaskSelection;
     source: {workflowId: string; workflowType: string; generation: string; events: {seq: number; hash: string}[]}; signal?: AbortSignal;

@@ -11,7 +11,8 @@ import { assertSteeringAgent } from './roleplay-task-tools.js'
 import type { JobRouteAgent, JobRouteBody, JobRouteRecord, JobRoutesDependencies, MaintenanceRoutesDependencies, MaintenanceRouteJob } from './roleplay-job-routes-types.js'
 
 export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports, modelPolicy, beginCardWorkflow,
-  resumeCardWorkflows, cardWorkflows, cardWorkflowKey, tavernTasks, taskAgents, libraryFor, migrateResources}: JobRoutesDependencies) {
+  resumeCardWorkflows,controlCardWorkflow,cardWorkflows,cardWorkflowKey,tavernTasks,taskAgents,libraryFor,migrateResources,
+  originalCardResource,nativeCardStatus,applyNativeCardConversion}: JobRoutesDependencies) {
   const attachmentSources = createCardAttachmentSources({T, libraryFor,
     fileUploads: ctx.fileUploads, attachments: ctx.attachments})
   const musicSources = createMusicAttachmentSources({T, libraryFor,
@@ -61,20 +62,24 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
         const children=jobs.length?latestChildJobs():undefined
         return jsonResponse(200,{ok:true,jobs:jobs.map(job=>publicJob(job,children))})
       }
-      const found=await ctx.sessionController.resolveAgent(session.id),agent=found?.agent
-      if(!agent)return jsonResponse(409,{ok:false,error:'当前会话代理尚未就绪'})
-      taskAgents.set(session.id,agent)
+      let agent:JobRouteAgent|undefined
+      // Cancellation only retires durable work; it remains available after
+      // the session Agent has stopped or could not be recreated.
+      if(body.action!=='cancel') {
+        const found=await ctx.sessionController.resolveAgent(session.id)
+        agent=found?.agent
+        if(!agent)return jsonResponse(409,{ok:false,error:'当前会话代理尚未就绪'})
+        taskAgents.set(session.id,agent)
+      }
       if(body.action) {
         if(body.action!=='retry'&&body.action!=='cancel')throw new Error('未知任务操作')
         const novel=novelExports.list(session).find(j=>j.id===body.jobId),card=cardWorkflows(session).find(j=>j.id===body.jobId)
         let job: {id: string; generation?: string}
         if(novel)job=await novelExports[body.action](session,body.jobId!)
         else if(card){
-          if(card.status==='completed')return jsonResponse(200,{ok:true,job:publicJob(card)})
-          const updated={...card,generation:randomUUID(),status:body.action==='cancel'?'cancelled':'queued',
-            error:null,failedAt:null}
-          job=updated;await T.branch.put(cardWorkflowKey(card.id),updated)
-          if(body.action==='retry')for(const [recordKey,record] of ([...T.branch.entries()] as [string, JobRouteRecord][]).filter(([,v])=>v?.workflowId===card.id))await T.branch.put(recordKey,{...record,workflowGeneration:job.generation})
+          const controlled=await controlCardWorkflow(session,card.id,body.action)
+          if(controlled.status==='completed')return jsonResponse(200,{ok:true,job:publicJob(controlled)})
+          job=controlled
         }
         else job=await tavernTasks[body.action](session,body.jobId!)
         if(novel||card)for(const task of tavernTasks.list(session).filter(t=>(t.source as {workflowId?: string} | undefined)?.workflowId===job.id&&!['completed','cancelled','stale'].includes(t.status)))await tavernTasks.cancel(session,task.id)
@@ -83,10 +88,11 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
         }else if(body.action==='retry'&&card?.execution==='deterministic'){
           await resumeCardWorkflows(session,agent)
           job=T.branch.get(cardWorkflowKey(card.id)) as typeof job
-        }else if(body.action==='retry')agent.steer(taskPhaseMessage('management','继续尚未完成的酒馆任务。'))
+        }else if(body.action==='retry')agent!.steer(taskPhaseMessage('management','继续尚未完成的酒馆任务。',
+          novel||card?{jobId:job.id,jobKind:novel?'novel-export':card!.kind}:{}))
         return jsonResponse(200,{ok:true,job:publicJob(job)})
       }
-      if(!['novel-export','card-export','card-import'].includes(body.kind))throw new Error('未知任务用途')
+      if(!['novel-export','card-export','card-import','card-convert'].includes(body.kind))throw new Error('未知任务用途')
       if(body.mode!==undefined&&body.mode!=='original'&&body.mode!=='organized')throw new Error('未知导出模式')
       assertWorkspaceSession(session)
       let sourceFile=body.resourceId?libraryFor(session).metadata(body.resourceId).path:body.sourceFile
@@ -94,13 +100,27 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
         if(body.kind !== 'card-import' || body.resourceId !== undefined || body.sourceFile !== undefined) {
           throw new Error('附件导入不能同时指定其他来源或任务用途')
         }
-        const materialized = await attachmentSources.materialize(session, agent, body.attachment, body.requestId)
+        const materialized = await attachmentSources.materialize(session, agent!, body.attachment, body.requestId)
         sourceFile = materialized.sourceFile
       }
       const job=await startExportJob(session,body.kind,agent,sourceFile,body.requestId,body.mode)
       return jsonResponse(202,{ok:true,job:publicJob(job)})
     }catch(error){return jsonResponse(400,{ok:false,error:String((error as Error).message)})}
   }}),'roleplay: persistent jobs route')
+  ctx.effect(()=>ctx.connection.fetch.register({requestBody:'buffered',path:'/api/roleplay/card-conversion',
+    methods:['GET','POST'],fetch:async request=>{
+      try {
+        const body=request.method==='POST'?await request.json() as {sessionId?:string;jobId?:string}:null
+        const session=await resolveRoleplaySession(body?.sessionId??new URL(request.url).searchParams.get('sessionId'))
+        if(!session)return jsonResponse(404,{ok:false,error:'角色扮演会话不存在'})
+        assertWorkspaceSession(session)
+        if(body){
+          if(typeof body.jobId!=='string'||!applyNativeCardConversion)throw Error('转换任务不存在')
+          await applyNativeCardConversion(session,body.jobId)
+        }
+        return jsonResponse(200,{ok:true,capability:nativeCardStatus?.(session)})
+      }catch(error){return jsonResponse(400,{ok:false,error:error instanceof Error?error.message:String(error)})}
+    }}),'roleplay: native card conversion binding')
   ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered',
     path: '/api/roleplay/music', methods: ['POST'], fetch: async request => {
       try {
@@ -118,6 +138,11 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
     },
   }), 'roleplay: explicit music upload route')
   const resourceRoutes: [string, (session: CardWorkflowSession, url: URL) => Promise<Response>][] = [
+    ['/api/roleplay/card-source',async(session)=>{
+      if(!originalCardResource)throw Error('当前版本尚未提供源文件导出')
+      const resource=await originalCardResource(session)
+      return libraryFor(session).openDownload(resource.id)
+    }],
     ['/api/roleplay/resources',async(session)=>{const lib=await migrateResources(session);return jsonResponse(200,{ok:true,resources:lib.list(),pending:lib.pending()})}],
     ['/api/roleplay/resource',async(session,url)=>{const lib=libraryFor(session),id=url.searchParams.get('resourceId'),resource=lib.metadata(id);let text
       if(resource.type==='image/png')text=JSON.stringify(decodeTavernCard(Buffer.from(await lib.openDownload(id).arrayBuffer()),'.png').data,null,2)

@@ -39,6 +39,7 @@ import type {PromptProgramV1,PromptCaptureV1,PromptExecutionV1,PromptExecutionOu
 import type {BrowserGenerationOutput,AuthorBrowserPreparationFacts} from './roleplay-author-browser-generation-types.js'
 import type {BrowserProgramV2} from './tavern-author-browser-types-v2.mjs'
 import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
+import type {TavernRenderedAuthorMaterialV1} from './roleplay-tavern-prompt-types.js'
 import type {TavernLoreDerivedSnapshotV1} from './tavern-lore-derived.mjs'
 
 export {TAVERN_NATIVE_PROMPT_SETTINGS_V1} from './roleplay-tavern-content.js'
@@ -360,7 +361,20 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         semanticStoryIds=new Set(semanticStory.map(row=>row.id)),semanticStorySha256=recordSha256(semanticStory)
       const {source:_editSource,...editData}=captured.edits,
         {source:_variableSource,...variableInput}=variables.input
+      const renderedAuthorMaterial:TavernRenderedAuthorMaterialV1=freeze({
+        sourceCurrentIdentitySha256:captured.currentIdentitySha256,
+        authorGroups:[
+          {id:'/native/current-author/cards',text:author[0]!.renderedText,
+            parts:residual.parts.filter(part=>part.kind==='card')},
+          {id:'/native/current-author/rules',text:author[1]!.renderedText,
+            parts:residual.parts.filter(part=>part.kind!=='card'&&part.kind!=='examples')},
+          {id:'/native/current-author/examples',text:author[2]!.renderedText,
+            parts:residual.parts.filter(part=>part.kind==='examples')},
+        ],finalLore,compilationEntries:compilation.plan.entries.map(({entryId,ordinal,sourceKey,sourcePointer})=>
+          ({entryId,ordinal,sourceKey,sourcePointer})),currentNativeMembership:!!compilation.plan.currentNativeMembership,
+      })
       return {kind:'prepared-data' as const,...layout,
+        renderedAuthorMaterial,
         ...messageTextProjections.length?{messageTextProjections}:{},
         snapshot:freeze({schemaVersion:1,encoding:'native-tavern-prompt-capture-v1',authority:'consumer-data-only',
           policy,source,...authorPrompt?{authorPrompt}:{},...authorBrowser?{authorBrowser}:{},

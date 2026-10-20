@@ -68,6 +68,8 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
                 if (k.startsWith(pPrefix) && v) await table.put(cP + k.slice(pPrefix.length), cloneBranchRecord(v))
               }
             }
+            const conversionSeed=deps.nativeCardAdvanced?.captureForkSeed(parent)
+            if(conversionSeed)await deps.nativeCardAdvanced!.applyForkSeed(session.id,conversionSeed)
             }
             const parentSettings = T.branch.get(keyOf(parent, 'settings'))
             for(const [k,v] of [...T.branch.entries()])if(k.startsWith(`${parent}__cluster-lore-`)&&Number(v.seq)<Number(seedLength)&&clusterLoreVisible(session,v,Number(seedLength)))

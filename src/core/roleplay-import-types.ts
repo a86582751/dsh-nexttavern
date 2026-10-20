@@ -4,6 +4,7 @@ import type { TavernCapabilityReport, TavernExtensionInventory, TavernExtensionI
   TavernFieldCoverage } from './tavern-card.js'
 import type { CardAssignment } from './tavern-card.js'
 import type {NativeCardOpeningExportReadV1} from './roleplay-card-export-opening.js'
+import type {NativeCardOriginalSourceV1} from './roleplay-resource-bridge-types.js'
 
 export interface SourceSpan { startLine: number; endLine: number }
 export interface ImportAssignment extends SourceSpanMetadata {
@@ -88,6 +89,11 @@ export interface ImportRecord extends Record<string, unknown> {
   sourceMtimeMs: number
   normalizer: string
   sourceEnvelope?: ImportSourceEnvelope
+  /** Local conversion provenance; never accepted from uploaded author JSON. */
+  originalCardSource?: NativeCardOriginalSourceV1
+  authoringOrigin?:import('./roleplay-card-workflow-types.js').NativeCardAuthoringOriginV1
+  /** Schema 7 keeps extracted DOCX text separate from original binary identity. */
+  extractedSource?:{schemaVersion:1;encoding:'docx-markdown-v1';sha256:string;bytes:number}
   fieldProof?: TavernFieldCoverage
   extensionInventory?: TavernExtensionInventory
   extensionDeclarations?: TavernExtensionInventoryV3
@@ -153,6 +159,7 @@ export interface ImportWrite {
 }
 export interface MaterialPiece extends ImportAssignment { content: string; source: SourceDescriptor }
 export interface CardWorkflow {
+  authoringOrigin?:import('./roleplay-card-workflow-types.js').NativeCardAuthoringOriginV1
   id: string
   kind: string
   generation: string

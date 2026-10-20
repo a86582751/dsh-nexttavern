@@ -3,7 +3,7 @@ import { sessionEvents } from './session-history.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { adaptationToolResult } from '../memory/memory-provenance.js';
 import { readCardSource } from './tavern-card.js';
-/** A delivered, checked MD is the checkpoint for research/authoring, before card import begins. */
+/** A delivered, checked JSON or legacy MD is the research/authoring checkpoint. */
 export function retireDeliveredDraft(session, currentTurn) {
     if (!session.append)
         return 0;
@@ -116,7 +116,7 @@ export function retireFinishedAdaptation(session, currentTurn, activeImport) {
         if (event.type !== 'tool/result')
             continue;
         const id = event.data?.message?.source?.callId, call = id ? calls.get(id) : undefined;
-        if (!call || !['rp_source_begin', 'rp_source_library', 'rp_source_finish', 'rp_source_close', 'rp_card_import_begin', 'rp_card_import_finalize'].includes(call.name))
+        if (!call || !['rp_source_begin', 'rp_source_library', 'rp_source_finish', 'rp_source_close', 'rp_card_import_begin', 'rp_card_import_finalize', 'rp_commit_card'].includes(call.name))
             continue;
         const decoded = adaptationToolResult(event.data?.message);
         if (!decoded || decoded.failed)
@@ -158,11 +158,17 @@ export function retireFinishedAdaptation(session, currentTurn, activeImport) {
             importHash = importId && /^[a-f0-9]{64}$/.test(String(proof.normalizedSha256)) ? String(proof.normalizedSha256) : null;
             continue;
         }
-        if (call.name === 'rp_card_import_finalize' && researchStart !== null && finished && importId && importHash && proof.importId === importId
-            && proof.normalizedSha256 === importHash && proof.ok === true && proof.coverage === 1
+        // Native authoring commits through Core's same import transaction and
+        // returns its actual activation summary. Legacy column writes have no
+        // such summary and cannot retire research as if they activated a card.
+        const nativeCommit = call.name === 'rp_commit_card';
+        if ((call.name === 'rp_card_import_finalize' || nativeCommit) && researchStart !== null && finished
+            && (nativeCommit || importId && importHash && proof.importId === importId && proof.normalizedSha256 === importHash)
+            && proof.ok === true && proof.coverage === 1
             && typeof proof.activatedAt === 'number' && Number.isFinite(proof.activatedAt) && proof.activatedAt > 0
             && typeof proof.importId === 'string' && /^[a-f0-9]{64}$/.test(String(proof.normalizedSha256))) {
-            spans.push({ start: researchStart, sourceId, end: event.seq, turn, importId: proof.importId, normalizedSha256: importHash });
+            spans.push({ start: researchStart, sourceId, end: event.seq, turn, importId: proof.importId,
+                normalizedSha256: String(proof.normalizedSha256) });
             researchStart = null;
         }
     }

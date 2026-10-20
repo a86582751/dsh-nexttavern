@@ -135,6 +135,7 @@ import type {PromptProgramAuthorMappingV1,PromptProgramAssignmentOriginV1,
   from './roleplay-prompt-program-source-types.js'
 import type {SourceDescriptor} from './roleplay-import-types.js'
 import type {NextTavernCardData} from './nexttavern-card.js'
+import {nextTavernExecutionAuthorData,nextTavernExecutionAuthorPointer} from './nexttavern-card.js'
 
 /** Match the maintained stage's classification shape, while full portable
  * author controls remain in DATA. This does not copy author provenance. */
@@ -154,13 +155,14 @@ function portableAssignmentShape(expected:ImportAssignment):ImportAssignment {
 function mapNextTavernPromptAuthorOriginsV1(input:{decoded:DecodedTavernCard;record:ImportRecord;
   source:TavernLoreSourceDataV1},projection:ReturnType<typeof projectStructuredImport>,
   inventory:PromptProgramAssignmentOriginV1[]):PromptProgramAuthorMappingV1 {
-  const {decoded,record,source}=input,data=decoded.data as NextTavernCardData
+  const {decoded,record,source}=input,data=nextTavernExecutionAuthorData(decoded.data as NextTavernCardData)
   const fields:PromptProgramAuthorFieldMappingV1[]=[],groups:PromptProgramAuthorGroupMappingV1[]=[]
   const rowOf=(table:'cards'|'worldbook'|'rules'|'status',key:string)=>
     source.current.rows.find(row=>row.ref.table===table&&row.ref.key===key)!
-  const add=(field:NextTavernPromptAuthorFieldV1,raw:string,table:'cards'|'worldbook'|'rules'|'status',
+  const add=(logicalField:NextTavernPromptAuthorFieldV1,raw:string,table:'cards'|'worldbook'|'rules'|'status',
     key:string,rowField:string,assignmentIndex:number)=>{
-    const originalPointer=`/data/${field}`
+    const originalPointer=nextTavernExecutionAuthorPointer(data,logicalField)
+    const field=originalPointer.slice('/data/'.length) as NextTavernPromptAuthorFieldV1
     if(raw==='') {
       fields.push({field,originalPointer,presence:'text',rawText:'',normalizedText:'',assignment:null,
         currentGroupId:null,originalGroupSpan:null});return

@@ -3,7 +3,7 @@ import { selectedMainRoute, withTavernLock } from './tavern-tasks.js'
 import { clusterSettings } from './character-cluster.js'
 import type { ReasoningInfo, SettingsRouteBody, SettingsRoutesDependencies } from './roleplay-settings-routes-types.js'
 
-export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, memorySettingFields, memorySettingsPolicy, svc, narrativePresets, mutateSource}: SettingsRoutesDependencies) {
+export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, nativeCardCapability, memorySettingFields, memorySettingsPolicy, svc, narrativePresets, mutateSource}: SettingsRoutesDependencies) {
   const writeSource: NonNullable<SettingsRoutesDependencies['mutateSource']> =
     mutateSource ?? (async (_session, work) => work())
   ctx.effect(() => ctx.connection.fetch.register({requestBody: 'buffered',path: '/api/roleplay/presets', methods: ['GET', 'POST'], fetch: async request => {
@@ -43,7 +43,7 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
             ...(Array.isArray(reasoning?.efforts)?{reasoning:{efforts:reasoning.efforts.map(({id,name,description})=>({id,name,...(description?{description}:{})})),...(reasoning.defaultEffort?{defaultEffort:reasoning.defaultEffort}:{})}}:{})})
         } }catch{}
       }
-      return jsonResponse(200,{ok:true,...data,catalog})
+      return jsonResponse(200,{ok:true,...data,catalog,capability:nativeCardCapability?.(session)})
     }catch(error){return jsonResponse(String((error as Error).message).includes('已更新')?409:400,{ok:false,error:String((error as Error).message)})}
   }}),'roleplay: model policy route')
   ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path:'/api/roleplay/character-cluster',methods:['GET','POST'],fetch:async request=>{
@@ -66,7 +66,7 @@ export function registerSettingsRoutes({ctx, T, resolveRoleplaySession, modelPol
         if(body.scope==='global')await characterCluster.saveGlobal(settings,body.expectedRevision!)
         else await characterCluster.save(session,settings,body.expectedRevision!)
       }
-      return jsonResponse(200,{ok:true,sessionId:session.id,settings:characterCluster.read(session),session:characterCluster.readLocal(session),global:characterCluster.readGlobal(),characters:characterRoster(session).map(({id,name})=>({id,name}))})
+      return jsonResponse(200,{ok:true,sessionId:session.id,settings:characterCluster.read(session),session:characterCluster.readLocal(session),global:characterCluster.readGlobal(),characters:characterRoster(session).map(({id,name})=>({id,name})),capability:nativeCardCapability?.(session)})
     }catch(error){return jsonResponse(String((error as Error).message).includes('已更新')?409:400,{ok:false,error:String((error as Error).message)})}
   }}),'roleplay: character cluster settings')
   ctx.effect(()=>ctx.connection.fetch.register({requestBody: 'buffered',path:'/api/roleplay/memory-settings',methods:['GET','POST'],fetch:async request=>{

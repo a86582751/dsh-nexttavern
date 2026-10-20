@@ -1,5 +1,5 @@
 // Generated from runtime/alpha3/src/core/roleplay-input-continuation.ts; edit the TypeScript source.
-/** Hot nomination of actual Native after-story messages under one unchanged
+/** Hot nomination of actual Native cast and after-story messages under one unchanged
  * prepared work. Owns reference tokens only; never an inbox, body or cold grant. */
 import { recordSha256 } from './roleplay-data.js';
 const blocked = (code) => ({ kind: 'blocked', code });
@@ -9,8 +9,15 @@ function purpose(message, turn) {
     // Core's producer is outside Native's closed source union. Inspect the
     // actual producer fields without extending that upstream public union.
     const source = message.source;
-    return source?.kind === 'roleplay-tasks' && source.form === 'phase'
-        && source.stage === 'after-story' && source.turn === turn;
+    if (source?.kind !== 'roleplay-tasks' || source.form !== 'phase' || source.turn !== turn)
+        return undefined;
+    if (source.stage === 'after-story')
+        return 'after-story';
+    if (source.stage === 'character-cast' && source.castReminder === true)
+        return 'character-cast';
+    if (source.stage === 'story' && source.characterCast === true)
+        return 'character-cast';
+    return undefined;
 }
 export function createRoleplayInputContinuation({ current, checkCurrent }) {
     let control, epoch = 0, maintenance = false;
@@ -37,7 +44,7 @@ export function createRoleplayInputContinuation({ current, checkCurrent }) {
     function actual(entry, ref, message, turn) {
         return !!entry.ref && same(entry.ref, ref) && message.id === entry.messageId
             && recordSha256(message) === entry.messageSha256 && ref.messageId === message.id
-            && ref.messageSha256 === entry.messageSha256 && purpose(message, turn);
+            && ref.messageSha256 === entry.messageSha256 && entry.purpose === purpose(message, turn);
     }
     return {
         setControl(value) { control = value; },
@@ -50,8 +57,8 @@ export function createRoleplayInputContinuation({ current, checkCurrent }) {
         },
         isMaintenance() { return maintenance && !!scope(); },
         steer(message, turn) {
-            const live = scope();
-            if (!live || !control || live.checkpoint.actualTurn !== turn || !purpose(message, turn)) {
+            const live = scope(), nominatedPurpose = purpose(message, turn);
+            if (!live || !control || live.checkpoint.actualTurn !== turn || !nominatedPurpose) {
                 return blocked('INPUT_CONTINUATION_SCOPE_INVALID');
             }
             for (const nominated of active) {
@@ -62,7 +69,7 @@ export function createRoleplayInputContinuation({ current, checkCurrent }) {
             }
             const token = Object.freeze({}), entry = { epoch, currencySha256: recordSha256(live.currency),
                 parentSha256: recordSha256(live.checkpoint), turn, messageId: message.id,
-                messageSha256: recordSha256(message), purpose: 'after-story' };
+                messageSha256: recordSha256(message), purpose: nominatedPurpose };
             tokens.set(token, entry);
             active.add(token);
             let result;
@@ -129,7 +136,9 @@ export function createRoleplayInputContinuation({ current, checkCurrent }) {
             // same actual claim are allowed; recognize never authorizes another claim.
             for (const { entry, sha256 } of claimed)
                 entry.claimSha256 = sha256;
-            maintenance = true;
+            // Cast still owes the original Story. Only the later after-story claim
+            // changes the consumer phase; earlier cumulative cast claims stay bound.
+            maintenance = claimed.at(-1).entry.purpose === 'after-story';
             return allow;
         },
     };

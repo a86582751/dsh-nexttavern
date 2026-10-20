@@ -1,13 +1,32 @@
 // Generated from runtime/alpha3/src/core/roleplay-authoring.ts; edit the TypeScript source.
 import { keyOf, stableImportId, sha256 } from './roleplay-data.js';
 import { lastSeq } from './roleplay-context.js';
-import { readCardSource } from './tavern-card.js';
+import { readCardSource, inspectTavernCardDocument } from './tavern-card.js';
+import { isNextTavernCardDocument } from './nexttavern-card.js';
 import { statusTemplateDiagnostics } from '../status-template.js';
 import { boundedRegexMatch } from './bounded-regex.js';
 import { simpleTool } from './roleplay-task-tools.js';
 import { SOURCE_WORLDBOOK_EDITOR_REQUIRED_V1 } from './roleplay-tavern-legacy-write-target-types.js';
 import { INDEPENDENT_AUTHOR_CORE_V1, authorRuleEditV1 } from './roleplay-import-record.js';
-export function registerCardAuthoring({ ctx, T, svc, RULE_TEXT_FIELDS, sessionOf, beforeWrite, mutateSource, checkLegacyWorldbookWriteTargets }) {
+/** Authored cards already separate their characters and rules. This boundary
+ * validates that document directly; it never asks a model to classify it again. */
+export function readAuthoredNativeCardDocumentV1(value) {
+    const decoded = inspectTavernCardDocument(value);
+    if (!isNextTavernCardDocument(decoded.document))
+        throw Error('写卡定稿必须是 NextTavern 原生 JSON');
+    const document = structuredClone(decoded.document), ids = new Set();
+    for (const character of document.data.cards) {
+        if (character.kind === 'user' && character.characterId === undefined)
+            character.characterId = 'user';
+        if (typeof character.characterId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(character.characterId))
+            throw Error('每个人物必须提供稳定的 ASCII characterId（1–64 位字母、数字、下划线或连字符）');
+        if (ids.has(character.characterId))
+            throw Error('人物 characterId 不能重复');
+        ids.add(character.characterId);
+    }
+    return document;
+}
+export function registerCardAuthoring({ ctx, T, svc, RULE_TEXT_FIELDS, sessionOf, beforeWrite, mutateSource, commitNativeDocument, checkLegacyWorldbookWriteTargets }) {
     const writeSource = mutateSource ?? (async (_session, work) => work());
     // rp_commit_card 的结构化写入（id 一律 sanitize）
     async function commitParsedCard(session, data, atSeq) {
@@ -94,9 +113,15 @@ export function registerCardAuthoring({ ctx, T, svc, RULE_TEXT_FIELDS, sessionOf
         }
         return written;
     }
-    ctx.effect(() => ctx.tools.register(simpleTool('rp_commit_card', '写卡工作流最后一步：主代理完成合成与矫审后，把最终结构化的角色卡/世界书/状态栏设定/叙事规则/初始剧情一次性写入当前分支（旧栏目为新版本，绝不覆盖历史）。', {
+    ctx.effect(() => ctx.tools.register(simpleTool('rp_commit_card', '写卡与小说改编的共同定稿入口。完成原生 JSON 草稿检查且玩家授权应用后，传 native_document 完整 NextTavern 卡：程序沿现有导入事务保存并激活，不重新分类、不插入剧情或重复开场。native_document 不与旧栏目参数混用。旧结构化栏目参数继续兼容局部编辑。', {
         type: 'object',
         properties: {
+            native_document: {
+                type: 'object', description: '完整 NextTavern 原生角色卡；新创作使用 spec=nexttavern_card、spec_version=1.0。每个人物带稳定 characterId；data 分别保存 cards/worldbook/rules/status/opening/settings，archive={}。',
+                properties: { spec: { type: 'string', enum: ['nexttavern_card'] }, spec_version: { type: 'string', enum: ['1.0', '1.1'] },
+                    data: { type: 'object', additionalProperties: true }, archive: { type: 'object', additionalProperties: true } },
+                required: ['spec', 'spec_version', 'data', 'archive'], additionalProperties: true,
+            },
             cards: {
                 type: 'array',
                 items: {
@@ -152,6 +177,16 @@ export function registerCardAuthoring({ ctx, T, svc, RULE_TEXT_FIELDS, sessionOf
     }, async (args, exec) => {
         const session = await sessionOf(exec);
         await beforeWrite?.(exec);
+        if (args.native_document !== undefined) {
+            if (Object.keys(args).some(key => key !== 'native_document'))
+                throw Error('native_document 不能与旧栏目参数混用');
+            const document = readAuthoredNativeCardDocumentV1(args.native_document);
+            if (!commitNativeDocument)
+                throw Error('当前原生写卡定稿入口尚未就绪');
+            // Core's shared import transaction owns activation and rollback.
+            // Entering it under writeSource would reacquire its own lock.
+            return commitNativeDocument(session, document, lastSeq(session), exec);
+        }
         const data = {
             cards: args.cards ?? [],
             worldbook: (args.worldbook ?? []).map((e) => ({ ...e, tokenBudget: e.token_budget, alwaysOn: e.always_on })),
@@ -185,15 +220,74 @@ export function registerCardAuthoring({ ctx, T, svc, RULE_TEXT_FIELDS, sessionOf
     })), 'roleplay: tool rp_commit_card');
 }
 export function registerDraftCheck({ ctx, sessionOf, beforeWrite }) {
-    ctx.effect(() => ctx.tools.register(simpleTool('rp_card_draft_check', '写卡管理入口与只读文件检查。开始创作/询问偏好时不传路径；定稿后传 source_path 检查实际 Markdown 文件、JSON、美化规则。不会激活角色卡或生成剧情。', { type: 'object', properties: { source_path: { type: 'string' }, review: { type: 'array', maxItems: 12, items: { type: 'object', properties: { id: { type: 'string' }, section: { type: 'string', description: '实际文件中对应章节的完整标题，不含 #' }, basis: { type: 'string', enum: ['confirmed', 'default'] } }, required: ['id', 'section', 'basis'], additionalProperties: false } } }, additionalProperties: false }, async (args, exec) => {
+    ctx.effect(() => ctx.tools.register(simpleTool('rp_card_draft_check', '写卡与小说改编的共同管理入口和只读草稿检查。开始交流偏好时不传路径；定稿传原生 NextTavern JSON 文件，十二项 review.section 指向实际 JSON pointer。无需状态/美化/正则时可用 default + not-needed；不强制生成无用规则。兼容旧 Markdown 草稿。不会激活角色卡或生成剧情。', { type: 'object', properties: { source_path: { type: 'string' }, review: { type: 'array', maxItems: 12, items: { type: 'object', properties: { id: { type: 'string' }, section: { type: 'string', description: '原生 JSON 使用实际字段的 JSON pointer，如 /data/cards；明确省略的 status/beauty/regex 使用 not-needed 且 basis=default。旧 Markdown 使用完整章节标题，不含 #。' }, basis: { type: 'string', enum: ['confirmed', 'default'] } }, required: ['id', 'section', 'basis'], additionalProperties: false } } }, additionalProperties: false }, async (args, exec) => {
         const session = await sessionOf(exec);
         const checklist = Object.entries({ overview: '角色卡整体概述', world: '世界观：背景、核心矛盾/剧情驱动力、特殊种族、与现实的核心区别', factions: '势力设定', locations: '重要地点场景描述', characters: '多角色：基本信息、小传、外貌、性格、萌点、特质、语言风格、喜好、行为逻辑', plot: '剧情发展指引', style: '文风特化示例', opening: '开场剧情', status: '状态栏', rules: '叙事与回复规则', beauty: 'HTML/CSS美化', regex: '正则表达式' }).map(([id, label]) => ({ id, label }));
         if (!args.source_path)
             return { ok: true, mode: 'authoring', checklist, next: '先通过原生 ask_user_question / questions 分批交流偏好，每批3–4个有具体选项的问题，保留自由描述，根据上一批回答调整下一批。用户说你来决定即可跳过剩余问题，但仍需检查全部12项。大纲明确后可并行细化独立模块。不要向玩家解释内部管理标记。' };
         await beforeWrite?.(exec);
         const source = readCardSource(session.header.cwd, args.source_path);
-        if (!['.md', '.markdown'].includes(source.extension) || source.bytes.length > 1_000_000)
-            throw new Error('请提供当前工作区内 1MB 以内的 Markdown 草稿');
+        if (!['.json', '.md', '.markdown'].includes(source.extension) || source.bytes.length > 1_000_000)
+            throw new Error('请提供当前工作区内 1MB 以内的 NextTavern JSON 或兼容 Markdown 草稿');
+        if (source.extension === '.json') {
+            const errors = [], review = Array.isArray(args.review) ? args.review : [];
+            let document;
+            try {
+                document = readAuthoredNativeCardDocumentV1(JSON.parse(source.bytes.toString('utf8')));
+            }
+            catch (error) {
+                errors.push(`原生 JSON 草稿无效：${error instanceof Error ? error.message : String(error)}`);
+            }
+            const pointerExists = (pointer) => {
+                if (!document || !pointer.startsWith('/'))
+                    return false;
+                let value = document;
+                for (const key of pointer.slice(1).split('/').map(part => part.replace(/~1/g, '/').replace(/~0/g, '~'))) {
+                    if (!value || typeof value !== 'object' || !Object.hasOwn(value, key))
+                        return false;
+                    value = value[key];
+                }
+                return true;
+            };
+            const omitted = new Set(['status', 'beauty', 'regex']);
+            for (const item of checklist) {
+                const records = review.filter(record => record.id === item.id), record = records[0];
+                if (records.length !== 1 || !record || !['confirmed', 'default'].includes(record.basis)
+                    || !(pointerExists(record.section) || omitted.has(item.id) && record.basis === 'default' && record.section === 'not-needed')) {
+                    errors.push(`请审阅 ${item.id}（${item.label}），提交对应实际 JSON pointer 与 confirmed/default 依据`);
+                }
+            }
+            if (review.some(record => !checklist.some(item => item.id === record.id)))
+                errors.push('审阅记录包含未知清单项');
+            const statusRendering = statusTemplateDiagnostics(document?.data.status?.text ?? '');
+            errors.push(...statusRendering.errors);
+            const configured = document?.data.rules.beauty?.regexRules ?? [], rules = [];
+            if (!Array.isArray(configured))
+                errors.push('beauty.regexRules 必须为数组');
+            else
+                for (const rule of configured) {
+                    if (!rule || typeof rule !== 'object' || typeof rule.match !== 'string'
+                        || typeof rule.replace !== 'string')
+                        errors.push('正则条目需要 match/replace 字符串');
+                    else
+                        rules.push(rule);
+                }
+            if (rules.length && document) {
+                const data = document.data, samples = [...data.cards.map(row => row.content), ...data.worldbook.map(row => row.content),
+                    ...Object.values(data.rules).filter((value) => typeof value === 'string'),
+                    data.status?.text ?? '', data.opening?.text ?? ''].join('\n');
+                const regex = await boundedRegexMatch(rules.map(rule => ({ pattern: rule.match,
+                    flags: String(rule.flags ?? 'm').replace(/[gy]/g, '') })), samples.slice(-32768));
+                if (!regex.ok)
+                    errors.push(`正则检查未完成：${regex.reason}`);
+                else
+                    regex.matches.forEach((matched, index) => { if (!matched)
+                        errors.push(`第 ${index + 1} 条正则无有效匹配示例或表达式无效`); });
+            }
+            return { ok: errors.length === 0, schemaVersion: 1, format: 'json-nexttavern-v1', sourcePath: source.sourcePath,
+                bytes: source.sourceBytes, sha256: sha256(source.bytes), regexRules: rules.length, errors, checklist, statusRendering,
+                limitations: '程序仅检查原生字段结构、人物身份、审阅记录与实际配置的美化规则；创作质量和视觉效果仍由创作者核对。没有激活卡片。' };
+        }
         const text = source.bytes.toString('utf8'), errors = [], rules = [];
         const headings = [...text.matchAll(/^#{1,3}\s+(.+)$/gm)].map(m => m[1].trim());
         const review = Array.isArray(args.review) ? args.review : [];
@@ -230,14 +324,14 @@ export function registerDraftCheck({ ctx, sessionOf, beforeWrite }) {
                 errors.push(`第 ${jsonBlocks} 个 JSON 代码块无法解析`);
             }
         }
-        const regex = await boundedRegexMatch(rules.map(r => ({ pattern: r.match, flags: String(r.flags ?? 'm').replace(/[gy]/g, '') })), text.slice(-32768));
-        if (!jsonBlocks || rules.length < 2)
-            errors.push('全量草稿应提供至少两条正则规则及对应示例');
-        if (!regex.ok)
-            errors.push(`正则检查未完成：${regex.reason}`);
-        else
-            regex.matches.forEach((matched, i) => { if (!matched)
-                errors.push(`第 ${i + 1} 条正则无有效匹配示例或表达式无效`); });
+        if (rules.length) {
+            const regex = await boundedRegexMatch(rules.map(r => ({ pattern: r.match, flags: String(r.flags ?? 'm').replace(/[gy]/g, '') })), text.slice(-32768));
+            if (!regex.ok)
+                errors.push(`正则检查未完成：${regex.reason}`);
+            else
+                regex.matches.forEach((matched, i) => { if (!matched)
+                    errors.push(`第 ${i + 1} 条正则无有效匹配示例或表达式无效`); });
+        }
         return { ok: errors.length === 0, schemaVersion: 1, sourcePath: source.sourcePath, bytes: source.sourceBytes, sha256: sha256(text),
             headings: headings.slice(0, 100), jsonBlocks, regexRules: rules.length, errors, checklist, statusRendering,
             limitations: '程序仅检查文件与可解析/匹配结构；人物深度、栏目语义完整性、CSS视觉效果及剧情一致性仍需创作者核对。没有激活卡片。' };

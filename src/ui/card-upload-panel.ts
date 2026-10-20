@@ -46,7 +46,7 @@ const sameIndex = (a: CardUploadRequestIndex | null, b: CardUploadRequestIndex) 
 const safeFailure = (cause: unknown, fallback: string) =>
     cause instanceof CardUploadRequestError ? cause.message : fallback;
 const fileFailure = (file: File) => {
-    if (!/\.(png|json|md|txt)$/i.test(file.name)) return '请选择 PNG、JSON、MD 或 TXT 格式的角色卡';
+    if (!/\.(png|json|md|txt|docx)$/i.test(file.name)) return '请选择 PNG、JSON、MD、TXT 或 DOCX 格式的角色卡';
     if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > 20_000_000) {
         return '角色卡文件须非空且不超过 20 MB';
     }
@@ -229,8 +229,8 @@ export function createCardUploadPanel({React, jsonFetch, toast, confirmWithDialo
         const h = React.createElement;
         return h('fieldset', {className: 'dsh-rp-card-upload', disabled: current.busy},
             h('legend', null, '上传角色卡'),
-            h('p', null, '支持 PNG、JSON、MD、TXT，最大 20 MB。确认导入后会替换当前人设。'),
-            h('label', {className:'dsh-rp-card-file'}, '选择角色卡文件', h('input', {type: 'file', accept: '.png,.json,.md,.txt',
+            h('p', null, '支持 PNG、JSON、MD、TXT、DOCX，最大 20 MB。确认导入后会替换当前人设。'),
+            h('label', {className:'dsh-rp-card-file'}, '选择角色卡文件', h('input', {type: 'file', accept: '.png,.json,.md,.txt,.docx',
                 disabled: recovering || Boolean(current.error), onChange: selectFile})),
             current.file ? h('p', null, '角色卡文件已选择，等待确认导入') : null,
             recovering ? h('p', null, '已保留原导入任务的恢复标识；确认会使用同一任务，不需要重新选择文件。') : null,

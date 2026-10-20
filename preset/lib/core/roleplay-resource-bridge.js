@@ -1,8 +1,7 @@
 // Generated from runtime/alpha3/src/core/roleplay-resource-bridge.ts; edit the TypeScript source.
 import { realpathSync } from 'node:fs';
-import { resolve, extname } from 'node:path';
+import { resolve, extname, basename } from 'node:path';
 import { createTavernLibrary } from './tavern-library.js';
-import { decodeTavernCard } from './tavern-card.js';
 import { sha256, isPathWithin } from './roleplay-data.js';
 export function createResourceBridge(deps) {
     const { T } = deps;
@@ -15,6 +14,8 @@ export function createResourceBridge(deps) {
     };
     const resourceName = (name, extension = '.md') => `${String(name ?? '角色卡').normalize('NFC').replace(/[\x00-\x1f<>:"/\\|?*]/g, '-').replace(/[. ]+$/, '').slice(0, 90) || '角色卡'}${extension}`;
     async function archiveImported(session, record) {
+        if (record.originalCardSource !== undefined)
+            return originalCardResource(session, record);
         if (record.sourceEnvelope?.schemaVersion === 2) {
             const resource = libraryFor(session).archivalIdentity(record.sourceEnvelope.transportResourceId);
             if (resource.fullSha256 !== record.rawSha256 || resource.bytes !== record.sourceEnvelope.transportBytes)
@@ -25,19 +26,42 @@ export function createResourceBridge(deps) {
         const bytes = record.sourceEnvelope ? Buffer.from(record.sourceEnvelope.base64, 'base64') : Buffer.from(record.rawSource, 'utf8');
         if (sha256(bytes) !== record.rawSha256)
             throw new Error('入库原卡哈希不匹配');
-        let name = '角色卡';
-        if (record.sourceEnvelope)
-            name = decodeTavernCard(bytes, extension).data.name ?? name;
-        else
-            name = record.assignments?.find(a => a.target === 'card')?.name ?? name;
-        if (record.resourceTitle)
-            name = record.resourceTitle;
-        const migrated = await libraryFor(session).migrate({ id: `import-${record.importId}`, name: resourceName(name, extension || '.md'),
-            type: extension === '.png' ? 'image/png' : extension === '.json' ? 'application/json' : 'text/markdown', bytes,
+        // Library objects prepend their hash to the uploaded filename. Strip that
+        // storage prefix only inside the owned object directory; ordinary source
+        // filenames, including one that happens to start with a hash, stay literal.
+        let filename = basename(record.sourceFile ?? '');
+        if (record.sourceFile && isPathWithin(resolve(session.header.cwd, 'tavern-library', 'objects'), resolve(session.header.cwd, record.sourceFile)))
+            filename = filename.replace(/^[a-f0-9]{64}--/i, '');
+        const physicalExtension = extname(filename);
+        const name = filename ? (physicalExtension ? filename.slice(0, -physicalExtension.length) : filename) : '角色卡';
+        const type = extension === '.png' ? 'image/png' : extension === '.json' ? 'application/json' : extension === '.txt' ? 'text/plain'
+            : extension === '.docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/markdown';
+        const migrated = await libraryFor(session).migrate({ id: `import-${record.importId}`,
+            name: resourceName(name, physicalExtension || extension || '.md'), type, bytes,
             source: { sessionId: record.sessionId ?? session.id, kind: 'card-import', importId: record.importId, sha256: record.rawSha256 } });
         if (!migrated.ok)
             throw new Error('角色卡入库待重试');
-        return migrated.resource;
+        return libraryFor(session).archivalIdentity(migrated.resource.id);
+    }
+    async function originalCardResource(session, record) {
+        const original = record.originalCardSource;
+        if (original === undefined)
+            return archiveImported(session, record);
+        if (original.schemaVersion !== 1 || original.encoding !== 'nexttavern-original-card-source-v1')
+            throw new Error('原上传角色卡来源版本无效');
+        // A converted import's transport is its generated JSON. Its local source
+        // reference alone identifies the earlier upload; never substitute transport
+        // or reconstruct a PNG when that original resource is unavailable.
+        let resource;
+        try {
+            resource = libraryFor(session).archivalIdentity(original.resourceId);
+        }
+        catch {
+            throw new Error('原上传角色卡资源不存在，无法导出源文件');
+        }
+        if (resource.fullSha256 !== original.sha256 || resource.bytes !== original.bytes)
+            throw new Error('原上传角色卡资源与来源记录不匹配');
+        return resource;
     }
     async function migrateResources(session) {
         const library = libraryFor(session), workspace = realpathSync(session.header.cwd);
@@ -54,5 +78,5 @@ export function createResourceBridge(deps) {
         }
         return library;
     }
-    return { libraryFor, resourceName, archiveImported, migrateResources };
+    return { libraryFor, resourceName, archiveImported, originalCardResource, migrateResources };
 }

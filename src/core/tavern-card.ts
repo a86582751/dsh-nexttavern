@@ -221,15 +221,31 @@ export function inspectTavernCardDocument(document:unknown):Pick<DecodedTavernCa
     if (data[key] !== undefined && typeof data[key] !== 'string') fail(`角色卡 ${key} 必须是字符串`)
   }
   if(native) {
-    for(const key of ['cards','worldbook']) {
-      const rows=data[key]
+    const execution=object(data.compatibility)?data.compatibility.authorExecution:undefined
+    if(document.spec_version==='1.1') {
+      if(!object(execution)||execution.schemaVersion!==1||execution.mode!=='preserved-author') {
+        fail('NextTavern 1.1 缺少有效的 authorExecution')
+      }
+    }else if(execution!==undefined)fail('authorExecution 需要 NextTavern 1.1')
+    const authorViews=[data,...object(execution)?[execution]:[]]
+    for(const author of authorViews) {
+      const rows=author.cards
       if(!Array.isArray(rows)||rows.length>CARD_LIMITS.entries
-        ||rows.some(row=>!object(row)||typeof row.content!=='string'))fail(`NextTavern ${key} 条目格式无效`)
+        ||rows.some(row=>!object(row)||typeof row.content!=='string'))fail('NextTavern cards 条目格式无效')
+      if(!object(author.rules))fail('NextTavern rules 格式无效')
+      for(const key of ['core','plot','narrative','reply','style','status']) {
+        if(author.rules[key]!==undefined&&typeof author.rules[key]!=='string')fail(`NextTavern rules.${key} 必须是字符串`)
+      }
+      if(author.rules.beauty!==undefined) {
+        if(!object(author.rules.beauty))fail('NextTavern beauty 格式无效')
+        for(const key of ['css','js'])if(author.rules.beauty[key]!==undefined&&typeof author.rules.beauty[key]!=='string') {
+          fail('NextTavern beauty 正文格式无效')
+        }
+      }
     }
-    if(!object(data.rules)||!object(document.archive))fail('NextTavern rules/archive 格式无效')
-    for(const key of ['core','plot','narrative','reply','style','status']) {
-      if(data.rules[key]!==undefined&&typeof data.rules[key]!=='string')fail(`NextTavern rules.${key} 必须是字符串`)
-    }
+    if(!Array.isArray(data.worldbook)||data.worldbook.length>CARD_LIMITS.entries
+      ||data.worldbook.some(row=>!object(row)||typeof row.content!=='string'))fail('NextTavern worldbook 条目格式无效')
+    if(!object(document.archive))fail('NextTavern archive 格式无效')
     for(const key of ['status','opening']) {
       if(data[key]!==undefined&&(!object(data[key])||typeof data[key].text!=='string'))fail(`NextTavern ${key} 格式无效`)
     }
@@ -255,10 +271,6 @@ export function inspectTavernCardDocument(document:unknown):Pick<DecodedTavernCa
       if(!Array.isArray(entries)&&!object(entries))fail('NextTavern character_book.entries 格式无效')
       if(Object.keys(entries).length>CARD_LIMITS.entries
         ||Object.values(entries).some(row=>!object(row)||typeof row.content!=='string'))fail('NextTavern 世界书正文格式无效')
-    }
-    if(data.rules.beauty!==undefined) {
-      if(!object(data.rules.beauty))fail('NextTavern beauty 格式无效')
-      for(const key of ['css','js'])if(data.rules.beauty[key]!==undefined&&typeof data.rules.beauty[key]!=='string')fail('NextTavern beauty 正文格式无效')
     }
   }
   if(isNativeTavernCardDocument(document)) {

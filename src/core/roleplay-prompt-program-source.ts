@@ -57,6 +57,7 @@ const escape=(key:string)=>key.replace(/~/g,'~0').replace(/\//g,'~1')
 const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
 const nativeAuthorFieldPattern=new RegExp('^(?:(?:cards|worldbook)/\\d+/content'
   +'|rules/(?:core|plot|narrative|reply|style)|status/text'
+  +'|compatibility/authorExecution/(?:cards/\\d+/content|rules/(?:core|plot|narrative|reply|style))'
   +'|compatibility/sillytavernMacroFields/(?:description|personality|scenario|mes_example|system_prompt|post_history_instructions))$')
 function clone<T>(input:T):T {
   try {return cloneRoleplayTavernLoreDataV1(input,PROMPT_PROGRAM_SOURCE_POLICY_V1.proofBytes)}

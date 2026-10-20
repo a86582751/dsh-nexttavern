@@ -1513,7 +1513,7 @@ export function registerAdaptationTools({
         await research.recordBatch(owner, id, generation, writes, valid);
         return makeResult();
     });
-    register('rp_source_finish', '正式写卡门槛：精读要求所有原文段的证据笔记；粗颗粒度要求全书区间抽查、主角专题及关键因果链的原文证据。配置小说模型时还需完整索引上的真实 semantic/hybrid 查证。程序等待索引，可取消；缺项拒绝。通过后才写完整 Markdown 并做十二项检查，不会自动激活卡片。', source, ['source_id'], async (a, s, owner, exec) => {
+    register('rp_source_finish', '正式写卡门槛：精读要求所有原文段的证据笔记；粗颗粒度要求全书区间抽查、主角专题及关键因果链的原文证据。配置小说模型时还需完整索引上的真实 semantic/hybrid 查证。程序等待索引，可取消；缺项拒绝。通过后与原创写卡共用完整 NextTavern 原生 JSON、rp_card_draft_check 十二项检查及已授权的 rp_commit_card(native_document) 定稿，不再生成 Markdown 后重新分类，不会自动激活卡片。', source, ['source_id'], async (a, s, owner, exec) => {
         const id = a.source_id!, initial = store.load(owner, id);
         const plan = research.load(owner, id), generation = plan?.generation, stamp = selectionStamp(s);
         if (plan?.mode !== 'coarse' && initial.state.notes.length !== initial.source.segments.length)

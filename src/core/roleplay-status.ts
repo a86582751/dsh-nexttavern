@@ -397,6 +397,9 @@ export function createRoleplayStatus(deps: StatusDependencies) {
                         ?? await modelPolicy.resolve(session,
                          'status',
                          agent);
+                    let panel = force || !sameModelRoute(toolInput?.provenance?.actualRoute,selection.actualRoute)
+                        ? null : statusPanelForSpec(toolInput?.panel,spec);
+                    if(!panel&&selection.execution==='spawn'&&deps.advancedCardReady?.(session)===false)return null;
                     record = {
                         schemaVersion: 1,
                         sessionId: session.id,
@@ -427,10 +430,6 @@ export function createRoleplayStatus(deps: StatusDependencies) {
                     await T.status.put(taskKey, record);
                     if (!statusSourceLive(session, event, source))
                         throw new Error('status source changed');
-                    let panel = force
-                        || !sameModelRoute(toolInput?.provenance?.actualRoute,
-                         selection.actualRoute) ? null : statusPanelForSpec(toolInput?.panel,
-                         spec);
                     let inputKind = panel ? 'tool' : 'worker';
                     let executionProvenance = panel ? toolInput!.provenance : null;
                     if (!panel) {

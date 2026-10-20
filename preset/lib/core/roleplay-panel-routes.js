@@ -1,12 +1,12 @@
 // Generated from runtime/alpha3/src/core/roleplay-panel-routes.ts; edit the TypeScript source.
 import { savePanelSetting } from './roleplay-setting-store.js';
+import { createHash } from 'node:crypto';
 export { savePanelSetting } from './roleplay-setting-store.js';
 export { registerSettingTool } from './roleplay-setting-tools.js';
 import { keyOf } from './roleplay-data.js';
 import { jsonResponse } from './roleplay-state.js';
-import { decodeTavernCard } from './tavern-card.js';
 import { importActiveKey } from './roleplay-import.js';
-export function registerAvatarRoute({ ctx, T, resolveRoleplaySession, ensureBranch, awaitImportBarrier, importRecordKey, assertImportRecordIntegrity }) {
+export function registerAvatarRoute({ ctx, T, resolveRoleplaySession, ensureBranch, awaitImportBarrier, importRecordKey, assertImportRecordIntegrity, readCardData }) {
     ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered',
         path: '/api/roleplay/card-avatar',
         methods: ['GET'],
@@ -21,20 +21,38 @@ export function registerAvatarRoute({ ctx, T, resolveRoleplaySession, ensureBran
                 await awaitImportBarrier(session.id);
                 const pointer = T.branch.get(importActiveKey(session.id));
                 const record = (pointer?.importId ? T.branch.get(importRecordKey(pointer.sourceRecordSessionId
-                    ?? pointer.sourceSessionId
-                    ?? session.id, pointer.importId)) : null);
-                if (!record?.sourceEnvelope || record.sourceEnvelope.extension !== '.png')
-                    return jsonResponse(404, {
-                        ok: false, error: '当前角色卡没有 PNG 头像'
-                    });
-                assertImportRecordIntegrity(record);
-                const avatar = decodeTavernCard(Buffer.from(record.sourceEnvelope.base64, 'base64'), '.png');
-                return new Response(Buffer.from(avatar.avatarBase64, 'base64'), {
+                    ?? pointer.sourceSessionId ?? session.id, pointer.importId)) : null);
+                let base64, knownSha256;
+                if (record?.sourceEnvelope?.extension === '.png') {
+                    // Reuse the import owner's decoder result, including older
+                    // PNG formats outside the worldbook Source domain.
+                    let decoded;
+                    assertImportRecordIntegrity(record, value => { decoded = value; });
+                    base64 = decoded.avatarBase64;
+                    knownSha256 = decoded.avatarSha256;
+                }
+                else {
+                    const assets = readCardData(session)?.assets;
+                    // The current Source selects the last portable cover;
+                    // archived imports cannot substitute their old PNG.
+                    const prefix = 'data:image/png;base64,';
+                    const avatar = Array.isArray(assets) ? assets.findLast(asset => asset?.type === 'icon'
+                        && asset.name === 'avatar' && asset.ext === 'png'
+                        && typeof asset.uri === 'string' && asset.uri.startsWith(prefix)) : undefined;
+                    if (!avatar)
+                        return jsonResponse(404, {
+                            ok: false, error: '当前角色卡没有 PNG 头像'
+                        });
+                    base64 = avatar.uri.slice(prefix.length);
+                }
+                const bytes = Buffer.from(base64, 'base64');
+                const avatarSha256 = knownSha256 ?? createHash('sha256').update(bytes).digest('hex');
+                return new Response(new Uint8Array(bytes), {
                     headers: {
                         'content-type': 'image/png',
                         'cache-control': 'private, no-store',
                         'x-content-type-options': 'nosniff',
-                        'etag': `"${avatar.avatarSha256}"`
+                        'etag': `"${avatarSha256}"`
                     }
                 });
             }

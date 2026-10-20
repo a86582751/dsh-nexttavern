@@ -17,7 +17,7 @@ import type {CardWorkflowJob} from './roleplay-card-workflow-types.js'
 export function createRoleplayTaskHost({
   T,ctx,config,taskAgents,storyBranchIsActive,statusFixedContext,taskDependenciesCurrent,
   taskInstruction,getMaintenanceJob,runStatusObligation,STATUS_SYSTEM,DECISION_SYSTEM,ORGANIZE_WORKER_SYSTEM,
-  inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,currentTaskClaim,assertCardWorkflow,
+  inputCurrency,inputCurrencyCurrent,inputHistoricalCurrencyCurrent,inputTaskRecoveryBlockCode,currentTaskClaim,assertCardWorkflow,advancedCard,
 }:TaskHostDependencies) {
   const continuationTimers=new Set<ReturnType<typeof setTimeout>>()
   const authorDialogOwners=new Map<string,{session:HostSession;agent:HostAgent;
@@ -51,14 +51,20 @@ export function createRoleplayTaskHost({
     for(const entry of surfaceEntries(session))bySeq.set(entry.seq,entry)
     return [...bySeq.values()]
   }
-  const characterCluster=createCharacterCluster<HostSession, HostAgent>({table:T.branch,subagents:ctx.subagents,
+  const cluster=createCharacterCluster<HostSession, HostAgent>({table:T.branch,subagents:ctx.subagents,
     rootOf:session=>ctx.get('tavernConversations')?.rootOf(session.id)??session.id,
     main:(session,agent)=>selectedMainRoute(session,agent,ctx.agentDefaultModel.currentSelection()),
     isCurrent:(session,job)=>storyBranchIsActive(session)
       && Number(eventsOf(session).findLast(e=>e.type==='turn/start')?.data?.turn)===Number(job.source.turn)
-      && (!job.input?.character || T.cards.get(keyOf(session.id,job.input.character.id))?.content===job.input.character.content),
+      && (!job.input?.character || characterRoster(session).some(character=>character.id===job.input!.character!.id
+        &&character.content===job.input!.character!.content)),
   })
-  const characterRoster=(session: HostSession)=>[...T.cards.entries()].filter(([key,c])=>key.startsWith(`${session.id}__`)&&c?.kind!=='user'&&c?.id!=='user'&&c?.enabled!==false)
+  const characterCluster={...cluster,read:(session:HostSession)=>{
+    const settings=cluster.read(session)
+    return {...settings,enabled:settings.enabled&&(!advancedCard||advancedCard(session).state==='ready')}
+  }}
+  const characterRoster=(session: HostSession)=>advancedCard?advancedCard(session).characters
+    :[...T.cards.entries()].filter(([key,c])=>key.startsWith(`${session.id}__`)&&c?.kind!=='user'&&c?.id!=='user'&&c?.enabled!==false)
     .map(([,c])=>({id:c.id,name:c.name??c.id,content:c.content??''}))
   const clusterLoreVisible=(session: HostSession,record: {schemaVersion?: unknown; callId?: unknown},before=Infinity)=>record.schemaVersion===1&&surfaceEvents(session).some(e=>e.type==='tool/result'&&e.seq<before&&!e.data?.error
     && record.callId&&(e.data?.message?.source?.callId??e.data?.callId)===record.callId)
@@ -288,7 +294,8 @@ export function createRoleplayTaskHost({
       // Explicit rebuilding owns its durable generation, not the completed
       // Story's hot input, which the actual management wake must replace.
       const preparation=T.branch.get(keyOf(session.id,'task-preparation')),
-        currency=kind==='status'&&generationKey!==undefined?undefined:inputCurrency?.(session)
+        currency=kind==='status'&&generationKey!==undefined||taskStage==='native-card-conversion'
+          ?undefined:inputCurrency?.(session)
       return {...(providedSource??{events:taskStory(session).map(e=>({seq:e.seq,hash:sha256(e.text)})),
         ...(kind==='status'?{fixedHash:recordSha256(statusFixedContext(session))}:{}),
         ...(!background&&preparation?.sessionId===session.id&&preparation.status==='preparing'

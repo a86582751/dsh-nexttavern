@@ -13,6 +13,7 @@ import type {ProgramAbsenceOpeningClosureV1} from './roleplay-program-absence-in
 import type {ProgramAbsenceInventoryV1} from './roleplay-program-absence-inventory.js'
 import type {AuthorChatForkSeedV1,AuthorChatRefV1} from './roleplay-author-chat-state-types.js'
 import type {AuthorChatForkSeedV2} from './roleplay-author-chat-state-v2-types.js'
+import type {NativeCardConversionForkSeedV1} from './native-card-advanced.js'
 
 export type TavernSourceStaticTableV1='cards'|'worldbook'|'rules'|'opening'|'status'|'branch'
 export interface TavernSourceInheritanceTableV1 {
@@ -263,6 +264,7 @@ export interface TavernSourcePreparedV1 {
   readonly frozenProgramAbsenceOpeningV1?:TavernSourceFrozenProgramAbsenceOpeningV1
   readonly frozenAuthorChatSeedV1?:AuthorChatForkSeedV1
   readonly frozenAuthorChatSeedsV2?:FrozenAuthorChatSeedsV2
+  readonly frozenNativeCardConversionSeedV1?:NativeCardConversionForkSeedV1
   readonly ancestors:readonly TavernSourceInheritanceLayerRefV1[]
   readonly preparedSha256:string
 }
@@ -391,6 +393,10 @@ export interface TavernSourceInheritanceDepsV1 {
    * program. Source holds the child FIFO until all seeds settle, then commits. */
   readonly applyAuthorChatForkSeedsV2?:(seeds:FrozenAuthorChatSeedsV2,preparedRef:AuthorChatRefV1,
     prepared:TavernSourcePreparedV1,sourceCurrent:()=>boolean)=>PromiseLike<unknown>
+  /** Sidecar classification is frozen at the same author cut, but remains
+   * outside Source's static inventory and never replaces execution rows. */
+  readonly captureNativeCardConversionForkSeed?:(parentSessionId:string)=>NativeCardConversionForkSeedV1|undefined
+  readonly applyNativeCardConversionForkSeed?:(childSessionId:string,seed:NativeCardConversionForkSeedV1)=>PromiseLike<unknown>
   /** Called before the parent FIFO, never from an already-locked body. */
   readonly ensureParentBranch:(sessionId:string)=>Promise<void>
 }

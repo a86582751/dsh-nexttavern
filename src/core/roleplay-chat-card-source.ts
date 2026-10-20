@@ -63,7 +63,7 @@ export interface ChatCardSourceDependencies {
 }
 type JsonRecord = Record<string, unknown>
 const hashPattern = /^[a-f0-9]{64}$/
-const fileTypes = new Set(['.png','.json','.md','.txt'])
+const fileTypes = new Set(['.png','.json','.md','.txt','.docx'])
 function fail(code: string): never {throw new Error(`聊天角色卡：${code}`)}
 function object(value: unknown): JsonRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('消息或来源记录无效')

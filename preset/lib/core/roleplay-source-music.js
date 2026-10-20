@@ -2,6 +2,7 @@
 /** Discover inert audio references; selection owns embedded bytes and live URLs. */
 import { htmlLiteralsV1, scriptLiteralsV1 } from './roleplay-source-music-parser.mjs';
 import { recordSha256 } from './roleplay-data.js';
+import { nextTavernExecutionAuthorData, nextTavernExecutionAuthorPointer } from './nexttavern-card.js';
 const audioData = /^data:(audio\/[a-z0-9.+-]+)((?:;[^,]*)?),(.*)$/is;
 const object = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
 const pointer = (value) => value.replace(/~/g, '~0').replace(/\//g, '~1');
@@ -20,6 +21,9 @@ function remoteAudioType(uri) {
     }
 }
 function discover(data) {
+    const cardsPointer = nextTavernExecutionAuthorPointer(data, 'cards');
+    const rulesPointer = nextTavernExecutionAuthorPointer(data, 'rules');
+    data = nextTavernExecutionAuthorData(data);
     const found = [];
     const add = (uri, carrier, position, name) => {
         const match = audioData.exec(uri);
@@ -53,7 +57,7 @@ function discover(data) {
     };
     assets(data.assets, '/data/assets');
     for (const field of ['cards', 'worldbook'])
-        data[field].forEach((row, index) => html(row.content, `/data/${field}/${index}/content`));
+        data[field].forEach((row, index) => html(row.content, `${field === 'cards' ? cardsPointer : '/data/worldbook'}/${index}/content`));
     for (const [key, entry] of Object.entries(data.character_book?.entries ?? {})) {
         if (object(entry) && typeof entry.content === 'string')
             html(entry.content, '/data/character_book/entries/' + pointer(key) + '/content');
@@ -68,7 +72,7 @@ function discover(data) {
     }
     for (const [key, value] of Object.entries(data.rules))
         if (typeof value === 'string')
-            html(value, '/data/rules/' + pointer(key));
+            html(value, rulesPointer + '/' + pointer(key));
     if (data.status)
         html(data.status.text, '/data/status/text');
     const beauty = data.rules.beauty;

@@ -12,6 +12,8 @@ import type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
 import {cloneSchemaData,schemaTextSha256,captureSchemaMaterialV4} from './tavern-mvu-schema-data.js'
 import type {MvuJsonObject,SchemaMvuInitDataSource,SchemaMvuInitDataSourceV2} from './tavern-mvu-initvar.js'
 import type {MvuSchemaAuthorScript} from './tavern-mvu-schema-types.js'
+import {nextTavernExecutionAuthorData} from './nexttavern-card.js'
+import type {NextTavernCardData} from './nexttavern-card.js'
 export {NATIVE_MVU_SOURCE_POLICY,NATIVE_MVU_YAML_SOURCE_POLICY,isNativeMvuSourcePolicy,isNativeMvuYamlSourcePolicy}
   from './roleplay-mvu-source-policy.js'
 export type {NativeMvuSourcePolicy} from './roleplay-mvu-source-policy.js'
@@ -333,15 +335,26 @@ interface Captured {
   rows: readonly {ref: MvuSourceRowRef; value: unknown}[]
   activationRows: ReadonlySet<string>
 }
-function nativeBookEntries(data:JsonObject):[string,unknown][] {
-  const book=data.character_book as JsonObject|undefined
-  if(book?.entries===undefined)return []
-  return Object.entries(book.entries as JsonObject)
+const authorFieldNames=['name','description','personality','scenario','mes_example','system_prompt',
+  'post_history_instructions'] as const
+function nativeAuthorData(data:JsonObject) {
+  const author=nextTavernExecutionAuthorData(data as NextTavernCardData)
+  // Classification and its materialized card/rule view are not execution
+  // inputs. Compatibility macro fields remain the original ST author fields.
+  const {authorExecution:_execution,classification:_classification,...compatibility}=author.compatibility??{}
+  return {...author,compatibility}
 }
-const nativeInitComment=(raw:unknown):string|null=>isObject(raw)
-  &&typeof (raw.comment??raw.name)==='string'
-  &&String(raw.comment??raw.name).toLowerCase().includes('[initvar]')
-  ?String(raw.comment??raw.name):null
+function authorFields(captured:Captured):{key:string;pointer:string;value:unknown;schemaOwned:boolean}[] {
+  if(captured.document.spec!=='nexttavern_card')return authorFieldNames.map(key=>({key,
+    pointer:`/data/${key}`,value:captured.data[key],schemaOwned:['description','personality','scenario'].includes(key)}))
+  const author=nativeAuthorData(captured.data),aliases=author.compatibility.sillytavernMacroFields
+  // These retain the community fields' declared roles. Actual execution cards
+  // are already checked by the common captured-row pass below, including its
+  // schema content-owner exemption; their classified view is never consumed.
+  return authorFieldNames.map(key=>({key,pointer:key==='name'?'/data/name'
+    :`/data/compatibility/sillytavernMacroFields/${key}`,value:key==='name'?author.name:aliases?.[key],
+    schemaOwned:['description','personality','scenario'].includes(key)}))
+}
 /** Core owns the existing source/import lock. All reads are synchronous; this
  * module neither acquires a second lock nor writes any Domain/native record. */
 function captureSource(deps: MvuSourceDeps, sessionId: string, selectedIndex: number, currentMaterial = false): Captured {
@@ -440,11 +453,8 @@ function captureSource(deps: MvuSourceDeps, sessionId: string, selectedIndex: nu
     rawSha256:record.rawSha256,normalizedSha256:record.normalizedSha256,transactionId:pointer.transactionId!,
     coverageSha256:pointer.coverageSha256!,pointer:{...pointer}}
   const root = decoded.document.data === decoded.data ? '/data' : ''
-  const used = nativeCard?candidates.some(item=>item.materialization!=='materialized'&&item.rawText.includes('{{'))
-    ||nativeBookEntries(decoded.data).some(([,raw])=>nativeInitComment(raw)!==null
-      &&isObject(raw)&&typeof raw.content==='string'&&raw.content.includes('{{'))
-    :JSON.stringify(decoded.document).includes('{{')
-      || rows.some(item => JSON.stringify(item.value ?? null).includes('{{'))
+  const used = JSON.stringify(nativeCard?nativeAuthorData(decoded.data):decoded.document).includes('{{')
+    ||rows.some(item=>JSON.stringify(item.value??null).includes('{{'))
   const membership = {cards,worldbook,rules:versions.rules,settings:versions.settings}
   const content = {
     schemaVersion:1 as const,encoding:'native-mvu-source-snapshot-v1' as const,policy:NATIVE_MVU_SOURCE_POLICY,
@@ -562,45 +572,6 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     if(raw.candidate.kind!==rendered.candidate.kind)fail('MACRO_UNSUPPORTED',candidate.sourcePointer)
     return stateSyntax(raw.outside)?'unsupported':raw.candidate.kind==='parsed'?'update':'none'
   }
-  const classifyNative = (captured:Captured,authorSchema:boolean,candidates:readonly TavernOpeningCandidate[],allowUpdate:boolean) => {
-    const {data,context,snapshot}=captured
-    const helper=isObject(data.extensions)?data.extensions.tavern_helper:undefined
-    if(!authorSchema&&isObject(helper)&&helper.scripts!==undefined
-      &&(!Array.isArray(helper.scripts)||helper.scripts.length)) {
-      fail('EXTENSION_UNSUPPORTED','/data/extensions/tavern_helper')
-    }
-    const entries:NativeMvuJsonCandidate['books'][number]['entries'][number][]=[]
-    const budget={nodes:0,bytes:0}
-    // Canonical prompt DATA, ordinary book lore and archive metadata are not
-    // numerical declarations. The decoder owns their document structure.
-    for(const [ordinal,[key,raw]] of nativeBookEntries(data).entries()) {
-      const comment=nativeInitComment(raw)
-      if(comment===null)continue
-      const pointer=`${snapshot.bindings.primary!.pointer}/entries/${pointerPart(key)}`
-      if(!isObject(raw)||typeof raw.content!=='string')fail('FIELD_UNSUPPORTED',pointer)
-      boundedData(raw.content,'FIELD_UNSUPPORTED',pointer,budget)
-      if(stateSyntax(raw.content))fail('STATE_SYNTAX_UNSUPPORTED',pointer,raw.content)
-      const rendered=render(raw.content,context,true)
-      entries.push({identity:`entry-${ordinal}`,sourcePointer:pointer,comment,
-        enabled:raw.enabled!==false&&raw.disable!==true,content:raw.content,contentSha256:sha(raw.content),
-        renderedContent:rendered,renderedContentSha256:sha(rendered)})
-    }
-    let openingInit=false,openingUpdate=false
-    for(const candidate of candidates) {
-      if(candidate.materialization==='materialized')continue
-      boundedData(candidate.rawText,'FIELD_UNSUPPORTED',candidate.sourcePointer,budget)
-      const syntax=openingSyntax(candidate,allowUpdate)
-      if(syntax==='unsupported')fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
-      openingUpdate=syntax==='update'
-      if(openingBlocks(candidate.renderedText,candidate.sourcePointer))openingInit=true
-      render(candidate.rawText,context,entries.length>0||openingInit)
-    }
-    const selection=selectNativeMvuInitializationPolicy({books:[{entries}],
-      swipes:candidates.map(item=>({rawOpening:item.rawText,renderedOpening:item.renderedText,
-        ...(item.materialization?{materialization:item.materialization}:{})}))})
-    if(selection.kind==='unsupported')fail('INITVAR_INVALID',selection.diagnostics[0]!.pointer)
-    return {entries,candidates,hasInit:entries.length>0||openingInit,policy:selection.policy,openingUpdate}
-  }
   const classify = (captured: Captured, authorSchema=false,recordedInitSource?:MvuSchemaOpeningInitSource) => {
     // Schema opening initialization consumes one selected greeting. The capture
     // retains the complete catalog for original Source and fresh-basis binding.
@@ -609,8 +580,8 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
       ?captured.candidates.filter(candidate=>candidate.index===captured.snapshot.selected.index)
       :captured.candidates
     const allowUpdate=authorSchema&&(!recordedInitSource||recordedInitSource.schemaVersion===2)
-    if(captured.document.spec==='nexttavern_card')return classifyNative(captured,authorSchema,candidates,allowUpdate)
     const {data,context,snapshot} = captured
+    const nativeCard=captured.document.spec==='nexttavern_card'
     // The decoder owns the complete envelope, including compatibility mirrors
     // and opaque metadata. Only supported prompt inputs and explicit numerical
     // channels participate in this classifier's initialization decision.
@@ -620,23 +591,26 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     const depthPrompt = (data.extensions as JsonObject | undefined)?.depth_prompt as JsonObject | undefined
     if (depthPrompt) render(depthPrompt.prompt as string,context,false)
     // creator_notes is retained archive DATA, not a runtime initialization field.
-    for (const key of ['name','description','personality','scenario','mes_example','system_prompt',
-      'post_history_instructions']) {
-      const value=data[key]
+    for (const {pointer,value,schemaOwned} of authorFields(captured)) {
       if(value===undefined)continue
       if (typeof value !== 'string') {
-        fail('FIELD_UNSUPPORTED',`/data/${pointerPart(key)}`,value)
+        fail('FIELD_UNSUPPORTED',pointer,value)
       }
-      if (stateSyntax(value) || initSyntax(value)) fail('STATE_SYNTAX_UNSUPPORTED',`/data/${pointerPart(key)}`,value)
+      // Schema execution hands these original templates to the content owner.
+      // They do not supply initialization entries or rendered greetings here.
+      if(authorSchema&&schemaOwned)continue
+      if (stateSyntax(value) || initSyntax(value)) fail('STATE_SYNTAX_UNSUPPORTED',pointer,value)
       render(value,context,false)
     }
     const book = data.character_book
     const entries: NativeMvuJsonCandidate['books'][number]['entries'][number][] = []
     const initBudget={nodes:0,bytes:0}
     if (book !== undefined) {
-      if (!isObject(book) || !Array.isArray(book.entries)) fail('FIELD_UNSUPPORTED','/data/character_book',book)
-      for (const [index,raw] of book.entries.entries()) {
-        const pointer = `${snapshot.bindings.primary!.pointer}/entries/${index}`
+      if (!isObject(book) || !(Array.isArray(book.entries)||nativeCard&&isObject(book.entries))) {
+        fail('FIELD_UNSUPPORTED','/data/character_book',book)
+      }
+      for (const [index,[key,raw]] of Object.entries(book.entries).entries()) {
+        const pointer = `${snapshot.bindings.primary!.pointer}/entries/${pointerPart(key)}`
         if(!isObject(raw))continue
         const comment=typeof raw.comment==='string'?raw.comment:''
         const isInit=comment.toLowerCase().includes('[initvar]')
@@ -674,6 +648,7 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     }
     let openingInit = false,openingUpdate=false
     for (const candidate of candidates) {
+      if(nativeCard&&candidate.materialization==='materialized')continue
       const syntax=openingSyntax(candidate,allowUpdate)
       if (syntax==='unsupported') fail('STATE_SYNTAX_UNSUPPORTED',candidate.sourcePointer,candidate.rawText)
       openingUpdate=syntax==='update'
@@ -684,6 +659,8 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
     // InitVar declarations. A verified original rules row can also contain
     // ordinary constant lore; its templates belong to the Prompt owner.
     const primaryRows = captured.activationRows
+    const selectedMaterialized=nativeCard&&candidates.some(candidate=>candidate.index===snapshot.selected.index
+      &&candidate.materialization==='materialized')
     for (const {ref,value} of captured.rows) {
       if(!isObject(value))continue
       for(const key of Object.keys(value))if(numericalChannel(key)) {
@@ -698,10 +675,11 @@ export function createRoleplayMvuSource(deps: MvuSourceDeps) {
           &&initSyntax(text)&&!original)fail('INITVAR_OUTSIDE_BINDING','/settings',text)
         continue
       }
-      if(ref.table==='rules'&&original)continue
+      // Schema content already owns templates in these original author rows.
+      if(original&&(ref.table==='rules'||authorSchema&&ref.table==='cards'))continue
       // The selected raw greeting owns these commands. Its hash-bound activated
       // opening copy is retained Source material, not a second init interpreter.
-      if(ref.table==='opening'&&original&&openingUpdate)continue
+      if(ref.table==='opening'&&original&&(openingUpdate||selectedMaterialized))continue
       for(const field of fields) {
         const text=value[field]
         if(typeof text!=='string')continue

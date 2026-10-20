@@ -7,6 +7,7 @@ import type { registerRoleplayImports } from './roleplay-import.js'
 import type { HostAgent, HostSession } from './roleplay-task-host-types.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { CheckLegacyWorldbookWriteTargetV1 } from './roleplay-tavern-legacy-write-target-types.js'
+import type {NextTavernCardData} from './nexttavern-card.js'
 
 export interface PanelRouteBody extends Record<string, unknown> {
   sessionId?: string
@@ -49,6 +50,11 @@ export interface PanelRoutesDependencies {
   readRoleplayState: State['readRoleplayState']
   svc: Pick<ReturnType<typeof createRoleplayService>, 'memoryUpdate' | 'setSettings' | 'setStatusSpec' | 'setRules' | 'setOpening'>
   RULE_TEXT_FIELDS: readonly string[]
+}
+
+export interface AvatarRouteDependencies extends Pick<PanelRoutesDependencies,
+  'ctx'|'T'|'resolveRoleplaySession'|'ensureBranch'|'awaitImportBarrier'|'importRecordKey'|'assertImportRecordIntegrity'> {
+  readCardData(session:{id:string}):NextTavernCardData|undefined
 }
 
 export interface SettingArguments extends Record<string, unknown> {

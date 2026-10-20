@@ -10,6 +10,7 @@ import { validateChatCardProof, chatCardProjection } from './roleplay-chat-card-
 const PREFIX = 'tavern_card_attachment__';
 const TYPES = Object.freeze({
     '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown', '.txt': 'text/plain',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 });
 const CARD_POLICY = Object.freeze({ prefix: PREFIX, types: TYPES,
     bytes: CARD_LIMITS.bytes, sourceKind: 'native-attachment-import', defaultName: '角色卡' });

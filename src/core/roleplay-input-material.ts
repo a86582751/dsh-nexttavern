@@ -8,6 +8,7 @@ import type {Session} from '@deepseek-ai/dsh-session'
 import type {InputPreparationCurrency,InputPreparationTable,RoleplayInputStep,
   OwnedNonNumericalInputBranchRowFactV1} from './roleplay-input-preparation.js'
 import {recordSha256,keyOf} from './roleplay-data.js'
+import type {TavernRenderedAuthorMaterialV1} from './roleplay-tavern-prompt-types.js'
 
 /** One preparation budget covers lock waits, deterministic workers and record
  * publication. Nested work cannot renew it by starting another evaluator. */
@@ -35,6 +36,9 @@ export type RoleplayInputMaterialScopeInputV1=NativeRequestMaterialPrepareInputV
   |{admission:NativeInputAdmissionCheckV2}
 export interface RoleplayInputMaterialBuildV1 {
   readonly kind:'prepared-data'
+  /** Only the live input owner retains these actual rendered outputs. They
+   * are neither serialized as authority nor reconstructed from audit rows. */
+  readonly renderedAuthorMaterial?:TavernRenderedAuthorMaterialV1
   /** The original producer owns detached, immutable explanatory DATA. Its
    * accepted Source may appear more than once in this derived capture; this
    * publisher does not charge those owned subtrees to another input budget. */
@@ -82,6 +86,7 @@ interface Ready {
   readonly initial:NativeRequestMaterialPrepareInputV1
   readonly scope:RoleplayInputMaterialScopeV1
   readonly checks:Pick<RoleplayInputMaterialBuildV1,'assertCurrent'|'assertSelected'|'release'>
+  readonly renderedAuthorMaterial?:TavernRenderedAuthorMaterialV1
   readonly material:Pick<NativeRequestMaterialTransformV1,'requiredSections'|'sections'|'insertions'|'anchoredInsertions'>
     &{readonly messageTextProjections?:NativeRequestMaterialTransformV2['messageTextProjections']}
   readonly materialSha256:string
@@ -230,6 +235,7 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
           }
         })
         const row:Ready={token:scope.stepToken,scope,initial:input,checks,material,materialSha256,...refs,
+          ...data.renderedAuthorMaterial?{renderedAuthorMaterial:data.renderedAuthorMaterial}:{},
           records:{snapshot:records.snapshot,plan:records.plan},
           captureSha256:recordSha256({schemaVersion:1,encoding:'core-input-material-capture-v1',
             ...refs,nativeSelectedSha256:input.selected.sha256,assemblySha256:input.assemblySha256})}
@@ -297,6 +303,20 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
     for(const controller of controllers)controller.abort('Core material preparation revoked')
   }
   return {requestMaterial,
+    /** Tools run after this step's dispatch and before the binder selects its
+     * successor. Require its actual opaque token and committed material; an
+     * earlier turn's retained row or a preparation without dispatch is absent. */
+    withCurrent<T>(step:RoleplayInputStep,read:(material:TavernRenderedAuthorMaterialV1)=>T):T|undefined {
+      const row=ready
+      if(!row||row.token!==step||!row.transformed?.materialRef||!row.renderedAuthorMaterial)return undefined
+      current(row)
+      return read(row.renderedAuthorMaterial)
+    },
+    /** The actual Session publisher supplies step/end. Normal completion does
+     * not abort its signal, so retire its hot read at that existing boundary. */
+    releaseStep(turn:number,step:number):void {
+      if(ready?.scope.turn===turn&&ready.scope.step===step)clearReady()
+    },
     async stop():Promise<void> {
       revoke()
       // This wait stays outside the input record FIFO. Preparation may itself

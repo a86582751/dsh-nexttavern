@@ -64,10 +64,14 @@ export interface JobRoutesDependencies {
   taskAgents: Map<string, JobRouteAgent>
   beginCardWorkflow: CardWorkflows['beginCardWorkflow']
   resumeCardWorkflows: CardWorkflows['resumeCardWorkflows']
+  controlCardWorkflow: CardWorkflows['controlCardWorkflow']
   cardWorkflows: CardWorkflows['cardWorkflows']
   cardWorkflowKey: CardWorkflows['cardWorkflowKey']
   libraryFor: Resources['libraryFor']
   migrateResources: Resources['migrateResources']
+  originalCardResource?(session:CardWorkflowSession):Promise<{id:string}>
+  nativeCardStatus?(session:CardWorkflowSession):{state:string;reason?:string;staticReady?:boolean}
+  applyNativeCardConversion?(session:CardWorkflowSession,jobId:string):Promise<unknown>
 }
 
 export interface MaintenanceAgent extends HostAgent {

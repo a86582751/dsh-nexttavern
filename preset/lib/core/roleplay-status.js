@@ -251,7 +251,7 @@ export function createRoleplayStatus(deps) {
             selectedStorySinceStatus: selected.slice(priorIndex + 1)
         };
     };
-    function runStatusObligation(session, event, via = 'turn-end', { force = false, agent, signal } = {}) {
+    function runStatusObligation(session, event, via = 'turn-end', { force = false, agent, signal } = {}, purpose = 'settlement') {
         const source = statusSource(session, event);
         if (!event || !source || statusDisposed)
             return Promise.resolve(null);
@@ -279,6 +279,11 @@ export function createRoleplayStatus(deps) {
             let spec;
             let resultCommitted = false;
             try {
+                // Recovery owns the admitted Source, not a new generation over
+                // edited prose. Keep its stale facts for explicit rebuilding.
+                if (purpose === 'recovery' && !force && record?.source
+                    && record.source.sourceHash !== source.sourceHash)
+                    return record;
                 await ensureBranch(session);
                 spec = cloneBranchRecord(T.status.get(keyOf(session.id, 'spec')));
                 if (!spec?.text || !spec.templateHtml)
@@ -291,6 +296,14 @@ export function createRoleplayStatus(deps) {
                     && record.fixedContextHash === fixedContextHash ? record.inputBasis : null;
                 const storyContext = statusStoryContext(session, event, specHash, fixedContextHash, compatibleBasis);
                 const storyContextHash = recordSha256(storyContext);
+                // Recovery resumes the original semantic input. An earlier
+                // edit can change this context while the latest Story stays
+                // byte-identical; only a new settlement or explicit rebuild
+                // may replace that obligation with a different task.
+                if (purpose === 'recovery' && !force && record?.inputBasis
+                    && (record.specHash !== specHash || record.fixedContextHash !== fixedContextHash
+                        || record.storyContextHash !== storyContextHash))
+                    return record;
                 const input = cloneBranchRecord(T.status.get(keyOf(session.id, `input-${source.turnId}`)));
                 const toolInput = input?.sessionId === session.id && input?.turnId === source.turnId
                     &&
@@ -309,6 +322,10 @@ export function createRoleplayStatus(deps) {
                     || record.storyContextHash !== storyContextHash) {
                     const selection = force ? await modelPolicy.resolve(session, 'status', agent) : record?.selection
                         ?? await modelPolicy.resolve(session, 'status', agent);
+                    let panel = force || !sameModelRoute(toolInput?.provenance?.actualRoute, selection.actualRoute)
+                        ? null : statusPanelForSpec(toolInput?.panel, spec);
+                    if (!panel && selection.execution === 'spawn' && deps.advancedCardReady?.(session) === false)
+                        return null;
                     record = {
                         schemaVersion: 1,
                         sessionId: session.id,
@@ -334,8 +351,6 @@ export function createRoleplayStatus(deps) {
                     await T.status.put(taskKey, record);
                     if (!statusSourceLive(session, event, source))
                         throw new Error('status source changed');
-                    let panel = force
-                        || !sameModelRoute(toolInput?.provenance?.actualRoute, selection.actualRoute) ? null : statusPanelForSpec(toolInput?.panel, spec);
                     let inputKind = panel ? 'tool' : 'worker';
                     let executionProvenance = panel ? toolInput.provenance : null;
                     if (!panel) {
@@ -533,7 +548,7 @@ export function createRoleplayStatus(deps) {
         statusJobs.set(taskKey, job);
         return job;
     }
-    function queueStatusObligation(session, event, via, agent, signal) {
+    function queueStatusObligation(session, event, via, agent, signal, purpose = 'settlement') {
         const report = () => {
             try {
                 ctx.logger?.warn?.(`roleplay: status admission failed turn=${event?.data?.turn}`);
@@ -542,7 +557,7 @@ export function createRoleplayStatus(deps) {
         };
         let job;
         try {
-            job = runStatusObligation(session, event, via, { agent, signal });
+            job = runStatusObligation(session, event, via, { agent, signal }, purpose);
         }
         catch {
             report();
@@ -572,7 +587,7 @@ export function createRoleplayStatus(deps) {
             if (entry.seq === latest?.seq || entry.seq > runStart) {
                 const event = canonicalAssistantForTurn(session, entry.turn);
                 if (event)
-                    jobs.push(queueStatusObligation(session, event, via, agent));
+                    jobs.push(queueStatusObligation(session, event, via, agent, undefined, 'recovery'));
             }
         }
         return jobs;

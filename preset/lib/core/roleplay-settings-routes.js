@@ -2,7 +2,7 @@
 import { jsonResponse } from './roleplay-state.js';
 import { selectedMainRoute, withTavernLock } from './tavern-tasks.js';
 import { clusterSettings } from './character-cluster.js';
-export function registerSettingsRoutes({ ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, memorySettingFields, memorySettingsPolicy, svc, narrativePresets, mutateSource }) {
+export function registerSettingsRoutes({ ctx, T, resolveRoleplaySession, modelPolicy, ensureBranch, taskAgents, characterCluster, characterRoster, nativeCardCapability, memorySettingFields, memorySettingsPolicy, svc, narrativePresets, mutateSource }) {
     const writeSource = mutateSource ?? (async (_session, work) => work());
     ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path: '/api/roleplay/presets', methods: ['GET', 'POST'], fetch: async (request) => {
             try {
@@ -53,7 +53,7 @@ export function registerSettingsRoutes({ ctx, T, resolveRoleplaySession, modelPo
                     }
                     catch { }
                 }
-                return jsonResponse(200, { ok: true, ...data, catalog });
+                return jsonResponse(200, { ok: true, ...data, catalog, capability: nativeCardCapability?.(session) });
             }
             catch (error) {
                 return jsonResponse(String(error.message).includes('已更新') ? 409 : 400, { ok: false, error: String(error.message) });
@@ -85,7 +85,7 @@ export function registerSettingsRoutes({ ctx, T, resolveRoleplaySession, modelPo
                     else
                         await characterCluster.save(session, settings, body.expectedRevision);
                 }
-                return jsonResponse(200, { ok: true, sessionId: session.id, settings: characterCluster.read(session), session: characterCluster.readLocal(session), global: characterCluster.readGlobal(), characters: characterRoster(session).map(({ id, name }) => ({ id, name })) });
+                return jsonResponse(200, { ok: true, sessionId: session.id, settings: characterCluster.read(session), session: characterCluster.readLocal(session), global: characterCluster.readGlobal(), characters: characterRoster(session).map(({ id, name }) => ({ id, name })), capability: nativeCardCapability?.(session) });
             }
             catch (error) {
                 return jsonResponse(String(error.message).includes('已更新') ? 409 : 400, { ok: false, error: String(error.message) });

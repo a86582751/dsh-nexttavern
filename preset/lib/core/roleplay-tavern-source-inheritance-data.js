@@ -475,7 +475,7 @@ export function validatePreparedInheritanceV1(raw) {
         'parentNumericalSource', 'originalBinding', 'originalAbsenceProof', 'parentInventory', 'parentInventorySha256', 'childPointer',
         'editLayers', 'materialPublications', 'ancestors'], [
         'frozenNonNumericalOpeningV1', 'frozenProgramAbsenceOpeningV1', 'frozenAuthorChatSeedV1',
-        'frozenAuthorChatSeedsV2'
+        'frozenAuthorChatSeedsV2', 'frozenNativeCardConversionSeedV1'
     ]);
     if (value.origin !== 'core-reservation' || !inheritanceIdV1(value.operationId) || value.operationKey !== `fork-op-${value.operationId}`
         || !inheritanceIdV1(value.parentSessionId) || !inheritanceIdV1(value.childSessionId) || value.parentSessionId === value.childSessionId
@@ -507,6 +507,16 @@ export function validatePreparedInheritanceV1(raw) {
         inheritanceFailV1('SOURCE_INHERITANCE_BUDGET');
     for (const ancestor of value.ancestors)
         validateLayer(ancestor);
+    if (value.frozenNativeCardConversionSeedV1 !== undefined) {
+        const seed = value.frozenNativeCardConversionSeedV1;
+        // The prepared seal freezes the classification bytes. Its own consumer
+        // resolves spans against the child's actual source snapshot on first read.
+        if (!inheritanceObjectV1(seed) || seed.schemaVersion !== 1
+            || seed.encoding !== 'nexttavern-card-conversion-fork-seed-v1' || seed.parentSessionId !== value.parentSessionId
+            || !inheritanceObjectV1(seed.binding) || seed.binding.schemaVersion !== 1
+            || seed.binding.encoding !== 'nexttavern-card-classification-binding-v1')
+            inheritanceFailV1('SOURCE_INHERITANCE_INVALID');
+    }
     if (value.frozenAuthorChatSeedV1 !== undefined) {
         const seed = value.frozenAuthorChatSeedV1;
         // The prepared record already covers the complete immutable seed. These

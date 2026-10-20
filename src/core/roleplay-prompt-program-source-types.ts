@@ -49,6 +49,8 @@ export interface PromptProgramAssignmentOriginV1 {
 }
 export type NextTavernPromptAuthorFieldV1=`cards/${number}/content`|`worldbook/${number}/content`
   |`rules/${'core'|'plot'|'narrative'|'reply'|'style'}`|'status/text'
+  |`compatibility/authorExecution/cards/${number}/content`
+  |`compatibility/authorExecution/rules/${'core'|'plot'|'narrative'|'reply'|'style'}`
   |`compatibility/sillytavernMacroFields/${PromptTemplateOnlyFieldV1}`
 export type PromptProgramAuthorFieldNameV1=PromptTemplateOnlyFieldV1|NextTavernPromptAuthorFieldV1
 export interface PromptProgramAuthorFieldMappingV1 {

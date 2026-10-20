@@ -110,7 +110,7 @@ export const simpleTool = <A, E, R>(name: string, description: string, parameter
 export function registerTaskTools({
   ctx,T,clusterJob,resolveRoleplaySession,storyBranchIsActive,characterCluster,cardWorkflowKey,isRoleplaySession,
   ensureBranch,ensureSourceActivationBranch,tavernTasks,startExportJob,activeCardWorkflow,characterRoster,
-  contextWindowKey,clusterLoreVisible,assertClusterSource,submissionBindings,
+  contextWindowKey,clusterLoreVisible,assertClusterSource,clusterCore,submissionBindings,inputBinding,
 }: TaskToolsDependencies) {
   const sessionOf = async (exec: {agent?: HostAgent},purpose:'ordinary'|'source-activation-management'='ordinary') => {
     let session: HostSession | null | undefined = exec?.agent?.session
@@ -145,7 +145,7 @@ export function registerTaskTools({
     {type:'object',properties:{mode:{type:'string',enum:['original','organized']}},additionalProperties:false},
     async(args,exec)=>({ok:true,jobId:(await startExportJob(await sessionOf(exec),'novel-export',exec.agent,undefined,undefined,args.mode)).id}))), 'roleplay: novel export tool')
   ctx.effect(()=>ctx.tools.register(simpleTool<TaskToolArguments,TaskToolExecution,Promise<unknown>>('rp_card_export',
-    '将当前人物、世界书、规则、模板和开场完整导出为可再次程序导入的结构化 JSON；原生角色卡保留 V2/V3 格式。默认 original 为纯程序保真导出。只有玩家明确要求重新按语义编排内容时才使用 organized。文件在酒馆管理下载。',
+    '将当前有效人物、世界书、规则、模板和开场完整保存为 NextTavern 原生 JSON。默认 original 复用手动转换：原生卡由程序导出；社区卡需要时由模型标注原文分类，程序完整拷贝。仅明确要求重新编排 Markdown 时用 organized。原始上传文件请使用界面的源文件导出。任务进度及文件在酒馆管理查看。',
     {type:'object',properties:{mode:{type:'string',enum:['original','organized']}},additionalProperties:false},
     async(args,exec)=>({ok:true,jobId:(await startExportJob(await sessionOf(exec),'card-export',exec.agent,undefined,undefined,args.mode)).id}))),
     'roleplay: deterministic card export tool')
@@ -201,7 +201,10 @@ export function registerTaskTools({
       return withTavernLock(T.branch,planKey,async()=>{
         const deliver=(result: unknown)=>{
           const context=taskPhaseMessage('story','角色推演已返回，现在进入正式正文。把人物意向作为参考，协调冲突后创作；不要复述后台准备过程。',{turn,characterCast:true})
-          if(exec.deferContext)exec.deferContext(context);else agent.steer(context)
+          const input=inputBinding?.(agent)
+          if(!input)throw new Error('INPUT_CONTINUATION_SCOPE_INVALID')
+          const delivered=input.steerOwnedContinuation(context,turn)
+          if(delivered.kind==='blocked')throw new Error(delivered.code)
           return result
         }
         const previous=T.branch.get(planKey)
@@ -212,7 +215,7 @@ export function registerTaskTools({
         const lore=[...T.branch.entries()].filter(([key,v])=>key.startsWith(`${session.id}__cluster-lore-`)&&recentTurns.has(v.turn)&&clusterLoreVisible(session,v)).map(([,v])=>v)
         const notes=ctx.get('compaction')?.directorNotes?.(session)?.text??''
         const result=await characterCluster.run({session,agent,turn,characters:ids.map(id=>roster.find(c=>c.id===id)! as CharacterInputSource['character']),signal:exec.signal,
-          context:{stories,notes,lore:lore as {text: unknown}[],core:T.rules.get(keyOf(session.id,'spec'))?.core??'',userText:snapshot.userText}})
+          context:{stories,notes,lore:lore as {text: unknown}[],core:clusterCore?clusterCore(session):T.rules.get(keyOf(session.id,'spec'))?.core??'',userText:snapshot.userText}})
         await T.branch.put(planKey,{schemaVersion:1,branchId:session.id,turn,characterIds:ids,result,updatedAt:Date.now()})
         return deliver(result)
       })

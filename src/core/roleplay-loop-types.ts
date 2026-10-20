@@ -22,6 +22,7 @@ export interface LoopSession extends HostSession {
 export interface LoopAgent extends HostAgent {
   session: LoopSession
   steer: NonNullable<HostAgent['steer']>
+  readonly inbox:{readonly hasPending:boolean}
   readonly programmaticGeneration?: {operationId: string} | null
   cancel?(cause:{kind:'hook';reason:string},options:{keepInbox:true}):void
 }

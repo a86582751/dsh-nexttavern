@@ -2,10 +2,12 @@ import type { ContextSession } from './roleplay-context.js'
 import type { AuthorRecord } from './roleplay-author-context-types.js'
 import type { TaskToolExecution } from './roleplay-task-tools-types.js'
 import type { CheckLegacyWorldbookWriteTargetsV1 } from './roleplay-tavern-legacy-write-target-types.js'
+import type { NextTavernCardDocument } from './nexttavern-card.js'
 
 export interface AuthoredCard extends AuthorRecord {card_id?: string}
 export interface AuthoredWorldbook extends AuthorRecord {token_budget?: number; always_on?: boolean}
 export interface AuthoringInput {
+  native_document?: NextTavernCardDocument
   cards?: AuthoredCard[]
   worldbook?: AuthoredWorldbook[]
   statusSpec?: string | null
@@ -25,6 +27,10 @@ export interface AuthoringContext {
 }
 export interface AuthoringDependencies {
   beforeWrite?(exec:TaskToolExecution):Promise<void>
+  /** Core owns the existing import transaction. Invoke outside mutateSource to
+   * avoid reacquiring the import owner's Source lock during native activation. */
+  commitNativeDocument?(session:ContextSession,document:NextTavernCardDocument,atSeq:number,
+    exec:TaskToolExecution):Promise<unknown>
   /** Fixed private Core dependency; authoring does not create another Source queue. */
   mutateSource?<Result>(session: ContextSession, work: () => Promise<Result>,signal?:AbortSignal): Promise<Result>
   checkLegacyWorldbookWriteTargets?:CheckLegacyWorldbookWriteTargetsV1

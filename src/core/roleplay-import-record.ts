@@ -26,7 +26,7 @@ export function readStructuredImportDataV1(record:ImportRecord) {
     transportResourceId:envelope.schemaVersion===2?envelope.transportResourceId:null,
     executionSha256:decoded.sourceSha256,executionBytes:bytes.length}};
 }
-const IMPORT_SOURCE_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.png', '.json']);
+const IMPORT_SOURCE_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.docx', '.png', '.json']);
 // Hard limits protect the storage domain and the synchronous line/span
 // coverage pass from a malformed or adversarial tool payload.  These are
 // deliberately generous for long-form RP cards and reject rather than
@@ -53,7 +53,7 @@ export const resolveImportSource = (session: ImportSession, requestedPath: unkno
     throw new Error('当前会话缺少 cwd，无法验证角色卡来源路径');
   const source = readCardSource(cwd, requestedPath);
   if (!IMPORT_SOURCE_EXTENSIONS.has(source.extension))
-    throw new Error('source_file 必须是 .md/.markdown/.txt 或酒馆 .png/.json 文件');
+    throw new Error('source_file 必须是 .md/.markdown/.txt/.docx 或酒馆 .png/.json 文件');
   return source;
 };
 const computeLineStarts = (normalizedSource: string) => {
@@ -114,7 +114,8 @@ export const assertImportRecordIntegrity = (record: ImportRecord,
   const structured = (record.schemaVersion === 4 && record.normalizer === 'tavern-fields-v1')
     || (record.schemaVersion === 5 && record.normalizer === 'tavern-fields-v2')
     || (record.schemaVersion === 6 && record.normalizer === NEXTTAVERN_IMPORT_NORMALIZER);
-  if (!structured && (record.schemaVersion !== 3 || record.normalizer !== IMPORT_NORMALIZER)) {
+  const extracted=record.schemaVersion===7&&record.normalizer===IMPORT_NORMALIZER;
+  if (!structured && !extracted && (record.schemaVersion !== 3 || record.normalizer !== IMPORT_NORMALIZER)) {
     throw new Error('导入记录版本或规范化器不匹配；请从不可变 raw source 重新 begin');
   }
   const normalizedSource = record.normalizedSource;
@@ -140,14 +141,18 @@ export const assertImportRecordIntegrity = (record: ImportRecord,
 
 
 
-    && sha256(record.rawSource) !== String(record.rawSha256))
+    && sha256(record.rawSource) !== String(extracted?record.extractedSource?.sha256:record.rawSha256))
     throw new Error('原始来源 SHA-256 校验失败');
   if (typeof record.rawSource !== 'string'
     || Number(record.rawChars) !== record.rawSource.length
-    || (!structured && Number(record.sourceBytes) !== Buffer.byteLength(record.rawSource, 'utf8'))
+    || (!structured && Number(extracted?record.extractedSource?.bytes:record.sourceBytes) !== Buffer.byteLength(record.rawSource, 'utf8'))
     || Number(record.normalizedChars) !== normalizedSource.length) {
     throw new Error('导入记录字符数或字节数元数据不一致');
   }
+  if(extracted&&(record.extractedSource?.schemaVersion!==1||record.extractedSource.encoding!=='docx-markdown-v1'
+    ||record.originalCardSource?.schemaVersion!==1||record.originalCardSource.encoding!=='nexttavern-original-card-source-v1'
+    ||record.originalCardSource.sha256!==record.rawSha256||record.originalCardSource.bytes!==record.sourceBytes))
+    throw new Error('DOCX 提取文本缺少对应上传原件');
   if (structured) {
     const envelope = record.sourceEnvelope;
     if(!envelope)throw new Error('结构化原件归档无效');

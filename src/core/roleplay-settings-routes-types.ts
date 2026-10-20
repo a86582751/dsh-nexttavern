@@ -36,6 +36,7 @@ export interface SettingsRoutesDependencies {
   taskAgents: Map<string, HostAgent>
   characterCluster: TaskHost['characterCluster']
   characterRoster: TaskHost['characterRoster']
+  nativeCardCapability?(session:HostSession):{state:string;reason?:string;staticReady:boolean}
   memorySettingFields: readonly string[]
   memorySettingsPolicy: ReturnType<typeof createRoleplayPreparation>['memorySettingsPolicy']
   svc: {setSettings(id: string, patch: Record<string, number | null>): Promise<unknown>}

@@ -140,6 +140,9 @@ export interface RoleplayInputBinding {
   checkAttempt(currency: InputPreparationCurrency): {kind: 'allow'} | {kind: 'blocked'; code: string}
   persistedCurrency(): InputPreparationCurrency | undefined
   currentStep(): RoleplayInputStep | undefined
+  withCurrentMaterial?<T>(step:RoleplayInputStep,
+    read:(material:import('./roleplay-tavern-prompt-types.js').TavernRenderedAuthorMaterialV1)=>T):T|undefined
+  releaseMaterialStep?(turn:number,step:number):void
   /** Actual checked claim Source before pre-step, not step/provider readiness. */
   readClaimedInputSource(): InputSourceObservation | undefined
   /** Already checked Native maintenance input; assembly does not create authority. */
@@ -1073,6 +1076,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         return currencyOf(hot)
       },
       currentStep() {return currentStep && !stepCurrency(currentStep) ? currentStep : undefined},
+      withCurrentMaterial(step,read) {return materialOwner?.withCurrent(step,read)},
+      releaseMaterialStep(turn,step) {materialOwner?.releaseStep(turn,step)},
       readClaimedMaintenanceInput() {return claimedMaintenance},
       readClaimedInputSource() {
         try {

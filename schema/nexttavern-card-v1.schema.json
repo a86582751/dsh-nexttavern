@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:nexttavern:card:1.0",
-  "title": "NextTavern portable character card 1.0",
+  "title": "NextTavern portable character card 1.0 / 1.1",
   "description": "DATA contains current author settings. ARCHIVE retains original sources and never supplies runtime instructions. Unknown author fields remain portable. Runtime identities, sources, import IDs, verification, versions and timestamps are omitted by the export producer.",
   "type": "object",
   "required": ["spec", "spec_version", "data", "archive"],
   "additionalProperties": true,
   "properties": {
     "spec": {"const": "nexttavern_card"},
-    "spec_version": {"const": "1.0"},
+    "spec_version": {"enum": ["1.0", "1.1"]},
     "data": {
       "type": "object",
       "required": ["name", "cards", "worldbook", "rules"],
@@ -17,27 +17,7 @@
         "name": {"type": "string"},
         "cards": {"type": "array", "items": {"$ref": "#/$defs/authorRow"}},
         "worldbook": {"type": "array", "items": {"$ref": "#/$defs/authorRow"}},
-        "rules": {
-          "type": "object",
-          "additionalProperties": true,
-          "properties": {
-            "core": {"type": "string"},
-            "plot": {"type": "string"},
-            "narrative": {"type": "string"},
-            "reply": {"type": "string"},
-            "style": {"type": "string"},
-            "status": {"type": "string"},
-            "beauty": {
-              "type": "object",
-              "additionalProperties": true,
-              "properties": {
-                "css": {"type": "string"},
-                "js": {"type": "string"},
-                "regexRules": {"type": "array"}
-              }
-            }
-          }
-        },
+        "rules": {"$ref": "#/$defs/rulesRow"},
         "status": {"$ref": "#/$defs/textRow"},
         "opening": {
           "allOf": [{"$ref": "#/$defs/textRow"}],
@@ -54,6 +34,7 @@
           "type": "object",
           "additionalProperties": true,
           "properties": {
+            "authorExecution": {"$ref": "#/$defs/authorExecution"},
             "sillytavernMacroFields": {
               "description": "Activated ST macro aliases retained independently of canonical author prose; expanded only by the existing protected prompt renderer.",
               "type": "object",
@@ -86,7 +67,50 @@
       }
     }
   },
+  "allOf": [{
+    "if": {"properties": {"spec_version": {"const": "1.1"}}},
+    "then": {"properties": {"data": {
+      "required": ["compatibility"],
+      "properties": {"compatibility": {"required": ["authorExecution"]}}
+    }}},
+    "else": {"properties": {"data": {"properties": {"compatibility": {
+      "not": {"required": ["authorExecution"]}
+    }}}}}
+  }],
   "$defs": {
+    "authorExecution": {
+      "description": "The sole ordinary execution prose in 1.1. Classified data.cards/rules are advanced projections and must not execute alongside these author rows.",
+      "type": "object",
+      "required": ["schemaVersion", "mode", "cards", "rules"],
+      "additionalProperties": true,
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "mode": {"const": "preserved-author"},
+        "cards": {"type": "array", "items": {"$ref": "#/$defs/authorRow"}},
+        "rules": {"$ref": "#/$defs/rulesRow"}
+      }
+    },
+    "rulesRow": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "core": {"type": "string"},
+        "plot": {"type": "string"},
+        "narrative": {"type": "string"},
+        "reply": {"type": "string"},
+        "style": {"type": "string"},
+        "status": {"type": "string"},
+        "beauty": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "css": {"type": "string"},
+            "js": {"type": "string"},
+            "regexRules": {"type": "array"}
+          }
+        }
+      }
+    },
     "authorRow": {
       "description": "Open author fields are preserved. Reserved local runtime fields (id, schemaVersion, version, updatedAt, updatedAtSeq, createdAt, importId, sources, verified, tavern and beauty.sources) are not portable execution permissions and are removed by export and activation.",
       "type": "object",

@@ -31211,6 +31211,69 @@
       ]
     },
     {
+      "id": "native-card-advanced-material-typescript",
+      "source": "src/core/native-card-advanced-material.ts"
+    },
+    {
+      "id": "native-card-advanced-material-js",
+      "source": "lib/core/native-card-advanced-material.js",
+      "aliases": [
+        "preset/lib/core/native-card-advanced-material.js"
+      ]
+    },
+    {
+      "id": "native-card-advanced-typescript",
+      "source": "src/core/native-card-advanced.ts"
+    },
+    {
+      "id": "native-card-advanced-js",
+      "source": "lib/core/native-card-advanced.js",
+      "aliases": [
+        "preset/lib/core/native-card-advanced.js"
+      ]
+    },
+    {
+      "id": "native-card-conversion-driver-typescript",
+      "source": "src/core/native-card-conversion-driver.ts"
+    },
+    {
+      "id": "native-card-conversion-driver-js",
+      "source": "lib/core/native-card-conversion-driver.js",
+      "aliases": [
+        "preset/lib/core/native-card-conversion-driver.js"
+      ]
+    },
+    {
+      "id": "native-card-conversion-typescript",
+      "source": "src/core/native-card-conversion.ts"
+    },
+    {
+      "id": "native-card-conversion-js",
+      "source": "lib/core/native-card-conversion.js",
+      "aliases": [
+        "preset/lib/core/native-card-conversion.js"
+      ]
+    },
+    {
+      "id": "roleplay-tavern-prompt-types-typescript",
+      "source": "src/core/roleplay-tavern-prompt-types.ts"
+    },
+    {
+      "id": "roleplay-tavern-prompt-types-js",
+      "source": "lib/core/roleplay-tavern-prompt-types.js",
+      "aliases": [
+        "preset/lib/core/roleplay-tavern-prompt-types.js"
+      ]
+    },
+    {
+      "id": "native-card-conversion-panel-typescript",
+      "source": "src/ui/native-card-conversion-panel.ts"
+    },
+    {
+      "id": "native-card-conversion-panel",
+      "source": "lib/ui/native-card-conversion-panel.js"
+    },
+    {
       "id": "compat-llm-deepseek-adapter-ts",
       "source": "development/llm-deepseek/src/adapter.ts"
     },
@@ -156293,6 +156356,82 @@
         "src/operations/public-transaction.mts",
         "src/status-template.ts",
         "src/core/roleplay-tavern-derived-content-execution.ts"
+      ]
+    },
+    {
+      "id": "native-card-advanced-material-js-build",
+      "kind": "typescript-module",
+      "artifact": "native-card-advanced-material-js",
+      "entry": "src/core/native-card-advanced-material.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/native-card-advanced-material.ts",
+        "src/core/native-card-conversion.ts",
+        "src/core/roleplay-tavern-layout.ts"
+      ]
+    },
+    {
+      "id": "native-card-advanced-js-build",
+      "kind": "typescript-module",
+      "artifact": "native-card-advanced-js",
+      "entry": "src/core/native-card-advanced.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/native-card-advanced.ts",
+        "src/core/native-card-conversion.ts",
+        "src/core/nexttavern-card.ts"
+      ]
+    },
+    {
+      "id": "native-card-conversion-driver-js-build",
+      "kind": "typescript-module",
+      "artifact": "native-card-conversion-driver-js",
+      "entry": "src/core/native-card-conversion-driver.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/native-card-conversion-driver.ts",
+        "src/core/native-card-conversion.ts",
+        "src/core/card-export-projection.ts",
+        "src/core/nexttavern-card.ts"
+      ]
+    },
+    {
+      "id": "native-card-conversion-js-build",
+      "kind": "typescript-module",
+      "artifact": "native-card-conversion-js",
+      "entry": "src/core/native-card-conversion.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/native-card-conversion.ts",
+        "src/core/card-export-projection.ts",
+        "src/core/nexttavern-card.ts"
+      ]
+    },
+    {
+      "id": "roleplay-tavern-prompt-types-build",
+      "kind": "typescript-module",
+      "artifact": "roleplay-tavern-prompt-types-js",
+      "entry": "src/core/roleplay-tavern-prompt-types.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/roleplay-tavern-prompt-types.ts",
+        "src/core/roleplay-author-contributions.ts",
+        "src/core/roleplay-tavern-layout.ts",
+        "src/core/tavern-lore-plan-types.mts"
+      ]
+    },
+    {
+      "id": "native-card-conversion-panel-js-build",
+      "kind": "typescript-module",
+      "artifact": "native-card-conversion-panel",
+      "entry": "src/ui/native-card-conversion-panel.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/native-card-conversion-panel.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     },
     {

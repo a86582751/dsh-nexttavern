@@ -2,6 +2,7 @@ import type { HostAgent, HostSession } from './roleplay-task-host-types.js'
 import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { CharacterInputSource } from './character-cluster-projection.js'
 import type { TaskMessage } from './tavern-task-context.js'
+import type { RoleplayInputBinding } from './roleplay-input-preparation.js'
 
 export interface TaskToolExecution {
   readonly callId?:string
@@ -41,6 +42,7 @@ export interface TaskToolTable {
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface TaskToolsDependencies {
   submissionBindings:TaskSubmissionBindings
+  inputBinding?(agent:HostAgent):Pick<RoleplayInputBinding,'steerOwnedContinuation'>|undefined
   ctx: {
     effect(work: () => unknown, label: string): unknown
     tools: {register(tool: unknown): unknown}
@@ -68,4 +70,5 @@ export interface TaskToolsDependencies {
   clusterLoreVisible(session: HostSession, record: TaskToolRecord): boolean
   /** Raw structured personas cannot bypass their Native rendering owner. */
   assertClusterSource?(session:HostSession):void
+  clusterCore?(session:HostSession):string
 }

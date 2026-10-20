@@ -94,6 +94,7 @@ export interface StatusCancellation {
 export type StatusJob = Promise<StatusRecord | null | undefined> & { admission: Promise<unknown>; cancellation: StatusCancellation }
 export interface StatusRunOptions { force?: boolean; agent?: TaskAgent; signal?: AbortSignal }
 export interface StatusDependencies {
+  advancedCardReady?(session:StatusSession):boolean
   ctx: StatusContext
   T: StatusTables
   cfg: { maxWorldTokens?: number; statusWorkerTimeoutMs?: number; statusRetryMs?: number }

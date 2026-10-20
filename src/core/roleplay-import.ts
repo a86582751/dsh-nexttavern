@@ -19,7 +19,7 @@ import {
   readStructuredImportDataV1,
 } from './roleplay-import-record.js';
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
+import { resolve,basename } from 'node:path';
 import {
   keyOf,
   safeId,
@@ -57,7 +57,7 @@ import type {
 } from './roleplay-import-types.js';
 import type { CardWorkflowAgent, CardWorkflowJob, CardWorkflowSession } from './roleplay-card-workflow-types.js';
 import type { ExportMaterial } from './card-export-projection.js';
-import {isNextTavernCardDocument,portableNextTavernAuthorFields,
+import {isNextTavernCardDocument,portableNextTavernAuthorFields,nextTavernExecutionAuthorData,
   readNativeNextTavernAuthorExtensionV1} from './nexttavern-card.js';
 export function importActiveKey(sessionId: string) {
   return keyOf(sessionId, 'import-active');
@@ -768,8 +768,10 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               }).message)
             };
           }
-          const rawSource = executionRawSource??(decoded ? JSON.stringify(decoded.document, null, 2) : rawBytes.toString('utf8'));
-          if (!decoded && !Buffer.from(rawSource, 'utf8').equals(rawBytes))
+          const docx=source.extension==='.docx';
+          const rawSource = docx?await (await import('dsh-nexttavern-anydoc/document-reader')).docxBytesToMarkdown(rawBytes)
+            :executionRawSource??(decoded ? JSON.stringify(decoded.document, null, 2) : rawBytes.toString('utf8'));
+          if (!decoded && !docx && !Buffer.from(rawSource, 'utf8').equals(rawBytes))
             return {
               ok: false, error: '角色卡不是有效 UTF-8；拒绝以替换字符损坏原文'
             };
@@ -815,11 +817,19 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
             name:resourceName(nativeTransport.data.name,'.json'),type:'application/json',bytes:rawBytes,
             source:{sessionId:session.id,kind:'card-import',importId,sha256:sha256(rawBytes)}}):undefined;
           if(nativeTransport&&!transportResource?.id)throw new Error('原生角色卡原件归档未完成');
+          const docxResource=docx?await libraryFor(session).archive({name:basename(source.sourcePath),
+            type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',bytes:rawBytes,
+            source:{sessionId:session.id,kind:'card-import',importId,sha256:sha256(rawBytes)}}):undefined;
           const record: ImportRecord = {
-            schemaVersion: nativeTransport?6:decoded ? 5 : 3,
+            schemaVersion: docx?7:nativeTransport?6:decoded ? 5 : 3,
+            ...(docxResource?{originalCardSource:{schemaVersion:1 as const,encoding:'nexttavern-original-card-source-v1' as const,
+              resourceId:docxResource.id!,sha256:sha256(rawBytes),bytes:rawBytes.length},
+              extractedSource:{schemaVersion:1 as const,encoding:'docx-markdown-v1' as const,
+                sha256:sha256(rawSource),bytes:Buffer.byteLength(rawSource,'utf8')}}:{}),
             importId,
             workflowId: workflow?.id,
             workflowGeneration: workflow?.generation,
+            ...(workflow?.authoringOrigin?{authoringOrigin:workflow.authoringOrigin}:{}),
             sessionId: session.id,
             sourceFile: source.sourcePath,
             workspaceRoot: source.workspaceRoot,
@@ -1500,7 +1510,7 @@ export function registerRoleplayImports(deps: CardImportDependencies) {
               const structuredDecoded=record.sourceEnvelope?readStructuredImportDataV1(record).decoded:undefined;
               const tavernProjection=structuredDecoded?projectStructuredImport(record,structuredDecoded):null;
               const portable=structuredDecoded&&isNextTavernCardDocument(structuredDecoded.document)
-                ?structuredDecoded.document.data:undefined;
+                ?nextTavernExecutionAuthorData(structuredDecoded.document.data):undefined;
               const tavernWorldbookById = new Map<string, NonNullable<typeof tavernProjection>['worldbook'][number]>();
               for (const entry of tavernProjection?.worldbook ?? []) {
                 if (!tavernWorldbookById.has(entry.id))

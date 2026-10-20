@@ -25,6 +25,7 @@ export interface DecisionContext {
   get(name: 'compaction'): { directorNotes?(session: DecisionSession): {text?: unknown} | null } | null | undefined
 }
 export interface DecisionDependencies {
+  advancedCardReady?(session:DecisionSession):boolean
   T: DecisionTables
   withDecisionMutationLock<T>(branchId: string, work: () => Promise<T>): Promise<T>
   normalizeDecisionRecord(record: DecisionRecord | undefined): DecisionRecord | null

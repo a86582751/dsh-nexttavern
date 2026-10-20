@@ -40,6 +40,7 @@ interface Dependencies extends CardAttachmentServices {
 const PREFIX = 'tavern_card_attachment__'
 const TYPES: Readonly<Record<string, string>> = Object.freeze({
   '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown', '.txt': 'text/plain',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 })
 interface AttachmentPolicy {
   prefix: string

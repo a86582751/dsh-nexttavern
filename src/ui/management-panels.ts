@@ -1,6 +1,7 @@
 import type * as ReactAPI from 'react';
 import { fetchRoleplayText, updatePanelDraft } from './panel-state.js';
 import {createCardImportPanel} from './card-import-panel.js';
+import {createNativeCardConversionPanel} from './native-card-conversion-panel.js';
 import {createCardImportRequestJournal} from './card-import-request.js';
 import type {CardImportRequestStorage} from './card-import-request.js';
 import type { PanelDraft } from './panel-state.js';
@@ -36,6 +37,7 @@ interface ModelSettings {
     main?: ModelRoute;
 }
 export interface ModelsReply {
+    capability?: {state:string;reason?:string;staticReady:boolean};
     catalog?: ModelCatalogEntry[];
     main?: ModelRoute;
     effective?: ModelSettings;
@@ -54,6 +56,7 @@ interface ClusterSettings {
     characters?: Record<string, ModelRoute | null>;
 }
 interface ClusterReply {
+    capability?: {state:string;reason?:string;staticReady:boolean};
     settings: ClusterSettings;
     session: ClusterSettings;
     global: ClusterSettings;
@@ -103,10 +106,15 @@ interface ExportJob {
     actualRoute?: ModelRoute;
     execution?: string;
     resourceId?: string;
+    createdAt?:number;
+    completedAt?:number;
+    updatedAt?:number;
     error?: unknown;
     progress?: {
         done?: number;
         total?: number;
+        message?:string;
+        stage?:string;
     };
 }
 interface ManagementDependencies {
@@ -129,6 +137,22 @@ export function createManagementPanels({
 }: ManagementDependencies) {
 
     const importRequestJournal = createCardImportRequestJournal({storage: importRequestStorage});
+    const NativeCardConversionPanel=createNativeCardConversionPanel({React,jsonFetch,toast});
+    function AdvancedPanel({navigate,openImages,openMusic}:{navigate(tab:string):void;openImages():void;openMusic():void}) {
+        const h=React.createElement;
+        return h('div',{className:'dsh-rp-panel'},h('h3',null,'高级角色卡设置'),
+            h('p',{className:'dsh-rp-muted'},'社区卡与转换后的原生卡使用相同的模板、脚本和媒体功能。这里集中提供对应管理入口。'),
+            h('section',{className:'dsh-rp-item'},h('h4',null,'动态世界书与模板'),
+                h('p',null,'编辑条目正文、触发条件与 EJS 模板；原作者的条件与执行顺序继续保留。'),
+                btn('打开结构化世界书',()=>navigate('tavern-lore')),btn('编辑人物设定',()=>navigate('cards')),
+                btn('编辑核心设定',()=>navigate('core-rules'))),
+            h('section',{className:'dsh-rp-item'},h('h4',null,'数值、分析与作者前端'),
+                h('p',null,'MVU 数值在状态栏查看和编辑。Ruby 分析、作者脚本和交互前端沿用卡内声明及各自的操作入口。'),
+                h('p',{className:'dsh-rp-muted'},'原生美化规则与社区作者脚本分别保存，修改一种不会覆盖另一种。'),
+                btn('原生状态与美化规则',()=>navigate('settings')),btn('查看导入声明',()=>navigate('card-import'))),
+            h('section',{className:'dsh-rp-item'},h('h4',null,'图片与背景音乐'),
+                btn('图片、立绘与背景',openImages),btn('背景音乐',openMusic),btn('资源库',()=>navigate('resources'))));
+    }
     const CardImportPanel = createCardImportPanel({React,jsonFetch,toast,confirmWithDialog,
         storage: importRequestStorage,
         uploadFile: uploadFile ?? (async () => {throw new Error('文件上传服务尚未就绪');})});
@@ -142,6 +166,7 @@ export function createManagementPanels({
             [error, setError] = React.useState(''),
             [saving, setSaving] = React.useState(false),
             [revision, setRevision] = React.useState(0);
+        const [showConversion,setShowConversion]=React.useState(false);
         const data = dataValue!, models = modelsValue!, draft = draftValue!;
         React.useEffect(() => {
             let live = true;
@@ -290,12 +315,21 @@ export function createManagementPanels({
         }, h('input', {
             type: 'checkbox',
             checked: draft.enabled,
-            onChange: (e: ReactAPI.ChangeEvent<HTMLInputElement>) => setDraft({
-                ...draft, enabled: e.target.checked
-            })
+            onChange: async (e: ReactAPI.ChangeEvent<HTMLInputElement>) => {
+                const enabled=e.target.checked;
+                if(enabled&&data.capability&&data.capability.state!=='ready'){
+                    if(await confirmWithDialog(document,'此卡还没有可供角色集群使用的人物分类。是否打开原生卡转换？转换可能调用模型，完成后可应用到当前世界线。',
+                        {title:'需要原生人物分类',confirmLabel:'打开转换'}))setShowConversion(true);
+                    return;
+                }
+                setDraft({...draft,enabled});
+            }
         }), '开启角色 agent 集群模式'), h('p', {
             className: 'dsh-rp-muted'
-        }, '读卡回合不运行。每位出场主要人物各自运行一次，可按需查阅历史；失败或超时会使用主代理模型再试一次，仍失败由主笔自由发挥。开启会增加请求用量和正文等待时间。'), h('section', {
+        }, '读卡回合不运行。每位出场主要人物各自运行一次，可按需查阅历史；失败或超时会使用主代理模型再试一次，仍失败由主笔自由发挥。开启会增加请求用量和正文等待时间。'),
+        data.capability&&(data.capability.reason||data.capability.state!=='ready')
+            ?h('p',{className:'dsh-rp-muted'},data.capability.reason??'请先转换并应用人物分类。'):null,
+        showConversion?h(NativeCardConversionPanel,{sessionId,onApplied:()=>setRevision(r=>r+1)}):null,h('section', {
             className: 'dsh-rp-cluster-default', 'aria-label': '角色集群默认模型（全局）'
         }, h('span', {
             className: 'dsh-rp-cluster-scope'
@@ -335,6 +369,7 @@ export function createManagementPanels({
             [saving, setSaving] = React.useState(false),
             [allMain, setAllMain] = React.useState(false),
             [routes, setRoutes] = React.useState<Record<string, ModelRoute | null>>({});
+        const [showConversion,setShowConversion]=React.useState(false);
         React.useEffect(() => {
             let live = true;
             jsonFetch<ModelsReply>(`/api/roleplay/models?sessionId=${encodeURIComponent(sessionId)}`).then(value => live
@@ -449,7 +484,13 @@ export function createManagementPanels({
             className: 'dsh-rp-panel', disabled: saving, style: {
                 border: 0, margin: 0, minWidth: 0
             }
-        }, React.createElement('h4', null, '模型路由'), React.createElement('label', {
+        }, React.createElement('h4', null, '模型路由'),
+        data.capability&&(data.capability.reason||data.capability.state!=='ready')
+            ?React.createElement('p',{className:'dsh-rp-muted'},data.capability.reason
+                ??'当前卡尚未提供高级功能所需的原生分类。可保存模型偏好；角色集群及专用状态、决策生成将在转换并应用后启用。'):null,
+        showConversion?React.createElement(NativeCardConversionPanel,{sessionId,onApplied:()=>{
+            void jsonFetch<ModelsReply>(`/api/roleplay/models?sessionId=${encodeURIComponent(sessionId)}`).then(setData);
+        }}):null,React.createElement('label', {
             className: 'dsh-rp-row'
         }, '保存范围', React.createElement('select', {
             className: 'dsh-rp-input',
@@ -487,9 +528,14 @@ export function createManagementPanels({
             }, current?.model ?? '跟随主模型')), React.createElement('select', {
                 className: 'dsh-rp-input',
                 value: routeValue(current),
-                onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => rememberModel(allMain, {
-                    ...routes, [id]: parseRoute(e.target.value)
-                })
+                onChange: async (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => {
+                    const route=parseRoute(e.target.value);
+                    rememberModel(allMain,{...routes,[id]:route});
+                    if(route&&['status','decision'].includes(id)&&data.capability&&data.capability.state!=='ready'){
+                        if(await confirmWithDialog(document,'此卡需要原生分类才能使用专用状态和决策生成。是否打开转换？模型偏好已保留在草稿中。',
+                            {title:'准备原生分类',confirmLabel:'打开转换'}))setShowConversion(true);
+                    }
+                }
             }, React.createElement('option', {
                 value: ''
             }, '跟随主模型'), catalog.map(route => React.createElement('option', {
@@ -713,7 +759,9 @@ export function createManagementPanels({
                 href: `/api/roleplay/download?sessionId=${encodeURIComponent(sessionId)}&resourceId=${encodeURIComponent(resource.id)}`
             }, '下载'), isCardReadableResource(resource) ? React.createElement('button', {
                 className: 'dsh-rp-btn', onClick: () => importResource(resource)
-            }, '载入当前') : null));
+            }, '载入当前') : null),isCardReadableResource(resource)?React.createElement('details',null,
+                React.createElement('summary',null,'转化为原生卡'),
+                React.createElement(NativeCardConversionPanel,{sessionId,resourceId:resource.id})):null);
         }));
     }
     function ExportPanel({ sessionId }: {
@@ -800,6 +848,7 @@ export function createManagementPanels({
             memory: '记忆与场景整理',
             'card-import': '读取角色卡',
             'card-export': '导出角色卡',
+            'card-convert': '转化为原生卡',
             status: '状态栏更新',
             decision: '决策建议',
             'novel-export': '导出完整小说'
@@ -816,13 +865,13 @@ export function createManagementPanels({
         const canCancel = (status: string) => ['queued', 'running', 'waiting-main'].includes(status);
         const canRetry = (status: string) => ['failed', 'cancelled'].includes(status);
         const routeText = (job: ExportJob) => {
-            if(job.execution==='deterministic')return job.kind==='card-export'?'保真 JSON 导出':'剧情原文 Markdown 导出';
+            if(job.execution==='deterministic')return job.kind==='novel-export'?'剧情原文 Markdown 导出':'程序合并原生设定';
             const route = job.actualRoute;
             const model = route?.provider
                 && route?.model ? `${route.provider}/${route.model}${route.reasoningEffort ? ` · ${route.reasoningEffort}` : ''}` : '';
             return model ? `${job.execution === 'inline' ? '当前循环' : '专用模型'}：${model}` : (job.execution === 'inline' ? '当前循环' : '专用模型');
         };
-        const exportKinds = new Set(['card-export', 'novel-export']);
+        const exportKinds = new Set(['card-export','card-convert', 'novel-export']);
         const topJobs = jobs.filter(job => !job.parentJobId && exportKinds.has(job.kind));
         const exportJobIds = new Set(topJobs.map(job => job.id));
         const childJobs = jobs.filter(job => job.parentJobId && exportJobIds.has(job.parentJobId)), [showSteps, setShowSteps] = React.useState(false);
@@ -839,9 +888,10 @@ export function createManagementPanels({
         },
              `${job.parentJobId ? '└─ ' : ''}${kindLabels[job.kind]
             ?? '任务'} · ${statusLabels[job.status]
-            ?? '处理中'} · ${job.progress?.done
-            ?? 0}/${job.progress?.total
-            ?? 0}`,
+            ?? '处理中'}`,
+             ['queued','running','waiting-main'].includes(job.status)&&job.progress?.message ? React.createElement('p',{role:'status'},job.progress.message):null,
+             canCancel(job.status)?React.createElement('progress',{'aria-label':'任务处理中'}):null,
+             job.createdAt?React.createElement('small',null,`已用时 ${Math.max(0,Math.floor(((['queued','running','waiting-main'].includes(job.status)?Date.now():job.completedAt??job.updatedAt??job.createdAt)-job.createdAt)/1000))} 秒`):null,
              React.createElement('div',
              {
             className: 'dsh-rp-muted'
@@ -863,14 +913,16 @@ export function createManagementPanels({
             className: 'dsh-rp-panel'
         }, React.createElement('h4', null, '导出'), React.createElement('div', {
             className: 'dsh-rp-row'
-        }, React.createElement('button', {
+        }, React.createElement('a', {
+            className:'dsh-rp-btn',href:`/api/roleplay/card-source?sessionId=${encodeURIComponent(sessionId)}`
+        },'导出上传源文件'),React.createElement('button', {
             className: 'dsh-rp-btn', disabled: busy, onClick: () => start('card-export')
-        }, '导出角色卡 JSON'), React.createElement('button', {
+        }, '导出 NextTavern 原生卡'), React.createElement('button', {
             className: 'dsh-rp-btn', disabled: busy, onClick: () => start('novel-export')
         }, '导出小说原文'), childJobs.length ? React.createElement('button', {
             className: 'dsh-rp-btn', onClick: () => setShowSteps(value => !value)
         }, showSteps ? '隐藏处理步骤' : '显示处理步骤') : null),
-        React.createElement('p',{className:'dsh-rp-muted'},'默认完整保留当前设定或剧情原文，不改写内容。'),
+        React.createElement('p',{className:'dsh-rp-muted'},'源文件保留最初上传的内容；原生卡包含当前已保存设定，必要时调用模型分类，正文由程序原样拷贝。互动写卡没有上传原件时，两种导出均保存当前原生卡。'),
         React.createElement('details',null,React.createElement('summary',null,'按语义重新编排（使用模型）'),
           React.createElement('p',{className:'dsh-rp-muted'},'仅在需要重新理解杂乱内容并划分章节时使用。'),
           React.createElement('div',{className:'dsh-rp-row'},
@@ -880,6 +932,6 @@ export function createManagementPanels({
               onClick:()=>start('novel-export','organized')},'重新编排小说章节'))),visibleJobs.map(renderJob));
     }
     return {
-        CharacterClusterPanel, ModelPanel, CardImportPanel, ResourcesPanel, ExportPanel
+        CharacterClusterPanel, ModelPanel, CardImportPanel, ResourcesPanel, ExportPanel,AdvancedPanel
     };
 }

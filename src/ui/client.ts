@@ -395,6 +395,7 @@ export function apply(ctx: ClientContext) {
       ModelPanel,
       CardImportPanel,
       ResourcesPanel,
+      AdvancedPanel,
       ExportPanel } = createManagementPanels(
         {
           React,
@@ -484,6 +485,7 @@ export function apply(ctx: ClientContext) {
         ['plot-guidance', '剧情指引'],
         ['style-specialization', '文风特化'],
         ['settings', '自定义规则'],
+        ['advanced', '高级'],
         ['memory', '记忆'],
         ['character-cluster', '角色集群'],
         ['card-adaptation', '长文本转角色卡']]
@@ -517,6 +519,10 @@ export function apply(ctx: ClientContext) {
       // Each tab renders one panel; keep special props next to that panel.
       const body = (() => {
         switch (tab) {
+          case 'advanced':
+            return React.createElement(AdvancedPanel,{navigate:setTab,
+              openImages:()=>{onClose();sessionBgm.open(false);sessionImages.open(true)},
+              openMusic:()=>{onClose();sessionImages.open(false);sessionBgm.open(true)}})
           case 'card-adaptation':
             return React.createElement(
               CardAdaptationPanel,

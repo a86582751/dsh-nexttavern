@@ -3,6 +3,7 @@ import type { DirectorNotes } from '../memory/memory-history.js'
 import type { StatusRecord, StatusSource, FixedStatusContext } from './roleplay-status-types.js'
 import type {TavernSourceInheritanceOwnerV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js'
+import type {NativeCardConversionForkSeedV1} from './native-card-advanced.js'
 
 export interface InheritanceSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & { parentSession?: string }
@@ -56,6 +57,10 @@ export interface InheritanceDependencies {
   /** Actual child writer provenance; parent rows never mint this entry. */
   rowFacts?:PhaseABranchRowFactsWriterV1
   sourceInheritance?:TavernSourceInheritanceOwnerV1
+  nativeCardAdvanced?:{
+    captureForkSeed(parentSessionId:string):NativeCardConversionForkSeedV1|undefined
+    applyForkSeed(childSessionId:string,seed:NativeCardConversionForkSeedV1):PromiseLike<unknown>
+  }
   ensureState(sessionId: string): InheritanceState
   cloneBranchRecord<T>(record: T): T
   T: InheritanceTables

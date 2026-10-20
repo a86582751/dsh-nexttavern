@@ -91,6 +91,7 @@ export function createRoleplayDecision(deps: DecisionDependencies) {
     }
 
     if (!decisionOptions.length) {
+      if(selection.execution==='spawn'&&deps.advancedCardReady?.(session)===false)return
       const decisionContext=await buildDecisionContext(T,branchId,{narrative,userText:snapshot.userText,
         scene:T.scene.get(keyOf(branchId,'current')),memory:memoryForContext(session),
         directorNotes:ctx.get('compaction')?.directorNotes?.(session)?.text})
