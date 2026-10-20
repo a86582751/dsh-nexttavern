@@ -47,7 +47,8 @@
         "native-input-link*",
         "native-input-stop*",
         "development/http-proxy/*",
-        "http-proxy-native-fetch-compat*"
+        "http-proxy-native-fetch-compat*",
+        "development/tool-skill/*"
       ]
     },
     {

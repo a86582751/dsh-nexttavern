@@ -31427,6 +31427,26 @@
       "source": "development/llm-deepseek/ORIGIN.json"
     },
     {
+      "id": "compat-tool-skill-index-js",
+      "source": "development/tool-skill/lib/index.js"
+    },
+    {
+      "id": "compat-tool-skill-index-typescript",
+      "source": "development/tool-skill/src/index.ts"
+    },
+    {
+      "id": "compat-tool-skill-license",
+      "source": "development/tool-skill/LICENSE"
+    },
+    {
+      "id": "compat-tool-skill-origin-md",
+      "source": "development/tool-skill/ORIGIN.md"
+    },
+    {
+      "id": "compat-tool-skill-package-json",
+      "source": "development/tool-skill/package.json"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -157276,6 +157296,22 @@
         "development/llm/src/index.ts",
         "development/llm/src/invariant.ts",
         "development/llm/src/types.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "compat-tool-skill-index-build",
+      "kind": "typescript-module",
+      "artifact": "compat-tool-skill-index-js",
+      "entry": "development/tool-skill/src/index.ts",
+      "typeContext": "fork-compat",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "development/tool-skill/src/index.ts",
         "build-tools/tsconfig.json",
         "build-tools/package.json",
         "build-tools/package-lock.json",

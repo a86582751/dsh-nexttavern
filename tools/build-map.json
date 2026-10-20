@@ -8442,6 +8442,15 @@
       "outputs": [
         "development/llm-deepseek/lib/wire-types.js"
       ]
+    },
+    {
+      "artifact": "compat-tool-skill-index-js",
+      "source": "development/tool-skill/src/index.ts",
+      "banner": "runtime/alpha3/compat/tool-skill/src/index.ts",
+      "primaryOutput": "development/tool-skill/lib/index.js",
+      "outputs": [
+        "development/tool-skill/lib/index.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -45685,6 +45694,31 @@
         "id": "compat-llm-deepseek-origin-json",
         "source": "development/llm-deepseek/ORIGIN.json",
         "canonicalSource": "runtime/alpha3/compat/llm-deepseek/ORIGIN.json"
+      },
+      {
+        "id": "compat-tool-skill-index-js",
+        "source": "development/tool-skill/lib/index.js",
+        "canonicalSource": "runtime/alpha3/compat/tool-skill/lib/index.js"
+      },
+      {
+        "id": "compat-tool-skill-index-typescript",
+        "source": "development/tool-skill/src/index.ts",
+        "canonicalSource": "runtime/alpha3/compat/tool-skill/src/index.ts"
+      },
+      {
+        "id": "compat-tool-skill-license",
+        "source": "development/tool-skill/LICENSE",
+        "canonicalSource": "runtime/alpha3/compat/tool-skill/LICENSE"
+      },
+      {
+        "id": "compat-tool-skill-origin-md",
+        "source": "development/tool-skill/ORIGIN.md",
+        "canonicalSource": "runtime/alpha3/compat/tool-skill/ORIGIN.md"
+      },
+      {
+        "id": "compat-tool-skill-package-json",
+        "source": "development/tool-skill/package.json",
+        "canonicalSource": "runtime/alpha3/compat/tool-skill/package.json"
       }
     ],
     "publicRelease": {
@@ -167867,6 +167901,23 @@
           "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/compat/llm-deepseek/src/wire-types.ts"
+      },
+      {
+        "id": "compat-tool-skill-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-tool-skill-index-js",
+        "entry": "development/tool-skill/src/index.ts",
+        "typeContext": "fork-compat",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/tool-skill/src/index.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/tool-skill/src/index.ts"
       }
     ],
     "typeScript": {
