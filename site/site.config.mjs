@@ -1,3 +1,4 @@
+// Generated from release/public/site/src/site.config.mts; edit the TypeScript source.
 /**
  * Content and navigation for the public documentation site.
  *
@@ -7,13 +8,10 @@
  * build when a heading disappears, so the site cannot silently drift away
  * from the documents it mirrors.
  */
-
 export const site = {
     title: 'NextTavern 文档',
     productName: 'dsh-NextTavern',
-    // 品牌标识直接搬皮肤自己的看板娘：头像（art/brand-mark.webp）加上她倚着
-    // 的 "Next Tavern" 木牌（art/brand-word.webp），不再用 "NT" 字标本；
-    // 来源见 art/README.md。
+    // 看板娘头像与新手账排版共同组成网站品牌；素材来源见 art/README.md。
     brandMark: { mark: 'brand-mark.webp', word: 'brand-word.webp', wordAlt: 'NextTavern' },
     lang: 'zh-CN',
     description: 'dsh-NextTavern 使用文档：一键安装、角色卡导入、记忆系统、预设与文风、世界线分支、小说导出与公网访问。',
@@ -27,28 +25,46 @@ export const site = {
     developmentLine: '0.3 开发中，抱歉让大家久等了',
     harnessLine: 'DeepSeek Harness 0.1.7-rc.2',
     hero: {
-        eyebrow: 'DSH 角色扮演 Agent',
-        // 标语与首图不写在这里：首页用自有皮肤 dsh-nexttavern-amber 同款的
-        // 打字机标语轮换，标语在构建时从皮肤源码读取（见 build.mjs
-        //「the skin's own words」一节），避免出现第二份口径。
-        // 轮换图说的是同一句话：只是皮肤立绘轮播，不逐张换标签，因为皮肤包
-        // 为了体积只收录了其中几张，逐图点名会对不上。
-        artCaption: 'Welcome to the Next Generation Tavern',
-        // 首图轮换；文件在 site/art/，来源与出图记录见 art/README.md。
+        eyebrow: 'NEXT TAVERN · 你的下一段冒险',
+        title: '是非真伪，选择无关错对',
+        artCaption: '一盏灯，一本未完的故事。下一页，由你写下。',
         art: [
-            { file: 'tavern-day-shelf.webp', alt: '日间酒馆里踩着梯子取酒瓶的鲸鱼娘立绘' },
-            { file: 'tavern-day-fireplace.webp', alt: '日间酒馆壁炉前添柴的鲸鱼娘立绘' },
-            { file: 'tavern-day-counter.webp', alt: '日间酒馆吧台前伏案写字的鲸鱼娘立绘' },
-            { file: 'tavern-day-dusting.webp', alt: '日间酒馆吧台前擦拭酒瓶的鲸鱼娘立绘' },
-            { file: 'tavern-day-door.webp', alt: '日间酒馆门口提灯回望的鲸鱼娘立绘' },
-            { file: 'tavern-day-garden.webp', alt: '日间酒馆窗边浇花的鲸鱼娘立绘' },
-            { file: 'tavern-night-window.webp', alt: '夜间窗边捧着杯子的鲸鱼娘立绘' },
-            { file: 'tavern-night-desk.webp', alt: '夜间书桌前读书的鲸鱼娘立绘' },
-            { file: 'tavern-night-candle.webp', alt: '夜里握着蜡烛望向圆窗星空的鲸鱼娘立绘' }
+            { file: 'journal-day.webp', theme: 'light', alt: '冒险手账里的日间酒馆：鲸鱼娘与打开的故事书' },
+            ...[
+                '身穿水手服的鲸鱼娘，日间冒险手账封面',
+                '身穿现代运动装的鲸鱼娘在林间徒步',
+                '身穿学者长外套的鲸鱼娘，日间旅途',
+                '身穿园艺背带裤的鲸鱼娘，日间旅途',
+                '身穿汉服的鲸鱼娘漫游中式水乡',
+                '身穿飞行夹克的鲸鱼娘，日间旅途',
+                '身穿经典女仆装的鲸鱼娘，日间酒馆'
+            ].map((alt, index) => ({
+                file: 'journal-day-' + String(index + 2).padStart(2, '0') + '.webp',
+                theme: 'light', alt
+            })),
+            { file: 'journal-night.webp', theme: 'dark', alt: '星海酒馆里的夜间故事：鲸鱼娘、灯火与星空' },
+            ...[
+                '身穿水手服的鲸鱼娘，夜间冒险手账封面',
+                '身穿现代运动装的鲸鱼娘在夜色中露营',
+                '身穿学者长外套的鲸鱼娘，夜间旅途',
+                '身穿园艺背带裤的鲸鱼娘，夜间旅途',
+                '身穿汉服的鲸鱼娘漫游夜色中的中式水乡',
+                '身穿飞行夹克的鲸鱼娘，夜间旅途',
+                '灯下夜读的鲸鱼娘，星海酒馆'
+            ].map((alt, index) => ({
+                file: 'journal-night-' + String(index + 2).padStart(2, '0') + '.webp',
+                theme: 'dark', alt
+            })),
+            { file: 'memory-atlas.webp', theme: 'feature', alt: '以纸页、书签和线索连接的记忆档案概念插画' },
+            { file: 'memory-atlas-night.webp', theme: 'feature-night', alt: '星海夜色中由纸页、书签和线索连接的记忆档案' },
+            { file: 'worldline-atlas.webp', theme: 'feature', alt: '从一处起点延伸出多条旅程的世界线概念插画' },
+            { file: 'worldline-atlas-night.webp', theme: 'feature-night', alt: '星光下从起点延伸出不同旅程的世界线地图' },
+            { file: 'character-atlas.webp', theme: 'feature', alt: '不同角色各自书写、共同构成故事的角色集群概念插画' },
+            { file: 'character-atlas-night.webp', theme: 'feature-night', alt: '夜间酒馆中不同角色的视角交织成共同的故事' }
         ],
-        lead: '把原生 Agent Loop 带进长篇角色扮演：AI 主动查阅世界、整理记忆、推演人物，你掌握方向，一起把故事写下去。',
-        primary: { label: '快速开始', href: 'quickstart.html' },
-        secondary: { label: '核心能力', href: 'capabilities.html' },
+        lead: '带上一张角色卡，走进一个值得停留的世界。让 AI 查阅设定、整理记忆、推演人物；你掌握故事的方向，把每一次相遇写成下一章。',
+        primary: { label: '开始你的故事', href: '#install' },
+        secondary: { label: '翻开使用手册', href: 'quickstart.html' },
         facts: [
             { label: '最新发行', value: '0.2.9-rc.4' },
             { label: '运行宿主', value: 'DeepSeek Harness' },
@@ -241,6 +257,5 @@ export const site = {
         ]
     }
 };
-
 /** Public Markdown sources, relative to `release/public/`. */
 export const sourceRoot = 'release/public';

@@ -1,0 +1,269 @@
+/**
+ * Content and navigation for the public documentation site.
+ *
+ * Every page body comes from the already-public Markdown under
+ * `release/public/`; this file only declares how those sections are grouped,
+ * titled and linked. Section selectors are exact H2 headings and fail the
+ * build when a heading disappears, so the site cannot silently drift away
+ * from the documents it mirrors.
+ */
+
+export interface PageSource { file: string; sections?: string[] }
+export interface SitePage extends PageSource {
+    id: string; title: string; nav?: string; sources?: PageSource[];
+    dropHeading?: boolean; lang?: string; summary?: string; description?: string;
+}
+export interface SiteGroup { id: string; label: string; pages: SitePage[] }
+
+export const site = {
+    title: 'NextTavern 文档',
+    productName: 'dsh-NextTavern',
+    // 看板娘头像与新手账排版共同组成网站品牌；素材来源见 art/README.md。
+    brandMark: { mark: 'brand-mark.webp', word: 'brand-word.webp', wordAlt: 'NextTavern' },
+    lang: 'zh-CN',
+    description: 'dsh-NextTavern 使用文档：一键安装、角色卡导入、记忆系统、预设与文风、世界线分支、小说导出与公网访问。',
+    keywords: ['DSH', 'DeepSeek Harness', '角色扮演', '酒馆', 'SillyTavern', 'NextTavern'],
+    repoUrl: 'https://github.com/a86582751/dsh-nexttavern',
+    releasesUrl: 'https://github.com/a86582751/dsh-nexttavern/releases',
+    issuesUrl: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose',
+    licenseName: 'GPL-3.0-only',
+    licenseUrl: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE',
+    releaseVersion: '0.2.9-rc.4',
+    developmentLine: '0.3 开发中，抱歉让大家久等了',
+    harnessLine: 'DeepSeek Harness 0.1.7-rc.2',
+    hero: {
+        eyebrow: 'NEXT TAVERN · 你的下一段冒险',
+        title: '是非真伪，选择无关错对',
+        artCaption: '一盏灯，一本未完的故事。下一页，由你写下。',
+        art: [
+            { file: 'journal-day.webp', theme: 'light', alt: '冒险手账里的日间酒馆：鲸鱼娘与打开的故事书' },
+            ...[
+                '身穿水手服的鲸鱼娘，日间冒险手账封面',
+                '身穿现代运动装的鲸鱼娘在林间徒步',
+                '身穿学者长外套的鲸鱼娘，日间旅途',
+                '身穿园艺背带裤的鲸鱼娘，日间旅途',
+                '身穿汉服的鲸鱼娘漫游中式水乡',
+                '身穿飞行夹克的鲸鱼娘，日间旅途',
+                '身穿经典女仆装的鲸鱼娘，日间酒馆'
+            ].map((alt, index) => ({
+                file: 'journal-day-' + String(index + 2).padStart(2, '0') + '.webp',
+                theme: 'light', alt
+            })),
+            { file: 'journal-night.webp', theme: 'dark', alt: '星海酒馆里的夜间故事：鲸鱼娘、灯火与星空' },
+            ...[
+                '身穿水手服的鲸鱼娘，夜间冒险手账封面',
+                '身穿现代运动装的鲸鱼娘在夜色中露营',
+                '身穿学者长外套的鲸鱼娘，夜间旅途',
+                '身穿园艺背带裤的鲸鱼娘，夜间旅途',
+                '身穿汉服的鲸鱼娘漫游夜色中的中式水乡',
+                '身穿飞行夹克的鲸鱼娘，夜间旅途',
+                '灯下夜读的鲸鱼娘，星海酒馆'
+            ].map((alt, index) => ({
+                file: 'journal-night-' + String(index + 2).padStart(2, '0') + '.webp',
+                theme: 'dark', alt
+            })),
+            { file: 'memory-atlas.webp', theme: 'feature', alt: '以纸页、书签和线索连接的记忆档案概念插画' },
+            { file: 'memory-atlas-night.webp', theme: 'feature-night', alt: '星海夜色中由纸页、书签和线索连接的记忆档案' },
+            { file: 'worldline-atlas.webp', theme: 'feature', alt: '从一处起点延伸出多条旅程的世界线概念插画' },
+            { file: 'worldline-atlas-night.webp', theme: 'feature-night', alt: '星光下从起点延伸出不同旅程的世界线地图' },
+            { file: 'character-atlas.webp', theme: 'feature', alt: '不同角色各自书写、共同构成故事的角色集群概念插画' },
+            { file: 'character-atlas-night.webp', theme: 'feature-night', alt: '夜间酒馆中不同角色的视角交织成共同的故事' }
+        ],
+        lead: '带上一张角色卡，走进一个值得停留的世界。让 AI 查阅设定、整理记忆、推演人物；你掌握故事的方向，把每一次相遇写成下一章。',
+        primary: { label: '开始你的故事', href: '#install' },
+        secondary: { label: '翻开使用手册', href: 'quickstart.html' },
+        facts: [
+            { label: '最新发行', value: '0.2.9-rc.4' },
+            { label: '运行宿主', value: 'DeepSeek Harness' },
+            { label: '许可证', value: 'GPL-3.0-only' }
+        ]
+    },
+    quickInstall: {
+        title: '一条命令开始',
+        lead: 'GitHub 与 npm latest 均为 0.2.9-rc.4。此版修复长会话请求超限后的压缩恢复，以及持续推理被误判超时；保留 rc.3 的安装改进和慢模型首响应等待设置。先安装 Harness 0.1.7-rc.2，再从正式 npm 包 dsh-nexttavern 安装 web 酒馆；从 0.2.5 迁移时先导出并使用新目录。',
+        tabs: [
+            {
+                id: 'manual',
+                label: '官方插件安装',
+                note: 'Node.js 24+；第三方市场目录仍待同步，请使用正式 npm 包名。所需组件随包准备，皮肤默认关闭。',
+                primary: { label: '目录与恢复步骤', href: 'manual-install.html' },
+                code: 'npm install -g @deepseek-ai/dsh@0.1.7-rc.2\ndsh plugin --profile web add dsh-nexttavern\ndsh web --host 127.0.0.1'
+            },
+            {
+                id: 'windows',
+                label: 'Windows',
+                note: '0.2.9-rc.4 延续安装／就绪修复并修复 Issue #17。请选新目录；ARM64 真机仍未验证。',
+                primary: { label: 'Windows 安装指南', href: 'install-windows.html' },
+                code: 'NextTavern-Setup.exe'
+            },
+            {
+                id: 'linux',
+                label: 'Linux',
+                note: '自包含脚本，x86_64 与 aarch64（glibc），不需要 root，也不需要包管理器。',
+                primary: { label: 'Linux 安装指南', href: 'install-linux.html' },
+                code: 'curl -fsSLO https://github.com/a86582751/dsh-nexttavern/releases/download/v0.2.9-rc.4/NextTavern-Setup.sh\nsh NextTavern-Setup.sh --root "$HOME/NextTavern-0.2.9-rc.4"'
+            }
+        ]
+    },
+    features: [
+        {
+            icon: 'cards',
+            title: '卡片即开即用',
+            text: '直接读取 SillyTavern / TauriTavern 的 PNG `chara`／`ccv3` 与 JSON v1／v2／v3 人物卡，内嵌世界书一并保留。',
+            href: 'quickstart.html'
+        },
+        {
+            icon: 'memory',
+            title: '长篇不丢细节',
+            text: '固定设定不压缩、硬切窗口保留尾部正文、可追溯导演笔记，再加关键词／语义／混合三种历史召回。',
+            href: 'memory.html'
+        },
+        {
+            icon: 'palette',
+            title: '预设与文风',
+            text: '独立预设页，作用范围可选，三种文风模式与 16 种自带文风，200 个自定义槽位。',
+            href: 'presets.html'
+        },
+        {
+            icon: 'book',
+            title: '长文本转角色卡',
+            text: '把整部长篇读成一张可玩的卡：精读／粗读两档、原文冻结与哈希、每条笔记都能对上原文。',
+            href: 'card-adaptation.html'
+        },
+        {
+            icon: 'agents',
+            title: '多模型与角色集群',
+            text: '正文、记忆、读卡、状态、决策、导出各自路由到不同模型；主要角色可独立推演再由主代理协调。',
+            href: 'character-cluster.html'
+        },
+        {
+            icon: 'branch',
+            title: '世界线与分支',
+            text: '重新生成与修改后发送形成同对话世界线；也可显式分支到新对话，历史与来源都可追溯。',
+            href: 'worldlines.html'
+        },
+        {
+            icon: 'export',
+            title: '把故事带走',
+            text: '选定世界线导出小说稿，也能导出完整角色卡；结果进入资源库随时下载。',
+            href: 'export.html'
+        },
+        {
+            icon: 'skin',
+            title: '自有皮肤与阅读体验',
+            text: '整套界面重绘的琥珀皮肤，日间／夜间双主题；卡片自带 HTML/CSS 与状态栏模板同样保留。',
+            href: 'skin.html'
+        },
+        {
+            icon: 'install',
+            title: '一键安装与公网访问',
+            text: '官方一条插件命令整合安装，另有 Windows 与 Linux 便携运行时入口；公网访问按指南显式配置。',
+            href: 'install-windows.html'
+        }
+    ],
+    showcase: {
+        title: '看一眼实际体验',
+        lead: '截图由维护者提供，包含个人主题与示例故事，不代表默认安装外观。',
+        link: { label: '全部截图', href: 'screenshots.html' },
+        items: [
+            { src: 'screenshots/play.png', title: '沉浸式游玩', caption: '正文、状态栏与决策卡' },
+            { src: 'screenshots/worldlines.png', title: '世界线与分支', caption: '同一对话里管理版本与分支' },
+            { src: 'screenshots/memory.png', title: '记忆系统', caption: '窗口、笔记与检索设置' },
+            { src: 'screenshots/retrieval.png', title: '混合检索', caption: '关键词、语义与混合三种方式' },
+            { src: 'screenshots/characters.png', title: '角色集群', caption: '主要角色独立推演' },
+            { src: 'screenshots/presets.png', title: '预设系统', caption: '文风、模式与作用范围' },
+            { src: 'screenshots/novel.png', title: '长文本转角色卡', caption: '整本小说读成一张卡' },
+            { src: 'screenshots/export.png', title: '小说导出', caption: '把世界线整理成小说稿' },
+            { src: 'screenshots/skin-day.png', title: '自有琥珀皮肤 · 日间', caption: '整套界面重绘的日间主题' },
+            { src: 'screenshots/skin-night.png', title: '自有琥珀皮肤 · 夜间', caption: '同一套设计 token 的夜间主题' }
+        ]
+    },
+    groups: [
+        {
+            id: 'start',
+            label: '开始使用',
+            pages: [
+                { id: 'quickstart', title: '快速开始', nav: '快速开始', file: 'README.md', sections: ['一键安装', '开始体验'] },
+                { id: 'install-windows', title: 'Windows 一键安装', nav: 'Windows 安装', file: 'INSTALL-WINDOWS.md' },
+                { id: 'install-linux', title: 'Linux 一键安装', nav: 'Linux 安装', file: 'INSTALL-LINUX.md' }
+            ]
+        },
+        {
+            id: 'features',
+            label: '功能指南',
+            pages: [
+                { id: 'capabilities', title: '核心能力', nav: '核心能力', file: 'README.md', sections: ['核心能力'] },
+                { id: 'memory', title: '记忆系统', nav: '记忆系统', file: 'README.md', sections: ['记忆系统', '嵌入模型'] },
+                { id: 'presets', title: '预设系统', nav: '预设与文风', file: 'README.md', sections: ['预设系统'] },
+                { id: 'card-adaptation', title: '长文本转角色卡', nav: '长文本转角色卡', file: 'README.md', sections: ['长文本转角色卡'] },
+                { id: 'character-cluster', title: '角色集群', nav: '角色集群', file: 'README.md', sections: ['角色集群'] },
+                { id: 'status-decision', title: '状态栏与决策卡', nav: '状态栏与决策卡', file: 'README.md', sections: ['状态栏与决策卡'] },
+                { id: 'worldlines', title: '世界线与分支', nav: '世界线与分支', file: 'README.md', sections: ['世界线与分支'] },
+                { id: 'reading', title: '按你的方式阅读与创作', nav: '阅读与创作', file: 'README.md', sections: ['按你的方式阅读与创作'] },
+                { id: 'skin', title: '自有皮肤', nav: '自有皮肤', file: 'README.md', sections: ['全新自有皮肤'], dropHeading: true },
+                { id: 'export', title: '从角色卡到可带走的小说', nav: '小说与卡片导出', file: 'README.md', sections: ['从角色卡到可带走的小说'] },
+                { id: 'authoring', title: '交互式创作', nav: '交互式创作', file: 'README.md', sections: ['交互式创作'] },
+                { id: 'usage', title: '用量统计', nav: '用量统计', file: 'README.md', sections: ['用量统计'] }
+            ]
+        },
+        {
+            id: 'advanced',
+            label: '进阶与运维',
+            pages: [
+                { id: 'public-access', title: '手机电脑公网访问', nav: '公网访问', file: 'PUBLIC-ACCESS.md' },
+                { id: 'manual-install', title: '手动安装', nav: '手动安装', file: 'README.md', sections: ['下载', '安装'] },
+                { id: 'extensions', title: '文档扩展', nav: '文档扩展', file: 'README.md', sections: ['文档扩展'] },
+                { id: 'patches', title: '补丁与依赖来源', nav: '补丁与依赖来源', file: 'README.md', sections: ['补丁与依赖来源'] },
+                { id: 'update-uninstall', title: '更新、卸载与回滚', nav: '更新与卸载', file: 'README.md', sections: ['更新、卸载与回滚'] }
+            ]
+        },
+        {
+            id: 'reference',
+            label: '参考',
+            pages: [
+                { id: 'architecture', title: '架构与设计', nav: '架构与设计', file: 'ARCHITECTURE.md' },
+                { id: 'screenshots', title: '截图集', nav: '截图集', file: 'SCREENSHOTS.md' },
+                { id: 'changelog', title: '更新日志', nav: '更新日志', file: 'CHANGELOG.md' },
+                { id: 'development', title: '参与开发', nav: '参与开发', file: 'CONTRIBUTING.md', lang: 'en' },
+                { id: 'feedback', title: '反馈、社区与许可', nav: '反馈与许可', file: 'README.md', sections: ['源码与验证范围', '社区支持', '反馈与许可'] },
+                { id: 'development-0.3', title: '0.3 开发日志', nav: '0.3开发日志', file: 'DEVELOPMENT-0.3.md' }
+            ]
+        }
+    ] as SiteGroup[],
+    footer: {
+        blurb: 'dsh-NextTavern 是 DeepSeek Harness 的长篇角色扮演插件：卡片导入、世界线分支、长篇记忆、混合检索、文风预设与一键安装。',
+        columns: [
+            {
+                label: '文档',
+                links: [
+                    { label: '快速开始', href: 'quickstart.html' },
+                    { label: '记忆系统', href: 'memory.html' },
+                    { label: '预设与文风', href: 'presets.html' },
+                    { label: '更新日志', href: 'changelog.html' }
+                ]
+            },
+            {
+                label: '下载与安装',
+                links: [
+                    { label: '最新 Releases', href: 'https://github.com/a86582751/dsh-nexttavern/releases' },
+                    { label: 'Windows 安装', href: 'install-windows.html' },
+                    { label: 'Linux 安装', href: 'install-linux.html' },
+                    { label: '公网访问指南', href: 'public-access.html' }
+                ]
+            },
+            {
+                label: '项目',
+                links: [
+                    { label: 'GitHub 仓库', href: 'https://github.com/a86582751/dsh-nexttavern' },
+                    { label: '问题反馈', href: 'https://github.com/a86582751/dsh-nexttavern/issues/new/choose' },
+                    { label: '0.3开发日志', href: 'development-0.3.html' },
+                    { label: '参与开发', href: 'development.html' },
+                    { label: '许可证 GPL-3.0-only', href: 'https://github.com/a86582751/dsh-nexttavern/blob/main/LICENSE' }
+                ]
+            }
+        ]
+    }
+};
+
+/** Public Markdown sources, relative to `release/public/`. */
+export const sourceRoot = 'release/public';
