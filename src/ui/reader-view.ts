@@ -9,9 +9,11 @@ import type { createMessageActionComponents } from './message-actions.js';
 import type { StateReply } from './state-store.js';
 import type { ActivityState, ActivityComponents } from './activity-view.js';
 import { normalizeConversationNodes, readerNodeSeq, readerMessageId, readerText, readerTime, usageTokens, formatReaderTime } from './reader-model.js';
-import { scopeReaderCss, READER_BASE_CSS } from './reader-rendering.js';
+import { scopeReaderCss, READER_BASE_CSS,renderReaderNarrative } from './reader-rendering.js';
 import {createAuthorBrowserSession,createReaderRegexDocumentSession, type AuthorBrowserStatus} from './author-browser-session.js';
 import type {createSessionImages} from './session-images.js';
+import {createReaderCommunityCache,createCommunityOptionsRenderer,COMMUNITY_READER_CSS} from './reader-community.js';
+import {COMMUNITY_READER_WINDOW_MESSAGES} from '../core/community-preset-types.js';
 
 
 import type { ReaderRule } from './reader-regex.js';
@@ -33,6 +35,7 @@ interface HistoryAnchor {
     resetIfMissing?: boolean;
 }
 interface ReaderState extends StateReply {
+    communityPresets?:{fingerprint:string;presetId:string|null;regexes:number}|null;
     activity?: ActivityState;
     rules?: {beauty?: {regexRules?: ReaderRule[];css?: string;js?: string;};};
     surfaceNodes?: {seq?: number;turn?: number;}[];
@@ -65,6 +68,7 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     useTavernActivity: ActivityComponents['useTavernActivity'];
     fetchState(id: string, force?: boolean): Promise<ReaderState>;
     fetchReaderDisplay?: FetchReaderDisplay;
+    jsonFetch?<T>(url:string,init?:RequestInit):Promise<T>;
     subscribeState(id: string, listener: () => void): () => void;
     sessionsService: {using<T>(id: string, options: {source: 'nexttavernReader'}, operation: (reference: {binding: {session: {loadOlder(): Promise<void>}}}) => T | Promise<T>): Promise<T>};
     toast(text: string): void;
@@ -80,6 +84,7 @@ React,
      isRoleplaySession,
      useTavernActivity,
      fetchState,
+     jsonFetch,
      fetchReaderDisplay = async (sessionId, messages, signal) => {
          const response = await globalThis.fetch('/api/roleplay/state', {
              method: 'POST', headers: {'content-type': 'application/json'}, signal,
@@ -121,8 +126,14 @@ React,
         const [historyError, setHistoryError] = React.useState<string | null>(null);
         const activity = useTavernActivity(sessionId, state?.activity);
         const [, refreshBeauty] = React.useState(0);
+        const [communityReload,reloadCommunity]=React.useState(0);
         const beautyCacheRef = React.useRef<ReturnType<typeof createReaderBeautyCache> | null>(null);
         beautyCacheRef.current ??= createReaderBeautyCache();
+        const communityCacheRef=React.useRef<ReturnType<typeof createReaderCommunityCache>|null>(null);
+        if(jsonFetch)communityCacheRef.current??=createReaderCommunityCache(jsonFetch);
+        const communityOptionsRef=React.useRef<ReturnType<typeof createCommunityOptionsRenderer>|null>(null);
+        communityOptionsRef.current??=createCommunityOptionsRenderer();
+        const communityUserHtmlRef=React.useRef(new Map<string,string>());
         const historyRequestRef = React.useRef<object | null>(null);
         const historyAnchorRef = React.useRef<HistoryAnchor | null>(null);
         const readerSessionRef = React.useRef(sessionId);
@@ -172,6 +183,8 @@ React,
             };
             load();
             const timer = setInterval(load, 30000);
+            const communityChanged=()=>load(true);
+            window.addEventListener('dsh-community-preset-changed',communityChanged);
             const unsubscribe = subscribeState(requestedSessionId, () => {
                 // Invalidation may select a new worldline without changing the view's
                 // sessionId. Revoke old author capabilities before fetching new state.
@@ -182,7 +195,8 @@ React,
                 void browserControllerRef.current?.refresh();
                 load(true);
             });
-            return () => { alive = false; stateRequestRef.current++; clearInterval(timer); unsubscribe(); };
+            return () => { alive = false; stateRequestRef.current++; clearInterval(timer); unsubscribe();
+                window.removeEventListener('dsh-community-preset-changed',communityChanged); };
         },
             [sessionId]
         );
@@ -251,7 +265,7 @@ React,
         const displayEnabled = state?.sessionId === sessionId && state.readerDisplay?.enabled === true;
         // The selected Source/Native scope owns document fragments and normal
         // beauty results together, including the author frame's history window.
-        const beautyScope = sessionId + '\0' + JSON.stringify([rules, displayEnabled
+        const beautyScope = sessionId + '\0' + JSON.stringify([rules,state?.communityPresets?.fingerprint, displayEnabled
             ? [state.surfaceNodes, state.recordVersions, numerical?.kind,
                 numerical?.snapshot?.revision, numerical?.snapshot?.stateSnapshotSha256,
                 numerical?.snapshot?.valuesSha256, numerical?.snapshot?.sourceSha256]
@@ -310,7 +324,7 @@ React,
         });
         // Source-backed display expands each Native row before rendering. Its
         // body, author documents and native actions share this small page.
-        const nativePageRows = displayEnabled ? 16 : 500;
+        const nativePageRows = displayEnabled ? 16 : COMMUNITY_READER_WINDOW_MESSAGES;
         const windowStart = readerStart === null
             ? Math.max(0, selectedNodes.length - nativePageRows)
             : Math.min(Math.max(0, readerStart), Math.max(0, selectedNodes.length - 1));
@@ -338,7 +352,7 @@ React,
             const seq = readerNodeSeq(node)!;
             const messageId = readerMessageId(node);
             if (node.kind === 'user') {
-                parts.push({ kind: 'user', text, seq, time: readerTime(node), failedTurn: failedTurnByUserSeq.get(seq) });
+                parts.push({ kind: 'user', text, seq, messageId, time: readerTime(node), failedTurn: failedTurnByUserSeq.get(seq) });
             } else if (node.kind === 'assistant-step' || node.kind === 'assistant' || node.kind === 'narrator') {
                 parts.push({
                     kind: 'narrator',
@@ -428,7 +442,28 @@ React,
             return {text: part.text, seq: part.seq, messageId: part.messageId,
                 ...(accepted ? {displayUpdate: accepted} : {})};
         };
-        const visibleTasks = visibleParts.map(taskFor);
+        const communityCache=communityCacheRef.current;
+        const communityScope=sessionId+'\0'+(state?.communityPresets?.fingerprint??'unselected');
+        const communityDepths=new Map([...surfaceNodesBySeq.keys()].map((seq,index,rows)=>[seq,rows.length-index-1]));
+        communityCache?.selectScope(communityScope);
+        // Source-backed assistants consume the effective community/card registry
+        // once on the server, retaining document and mapped-output provenance.
+        const communityTasks=visibleParts.filter(part=>!part.transient&&part.seq!==undefined&&!!part.messageId
+            &&(!displayEnabled||part.kind==='user'))
+            .map(part=>({seq:part.seq!,messageId:part.messageId!,text:part.text,depth:communityDepths.get(part.seq!)??0}));
+        const communityInput=communityCache?.versionFor(communityTasks)??0;
+        React.useEffect(()=>sessionId?communityCache?.run(communityScope,sessionId,communityTasks,()=>refreshBeauty(n=>n+1)):undefined,
+            [communityScope,communityInput,communityReload]);
+        const projectedParts=visibleParts.map(part=>{
+            if(part.transient||part.seq===undefined||!part.messageId||!communityCache
+                ||displayEnabled&&part.kind==='narrator')return part;
+            return {...part,text:communityCache.textFor({seq:part.seq,messageId:part.messageId,text:part.text,
+                depth:communityDepths.get(part.seq)??0})};
+        });
+        const visibleTasks=projectedParts.map((part,index)=>{
+            const task=taskFor(part);
+            return typeof task==='string'?task:{...task,canonicalText:visibleParts[index]!.text};
+        });
         // Keep transient stream text out of regex work; it still gets immediate fallback rendering.
         const beautyTasks = visibleTasks.filter((_, index) => visibleParts[index]!.kind === 'narrator'
             && !visibleParts[index]!.transient);
@@ -442,13 +477,24 @@ React,
         );
         const applyBeauty = beautyCache.htmlFor;
         const beautyFailed = beautyCache.failed(beautyTasks);
-        const renderedParts = visibleParts.map((part, index) => ({
-            ...part,
-            displayText: part.kind === 'narrator' ? beautyCache.textFor(visibleTasks[index]!) : part.text,
-            html: part.kind === 'narrator' ? applyBeauty(visibleTasks[index]!) : '',
-            fragments: part.kind === 'narrator' ? beautyCache.fragmentsFor(visibleTasks[index]!) : undefined,
-            readerFragments: part.kind === 'narrator' ? beautyCache.readerFragmentsFor(visibleTasks[index]!) : undefined,
-        }));
+        const userHtml=(text:string)=>{
+            const cache=communityUserHtmlRef.current;
+            let html=cache.get(text);
+            if(html===undefined)html=renderReaderNarrative(text,[]);
+            else cache.delete(text);
+            cache.set(text,html);
+            while(cache.size>COMMUNITY_READER_WINDOW_MESSAGES)cache.delete(cache.keys().next().value!);
+            return html;
+        };
+        const renderedParts=projectedParts.map((part,index)=>{
+            const display=communityOptionsRef.current!(part.kind==='narrator'?applyBeauty(visibleTasks[index]!):userHtml(part.text));
+            return {...visibleParts[index]!,displayText:part.kind==='narrator'?beautyCache.textFor(visibleTasks[index]!):part.text,
+                html:display.html,frameHtml:display.frameHtml,communityOptions:display.options,
+                fragments:part.kind==='narrator'?beautyCache.fragmentsFor(visibleTasks[index]!)?.map(fragment=>
+                    fragment.kind==='text'?{...fragment,html:communityOptionsRef.current!(fragment.html).html}:fragment):undefined,
+                readerFragments:part.kind==='narrator'?beautyCache.readerFragmentsFor(visibleTasks[index]!):undefined,
+                nativeUserProjection:part.kind==='user'&&(part.text!==visibleParts[index]!.text||display.options.length>0)};
+        });
         if (state !== null && selectedNodes.length === 0) {
             console.warn(
             '[roleplay-reader] selected surface empty',
@@ -489,11 +535,19 @@ React,
             key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html, fragments: part.fragments,
         } satisfies AuthorFramePart)));
         const committedBrowserPayload = JSON.stringify(renderedParts.filter(part => !part.transient).map(part => ({
-            key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html,
+            key: readerPartKey(part), kind: part.kind, text: part.kind==='user'?part.text:part.displayText,html:part.frameHtml,
         })));
+        // Frozen frames retain complete user DATA. Their duplicate projected
+        // row is hidden while native Reader owns community option controls.
+        const browserUserKeys=renderedParts.filter(part=>part.nativeUserProjection&&!part.transient)
+            .map(part=>`[data-reader-key=${JSON.stringify(readerPartKey(part))}]`);
+        const browserReaderCss=READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS+'\n'+authorCss
+            +(browserUserKeys.length?'\n'+browserUserKeys.join(',')+'{display:none!important}':'');
         const readerDocumentPayload = JSON.stringify(renderedParts.filter(part => !part.transient).map(part =>
-            part.kind === 'user' ? {key: readerPartKey(part),kind: part.kind,text: part.displayText}
-                : {key: readerPartKey(part),kind: part.kind,html: part.html,fragments: part.readerFragments}));
+            part.kind === 'user' ? {key: readerPartKey(part),kind: part.kind,text: part.text}
+                : {key: readerPartKey(part),kind: part.kind,html: part.frameHtml,
+                    fragments:part.readerFragments?.map(fragment=>fragment.kind==='text'
+                        ?{...fragment,html:communityOptionsRef.current!(fragment.html).frameHtml}:fragment)}));
         const readerDocumentConflict = readerExecution && browserStatus.kind !== 'inactive'
             && browserStatus.kind !== 'loading' ? 'READER_REGEX_DOCUMENT_LEGACY_FRAME_ACTIVE'
             : readerExecution && authorJs.trim() ? 'READER_REGEX_DOCUMENT_LEGACY_SCRIPT_ACTIVE' : undefined;
@@ -514,8 +568,8 @@ React,
             const controller = readerDocumentControllerRef.current;
             if (!controller) return;
             if (!readerExecution || browserStatus.kind !== 'inactive' || authorJs.trim()) {controller.invalidate();return;}
-            controller.update(readerExecution,{css: READER_BASE_CSS + '\n' + authorCss,parts: JSON.parse(readerDocumentPayload)});
-        }, [readerExecution,readerDocumentPayload,browserStatus.kind,authorJs,authorCss]);
+            controller.update(readerExecution,{css: browserReaderCss,parts: JSON.parse(readerDocumentPayload)});
+        }, [readerExecution,readerDocumentPayload,browserStatus.kind,authorJs,browserReaderCss]);
         React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !browserContainerRef.current) return;
             const controller = createAuthorBrowserSession({
@@ -536,10 +590,10 @@ React,
         }, [sessionId, state?.sessionId, state?.preset]);
         React.useEffect(() => {
             browserControllerRef.current?.render({
-                css: READER_BASE_CSS + '\n' + authorCss,
+                css: browserReaderCss,
                 parts: JSON.parse(committedBrowserPayload),
             });
-        }, [sessionId, state?.sessionId, state?.preset, committedBrowserPayload, authorCss]);
+        }, [sessionId, state?.sessionId, state?.preset, committedBrowserPayload, browserReaderCss]);
         React.useEffect(() => {
             // Core decides whether a changed cut is merely a read revision or a
             // new author generation. React never derives that from body text.
@@ -554,7 +608,7 @@ React,
             const controller = createAuthorFrame(frameRef.current, {
                 ...(authorJs.trim() ? {mode: 'script' as const, source: authorJs} : {mode: 'static-document' as const}),
                 css: authorCss,
-                baseCss: READER_BASE_CSS,
+                baseCss: READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS,
                 current: () => readerSessionRef.current === sessionId && frameIdentityRef.current === identity,
                 fill: text => fillComposer(text, false),
                 layout: value => setFrameLayout({identity, value}),
@@ -657,7 +711,7 @@ React,
         // appearing as unlayered author CSS. Inline styles from the card remain
         // authoritative as usual.
         const scopedCss = '@layer dsh-roleplay-reader-default {\n' +
-            scopeReaderCss(READER_BASE_CSS) + '\n}\n' + (framed ? '' : scopeReaderCss(authorCss)) + `
+            scopeReaderCss(READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS) + '\n}\n' + (framed ? '' : scopeReaderCss(authorCss)) + `
 .rp-author-frame-host { position: relative; width: min(1500px, 100%); align-self: center; overflow: hidden; }
 .rp-reader-view > .rp-author-frame-host { flex-shrink: 0; }
 .rp-author-guard-frame { display: block; width: 100%; height: 150px; border: 0; }
@@ -764,6 +818,8 @@ React,
             readerDocumentConflict || readerDocumentStatus.kind === 'failed'
                 ? React.createElement('div', {className: 'rp-reader-empty',role: 'status'},
                     '作者正则文档未执行：' + (readerDocumentConflict ?? readerDocumentStatus.code)) : null,
+            communityCache?.failed()?React.createElement('div',{className:'rp-reader-empty',role:'status'},'社区显示规则未能完成，已保留原文。',
+                React.createElement('button',{type:'button',onClick:()=>reloadCommunity(n=>n+1)},'重试显示规则')):null,
 
             canLoadOlder || historyBusy || historyError || canLoadNewer || canLoadLatest
                 ? React.createElement(
@@ -804,8 +860,14 @@ React,
                     renderedParts.map((part, index) => React.createElement('section', {
                         className: 'rp-reader-message', 'data-reader-key': readerPartKey(part),
                         key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
-                    }, part.transient ? React.createElement('div', {className: 'rp-reader-narrative',
-                        dangerouslySetInnerHTML: {__html: part.html}}) : null, renderReaderActions(part))))
+                    }, part.transient || part.nativeUserProjection ? React.createElement('div', {
+                        className:part.kind==='user'?'rp-user-line':'rp-reader-narrative',
+                        dangerouslySetInnerHTML:{__html:part.kind==='user'?'◈ 你：'+part.frameHtml:part.html}}) : null,
+                    !part.transient&&part.communityOptions.length?React.createElement('div',{className:'community-options'},
+                        React.createElement('p',null,'选择内容会追加到输入草稿'),
+                        part.communityOptions.map(option=>React.createElement('button',{type:'button',className:'community-option',
+                            key:option.id,onClick:()=>fillComposer(option.text,false)},option.label))):null,
+                    renderReaderActions(part))))
                 : framed
                 ? React.createElement('div', { className: 'rp-author-frame-host' },
                     React.createElement('iframe', {
@@ -823,11 +885,11 @@ React,
                     className: 'rp-reader', ref: readerRef,
                     onClick: (event: ReactAPI.MouseEvent<HTMLDivElement>) => {
                         const f = event.target
-                            && typeof (event.target as Element).closest === 'function' ? (event.target as Element).closest<HTMLElement>('.f') : null;
+                            && typeof (event.target as Element).closest === 'function' ? (event.target as Element).closest<HTMLElement>('[data-community-option],.f') : null;
                         if (f) {
                             event.preventDefault();
                             event.stopPropagation();
-                            fillComposer(f.innerText || f.textContent || '');
+                            fillComposer(f.dataset.communityOption??f.innerText??f.textContent??'');
                         }
                     },
                 }, renderedParts.map((part, index) => React.createElement('section', {
@@ -836,7 +898,7 @@ React,
                     'data-reader-key': readerPartKey(part),
                     key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
                 }, part.kind === 'user'
-                    ? React.createElement('p', { className: 'rp-user-line' }, '◈ 你：' + part.text)
+                    ? React.createElement('div', { className: 'rp-user-line',dangerouslySetInnerHTML:{__html:'◈ 你：'+part.html} })
                     : React.createElement('div', { className: 'rp-reader-narrative', dangerouslySetInnerHTML: { __html: part.html } }),
                 renderReaderActions(part)))),
 

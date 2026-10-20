@@ -21,6 +21,10 @@ import type {ReaderRegexDocumentCompilerV1,ReaderRegexDocumentInputV1,ReaderRege
   ReaderRegexDocumentProgramV1,ReaderRegexDocumentReadFactsV1} from './reader-regex-document-types.mjs'
 import type {BrowserRuntimeArtifactV3} from './tavern-author-browser-types-v3.mjs'
 import type {BrowserDiagnosticV1} from './tavern-author-browser-types.mjs'
+import {communityRegexRules,communityRegexMacros} from './community-regex.js'
+import {nativeCommunityDisplayRule} from './community-preset-display.js'
+import type {CommunityPresetPolicy} from './community-presets.js'
+import type {CommunityJson} from './community-preset-types.js'
 
 export type ReaderDisplayFragment={readonly kind:'text';readonly text:string}|{
   readonly kind:'author-document'
@@ -88,6 +92,10 @@ interface Dependencies {
   scopes(id:string,source:TavernLoreSourceDataV1):ReaderDisplayScopes|undefined
   documentRuntime?():Promise<(ReaderRegexDocumentCompilerV1&{readonly artifact:BrowserRuntimeArtifactV3})|undefined>
   documentFacts?(id:string):Promise<ReaderRegexDocumentReadFactsV1|undefined>
+  readonly community?:{
+    policy(id:string):CommunityPresetPolicy
+    variables(id:string,presetId:string):{chat:Record<string,CommunityJson>;global:Record<string,CommunityJson>}
+  }
 }
 function fail(code:string):never {throw Error(code)}
 function acceptedScope(row:Omit<ReaderDisplayRow,'displayText'>,
@@ -124,13 +132,29 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
         ||identity.importId!==source.original.activePointer.importId||identity.rawSha256!==source.original.rawSha256))
         fail('READER_DISPLAY_SCOPE_SOURCE_CHANGED')
       const cardData=captured.contributionInput.rawDecoded.data
-      const rules=captureRoleplayTavernScopedRegexV1(cardData,source.sourceSha256,true)
+      const scopedRules=captureRoleplayTavernScopedRegexV1(cardData,source.sourceSha256,true)
+      const policy=deps.community?.policy(sid)
+      const variables=policy?.preset?deps.community!.variables(sid,policy.preset.id):undefined
+      const adapted=policy?{...policy,
+        preset:policy.preset?{...policy.preset,regexes:policy.preset.regexes.map(nativeCommunityDisplayRule)}:null,
+        regexes:policy.regexes.map(library=>({...library,rules:library.rules.map(nativeCommunityDisplayRule)}))}:undefined
+      const rules=adapted?communityRegexRules(adapted,scopedRules):scopedRules
       const rawRules=(cardData.extensions as {regex_scripts?:readonly Record<string,unknown>[]} |undefined)?.regex_scripts??[]
-      return {source,sourceIdentitySha256:captured.currentIdentitySha256,scopes,
-        macros:produceRoleplayTavernMacroSnapshotV1({source,cardData,
+      const nativeMacros=produceRoleplayTavernMacroSnapshotV1({source,cardData,
           includeCardStyle:deps.includeCardStyle(sid),inputText:null,scopes:scopes?.bindings??[],
-          outlets:[],declaredOutlets:[]}).snapshot,
-        rules,documentRules:rules.map((rule,ordinal)=>({ruleId:rule.id,ordinal,id:typeof rawRules[ordinal]!.id==='string'
+          outlets:[],declaredOutlets:[]}).snapshot
+      const communityBindings=variables&&policy?communityRegexMacros({},variables.chat,variables.global,policy.fingerprint):undefined
+      // Source owns MVU and native scopes; accepted community values overlay
+      // only their matching chat/global keys without mutating its frozen input.
+      const mergeBindings=(key:'localVariables'|'globalVariables')=>[...new Map(
+        [...nativeMacros[key],...communityBindings![key]].map(binding=>[binding.key,binding])).values()]
+      const macros=communityBindings?{...nativeMacros,
+        localVariables:mergeBindings('localVariables'),globalVariables:mergeBindings('globalVariables')}:nativeMacros
+      return {source,sourceIdentitySha256:captured.currentIdentitySha256,scopes,macros,policy,variables,
+        rules,documentRules:scopedRules.map((rule,ordinal)=>({
+          ruleId:rules.find(effective=>effective.sourcePointer===rule.sourcePointer
+            &&effective.sourceSnapshotSha256===rule.sourceSnapshotSha256)!.id,
+          ordinal,id:typeof rawRules[ordinal]!.id==='string'
           ?rawRules[ordinal]!.id as string:rule.id,pointer:rule.sourcePointer,
           descriptorSha256:recordSha256(rawRules[ordinal]),replacement:rule.replaceString}))}
     })
@@ -156,9 +180,10 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       })
       return {rows,order:entries.map(entry=>({seq:entry.seq,messageId:entry.messageId,kind:entry.kind}))}
     }
-    const selected=select(),{source,scopes,macros,rules}=read.data
+    const selected=select(),{source,scopes,macros,rules,policy,variables}=read.data
     const input:TavernPromptTransformInputV1={schemaVersion:1,encoding:'owned-tavern-prompt-transform-v1',
       authority:'consumer-data-only',sourceSnapshotSha256:source.sourceSha256,regexDisabled:false,macros,rules,
+      ...policy?{scriptOrder:policy.regexOrder}:{},
       entries:selected.rows.map(row=>{
         const storyText=projectReaderNarrativeDisplay(row.rawText,acceptedScope(row,scopes?.displayUpdates??[]))
         return {key:`reader:${row.seq}:${row.messageId}`,bookId:null,entryId:null,
@@ -178,10 +203,10 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
     const documents:ReaderRegexDocumentInputV1['documents'][number][]=[],locations:{row:number;fragment:number}[]=[]
     for(const [rowIndex,row] of rows.entries())for(const [fragmentIndex,fragment] of (row.fragments??[]).entries()) {
       if(fragment.kind!=='author-document')continue
-      const regex=read.data.documentRules.find(rule=>rule.ruleId===fragment.origin.ruleId)!
+      const regex=read.data.documentRules.find(rule=>rule.ruleId===fragment.origin.ruleId)
       // This routes Source markup to the complete parser; it grants no script
       // permission. Script-free documents retain the existing static owner.
-      if(!/<script(?:\s|>)/i.test(regex.replacement))continue
+      if(!regex||!/<script(?:\s|>)/i.test(regex.replacement))continue
       const {seq,messageId,messageVersionSha256,depth,isEdit}=row
       documents.push({regex,message:{seq,messageId,messageVersionSha256,depth,isEdit},
         replacementSpan:fragment.origin.displaySpan,parts:fragment.parts})
@@ -222,7 +247,7 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
       }
     }
     // A new visible user/assistant can change depth without editing these rows.
-    // Rejoin the actual selected messages after Worker termination before reply.
+    // Rejoin the actual selected messages after Worker completion before reply.
     const latest=select()
     for(let index=0;index<selected.rows.length;index++) {
       const before=selected.rows[index]!,after=latest.rows[index]!
@@ -230,7 +255,7 @@ export function createRoleplayReaderDisplay(deps:Dependencies) {
         fail('READER_DISPLAY_MESSAGE_CHANGED')
     }
     return {ok:true,sessionId:sid,contextRevision:recordSha256({source:read.data.sourceIdentitySha256,
-      scopes:scopes?.versionSha256??null,order:selected.order,
+      scopes:scopes?.versionSha256??null,community:policy?{fingerprint:policy.fingerprint,variables}:null,order:selected.order,
       messages:selected.rows.map(({seq,messageId,messageVersionSha256,depth,isEdit})=>
         ({seq,messageId,messageVersionSha256,depth,isEdit}))}),
       rows,...execution?{execution}:{},...documentDiagnostics?{documentDiagnostics}:{}}

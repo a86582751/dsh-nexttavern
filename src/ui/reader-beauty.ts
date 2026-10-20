@@ -22,13 +22,14 @@ interface ReaderDisplayRead {
 
 export type ReaderBeautyTask = string | {
     readonly text: string;
+    readonly canonicalText?:string;
     readonly seq?: number;
     readonly messageId?: string;
     readonly displayUpdate?: MvuAcceptedDisplayUpdate;
 };
 const rawText = (task: ReaderBeautyTask) => typeof task === 'string' ? task : task.text;
 const taskKey = (task: ReaderBeautyTask) => typeof task === 'string' ? JSON.stringify([task])
-    : JSON.stringify([task.text, task.seq, task.messageId, task.displayUpdate ?? null]);
+    : JSON.stringify([task.text,task.canonicalText??null, task.seq, task.messageId, task.displayUpdate ?? null]);
 const displayRef = (task: ReaderBeautyTask): ReaderDisplayMessageRef | undefined =>
     typeof task !== 'string' && Number.isSafeInteger(task.seq) && Number(task.seq) >= 0 && task.messageId
         ? {seq: task.seq!, messageId: task.messageId} : undefined;
@@ -41,15 +42,18 @@ async function acceptedDisplayScope(task: ReaderBeautyTask): Promise<ReaderMvuDi
         || canonical.seq !== task.seq || !canonical.messageId || canonical.messageId !== task.messageId
         || !/^[a-f0-9]{64}$/.test(canonical.versionSha256) || !/^[a-f0-9]{64}$/.test(canonical.narrativeSha256)
         || !['native-jsonpatch-v1', 'native-mvu-update-v2'].includes(update.protocol)) return;
-    const start = task.text.indexOf('<UpdateVariable>'), close = task.text.indexOf('</UpdateVariable>');
+    const canonicalText=task.canonicalText??task.text;
+    const start = canonicalText.indexOf('<UpdateVariable>'), close = canonicalText.indexOf('</UpdateVariable>');
     if (start < 0 || close < start || !globalThis.crypto?.subtle) return;
     // A state response can lag a Native edit. Bind the displayed body before
     // minting a range; absence/failure keeps the complete original visible.
-    const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(task.text));
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalText));
     const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     if (hash !== canonical.narrativeSha256) return;
+    const acceptedText=canonicalText.slice(start,close+'</UpdateVariable>'.length),displayStart=task.text.indexOf(acceptedText);
+    if(displayStart<0)return;
     return {role: 'assistant', protocol: update.protocol,
-        acceptedRange: {start, end: close + '</UpdateVariable>'.length}};
+        acceptedRange: {start:displayStart, end:displayStart+acceptedText.length}};
 }
 
 /** Committed-text rendering owns its scope, cancellation fence and bounded cache together. */
@@ -113,7 +117,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
                 const ref = displayRef(task);
                 const row = response && response.sessionId === display?.sessionId && ref
                     ? response.rows.find(row => row.seq === ref.seq && row.messageId === ref.messageId
-                        && row.rawText === rawText(task)) : undefined;
+                        && row.rawText === (typeof task === 'string' ? task : task.canonicalText ?? task.text)) : undefined;
                 return row ? [[taskKey(task), row] as const] : [];
             }));
             const acceptedExecution = projections.size === messages.length ? response?.execution : undefined;

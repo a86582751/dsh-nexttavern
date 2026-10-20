@@ -819,6 +819,7 @@ export function apply(ctx: ClientContext) {
         isRoleplaySession,
         useTavernActivity,
         fetchState,
+        jsonFetch,
         subscribeState,
         sessionsService,
         toast,

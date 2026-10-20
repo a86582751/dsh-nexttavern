@@ -240,7 +240,7 @@ export function readerMessageId(node: unknown): string {
   const record = isRecord(node) ? node : {}
   const data = isRecord(record.data) ? record.data : {}
   const finalNode = isRecord(data.finalNode) ? data.finalNode : {}
-  const value = finalNode.messageId ?? data.messageId
+  const value = finalNode.messageId ?? data.messageId ?? (record.kind==='user'?data.id:undefined)
   return value === undefined || value === null ? '' : String(value)
 }
 

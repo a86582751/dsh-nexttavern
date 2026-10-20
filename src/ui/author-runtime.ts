@@ -99,10 +99,10 @@ export function mountStaticAuthorDocument(container: HTMLElement, html: string, 
     };
     const fill = (event: Event) => {
         if (!active || !options.current()) return;
-        const target = event.target as Element | null, action = target?.closest('.f');
+        const target = event.target as Element | null, action = target?.closest<HTMLElement>('[data-community-option],.f');
         if (action || target?.closest('a[href],area[href]')) event.preventDefault();
         if (!action) return;
-        const text = (action as HTMLElement).innerText || action.textContent || '';
+        const text = action.dataset.communityOption ?? action.innerText ?? action.textContent ?? '';
         if (text.length <= 8192) options.fill(text);
     };
     const load = () => {
@@ -172,10 +172,10 @@ function authorFrameBootstrap(nonce: string, maxRows: number, mode: 'script' | '
     };
     root.addEventListener('click', event => {
         const target = event.target;
-        const action = target instanceof Element ? target.closest('.f') : null;
+        const action = target instanceof Element ? target.closest<HTMLElement>('[data-community-option],.f') : null;
         if (!action) return;
         event.preventDefault();
-        fill((action as HTMLElement).innerText || action.textContent || '');
+        fill(action.dataset.communityOption??action.innerText??action.textContent??'');
     });
     const render = (parts: AuthorFramePart[]) => {
         const next = new Map<string, {node: HTMLElement; signature: string;}>();
@@ -193,7 +193,8 @@ function authorFrameBootstrap(nonce: string, maxRows: number, mode: 'script' | '
                 if (part.kind === 'user') {
                     const paragraph = document.createElement('p');
                     paragraph.className = 'rp-user-line';
-                    paragraph.textContent = '◈ 你：' + part.text;
+                    paragraph.innerHTML=part.html;
+                    paragraph.prepend(document.createTextNode('◈ 你：'));
                     section.append(paragraph);
                 } else {
                     const narrative = document.createElement('div');

@@ -2,6 +2,9 @@ import type * as ReactAPI from 'react'
 import type { NarrativePreset, StyleSelection, StyleMode } from '../core/narrative-presets.js'
 import {projectConversationList, resolveConversationExecution} from './conversation-projection.js'
 import type {ConversationCatalog, SessionList} from './conversation-projection.js'
+import {createCommunityPresetPanel} from './community-preset-panel.js'
+import {createCommunityRegexPanel} from './community-regex-panel.js'
+import {createCommunityCardMappingPanel} from './community-card-mapping-panel.js'
 
 export function presetConversationChoices(snapshot: SessionList, catalog: ConversationCatalog, isRoleplaySession: (id: string) => boolean) {
   const visible = projectConversationList(snapshot, catalog)
@@ -24,6 +27,10 @@ const modes: [StyleMode, string][] = [['system', '沿用系统美学'], ['blend'
 const describe = (mode: StyleMode) => mode === 'system' ? '不注入卡片的叙事规则、回复规则、文风示例。' : mode === 'blend' ? '同时注入预设和卡片文风；冲突时预设优先。' : '只采用卡片文风，不注入预设正文。'
 export function createPresetPanel({React, jsonFetch, toast, confirmWithDialog, conversations}: Dependencies) {
   const h = React.createElement
+  const communityToast=(text:string)=>{toast(text);window.dispatchEvent(new Event('dsh-community-preset-changed'))}
+  const CommunityPanel=createCommunityPresetPanel({React,jsonFetch,toast:communityToast,conversations})
+  const RegexPanel=createCommunityRegexPanel({React,jsonFetch,toast:communityToast,conversations})
+  const CardMappingPanel=createCommunityCardMappingPanel({React,jsonFetch,toast})
   function Editor({sessionId, scope, onLocked}: {sessionId: string; scope: 'global' | 'conversation'; onLocked(value: boolean): void}) {
     const [data, setData] = React.useState<Policy | null>(null)
     const [selected, setSelected] = React.useState(''), [mode, setMode] = React.useState<StyleMode>('system')
@@ -92,6 +99,9 @@ export function createPresetPanel({React, jsonFetch, toast, confirmWithDialog, c
       h('label', null, '生效范围', h('select', {className: 'dsh-rp-input', 'aria-label': '生效范围', value: scope, disabled: locked, onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => setScope(e.target.value)}, [['current', '当前对话'], ['target', '指定对话'], ['global', '全局']].map(([id, label]) => h('option', {key: id, value: id}, label)))),
       scope === 'target' && h('label', null, '指定对话', h('select', {className: 'dsh-rp-input', 'aria-label': '指定对话', value: target, disabled: locked, onChange: (e: ReactAPI.ChangeEvent<HTMLSelectElement>) => setTarget(e.target.value)}, h('option', {value: ''}, '请选择对话'), targets.map(item => h('option', {key: item.id, value: item.id}, item.label)))),
       scope === 'target' && error && h('p', {role: 'alert'}, error),
-      actual && h(Editor, {key: `${scope}:${actual}`, sessionId: actual, scope: scope === 'global' ? 'global' : 'conversation', onLocked: setLocked}))
+      actual && h(Editor, {key: `${scope}:${actual}`, sessionId: actual, scope: scope === 'global' ? 'global' : 'conversation', onLocked: setLocked}),
+      actual && h(CommunityPanel,{key:`community:${scope}:${actual}`,sessionId:actual,scope:scope==='global'?'global':'conversation'}),
+      actual && h(CardMappingPanel,{key:`card-mapping:${actual}`,sessionId:actual}),
+      actual && h(RegexPanel,{key:`regex:${scope}:${actual}`,sessionId:actual,scope:scope==='global'?'global':'conversation'}))
   }
 }
