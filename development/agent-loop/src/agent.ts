@@ -1002,11 +1002,25 @@ export class ReactLoopAgent implements Agent {
   /** Run one model turn from the assembled system prompt without creating a user message. */
   async generateProgrammaticAssistant(input: ProgrammaticAssistantGeneration): Promise<ProgrammaticAssistantGenerationResult> {
     if(input?.opening!==undefined)return this.generateOwnedOpening(input)
+    if (!input || typeof input.instruction !== 'string' || !input.instruction.trim()
+      || new TextEncoder().encode(input.instruction).length > 65_536) {
+      throw new Error('invalid programmatic generation identity or instruction')
+    }
+    return this.generateNoUserAssistant(input)
+  }
+
+  /** Author content is an already frozen prompt slot, including empty and long text. */
+  async generateAuthorDialogAssistant(input: {operationId:string;messageId:string;dynamicSystem:string})
+    : Promise<ProgrammaticAssistantGenerationResult> {
+    if (typeof input?.dynamicSystem !== 'string') throw new Error('invalid author dialogue dynamic system')
+    return this.generateNoUserAssistant({operationId:input.operationId,messageId:input.messageId,
+      instruction:input.dynamicSystem})
+  }
+
+  private async generateNoUserAssistant(input: ProgrammaticAssistantGeneration): Promise<ProgrammaticAssistantGenerationResult> {
     const valid = (value: unknown): value is string => typeof value === 'string' && value.length > 0
       && value.length <= 256 && value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value)
-    if (!input || !valid(input.operationId) || !valid(input.messageId)
-      || typeof input.instruction !== 'string' || !input.instruction.trim()
-      || new TextEncoder().encode(input.instruction).length > 65_536) {
+    if (!valid(input.operationId) || !valid(input.messageId)) {
       throw new Error('invalid programmatic generation identity or instruction')
     }
     if (this.phase.kind !== 'idle' || this.programmaticTurnPoisoned || this.inputCompletionBlocked

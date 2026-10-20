@@ -1,5 +1,6 @@
 import {decodeTaskRecord} from './tavern-task-primitives.js'
 import type {AuthorDialogPromptV1,AuthorDialogNativeCompletionV1} from './roleplay-author-dialog.js'
+import type {OwnedAuthorDialogActivationV1} from '../../development/subagent/src/author-dialog-activation.js'
 
 export interface TaskSession {id: string}
 export interface TaskAgent {session?: TaskSession; options?: {subagentDepth?: unknown; provider?: string; model?: string; reasoningEffort?: unknown}}
@@ -87,8 +88,9 @@ export interface TaskOptions<S, A> {
     maxDepth: 1
     toolFilter: {allow: string[]}
     label: string
-    persona: string
+    persona?: string
     prompt: {type: 'text'; text: string}[]
+    activation?:OwnedAuthorDialogActivationV1
   }): TaskChild | PromiseLike<TaskChild>}
   isCurrent?(session: S, job: StoredTask): boolean | PromiseLike<boolean>
   isHistoricalResultCurrent?(session:S,job:StoredTask):boolean | PromiseLike<boolean>

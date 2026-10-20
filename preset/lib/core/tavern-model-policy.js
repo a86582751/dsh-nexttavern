@@ -5,6 +5,7 @@ export const PURPOSES = Object.freeze([
     { id: 'memory', label: '记忆与场景整理' }, { id: 'card-import', label: '读卡' },
     { id: 'card-export', label: '角色卡导出' }, { id: 'status', label: '状态栏' },
     { id: 'decision', label: '决策建议' }, { id: 'novel-export', label: '小说整理' },
+    { id: 'author-dialog', label: '作者对话' },
 ]);
 const copy = (value) => value == null ? value : structuredClone(value);
 const object = (value) => value !== null && typeof value === 'object' ? value : undefined;

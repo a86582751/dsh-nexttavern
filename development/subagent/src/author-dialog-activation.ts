@@ -20,9 +20,9 @@ export function readOwnedAuthorDialogActivationV1(value:unknown):OwnedAuthorDial
   if(!value||typeof value!=='object')throw Error('invalid owned author dialogue activation')
   const record=value as Record<string,unknown>
   if(record.schemaVersion!==1||record.encoding!=='owned-author-dialog-v1'
-    ||['taskId','generation','promptPlanSha256','operationId','messageId','dynamicSystem']
+    ||['taskId','generation','promptPlanSha256','operationId','messageId']
       .some(key=>typeof record[key]!=='string'||!(record[key] as string).length)
-    ||typeof record.systemPrefix!=='string')throw Error('invalid owned author dialogue activation')
+    ||typeof record.systemPrefix!=='string'||typeof record.dynamicSystem!=='string')throw Error('invalid owned author dialogue activation')
   return value as OwnedAuthorDialogActivationV1
 }
 
@@ -42,13 +42,13 @@ export function composeOwnedAuthorDialogActivationV1(ctx:Context,activation:Owne
  * owns this existing no-user operation. This shim checks capability presence
  * instead of pretending an upstream Agent method exists. */
 export interface OwnedAuthorDialogProgrammaticDriverV1 {
-  generateProgrammaticAssistant?(input:{operationId:string;messageId:string;instruction:string}):Promise<
+  generateAuthorDialogAssistant?(input:{operationId:string;messageId:string;dynamicSystem:string}):Promise<
     {kind:'committed';turn:number;messageId:string}|{kind:'busy'}|{kind:'unknown';reason:string}>
 }
 export async function driveOwnedAuthorDialogActivationV1(child:OwnedAuthorDialogProgrammaticDriverV1,
   activation:OwnedAuthorDialogActivationV1):Promise<void> {
-  if(typeof child.generateProgrammaticAssistant!=='function')throw Error('owned author dialogue Native driver unavailable')
-  const receipt=await child.generateProgrammaticAssistant({operationId:activation.operationId,
-    messageId:activation.messageId,instruction:activation.dynamicSystem})
+  if(typeof child.generateAuthorDialogAssistant!=='function')throw Error('owned author dialogue Native driver unavailable')
+  const receipt=await child.generateAuthorDialogAssistant({operationId:activation.operationId,
+    messageId:activation.messageId,dynamicSystem:activation.dynamicSystem})
   if(receipt.kind!=='committed')throw Error('owned author dialogue generation '+receipt.kind)
 }

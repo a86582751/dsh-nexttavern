@@ -4,9 +4,9 @@ export function readOwnedAuthorDialogActivationV1(value) {
         throw Error('invalid owned author dialogue activation');
     const record = value;
     if (record.schemaVersion !== 1 || record.encoding !== 'owned-author-dialog-v1'
-        || ['taskId', 'generation', 'promptPlanSha256', 'operationId', 'messageId', 'dynamicSystem']
+        || ['taskId', 'generation', 'promptPlanSha256', 'operationId', 'messageId']
             .some(key => typeof record[key] !== 'string' || !record[key].length)
-        || typeof record.systemPrefix !== 'string')
+        || typeof record.systemPrefix !== 'string' || typeof record.dynamicSystem !== 'string')
         throw Error('invalid owned author dialogue activation');
     return value;
 }
@@ -27,10 +27,10 @@ export function composeOwnedAuthorDialogActivationV1(ctx, activation) {
     return () => { restoreContext(); removePrefix(); };
 }
 export async function driveOwnedAuthorDialogActivationV1(child, activation) {
-    if (typeof child.generateProgrammaticAssistant !== 'function')
+    if (typeof child.generateAuthorDialogAssistant !== 'function')
         throw Error('owned author dialogue Native driver unavailable');
-    const receipt = await child.generateProgrammaticAssistant({ operationId: activation.operationId,
-        messageId: activation.messageId, instruction: activation.dynamicSystem });
+    const receipt = await child.generateAuthorDialogAssistant({ operationId: activation.operationId,
+        messageId: activation.messageId, dynamicSystem: activation.dynamicSystem });
     if (receipt.kind !== 'committed')
         throw Error('owned author dialogue generation ' + receipt.kind);
 }
