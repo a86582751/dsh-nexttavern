@@ -7,7 +7,6 @@ import type {NativeMaterialSelectedBaseV1,NativeRequestMaterialPrepareInputV1,Na
   from '@deepseek-ai/dsh-agent-loop'
 import type {SessionMessageProjection} from '@deepseek-ai/dsh-session'
 import {recordSha256,sha256,textOf} from './roleplay-data.js'
-import {readTavernCardMacroFields} from './nexttavern-card.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {captureRoleplayTavernPromptSourceDataV1} from './roleplay-tavern-prompt-source.js'
 import {captureRoleplayTavernPromptScopesV1} from './roleplay-tavern-prompt-scopes.js'
@@ -20,18 +19,11 @@ import {captureTavernCanonicalChatClockV1} from './roleplay-tavern-chat-clock.js
 import {captureRoleplayTavernMaterialHistoryV1} from './roleplay-tavern-material-history.js'
 import {createRoleplayTavernInjectionRegistryV1} from './roleplay-tavern-injections.js'
 import {captureRoleplayTavernInjectionDefinitionsV1} from './roleplay-tavern-injection-definitions.js'
-import {captureRoleplayTavernInitialCatalogV1} from './roleplay-tavern-prompt-initial.js'
-import {prepareRoleplayTavernPromptVariablesV1} from './roleplay-tavern-prompt-variables.js'
-import type {TavernPromptVariableAttemptV1,TavernPromptVariableReadV1,
-  TavernPromptVariableRefV1} from './roleplay-tavern-prompt-variables-types.js'
+import type {TavernPromptVariableAttemptV1,TavernPromptVariableRefV1} from './roleplay-tavern-prompt-variables-types.js'
 import {produceRoleplayTavernMacroSnapshotV1,captureRoleplayTavernScopedRegexV1} from './roleplay-tavern-prompt-macros.js'
-import {prepareRoleplayTavernRenderCatalogV1} from './roleplay-tavern-prompt-render.js'
-import {prepareOwnedTavernLoreWithOwnerV1} from './tavern-lore-evaluator.mjs'
-import {validateTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
-import type {TavernLoreFrozenSettingsV1,TavernLoreFrozenSnapshotV1,
-  TavernLoreVisibleMessageV1} from './tavern-lore-evaluator-types.mjs'
-import {createRoleplayTavernTokenCountV1} from './roleplay-tavern-token-count.js'
-import {resolveCapturedTavernPromptSettingsV1} from './roleplay-tavern-content.js'
+import type {TavernLoreVisibleMessageV1} from './tavern-lore-evaluator-types.mjs'
+import {prepareRoleplayTavernContentV1,produceTavernPromptVariableRefV1 as factRef,
+  resolveCapturedTavernPromptSettingsV1,TAVERN_NATIVE_PROMPT_SETTINGS_V1} from './roleplay-tavern-content.js'
 import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
 import {produceRoleplayTavernLayoutV1,TAVERN_NATIVE_OWNED_SECTION_NAMES_V1} from './roleplay-tavern-layout.js'
 import type {AdmittedTavernTemplateComponentV1} from './roleplay-tavern-template-assets.js'
@@ -39,7 +31,6 @@ import type {PreparationSnapshot} from './roleplay-preparation-types.js'
 import type {RoleplayInputMaterialDependenciesV1,RoleplayInputMaterialScopeV1} from './roleplay-input-material.js'
 import type {RoleplayOpeningMaterialScopeV1} from './roleplay-opening-material.js'
 import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
-import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {RoleplayInputStateOwner} from './roleplay-input-state.js'
 import {produceAuthorPromptCaptureV1} from './roleplay-author-prompt-capture.js'
 import type {PromptProgramV1,PromptCaptureV1,PromptExecutionV1,PromptExecutionOutputV1}
@@ -48,15 +39,7 @@ import type {BrowserGenerationOutput,AuthorBrowserPreparationFacts} from './role
 import type {BrowserProgramV2} from './tavern-author-browser-types-v2.mjs'
 import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
 
-/** Native has no ST global settings store. This versioned program policy is
- * explicit; archived character-book settings remain importer metadata. */
-export const TAVERN_NATIVE_PROMPT_SETTINGS_V1:Readonly<TavernLoreFrozenSettingsV1>=Object.freeze({
-  policy:'owned-st-single-book-scan-feedback-v1',provenance:'explicit-native-fallback-v1',
-  caseSensitive:false,matchWholeWords:false,scanDepth:2,useGroupScoring:false,recursiveScanning:true,
-  minimumActivations:0,minimumActivationDepthMax:0,maxRecursionSteps:32,includeNames:true,
-  characterStrategy:'single-character-book-v1',budgetTokens:2048,
-  contentTransformPolicy:'no-world-info-output-regex-v1',macroPolicy:'frozen-rendered-receipt-or-marker-free-v1',
-  seedPolicy:'sha256-counter-domain-separated-v1',budgetPolicy:'frozen-cumulative-token-ledger-st-gte-v1'})
+export {TAVERN_NATIVE_PROMPT_SETTINGS_V1} from './roleplay-tavern-content.js'
 export const TAVERN_NATIVE_PROMPT_POLICY_V1=Object.freeze({schemaVersion:1,
   encoding:'native-tavern-actual-core-preparation-policy-v1',
   settings:TAVERN_NATIVE_PROMPT_SETTINGS_V1,bookSettings:'fixed-importer-metadata-not-applied',
@@ -138,10 +121,6 @@ function fail(code:string):never {throw Error(code)}
 function freeze<T>(value:T):T {
   if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value)}
   return value
-}
-function factRef(ownerId:string,versionSha256:string,ref:Record<string,unknown>):TavernPromptVariableRefV1 {
-  const data=cloneRoleplayTavernLoreDataV1(ref,65_536,{nodes:4096,depth:16}) as MvuJsonObject
-  return {ownerId,versionSha256,ref:data,refSha256:recordSha256(data)}
 }
 function phaseASnapshot(deps:Dependencies,scope:RoleplayInputMaterialScopeV1):Omit<PreparationSnapshot,'agent'> {
   const ref=scope.currency.snapshot
@@ -284,53 +263,12 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
           authorPrompt.output,definitions.promptDefinition)
         assertCurrent()
       }
-      const render=await prepareRoleplayTavernRenderCatalogV1({source,plan:compilation.plan,macros,rules,
-        component,scopes:scopeData.bindings,authorsNoteDepth:noteIndex<0?0:native.selected.messages.length-noteIndex-1,
-        basis:{sessionId:scope.session.id,branchId:scope.session.id,revision:timed.timed.revision,turnId,attemptId,
-          packageSha256,sourceSnapshotSha256:source.sourceSha256,stateSnapshotSha256:scopeData.stateSnapshotSha256,
-          clockEpochMs,randomSeed:seed},assertCurrent,signal:scope.signal,definitionFor:definitions.definitionFor,
-        onCreation:(request,output,definition,phase)=>injections.acceptCreation(request,output,definition,phase)})
-      assertCurrent()
-      const initialCatalog=captureRoleplayTavernInitialCatalogV1({source,plan:compilation.plan,
-        assertCurrent:assertSignal,signal:scope.signal})
       const attempt:TavernPromptVariableAttemptV1=opening?{attemptId,traceCounter:opening.attempt.traceCounter,
         provenance:opening.attempt.provenance}:{attemptId,traceCounter:player!.currency.attemptGeneration,
         provenance:factRef(`${scope.session.id}:actual-input-attempt`,recordSha256(player!.currency),{
           schemaVersion:1,encoding:'actual-Core-prompt-variable-attempt-v1',currency:player!.currency,
           preparation:player!.preparation,turn:scope.turn,step:scope.step,policySha256:recordSha256(policy)})}
-      const variables=await prepareRoleplayTavernPromptVariablesV1({schemaVersion:1,
-        encoding:'owned-prompt-variable-input-v1',sessionId:scope.session.id,source,catalog:initialCatalog.catalog,
-        scopes:scopeData.scopes,history:scopeData.history,attempt},{signal:scope.signal,assertCurrent,
-        async renderInitial(request) {
-          assertCurrent()
-          const bindings=[...request.readonlyScopes,request.initialSoFar]
-          const actual=await render.renderWithEvidence(request.entry.contentPointer,request.body,
-            {entryId:request.entry.entryId,scopes:bindings,macros:macrosFor(bindings),phase:'initial'})
-          assertCurrent()
-          const evidenceSha256=recordSha256(actual.evidence),renderRef=factRef(`${scope.session.id}:initial-render`,evidenceSha256,{
-            schemaVersion:1,encoding:'native-initial-render-execution-ref-v1',requestSha256:request.requestSha256,
-            executionSha256:evidenceSha256,featureRegexPolicy:initialCatalog.policySha256,
-            sourceSha256:source.sourceSha256,scopeBindingsSha256:recordSha256(bindings)})
-          const reads:TavernPromptVariableReadV1[]=[
-            {kind:'source',identity:'actual-current-source',valueSha256:source.sourceSha256,
-              provenance:factRef(`${scope.session.id}:initial-source`,source.sourceSha256,{
-                sourceSha256:source.sourceSha256,catalogSha256:initialCatalog.catalog.catalogSha256})},
-            {kind:'scope',identity:'actual-render-scope-bindings',valueSha256:recordSha256(bindings),
-              provenance:factRef(`${scope.session.id}:initial-scope-bindings`,recordSha256(bindings),{
-                scopeBindingsSha256:recordSha256(bindings),executionSha256:evidenceSha256,
-                scopeFactsSha256:recordSha256(scopeData.evidence)})},
-            {kind:'render',identity:'actual-macro-feature-regex-and-template-execution',
-              valueSha256:evidenceSha256,provenance:renderRef}]
-          return {schemaVersion:1,encoding:'owned-prompt-initial-render-output-v1',
-            pipeline:'actual-macro-template-regex-ejs-v1',requestSha256:request.requestSha256,
-            renderedText:actual.output.renderedText,renderedTextSha256:actual.output.renderedTextSha256,reads,renderRef}
-        }})
-      assertCurrent()
-      if(variables.kind!=='prepared')fail(variables.diagnostics[0]?.code??'INPUT_MATERIAL_VARIABLES_REFUSED')
-      const bindings=[...scopeData.bindings,...[variables.packet.initial,variables.packet.cache]
-        .flatMap(value=>value.kind==='bound'?[value.binding]:[])]
-      render.bindVariableScopes(bindings)
-      const tokenCount=createRoleplayTavernTokenCountV1(assertSignal,scope.signal),settings=resolveCapturedTavernPromptSettingsV1(source),
+      const settings=resolveCapturedTavernPromptSettingsV1(source),
         context=source.current.openingContext.context
       if(typeof context.user!=='string'||typeof context.char!=='string')fail('INPUT_MATERIAL_OPENING_NAMES_UNAVAILABLE')
       const visibleMessages:TavernLoreVisibleMessageV1[]=[...chatClock.scanRows].reverse().map(row=>{
@@ -340,50 +278,28 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         return {messageId:row.id,versionSha256:row.messageSha256,role:row.role,speakerName,text,textSha256:sha256(text),
           scanPolicy:'owner-captured-st-message-string-v1',scanText,scanTextSha256:sha256(scanText)}
       })
-      const card=captured.cardData,text=(value:unknown)=>typeof value==='string'?value:'',
-        aliases=readTavernCardMacroFields(card,source.original.decodedFormat),
-        globalScanData={personaDescription:macros.card?.find(value=>value.key==='persona')?.value??'',
-          characterDescription:text(aliases.description),characterPersonality:text(aliases.personality),
-          characterDepthPrompt:macros.card?.find(value=>value.key==='charDepthPrompt')?.value??'',
-          scenario:text(aliases.scenario),creatorNotes:text(card.creator_notes)}
-      const emptyCounts={schemaVersion:1 as const,encoding:'owned-frozen-token-count-ledger-v1' as const,
-        identity:tokenCount.identity,implementationSha256:tokenCount.implementationSha256,method:tokenCount.method,counts:[]}
-      const body:Omit<TavernLoreFrozenSnapshotV1,'snapshotSha256'>={schemaVersion:1,
-        encoding:'owned-st-lore-frozen-snapshot-v1',authority:'consumer-data-only',sessionId:scope.session.id,
-        branchId:scope.session.id,revision:timed.timed.revision,turnId,attemptId,sourceSnapshotSha256:source.sourceSha256,
-        stateSnapshotSha256:scopeData.stateSnapshotSha256,sourceReferenceSha256:compilation.plan.sourceReferenceSha256,
-        packageSha256,compilerPlanSha256:compilation.plan.planSha256,visibleMessages,messagesSha256:recordSha256(visibleMessages),
-        settings,settingsSha256:recordSha256(settings),seed,seedSha256:sha256(seed),globalScanData,
-        globalScanDataSha256:recordSha256(globalScanData),timed:timed.timed,timedSha256:recordSha256(timed.timed),
-        tokenizer:emptyCounts,tokenizerSha256:recordSha256(emptyCounts),renderedTexts:[],renderedTextsSha256:recordSha256([])}
-      const frozenSnapshot=validateTavernLoreSnapshotV1({...body,snapshotSha256:recordSha256(body)})
-      const loreProducer=Object.freeze({...render.loreProducer,async consumeScan() {
-        const consumed=await injections.consume('scan',render.snapshot)
-        const texts=await render.transformInjectionContent(consumed.prompts.map(row=>({key:row.registrationSha256,
-          content:row.prompt.content,depth:row.prompt.depth,role:row.prompt.role})),macrosFor(bindings))
-        const activationProposals=consumed.activationProposals.map(proposal=>{
-          const entry=compilation.plan.entries.find(row=>row.entryId===proposal.entryId)
-          if(!entry||proposal.sourceSnapshotSha256!==source.sourceSha256||proposal.branchId!==scope.session.id
-            ||proposal.turnId!==turnId||proposal.attemptId!==attemptId)fail('INPUT_MATERIAL_INJECTION_ACTIVATION_CHANGED')
-          return {entryId:entry.entryId,rawEntrySha256:entry.rawEntrySha256}
-        })
-        return {contributions:texts.map(row=>({identity:row.key,text:row.text,textSha256:row.textSha256})),activationProposals}
-      }})
-      // The input owner closes the actual asynchronous producer calls. The
-      // protected runtime admits template assets at its own worker boundary.
-      const lorePreparationOwner=Object.freeze({tokenCount,templates:loreProducer,assertCurrent:render.assertCurrent})
-      const evaluated=await prepareOwnedTavernLoreWithOwnerV1({schemaVersion:1,encoding:'owned-st-lore-evaluator-input-v1',
-        compilation,snapshot:frozenSnapshot},lorePreparationOwner)
-      assertCurrent()
-      if(evaluated.kind!=='prepared')fail(evaluated.diagnostics[0]?.code??'INPUT_MATERIAL_LORE_REFUSED')
-      const outlets=[...new Set(evaluated.plan.placements.filter(row=>row.position==='named-outlet').map(row=>row.outletName))]
-        .map(name=>({name,text:evaluated.plan.placements.filter(row=>row.position==='named-outlet'&&row.outletName===name)
-          .map(row=>row.text).join('\n'),versionSha256:evaluated.plan.planSha256}))
-      const finalMacros=macrosFor(bindings,outlets),finalLore=await render.finalLore(evaluated.plan.placements,finalMacros)
-      const finalById=new Map(finalLore.map(row=>[row.entryId,row])),authorMacros=macrosFor(bindings,outlets.map(outlet=>({
-        ...outlet,text:evaluated.plan.placements.filter(row=>row.position==='named-outlet'&&row.outletName===outlet.name)
-          .map(row=>finalById.get(row.entryId)!.text).filter(Boolean).join('\n'),
-        versionSha256:recordSha256({planSha256:evaluated.plan.planSha256,finalLore})})))
+      const {render,initialCatalog,variables,evaluated,finalLore,authorMacros}=await prepareRoleplayTavernContentV1({
+        captured,scopeData,attempt,timed:timed.timed,visibleMessages,settings,macrosFor,
+        renderInput:{source,plan:compilation.plan,macros,rules,
+          component,scopes:scopeData.bindings,authorsNoteDepth:noteIndex<0?0:native.selected.messages.length-noteIndex-1,
+          basis:{sessionId:scope.session.id,branchId:scope.session.id,revision:timed.timed.revision,turnId,attemptId,
+            packageSha256,sourceSnapshotSha256:source.sourceSha256,stateSnapshotSha256:scopeData.stateSnapshotSha256,
+            clockEpochMs,randomSeed:seed},assertCurrent,signal:scope.signal,definitionFor:definitions.definitionFor,
+          onCreation:(request,output,definition,phase)=>injections.acceptCreation(request,output,definition,phase)},
+        loreProducer(render,bindings) {
+          return Object.freeze({...render.loreProducer,async consumeScan() {
+            const consumed=await injections.consume('scan',render.snapshot)
+            const texts=await render.transformInjectionContent(consumed.prompts.map(row=>({key:row.registrationSha256,
+              content:row.prompt.content,depth:row.prompt.depth,role:row.prompt.role})),macrosFor(bindings))
+            const activationProposals=consumed.activationProposals.map(proposal=>{
+              const entry=compilation.plan.entries.find(row=>row.entryId===proposal.entryId)
+              if(!entry||proposal.sourceSnapshotSha256!==source.sourceSha256||proposal.branchId!==scope.session.id
+                ||proposal.turnId!==turnId||proposal.attemptId!==attemptId)fail('INPUT_MATERIAL_INJECTION_ACTIVATION_CHANGED')
+              return {entryId:entry.entryId,rawEntrySha256:entry.rawEntrySha256}
+            })
+            return {contributions:texts.map(row=>({identity:row.key,text:row.text,textSha256:row.textSha256})),activationProposals}
+          }})
+        }})
       // The fixed host consumes in-chat extension prompts before its final
       // author EJS pass. Capture this cut once: late persistent registrations
       // belong to the following generation and late once still closes here.
