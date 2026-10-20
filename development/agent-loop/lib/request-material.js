@@ -480,7 +480,6 @@ export function reconstructNativeRequestMaterialV1(input) {
             fail('DATA_UNSAFE', `events[${seq}]`);
         prefix.push(item.value);
     }
-    ownedData(prefix, 'events.prefix', false);
     const priorMaterials = [];
     for (const [seq, item] of prefix.entries()) {
         ownedData(item, `events[${seq}]`, false, true);

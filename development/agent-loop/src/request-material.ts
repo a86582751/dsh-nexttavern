@@ -473,7 +473,6 @@ export function reconstructNativeRequestMaterialV1(input: NativeRequestMaterialR
     if (!item || !Object.hasOwn(item, 'value')) fail('DATA_UNSAFE', `events[${seq}]`)
     prefix.push(item.value as SessionEvent | NativeRequestMaterialEventV1)
   }
-  ownedData(prefix, 'events.prefix', false)
   const priorMaterials: {seq: number; record: NativeRequestMaterialRecord}[] = []
   for (const [seq, item] of prefix.entries()) {
     ownedData(item, `events[${seq}]`, false, true)
