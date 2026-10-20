@@ -1,7 +1,7 @@
 import {cloneSchemaData,schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {recordSha256} from './roleplay-data.js'
 import {boundedSTPromptTransformBatchV1} from './bounded-regex.js'
-import {createTavernPromptTransformOutputV1} from './tavern-prompt-transform-output.mjs'
+import {executeTavernPromptTransformsV1,hasTavernPromptMacroSyntaxV1} from './tavern-prompt-transform-execution.mjs'
 import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1 as LIMITS,TAVERN_PROMPT_CARD_ORDER_V1,
   TAVERN_PROMPT_POST_ORDER_V1,TAVERN_PROMPT_INSTRUCT_ORDER_V1} from './tavern-prompt-transform-types.mjs'
 export {TAVERN_PROMPT_CARD_ORDER_V1,TAVERN_PROMPT_POST_ORDER_V1,
@@ -182,16 +182,18 @@ export async function applyTavernPromptTransformsV1(value:unknown,
   }
   let result:TavernPromptTransformResultV1
   if(input.entries.length===0) {
-    // Full input admission above still covers macros, rules and every data cap.
-    // No entry can execute, so share the worker's envelope without dispatching.
-    result=createTavernPromptTransformOutputV1({inputSha256:recordSha256(input),
-      policySha256:recordSha256(TAVERN_PROMPT_TRANSFORM_POLICY_V1),inputChars:countInputChars(input)},[],{
-      outputChars:0,workChars:0,jobs:0,matches:0,compiledRules:0,receipts:0,receiptChars:0,
-    })
+    // Full admission still covers every data cap; no entry can execute.
+    result=executeTavernPromptTransformsV1({input,inputSha256:recordSha256(input),
+      policySha256:recordSha256(TAVERN_PROMPT_TRANSFORM_POLICY_V1),inputChars:countInputChars(input)})
   } else {
     current(assertCurrent)
-    result=await boundedSTPromptTransformBatchV1({input,inputSha256:recordSha256(input),
-      policySha256:recordSha256(TAVERN_PROMPT_TRANSFORM_POLICY_V1),inputChars:countInputChars(input)},signal)
+    const data={input,inputSha256:recordSha256(input),
+      policySha256:recordSha256(TAVERN_PROMPT_TRANSFORM_POLICY_V1),inputChars:countInputChars(input)}
+    // Only an empty rule registry and syntax-free consumed text avoid
+    // executable work. Other pipelines retain the bounded Worker.
+    const literal=input.rules.length===0&&input.entries.every(entry=>entry.pipeline==='regex-only'
+      ||!entry.inputText||input.macros.engine==='legacy'&&!hasTavernPromptMacroSyntaxV1(entry.inputText))
+    result=literal?executeTavernPromptTransformsV1(data):await boundedSTPromptTransformBatchV1(data,signal)
   }
   // Includes worker termination: a cancelled/stale invocation cannot publish
   // either a successful projection or a diagnostic from an expired selection.
