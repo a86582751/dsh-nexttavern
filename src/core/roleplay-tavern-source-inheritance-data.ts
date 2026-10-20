@@ -130,8 +130,8 @@ function sealed<T>(raw:unknown,encoding:string,hashKey:string,fields:readonly st
   if(recordSha256(body)!==data[hashKey])inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
   return inheritanceFreezeV1(data as unknown as T)
 }
-export function sealInheritanceDataV1<T extends object>(body:T,hashKey:string) {
-  return inheritanceFreezeV1({...body,[hashKey]:recordSha256(body)})
+export function sealInheritanceDataV1<T extends object,K extends string>(body:T,hashKey:K):T&Record<K,string> {
+  return inheritanceFreezeV1({...body,[hashKey]:recordSha256(body)}) as T&Record<K,string>
 }
 /** Shared strict parser for the actual persisted scope envelope. The facts
  * retain their original owner; this row's child address is storage provenance. */
