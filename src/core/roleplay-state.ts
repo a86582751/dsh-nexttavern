@@ -50,8 +50,12 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
     const prefix = `${session.id}__`
     const cards = []
     for (const [k, v] of T.cards.entries()) if (k.startsWith(prefix) && v) cards.push(v)
-    const worldbook = []
-    for (const [k, v] of T.worldbook.entries()) if (k.startsWith(prefix) && v) worldbook.push(v)
+    const worldbookRows = []
+    for (const [k, v] of T.worldbook.entries()) if (k.startsWith(prefix) && v) worldbookRows.push([k, v] as const)
+    // JSON cold loading can change Map insertion order; public lists use stable table-key order.
+    const worldbook = worldbookRows
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+      .map(([, value]) => value)
     return { cards, worldbook }
   }
 
