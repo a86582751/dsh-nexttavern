@@ -29903,6 +29903,106 @@
     {
       "id": "mvu-native-data-test-dependencies-fixture",
       "source": "tests/mvu-native-data-test-dependencies-fixture.mts"
+    },
+    {
+      "id": "public-docs-site-builder-source",
+      "source": "site/src/build.mts"
+    },
+    {
+      "id": "public-docs-site-client-source",
+      "source": "site/src/site.ts"
+    },
+    {
+      "id": "public-docs-site-config-source",
+      "source": "site/src/site.config.mts"
+    },
+    {
+      "id": "public-docs-site-art-journal-day",
+      "source": "site/art/journal-day.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-night",
+      "source": "site/art/journal-night.webp"
+    },
+    {
+      "id": "public-docs-site-art-memory-atlas",
+      "source": "site/art/memory-atlas.webp"
+    },
+    {
+      "id": "public-docs-site-art-worldline-atlas",
+      "source": "site/art/worldline-atlas.webp"
+    },
+    {
+      "id": "public-docs-site-art-character-atlas",
+      "source": "site/art/character-atlas.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-day-02",
+      "source": "site/art/journal-day-02.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-day-03",
+      "source": "site/art/journal-day-03.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-day-04",
+      "source": "site/art/journal-day-04.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-day-05",
+      "source": "site/art/journal-day-05.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-day-06",
+      "source": "site/art/journal-day-06.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-day-07",
+      "source": "site/art/journal-day-07.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-day-08",
+      "source": "site/art/journal-day-08.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-night-02",
+      "source": "site/art/journal-night-02.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-night-03",
+      "source": "site/art/journal-night-03.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-night-04",
+      "source": "site/art/journal-night-04.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-night-05",
+      "source": "site/art/journal-night-05.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-night-06",
+      "source": "site/art/journal-night-06.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-night-07",
+      "source": "site/art/journal-night-07.webp"
+    },
+    {
+      "id": "public-docs-site-art-journal-night-08",
+      "source": "site/art/journal-night-08.webp"
+    },
+    {
+      "id": "public-docs-site-art-memory-atlas-night",
+      "source": "site/art/memory-atlas-night.webp"
+    },
+    {
+      "id": "public-docs-site-art-worldline-atlas-night",
+      "source": "site/art/worldline-atlas-night.webp"
+    },
+    {
+      "id": "public-docs-site-art-character-atlas-night",
+      "source": "site/art/character-atlas-night.webp"
     }
   ],
   "builds": [
@@ -150979,6 +151079,52 @@
         "build-tools/package.json",
         "build-tools/package-lock.json"
       ]
+    },
+    {
+      "id": "public-docs-site-builder-build",
+      "kind": "typescript-module",
+      "artifact": "public-docs-site-builder",
+      "entry": "site/src/build.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "site/src/build.mts",
+        "site/src/site.config.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs"
+      ],
+      "compatibilityEntry": true
+    },
+    {
+      "id": "public-docs-site-client-build",
+      "kind": "typescript-module",
+      "artifact": "public-docs-site-client",
+      "entry": "site/src/site.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "site/src/site.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs"
+      ],
+      "compatibilityEntry": true
+    },
+    {
+      "id": "public-docs-site-config-build",
+      "kind": "typescript-module",
+      "artifact": "public-docs-site-config",
+      "entry": "site/src/site.config.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "site/src/site.config.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "lib/operations/build-typescript.mjs"
+      ],
+      "compatibilityEntry": true
     }
   ],
   "typeScript": {

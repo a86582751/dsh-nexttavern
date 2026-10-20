@@ -8040,6 +8040,33 @@
       "outputs": [
         "lib/ui/session-images.js"
       ]
+    },
+    {
+      "artifact": "public-docs-site-builder",
+      "source": "site/src/build.mts",
+      "banner": "release/public/site/src/build.mts",
+      "primaryOutput": "site/build.mjs",
+      "outputs": [
+        "site/build.mjs"
+      ]
+    },
+    {
+      "artifact": "public-docs-site-client",
+      "source": "site/src/site.ts",
+      "banner": "release/public/site/src/site.ts",
+      "primaryOutput": "site/theme/site.js",
+      "outputs": [
+        "site/theme/site.js"
+      ]
+    },
+    {
+      "artifact": "public-docs-site-config",
+      "source": "site/src/site.config.mts",
+      "banner": "release/public/site/src/site.config.mts",
+      "primaryOutput": "site/site.config.mjs",
+      "outputs": [
+        "site/site.config.mjs"
+      ]
     }
   ],
   "compilerPlan": {
@@ -43438,6 +43465,131 @@
         "id": "session-images",
         "source": "lib/ui/session-images.js",
         "canonicalSource": "runtime/alpha3/lib/ui/session-images.js"
+      },
+      {
+        "id": "public-docs-site-builder-source",
+        "source": "site/src/build.mts",
+        "canonicalSource": "release/public/site/src/build.mts"
+      },
+      {
+        "id": "public-docs-site-client-source",
+        "source": "site/src/site.ts",
+        "canonicalSource": "release/public/site/src/site.ts"
+      },
+      {
+        "id": "public-docs-site-config-source",
+        "source": "site/src/site.config.mts",
+        "canonicalSource": "release/public/site/src/site.config.mts"
+      },
+      {
+        "id": "public-docs-site-art-journal-day",
+        "source": "site/art/journal-day.webp",
+        "canonicalSource": "release/public/site/art/journal-day.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-night",
+        "source": "site/art/journal-night.webp",
+        "canonicalSource": "release/public/site/art/journal-night.webp"
+      },
+      {
+        "id": "public-docs-site-art-memory-atlas",
+        "source": "site/art/memory-atlas.webp",
+        "canonicalSource": "release/public/site/art/memory-atlas.webp"
+      },
+      {
+        "id": "public-docs-site-art-worldline-atlas",
+        "source": "site/art/worldline-atlas.webp",
+        "canonicalSource": "release/public/site/art/worldline-atlas.webp"
+      },
+      {
+        "id": "public-docs-site-art-character-atlas",
+        "source": "site/art/character-atlas.webp",
+        "canonicalSource": "release/public/site/art/character-atlas.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-day-02",
+        "source": "site/art/journal-day-02.webp",
+        "canonicalSource": "release/public/site/art/journal-day-02.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-day-03",
+        "source": "site/art/journal-day-03.webp",
+        "canonicalSource": "release/public/site/art/journal-day-03.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-day-04",
+        "source": "site/art/journal-day-04.webp",
+        "canonicalSource": "release/public/site/art/journal-day-04.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-day-05",
+        "source": "site/art/journal-day-05.webp",
+        "canonicalSource": "release/public/site/art/journal-day-05.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-day-06",
+        "source": "site/art/journal-day-06.webp",
+        "canonicalSource": "release/public/site/art/journal-day-06.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-day-07",
+        "source": "site/art/journal-day-07.webp",
+        "canonicalSource": "release/public/site/art/journal-day-07.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-day-08",
+        "source": "site/art/journal-day-08.webp",
+        "canonicalSource": "release/public/site/art/journal-day-08.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-night-02",
+        "source": "site/art/journal-night-02.webp",
+        "canonicalSource": "release/public/site/art/journal-night-02.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-night-03",
+        "source": "site/art/journal-night-03.webp",
+        "canonicalSource": "release/public/site/art/journal-night-03.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-night-04",
+        "source": "site/art/journal-night-04.webp",
+        "canonicalSource": "release/public/site/art/journal-night-04.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-night-05",
+        "source": "site/art/journal-night-05.webp",
+        "canonicalSource": "release/public/site/art/journal-night-05.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-night-06",
+        "source": "site/art/journal-night-06.webp",
+        "canonicalSource": "release/public/site/art/journal-night-06.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-night-07",
+        "source": "site/art/journal-night-07.webp",
+        "canonicalSource": "release/public/site/art/journal-night-07.webp"
+      },
+      {
+        "id": "public-docs-site-art-journal-night-08",
+        "source": "site/art/journal-night-08.webp",
+        "canonicalSource": "release/public/site/art/journal-night-08.webp"
+      },
+      {
+        "id": "public-docs-site-art-memory-atlas-night",
+        "source": "site/art/memory-atlas-night.webp",
+        "canonicalSource": "release/public/site/art/memory-atlas-night.webp"
+      },
+      {
+        "id": "public-docs-site-art-worldline-atlas-night",
+        "source": "site/art/worldline-atlas-night.webp",
+        "canonicalSource": "release/public/site/art/worldline-atlas-night.webp"
+      },
+      {
+        "id": "public-docs-site-art-character-atlas-night",
+        "source": "site/art/character-atlas-night.webp",
+        "canonicalSource": "release/public/site/art/character-atlas-night.webp"
       }
     ],
     "publicRelease": {
@@ -160850,6 +161002,55 @@
           "build-tools/package-lock.json"
         ],
         "banner": "runtime/alpha3/src/ui/session-images.ts"
+      },
+      {
+        "id": "public-docs-site-builder-build",
+        "kind": "typescript-module",
+        "artifact": "public-docs-site-builder",
+        "entry": "site/src/build.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "site/src/build.mts",
+          "site/src/site.config.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs"
+        ],
+        "compatibilityEntry": true,
+        "banner": "release/public/site/src/build.mts"
+      },
+      {
+        "id": "public-docs-site-client-build",
+        "kind": "typescript-module",
+        "artifact": "public-docs-site-client",
+        "entry": "site/src/site.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "site/src/site.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs"
+        ],
+        "compatibilityEntry": true,
+        "banner": "release/public/site/src/site.ts"
+      },
+      {
+        "id": "public-docs-site-config-build",
+        "kind": "typescript-module",
+        "artifact": "public-docs-site-config",
+        "entry": "site/src/site.config.mts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "site/src/site.config.mts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs"
+        ],
+        "compatibilityEntry": true,
+        "banner": "release/public/site/src/site.config.mts"
       }
     ],
     "typeScript": {
