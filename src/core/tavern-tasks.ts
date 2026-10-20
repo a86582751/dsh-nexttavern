@@ -9,6 +9,8 @@ export {TaskValidationError, taskValidationFailure, FAILURE_LABELS, taskFailureD
 import {storedTask, executableTask, taskObject} from './tavern-task-types.js'
 import type {TaskSession, TaskAgent, TaskSpec, TaskJob, StoredTask, TaskResult, TaskChild, TaskOptions, Admission, Batch, SharedBatch, TaskControl} from './tavern-task-types.js'
 import {authorDialogSystemPrefixV1} from './roleplay-author-dialog.js'
+import type {NativeCompletedInputWorkReceiptV1,NativeDurableInputWorkReceiptV1,NativeInputStopNoticeV1}
+  from '@deepseek-ai/dsh-agent-loop'
 export type {TaskFailure} from './tavern-task-support.js'
 
 const copy = <T>(value: T): T => value == null ? value : structuredClone(value)
@@ -259,8 +261,8 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       if(job.status==='failed')throw new Error('该任务已失败，请在酒馆管理中重试')
       const proof=nativeToken ? nativeResults.get(nativeToken) : undefined
       const fromNativeResult=proof?.id===id && proof.generation===generation
-      if(job.kind==='author-dialog'&&job.status!=='completed'&&!fromNativeResult)
-        throw Error('AUTHOR_DIALOG_NATIVE_COMPLETION_REQUIRED')
+      if((job.kind==='author-dialog'||job.kind==='ruby-analysis')&&job.status!=='completed'&&!fromNativeResult)
+        throw Error(job.kind==='ruby-analysis'?'RUBY_NATIVE_COMPLETION_REQUIRED':'AUTHOR_DIALOG_NATIVE_COMPLETION_REQUIRED')
       if (!await isCurrent(session,job)
         && !(job.status==='completed' && await isHistoricalResultCurrent?.(session,job))
         && !(fromNativeResult && await liveHistoricalResult(session,job))) {
@@ -288,6 +290,15 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       // token is private to the already completed native child, never a tool DTO.
       if (canPublishResult && !await canPublishResult(session,job,fromNativeResult)) throw new Error('任务输入权限已变化')
       const resultHash=taskHash(result)
+      const rubyCompleted=job.kind==='ruby-analysis'?job.rubyNativeCompletedWork:undefined
+      if(job.kind==='ruby-analysis'&&rubyCompleted?.generation!==generation)
+        throw Error('RUBY_NATIVE_COMPLETION_REQUIRED')
+      const rubyTaskCompletion=rubyCompleted?{
+        schemaVersion:1 as const,encoding:'native-ruby-task-completion-v1' as const,
+        taskId:id,generation,childSessionId:rubyCompleted.receipt.checkpoint.sessionId,
+        promptPlanSha256:String(taskObject(job.input.rubyTask)?.promptPlanSha256),resultSha256:resultHash,
+        nativeCompletedWork:rubyCompleted.receipt,
+      }:undefined
       const authorDialogCompletion=job.kind==='author-dialog'?{
         schemaVersion:1 as const,encoding:'native-author-dialog-completion-v1' as const,
         taskId:id,generation,childSessionId:String(job.childSessionId),
@@ -295,6 +306,7 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
       }:undefined
       await table.put(keyOf(id),{...job,status:'completed',result:copy(result),resultHash,
         ...(authorDialogCompletion?{authorDialogCompletion}:{}),progress:{done:1,total:1},
+        ...(rubyTaskCompletion?{rubyTaskCompletion}:{}),
         completedAt:Date.now(),updatedAt:Date.now(),error:null,failure:null,failedAt:null})
       return copy(result)
     })
@@ -302,11 +314,14 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
   async function request(spec: TaskSpec<S,A>): Promise<unknown> {
     const {session,agent,kind,source,input,signal}=spec
     const authorDialog=kind==='author-dialog'&&input?.taskStage==='author-dialog-submit'?spec.authorDialog:undefined
+    const rubyTask=kind==='ruby-analysis'&&input?.taskStage==='ruby-analysis'?spec.rubyTask:undefined
     if(kind==='author-dialog'&&(!authorDialog||spec.background!==true||spec.format!=='text'))
       throw Error('AUTHOR_DIALOG_OWNED_PLAN_REQUIRED')
+    if(kind==='ruby-analysis'&&(!rubyTask||spec.background!==true||spec.format!=='text'))
+      throw Error('RUBY_OWNED_PLAN_REQUIRED')
     if(spec.background===true&&!((kind==='memory'&&input?.taskStage==='background-notes')
-      ||(kind==='setting-repair'&&input?.taskStage==='setting-repair')||authorDialog))
-      throw new Error('仅跨轮后台记忆或有界设定修补允许独立同模型子代理')
+      ||(kind==='setting-repair'&&input?.taskStage==='setting-repair')||authorDialog||rubyTask))
+      throw new Error('该任务用途不允许独立同模型子代理')
     if (Number(agent?.options?.subagentDepth)>0) throw new Error('辅助子代理不能递归调度酒馆任务')
     if(spec.maxTokens!==undefined&&(!Number.isSafeInteger(spec.maxTokens)||spec.maxTokens<1))throw new Error('辅助任务输出上限必须是正整数')
     const id=taskHash({sessionId:session.id,kind,source,input:spec.requestKey??input}), key=keyOf(id)
@@ -315,7 +330,8 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
     // old "running" row forever. Live in-process work is never superseded here.
     if(spec.background)for(const previous of list(session)) {
       if(previous.id===id||!previous.background||previous.status!=='running'||running.has(previous.id)
-        ||(kind==='author-dialog'||previous.kind==='author-dialog')&&previous.kind!==kind)continue
+        ||(['author-dialog','ruby-analysis'].includes(kind)||['author-dialog','ruby-analysis'].includes(previous.kind))
+          &&previous.kind!==kind)continue
       await lock(previous.id,async()=>{
         const live=owned(session,previous.id)
         if(live.status==='running'&&!running.has(live.id))await table.put(keyOf(live.id),{
@@ -338,7 +354,12 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
         await table.put(key,found)
       }
       if(found?.execution==='spawn'&&found.status==='running'&&!running.has(id)&&!admissions.has(id)) {
-        found=found.background
+        // A started Ruby child may have spent its sole request before restart.
+        // Keep that unknown outcome for explicit retry instead of spending again.
+        found=rubyTask
+          ? {...found,status:'failed',error:'RUBY_NATIVE_COMPLETION_UNKNOWN',
+              failure:{code:'RUBY_NATIVE_COMPLETION_UNKNOWN'},failedAt:Date.now(),updatedAt:Date.now()}
+          : found.background
           ? {...found,generation:randomUUID(),status:'queued',recoveredAt:Date.now(),updatedAt:Date.now()}
           : {...found,generation:randomUUID(),execution:'inline',actualRoute:copy(found.main),status:'queued',
             fallback:{from:found.actualRoute,reason:'runtime-restart',at:Date.now()},updatedAt:Date.now()}
@@ -395,10 +416,55 @@ export function createTavernTasks<S extends TaskSession, A extends TaskAgent>({t
           taskId:id,generation:job.generation,promptPlanSha256:authorDialog.promptSha256,
           operationId:`author-dialog-${id}-${job.generation}`,messageId:randomUUID(),
           systemPrefix:authorDialogSystemPrefixV1(authorDialog),dynamicSystem:authorDialog.orderedSystem[5]!.text}:undefined
+        const rubyActivation=rubyTask?{schemaVersion:1 as const,encoding:'owned-ruby-task-v1' as const,
+          taskId:id,generation:job.generation,promptPlanSha256:rubyTask.promptPlanSha256,
+          userMessageId:randomUUID(),orderedMessages:rubyTask.orderedMessages,
+          ...(rubyTask.mainInputMessageIndex===undefined?{}:{mainInputMessageIndex:rubyTask.mainInputMessageIndex})}:undefined
+        const rootRubyOwner=rubyTask?.createOwner(copy(job))
+        const rubyOwner=rootRubyOwner?{...rootRubyOwner,
+          async checkpoint(receipt:NativeDurableInputWorkReceiptV1,checkpointSignal:AbortSignal) {
+            const checked=await rootRubyOwner.checkpoint(receipt,checkpointSignal)
+            if(checked.kind==='blocked')return checked
+            return lock(id,async()=>{
+              const live=owned(session,id)
+              if(live.generation!==job.generation||terminal.has(live.status))
+                return {kind:'blocked' as const,code:'RUBY_TASK_REVOKED'}
+              await table.put(key,{...live,rubyNativeCheckpoint:{generation:job.generation,receipt},updatedAt:Date.now()})
+              return {kind:'allow' as const}
+            })
+          },
+          async completedWork(receipt:NativeCompletedInputWorkReceiptV1,completionSignal:AbortSignal) {
+            const acknowledgement=await rootRubyOwner.completedWork(receipt,completionSignal)
+            if(acknowledgement.kind!=='settled')return acknowledgement
+            // Native awaits this durable owner ACK before releasing idle. The
+            // existing Tavern job is the only Ruby completion record owner.
+            return lock(id,async()=>{
+              const live=owned(session,id)
+              if(live.generation!==job.generation||terminal.has(live.status))return {
+                kind:'blocked' as const,receiptSha256:acknowledgement.receiptSha256,code:'RUBY_TASK_REVOKED',
+              }
+              const updated={...live,rubyNativeCompletedWork:{generation:job.generation,receipt},updatedAt:Date.now()}
+              await table.put(key,updated)
+              return {...acknowledgement,ownerReceiptSha256:taskHash(updated)}
+            })
+          },
+          async onStop(notice:NativeInputStopNoticeV1) {
+            // Invoke the Source owner before awaiting persistence so its live
+            // admission is revoked synchronously even while a write is pending.
+            const acknowledgement=await rootRubyOwner.onStop(notice)
+            await lock(id,async()=>{
+              const live=owned(session,id)
+              if(live.generation===job.generation)await table.put(key,{
+                ...live,rubyNativeStop:{generation:job.generation,notice},updatedAt:Date.now(),
+              })
+            })
+            return acknowledgement
+          },
+        }:undefined
         const starting=Promise.resolve(subagents!.start('spawn',{parent:agent,signal:ac.signal,
           agentOptions:{...job.actualRoute,...job.generationOptions,tavernTaskId:id},maxDepth:1,
           toolFilter:{allow:spec.tools??[]},label:`Tavern:${id}:${job.generation}`,
-          ...(activation?{activation,prompt:[]}:{
+          ...(rubyActivation?{rubyActivation,rubyOwner,prompt:[]}:activation?{activation,prompt:[]}:{
             persona:'你是酒馆的专用维护助手。只处理收到的冻结来源和任务，不续写剧情，不创建子代理。',
             prompt:[{type:'text' as const,text:JSON.stringify({taskId:id,generation:job.generation,
               branchId:session.id,sourceHash:job.sourceHash,...input})}]}),

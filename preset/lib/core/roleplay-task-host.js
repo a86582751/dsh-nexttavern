@@ -7,12 +7,14 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
     const continuationTimers = new Set();
     const authorDialogOwners = new Map();
     let disposed = false;
+    const rubyOwners = new Map();
     ctx.effect(() => () => {
         disposed = true;
         for (const timer of continuationTimers)
             clearTimeout(timer);
         continuationTimers.clear();
         authorDialogOwners.clear();
+        rubyOwners.clear();
     }, 'roleplay: task host continuation lifetime');
     const sameModelRoute = (a, b) => Boolean(a?.provider && a?.model && a.provider === b?.provider && a.model === b?.model);
     const canonicalModelRoute = async (selection) => {
@@ -78,6 +80,12 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
                 && declared.promptPlanSha256 === owner.prompt.promptSha256
                 && recordSha256(declared.binding) === recordSha256(owner.prompt.binding) && owner.current();
         }
+        if (job.kind === 'ruby-analysis') {
+            const owner = rubyOwners.get(job.id), declared = source.rubyAnalysis;
+            return !!owner && owner.session === session && taskAgents.get(session.id) === owner.agent
+                && declared?.sourceIdentitySha256 === owner.prompt.sourceIdentitySha256
+                && declared.promptPlanSha256 === owner.prompt.promptPlanSha256 && owner.current();
+        }
         const currencyCurrent = historical ? inputHistoricalCurrencyCurrent : inputCurrencyCurrent;
         // Reject stale prepared work before projecting the active branch's
         // history; cold task polling must not spend that scan on expired currency.
@@ -105,15 +113,64 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
         isCurrent: (session, job) => taskSourceCurrent(session, job),
         isHistoricalResultCurrent: (session, job) => taskSourceCurrent(session, job, true),
         canPublishResult: (session, job, fromNativeResult) => {
-            if (job.kind === 'author-dialog')
-                return taskSourceCurrent(session, job);
             const source = job.source;
+            if (job.kind === 'author-dialog' || job.kind === 'ruby-analysis')
+                return taskSourceCurrent(session, job);
             if (!source.inputPreparation)
                 return true;
             return taskSourceCurrent(session, job) || (job.status === 'completed' || fromNativeResult && job.background === true
                 && job.kind === 'memory' && job.input?.taskStage === 'background-notes') && taskSourceCurrent(session, job, true);
         },
     });
+    async function requestRubyAnalysis(input) {
+        const { session, prompt, signal } = input;
+        signal?.throwIfAborted();
+        if (disposed || ctx.sessions.get(session.id) !== session || prompt.sessionId !== session.id || !input.current())
+            throw Error('RUBY_SOURCE_OWNER_CHANGED');
+        let main = input.agent ?? taskAgents.get(session.id);
+        if (!main)
+            main = (await ctx.sessionController.resolveAgent?.(session.id))?.agent;
+        signal?.throwIfAborted();
+        if (!main || disposed || ctx.sessions.get(session.id) !== session || !input.current())
+            throw Error('RUBY_SOURCE_OWNER_CHANGED');
+        taskAgents.set(session.id, main);
+        const source = { rubyAnalysis: { sourceIdentitySha256: prompt.sourceIdentitySha256,
+                promptPlanSha256: prompt.promptPlanSha256 } }, requestKey = { promptPlanSha256: prompt.promptPlanSha256 }, id = taskHash({ sessionId: session.id, kind: 'ruby-analysis', source, input: requestKey }), owner = { session, agent: main, prompt, current: input.current };
+        rubyOwners.set(id, owner);
+        let completed;
+        try {
+            if (input.retry)
+                await tavernTasks.retry(session, id);
+            const text = await tavernTasks.request({ session, agent: main, kind: 'ruby-analysis', source, requestKey,
+                input: { taskStage: 'ruby-analysis', rubyTask: prompt }, background: true, format: 'text', tools: [], signal,
+                timeoutMs: input.timeoutMs, maxTokens: input.maxTokens,
+                rubyTask: { promptPlanSha256: prompt.promptPlanSha256, orderedMessages: prompt.orderedMessages,
+                    ...(prompt.mainInputMessageIndex === undefined ? {} : { mainInputMessageIndex: prompt.mainInputMessageIndex }),
+                    createOwner: input.createOwner },
+                validate: value => {
+                    if (typeof value !== 'string' || value.trim().length < 2)
+                        throw Error('RUBY_ANALYSIS_RESULT_TOO_SHORT');
+                    return value;
+                }, onResult: job => { completed = job; },
+            });
+            signal?.throwIfAborted();
+            // The task owner produced this proof after actual Native completion and
+            // its durable ACK. Current/cached tasks use the same producer contract.
+            if (typeof text !== 'string' || !completed?.rubyTaskCompletion)
+                throw Error('RUBY_NATIVE_COMPLETED_TASK_MISSING');
+            return { schemaVersion: 1, encoding: 'native-ruby-analysis-result-v1', authority: 'consumer-data-only',
+                promptPlanSha256: prompt.promptPlanSha256, text, completion: completed.rubyTaskCompletion };
+        }
+        catch (error) {
+            if (error instanceof Error)
+                Object.assign(error, { rubyTaskId: id });
+            throw error;
+        }
+        finally {
+            if (rubyOwners.get(id) === owner)
+                rubyOwners.delete(id);
+        }
+    }
     async function requestAuthorDialog(input) {
         const { session, prompt, signal } = input;
         signal?.throwIfAborted();
@@ -153,6 +210,17 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             if (authorDialogOwners.get(id) === owner)
                 authorDialogOwners.delete(id);
         }
+    }
+    function readCompletedRubyAnalysis(reference) {
+        const job = T.branch.get('tavern_job__' + reference.taskId), completion = job?.rubyTaskCompletion;
+        if (!job || job.kind !== 'ruby-analysis' || job.status !== 'completed' || job.generation !== reference.generation
+            || typeof job.result !== 'string' || job.resultHash !== reference.resultSha256 || !completion
+            || completion.generation !== job.generation || completion.taskId !== job.id
+            || completion.childSessionId !== job.childSessionId || completion.resultSha256 !== job.resultHash
+            || recordSha256(completion.nativeCompletedWork) !== reference.completedWorkSha256)
+            return undefined;
+        return { schemaVersion: 1, encoding: 'native-ruby-analysis-result-v1', authority: 'consumer-data-only',
+            promptPlanSha256: completion.promptPlanSha256, text: job.result, completion };
     }
     function readCompletedAuthorDialog(session, binding, reference) {
         if (disposed || ctx.sessions.get(session.id) !== session || binding.sessionId !== session.id)
@@ -334,7 +402,7 @@ export function createRoleplayTaskHost({ T, ctx, config, taskAgents, storyBranch
             job.error = '状态结果尚未发布，可重试';
         }
     }
-    return { sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster,
-        characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask,
-        requestAuthorDialog, readCompletedAuthorDialog, resumeMemoryWork, resumeStatusMaintenance };
+    return { sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster,
+        clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask,
+        requestAuthorDialog, readCompletedAuthorDialog, requestRubyAnalysis, readCompletedRubyAnalysis, resumeMemoryWork, resumeStatusMaintenance };
 }

@@ -10,7 +10,11 @@ export function tavernLoreEntrySemanticSha256V1(semantic:TavernLoreSemanticEntry
   const {content,...fields}=semantic
   return recordSha256({...fields,content:{kind:content.kind,pointer:content.pointer,contentSha256:content.contentSha256}})
 }
-export interface LoreTimedEntryV1 {entry:TavernLoreEntryPlanV1;semantic:TavernLoreSemanticEntryV1;eligible:boolean}
+export interface LoreTimedEntryV1 {
+  entry:Pick<TavernLoreEntryPlanV1,'entryId'|'rawEntrySha256'>
+  semantic:TavernLoreSemanticEntryV1
+  eligible:boolean
+}
 type Interval=TavernLoreBranchTimedInputV1['intervals'][number]
 export class TavernLoreTimedStateV1 {
   private readonly rows={sticky:new Map<string,Interval>(),cooldown:new Map<string,Interval>()}

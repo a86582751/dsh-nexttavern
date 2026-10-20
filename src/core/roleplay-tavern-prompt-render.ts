@@ -6,6 +6,7 @@ import {resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
 import {applyTavernPromptTransformsV1,assertTavernPromptProjectionReadyV1} from './tavern-prompt-transform.mjs'
 import {validateTemplateSnapshotV1,validateTemplateRequestV1} from './tavern-template-data.mjs'
 import type {TavernLorePlanV1,TavernLoreSemanticEntryV1} from './tavern-lore-plan-types.mjs'
+import type {TavernLoreEvaluationCompositionV1} from './tavern-lore-derived.mjs'
 import type {TavernPromptMacroSnapshotV1,TavernPromptRegexRuleV1,TavernPromptProjectionV1,
   TavernPromptTransformEntryV1,TavernPromptTransformOutputV1} from './tavern-prompt-transform-types.mjs'
 import type {TavernTemplateFrozenSnapshotV1,TavernTemplateScopeBindingV1,TavernTemplateOutputV1,
@@ -32,6 +33,7 @@ interface Dependencies {
   readonly component:AdmittedTavernTemplateComponentV1
   readonly source:TavernLoreSourceDataV1
   readonly plan:TavernLorePlanV1
+  readonly evaluationComposition?:TavernLoreEvaluationCompositionV1
   readonly macros:TavernPromptMacroSnapshotV1
   readonly rules:readonly TavernPromptRegexRuleV1[]
   readonly scopes:readonly TavernTemplateScopeBindingV1[]
@@ -63,6 +65,9 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
     ||!Number.isSafeInteger(deps.authorsNoteDepth)||deps.authorsNoteDepth<0)fail('INPUT_MATERIAL_RENDER_SOURCE_CHANGED')
   const semantics=new Map(plan.entries.map(entry=>[entry.entryId,
     {...ST_LORE_ENTRY_DEFAULTS_V1,displayIndex:entry.ordinal,...entry.semanticOverrides} as TavernLoreSemanticEntryV1]))
+  const evaluationSemantics=deps.evaluationComposition?.ref?new Map(semantics):semantics
+  if(deps.evaluationComposition?.ref)for(const entry of deps.evaluationComposition.entries)
+    if('semantic' in entry)evaluationSemantics.set(entry.entryId,entry.semantic)
   const top=Math.max(0,...[...semantics.values()].filter(value=>value.position==='at-chat-depth').map(value=>value.depth))
   const lookupDepth=(value:TavernLoreSemanticEntryV1)=>{
     if(value.position==='before-authors-note'||value.position==='after-authors-note')return deps.authorsNoteDepth+value.depth
@@ -95,7 +100,8 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
   const row=(key:string,pointer:string,text:string,pipeline:TavernPromptTransformEntryV1['pipeline'],
     channel:TavernPromptTransformEntryV1['channel'],required:boolean,entryId:string|null,
     placement:TavernPromptTransformEntryV1['placement']=5,depth:number|null=null):TavernPromptTransformEntryV1=>
-    ({key,bookId:entryId?plan.bookId:null,entryId,sourcePointer:pointer,sourceSnapshotSha256:source.sourceSha256,
+    ({key,bookId:entryId&&!pointer.startsWith('derived:')?plan.bookId:null,entryId,
+      sourcePointer:pointer,sourceSnapshotSha256:source.sourceSha256,
       rawText:text,storyText:'',inputText:text,pipeline,channel,placement,depth,isEdit:false,
       characterOverride:null,required})
   const catalogOutput=await transform(entries.map((entry,index)=>row(entry.entryId,raw[index]!.pointer,
@@ -114,11 +120,10 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps:Dependencies) {
       if(!original||original.ref.entrySha256!==entry.rawEntrySha256)fail('INPUT_MATERIAL_RENDER_ENTRY_UNPROVEN')
       entryData=original.value
     }
-    const uid=entry.upstreamUid.origin==='explicit'?Number(entry.upstreamUid.value):Number.NaN,
-      semantic=semantics.get(entry.entryId)!
+    const uid=entry.upstreamUid.origin==='explicit'?Number(entry.upstreamUid.value):Number.NaN
     return {key:entry.entryId,bookId:plan.bookId,entryId:entry.entryId,sourcePointer:projection.sourcePointer,
       sourceSnapshotSha256:source.sourceSha256,content:projection.outputText,contentSha256:projection.outputSha256,
-      activationAllowed:semantic.enabled&&entry.disposition==='eligible-semantic-data',
+      activationAllowed:evaluationSemantics.get(entry.entryId)!.enabled&&entry.disposition==='eligible-semantic-data',
       lookup:{world,title:typeof entryData.comment==='string'?entryData.comment:'',
         uid:Number.isSafeInteger(uid)&&uid>=0?uid:null},
       ...projection.deferredDiagnostics.length?{readDiagnostic:{code:projection.deferredDiagnostics[0]!.code,

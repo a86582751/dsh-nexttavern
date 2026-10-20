@@ -6,6 +6,9 @@ import type { AuthorTables, AuthorDependency } from './roleplay-author-context-t
 import type {InputPreparationCurrency} from './roleplay-input-preparation.js'
 import type {AuthorChatBindingV1} from './roleplay-author-chat-state-types.js'
 import type {AuthorDialogPromptV1} from './roleplay-author-dialog.js'
+import type {RubyAnalysisPromptV1} from './roleplay-ruby-task-types.js'
+import type {OwnedRubyTaskOwnerV1} from '@deepseek-ai/dsh-subagent'
+import type {TaskJob} from './tavern-task-types.js'
 
 export interface HostSession extends ContextSession {
   header?: NonNullable<ContextSession['header']> & {parentSession?: string}
@@ -32,6 +35,7 @@ export interface HostTable {
 export interface HostTables {branch: HostTable; cards: HostTable}
 export interface HostSource {
   authorDialog?:{binding:AuthorChatBindingV1;operationId:string;promptPlanSha256:string}
+  rubyAnalysis?:{sourceIdentitySha256:string;promptPlanSha256:string}
   inputPreparation?: InputPreparationCurrency
   preparationId?: string
   hashKind?: string
@@ -49,6 +53,18 @@ export interface AuthorDialogRequestV1 {
   signal?:AbortSignal
   /** Root's actual pending Browser/Core operation lifetime. Never deserialized. */
   current():boolean
+  timeoutMs?:number
+  maxTokens?:number
+}
+export interface RubyAnalysisRequestV1 {
+  session:HostSession
+  agent?:HostAgent
+  prompt:RubyAnalysisPromptV1
+  signal?:AbortSignal
+  current():boolean
+  createOwner(job:TaskJob):OwnedRubyTaskOwnerV1
+  /** Explicit player retry after Core confirmed the same captured inputs. */
+  retry?:true
   timeoutMs?:number
   maxTokens?:number
 }

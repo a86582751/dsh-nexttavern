@@ -917,6 +917,9 @@ export function createRoleplayInputStateOwner(deps) {
         /** Explicit author-dialogue captures share change-feed/currentness while
          * retaining a separate operation address from the Main input owner. */
         captureAuthorDialog: (scope, operationId, compute) => captureActualOperation(scope, `author-dialog:${operationId}`, compute),
+        /** Ruby's Source/configuration and selected prose are independent of the
+         * Main preparation. Each serial task captures its current output inputs. */
+        captureRuby: (scope, operationId, compute) => captureActualOperation(scope, `ruby-analysis:${operationId}`, compute),
         captureClosing, borrowHistorical, readPendingVariantFacts, readProgramAbsenceNamespaceFacts,
         readProgramOpeningPreparationFacts,
         captureSchema: (id, compute) => read('schema', id, 'verified-history', compute, true),

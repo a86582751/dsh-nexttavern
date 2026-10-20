@@ -90,6 +90,7 @@ import { createActivityComponents, ACTIVITY_CSS, tavernActivityPresentation } fr
 export { tavernActivityPresentation, backgroundNotesPresentation } from './activity-view.js'
 import { createAuthorPanels } from './author-panels.js'
 import { createMemoryRetrievalPanel, MEMORY_RETRIEVAL_CSS } from './memory-retrieval-panel.js'
+import { createRubyAnalysisPanel } from './ruby-analysis-panel.js'
 import { createCardAdaptationPanel, CARD_ADAPTATION_CSS } from './card-adaptation-panel.js'
 import { createReaderView } from './reader-view.js'
 import { createStatusSurface } from './status-surface.js'
@@ -377,6 +378,7 @@ export function apply(ctx: ClientContext) {
         })
     const { MemoryPanel: MemoryRetrievalMemoryPanel, EmbeddingPanel, RebuildPrompt } = createMemoryRetrievalPanel({ React, jsonFetch, toast })
     const CardAdaptationPanel = createCardAdaptationPanel({ React, jsonFetch, toast, confirmWithDialog })
+    const RubyAnalysisPanel = createRubyAnalysisPanel({ React, jsonFetch })
 
     const panelTabs: [string, string, ReactAPI.ComponentType<{ scope?: { sessionId: string }; visible?: boolean }>][] = [
       ['cards', '人物设定', CardsPanel],
@@ -491,6 +493,7 @@ export function apply(ctx: ClientContext) {
         ['card-import', '角色卡导入'],
         ['models', '模型'],
         ['embedding', 'Embedding 模型设置'],
+        ['ruby-analysis', 'Ruby额外分析'],
         ['usage', '使用统计'],
         ['export', '导出'],
         ['userinfo', '用户信息'],
@@ -536,6 +539,8 @@ export function apply(ctx: ClientContext) {
             return React.createElement(ModelPanel, { key: `${sessionId}:models`, sessionId })
           case 'embedding':
             return React.createElement(EmbeddingPanel, { key: `${sessionId}:embedding`, sessionId })
+          case 'ruby-analysis':
+            return React.createElement(RubyAnalysisPanel, { key: `${sessionId}:ruby-analysis`, sessionId })
           case 'resources':
             return React.createElement(ResourcesPanel, { key: `${sessionId}:resources`, sessionId })
           case 'card-import':

@@ -39,6 +39,11 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps) {
         fail('INPUT_MATERIAL_RENDER_SOURCE_CHANGED');
     const semantics = new Map(plan.entries.map(entry => [entry.entryId,
         { ...ST_LORE_ENTRY_DEFAULTS_V1, displayIndex: entry.ordinal, ...entry.semanticOverrides }]));
+    const evaluationSemantics = deps.evaluationComposition?.ref ? new Map(semantics) : semantics;
+    if (deps.evaluationComposition?.ref)
+        for (const entry of deps.evaluationComposition.entries)
+            if ('semantic' in entry)
+                evaluationSemantics.set(entry.entryId, entry.semantic);
     const top = Math.max(0, ...[...semantics.values()].filter(value => value.position === 'at-chat-depth').map(value => value.depth));
     const lookupDepth = (value) => {
         if (value.position === 'before-authors-note' || value.position === 'after-authors-note')
@@ -68,7 +73,8 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps) {
         transforms.push({ ...metadata, entries: fullEntries.map(({ rawText: _raw, storyText: _story, inputText: _input, ...entry }) => entry) });
         return result.output;
     };
-    const row = (key, pointer, text, pipeline, channel, required, entryId, placement = 5, depth = null) => ({ key, bookId: entryId ? plan.bookId : null, entryId, sourcePointer: pointer, sourceSnapshotSha256: source.sourceSha256,
+    const row = (key, pointer, text, pipeline, channel, required, entryId, placement = 5, depth = null) => ({ key, bookId: entryId && !pointer.startsWith('derived:') ? plan.bookId : null, entryId,
+        sourcePointer: pointer, sourceSnapshotSha256: source.sourceSha256,
         rawText: text, storyText: '', inputText: text, pipeline, channel, placement, depth, isEdit: false,
         characterOverride: null, required });
     const catalogOutput = await transform(entries.map((entry, index) => row(entry.entryId, raw[index].pointer, raw[index].text, 'regex-then-macro', 'source', false, entry.entryId)));
@@ -88,10 +94,10 @@ export async function prepareRoleplayTavernRenderCatalogV1(deps) {
                 fail('INPUT_MATERIAL_RENDER_ENTRY_UNPROVEN');
             entryData = original.value;
         }
-        const uid = entry.upstreamUid.origin === 'explicit' ? Number(entry.upstreamUid.value) : Number.NaN, semantic = semantics.get(entry.entryId);
+        const uid = entry.upstreamUid.origin === 'explicit' ? Number(entry.upstreamUid.value) : Number.NaN;
         return { key: entry.entryId, bookId: plan.bookId, entryId: entry.entryId, sourcePointer: projection.sourcePointer,
             sourceSnapshotSha256: source.sourceSha256, content: projection.outputText, contentSha256: projection.outputSha256,
-            activationAllowed: semantic.enabled && entry.disposition === 'eligible-semantic-data',
+            activationAllowed: evaluationSemantics.get(entry.entryId).enabled && entry.disposition === 'eligible-semantic-data',
             lookup: { world, title: typeof entryData.comment === 'string' ? entryData.comment : '',
                 uid: Number.isSafeInteger(uid) && uid >= 0 ? uid : null },
             ...projection.deferredDiagnostics.length ? { readDiagnostic: { code: projection.deferredDiagnostics[0].code,

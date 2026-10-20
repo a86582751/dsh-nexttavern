@@ -2,15 +2,18 @@ import {recordSha256} from './roleplay-data.js'
 import {types} from 'node:util'
 import {schemaTextSha256} from './tavern-mvu-schema-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
-import {validateTavernLoreCompilationV1,resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
-import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
+import {validateTavernLoreCompilationV1} from './tavern-lore-compiler.mjs'
+import {composeTavernLoreEvaluationV1,isTavernLoreDerivedEntryV1,tavernLoreEvaluationSemanticV1,
+  tavernLoreOriginalEvaluationEntryV1,resolveTavernLoreEvaluationContentV1,
+  validateTavernLoreDerivedSnapshotV1} from './tavern-lore-derived.mjs'
 import {LoreEvaluationRefusal,TavernLoreBoundedMatcherV1,refuse} from './tavern-lore-match.mjs'
 import {exact,freezeLoreData,validateTavernLoreSnapshotV1,sealTavernLoreSnapshotV1,
   LORE_EVALUATOR_POLICY_V1,LORE_EVALUATOR_POLICY_SHA256} from './tavern-lore-snapshot.mjs'
 import {TavernLoreScanBufferV1,nextLoreScanStateV1} from './tavern-lore-scan.mjs'
 import {TavernLoreTimedStateV1} from './tavern-lore-timed.mjs'
 import {TavernLoreTemplateFeedbackStateV1} from './tavern-lore-template-feedback.mjs'
-import type {TavernLoreEntryPlanV1,TavernLoreSemanticEntryV1} from './tavern-lore-plan-types.mjs'
+import type {TavernLoreSemanticEntryV1} from './tavern-lore-plan-types.mjs'
+import type {TavernLoreEvaluationEntryV1,TavernLoreEvaluationCompositionV1} from './tavern-lore-derived.mjs'
 import type {TavernLoreEvaluationV1,TavernLoreFrozenSnapshotV1,TavernLoreEntryDecisionV1,
   TavernLorePlacementV1,TavernLoreEvaluationPlanV1,TavernLorePreparedEvaluationV1,
   TavernLoreTokenCountProducerV1,TavernLoreEvaluatorInputV1,TavernLoreTemplateProducerV1,
@@ -18,15 +21,12 @@ import type {TavernLoreEvaluationV1,TavernLoreFrozenSnapshotV1,TavernLoreEntryDe
 
 type Mutable<T>={-readonly [K in keyof T]:T[K]}
 interface Candidate {
-  entry:TavernLoreEntryPlanV1
+  entry:TavernLoreEvaluationEntryV1
   semantic:TavernLoreSemanticEntryV1
   text:string
   sticky:boolean
   decision:Mutable<TavernLoreEntryDecisionV1>
 }
-const semantics=(entry:TavernLoreEntryPlanV1):TavernLoreSemanticEntryV1=>({
-  ...ST_LORE_ENTRY_DEFAULTS_V1,displayIndex:entry.ordinal,...entry.semanticOverrides,
-}) as TavernLoreSemanticEntryV1
 function secondaryPass(semantic:TavernLoreSemanticEntryV1,matches:readonly boolean[]):boolean {
   if(!semantic.selective||!matches.length)return true
   if(semantic.selectiveLogic==='and-any')return matches.some(Boolean)
@@ -40,13 +40,14 @@ function score(semantic:TavernLoreSemanticEntryV1,primary:readonly boolean[],sec
   return secondary.length&&(semantic.selectiveLogic==='and-any'
     ||semantic.selectiveLogic==='and-all'&&secondary.every(Boolean))?first+last:first
 }
-function seededRoll(snapshot:TavernLoreFrozenSnapshotV1,domain:string):number {
+function seededRoll(snapshot:TavernLoreFrozenSnapshotV1,domain:string,
+  evaluationPlanSha256=snapshot.compilerPlanSha256):number {
   const digest=recordSha256({policy:snapshot.settings.seedPolicy,seed:snapshot.seed,branchId:snapshot.branchId,
-    turnId:snapshot.turnId,attemptId:snapshot.attemptId,compilerPlanSha256:snapshot.compilerPlanSha256,domain})
+    turnId:snapshot.turnId,attemptId:snapshot.attemptId,compilerPlanSha256:evaluationPlanSha256,domain})
   return (Number.parseInt(digest.slice(0,13),16)+0.5)/4503599627370496
 }
 function inclusionGroups(candidates:Candidate[],activated:readonly Candidate[],snapshot:TavernLoreFrozenSnapshotV1,
-  timed:TavernLoreTimedStateV1,loop:number):Candidate[] {
+  timed:TavernLoreTimedStateV1,loop:number,evaluationPlanSha256?:string):Candidate[] {
   const grouped=new Map<string,Candidate[]>()
   for(const item of candidates) {
     if(!item.semantic.group)continue
@@ -80,7 +81,7 @@ function inclusionGroups(candidates:Candidate[],activated:readonly Candidate[],s
       const total=remaining.reduce((value,item)=>value+item.semantic.groupWeight,0)
       if(!Number.isFinite(total)||total<0||total>Number.MAX_SAFE_INTEGER
         ||remaining.some(item=>item.semantic.groupWeight<0))refuse('LORE_GROUP_WEIGHT_UNSUPPORTED')
-      const roll=seededRoll(snapshot,`group:${group}:loop:${loop}`)*total
+      const roll=seededRoll(snapshot,`group:${group}:loop:${loop}`,evaluationPlanSha256)*total
       let current=0
       for(const item of remaining){current+=item.semantic.groupWeight;if(roll<=current){winner=item;break}}
     }
@@ -127,18 +128,22 @@ function rawEvaluatorInput(input:unknown):TavernLoreEvaluatorInputV1 {
     if(!Object.hasOwn(descriptor,'value')||!descriptor.enumerable)throw Error('SCHEMA_NON_JSON_VALUE')
     Object.defineProperty(value,key,{value:descriptor.value,enumerable:true})
   }
-  exact(value,['schemaVersion','encoding','compilation','snapshot'])
+  const hasDerived=Object.hasOwn(value,'derivedSnapshot')
+  exact(value,['schemaVersion','encoding','compilation','snapshot',...hasDerived?['derivedSnapshot']:[]])
   if(value.schemaVersion!==1||value.encoding!=='owned-st-lore-evaluator-input-v1')refuse('LORE_EVALUATOR_INPUT_INVALID')
   return {schemaVersion:1,encoding:'owned-st-lore-evaluator-input-v1',
     compilation:validateTavernLoreCompilationV1(value.compilation),
-    snapshot:validateTavernLoreSnapshotV1(value.snapshot)}
+    snapshot:validateTavernLoreSnapshotV1(value.snapshot),
+    ...hasDerived?{derivedSnapshot:validateTavernLoreDerivedSnapshotV1(value.derivedSnapshot)}:{}}
 }
 async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTokenCountProducerV1,
-  templateProducer?:TavernLoreTemplateProducerV1,owner?:TavernLorePreparationOwnerV1)
+  templateProducer?:TavernLoreTemplateProducerV1,owner?:TavernLorePreparationOwnerV1,
+  capturedComposition?:TavernLoreEvaluationCompositionV1)
   :Promise<Extract<TavernLorePreparedEvaluationV1,{kind:'prepared'}>> {
   const ownerCurrent=owner?.assertCurrent
   if(owner&&(typeof ownerCurrent!=='function'||!producer||!templateProducer))refuse('LORE_PREPARATION_OWNER_INVALID')
-  const compilation=input.compilation,plan=compilation.plan
+  const compilation=input.compilation,plan=compilation.plan,
+    composition=capturedComposition??composeTavernLoreEvaluationV1(plan,input.derivedSnapshot)
   let snapshot=input.snapshot
   const began=performance.now()
   const checkpoint=()=>{
@@ -165,13 +170,15 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
     ||snapshot.tokenizer.method!==producer.method||snapshot.tokenizer.counts.length!==0))refuse('LORE_TOKEN_PRODUCER_MISMATCH')
   if(snapshot.compilerPlanSha256!==plan.planSha256||snapshot.sourceReferenceSha256!==plan.sourceReferenceSha256
     ||snapshot.sourceSnapshotSha256!==plan.source.sourceSnapshotSha256)refuse('LORE_EVALUATOR_SOURCE_MISMATCH')
-  const eligible=(entry:TavernLoreEntryPlanV1)=>{
-    if(entry.disposition!=='retained-ineligible')return true
-    const blocking=entry.diagnosticIndexes.map(index=>compilation.diagnostics[index]!).filter(row=>row.blocking)
+  const eligible=(entry:TavernLoreEvaluationEntryV1)=>{
+    if(isTavernLoreDerivedEntryV1(entry))return true
+    const original=tavernLoreOriginalEvaluationEntryV1(entry)!
+    if(original.disposition!=='retained-ineligible')return true
+    const blocking=original.diagnosticIndexes.map(index=>compilation.diagnostics[index]!).filter(row=>row.blocking)
     return blocking.length>0&&blocking.every(row=>row.code==='LORE_VECTORIZED_EVALUATOR_REQUIRED')
   }
-  const items=plan.entries.map(entry=>({entry,semantic:semantics(entry),eligible:eligible(entry)}))
-  for(const item of items)if(!item.semantic.enabled) {
+  const items=composition.entries.map(entry=>({entry,semantic:tavernLoreEvaluationSemanticV1(entry),eligible:eligible(entry)}))
+  for(const item of items)if(!item.semantic.enabled&&!('origin' in item.entry)) {
     const invalidEnabled=item.entry.diagnosticIndexes.some(index=>{
       const diagnostic=compilation.diagnostics[index]!
       return diagnostic.blocking&&diagnostic.code==='LORE_FIELD_VALUE_UNSUPPORTED'
@@ -181,7 +188,8 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
       &&row.disposition==='current-native-origin'&&row.valueSha256===recordSha256(false))
     if(invalidEnabled&&!explicitlyDisabled)refuse('LORE_COMPILER_INPUT_INELIGIBLE',item.entry.entryId)
   }
-  if(plan.bookDisposition!=='eligible-semantic-data'&&items.some(item=>item.semantic.enabled))refuse('LORE_COMPILER_INPUT_INELIGIBLE')
+  if(plan.bookDisposition!=='eligible-semantic-data'
+    &&items.some(item=>!isTavernLoreDerivedEntryV1(item.entry)&&item.semantic.enabled))refuse('LORE_COMPILER_INPUT_INELIGIBLE')
   const diagnostics:{code:string;entryId:string}[]=[]
   const decisions:Mutable<TavernLoreEntryDecisionV1>[]=items.map(({entry,semantic})=>({
     entryId:entry.entryId,rawEntrySha256:entry.rawEntrySha256,decision:'disabled',primaryMatches:[],secondaryMatches:[],
@@ -194,7 +202,7 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
   }
   const byId=new Map(items.map(item=>[item.entry.entryId,item] as const))
   const timed=new TavernLoreTimedStateV1(snapshot.timed,byId),buffer=new TavernLoreScanBufferV1(snapshot)
-  const templates=new TavernLoreTemplateFeedbackStateV1(plan,snapshot,eligible,checkpoint,templateProducer,producer?.signal)
+  const templates=new TavernLoreTemplateFeedbackStateV1(composition,snapshot,eligible,checkpoint,templateProducer,producer?.signal)
   const matcher=new TavernLoreBoundedMatcherV1(checkpoint),activated:Candidate[]=[],admitted=new Set<string>()
   const failedProbability=new Set<string>(),queued=new Set<string>(),feedbackSeen=new Set<string>()
   const externalActivations=new Set<string>(),standaloneSelected=new Set<string>()
@@ -273,7 +281,7 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
       item.decision.groupScore=score(item.semantic,primary,secondary)
     }
     candidates.sort((a,b)=>Number(b.sticky)-Number(a.sticky)||b.semantic.order-a.semantic.order||a.entry.ordinal-b.entry.ordinal)
-    const grouped=inclusionGroups(candidates,activated,snapshot,timed,loop),baseText=buffer.budgetBaseText
+    const grouped=inclusionGroups(candidates,activated,snapshot,timed,loop,composition.planSha256),baseText=buffer.budgetBaseText
     const baseTokens=await count(baseText),selectedIds:string[]=[],newIds:string[]=[],probabilityIds:string[]=[]
     const feedback:TavernLoreScanTraceV1['feedback'][number][]=[],rendered:Candidate[]=[]
     cumulative='';consumed=baseTokens
@@ -281,7 +289,7 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
       checkpoint()
       if(overflowed&&!item.semantic.ignoreBudget){item.decision.decision='budget-excluded';continue}
       if(!item.sticky&&item.semantic.useProbability&&item.semantic.probability!==100) {
-        const roll=seededRoll(snapshot,`probability:${item.entry.entryId}:loop:${loop}`)*100
+        const roll=seededRoll(snapshot,`probability:${item.entry.entryId}:loop:${loop}`,composition.planSha256)*100
         item.decision.probabilityRoll=roll
         if(roll>item.semantic.probability) {
           failedProbability.add(item.entry.entryId);probabilityIds.push(item.entry.entryId)
@@ -341,7 +349,7 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
         // successfulNewEntries. This is raw scan input, never VM execution,
         // a rendered receipt, a final activation or a placement.
         if(!overflowed)refuse('LORE_RECURSION_SOURCE_UNPROVEN',item.entry.entryId)
-        const raw=resolveTavernLoreContentTextV1(plan,item.semantic.content.pointer)
+        const raw=resolveTavernLoreEvaluationContentV1(composition,item.semantic.content.pointer)
         scanOnly.push({entryId:item.entry.entryId,pointer:raw.pointer,contentSha256:raw.contentSha256,
           disposition:'scan-only-after-overflow',loop})
         return raw.text
@@ -362,6 +370,7 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
   const descriptor:Omit<TavernLoreEvaluationPlanV1,'planSha256'>={schemaVersion:1,
     encoding:'owned-st-lore-evaluation-plan-v1',authority:'consumer-data-only',evaluatorPolicySha256:LORE_EVALUATOR_POLICY_SHA256,
     snapshotSha256:snapshot.snapshotSha256,compilerPlanSha256:plan.planSha256,sourceReferenceSha256:plan.sourceReferenceSha256,
+    ...composition.ref?{composition:composition.ref}:{},
     branchId:snapshot.branchId,sessionId:snapshot.sessionId,turnId:snapshot.turnId,attemptId:snapshot.attemptId,
     decisions,activatedEntryIds:activated.map(item=>item.entry.entryId),scanTrace:trace,termination,diagnostics,placements,
     budget:{limitTokens:snapshot.settings.budgetTokens,consumedCandidateTokens:consumed,
@@ -372,7 +381,8 @@ async function evaluate(input:TavernLoreEvaluatorInputV1,producer?:TavernLoreTok
   const finalPlan=freezeLoreData(cloneRoleplayTavernLoreDataV1({...descriptor,planSha256:recordSha256(descriptor)},
     LORE_EVALUATOR_POLICY_V1.bounds.outputBytes,{nodes:131072,depth:66}) as unknown as TavernLoreEvaluationPlanV1)
   const finalInput=Object.freeze({schemaVersion:1 as const,
-    encoding:'owned-st-lore-evaluator-input-v1' as const,compilation,snapshot} satisfies TavernLoreEvaluatorInputV1)
+    encoding:'owned-st-lore-evaluator-input-v1' as const,compilation,snapshot,
+    ...composition.derivedSnapshot?{derivedSnapshot:composition.derivedSnapshot}:{}} satisfies TavernLoreEvaluatorInputV1)
   return Object.freeze({kind:'prepared',input:finalInput,plan:finalPlan})
 }
 function refusal(error:unknown):Extract<TavernLoreEvaluationV1,{kind:'refused'}> {
@@ -400,8 +410,9 @@ export async function prepareTavernLoreWithOwnerV1(input:unknown,owner:TavernLor
 /** Core supplies its already compiled DATA and parsed frozen snapshot. The
  * actual owner still controls every asynchronous producer boundary below. */
 export async function prepareOwnedTavernLoreWithOwnerV1(input:TavernLoreEvaluatorInputV1,
-  owner:TavernLorePreparationOwnerV1):Promise<TavernLorePreparedEvaluationV1> {
-  try {return await evaluate(input,owner.tokenCount,owner.templates,owner)}
+  owner:TavernLorePreparationOwnerV1,
+  composition?:TavernLoreEvaluationCompositionV1):Promise<TavernLorePreparedEvaluationV1> {
+  try {return await evaluate(input,owner.tokenCount,owner.templates,owner,composition)}
   catch(error){return refusal(error)}
 }
 export async function validateTavernLoreEvaluationV1(input:unknown,result:unknown)

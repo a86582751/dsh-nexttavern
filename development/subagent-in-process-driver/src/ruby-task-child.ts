@@ -116,6 +116,14 @@ export function composeOwnedRubyTaskActivationV1(ctx:Context,child:NativeInputAd
     for(const remove of cleanup.reverse())remove()
   }
   try{
+    // Workspace instructions belong to the inherited Main preset. Remove its
+    // post-step contribution before Native selects this task's frozen input;
+    // keep the actual admitted user object and the rest of the decision.
+    cleanup.push(ctx.on('agent/pre-step',async(_input,next)=>{
+      const decision=await next()
+      if(decision.kind!=='enter')return decision
+      return {...decision,messages:decision.messages.filter(message=>(message.source.kind as string)!=='agent-instructions')}
+    },{prepend:true}))
     if(leadingSystem)cleanup.push(ctx.systemPrompt.section({name:prefixName,
       order:ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
       text:leadingSystem.text,interpolate:false,complete:true}))

@@ -5,9 +5,9 @@ import {recordSha256} from './roleplay-data.js'
 import {captureRoleplayTavernMaterialHistoryV1} from './roleplay-tavern-material-history.js'
 import {validateTavernLoreSnapshotV1} from './tavern-lore-snapshot.mjs'
 import {validateTavernLoreCompilationV1} from './tavern-lore-compiler.mjs'
-import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
 import {TavernLoreTimedStateV1} from './tavern-lore-timed.mjs'
-import type {TavernLoreSemanticEntryV1} from './tavern-lore-plan-types.mjs'
+import {composeTavernLoreEvaluationV1,validateTavernLoreDerivedSnapshotV1,
+  tavernLoreEvaluationSemanticV1,tavernLoreOriginalEvaluationEntryV1} from './tavern-lore-derived.mjs'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreBranchTimedInputV1,TavernLoreEvaluatorInputV1,
   TavernLoreEvaluationPlanV1,TavernLoreTimedActionV1} from './tavern-lore-evaluator-types.mjs'
@@ -53,21 +53,24 @@ export function readTavernTimedPublicationV1(publication:TavernTimedPublicationV
     ||tavernPlan.authority!=='consumer-data-only')fail('INPUT_MATERIAL_TIMED_TAVERN_RECORD_UNAVAILABLE')
   const plan=tavernPlan as unknown as TavernLoreEvaluationPlanV1,
     compilation=validateTavernLoreCompilationV1(input.compilation),snapshot=validateTavernLoreSnapshotV1(input.snapshot),
+    composition=composeTavernLoreEvaluationV1(compilation.plan,input.derivedSnapshot
+      ?validateTavernLoreDerivedSnapshotV1(input.derivedSnapshot):undefined),
     {planSha256,...planBody}=plan
   if(input.schemaVersion!==1||input.encoding!=='owned-st-lore-evaluator-input-v1'
     ||recordSha256(planBody)!==planSha256||plan.sessionId!==ownerSessionId||plan.branchId!==ownerSessionId
     ||plan.snapshotSha256!==snapshot.snapshotSha256||plan.compilerPlanSha256!==compilation.plan.planSha256
     ||plan.sourceReferenceSha256!==compilation.plan.sourceReferenceSha256
     ||snapshot.sessionId!==ownerSessionId||snapshot.attemptId!==plan.attemptId
-    ||snapshotRow.currency&&planRow.currency&&!same(snapshotRow.currency,planRow.currency))
+    ||snapshotRow.currency&&planRow.currency&&!same(snapshotRow.currency,planRow.currency)
+    ||!same(plan.composition??null,composition.ref??null))
     fail('INPUT_MATERIAL_TIMED_PLAN_BINDING_INVALID')
-  return {publication,input,compilation,snapshot,plan,sourceIdentity:identity(compilation.plan.source),
+  return {publication,input,compilation,composition,snapshot,plan,sourceIdentity:identity(compilation.plan.source),
     planKey:`${event.data.plan.key}:${event.data.plan.sha256}`,
     attemptKey:`${ownerSessionId}:${plan.attemptId}:${event.data.step}`}
 }
 export function replayTavernTimedPublicationV1(read:ReturnType<typeof readTavernTimedPublicationV1>,
   revision:number,intervals:readonly Interval[]) {
-  const {compilation,snapshot,plan}=read,timed=snapshot.timed,proposal=plan.timedProposal,
+  const {compilation,composition,snapshot,plan}=read,timed=snapshot.timed,proposal=plan.timedProposal,
     sid=plan.sessionId
   if(timed.branchId!==sid||timed.revision!==revision||!same(timed.intervals,intervals)
     ||proposal.schemaVersion!==1||proposal.encoding!=='owned-st-timed-proposals-v1'||proposal.branchId!==sid
@@ -76,11 +79,14 @@ export function replayTavernTimedPublicationV1(read:ReturnType<typeof readTavern
     fail('INPUT_MATERIAL_TIMED_BASE_CHANGED')
   if(!Array.isArray(plan.activatedEntryIds)||plan.activatedEntryIds.length>4096
     ||new Set(plan.activatedEntryIds).size!==plan.activatedEntryIds.length)fail('INPUT_MATERIAL_TIMED_ACTION_INVALID')
-  const entries=new Map(compilation.plan.entries.map(entry=>{
-    const blocking=entry.diagnosticIndexes.map(index=>compilation.diagnostics[index]!).filter(row=>row.blocking),
-      eligible=entry.disposition!=='retained-ineligible'
+  // Replay the publication's captured entries, including outputs that have
+  // since been disabled or replaced. Current heads cannot rewrite old timing.
+  const entries=new Map(composition.entries.map(entry=>{
+    const original=tavernLoreOriginalEvaluationEntryV1(entry),
+      blocking=original?.diagnosticIndexes.map(index=>compilation.diagnostics[index]!).filter(row=>row.blocking)??[],
+      eligible=!original||original.disposition!=='retained-ineligible'
         ||blocking.length>0&&blocking.every(row=>row.code==='LORE_VECTORIZED_EVALUATOR_REQUIRED'),
-      semantic={...ST_LORE_ENTRY_DEFAULTS_V1,displayIndex:entry.ordinal,...entry.semanticOverrides} as TavernLoreSemanticEntryV1
+      semantic=tavernLoreEvaluationSemanticV1(entry)
     return [entry.entryId,{entry,semantic,eligible}] as const
   }))
   for(const id of plan.activatedEntryIds) {

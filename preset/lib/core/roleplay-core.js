@@ -58,6 +58,7 @@ import { createCanonicalAuthorChatStateV1, deriveAuthorChatBindingV1, deriveAuth
 import { createRoleplayAuthorBrowserKeyCoreV3 } from './roleplay-author-browser-key-core-v3.js';
 import { createRoleplayAuthorBrowserDialogCoreV1 } from './roleplay-author-browser-dialog-core.js';
 import { createRoleplayAuthorDialogContentV1 } from './roleplay-author-dialog-content.js';
+import { createRoleplayTavernDerivedContentExecutionV1 } from './roleplay-tavern-derived-content-execution.js';
 import { foldSurface, deriveEventMessage } from '@deepseek-ai/dsh-session/surface';
 import { createRoleplayMvuDerived, readMvuPrefixCanonical } from './roleplay-mvu-derived.js';
 import { createRoleplayMvuSchemaDerived } from './roleplay-mvu-schema-derived.js';
@@ -99,12 +100,14 @@ import { registerOpeningRoutes } from './roleplay-opening-routes.js';
 import { createRoleplayService } from './roleplay-service.js';
 import { createSessionHistory, ensureSessionHistory } from './session-history.js';
 import { createRoleplayTaskHost } from './roleplay-task-host.js';
+import { createRoleplayRubyCaptureV1 } from './roleplay-ruby-capture.js';
+import { createRoleplayRubyOwnerV1 } from './roleplay-ruby-owner.js';
 import { registerRoleplayLoop } from './roleplay-loop.js';
 import { retrieveWorldbook, taskDependenciesCurrent, buildDecisionContext, lockedFactsOf, authorUserValues, registerAuthorPrompts, residentAuthorContext, } from './roleplay-author-context.js';
 import { registerAuthorTools } from './roleplay-author-tools.js';
 import { registerSessionTools, registerSessionCommands } from './roleplay-session-actions.js';
 import { simpleTool, registerTaskTools, createTaskSubmissionBindings } from './roleplay-task-tools.js';
-import { createRoleplayState, captureRoleplaySourceRecordVersionsV1 } from './roleplay-state.js';
+import { createRoleplayState, captureRoleplaySourceRecordVersionsV1, jsonResponse } from './roleplay-state.js';
 import { registerRoleplayDiagnosis } from './roleplay-diagnosis.js';
 import { registerCardAuthoring, registerDraftCheck } from './roleplay-authoring.js';
 import { registerAdaptationTools } from './card-adaptation-tools.js';
@@ -385,6 +388,7 @@ export async function apply(ctx, config = {}) {
     };
     const authorChatState = createCanonicalAuthorChatStateV1({ table: T.branch });
     let programOpening;
+    let rubyOwner;
     const phaseARowFacts = createRoleplayPhaseABranchRowFactsV1({ branch: T.branch, session: id => ctx.sessions.get(id) });
     ctx.effect(() => () => phaseARowFacts.dispose(), 'roleplay: Phase-A row facts lifetime');
     const programAbsenceNativeReaders = { tables: T,
@@ -841,7 +845,7 @@ export async function apply(ctx, config = {}) {
             return { sourceHash: current.sourceHash, importId: current.original.importId, data: current.data };
         },
     });
-    const { sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask, requestAuthorDialog, readCompletedAuthorDialog, resumeMemoryWork, resumeStatusMaintenance, } = createRoleplayTaskHost({
+    const { sameModelRoute, canonicalModelRoute, executedMainRoute, modelPolicy, taskStory, characterCluster, characterRoster, clusterLoreVisible, clusterPhase, clusterJob, tavernTasks, resolveCurrentCardImport, nativeTask, requestAuthorDialog, requestRubyAnalysis, readCompletedRubyAnalysis, readCompletedAuthorDialog, resumeMemoryWork, resumeStatusMaintenance, } = createRoleplayTaskHost({
         assertCardWorkflow: (session, record) => assertCardWorkflow(session, record),
         currentTaskClaim: agent => {
             const binding = inputBindings.get(agent), step = binding?.currentStep();
@@ -1217,6 +1221,7 @@ export async function apply(ctx, config = {}) {
             }
             else
                 await mvuDerived.commit(operation, child);
+            await rubyOwner?.inherit(operation.anchor.sourceSessionId, child.id, Number(child.inheritedEventCount ?? 0));
         },
         durableSeq,
         canonicalAssistantForTurn,
@@ -2463,7 +2468,21 @@ export async function apply(ctx, config = {}) {
         assertCurrent();
         return { sourceLineage: lineage, inheritedHistory, assertCurrent };
     }
+    const rubyCapture = createRoleplayRubyCaptureV1({ source: tavernSource, edits: tavernLoreEdits, inputState,
+        session: id => ctx.sessions.get(id),
+        projections: () => ctx.sessions.messageProjections,
+        includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
+        withSourceLock: (id, work, signal) => withImportLock(id, 'ruby-source-capture', work, signal) });
+    rubyOwner = createRoleplayRubyOwnerV1({ table: T.branch, capture: rubyCapture.capture,
+        readAcceptedResult: readCompletedRubyAnalysis,
+        withSourceLock: (id, work, signal) => withImportLock(id, 'ruby-analysis-publication', work, signal),
+        request: ({ capture, prompt, signal, current, createOwner, retry }) => requestRubyAnalysis({
+            session: capture.session,
+            prompt, signal, current, createOwner, ...(retry ? { retry } : {})
+        }) });
+    ctx.effect(() => () => rubyOwner?.dispose(), 'roleplay: Ruby analysis owner lifetime');
     const tavernMaterial = createRoleplayTavernPromptMaterialV1({ branch: T.branch, inputState,
+        derivedSnapshot: id => rubyOwner?.snapshot(id),
         pendingOutputRows: readPendingStatusOutputRows,
         source: tavernSource, edits: tavernLoreEdits,
         withSourceLock: (id, work, signal) => withImportLock(id, 'tavern-prompt-material', work, signal),
@@ -2611,6 +2630,11 @@ export async function apply(ctx, config = {}) {
         material: tavernMaterial,
         observe: (session) => inputState.captureObservation(session.id, () => mvuOpening.readInputObservation(session.id)).data,
         preflightObservation: async (session, signal) => {
+            await ensureBranch(session);
+            // Ruby publishes its owner/task rows before schema captures branch
+            // membership. Publishing afterwards would revoke the captured schema
+            // view and turn this same player input into a management request.
+            await rubyOwner?.settle(session.id, signal);
             await mvuOpening.preflightSchema(session.id, signal);
             await mvuOpening.preflightInheritedPrompt(session.id, signal);
             await mvuOpening.preflightPromptTemplate(session.id, signal);
@@ -2683,11 +2707,17 @@ export async function apply(ctx, config = {}) {
                 return typeof id === 'string' && mvuOpening.hasSchemaOpening(id) ? mvuOpening.submitSchemaPlayer(input) : mvuPlayer.submit(input);
             } }, observe: observeNumericalState });
     const authorDialogContent = createRoleplayAuthorDialogContentV1({ inputState, branch: T.branch,
+        captureContentExecution: (id, plan) => {
+            const captured = rubyOwner?.snapshot(id);
+            return captured ? { execution: createRoleplayTavernDerivedContentExecutionV1(plan, captured),
+                assertCurrent: captured.assertCurrent, release: captured.release } : undefined;
+        },
         source: tavernSource, edits: tavernLoreEdits, session: id => ctx.sessions.get(id),
         projections: () => ctx.sessions.messageProjections, schemaScopes: mvuOpening.captureSchemaPromptScopes,
         captureAuthorChat: binding => authorChatState.capture(binding),
         preflight: async (sid, signal) => {
             await mvuOpening.preflightSchema(sid, signal);
+            await rubyOwner?.restoreHeads(sid, signal);
         },
         includeCardStyle: id => narrativePresets.policy(id).effective.mode !== 'system',
         withSourceLock: (id, work, signal) => withImportLock(id, 'author-dialog-content', work, signal),
@@ -3049,6 +3079,33 @@ export async function apply(ctx, config = {}) {
         resolveRoleplaySession,
     });
     const maintenanceJobs = new Map();
+    ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered', path: '/api/roleplay/ruby-analysis',
+        methods: ['GET', 'POST'], fetch: async (request) => {
+            try {
+                const body = request.method === 'POST' ? await request.json() : undefined, session = await resolveRoleplaySession(body?.sessionId ?? new URL(request.url).searchParams.get('sessionId'));
+                if (!session)
+                    return jsonResponse(404, { ok: false, error: '角色扮演会话不存在' });
+                if (!rubyOwner)
+                    throw Error('RUBY_OWNER_UNAVAILABLE');
+                if (body) {
+                    if (body.action === 'retry') {
+                        if (typeof body.runKey !== 'string')
+                            throw Error('RUBY_FAILED_TASK_UNAVAILABLE');
+                        await rubyOwner.retry(session.id, body.runKey, request.signal);
+                    }
+                    else {
+                        if (typeof body.enabled !== 'boolean' || !Number.isSafeInteger(body.expectedRevision))
+                            throw Error('RUBY_SETTINGS_INVALID');
+                        await rubyOwner.setEnabled(session.id, body.enabled, body.expectedRevision);
+                    }
+                }
+                return jsonResponse(200, { ok: true, ...rubyOwner.status(session.id), ...rubyCapture.configurationSummary(session.id) });
+            }
+            catch (error) {
+                const message = String(error.message);
+                return jsonResponse(/BUSY|ALREADY_UPDATED|INPUT_CHANGED|RETRY_SUPERSEDED/.test(message) ? 409 : 400, { ok: false, error: message });
+            }
+        } }), 'roleplay: Ruby analysis settings and explicit retry');
     ctx.effect(() => ctx.connection.fetch.register({ requestBody: 'buffered',
         path: '/api/roleplay/card-adaptation',
         methods: ['GET', 'POST'],

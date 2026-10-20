@@ -2,13 +2,14 @@
  * invocation-scoped Root audit; they never replace another entry's receipt. */
 import {recordSha256} from './roleplay-data.js'
 import {cloneSchemaData,schemaTextSha256} from './tavern-mvu-schema-data.js'
-import {resolveTavernLoreContentTextV1} from './tavern-lore-compiler.mjs'
-import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
+import {resolveTavernLoreEvaluationContentV1,isTavernLoreDerivedEntryV1,tavernLoreEvaluationSemanticV1}
+  from './tavern-lore-derived.mjs'
 import {exact,sealTavernLoreSnapshotV1,LORE_EVALUATOR_POLICY_V1,freezeLoreData} from './tavern-lore-snapshot.mjs'
 import {refuse} from './tavern-lore-match.mjs'
 import {tavernLoreEntrySemanticSha256V1} from './tavern-lore-timed.mjs'
-import type {TavernLorePlanV1,TavernLoreEntryPlanV1,TavernLoreSemanticEntryV1}
+import type {TavernLoreSemanticEntryV1}
   from './tavern-lore-plan-types.mjs'
+import type {TavernLoreEvaluationCompositionV1,TavernLoreEvaluationEntryV1} from './tavern-lore-derived.mjs'
 import type {TavernLoreFrozenSnapshotV1,TavernLoreTemplateProducerV1,TavernLoreTemplateFeedbackV1,
   TavernLoreSelectedTemplateRequestV1,TavernLoreScanStateV1,TavernLoreTemplateActivationV1,
   TavernLoreRenderedTextV1} from './tavern-lore-evaluator-types.mjs'
@@ -21,8 +22,8 @@ export class TavernLoreTemplateFeedbackStateV1 {
   private readonly consumed=new Set<string>()
   private readonly scanRows=new Map<string,TavernLoreInjectionFeedbackV1>()
   private readonly consumedScans=new Set<string>()
-  constructor(private readonly plan:TavernLorePlanV1,snapshot:TavernLoreFrozenSnapshotV1,
-    private readonly eligible:(entry:TavernLoreEntryPlanV1)=>boolean,
+  constructor(private readonly composition:TavernLoreEvaluationCompositionV1,snapshot:TavernLoreFrozenSnapshotV1,
+    private readonly eligible:(entry:TavernLoreEvaluationEntryV1)=>boolean,
     private readonly checkpoint:()=>void,private readonly producer?:TavernLoreTemplateProducerV1,
     private readonly defaultSignal?:AbortSignal) {
     this.snapshot=snapshot
@@ -31,7 +32,7 @@ export class TavernLoreTemplateFeedbackStateV1 {
       refuse('LORE_TEMPLATE_PREPARATION_NOT_FRESH')
     }
     for(const receipt of snapshot.renderedTexts) {
-      const resolved=resolveTavernLoreContentTextV1(plan,receipt.pointer)
+      const resolved=resolveTavernLoreEvaluationContentV1(composition,receipt.pointer)
       if(resolved.contentSha256!==receipt.rawContentSha256)refuse('LORE_TEMPLATE_SOURCE_MISMATCH')
       this.receipts.set(receipt.pointer,receipt)
     }
@@ -67,19 +68,26 @@ export class TavernLoreTemplateFeedbackStateV1 {
     return {contributions:row.contributions,activationProposals:row.activationProposals}
   }
   private activation(proposal:TavernLoreTemplateActivationV1):void {
-    const entry=this.plan.entries.find(item=>item.entryId===proposal.entryId)
+    const entry=this.composition.entries.find(item=>item.entryId===proposal.entryId)
     if(!entry||entry.rawEntrySha256!==proposal.rawEntrySha256)refuse('LORE_FEEDBACK_ENTRY_UNKNOWN',proposal.entryId)
-    const semantic={...ST_LORE_ENTRY_DEFAULTS_V1,displayIndex:entry.ordinal,...entry.semanticOverrides} as TavernLoreSemanticEntryV1
+    const semantic=tavernLoreEvaluationSemanticV1(entry)
     if(!semantic.enabled)refuse('LORE_FEEDBACK_ENTRY_DISABLED',entry.entryId)
     if(!this.eligible(entry))refuse('LORE_FEEDBACK_ENTRY_INELIGIBLE',entry.entryId)
   }
-  async selected(entry:TavernLoreEntryPlanV1,semantic:TavernLoreSemanticEntryV1,loop:number,state:TavernLoreScanStateV1)
+  async selected(entry:TavernLoreEvaluationEntryV1,semantic:TavernLoreSemanticEntryV1,loop:number,state:TavernLoreScanStateV1)
     :Promise<{text:string;proposals:readonly TavernLoreTemplateActivationV1[]}> {
-    const resolved=resolveTavernLoreContentTextV1(this.plan,semantic.content.pointer)
+    const resolved=resolveTavernLoreEvaluationContentV1(this.composition,semantic.content.pointer)
+    if(isTavernLoreDerivedEntryV1(entry)) {
+      // Model output has no author program authority. Template/macro/decorator
+      // markers stay literal, while this same evaluator counts and scans text.
+      if(Buffer.byteLength(resolved.text,'utf8')>LORE_EVALUATOR_POLICY_V1.bounds.contentBytes)
+        refuse('LORE_CONTENT_LIMIT',entry.entryId)
+      return {text:resolved.text,proposals:[]}
+    }
     const selection={schemaVersion:1 as const,encoding:'owned-st-lore-template-selection-v1',entryId:entry.entryId,
       rawEntrySha256:entry.rawEntrySha256,entrySemanticSha256:tavernLoreEntrySemanticSha256V1(semantic),
       pointer:resolved.pointer,rawContentSha256:resolved.contentSha256,attemptId:this.snapshot.attemptId,
-      compilerPlanSha256:this.plan.planSha256,loop,state}
+      compilerPlanSha256:this.composition.sourcePlan.planSha256,loop,state}
     const request:TavernLoreSelectedTemplateRequestV1={...selection,
       encoding:'owned-st-lore-selected-template-request-v1',text:resolved.text,selectionSha256:recordSha256(selection)}
     let receipt=this.receipts.get(resolved.pointer),feedback=this.rows.get(entry.entryId)

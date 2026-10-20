@@ -24,6 +24,7 @@ import {produceRoleplayTavernMacroSnapshotV1,captureRoleplayTavernScopedRegexV1}
 import type {TavernLoreVisibleMessageV1} from './tavern-lore-evaluator-types.mjs'
 import {prepareRoleplayTavernContentV1,produceTavernPromptVariableRefV1 as factRef,
   resolveCapturedTavernPromptSettingsV1,TAVERN_NATIVE_PROMPT_SETTINGS_V1} from './roleplay-tavern-content.js'
+import {createRoleplayTavernDerivedContentExecutionV1} from './roleplay-tavern-derived-content-execution.js'
 import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
 import {produceRoleplayTavernLayoutV1,TAVERN_NATIVE_OWNED_SECTION_NAMES_V1} from './roleplay-tavern-layout.js'
 import type {AdmittedTavernTemplateComponentV1} from './roleplay-tavern-template-assets.js'
@@ -38,6 +39,7 @@ import type {PromptProgramV1,PromptCaptureV1,PromptExecutionV1,PromptExecutionOu
 import type {BrowserGenerationOutput,AuthorBrowserPreparationFacts} from './roleplay-author-browser-generation-types.js'
 import type {BrowserProgramV2} from './tavern-author-browser-types-v2.mjs'
 import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
+import type {TavernLoreDerivedSnapshotV1} from './tavern-lore-derived.mjs'
 
 export {TAVERN_NATIVE_PROMPT_SETTINGS_V1} from './roleplay-tavern-content.js'
 export const TAVERN_NATIVE_PROMPT_POLICY_V1=Object.freeze({schemaVersion:1,
@@ -87,6 +89,7 @@ interface Dependencies extends SourceDependencies {
   /** Exact pending publications supplied by their actual producer. */
   readonly pendingOutputRows:(sessionId:string)=>readonly {readonly table:string;readonly key:string}[]
   readonly branch:{get(key:string):unknown}
+  derivedSnapshot?(sessionId:string):{snapshot:TavernLoreDerivedSnapshotV1;assertCurrent():void;release():void}|undefined
   withSourceLock<T>(sessionId:string,work:()=>Promise<T>,signal:AbortSignal):Promise<T>
   includeCardStyle(sessionId:string):boolean
   authorPolicy(sessionId:string):Readonly<Record<string,unknown>>
@@ -192,7 +195,8 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
             clock:chatClock,projections:deps.projections(),assertOwnerCurrent:assertSignal,
             assertSourceLineageCurrent:()=>inheritedTiming?.assertCurrent()})
         const {kind:_authorKind,...authorData}=author
-        return {kind:'input-data' as const,...authorData,opening,player,playerSnapshot,snapshot,storyRows,
+        const derived=deps.derivedSnapshot?.(scope.session.id)
+        return {kind:'input-data' as const,...authorData,opening,player,playerSnapshot,snapshot,storyRows,derived,
           initialSelectedSha256,scopeData,materialHistory,chatClock,timed,authorPromptFacts,authorBrowserFacts}
       })
     },scope.signal)
@@ -204,8 +208,9 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       }
       const {captured,opening,player,playerSnapshot,snapshot,storyRows,initialSelectedSha256,
         scopeData,materialHistory,chatClock,timed,authorPromptFacts,authorBrowserFacts,
-        includeCardStyle,authorPolicy,authorPolicySha256}=inputCapture.data,
-        {source,compilation,original,residual}=captured,assertCurrent=inputCapture.assertCurrent
+        includeCardStyle,authorPolicy,authorPolicySha256,derived}=inputCapture.data,
+        {source,compilation,original,residual}=captured,
+        assertCurrent=()=>{inputCapture.assertCurrent();derived?.assertCurrent()}
       try {
       assertCurrent()
       const attemptId=opening?.attempt.attemptId??`${player!.currency.preparationId}:${player!.currency.attemptGeneration}`,
@@ -280,6 +285,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       })
       const {render,initialCatalog,variables,evaluated,finalLore,authorMacros}=await prepareRoleplayTavernContentV1({
         captured,scopeData,attempt,timed:timed.timed,visibleMessages,settings,macrosFor,
+        ...derived?{execution:createRoleplayTavernDerivedContentExecutionV1(compilation.plan,derived)}:{},
         renderInput:{source,plan:compilation.plan,macros,rules,
           component,scopes:scopeData.bindings,authorsNoteDepth:noteIndex<0?0:native.selected.messages.length-noteIndex-1,
           basis:{sessionId:scope.session.id,branchId:scope.session.id,revision:timed.timed.revision,turnId,attemptId,
@@ -376,7 +382,8 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
             messageTextProjections}}:{},
           ...authorPrompt?{authorPromptOutputSha256:authorPrompt.output.outputSha256}:{},
           ...authorBrowser?{authorBrowserOutputSha256:authorBrowser.output.outputSha256}:{},
-          injectionTransactionSha256:injectionTransaction.transactionSha256}),assertCurrent,release:inputCapture.release,
+          injectionTransactionSha256:injectionTransaction.transactionSha256}),assertCurrent,
+        release(){derived?.release();inputCapture.release()},
         assertSelected(selected:NativeMaterialSelectedBaseV1,firstAttempt:boolean) {
           // Only the original callback object is accepted during preparation,
           // before Native registers its private lineage. All later objects must
@@ -389,7 +396,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
             .map(row=>({id:row.id,role:row.role,messageSha256:row.messageSha256}))
           if(recordSha256(actual)!==semanticStorySha256)fail('INPUT_MATERIAL_STORY_SELECTION_CHANGED')
         }}
-      }catch(error) {inputCapture.release();throw error}
+      }catch(error) {derived?.release();inputCapture.release();throw error}
   }
   return {sectionNames:TAVERN_NATIVE_OWNED_SECTION_NAMES_V1,
     prepare:(native,scope)=>prepare(native,{kind:'player',scope}),

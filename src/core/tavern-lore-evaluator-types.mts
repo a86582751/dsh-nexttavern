@@ -1,5 +1,6 @@
 import type {TavernLoreCompilationV1,TavernLorePositionV1,TavernLoreRoleV1}
   from './tavern-lore-plan-types.mjs'
+import type {TavernLoreDerivedSnapshotV1,TavernLoreEvaluationCompositionRefV1} from './tavern-lore-derived.mjs'
 
 /** Every identity is supplied by the real capture owner. This is data, never a
  * current-state assertion, lease, Native permission or provider receipt. */
@@ -189,6 +190,7 @@ export interface TavernLoreEvaluatorInputV1 {
   readonly encoding:'owned-st-lore-evaluator-input-v1'
   readonly compilation:Extract<TavernLoreCompilationV1,{kind:'compiled'}>
   readonly snapshot:TavernLoreFrozenSnapshotV1
+  readonly derivedSnapshot?:TavernLoreDerivedSnapshotV1
 }
 export interface TavernLoreEvaluationDiagnosticV1 {
   readonly schemaVersion:1
@@ -248,6 +250,7 @@ export interface TavernLoreEvaluationPlanV1 {
   readonly evaluatorPolicySha256:string
   readonly snapshotSha256:string
   readonly compilerPlanSha256:string
+  readonly composition?:TavernLoreEvaluationCompositionRefV1
   readonly sourceReferenceSha256:string
   readonly branchId:string
   readonly sessionId:string

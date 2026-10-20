@@ -77,8 +77,9 @@ function validateNames(x:unknown):asserts x is TavernPromptNamesV1 {
     if(value.key!==key||value.value===null&&key!=='model')fail('PROMPT_TRANSFORM_NAMES')}
 }
 function macroSnapshot(x:unknown):asserts x is TavernPromptMacroSnapshotV1 {
+  const deferred=object(x)&&Object.hasOwn(x,'deferredMacros')
   exact(x,['schemaVersion','engine','authority','sourceSnapshotSha256','names','card','input','instruct','dynamic','registered',
-    'localVariables','globalVariables','outlets','post','characterOverrides'])
+    'localVariables','globalVariables','outlets','post','characterOverrides',...deferred?['deferredMacros']:[]])
   if(x.schemaVersion!==1||!member(x.engine,['legacy','experimental'])
     ||x.authority!=='consumer-data-only'||!hash(x.sourceSnapshotSha256))fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
   validateNames(x.names);binding(x.input)
@@ -86,6 +87,7 @@ function macroSnapshot(x:unknown):asserts x is TavernPromptMacroSnapshotV1 {
   // above retain that explicit negative fact, including its null hashes.
   if(x.input.key!=='input')fail('PROMPT_TRANSFORM_MACRO_SNAPSHOT')
   for(const key of ['instruct','dynamic','registered','localVariables','globalVariables','outlets','post'])bindings(x[key])
+  if(deferred){list(x.deferredMacros);for(const name of x.deferredMacros)text(name,256)}
   if(x.card!==null) {
     bindings(x.card)
     if(x.card.length!==TAVERN_PROMPT_CARD_ORDER_V1.length

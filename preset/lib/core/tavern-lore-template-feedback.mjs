@@ -3,13 +3,12 @@
  * invocation-scoped Root audit; they never replace another entry's receipt. */
 import { recordSha256 } from './roleplay-data.js';
 import { cloneSchemaData, schemaTextSha256 } from './tavern-mvu-schema-data.js';
-import { resolveTavernLoreContentTextV1 } from './tavern-lore-compiler.mjs';
-import { ST_LORE_ENTRY_DEFAULTS_V1 } from './tavern-lore-fixed-profile.mjs';
+import { resolveTavernLoreEvaluationContentV1, isTavernLoreDerivedEntryV1, tavernLoreEvaluationSemanticV1 } from './tavern-lore-derived.mjs';
 import { exact, sealTavernLoreSnapshotV1, LORE_EVALUATOR_POLICY_V1, freezeLoreData } from './tavern-lore-snapshot.mjs';
 import { refuse } from './tavern-lore-match.mjs';
 import { tavernLoreEntrySemanticSha256V1 } from './tavern-lore-timed.mjs';
 export class TavernLoreTemplateFeedbackStateV1 {
-    plan;
+    composition;
     eligible;
     checkpoint;
     producer;
@@ -20,8 +19,8 @@ export class TavernLoreTemplateFeedbackStateV1 {
     consumed = new Set();
     scanRows = new Map();
     consumedScans = new Set();
-    constructor(plan, snapshot, eligible, checkpoint, producer, defaultSignal) {
-        this.plan = plan;
+    constructor(composition, snapshot, eligible, checkpoint, producer, defaultSignal) {
+        this.composition = composition;
         this.eligible = eligible;
         this.checkpoint = checkpoint;
         this.producer = producer;
@@ -32,7 +31,7 @@ export class TavernLoreTemplateFeedbackStateV1 {
             refuse('LORE_TEMPLATE_PREPARATION_NOT_FRESH');
         }
         for (const receipt of snapshot.renderedTexts) {
-            const resolved = resolveTavernLoreContentTextV1(plan, receipt.pointer);
+            const resolved = resolveTavernLoreEvaluationContentV1(composition, receipt.pointer);
             if (resolved.contentSha256 !== receipt.rawContentSha256)
                 refuse('LORE_TEMPLATE_SOURCE_MISMATCH');
             this.receipts.set(receipt.pointer, receipt);
@@ -75,21 +74,28 @@ export class TavernLoreTemplateFeedbackStateV1 {
         return { contributions: row.contributions, activationProposals: row.activationProposals };
     }
     activation(proposal) {
-        const entry = this.plan.entries.find(item => item.entryId === proposal.entryId);
+        const entry = this.composition.entries.find(item => item.entryId === proposal.entryId);
         if (!entry || entry.rawEntrySha256 !== proposal.rawEntrySha256)
             refuse('LORE_FEEDBACK_ENTRY_UNKNOWN', proposal.entryId);
-        const semantic = { ...ST_LORE_ENTRY_DEFAULTS_V1, displayIndex: entry.ordinal, ...entry.semanticOverrides };
+        const semantic = tavernLoreEvaluationSemanticV1(entry);
         if (!semantic.enabled)
             refuse('LORE_FEEDBACK_ENTRY_DISABLED', entry.entryId);
         if (!this.eligible(entry))
             refuse('LORE_FEEDBACK_ENTRY_INELIGIBLE', entry.entryId);
     }
     async selected(entry, semantic, loop, state) {
-        const resolved = resolveTavernLoreContentTextV1(this.plan, semantic.content.pointer);
+        const resolved = resolveTavernLoreEvaluationContentV1(this.composition, semantic.content.pointer);
+        if (isTavernLoreDerivedEntryV1(entry)) {
+            // Model output has no author program authority. Template/macro/decorator
+            // markers stay literal, while this same evaluator counts and scans text.
+            if (Buffer.byteLength(resolved.text, 'utf8') > LORE_EVALUATOR_POLICY_V1.bounds.contentBytes)
+                refuse('LORE_CONTENT_LIMIT', entry.entryId);
+            return { text: resolved.text, proposals: [] };
+        }
         const selection = { schemaVersion: 1, encoding: 'owned-st-lore-template-selection-v1', entryId: entry.entryId,
             rawEntrySha256: entry.rawEntrySha256, entrySemanticSha256: tavernLoreEntrySemanticSha256V1(semantic),
             pointer: resolved.pointer, rawContentSha256: resolved.contentSha256, attemptId: this.snapshot.attemptId,
-            compilerPlanSha256: this.plan.planSha256, loop, state };
+            compilerPlanSha256: this.composition.sourcePlan.planSha256, loop, state };
         const request = { ...selection,
             encoding: 'owned-st-lore-selected-template-request-v1', text: resolved.text, selectionSha256: recordSha256(selection) };
         let receipt = this.receipts.get(resolved.pointer), feedback = this.rows.get(entry.entryId);

@@ -1,6 +1,28 @@
 import {decodeTaskRecord} from './tavern-task-primitives.js'
 import type {AuthorDialogPromptV1,AuthorDialogNativeCompletionV1} from './roleplay-author-dialog.js'
-import type {OwnedAuthorDialogActivationV1} from '../../development/subagent/src/author-dialog-activation.js'
+import type {OwnedAuthorDialogActivationV1} from '@deepseek-ai/dsh-subagent'
+import type {OwnedRubyTaskActivationV1,OwnedRubyTaskOwnerV1,OwnedRubyTaskMessageV1}
+  from '@deepseek-ai/dsh-subagent'
+import type {NativeCompletedInputWorkReceiptV1,NativeDurableInputWorkReceiptV1,NativeInputStopNoticeV1}
+  from '@deepseek-ai/dsh-agent-loop'
+
+export interface RubyTaskNativeCompletionV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-ruby-task-completion-v1'
+  readonly taskId:string
+  readonly generation:string
+  readonly childSessionId:string
+  readonly promptPlanSha256:string
+  readonly resultSha256:string
+  readonly nativeCompletedWork:NativeCompletedInputWorkReceiptV1
+}
+export interface RubyTaskSpecV1 {
+  readonly promptPlanSha256:string
+  readonly orderedMessages:readonly OwnedRubyTaskMessageV1[]
+  readonly mainInputMessageIndex?:number
+  /** Called only after the actual durable Tavern job owns id/generation. */
+  createOwner(job:TaskJob):OwnedRubyTaskOwnerV1
+}
 
 export interface TaskSession {id: string}
 export interface TaskAgent {session?: TaskSession; options?: {subagentDepth?: unknown; provider?: string; model?: string; reasoningEffort?: unknown}}
@@ -8,6 +30,10 @@ export interface TaskRoute {provider: string; model: string; reasoningEffort?: u
 export type TaskStatus = 'queued' | 'running' | 'waiting-main' | 'completed' | 'failed' | 'cancelled' | 'stale'
 export interface StoredTask {
   authorDialogCompletion?:AuthorDialogNativeCompletionV1
+  rubyTaskCompletion?:RubyTaskNativeCompletionV1
+  rubyNativeCompletedWork?:{readonly generation:string;readonly receipt:NativeCompletedInputWorkReceiptV1}
+  rubyNativeCheckpoint?:{readonly generation:string;readonly receipt:NativeDurableInputWorkReceiptV1}
+  rubyNativeStop?:{readonly generation:string;readonly notice:NativeInputStopNoticeV1}
   schemaVersion: 1
   id: string
   sessionId: string
@@ -48,6 +74,7 @@ export interface TaskSelection {
 }
 export interface TaskSpec<S, A> {
   authorDialog?:AuthorDialogPromptV1
+  rubyTask?:RubyTaskSpecV1
   session: S
   agent?: A
   kind: string
@@ -91,6 +118,8 @@ export interface TaskOptions<S, A> {
     persona?: string
     prompt: {type: 'text'; text: string}[]
     activation?:OwnedAuthorDialogActivationV1
+    rubyActivation?:OwnedRubyTaskActivationV1
+    rubyOwner?:OwnedRubyTaskOwnerV1
   }): TaskChild | PromiseLike<TaskChild>}
   isCurrent?(session: S, job: StoredTask): boolean | PromiseLike<boolean>
   isHistoricalResultCurrent?(session:S,job:StoredTask):boolean | PromiseLike<boolean>
