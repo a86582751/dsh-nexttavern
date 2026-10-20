@@ -1365,11 +1365,13 @@ export function createBrowserPageRendererV3(options) {
             nodes.clear();
             handles.clear();
             callbackReferences.clear();
-            if (shellHtml.parentNode !== doc)
-                doc.appendChild(shellHtml);
-            shellHtml.append(shellHead, shellBody);
-            shellHead.appendChild(trustedHead);
-            shellBody.appendChild(trustedBody);
+            if (!options.readerRootDocument) {
+                if (shellHtml.parentNode !== doc)
+                    doc.appendChild(shellHtml);
+                shellHtml.append(shellHead, shellBody);
+                shellHead.appendChild(trustedHead);
+                shellBody.appendChild(trustedBody);
+            }
             doc.removeEventListener('submit', preventNavigation, true);
             doc.removeEventListener('click', preventNavigation, true);
             if (options.onNativeEvent)

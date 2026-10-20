@@ -11,6 +11,9 @@ import type { ActivityState, ActivityComponents } from './activity-view.js';
 import { normalizeConversationNodes, readerNodeSeq, readerMessageId, readerText, readerTime, usageTokens, formatReaderTime } from './reader-model.js';
 import { scopeReaderCss, READER_BASE_CSS,renderReaderNarrative } from './reader-rendering.js';
 import {createAuthorBrowserSession,createReaderRegexDocumentSession, type AuthorBrowserStatus} from './author-browser-session.js';
+import {createAuthorReaderSurface} from '../core/tavern-author-reader-surface.js';
+import type {AuthorReaderSurface,AuthorReaderSurfaceLayout} from '../core/tavern-author-reader-surface.js';
+import {mountStaticAuthorDocument} from './author-runtime.js';
 import type {createSessionImages} from './session-images.js';
 import {createReaderCommunityCache,createCommunityOptionsRenderer,COMMUNITY_READER_CSS} from './reader-community.js';
 import {COMMUNITY_READER_WINDOW_MESSAGES} from '../core/community-preset-types.js';
@@ -144,6 +147,15 @@ React,
         const browserControllerRef = React.useRef<ReturnType<typeof createAuthorBrowserSession> | null>(null);
         const readerDocumentContainerRef = React.useRef<HTMLDivElement>(null);
         const readerDocumentControllerRef = React.useRef<ReturnType<typeof createReaderRegexDocumentSession> | null>(null);
+        const readerSurfaceRef = React.useRef<AuthorReaderSurface | null>(null);
+        const readerActionLayerRef = React.useRef<HTMLDivElement>(null);
+        const readerSurfacePageRef = React.useRef('');
+        const [readerSurfaceLayout,setReaderSurfaceLayout] = React.useState<{
+            surface:AuthorReaderSurface;page:string;value:AuthorReaderSurfaceLayout;
+        } | null>(null);
+        const readerSurfaceFactoryRef = React.useRef<(() => AuthorReaderSurface) | null>(null);
+        const [readerSurfaceEpoch, setReaderSurfaceEpoch] = React.useState(0);
+        const readerSurfaceRevisionRef = React.useRef(0);
         const browserObservedStateRef = React.useRef<ReaderState | null>(null);
         const [browserStatus, setBrowserStatus] = React.useState<AuthorBrowserStatus>({kind: 'loading'});
         const [readerDocumentStatus, setReaderDocumentStatus] = React.useState<AuthorBrowserStatus>({kind: 'inactive'});
@@ -190,7 +202,6 @@ React,
                 // sessionId. Revoke old author capabilities before fetching new state.
                 frameControllerRef.current?.dispose();
                 frameControllerRef.current = null;
-                readerDocumentControllerRef.current?.invalidate();
                 setFrameEpoch(value => value + 1);
                 void browserControllerRef.current?.refresh();
                 load(true);
@@ -276,6 +287,10 @@ React,
             && browserStatus.kind !== 'failed' && browserStatus.kind !== 'inactive';
         const actualReaderFramed = readerDocumentControllerRef.current?.hasFrame() === true
             && readerDocumentStatus.kind !== 'failed' && readerDocumentStatus.kind !== 'inactive';
+        const helperSupportsReader = browserControllerRef.current?.supportsReaderSurface() === true;
+        const helperAllowsReader = browserStatus.kind === 'inactive' || helperSupportsReader;
+        const actualSharedBrowserFramed = actualBrowserFramed && helperSupportsReader;
+        const actualSharedFramed = actualReaderFramed || actualSharedBrowserFramed;
         const actualFramed = actualBrowserFramed || actualReaderFramed;
         const authorWindow = actualFramed || !!authorJs.trim() || beautyCache.hasDocuments() || !!beautyCache.execution();
 
@@ -531,6 +546,18 @@ React,
             && (!!authorJs.trim() || beautyCache.hasDocuments())
             && frameFailure?.identity !== frameIdentity;
         const activeFrameLayout = frameLayout?.identity === frameIdentity ? frameLayout.value : null;
+        const activeReaderLayout = readerSurfaceLayout?.surface === readerSurfaceRef.current
+            ? readerSurfaceLayout?.value : undefined;
+        const restoreHistoryAnchor = () => {
+            const held=historyAnchorRef.current,scroller=scrollRef.current;
+            if(!held||!scroller||held.sessionId!==sessionId)return;
+            if(held.headKey===renderedHeadKey&&held.count===renderedParts.length)return;
+            const row=Array.from(scroller.querySelectorAll('[data-reader-key]'))
+                .find(element=>element.getAttribute('data-reader-key')===held.key);
+            if(row)scroller.scrollTop+=row.getBoundingClientRect().top-scroller.getBoundingClientRect().top-held.top;
+            else if(held.resetIfMissing)scroller.scrollTop=0;
+            historyAnchorRef.current=null;
+        };
         const framePayload = JSON.stringify(renderedParts.map(part => ({
             key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html, fragments: part.fragments,
         } satisfies AuthorFramePart)));
@@ -541,21 +568,76 @@ React,
         // row is hidden while native Reader owns community option controls.
         const browserUserKeys=renderedParts.filter(part=>part.nativeUserProjection&&!part.transient)
             .map(part=>`[data-reader-key=${JSON.stringify(readerPartKey(part))}]`);
-        const browserReaderCss=READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS+'\n'+authorCss
+        const readerBaseCss=READER_BASE_CSS+'\n'+COMMUNITY_READER_CSS+'\n'+authorCss;
+        const browserReaderCss=readerBaseCss
             +(browserUserKeys.length?'\n'+browserUserKeys.join(',')+'{display:none!important}':'');
+        const sharedReaderCss=readerBaseCss
+            +(browserUserKeys.length?'\n'+browserUserKeys.map(key=>key+' > .rp-user-line').join(',')
+                +'{display:none!important}':'');
         const readerDocumentPayload = JSON.stringify(renderedParts.filter(part => !part.transient).map(part =>
             part.kind === 'user' ? {key: readerPartKey(part),kind: part.kind,text: part.text}
                 : {key: readerPartKey(part),kind: part.kind,html: part.frameHtml,
                     fragments:part.readerFragments?.map(fragment=>fragment.kind==='text'
                         ?{...fragment,html:communityOptionsRef.current!(fragment.html).frameHtml}:fragment)}));
-        const readerDocumentConflict = readerExecution && browserStatus.kind !== 'inactive'
+        const readerSurfacePayload = JSON.stringify(renderedParts.map(part =>
+            part.kind === 'user' ? {key: readerPartKey(part),kind: part.kind,text: part.text}
+                : {key: readerPartKey(part),kind: part.kind,html: part.frameHtml,
+                    fragments:part.readerFragments?.map(fragment=>fragment.kind==='text'
+                        ?{...fragment,html:communityOptionsRef.current!(fragment.html).frameHtml}:fragment)}));
+        const readerDocumentConflict = readerExecution && !helperAllowsReader
             && browserStatus.kind !== 'loading' ? 'READER_REGEX_DOCUMENT_LEGACY_FRAME_ACTIVE'
             : readerExecution && authorJs.trim() ? 'READER_REGEX_DOCUMENT_LEGACY_SCRIPT_ACTIVE' : undefined;
         React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
                 || !readerDocumentContainerRef.current) return;
+            const container = readerDocumentContainerRef.current;
+            let active = true, surface: AuthorReaderSurface | undefined;
+            const acquire = () => {
+                if (surface) return surface;
+                const outer = container.ownerDocument.createElement('iframe');
+                outer.className = 'rp-author-guard-frame';outer.title = '作者交互阅读内容';container.append(outer);
+                const created = createAuthorReaderSurface(outer,{
+                    current: () => active && readerSessionRef.current === sessionId && readerSurfaceRef.current === created,
+                    layout: value => setReaderSurfaceLayout({surface:created,page:readerSurfacePageRef.current,value}),
+                    mountStaticDocument: (node,html,layout) => mountStaticAuthorDocument(node,html,{
+                        current: () => active && readerSurfaceRef.current === created,
+                        fill: text => fillComposer(text, false),layout}),
+                });
+                surface = created;readerSurfaceRef.current = created;readerSurfaceRevisionRef.current = 0;
+                setReaderSurfaceEpoch(value => value + 1);
+                return created;
+            };
+            readerSurfaceFactoryRef.current = acquire;
+            return () => {
+                active = false;
+                readerDocumentControllerRef.current?.dispose();browserControllerRef.current?.dispose();
+                surface?.dispose();surface?.outer.remove();
+                if (readerSurfaceRef.current === surface) readerSurfaceRef.current = null;
+                if (readerSurfaceFactoryRef.current === acquire) readerSurfaceFactoryRef.current = null;
+            };
+        }, [sessionId,state?.sessionId,state?.preset]);
+        React.useLayoutEffect(() => {
+            const surface=readerSurfaceRef.current,layer=readerActionLayerRef.current;
+            if(!actualSharedFramed||!surface||!layer||readerSurfaceLayout?.surface!==surface
+                ||readerSurfaceLayout.page!==readerSurfacePayload)return;
+            const rows=Array.from(layer.querySelectorAll<HTMLElement>('.rp-author-shared-action-row'));
+            const measure=()=>surface.setActionHeights(Object.fromEntries(rows.map(row=>
+                [row.dataset.readerKey!,row.getBoundingClientRect().height])));
+            // An observer may run before React commits the surface's next
+            // coordinates. It only submits heights; the layout receipt restores
+            // the reading anchor after those heights have reached the document.
+            const observer=new layer.ownerDocument.defaultView!.ResizeObserver(()=>{measure();});
+            for(const row of rows)observer.observe(row);
+            const hasPendingLayout=measure();
+            if(!hasPendingLayout)restoreHistoryAnchor();
+            return ()=>observer.disconnect();
+        }, [actualSharedFramed,activeReaderLayout,framePayload,readerSurfacePayload]);
+        React.useEffect(() => {
+            if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
+                || !readerDocumentContainerRef.current) return;
             const controller = createReaderRegexDocumentSession({sessionId,container: readerDocumentContainerRef.current,
                 fill: text => fillComposer(text, false),
+                surface: () => readerSurfaceFactoryRef.current!(),
                 current: () => readerSessionRef.current === sessionId && readerDocumentControllerRef.current === controller,
                 status: setReaderDocumentStatus,
                 images: (owner,pageId,values) => images?.acceptBrowserImages(sessionId,owner,pageId,values),
@@ -565,15 +647,21 @@ React,
             return () => {controller.dispose();if (readerDocumentControllerRef.current === controller) readerDocumentControllerRef.current = null;};
         }, [sessionId,state?.sessionId,state?.preset]);
         React.useEffect(() => {
+            readerSurfacePageRef.current=readerSurfacePayload;
+            readerSurfaceRef.current?.render({renderRevision: ++readerSurfaceRevisionRef.current,
+                css: scopeReaderCss(sharedReaderCss),parts: JSON.parse(readerSurfacePayload)});
+        }, [readerSurfaceEpoch,readerSurfacePayload,sharedReaderCss]);
+        React.useEffect(() => {
             const controller = readerDocumentControllerRef.current;
             if (!controller) return;
-            if (!readerExecution || browserStatus.kind !== 'inactive' || authorJs.trim()) {controller.invalidate();return;}
-            controller.update(readerExecution,{css: browserReaderCss,parts: JSON.parse(readerDocumentPayload)});
-        }, [readerExecution,readerDocumentPayload,browserStatus.kind,authorJs,browserReaderCss]);
+            if (!readerExecution || !helperAllowsReader || authorJs.trim()) {controller.invalidate();return;}
+            controller.update(readerExecution,{css: sharedReaderCss,parts: JSON.parse(readerDocumentPayload)});
+        }, [readerExecution,readerDocumentPayload,helperAllowsReader,authorJs,sharedReaderCss]);
         React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !browserContainerRef.current) return;
             const controller = createAuthorBrowserSession({
                 sessionId, container: browserContainerRef.current,
+                surface: () => readerSurfaceFactoryRef.current!(),
                 current: () => readerSessionRef.current === sessionId && browserControllerRef.current === controller,
                 status: setBrowserStatus,
                 images: (owner,pageId,values) => images?.acceptBrowserImages(sessionId,owner,pageId,values),
@@ -628,18 +716,11 @@ React,
         // author HTML can change height after the response arrives.
         React.useLayoutEffect(
         () => {
-            const held = historyAnchorRef.current;
-            const scroller = scrollRef.current;
-            if (!held || !scroller || held.sessionId !== sessionId) return;
-            if (held.headKey === renderedHeadKey && held.count === renderedParts.length) return;
+            if(actualSharedFramed)return;
             if (framed && !activeFrameLayout) return;
-            const row = Array.from(scroller.querySelectorAll('[data-reader-key]'))
-                .find((element) => element.getAttribute('data-reader-key') === held.key);
-            if (row) scroller.scrollTop += row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - held.top;
-            else if (held.resetIfMissing) scroller.scrollTop = 0;
-            historyAnchorRef.current = null;
+            restoreHistoryAnchor();
         },
-            [docHtml, renderedHeadKey, renderedParts.length, sessionId, activeFrameLayout]
+            [docHtml, renderedHeadKey, renderedParts.length, sessionId, activeFrameLayout,actualSharedFramed]
         );
 
         const holdHistoryAnchor = (resetIfMissing = false) => {
@@ -719,6 +800,9 @@ React,
 .rp-author-action-row { position: absolute; left: 0; right: 0; min-height: 32px;
   padding: 0 clamp(22px, 4.8vw, 72px); box-sizing: border-box; pointer-events: none; }
 .rp-author-action-row .rp-reader-actions { pointer-events: auto; }
+.rp-author-shared-action-row { position: absolute; display: flow-root; box-sizing: border-box;
+  color: var(--rp-reader-ink); pointer-events: auto; }
+.rp-author-shared-action-layer { z-index: 1; }
 `;
 
         // Keep every hook above all exits; otherwise switching between loading,
@@ -784,6 +868,23 @@ React,
                 meta ? React.createElement('span', { className: 'rp-reader-meta' }, meta) : null
 
             );
+        };
+        const renderFramedPart = (part:typeof renderedParts[number],index:number) => {
+            const key=readerPartKey(part),slot=activeReaderLayout?.rows[key];
+            if(actualSharedFramed&&!slot)return null;
+            return React.createElement('section', {
+                className:'rp-reader-message'+(actualSharedFramed?' rp-author-shared-action-row':''),
+                'data-kind':actualSharedFramed?(part.kind==='user'?'user':'assistant'):undefined,'data-reader-key':key,
+                key:`${part.kind}:${part.seq??index}:${part.messageId??''}`,
+                style:actualSharedFramed?{top:slot!.top,left:slot!.left,width:slot!.width}:undefined,
+            }, part.transient&&!actualSharedFramed||part.nativeUserProjection?React.createElement('div',{
+                className:part.kind==='user'?'rp-user-line':'rp-reader-narrative',
+                dangerouslySetInnerHTML:{__html:part.kind==='user'?'◈ 你：'+part.frameHtml:part.html}}):null,
+            !part.transient&&part.communityOptions.length?React.createElement('div',{className:'community-options'},
+                React.createElement('p',null,'选择内容会追加到输入草稿'),
+                part.communityOptions.map(option=>React.createElement('button',{type:'button',className:'community-option',
+                    key:option.id,onClick:()=>fillComposer(option.text,false)},option.label))):null,
+            renderReaderActions(part));
         };
 
         return React.createElement(
@@ -852,22 +953,16 @@ React,
                 : null,
 
             React.createElement('div', {className: 'rp-author-frame-host', ref: browserContainerRef,
-                style: {display: actualBrowserFramed ? undefined : 'none'}}),
-            React.createElement('div', {className: 'rp-author-frame-host', ref: readerDocumentContainerRef,
-                style: {display: actualReaderFramed ? undefined : 'none'}}),
-            actualFramed
+                style: {display: actualBrowserFramed && !actualSharedBrowserFramed ? undefined : 'none'}}),
+            React.createElement('div', {className: 'rp-author-frame-host',
+                style: {display: actualSharedFramed ? undefined : 'none'}},
+                React.createElement('div',{ref:readerDocumentContainerRef}),
+                actualSharedFramed?React.createElement('div',{
+                    className:'rp-author-action-layer rp-author-shared-action-layer',ref:readerActionLayerRef,
+                },renderedParts.map(renderFramedPart)):null),
+            actualSharedFramed ? null : actualFramed
                 ? React.createElement('div', {className: 'rp-reader'},
-                    renderedParts.map((part, index) => React.createElement('section', {
-                        className: 'rp-reader-message', 'data-reader-key': readerPartKey(part),
-                        key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
-                    }, part.transient || part.nativeUserProjection ? React.createElement('div', {
-                        className:part.kind==='user'?'rp-user-line':'rp-reader-narrative',
-                        dangerouslySetInnerHTML:{__html:part.kind==='user'?'◈ 你：'+part.frameHtml:part.html}}) : null,
-                    !part.transient&&part.communityOptions.length?React.createElement('div',{className:'community-options'},
-                        React.createElement('p',null,'选择内容会追加到输入草稿'),
-                        part.communityOptions.map(option=>React.createElement('button',{type:'button',className:'community-option',
-                            key:option.id,onClick:()=>fillComposer(option.text,false)},option.label))):null,
-                    renderReaderActions(part))))
+                    renderedParts.map(renderFramedPart))
                 : framed
                 ? React.createElement('div', { className: 'rp-author-frame-host' },
                     React.createElement('iframe', {

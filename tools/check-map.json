@@ -31769,6 +31769,17 @@
       "source": "development/tool-skill/package.json"
     },
     {
+      "id": "tavern-author-reader-surface-typescript",
+      "source": "src/core/tavern-author-reader-surface.ts"
+    },
+    {
+      "id": "tavern-author-reader-surface-js",
+      "source": "lib/core/tavern-author-reader-surface.js",
+      "aliases": [
+        "preset/lib/core/tavern-author-reader-surface.js"
+      ]
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -158690,6 +158701,20 @@
         "build-tools/package.json",
         "build-tools/package-lock.json",
         "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "tavern-author-reader-surface-build",
+      "kind": "typescript-module",
+      "artifact": "tavern-author-reader-surface-js",
+      "entry": "src/core/tavern-author-reader-surface.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/tavern-author-reader-surface.ts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
         "src/operations/build-typescript.mts"
       ]
     }

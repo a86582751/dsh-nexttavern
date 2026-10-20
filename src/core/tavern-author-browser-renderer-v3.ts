@@ -1017,8 +1017,10 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
       for(const id of [...pendingPromises])settlePromise(id,{kind:'rejected',error:'BROWSER3_PAGE_CLOSED'})
       for(const node of ownedNodes)if(node!==doc&&node!==logicalHtml&&node!==logicalHead&&node!==logicalBody)node.parentNode?.removeChild(node)
       ownedNodes.clear();nodes.clear();handles.clear();callbackReferences.clear()
-      if(shellHtml.parentNode!==doc)doc.appendChild(shellHtml)
-      shellHtml.append(shellHead,shellBody);shellHead.appendChild(trustedHead);shellBody.appendChild(trustedBody)
+      if(!options.readerRootDocument) {
+        if(shellHtml.parentNode!==doc)doc.appendChild(shellHtml)
+        shellHtml.append(shellHead,shellBody);shellHead.appendChild(trustedHead);shellBody.appendChild(trustedBody)
+      }
       doc.removeEventListener('submit',preventNavigation,true);doc.removeEventListener('click',preventNavigation,true)
       if(options.onNativeEvent)for(const type of generationEvents)doc.removeEventListener(type,options.onNativeEvent,true)
       for(const root of shadowRoots)for(const type of shadowEvents)root.removeEventListener(type,observeShadowEvent,true)

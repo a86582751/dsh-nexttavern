@@ -2,6 +2,8 @@
  * QuickJS; native wait ACKs never require another entry into that Actor. */
 import {createBrowserNativeSceneV3} from './tavern-author-browser-native-scene-v3.js'
 import {BROWSER_NATIVE_INERT_SHELL_V3} from './tavern-author-browser-frame-native-v3.js'
+import {createAuthorReaderSurface} from './tavern-author-reader-surface.js'
+import type {AuthorReaderSurface} from './tavern-author-reader-surface.js'
 import type {BrowserBindingV1,BrowserRenderV1} from './tavern-author-browser-types.mjs'
 import type {BrowserProgramV3,BrowserSnapshotV3,BrowserRuntimeArtifactV3,BrowserHostBridgeV3,BrowserSaveReplyV3}
   from './tavern-author-browser-types-v3.mjs'
@@ -23,6 +25,7 @@ interface Options {
   failed?(code:string):void
   onImages?:(pageId:string,images:readonly BrowserNativeImageV3[])=>void
   mountStaticDocument?:(container:HTMLElement,html:string,layout:()=>void)=>{dispose():void}
+  readonly surface?:AuthorReaderSurface
   startupDeadlineMs:number
 }
 interface EntryClock {
@@ -127,11 +130,6 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
   const worker=new Worker(workerURL,{type:'module'})
   let active=true,latest:FrameSnapshot|undefined,initialized=false,entry:EntryClock|undefined
   let scene:ReturnType<typeof createBrowserNativeSceneV3>|undefined
-  let readerRoot:HTMLElement|undefined,readerStyle:HTMLStyleElement|undefined
-  let pendingRender:FrameRender|undefined,renderRevision=0,layoutFrame:number|undefined
-  let readerResize:ResizeObserver|undefined,readerMutation:MutationObserver|undefined
-  const readerRows=new Map<string,{node:HTMLElement;kind:'user'|'narrator';content:string;staticDocuments:{dispose():void}[]}>()
-  const documentContainers=new Map<string,HTMLElement>()
   let generationSequence=0
   const registrationRequests=new Map<number,{resolve:(rows:readonly BrowserCallbackRegistrationV3[])=>void;reject:(error:Error)=>void}>()
   const generationRequests=new Map<string,{invocation:BrowserGenerationInvocationV3;
@@ -140,71 +138,11 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
   const started=new Promise<void>((yes,no)=>{resolveStarted=yes;rejectStarted=no})
   const disposed=new Promise<void>(yes=>{resolveDisposed=yes})
   const current=()=>active&&options.current()
-  function scheduleLayout():void {
-    if(!current()||layoutFrame!==undefined)return
-    layoutFrame=view.requestAnimationFrame(()=>{
-      layoutFrame=undefined
-      if(!current()||!readerRoot)return
-      const body=readerRoot.ownerDocument.body,top=body.getBoundingClientRect().top
-      // Content bounds can shrink; body.scrollHeight includes the current
-      // iframe viewport and would retain a previous, taller history page.
-      const height=Math.ceil(Array.from(body.children).reduce((height,element)=>
-        Math.max(height,element.getBoundingClientRect().bottom-top),0))
-      outer.style.height=height+'px'
-      options.layout({height,renderRevision})
-    })
-  }
+  const ownsSurface=!options.surface,surface=options.surface??createAuthorReaderSurface(outer,{
+    current,layout:options.layout,mountStaticDocument:options.mountStaticDocument})
   function renderReader(value:FrameRender):void {
-    if(!current())return
-    if(!readerRoot||!readerStyle){pendingRender=value;return}
-    renderRevision=value.renderRevision
-    const css=value.css+'\nhtml,body{margin:0;overflow:hidden}'+
-      '.rp-reader-view{min-height:0;overflow:visible;display:block}'
-    if(readerStyle.textContent!==css)readerStyle.textContent=css
-    const document=readerRoot.ownerDocument,next=new Set(value.parts.map(part=>part.key))
-    // Remove rows leaving the selected history before ordering retained rows,
-    // so clipping an older prefix does not reattach unchanged media nodes.
-    for(const [key,row] of readerRows)if(!next.has(key)) {
-      for(const document of row.staticDocuments)document.dispose()
-      row.node.remove();readerRows.delete(key)
-    }
-    let cursor=readerRoot.firstChild
-    for(const part of value.parts) {
-      const fragments=part.kind==='narrator'&&'fragments' in part?part.fragments:undefined
-      const content=part.kind==='user'?part.text:fragments?JSON.stringify(fragments):part.html
-      let row=readerRows.get(part.key)
-      if(!row) {
-        const node=document.createElement('section')
-        node.className='rp-reader-message';node.dataset.readerKey=part.key
-        row={node,kind:part.kind,content:'',staticDocuments:[]};readerRows.set(part.key,row)
-      }
-      if(!row.node.firstChild||row.kind!==part.kind||row.content!==content) {
-        for(const document of row.staticDocuments)document.dispose()
-        row.staticDocuments=[]
-        const body=document.createElement(part.kind==='user'?'p':'div')
-        body.className=part.kind==='user'?'rp-user-line':'rp-reader-narrative'
-        if(part.kind==='user')body.textContent='◈ 你：'+part.text
-        else if(fragments)for(const fragment of fragments) {
-          const node=document.createElement('div')
-          if(fragment.kind==='text')node.innerHTML=fragment.html // Trusted Reader's existing sanitizer.
-          else if(fragment.kind==='static-document')
-            row.staticDocuments.push(options.mountStaticDocument!(node,fragment.html,scheduleLayout))
-          else {
-            node.dataset.readerRegexDocument=fragment.documentPlanSha256
-            documentContainers.set(fragment.documentPlanSha256,node)
-          }
-          body.appendChild(node)
-        }
-        else body.innerHTML=part.html // The trusted Reader owns HTML sanitization.
-        row.node.replaceChildren(body);row.node.dataset.kind=part.kind==='user'?'user':'assistant'
-        row.kind=part.kind;row.content=content
-      }
-      // Moving an unchanged subtree can reload media. Only insert when its
-      // actual position differs, including a history prepend or branch change.
-      if(row.node!==cursor)readerRoot.insertBefore(row.node,cursor)
-      cursor=row.node.nextSibling
-    }
-    scheduleLayout()
+    // A shared surface has one Main render caller, independent of either Actor.
+    if(ownsSurface)surface.render(value)
   }
   const gestures=program.encoding==='native-author-browser-program-v3'
     ?createBrowserGenerationGesturesV3(program,current,()=>view.navigator.userActivation.isActive):undefined
@@ -222,10 +160,6 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
   function dispose():void {
     if(!active)return
     active=false;abort.abort();view.clearTimeout(bootTimer);view.clearTimeout(entry?.timer)
-    readerResize?.disconnect();readerMutation?.disconnect()
-    if(layoutFrame!==undefined)view.cancelAnimationFrame(layoutFrame)
-    for(const row of readerRows.values())for(const document of row.staticDocuments)document.dispose()
-    layoutFrame=undefined;pendingRender=undefined;readerRows.clear();documentContainers.clear();readerRoot=undefined;readerStyle=undefined
     // Main termination remains independent of a busy or suspended guest. It
     // does not imply graceful VM disposal; Main still frees its own resources.
     gestures?.dispose()
@@ -234,7 +168,6 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
     registrationRequests.clear()
     for(const pending of generationRequests.values()){pending.cleanup();pending.reject(error)}
     generationRequests.clear()
-    outer.removeEventListener('load',loaded)
     rejectStarted(Error('BROWSER_GENERATION_REVOKED'))
     // Core closes the attachment's prompt resources before removing its private
     // owner. This confirmation must survive termination of the guest Worker.
@@ -243,7 +176,7 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
         worker.terminate();URL.revokeObjectURL(workerURL)
         try {await scene?.dispose()}
         catch(error){options.diagnostic(String(error))}
-        finally {outer.removeAttribute('src');outer.removeAttribute('srcdoc');resolveDisposed()}
+        finally {if(ownsSurface)surface.dispose();resolveDisposed()}
       })
   }
   function fail(code:string):void {
@@ -349,21 +282,11 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
       send({type:'reader-start',binding,program,snapshot:latest as ReaderRegexDocumentSnapshotV1,wasm:bytes.buffer,operationPrefix})
     else send({type:'start',binding,program,snapshot:latest as BrowserSnapshotV3,wasm:bytes.buffer,operationPrefix})
   }
-  function loaded():void {
+  function loaded(document:Document):void {
     if(!current()||scene)return
-    const document=outer.contentDocument!
-    document.open();document.write(BROWSER_NATIVE_INERT_SHELL_V3);document.close()
-    readerStyle=document.createElement('style');document.head.append(readerStyle)
-    const viewport=document.createElement('div');viewport.className='rp-reader-view'
-    readerRoot=document.createElement('div');readerRoot.className='rp-reader'
-    viewport.append(readerRoot);document.body.append(viewport)
-    readerResize=new ResizeObserver(scheduleLayout);readerResize.observe(document.body)
-    readerMutation=new MutationObserver(scheduleLayout)
-    readerMutation.observe(document.body,{childList:true,subtree:true,attributes:true,characterData:true})
-    if(pendingRender){const value=pendingRender;pendingRender=undefined;renderReader(value)}
     scene=createBrowserNativeSceneV3({program,schedulerWindow:view,onCallback:deliver,
       ...program.encoding==='reader-regex-document-program-v1'?{readerRootDocument:document,
-        readerDocumentContainer:plan=>documentContainers.get(plan.pagePlanSha256)!}:{},
+        readerDocumentContainer:plan=>surface.documentContainer(plan.pagePlanSha256)}:{},
       onImages:options.onImages,
       prepareCallback:gestures?.prepare,onPageClosed:gestures?.closePage,
       observeNativeEvent:program.encoding==='native-author-browser-program-v3'&&program.generationDeclarationId?gestures?.observe:undefined,
@@ -388,9 +311,7 @@ function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRun
       }})
     initialize()
   }
-  outer.setAttribute('sandbox','allow-same-origin allow-forms')
-  outer.style.cssText='display:block;width:100%;height:620px;border:0'
-  outer.addEventListener('load',loaded);outer.src='about:blank'
+  void surface.ready.then(loaded).catch(error=>fail(error instanceof Error?error.message:String(error)))
   return {started,disposed,dispose,
     async generationCallbacks(){
       // Startup owns readiness. A later empty registry is valid after the

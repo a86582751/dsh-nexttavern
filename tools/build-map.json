@@ -8743,6 +8743,16 @@
       "outputs": [
         "development/tool-skill/lib/index.js"
       ]
+    },
+    {
+      "artifact": "tavern-author-reader-surface-js",
+      "source": "src/core/tavern-author-reader-surface.ts",
+      "banner": "runtime/alpha3/src/core/tavern-author-reader-surface.ts",
+      "primaryOutput": "lib/core/tavern-author-reader-surface.js",
+      "outputs": [
+        "lib/core/tavern-author-reader-surface.js",
+        "preset/lib/core/tavern-author-reader-surface.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -46331,6 +46341,16 @@
         "id": "compat-tool-skill-package-json",
         "source": "development/tool-skill/package.json",
         "canonicalSource": "runtime/alpha3/compat/tool-skill/package.json"
+      },
+      {
+        "id": "tavern-author-reader-surface-typescript",
+        "source": "src/core/tavern-author-reader-surface.ts",
+        "canonicalSource": "runtime/alpha3/src/core/tavern-author-reader-surface.ts"
+      },
+      {
+        "id": "tavern-author-reader-surface-js",
+        "source": "lib/core/tavern-author-reader-surface.js",
+        "canonicalSource": "runtime/alpha3/lib/core/tavern-author-reader-surface.js"
       }
     ],
     "publicRelease": {
@@ -169594,6 +169614,21 @@
           "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/compat/tool-skill/src/index.ts"
+      },
+      {
+        "id": "tavern-author-reader-surface-build",
+        "kind": "typescript-module",
+        "artifact": "tavern-author-reader-surface-js",
+        "entry": "src/core/tavern-author-reader-surface.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/core/tavern-author-reader-surface.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/core/tavern-author-reader-surface.ts"
       }
     ],
     "typeScript": {

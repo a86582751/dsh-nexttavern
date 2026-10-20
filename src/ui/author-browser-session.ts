@@ -2,6 +2,7 @@ import {createBrowserRuntimeFrameV1} from '../core/tavern-author-browser-frame.j
 import {createBrowserRuntimeFrameV2} from '../core/tavern-author-browser-frame-v2.js';
 import {createBrowserRuntimeFrameV3,createReaderRegexDocumentFrameV1} from '../core/tavern-author-browser-frame-v3.js';
 import type {BrowserFrameHostV3} from '../core/tavern-author-browser-frame-v3.js';
+import type {AuthorReaderSurface} from '../core/tavern-author-reader-surface.js';
 import type {AuthorBrowserReply,AuthorBrowserRequest} from '../core/roleplay-author-browser-types.js';
 import type {BrowserBindingV1,BrowserHostBridgeV1,BrowserRenderV1,BrowserSaveReplyV1,BrowserSnapshotV1}
     from '../core/tavern-author-browser-types.mjs';
@@ -41,6 +42,7 @@ export function createReaderRegexDocumentSession(options: {
     current(): boolean;
     status(value: AuthorBrowserStatus): void;
     fill(text: string): void;
+    surface?(): AuthorReaderSurface;
     images?(owner: object,pageId: string,images: readonly BrowserNativeImageV3[]): void;
     releaseImages?(owner: object): void;
 }) {
@@ -50,7 +52,8 @@ export function createReaderRegexDocumentSession(options: {
     function revoke(): void {
         frame?.dispose();frame = undefined;
         if (realm) options.releaseImages?.(realm);
-        realm = undefined;identity = '';options.container.replaceChildren();
+        realm = undefined;identity = '';
+        if (!options.surface) options.container.replaceChildren();
     }
     return {
         hasFrame: () => !!frame,
@@ -61,12 +64,16 @@ export function createReaderRegexDocumentSession(options: {
             if (key !== identity || !frame) {
                 revoke();identity = key;
                 const owner = {};realm = owner;
-                const outer = options.container.ownerDocument.createElement('iframe');
-                outer.className = 'rp-author-guard-frame';outer.title = '作者正则阅读文档';options.container.append(outer);
+                const surface = options.surface?.();
+                const outer = surface?.outer ?? options.container.ownerDocument.createElement('iframe');
+                if (!surface) {
+                    outer.className = 'rp-author-guard-frame';outer.title = '作者正则阅读文档';options.container.append(outer);
+                }
                 const binding = {sessionId: options.sessionId,browserSessionId: crypto.randomUUID(),
                     generation: execution.snapshot.generation,programSha256: execution.program.programSha256};
                 options.status({kind: 'starting'});
                 const controller = createReaderRegexDocumentFrameV1(outer,execution.artifact,binding,execution.program,{
+                    surface,
                     current: () => current() && realm === owner,
                     mountStaticDocument: (container,html,layout) => mountStaticAuthorDocument(container,html,{
                         current: () => current() && realm === owner,fill: options.fill,layout}),
@@ -124,6 +131,7 @@ export function createAuthorBrowserSession(options: {
     container: HTMLElement;
     current(): boolean;
     status(value: AuthorBrowserStatus): void;
+    surface?(): AuthorReaderSurface;
     transport?: AuthorBrowserTransport;
     storage?: Pick<Storage, 'getItem' | 'setItem'>;
     images?(owner:object,pageId:string,images:readonly BrowserNativeImageV3[]):void;
@@ -136,7 +144,7 @@ export function createAuthorBrowserSession(options: {
     };
     const store = createAuthorBrowserPendingStore(options.storage ?? localStorage);
     let active = true, ready = false, binding: BrowserBindingV1 | undefined;
-    let frame: ReaderBrowserFrame | undefined;
+    let frame: ReaderBrowserFrame | undefined, sharedSurface = false;
     let realm: object | undefined, captured: Snapshot | undefined;
     let generationWait:AbortController|undefined;
     const operationRealms = new Map<string, object>();
@@ -160,7 +168,7 @@ export function createAuthorBrowserSession(options: {
         if(realm)options.releaseImages?.(realm);
         const frameClosesBinding=Boolean(frame?.invokeGenerationV3);
         frame?.dispose();frame = undefined;ready = false;realm = undefined;captured = undefined;
-        options.container.replaceChildren();
+        if (!sharedSurface) options.container.replaceChildren();
         if (binding&&!frameClosesBinding) release(binding);
         binding = undefined;
     };
@@ -384,15 +392,19 @@ export function createAuthorBrowserSession(options: {
             notify({kind: 'pending'});return;
         }
         if (!sameBinding(binding, attachment.binding)) revoke();
-        else {frame?.dispose();frame = undefined;ready = false;options.container.replaceChildren();}
+        else {frame?.dispose();frame = undefined;ready = false;if (!sharedSurface) options.container.replaceChildren();}
         binding = attachment.binding;captured = attachment.snapshot;
         const realmOwner = {};realm = realmOwner;
-        const outer = document.createElement('iframe');
-        outer.className = 'rp-author-guard-frame';outer.title = '作者交互阅读内容';
-        options.container.append(outer);
+        sharedSurface = attachment.schemaVersion === 3 && !!options.surface;
+        const surface = sharedSurface ? options.surface!() : undefined;
+        const outer = surface?.outer ?? document.createElement('iframe');
+        if (!surface) {
+            outer.className = 'rp-author-guard-frame';outer.title = '作者交互阅读内容';options.container.append(outer);
+        }
         const realmBinding = binding;
         notify({kind: 'starting'});
         const controllerOptions = {
+            surface,
             current: () => current() && realm === realmOwner && sameBinding(binding, realmBinding),
             layout: () => {}, diagnostic: (code:string) => {
                 if (!current() || realm !== realmOwner) return;
@@ -405,7 +417,7 @@ export function createAuthorBrowserSession(options: {
                 options.releaseImages?.(realmOwner);
                 generationWait?.abort();generationWait=undefined;
                 frame = undefined;realm = undefined;ready = false;
-                options.container.replaceChildren();
+                if (!sharedSurface) options.container.replaceChildren();
                 notify({kind: 'failed', code});
             }, startupDeadlineMs: 15000,
             onImages: (pageId:string,images:readonly BrowserNativeImageV3[]) => {
@@ -436,7 +448,7 @@ export function createAuthorBrowserSession(options: {
         }).catch(error => {
             if (current() && frame === controller) {
                 options.releaseImages?.(realmOwner);
-                frame = undefined;ready = false;options.container.replaceChildren();
+                frame = undefined;ready = false;if (!sharedSurface) options.container.replaceChildren();
                 notify({kind: 'failed', code: String(error.message)});
             }
         });
@@ -549,6 +561,7 @@ export function createAuthorBrowserSession(options: {
             await refresh();
         },
         hasFrame: () => !!frame,
+        supportsReaderSurface: () => sharedSurface,
         render(value: Omit<BrowserRenderV1, 'renderRevision'>) {
             render = {...value, renderRevision: ++revision};if(frame)renderReaderFrame(frame,render);
         },
