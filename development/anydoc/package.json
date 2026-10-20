@@ -8,7 +8,8 @@
   "exports": {
     ".": "./lib/index.js",
     "./normalize-markdown": "./lib/normalize-markdown.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./document-reader": "./lib/document-reader.js"
   },
   "repository": {
     "type": "git",

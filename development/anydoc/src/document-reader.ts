@@ -12,6 +12,12 @@ interface CachedDocument {
   markdown: string
 }
 
+/** Read the complete frozen DOCX upload without creating a file or preview.
+ * The caller retains original bytes for download; Markdown is working text. */
+export async function docxBytesToMarkdown(bytes:Uint8Array,convert=toMarkdownBytes):Promise<string> {
+  return dshNormalizeMarkdown(await convert(Buffer.from(bytes),formatFromExtension('docx')))
+}
+
 /** One preset's bounded cache, separated again by actual filesystem provider. */
 export function createDocumentReader(convert = toMarkdownBytes) {
   let caches = new WeakMap<object, Map<string, CachedDocument>>()
@@ -37,9 +43,11 @@ export function createDocumentReader(convert = toMarkdownBytes) {
     const extension = /\.([^./\\]+)$/.exec(filePath)?.[1]?.toLowerCase()
     const textOnly = ['txt', 'md', 'markdown'].includes(format ?? extension ?? '')
     const bytes = await fs.readBytes(target, signal, MAX_INPUT_BYTES)
+    const resolvedFormat=textOnly?undefined:((format as Format | undefined)??formatFromExtension(extension ?? ''))
     const markdown = textOnly
       ? new TextDecoder('utf-8', {fatal: true}).decode(bytes)
-      : dshNormalizeMarkdown(await convert(bytes, format as Format | undefined ?? formatFromExtension(extension ?? '')))
+      : resolvedFormat==='docx'?await docxBytesToMarkdown(bytes,convert)
+      : dshNormalizeMarkdown(await convert(bytes,resolvedFormat))
     signal.throwIfAborted()
     if (!markdown.trim()) throw Error('文档没有可读取的文本')
     // Do not cache a mixture of versions if the source changed during conversion.

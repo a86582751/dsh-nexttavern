@@ -66,6 +66,9 @@
       ],
       "parse5": [
         "./node_modules/parse5/dist/index.d.ts"
+      ],
+      "dsh-nexttavern-anydoc/*": [
+        "../development/anydoc/src/*.ts"
       ]
     },
     "newLine": "lf"

@@ -4,6 +4,11 @@ import { dshNormalizeMarkdown } from './normalize-markdown.js';
 const MAX_INPUT_BYTES = 64 * 1024 * 1024;
 const MAX_CACHE_CHARACTERS = 4 * 1024 * 1024;
 const MAX_CACHE_ENTRIES = 8;
+/** Read the complete frozen DOCX upload without creating a file or preview.
+ * The caller retains original bytes for download; Markdown is working text. */
+export async function docxBytesToMarkdown(bytes, convert = toMarkdownBytes) {
+    return dshNormalizeMarkdown(await convert(Buffer.from(bytes), formatFromExtension('docx')));
+}
 /** One preset's bounded cache, separated again by actual filesystem provider. */
 export function createDocumentReader(convert = toMarkdownBytes) {
     let caches = new WeakMap();
@@ -32,9 +37,11 @@ export function createDocumentReader(convert = toMarkdownBytes) {
         const extension = /\.([^./\\]+)$/.exec(filePath)?.[1]?.toLowerCase();
         const textOnly = ['txt', 'md', 'markdown'].includes(format ?? extension ?? '');
         const bytes = await fs.readBytes(target, signal, MAX_INPUT_BYTES);
+        const resolvedFormat = textOnly ? undefined : (format ?? formatFromExtension(extension ?? ''));
         const markdown = textOnly
             ? new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-            : dshNormalizeMarkdown(await convert(bytes, format ?? formatFromExtension(extension ?? '')));
+            : resolvedFormat === 'docx' ? await docxBytesToMarkdown(bytes, convert)
+                : dshNormalizeMarkdown(await convert(bytes, resolvedFormat));
         signal.throwIfAborted();
         if (!markdown.trim())
             throw Error('文档没有可读取的文本');
