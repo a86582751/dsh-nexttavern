@@ -4,10 +4,15 @@ import type { CharacterInputSource } from './character-cluster-projection.js'
 import type { TaskMessage } from './tavern-task-context.js'
 
 export interface TaskToolExecution {
+  readonly callId?:string
+  readonly rootCallId?:string
   agent?: HostAgent
   signal?: AbortSignal
   deferContext?(message: TaskMessage): unknown
 }
+export type TaskSubmitArguments = {kind:'status'|'decision';result:unknown}
+  | {id:string;generation:string;result:unknown}
+export type TaskSubmissionBindings=ReturnType<typeof import('./roleplay-task-tools.js').createTaskSubmissionBindings>
 export interface TaskToolArguments extends Record<string, unknown> {
   id?: string
   generation?: string
@@ -35,6 +40,7 @@ export interface TaskToolTable {
 }
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface TaskToolsDependencies {
+  submissionBindings:TaskSubmissionBindings
   ctx: {
     effect(work: () => unknown, label: string): unknown
     tools: {register(tool: unknown): unknown}

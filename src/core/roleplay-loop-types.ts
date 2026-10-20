@@ -10,6 +10,8 @@ import type { createRoleplayStatus } from './roleplay-status.js'
 import type {RoleplayInputBinding,InputPreparationCurrency} from './roleplay-input-preparation.js'
 import type {PhaseABranchRowFactsWriterV1} from './roleplay-phase-a-row-facts.js'
 import type {ForkLookup} from './roleplay-worldline-types.js'
+import type {TaskSubmissionBindings} from './roleplay-task-tools-types.js'
+import type {GenerateOptions,StreamChunk} from '@deepseek-ai/dsh-llm'
 
 export interface LoopSession extends HostSession {
   append(type: string, data: TaskMessage, options: {
@@ -55,6 +57,7 @@ export interface PromptAssembly {
   [key: string]: unknown
 }
 export interface LoopContext {
+  on(name:'llm/stream',hook:(options:GenerateOptions,next:()=>AsyncIterable<StreamChunk>)=>AsyncIterable<StreamChunk>,options:{global:boolean}):unknown
   on(name:'agent/request',hook:(payload:{agent:LoopAgent;turn:number;step:number;signal:AbortSignal},next:()=>Promise<unknown>)=>Promise<unknown>):unknown
   on(name:'session/event',hook:(session:ContextSession,event:ContextEvent)=>void,options:{global:true}):unknown
   on(name: 'system-prompt/assemble', hook: (assembly: PromptAssembly, context: {agent?: LoopAgent}, next: () => Promise<PromptAssembly>) => Promise<PromptAssembly>, options: {global: boolean}): unknown
@@ -67,6 +70,7 @@ export interface LoopContext {
 }
 type TaskHost = ReturnType<typeof createRoleplayTaskHost>
 export interface LoopDependencies {
+  submissionBindings:TaskSubmissionBindings
   /** Same actual Core Phase-A writer registry as preparation/inheritance. */
   rowFacts?:PhaseABranchRowFactsWriterV1
   inputBinding?(agent:LoopAgent):RoleplayInputBinding | undefined

@@ -186,7 +186,7 @@ import {
 } from './roleplay-author-context.js'
 import { registerAuthorTools } from './roleplay-author-tools.js'
 import { registerSessionTools, registerSessionCommands } from './roleplay-session-actions.js'
-import { simpleTool, registerTaskTools } from './roleplay-task-tools.js'
+import { simpleTool, registerTaskTools, createTaskSubmissionBindings } from './roleplay-task-tools.js'
 import {createRoleplayState,captureRoleplaySourceRecordVersionsV1} from './roleplay-state.js'
 import { registerRoleplayDiagnosis } from './roleplay-diagnosis.js'
 import { registerCardAuthoring, registerDraftCheck } from './roleplay-authoring.js'
@@ -244,8 +244,8 @@ export const inject = [
 ]
 
 const DEFAULT_CONFIG = {
-  workerProvider: null as string | null,
-  workerModel: null as string | null,
+  workerProvider: 'deepseek-official' as string | null,
+  workerModel: 'deepseek-flash' as string | null,
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
@@ -1495,7 +1495,9 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
 
   // ── 阶段 A：程序组装当前分支笔记与窗口；主代理按需查资料 ──────────────────
 
+  const submissionBindings=createTaskSubmissionBindings()
   const { preparationRecordKey, taskInstruction } = registerRoleplayLoop({
+    submissionBindings,
     firstResponseTimeoutMs: cfg.firstResponseTimeoutMs,
     rowFacts:phaseARowFacts,
     inputBinding:agent => inputBindings.get(agent),
@@ -1656,6 +1658,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       assertWorkspaceSession(session)
     }})
   const { sessionOf } = registerTaskTools({
+    submissionBindings,
     ctx,
     T,
     clusterJob,
@@ -2732,6 +2735,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   // owner's hot binding permits a cold incarnation to bind the same durable
   // Session without transferring its old tokens or resending pending input.
   ctx.on('agent/disposed',({agent})=>{
+    submissionBindings.release(agent)
     inputState.releaseSession(agent.session.id)
     mvuOpening.invalidateSchemaAgent(agent)
     authorBrowser?.invalidateSession(agent.session.id)
@@ -2740,6 +2744,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   },{global:true})
   ctx.effect(() => () => {
     sourceReadOwnerClosed=true
+    submissionBindings.dispose()
     inputOwner?.disposeOwnedNonNumericalBranchRowFacts()
     for (const binding of inputBindings.values()) binding.dispose()
     inputBindings.clear()
@@ -2750,6 +2755,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     for(const [owner,binding] of inputBindings) {
       const agent=owner as CoreAgent
       if(agent.session.id!==sessionId||ctx.get('agentPresets')?.serviceFor(agent,'roleplay')===svc)continue
+      submissionBindings.release(agent)
       binding.dispose()
       inputBindings.delete(agent)
     }

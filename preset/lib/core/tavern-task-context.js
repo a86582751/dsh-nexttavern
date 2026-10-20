@@ -164,7 +164,7 @@ export function taskPhaseMessage(stage, content, extra = {}) {
 // their explicit paginated read tools; no source is shortened to fit a budget.
 const INLINE_TASK_MARKER = '\n待办：\n';
 const INLINE_SHARED_MARKER = '\n资料引用：currentContextRef 指当前请求已有的同名上下文，不必重读；sharedContextRef 指以下公共资料，分别应用各任务规则。\n';
-function inlineTaskEnvelope(text) {
+export function inlineTaskEnvelope(text) {
     const start = text.indexOf(INLINE_TASK_MARKER);
     if (start < 0)
         return null;
@@ -224,7 +224,7 @@ export function inlineTaskInstruction(jobs, { sessionId, maxChars = 128000, resi
         }
         tasks.push(task);
     }
-    return '当前是系统维护阶段，尚不能生成或续写剧情。下面 completeSource=true 的任务已经附带完整冻结来源与结果契约，不需要再次调用 rp_task_read，直接完成并用 rp_task_submit 分别提交结果。仅未附带 input 的任务需要 rp_task_read 分页完整读取。同一步可调用多个 rp_task_submit；每项按自己的 id、generation、system 与 format 校验。不要输出维护报告或复述任务资料，不改变模型、调用 spawn 或检查实现代码。' + INLINE_TASK_MARKER + JSON.stringify(tasks) + (compact ? INLINE_SHARED_MARKER + JSON.stringify(prepared.sharedContext) : '');
+    return '当前是系统维护阶段，尚不能生成或续写剧情。下面 completeSource=true 的任务已经附带完整冻结来源与结果契约，不需要再次调用 rp_task_read，直接完成并用 rp_task_submit 分别提交结果。仅未附带 input 的任务需要 rp_task_read 分页完整读取。同一步可调用多个 rp_task_submit；提交参数遵循当前工具说明，每项按自己的 system 与 format 校验。不要输出维护报告或复述任务资料，不改变模型、调用 spawn 或检查实现代码。' + INLINE_TASK_MARKER + JSON.stringify(tasks) + (compact ? INLINE_SHARED_MARKER + JSON.stringify(prepared.sharedContext) : '');
 }
 export function inlineTaskMessages(session, stage, jobs, { force = false, maxChars, resident } = {}) {
     const content = inlineTaskInstruction(jobs, {

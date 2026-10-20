@@ -142,6 +142,8 @@ export interface RoleplayInputBinding {
   currentStep(): RoleplayInputStep | undefined
   /** Actual checked claim Source before pre-step, not step/provider readiness. */
   readClaimedInputSource(): InputSourceObservation | undefined
+  /** Already checked Native maintenance input; assembly does not create authority. */
+  readClaimedMaintenanceInput(): ClaimedMaintenanceInput | undefined
   existingTransition(): {lease: RoleplayInputTransitionLease; proof: InputTransitionProof;
     legacyRecord?:InputLegacyMergeReference} | undefined
   originalMessages(step: RoleplayInputStep): NativeInputAdmissionCheckV2['claim']['messages']
@@ -153,6 +155,10 @@ export interface RoleplayInputBinding {
   commitTransition(reservation: RoleplayInputTransitionReservation, activation: InputTransitionActivation): Promise<InputTransitionResult>
   current(): InputView | undefined
   dispose(): void
+}
+export interface ClaimedMaintenanceInput {
+  readonly turn:number
+  readonly messages:NativeInputAdmissionCheckV2['claim']['messages']
 }
 export interface InputTransitionState {
   reservation: RoleplayInputTransitionReservation
@@ -469,6 +475,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     let boundSeq = -1
     for (const event of agent.session.snapshotEvents()) boundSeq = Math.max(boundSeq, Number(event.seq))
     let live = true, hot: Work | undefined, claim: NativeInputAdmissionCheckV2['claim'] | undefined
+    let claimedMaintenance:ClaimedMaintenanceInput|undefined
     let revoked = false
     let currentStep: RoleplayInputStep | undefined
     let currentLease: RoleplayInputTransitionLease | undefined
@@ -693,6 +700,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         ? 'INPUT_CONTINUATION_SCOPE_INVALID':undefined,
     })
     const stop = (notice: NativeInputStopNoticeV1) => {
+      claimedMaintenance=undefined
       try {onMutationStop?.(agent.session,notice)} catch(error) {report(error)}
       if (notice.refsCode) for (const preparationId of lifecycle.keys()) pendingRevocations.add(preparationId)
       for (const [preparationId, proof] of lifecycle) {
@@ -760,6 +768,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     const onBlocked = (notice: NativeInputBlocked) => {
       if (!hot || !continuation.ownsRefs(notice.refs)&&!notice.refs.some(ref => hot!.refs.some(owned => equal(ref, owned)))) return
       continuation.close()
+      claimedMaintenance=undefined
       terminal?.revoke()
       revoked = true
       pendingRevocations.add(hot.preparationId)
@@ -895,7 +904,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
             credentialSha256}, status: 'created', source: inputSource, attemptGeneration: 0}
           ownedWorkObjects.add(work)
           continuation.close()
-          hot = work; revoked = false; claim = undefined; currentStep = undefined; currentLease = undefined
+          hot = work; revoked = false; claim = undefined; claimedMaintenance = undefined
+          currentStep = undefined; currentLease = undefined
           try {
             await save(work)
             if (signal.aborted || revoked || !live) return refuseUnclaimed(work,'INPUT_PERMISSION_REVOKED')
@@ -936,6 +946,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         }
       },
       check(input) {
+        claimedMaintenance=undefined
         if (!hot || input.identity !== hot || !equal(input.preparation, hot.preparation)
           || !equal(input.claim.refs, hot.refs) || !equal(input.claim.proposal, input.proposal)) return blocked('INPUT_IDENTITY_CHANGED')
         const code = baseCurrency(hot)
@@ -948,9 +959,15 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         claim = input.claim
         // Native invokes check before Core pre-step and before its first flush.
         // This is preparation authority, not provider readiness.
-        if (!input.receipt) return allowed
-        if (!equal(input.receipt, hot.checkpoint) || !hot.attempt?.prepared
-          || hot.attempt.turn !== input.claim.turn) return blocked('INPUT_NOT_PREPARED')
+        if (input.receipt && (!equal(input.receipt, hot.checkpoint) || !hot.attempt?.prepared
+          || hot.attempt.turn !== input.claim.turn)) return blocked('INPUT_NOT_PREPARED')
+        const messages=input.supplement
+          ? input.supplement.claims.flatMap(owned=>owned.claim.messages) : input.claim.messages
+        const internal=messages.length>0&&messages.every(message=>{
+          const source=message.source as unknown as Record<string,unknown>
+          return source.kind==='roleplay-tasks'&&source.form==='phase'&&source.stage==='management'
+        })
+        if(input.supplement||internal)claimedMaintenance={turn:input.claim.turn,messages}
         return allowed
       },
       async checkpoint(receipt, signal) {
@@ -1056,6 +1073,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
         return currencyOf(hot)
       },
       currentStep() {return currentStep && !stepCurrency(currentStep) ? currentStep : undefined},
+      readClaimedMaintenanceInput() {return claimedMaintenance},
       readClaimedInputSource() {
         try {
           const work=hot
@@ -1277,6 +1295,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       dispose() {
         if(!live)return
         live=false
+        claimedMaintenance=undefined
         materialOwner?.dispose()
         terminal?.dispose()
         if(terminalOwners.get(sid)===terminal)terminalOwners.delete(sid)

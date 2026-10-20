@@ -16,6 +16,8 @@ import type { HostSession } from './roleplay-task-host-types.js'
 import type { CompletionSnapshot } from './roleplay-completion-types.js'
 import type {ContextMessage} from './roleplay-context.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
+import {semanticTaskSubmitDescription,semanticTaskSubmitParameters,
+  legacyTaskSubmitDescription,legacyTaskSubmitParameters} from './roleplay-task-tools.js'
 
 /** Bound silence at the native request boundary without changing adapter
  * options, retrying a paid call or discarding queued player input. */
@@ -48,7 +50,7 @@ export function registerRoleplayLoop({
   withImportLock,ensureBranch,buildPhaseA,reconcileCanonicalPlayerVariants,buildForkLookupIndex,
   characterRoster,storyWindowSettings,runStatusObligation,publishTurnDecision,runPhaseBC,
   adaptationScope,importPromptCheckpoint,authorContext,inputBinding,inputSnapshotCurrent,programOpeningOwner,rowFacts,
-  firstResponseTimeoutMs,
+  firstResponseTimeoutMs,submissionBindings,
 }:LoopDependencies) {
   const preparationRecordKey = (sid: string) => keyOf(sid,'task-preparation')
   const handledImportPrompts=new Map<string,string>()
@@ -57,11 +59,20 @@ export function registerRoleplayLoop({
   ctx.on('agent/request',async(payload,next)=>{
     const config=await next(),agent=payload.agent
     await ensureSessionHistory(agent.session, payload.signal)
+    if(isRoleplaySession(agent.session)&&!(Number(agent.options?.subagentDepth)>0))
+      submissionBindings.begin(payload,inputBinding?.(agent)?.readClaimedMaintenanceInput())
     if(isRoleplaySession(agent.session)&&!(Number(agent.options?.subagentDepth)>0)&&agent.cancel)
       firstResponse.begin({session:agent.session,cancel:agent.cancel.bind(agent)},payload.turn,payload.step,payload.signal)
     return config
   })
-  ctx.on('session/event',(session,event)=>firstResponse.observe(session,event),{global:true})
+  ctx.on('llm/stream',(options,next)=>{
+    submissionBindings.capture(options)
+    return next()
+  },{global:true})
+  ctx.on('session/event',(session,event)=>{
+    submissionBindings.observe(session,event)
+    firstResponse.observe(session,event)
+  },{global:true})
   const authorPrompts=new WeakMap<HostSession,{revision:string;turn:unknown;parts:{name:string;text:string}[]}>()
   const currentTurn=(session:HostSession)=>{
     const events=eventsOf(session)
@@ -83,7 +94,17 @@ export function registerRoleplayLoop({
   // both the assembled request and execution, including those own-scope tools.
   ctx.on('system-prompt/assemble',async(_assembly,context,next)=>{
     await ensureSessionHistory(context.agent?.session)
-    const assembly=await next(),allowed=tavernTaskToolBoundary(T.branch,context.agent)
+    let assembly=await next()
+    const allowed=tavernTaskToolBoundary(T.branch,context.agent)
+    const maintenance=context.agent?inputBinding?.(context.agent)?.readClaimedMaintenanceInput():undefined
+    if(maintenance) {
+      const semantic=submissionBindings.semanticOnly(maintenance),
+        description=semantic?semanticTaskSubmitDescription:legacyTaskSubmitDescription,
+        parameters=semantic?semanticTaskSubmitParameters:legacyTaskSubmitParameters
+      assembly={...assembly,
+        tools:assembly.tools.map(tool=>tool.name==='rp_task_submit'?{...tool,description,parameters}:tool),
+        sections:assembly.sections.map(section=>section.name==='tool:rp_task_submit'?{...section,text:description}:section)}
+    }
     if(clusterJob(context.agent))return {...assembly,contexts:assembly.contexts.filter(s=>/^(sandbox|approval):/.test(s.name)),tools:assembly.tools.filter(t=>t.name==='rp_history'),
       sections:[{name:'roleplay:character-persona',text:CHARACTER_PERSONA},...assembly.sections.filter(s=>s.name==='tool:rp_history'||/^(sandbox|approval):/.test(s.name)||s.name==='harness:identity')]}
     if(!allowed){

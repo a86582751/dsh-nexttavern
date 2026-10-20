@@ -1,11 +1,93 @@
-import { keyOf } from './roleplay-data.js'
+import { keyOf, textOf } from './roleplay-data.js'
 import { adaptationTurns } from '../memory/memory-provenance.js'
 import { eventsOf, surfaceEntries } from './roleplay-context.js'
 import { taskPhaseMessage, withTavernLock } from './tavern-tasks.js'
-import { isSettingManagementCall } from './tavern-task-context.js'
+import { isSettingManagementCall, inlineTaskEnvelope } from './tavern-task-context.js'
 import type { HostSession, HostAgent } from './roleplay-task-host-types.js'
-import type { TaskToolArguments, TaskToolExecution, TaskToolsDependencies } from './roleplay-task-tools-types.js'
+import type { TaskToolArguments, TaskToolExecution, TaskToolsDependencies, TaskSubmitArguments } from './roleplay-task-tools-types.js'
 import type { CharacterInputSource } from './character-cluster-projection.js'
+import type { ClaimedMaintenanceInput } from './roleplay-input-preparation.js'
+import type { ContextEvent } from './roleplay-context.js'
+import { isAgentLoopRequest, type GenerateOptions } from '@deepseek-ai/dsh-llm'
+
+export const semanticTaskSubmitDescription='提交当前维护请求的状态或决策结果。kind 使用 status 或 decision；result 为该任务指定的 JSON 或文本。任务标识由程序绑定，无需填写 id 或 generation。'
+export const semanticTaskSubmitParameters={type:'object',properties:{
+  kind:{type:'string',enum:['status','decision']},result:{},
+},required:['kind','result'],additionalProperties:false}
+export const legacyTaskSubmitDescription='提交角色卡、小说或记忆维护任务的结果。id 与 generation 使用当前真实任务提供的值，result 严格遵循该任务的结果契约。'
+export const legacyTaskSubmitParameters={type:'object',properties:{id:{type:'string'},generation:{type:'string'},result:{}},
+  required:['id','generation','result'],additionalProperties:false}
+
+type TaskIdentity=Readonly<{id:string;generation:string;kind:string}>
+function selectedInlineTasks(messages:readonly GenerateOptions['messages'][number][],claimedIds?:ReadonlySet<unknown>):readonly TaskIdentity[] {
+  for(let index=messages.length-1;index>=0;index--) {
+    const message=messages[index]!,source=message.source as unknown as
+      {kind?:string;form?:string;schemaVersion?:number}
+    if(source?.kind!=='roleplay-tasks'||source.form!=='phase'||source.schemaVersion!==1
+      ||claimedIds&&!claimedIds.has(message.id))continue
+    // This is the program's actual phase, not prose containing a task marker.
+    // A missing/truncated envelope cannot borrow an older phase's identities.
+    try {
+      const tasks=inlineTaskEnvelope(textOf(message.content??[]))
+      return Array.isArray(tasks)?Object.freeze(tasks.map(({id,generation,kind})=>
+        Object.freeze({id,generation,kind}))):[]
+    }catch{return []}
+  }
+  return []
+}
+
+/** Associates accepted Native call IDs with their own frozen request input.
+ * No current-job lookup belongs here: the task engine still owns currency,
+ * cancellation and publication. A cold Agent binds only a new real request. */
+export function createTaskSubmissionBindings() {
+  type Request={agent:HostAgent;session:HostSession;turn:number;step:number;signal:AbortSignal;
+    input:ClaimedMaintenanceInput;tasks?:readonly TaskIdentity[]}
+  const requests=new Map<string,Request>()
+  let calls=new WeakMap<HostAgent,Map<string,Readonly<{signal:AbortSignal;tasks:readonly TaskIdentity[]}>>>()
+  return {
+    semanticOnly(input:ClaimedMaintenanceInput) {
+      const tasks=selectedInlineTasks(input.messages)
+      return tasks.length>0&&tasks.every(task=>task.kind==='status'||task.kind==='decision')
+        &&new Set(tasks.map(task=>task.kind)).size===tasks.length
+    },
+    begin({agent,turn,step,signal}: {agent:HostAgent&{session:HostSession};turn:number;step:number;signal:AbortSignal},
+      input:ClaimedMaintenanceInput|undefined) {
+      requests.delete(agent.session.id)
+      if(input?.turn===turn)requests.set(agent.session.id,{agent,session:agent.session,turn,step,signal,input})
+    },
+    capture(options:GenerateOptions) {
+      if(!isAgentLoopRequest(options))return
+      const request=options.sessionId?requests.get(options.sessionId):undefined
+      if(!request||request.signal!==options.signal)return
+      request.tasks=selectedInlineTasks(options.messages,new Set(request.input.messages.map(message=>message.id)))
+    },
+    observe(session:HostSession,event:ContextEvent) {
+      const request=requests.get(session.id)
+      if(!request||request.session!==session||event.data?.turn!==request.turn)return
+      if(event.type==='turn/end') {
+        requests.delete(session.id);calls.delete(request.agent)
+        return
+      }
+      if(event.type!=='assistant/message'||event.data.step!==request.step||!request.tasks?.length)return
+      let owned=calls.get(request.agent)
+      if(!owned){owned=new Map();calls.set(request.agent,owned)}
+      const binding=Object.freeze({signal:request.signal,tasks:request.tasks})
+      // Includes run_code roots: nested tool executions retain rootCallId.
+      for(const block of event.data.message?.content??[])if(block.type==='tool-call'&&block.id)owned.set(block.id,binding)
+    },
+    resolve(exec:TaskToolExecution,kind:'status'|'decision'):TaskIdentity {
+      const callId=exec.rootCallId??exec.callId,binding=exec.agent&&callId?calls.get(exec.agent)?.get(callId):undefined
+      const matches=binding?.tasks.filter(task=>task.kind===kind)
+      if(!binding||binding.signal.aborted||matches?.length!==1)throw Error('维护结果缺少当前请求的唯一任务绑定')
+      return matches[0]!
+    },
+    release(agent:HostAgent) {
+      if(agent.session&&requests.get(agent.session.id)?.agent===agent)requests.delete(agent.session.id)
+      calls.delete(agent)
+    },
+    dispose(){requests.clear();calls=new WeakMap()},
+  }
+}
 
 export function assertSteeringAgent(agent: HostAgent | undefined): asserts agent is HostAgent & {steer: NonNullable<HostAgent['steer']>} {
   if (!agent || typeof agent.steer !== 'function') throw new Error('当前会话代理尚未就绪')
@@ -25,7 +107,11 @@ export const simpleTool = <A, E, R>(name: string, description: string, parameter
     timeoutMs: 120000,
   })
 
-export function registerTaskTools({ctx,T,clusterJob,resolveRoleplaySession,storyBranchIsActive,characterCluster,cardWorkflowKey,isRoleplaySession,ensureBranch,ensureSourceActivationBranch,tavernTasks,startExportJob,activeCardWorkflow,characterRoster,contextWindowKey,clusterLoreVisible,assertClusterSource}: TaskToolsDependencies) {
+export function registerTaskTools({
+  ctx,T,clusterJob,resolveRoleplaySession,storyBranchIsActive,characterCluster,cardWorkflowKey,isRoleplaySession,
+  ensureBranch,ensureSourceActivationBranch,tavernTasks,startExportJob,activeCardWorkflow,characterRoster,
+  contextWindowKey,clusterLoreVisible,assertClusterSource,submissionBindings,
+}: TaskToolsDependencies) {
   const sessionOf = async (exec: {agent?: HostAgent},purpose:'ordinary'|'source-activation-management'='ordinary') => {
     let session: HostSession | null | undefined = exec?.agent?.session
     const roleJob=clusterJob(exec?.agent)
@@ -63,10 +149,17 @@ export function registerTaskTools({ctx,T,clusterJob,resolveRoleplaySession,story
     {type:'object',properties:{mode:{type:'string',enum:['original','organized']}},additionalProperties:false},
     async(args,exec)=>({ok:true,jobId:(await startExportJob(await sessionOf(exec),'card-export',exec.agent,undefined,undefined,args.mode)).id}))),
     'roleplay: deterministic card export tool')
-  ctx.effect(()=>ctx.tools.register(simpleTool<TaskToolArguments, TaskToolExecution, Promise<unknown>>('rp_task_submit',
-    '提交当前循环完成的维护任务结果。id和generation来自系统任务元数据（完整内联或rp_task_read）；result为任务指定JSON对象或完整文本。各任务独立校验。',
-    {type:'object',properties:{id:{type:'string'},generation:{type:'string'},result:{}},required:['id','generation','result'],additionalProperties:false},
-    async(args,exec)=>({ok:true,result:await tavernTasks.submit({session:await sessionOf(exec),id:args.id!,generation:args.generation!,value:args.result})}))), 'roleplay: task submit tool')
+  ctx.effect(()=>ctx.tools.register(simpleTool<TaskSubmitArguments, TaskToolExecution, Promise<unknown>>('rp_task_submit',
+    semanticTaskSubmitDescription+' 其他任务继续使用来源中的 id、generation 和 result，各任务独立校验。',
+    {type:'object',properties:{...legacyTaskSubmitParameters.properties,...semanticTaskSubmitParameters.properties},
+      required:['result'],additionalProperties:false},
+    async(args,exec)=>{
+      // Capture before sessionOf's first await; a later request/registration
+      // must never retarget an already dispatched result to a newer task.
+      const identity='kind' in args?submissionBindings.resolve(exec,args.kind):args
+      return {ok:true,result:await tavernTasks.submit({session:await sessionOf(exec),
+        id:identity.id,generation:identity.generation,value:args.result})}
+    })), 'roleplay: task submit tool')
 
   ctx.effect(() => ctx.tools.register(simpleTool<TaskToolArguments, TaskToolExecution, Promise<unknown>>(
     'rp_history',
