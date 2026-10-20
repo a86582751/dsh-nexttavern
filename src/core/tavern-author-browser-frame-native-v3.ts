@@ -2,8 +2,8 @@
  * belong to the Worker; this owner never parses plans or runs author scripts. */
 import {createBrowserPageRendererV3} from './tavern-author-browser-renderer-v3.js'
 import type {BrowserPageRendererOptionsV3} from './tavern-author-browser-renderer-v3.js'
-import type {BrowserSourcePagePlanV3} from './tavern-author-browser-types-v3.mjs'
-import type {BrowserPageNativeSessionV3,BrowserPageTransportV3} from './tavern-author-browser-page-worker-v3.js'
+import type {BrowserPageNativeSessionV3,BrowserPageTransportV3,BrowserPageExecutionDataV3,
+  BrowserPagePrincipalV3} from './tavern-author-browser-page-worker-v3.js'
 import type {BrowserNativeFrameHookV3,BrowserPageRendererV3,NativeCallbackDeliveryV3,NativeHandleV3,
   NativeRequestV3,NativeWireObjectV3,NativeWireValueV3,OwnedNativeCallbackV3} from './tavern-author-browser-native-types-v3.js'
 
@@ -11,13 +11,14 @@ import type {BrowserNativeFrameHookV3,BrowserPageRendererV3,NativeCallbackDelive
  * carrier comes from the actual registered native document, never the caller. */
 export interface BrowserNativeSourceFrameV3 {
   readonly frameId:number
-  readonly carrierIdentity:string
+  readonly carrierIdentity?:string
   readonly carrierPageId:string
+  readonly principal:BrowserPagePrincipalV3
 }
 interface Carrier {
   readonly document:Document
   readonly pageId:string
-  readonly carrierIdentity:string
+  readonly principal:BrowserPagePrincipalV3
   styleValue?:(value:string)=>string
   documentHandle?:NativeHandleV3
   exportOwnedNode?:(node:Node|null)=>NativeWireValueV3
@@ -49,7 +50,7 @@ type Route={readonly state:FrameState;readonly kind:'frame'}
 export interface BrowserSourceFrameOwnerOptionsV3 {
   readonly onCallback?:(delivery:NativeCallbackDeliveryV3)=>void
   readonly onFrameClosed?:(frame:BrowserNativeSourceFrameV3,pageId:string|undefined)=>void
-  readonly rendererOptions?:(frame:BrowserNativeSourceFrameV3,pageId:string,plan:BrowserSourcePagePlanV3)=>
+  readonly rendererOptions?:(frame:BrowserNativeSourceFrameV3,pageId:string,plan:BrowserPageExecutionDataV3)=>
     Pick<BrowserPageRendererOptionsV3,'onCallback'|'onNativeEvent'|'onPromiseSettlement'|'resolveResource'|'schedulerWindow'|'onImages'>
 }
 const undef={tag:'undefined'} as const
@@ -108,7 +109,13 @@ export function createBrowserSourceFrameOwnerV3(options:BrowserSourceFrameOwnerO
   function create(carrier:Carrier):NativeHandleV3 {
     const element=carrier.document.createElement('iframe')
     element.setAttribute('sandbox','allow-same-origin allow-forms')
-    const frame=Object.freeze({frameId:-nextHandle+1,carrierIdentity:carrier.carrierIdentity,carrierPageId:carrier.pageId})
+    if(carrier.principal.kind==='reader-regex-document') {
+      element.title='作者正则阅读文档'
+      element.style.cssText='display:block;width:100%;height:600px;border:0'
+    }
+    const frame=Object.freeze({frameId:-nextHandle+1,
+      ...carrier.principal.kind==='helper'?{carrierIdentity:carrier.principal.carrierIdentity}:{},
+      principal:carrier.principal,carrierPageId:carrier.pageId})
     const state:FrameState={frame,carrier,element,reference:undefined as unknown as NativeHandleV3,
       routes:new Set(),listeners:new Map(),location:{src:'',srcdoc:''},active:true}
     const reference=allocate(state,{state,kind:'frame'},'frame')
@@ -203,7 +210,7 @@ export function createBrowserSourceFrameOwnerV3(options:BrowserSourceFrameOwnerO
     }
     return fail('BROWSER3_FRAME_OPERATION_UNSUPPORTED')
   }
-  function forCarrier(carrier:Carrier):BrowserNativeFrameHookV3 {
+  function forDocument(carrier:Carrier):BrowserNativeFrameHookV3 {
     carriers.set(carrier.document,carrier)
     return {create:(document,pageId,styleValue)=>{
       const actual=carriers.get(document)
@@ -235,7 +242,7 @@ export function createBrowserSourceFrameOwnerV3(options:BrowserSourceFrameOwnerO
       carriers.delete(document)
     }}
   }
-  async function mount(frame:BrowserNativeSourceFrameV3,pageId:string,plan:BrowserSourcePagePlanV3,
+  async function mount(frame:BrowserNativeSourceFrameV3,pageId:string,plan:BrowserPageExecutionDataV3,
     signal:AbortSignal):Promise<BrowserPageNativeSessionV3> {
     signal.throwIfAborted()
     const state=stateOf(frame)
@@ -264,7 +271,7 @@ export function createBrowserSourceFrameOwnerV3(options:BrowserSourceFrameOwnerO
     document.open();document.write(BROWSER_NATIVE_INERT_SHELL_V3);document.close()
     const renderer=createBrowserPageRendererV3({document,plan,pageId,
       ...options.rendererOptions?.(frame,pageId,plan),
-      externalFrames:forCarrier({document,pageId,carrierIdentity:frame.carrierIdentity})})
+      externalFrames:forDocument({document,pageId,principal:frame.principal})})
     state.page={pageId,renderer}
     const live=()=>{signal.throwIfAborted();if(!state.active||state.page?.renderer!==renderer)fail('BROWSER3_PAGE_CLOSED')}
     return {applyUntil:async end=>{live();return renderer.applyUntil(end)},
@@ -292,12 +299,23 @@ export function createBrowserSourceFrameOwnerV3(options:BrowserSourceFrameOwnerO
     if(state.propertyListener)options.onCallback?.({callback:state.propertyListener,args:[eventRef],
       receiver:state.reference,resourceKind:'resource',event:eventState})
   }
-  return {forCarrier,transport,frameLoaded,getFrame:(reference:NativeHandleV3)=>{
+  return {forDocument,
+    forCarrier:(carrier:Omit<Carrier,'principal'>&{readonly carrierIdentity:string})=>
+      forDocument({...carrier,principal:{kind:'helper',carrierIdentity:carrier.carrierIdentity}}),
+    /** Main may create a frame only inside an already registered real document. */
+    createFrame:(document:Document,container:HTMLElement)=>{
+      const reference=create(carriers.get(document)??fail('BROWSER3_FRAME_DOCUMENT_UNAVAILABLE'))
+      container.appendChild(routeOf(reference).state.element)
+      return reference
+    },
+    transport,frameLoaded,getFrame:(reference:NativeHandleV3)=>{
     const route=routeOf(reference);return route.kind==='frame'?route.state.frame:fail('BROWSER3_FRAME_HANDLE_REQUIRED')
   },reference:(frame:BrowserNativeSourceFrameV3)=>stateOf(frame).reference,
   owner:(frame:BrowserNativeSourceFrameV3)=>{
     const actual=carriers.get(stateOf(frame).element.ownerDocument)!
-    return {carrierIdentity:actual.carrierIdentity,parentPageId:actual.pageId}
+    return actual.principal.kind==='helper'
+      ?{carrierIdentity:actual.principal.carrierIdentity,parentPageId:actual.pageId}
+      :{...actual.principal,parentPageId:actual.pageId}
   },
   recordLocation:(frame:BrowserNativeSourceFrameV3,location:{readonly src?:string;readonly srcdoc?:string})=>{
     const state=stateOf(frame);state.location={...state.location,...location}

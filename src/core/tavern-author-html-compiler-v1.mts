@@ -142,8 +142,21 @@ function bodySpan(node:Element):HtmlSpanV1 {
 const textContent=(node:Element)=>node.childNodes.filter(base.isTextNode).map(child=>child.value).join('')
 const urlAttributes=new Set(['src','href','xlink:href','action','formaction','poster','data'])
 
+/** Shared parse5/CSS/TS kernel has no carrier or admission authority. Each
+ * caller seals its own versioned Source origin around these exact facts. */
+export type SourceHtmlDocumentDataV1=Omit<HtmlParsedCandidateV1,
+  'schemaVersion'|'encoding'|'authority'|'origin'|'candidateSha256'>
 export function parseSourceHtmlCandidateV1(input:SourceHtmlInputV1):HtmlParsedCandidateV1 {
-  const html=input.html,htmlUtf8Bytes=Buffer.byteLength(html,'utf8')
+  const parsed=parseSourceHtmlDocumentV1(input.html)
+  const body={schemaVersion:1 as const,encoding:'source-html-parsed-candidate-v1' as const,
+    authority:'parsed-source-data-only' as const,
+    origin:{source:input.source,carrier:input.carrier,resourcePath:input.resourcePath,
+      htmlSha256:sha256(input.html),htmlUtf8Bytes:Buffer.byteLength(input.html,'utf8'),htmlUtf16Length:input.html.length},
+    ...parsed}
+  return {...body,candidateSha256:recordSha256(body)}
+}
+export function parseSourceHtmlDocumentV1(html:string):SourceHtmlDocumentDataV1 {
+  const htmlUtf8Bytes=Buffer.byteLength(html,'utf8')
   if(htmlUtf8Bytes>HTML_PARSE_BOUNDS_V1.htmlBytes)throw Error('HTML_SOURCE_BYTE_LIMIT')
   const recorded=recordingAdapter(),{id,nodes,steps}=recorded
   const diagnostics:HtmlParseDiagnosticV1[]=[],boundaries=new Map<Element,number>()
@@ -210,14 +223,9 @@ export function parseSourceHtmlCandidateV1(input:SourceHtmlInputV1):HtmlParsedCa
     if(node.nodeName==='#document')return {...common,kind:'document',mode:node.mode,children:node.childNodes.map(id)}
     return {...common,kind:'fragment',children:node.childNodes.map(id)}
   })
-  const body={schemaVersion:1 as const,encoding:'source-html-parsed-candidate-v1' as const,
-    authority:'parsed-source-data-only' as const,
-    origin:{source:input.source,carrier:input.carrier,resourcePath:input.resourcePath,htmlSha256:sha256(html),htmlUtf8Bytes,htmlUtf16Length:html.length},
-    parser:{html:'parse5' as const,htmlVersion:'8.0.1' as const,css:'css-tree' as const,cssVersion:'3.2.1' as const,
+  return {parser:{html:'parse5' as const,htmlVersion:'8.0.1' as const,css:'css-tree' as const,cssVersion:'3.2.1' as const,
       javascript:'typescript' as const,javascriptVersion:'5.9.3' as const},
     document:{documentNodeId:id(parser.document),mode:parser.document.mode,nodes:facts},steps,scripts,styles,resources,diagnostics}
-  return {...body,candidateSha256:recordSha256(body)}
-
   function cssStyle(node:Element,kind:HtmlParsedStyleV1['kind'],htmlSpan:HtmlSpanV1,css:string):HtmlParsedStyleV1 {
     const styleOrdinal=styles.length,nodeId=id(node),cssDiagnostics:HtmlParseDiagnosticV1[]=[]
     let cssNodeCount=0

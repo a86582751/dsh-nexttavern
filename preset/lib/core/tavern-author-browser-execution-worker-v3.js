@@ -143,6 +143,12 @@ async function start(message) {
                 setDocumentState: (state, stateSignal) => rpc({ op: 'carrier-state', contextId, state }, stateSignal),
                 dispose: () => active ? rpc({ op: 'carrier-dispose', contextId }) : Promise.resolve() };
         },
+        async createReaderRoot() {
+            const value = await rpc({ op: 'reader-root-create' });
+            return { document: value.document, frames: value.frames.map((fact) => ({
+                    frame: frames.get(fact.frameId), documentPlanSha256: fact.kind === 'reader-regex-document' ? fact.documentPlanSha256 : ''
+                })) };
+        },
         nativeRequest: (contextId, request, signal) => rpc({ op: 'native', contextId, request }, signal),
         sourceRequest: (payload, signal) => rpc({ op: 'source', payload }, signal),
         hostRequest: (payload, signal) => rpc({ op: 'host', payload }, signal),
@@ -200,9 +206,9 @@ owner.addEventListener('message', event => {
     }
     if (!active)
         return;
-    if (message.type === 'start')
+    if (message.type === 'start' || message.type === 'reader-start')
         root(() => start(message));
-    else if (message.type === 'snapshot')
+    else if (message.type === 'snapshot' || message.type === 'reader-snapshot')
         root(() => attachment.snapshot(message.snapshot));
     else if (message.type === 'source-event')
         root(() => attachment.deliverSourceEvent(message.event));

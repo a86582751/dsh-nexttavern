@@ -114,6 +114,9 @@ export interface BrowserPageRendererOptionsV3 {
   readonly carrierScript?:{readonly javascript:string;readonly identity:string;
     readonly mediaSources?:readonly string[];
     readonly captured:(reference:NativeHandleV3)=>void}
+  /** The actual isolated Reader outer document is already Main-owned DOM.
+   * It is a native parent, with no invented Source candidate or carrier script. */
+  readonly readerRootDocument?:true
   readonly pageId:string
   readonly onCallback?:(delivery:NativeCallbackDeliveryV3)=>void
   /** Main-only capture hook, before any Source listener; the Event stays Native. */
@@ -135,9 +138,11 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   // Transport has already entered this trusted bootstrap and handed over its
   // document. Detached nodes cannot affect author selectors/:nth-child/CSS;
   // removing the CSP META does not revoke the already applied native policy.
-  for(const node of Array.from(shellHead.childNodes))trustedHead.appendChild(node)
-  for(const node of Array.from(shellBody.childNodes))trustedBody.appendChild(node)
-  shellHead.remove();shellBody.remove()
+  if(!options.readerRootDocument) {
+    for(const node of Array.from(shellHead.childNodes))trustedHead.appendChild(node)
+    for(const node of Array.from(shellBody.childNodes))trustedBody.appendChild(node)
+    shellHead.remove();shellBody.remove()
+  }
   const handles=new Map<number,HandleOwner>(),reverse=new WeakMap<object,number>()
   const images=new Map<number,BrowserNativeImageV3>()
   const nodes=new Map<number,Node>(),ownedNodes=new Set<Node>([doc])
@@ -187,6 +192,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(handle!==undefined&&images.delete(handle))publishImages()
   }
   const visibleNode=(node:Node)=>ownedNodes.has(node)||!!options.externalFrames?.encode(node)
+    ||options.readerRootDocument===true&&node.ownerDocument===doc
   function owned(reference:NativeHandleV3):HandleOwner {
     const result=reference.pageId===pageId?handles.get(reference.handle):undefined
     if(!result)throw Error('BROWSER3_DOM_HANDLE_UNAVAILABLE')
@@ -327,7 +333,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(value===view)return {tag:'page-window',pageId}
     if(value===doc)return documentHandle
     if(value instanceof view.Node)return options.externalFrames?.encode(value)
-      ??(ownedNodes.has(value)?ref(value,value instanceof view.HTMLMediaElement?'audio':'node'):null)
+      ??(visibleNode(value)?ref(value,value instanceof view.HTMLMediaElement?'audio':'node'):null)
     if(value instanceof view.Event)return ref(value,'event')
     if(value instanceof view.File)return ref(value,'file')
     if(value instanceof view.Blob)return ref(value,'blob')
@@ -879,7 +885,11 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   }
   if(options.onNativeEvent)for(const type of generationEvents)doc.addEventListener(type,options.onNativeEvent,true)
   doc.addEventListener('submit',preventNavigation,true);doc.addEventListener('click',preventNavigation,true)
-  if(options.carrierScript) {
+  if(options.readerRootDocument) {
+    logicalHtml=own(shellHtml,false) as Element
+    logicalHead=own(shellHead,false) as Element;logicalBody=own(shellBody,false) as Element
+    ended=true
+  }else if(options.carrierScript) {
     logicalHtml=own(shellHtml,false) as Element
     logicalHead=own(doc.createElement('head')) as Element
     logicalBody=own(doc.createElement('body')) as Element

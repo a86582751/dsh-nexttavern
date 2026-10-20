@@ -103,6 +103,7 @@ import {createRoleplayMvuPlayer} from './roleplay-mvu-player.js'
 import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
 import {registerMvuPlayerRoutes} from './roleplay-mvu-player-routes.js'
 import {createRoleplayAuthorBrowser} from './roleplay-author-browser.js'
+import {createRoleplayReaderDisplay} from './roleplay-reader-display.js'
 import {createRoleplayAuthorWorldbookCoreV1} from './roleplay-author-worldbook-core.js'
 import {createCanonicalAuthorChatStateV1,deriveAuthorChatBindingV1,deriveAuthorChatBindingV2}
   from './roleplay-author-chat-state.js'
@@ -244,8 +245,8 @@ export const inject = [
 ]
 
 const DEFAULT_CONFIG = {
-  workerProvider: 'deepseek-official' as string | null,
-  workerModel: 'deepseek-flash' as string | null,
+  workerProvider: null as string | null,
+  workerModel: null as string | null,
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
@@ -3043,6 +3044,28 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     startExportJob: (...args) => startExportJob(...args),
     svc,
   })
+  // State version queries and actual display projections consume the same
+  // observation. Its existing Domain/schema publication feed owns invalidation;
+  // asking only for a version must not rebuild the complete scope bindings.
+  const readerDisplayScopes=(id:string)=>inputState.captureObservation(id,()=>{
+      const schema=mvuOpening.captureReaderDisplayScopes(id)
+      if(schema)return schema
+      if(mvuOpening.hasSchemaOpening(id))return undefined
+      // This is the numerical owner's read-only observation. It does not open
+      // a prompt scope, load lore or repair an unavailable variable namespace.
+      const actual=mvuState.readNumericalObservation(id)
+      if(actual.kind!=='ready')return undefined
+      const values={stat_data:actual.snapshot.values}
+      return {bindings:[{scope:'chat' as const,ownerId:`${id}:prompt-scope:chat`,
+        versionSha256:actual.snapshot.stateSnapshotSha256,values,valuesSha256:recordSha256(values)}],
+        versionSha256:actual.snapshot.stateSnapshotSha256,displayUpdates:actual.displayUpdates}
+    },'reader-display-scopes')
+  const readerDisplay=createRoleplayReaderDisplay({inputState,source:tavernSource,
+    session:id=>ctx.sessions.get(id),messageEdits:ctx.nexttavernMessageEdits,
+    includeCardStyle:id=>narrativePresets.policy(id).effective.mode!=='system',
+    scopes:id=>readerDisplayScopes(id).data,
+    documentFacts:mvuOpening.captureReaderDocumentFacts,
+    documentRuntime:async()=>mvuOpening.readerDocumentRuntime()})
   const { collectBranchRecords, recordVersionsFor, readRoleplayState } = createRoleplayState({
     ctx,
     T,
@@ -3071,6 +3094,16 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     selectedStatusGeneration,
     importSummary,
     numericalState:observeNumericalState,
+    readerDisplay:async(session,messages,signal)=>{
+      try {await mvuOpening.preflightSchema(session.id,signal)}catch {
+        // Unavailable numerical scopes must not block pure Source display.
+        signal.throwIfAborted()
+      }
+      return readerDisplay.capture(session.id,messages,signal)
+    },
+    readerDisplayContextVersion:id=>recordSha256({
+      scopes:readerDisplayScopes(id).data?.versionSha256??null,
+      cardStyle:narrativePresets.policy(id).effective.mode!=='system'}),
     chatImportProjection:(session,record) => {
       // A historical attachment receipt alone must never open a choice for a
       // cancelled, replaced, inherited or incompletely activated import.

@@ -7,7 +7,8 @@ import {TAVERN_PROMPT_TRANSFORM_LIMITS_V1 as LIMITS,TAVERN_PROMPT_POST_ORDER_V1,
 import type {TavernPromptTransformWorkerInputV1,TavernPromptTransformResultV1,
   TavernPromptTransformDiagnosticV1,TavernPromptProjectionV1,TavernPromptBindingV1,
   TavernPromptTransformEntryV1,TavernPromptRegexRuleV1,TavernPromptNamesV1,
-  TavernPromptRuleReceiptV1,TavernPromptStageReceiptV1} from './tavern-prompt-transform-types.mjs'
+  TavernPromptRuleReceiptV1,TavernPromptStageReceiptV1,TavernPromptDisplayPartV1,
+  TavernPromptDisplayReplacementV1,TavernPromptDisplayProvenanceV1} from './tavern-prompt-transform-types.mjs'
 import type {TavernTemplateReadV1} from './tavern-template-types.mjs'
 
 const legacyAliases=[['<USER>','user'],['<BOT>','char'],['<CHAR>','char'],
@@ -36,6 +37,8 @@ function run(data:TavernPromptTransformWorkerInputV1):TavernPromptTransformResul
   let diagnostics:TavernPromptTransformDiagnosticV1[]=[]
   const compiled=new Map<string,CompiledRule>()
   let ruleMetadata:readonly string[]|undefined
+  let displayReplacements:TavernPromptDisplayReplacementV1[]|undefined
+  const displayProvenance:TavernPromptDisplayProvenanceV1[]=[]
   const diag=(code:string,token:string|null=null,
     limit:TavernPromptTransformDiagnosticV1['limit']=null):TavernPromptTransformDiagnosticV1=>({
     schemaVersion:1,code,entryKey:entry?.key??null,ruleId:rule?.id??null,macro:token,limit,
@@ -363,9 +366,19 @@ function run(data:TavernPromptTransformWorkerInputV1):TavernPromptTransformResul
         status:'deferred',reason:c.diagnostics[0]?.code??'PROMPT_TRANSFORM_REGEX_INVALID',matches:0});continue}
       const before=matches
       let replacement:string|undefined
-      result=replace(result,c.regex,m=>{
+      const original=result,prior=displayReplacements,next:TavernPromptDisplayReplacementV1[]=[]
+      let cursor=0,outputCursor=0
+      const unchanged=(end:number)=>{
+        if(prior)for(const item of prior)if(item.start>=cursor&&item.end<=end)
+          next.push({...item,start:item.start+outputCursor-cursor,end:item.end+outputCursor-cursor})
+        outputCursor+=end-cursor
+      }
+      result=replace(original,c.regex,m=>{
+        if(prior)unchanged(m.index)
         // A template cannot consume output or substitution work until a match.
         replacement??=current.replaceString.replace(/{{match}}/gi,'$0')
+        const parts:TavernPromptDisplayPartV1[]=[]
+        let templateCursor=0
         const substituted=replace(replacement,/\$(\d+)|\$<([^>]+)>/g,token=>{
           let capture:unknown
           if(token[1]) {
@@ -378,12 +391,28 @@ function run(data:TavernPromptTransformWorkerInputV1):TavernPromptTransformResul
             else if(n===m.length+1)capture=result
             else if(n===m.length+2&&m.groups)capture=m.groups
           } else capture=m.groups?.[token[2]!]
-          if(!capture)return ''
-          if(typeof capture!=='string'){issue('PROMPT_TRANSFORM_CAPTURE_UNSUPPORTED',token[0]);return token[0]}
-          return filter(capture,current)
+          const value=!capture?'':typeof capture==='string'?filter(capture,current):token[0]
+          if(capture&&typeof capture!=='string')issue('PROMPT_TRANSFORM_CAPTURE_UNSUPPORTED',token[0])
+          if(prior){
+            parts.push({kind:'literal',text:replacement!.slice(templateCursor,token.index)},
+              {kind:'capture',text:value})
+            templateCursor=token.index+token[0].length
+          }
+          return value
         })
-        return macros(substituted)
+        const value=macros(substituted)
+        if(prior){
+          parts.push({kind:'literal',text:replacement.slice(templateCursor)})
+          // Macro-bearing templates retain normal display behavior. This owner
+          // only grants literal HTML to the supported Source text-slot template.
+          if(!replacement.includes('{{')&&value===substituted)next.push({ruleId:current.id,
+            sourcePointer:current.sourcePointer,sourceSnapshotSha256:current.sourceSnapshotSha256,
+            start:outputCursor,end:outputCursor+value.length,parts})
+          outputCursor+=value.length;cursor=m.index+m[0].length
+        }
+        return value
       },true)
+      if(prior){unchanged(original.length);displayReplacements=next}
       add({ruleId:current.id,sourcePointer:current.sourcePointer,status:'applied',reason:null,matches:matches-before})
     }
     rule=null;return result
@@ -392,6 +421,7 @@ function run(data:TavernPromptTransformWorkerInputV1):TavernPromptTransformResul
   const canonicalEntries:(readonly (string|Uint8Array)[])[]=[]
   for(const current of input.entries) {
     entry=current;rule=null;reads=new Map();diagnostics=[];job()
+    displayReplacements=data.displayProvenance&&current.channel==='display'&&current.pipeline==='regex-only'?[]:undefined
     let text=current.inputText
     const rawSha256=schemaTextSha256(current.rawText)
     const storySha256=current.storyText===current.rawText?rawSha256:schemaTextSha256(current.storyText)
@@ -422,10 +452,12 @@ function run(data:TavernPromptTransformWorkerInputV1):TavernPromptTransformResul
     fields.set('projectionSha256',stableJson(projectionSha256))
     canonicalEntries.push(encodeFields(fields))
     outputs.push({...projection,projectionSha256})
+    if(displayReplacements)displayProvenance.push({entryKey:current.key,replacements:displayReplacements})
   }
-  return createTavernPromptTransformOutputV1(data,outputs,{
+  const result=createTavernPromptTransformOutputV1(data,outputs,{
     outputChars,workChars,jobs,matches,compiledRules,receipts:receiptCount,receiptChars,
   },canonicalEntries)
+  return result.kind==='transformed'&&data.displayProvenance?{...result,displayProvenance}:result
 }
 export function executeTavernPromptTransformsV1(data:TavernPromptTransformWorkerInputV1):TavernPromptTransformResultV1 {
   try {return run(data)} catch(error) {

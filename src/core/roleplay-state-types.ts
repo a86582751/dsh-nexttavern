@@ -6,6 +6,7 @@ import type { createRoleplayTaskHost } from './roleplay-task-host.js'
 import type { createRoleplayStatus } from './roleplay-status.js'
 import type { InheritanceSession, TruncationBoundaryCarry } from './roleplay-inheritance-types.js'
 import type { ImportRecord } from './roleplay-import-types.js'
+import type {ReaderDisplayMessageRef,ReaderDisplayResponse} from './roleplay-reader-display.js'
 
 export type StateSession = ContextSession & BranchSession
 export interface StateRecord extends Record<string, unknown> {
@@ -44,6 +45,8 @@ export interface StateDependencies extends StateWorldlines {
   chatImportProjection?(session:StateSession,record:ImportRecord):Record<string,unknown> | null
   numericalState?(sessionId:string):import('./roleplay-mvu-player-types.js').MvuStateObservation
     |Promise<import('./roleplay-mvu-player-types.js').MvuStateObservation>
+  readerDisplay?(session:StateSession,messages:readonly ReaderDisplayMessageRef[],signal:AbortSignal):Promise<ReaderDisplayResponse>
+  readerDisplayContextVersion?(sessionId:string):string
   preparationRecordKey(id: string): string
   tavernTasks: ReturnType<typeof createRoleplayTaskHost>['tavernTasks']
   memoryForContext(session: StateSession): unknown

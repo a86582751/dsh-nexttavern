@@ -74,6 +74,10 @@ import type {MvuEditInvalidation} from './roleplay-mvu-edit-facts.js'
 import {acceptedMvuDisplayUpdate,formatMvuDisplayUpdates} from './roleplay-mvu-display-facts.js'
 import type {MvuAcceptedDisplayUpdate} from './roleplay-mvu-display-facts.js'
 import type {RoleplayInputStateOwner,RoleplayInputStateRead} from './roleplay-input-state.js'
+import type {ReaderDisplayScopes} from './roleplay-reader-display.js'
+import type {TavernTemplateScopeBindingV1} from './tavern-template-types.mjs'
+import type {ReaderRegexDocumentReadFactsV1,ReaderRegexDocumentSnapshotV1} from './reader-regex-document-types.mjs'
+import type {AuthorBrowserCapturedFacts} from './roleplay-author-browser.js'
 
 interface Table {get(key:string):unknown;put(key:string,value:unknown):Promise<unknown>;entries():Iterable<[string,unknown]>}
 export interface MvuSchemaStoryCoreDeps {
@@ -994,6 +998,35 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         swipes:candidates.map(row=>row.renderedText),swipe_id:selected}:null
     return {messageId:identity.messageId,originalMessageVersionSha256,copiedCandidates}
   }
+  /** Reader needs two current variable scopes, not a reconstructed prompt or
+   * a second history admission. The existing read owns every consumed row. */
+  function captureReaderDisplayScopes(sid:string):ReaderDisplayScopes|undefined {
+    const view=views.get(sid)
+    if(!view)return
+    if(disposed||!view.read.current()||deps.session(sid)!==view.session
+      ||deps.agent(view.session)!==view.agent)return
+    const source=schemaScopeSource(view.frame.snapshot),facts=view.history.readScopes,
+      ready=view.history.ready,bindings:TavernTemplateScopeBindingV1[]=[]
+    const browser=isAuthorHostJournalReadyV5(ready)?ready.epoch.program.browserProgram:undefined,
+      binding=browser?.schemaVersion===2?deriveAuthorChatBindingV1(sid,browser):null,
+      authorChat=binding&&deps.authorChat?deps.authorChat.capture(binding):null
+    const available=(scope:'chat'|'global',variables:MvuScopeVariablesV1)=>{
+      if(variables.kind!=='available')return
+      const overlay=scope==='chat'&&authorChat?.exists?authorChat:null,
+        values=overlay?{...variables.variables,[overlay.binding.key]:overlay.value}:variables.variables,
+        versionSha256=overlay?recordSha256({mvu:variables.provenance,authorChat:overlay.captureSha256})
+          :recordSha256(variables.provenance)
+      bindings.push({scope,ownerId:`${sid}:prompt-scope:${scope}`,versionSha256,
+        values,valuesSha256:recordSha256(values)})
+    }
+    if(facts) {
+      available('chat',schemaScopeReowner(facts.chat,schemaScopeOwner(source,'chat')))
+      available('global',schemaScopeEmpty(schemaScopeOwner(source,'global')))
+    }
+    return {source,bindings,versionSha256:recordSha256({source,state:view.history.snapshot.stateSnapshotSha256,
+      scopes:bindings.map(({scope,ownerId,versionSha256,valuesSha256})=>({scope,ownerId,versionSha256,valuesSha256}))}),
+      displayUpdates:view.history.displayUpdates??[]}
+  }
   function capturePromptScopes(sid:string) {
     const view=views.get(sid),facts=view?.history.readScopes
     if(!view||!facts||!viewCurrent(view))return undefined
@@ -1090,12 +1123,16 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(view.history.inheritedReady)Object.defineProperty(basis,'inheritedReady',{value:view.history.inheritedReady})
     return basis as typeof basis&{readonly inheritedReady?:SchemaJournalReady}
   }
-  async function captureBrowserFacts(sid:string) {
+  function captureAuthorReadFacts(sid:string,readerDocument:true):Promise<ReaderRegexDocumentReadFactsV1|undefined>
+  function captureAuthorReadFacts(sid:string,readerDocument?:false):Promise<AuthorBrowserCapturedFacts|undefined>
+  async function captureAuthorReadFacts(sid:string,readerDocument=false):
+    Promise<AuthorBrowserCapturedFacts|ReaderRegexDocumentReadFactsV1|undefined> {
     await preflight(sid)
     const view=views.get(sid)
     if(!view||!viewCurrent(view))fail('SCHEMA_BROWSER_FACTS_UNPROVEN')
     const ready=view.history.ready
-    if(!isAuthorHostJournalReadyV5(ready)||!ready.epoch.program.browserProgram)return undefined
+    if(!isAuthorHostJournalReadyV5(ready))return undefined
+    if(!readerDocument&&!ready.epoch.program.browserProgram)return undefined
     const program=ready.epoch.program.browserProgram,{runtime}=await engine(ready)
     if(!('host' in runtime)||!viewCurrent(view))fail('SCHEMA_BROWSER_FACTS_CHANGED')
     const facts=view.history.readScopes
@@ -1124,7 +1161,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       messages.push({...identity,role:entry.kind,text:textOf(message.content)})
       return {...identity,isSystem:false as const,variables}
     })
-    const scopeFrame=buildSchemaScopeReadFrame(source,recordSha256(basis),program.scripts.map(row=>row.descriptor),
+    const descriptors=program?program.scripts.map(row=>row.descriptor):schemaOriginalCompilationInput(original).scripts
+    const scopeFrame=buildSchemaScopeReadFrame(source,recordSha256(basis),descriptors,
       facts.chat,scoped)
     const data:Omit<BrowserSnapshotV1,'generation'|'readRevision'>={schemaVersion:1,encoding:'native-author-browser-snapshot-v1',
       basis,scopeFrame,messages,numerical:browserNumericalSnapshot(view,events.length)}
@@ -1139,7 +1177,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     }
     const current=()=>ownerCurrent()&&deps.source.frameCurrent(original,frame)
     if(!current())fail('SCHEMA_BROWSER_FACTS_CHANGED')
-    if(program.schemaVersion===1)return {program,artifact:runtime.browser.artifact as import('./tavern-author-browser-types.mjs').BrowserRuntimeArtifactV1,
+    if(!readerDocument&&program?.schemaVersion===1)return {program,artifact:runtime.browser.artifact as import('./tavern-author-browser-types.mjs').BrowserRuntimeArtifactV1,
       data,current}
     const opening=captureAuthorOpening(view,scopeFrame,events)
     // Match the generation capture's opening-zero author history. Native
@@ -1158,6 +1196,14 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const card=frame.material.card as MvuJsonObject,native=card.data as MvuJsonObject
     const character:NativeBrowserCharacterV1={sourceId:frame.snapshot.source.importId,
       name:String(native.name),...typeof native.avatar==='string'?{avatar:native.avatar}:{}}
+    if(readerDocument) {
+      const readerData:Omit<ReaderRegexDocumentSnapshotV1,'generation'|'readRevision'>={...data,
+        schemaVersion:1,encoding:'reader-regex-document-snapshot-v1',messages:capturedMessages,
+        persona:{name:context.user,...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},
+        character,authorChats:[]}
+      return {kind:'reader-regex-document-facts',data:readerData,current} satisfies ReaderRegexDocumentReadFactsV1
+    }
+    if(!program)return undefined
     if(program.schemaVersion===3) {
       const owned=captureDeclaredChatKeys(sid,program)
       const dataV3:Omit<BrowserSnapshotV3,'generation'|'readRevision'>={...data,
@@ -1170,14 +1216,22 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         ...(program.requiredCapabilities.includes('owned-script-source-resources')
           ?{resources:deps.source.captureScriptResources(frame)}:{})}
     }
-    const authorBinding=deriveAuthorChatBindingV1(sid,program)
-    const dataV2:Omit<BrowserSnapshotV2,'generation'|'readRevision'>={...data,
-      schemaVersion:2,encoding:'native-author-browser-snapshot-v2',messages:capturedMessages,
-      persona:{name:context.user,...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},
-      authorChat:authorBinding&&deps.authorChat?deps.authorChat.capture(authorBinding):null,character}
-    return {program,artifact:runtime.browser.artifact as BrowserRuntimeArtifactV2,data:dataV2,current,
-      ...(program.requiredCapabilities.includes('owned-script-source-resources')
-        ?{resources:deps.source.captureScriptResources(frame)}:{})}
+    if(program.schemaVersion===2) {
+      const authorBinding=deriveAuthorChatBindingV1(sid,program)
+      const dataV2:Omit<BrowserSnapshotV2,'generation'|'readRevision'>={...data,
+        schemaVersion:2,encoding:'native-author-browser-snapshot-v2',messages:capturedMessages,
+        persona:{name:context.user,...context.user_gender!==undefined?{gender:context.user_gender}:{},avatar:null},
+        authorChat:authorBinding&&deps.authorChat?deps.authorChat.capture(authorBinding):null,character}
+      return {program,artifact:runtime.browser.artifact as BrowserRuntimeArtifactV2,data:dataV2,current,
+        ...(program.requiredCapabilities.includes('owned-script-source-resources')
+          ?{resources:deps.source.captureScriptResources(frame)}:{})}
+    }
+  }
+  async function captureBrowserFacts(sid:string) {
+    return captureAuthorReadFacts(sid)
+  }
+  async function captureReaderDocumentFacts(sid:string):Promise<ReaderRegexDocumentReadFactsV1|undefined> {
+    return captureAuthorReadFacts(sid,true)
   }
   /** A denial basis survives later projection/head changes. This selects only
    * immutable original Native/author facts and never exposes numerical values. */
@@ -1371,7 +1425,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       return view.history.consumed.get(plan.planSha256)===recordSha256({terminal,event,settlement})
     } catch {return false}
   }
-  return {preflight,adoptPublishedPlayer,observation,readSnapshot,readSchemaObservation,capturePromptScopes,executePrompt,captureBrowserFacts,
+  return {preflight,adoptPublishedPlayer,observation,readSnapshot,readSchemaObservation,captureReaderDisplayScopes,capturePromptScopes,executePrompt,captureBrowserFacts,captureReaderDocumentFacts,
     readEditBasis,captureManualBasis,captureHistoricalCut,borrowHistoricalCut,
     captureForkPrefix,recoverForkPrefix,verifyForkPrefix,captureFrozenForkPrefix,recoverFrozenForkPrefix,verifyFrozenForkPrefix,
     prepareCompletion,releaseClosing,verifyConsumed,

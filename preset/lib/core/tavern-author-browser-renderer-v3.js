@@ -82,12 +82,14 @@ export function createBrowserPageRendererV3(options) {
     // Transport has already entered this trusted bootstrap and handed over its
     // document. Detached nodes cannot affect author selectors/:nth-child/CSS;
     // removing the CSP META does not revoke the already applied native policy.
-    for (const node of Array.from(shellHead.childNodes))
-        trustedHead.appendChild(node);
-    for (const node of Array.from(shellBody.childNodes))
-        trustedBody.appendChild(node);
-    shellHead.remove();
-    shellBody.remove();
+    if (!options.readerRootDocument) {
+        for (const node of Array.from(shellHead.childNodes))
+            trustedHead.appendChild(node);
+        for (const node of Array.from(shellBody.childNodes))
+            trustedBody.appendChild(node);
+        shellHead.remove();
+        shellBody.remove();
+    }
     const handles = new Map(), reverse = new WeakMap();
     const images = new Map();
     const nodes = new Map(), ownedNodes = new Set([doc]);
@@ -143,7 +145,8 @@ export function createBrowserPageRendererV3(options) {
         if (handle !== undefined && images.delete(handle))
             publishImages();
     }
-    const visibleNode = (node) => ownedNodes.has(node) || !!options.externalFrames?.encode(node);
+    const visibleNode = (node) => ownedNodes.has(node) || !!options.externalFrames?.encode(node)
+        || options.readerRootDocument === true && node.ownerDocument === doc;
     function owned(reference) {
         const result = reference.pageId === pageId ? handles.get(reference.handle) : undefined;
         if (!result)
@@ -341,7 +344,7 @@ export function createBrowserPageRendererV3(options) {
             return documentHandle;
         if (value instanceof view.Node)
             return options.externalFrames?.encode(value)
-                ?? (ownedNodes.has(value) ? ref(value, value instanceof view.HTMLMediaElement ? 'audio' : 'node') : null);
+                ?? (visibleNode(value) ? ref(value, value instanceof view.HTMLMediaElement ? 'audio' : 'node') : null);
         if (value instanceof view.Event)
             return ref(value, 'event');
         if (value instanceof view.File)
@@ -1165,7 +1168,13 @@ export function createBrowserPageRendererV3(options) {
             doc.addEventListener(type, options.onNativeEvent, true);
     doc.addEventListener('submit', preventNavigation, true);
     doc.addEventListener('click', preventNavigation, true);
-    if (options.carrierScript) {
+    if (options.readerRootDocument) {
+        logicalHtml = own(shellHtml, false);
+        logicalHead = own(shellHead, false);
+        logicalBody = own(shellBody, false);
+        ended = true;
+    }
+    else if (options.carrierScript) {
         logicalHtml = own(shellHtml, false);
         logicalHead = own(doc.createElement('head'));
         logicalBody = own(doc.createElement('body'));

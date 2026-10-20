@@ -1,5 +1,6 @@
 import { createReaderBeautyCache } from './reader-beauty.js';
-import type { ReaderBeautyTask } from './reader-beauty.js';
+import type { ReaderBeautyTask, FetchReaderDisplay } from './reader-beauty.js';
+import type { ReaderDisplayResponse } from '../core/roleplay-reader-display.js';
 import type { MvuAcceptedDisplayUpdate } from '../core/roleplay-mvu-display-facts.js';
 import { AUTHOR_FRAME_MAX_ROWS, createAuthorFrame, type AuthorFrameLayout, type AuthorFramePart } from './author-runtime.js';
 export { createAuthorRuntime } from './author-runtime.js';
@@ -9,7 +10,7 @@ import type { StateReply } from './state-store.js';
 import type { ActivityState, ActivityComponents } from './activity-view.js';
 import { normalizeConversationNodes, readerNodeSeq, readerMessageId, readerText, readerTime, usageTokens, formatReaderTime } from './reader-model.js';
 import { scopeReaderCss, READER_BASE_CSS } from './reader-rendering.js';
-import {createAuthorBrowserSession, type AuthorBrowserStatus} from './author-browser-session.js';
+import {createAuthorBrowserSession,createReaderRegexDocumentSession, type AuthorBrowserStatus} from './author-browser-session.js';
 import type {createSessionImages} from './session-images.js';
 
 
@@ -35,12 +36,14 @@ interface ReaderState extends StateReply {
     activity?: ActivityState;
     rules?: {beauty?: {regexRules?: ReaderRule[];css?: string;js?: string;};};
     surfaceNodes?: {seq?: number;turn?: number;}[];
+    readerDisplay?: {enabled: boolean;};
     failedTurnRecoveryByTurn?: Record<string, unknown>;
     // Reader consumes only these display fields; numerical snapshots and
     // server execution contracts belong to the state producer.
     numericalState?: {
         sessionId: string;
         kind: string;
+        snapshot?: {revision?: number;stateSnapshotSha256?: string;valuesSha256?: string;sourceSha256?: string;};
         displayUpdates?: readonly MvuAcceptedDisplayUpdate[];
     } | null;
 }
@@ -61,6 +64,7 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     isRoleplaySession(id: string): boolean;
     useTavernActivity: ActivityComponents['useTavernActivity'];
     fetchState(id: string, force?: boolean): Promise<ReaderState>;
+    fetchReaderDisplay?: FetchReaderDisplay;
     subscribeState(id: string, listener: () => void): () => void;
     sessionsService: {using<T>(id: string, options: {source: 'nexttavernReader'}, operation: (reference: {binding: {session: {loadOlder(): Promise<void>}}}) => T | Promise<T>): Promise<T>};
     toast(text: string): void;
@@ -76,6 +80,16 @@ React,
      isRoleplaySession,
      useTavernActivity,
      fetchState,
+     fetchReaderDisplay = async (sessionId, messages, signal) => {
+         const response = await globalThis.fetch('/api/roleplay/state', {
+             method: 'POST', headers: {'content-type': 'application/json'}, signal,
+             body: JSON.stringify({action: 'reader-display', sessionId, messages}),
+         });
+         const result = await response.json() as ReaderDisplayResponse & {code?: string;error?: string;};
+         if (!response.ok || result.ok !== true) throw new Error(result.code ?? result.error
+             ?? `Reader display HTTP ${response.status}`);
+         return result;
+     },
      subscribeState,
      sessionsService,
      toast,
@@ -117,8 +131,11 @@ React,
         const frameControllerRef = React.useRef<ReturnType<typeof createAuthorFrame> | null>(null);
         const browserContainerRef = React.useRef<HTMLDivElement>(null);
         const browserControllerRef = React.useRef<ReturnType<typeof createAuthorBrowserSession> | null>(null);
+        const readerDocumentContainerRef = React.useRef<HTMLDivElement>(null);
+        const readerDocumentControllerRef = React.useRef<ReturnType<typeof createReaderRegexDocumentSession> | null>(null);
         const browserObservedStateRef = React.useRef<ReaderState | null>(null);
         const [browserStatus, setBrowserStatus] = React.useState<AuthorBrowserStatus>({kind: 'loading'});
+        const [readerDocumentStatus, setReaderDocumentStatus] = React.useState<AuthorBrowserStatus>({kind: 'inactive'});
         const frameIdentityRef = React.useRef('');
         const [frameEpoch, setFrameEpoch] = React.useState(0);
         const [frameLayout, setFrameLayout] = React.useState<{identity: string;value: AuthorFrameLayout;} | null>(null);
@@ -160,6 +177,7 @@ React,
                 // sessionId. Revoke old author capabilities before fetching new state.
                 frameControllerRef.current?.dispose();
                 frameControllerRef.current = null;
+                readerDocumentControllerRef.current?.invalidate();
                 setFrameEpoch(value => value + 1);
                 void browserControllerRef.current?.refresh();
                 load(true);
@@ -229,9 +247,23 @@ React,
         const rules = Array.isArray(beauty?.regexRules) ? beauty.regexRules : [];
         const authorCss = String(beauty?.css ?? '');
         const authorJs = String(beauty?.js ?? '');
-        const actualFramed = browserControllerRef.current?.hasFrame() === true
+        const numerical = state?.sessionId === sessionId ? state.numericalState : undefined;
+        const displayEnabled = state?.sessionId === sessionId && state.readerDisplay?.enabled === true;
+        // The selected Source/Native scope owns document fragments and normal
+        // beauty results together, including the author frame's history window.
+        const beautyScope = sessionId + '\0' + JSON.stringify([rules, displayEnabled
+            ? [state.surfaceNodes, state.recordVersions, numerical?.kind,
+                numerical?.snapshot?.revision, numerical?.snapshot?.stateSnapshotSha256,
+                numerical?.snapshot?.valuesSha256, numerical?.snapshot?.sourceSha256]
+            : null]);
+        const beautyCache = beautyCacheRef.current;
+        beautyCache.selectScope(beautyScope);
+        const actualBrowserFramed = browserControllerRef.current?.hasFrame() === true
             && browserStatus.kind !== 'failed' && browserStatus.kind !== 'inactive';
-        const authorWindow = actualFramed || !!authorJs.trim();
+        const actualReaderFramed = readerDocumentControllerRef.current?.hasFrame() === true
+            && readerDocumentStatus.kind !== 'failed' && readerDocumentStatus.kind !== 'inactive';
+        const actualFramed = actualBrowserFramed || actualReaderFramed;
+        const authorWindow = actualFramed || !!authorJs.trim() || beautyCache.hasDocuments() || !!beautyCache.execution();
 
         // Collect only the authoritative surface of this Session.  The Chat
         // target may retain audit/shadow nodes after a replacement, and sibling
@@ -276,11 +308,16 @@ React,
             selectedNodeSeqs.add(seq);
             return true;
         });
+        // Source-backed display expands each Native row before rendering. Its
+        // body, author documents and native actions share this small page.
+        const nativePageRows = displayEnabled ? 16 : 500;
         const windowStart = readerStart === null
-            ? Math.max(0, selectedNodes.length - 500)
+            ? Math.max(0, selectedNodes.length - nativePageRows)
             : Math.min(Math.max(0, readerStart), Math.max(0, selectedNodes.length - 1));
-        const authorHistoryPage = authorWindow && windowStart < Math.max(0, selectedNodes.length - 500);
-        const readerNodes = selectedNodes.slice(windowStart);
+        const authorHistoryPage = (authorWindow || displayEnabled)
+            && windowStart < Math.max(0, selectedNodes.length - nativePageRows);
+        const readerNodes = displayEnabled ? selectedNodes.slice(windowStart, windowStart + nativePageRows)
+            : selectedNodes.slice(windowStart);
         const settledStoryKeys = new Set(readerNodes
             .filter((node) => node?.kind === 'assistant-step' && node?.data?.status === 'settled')
             .map((node) => `${node.data?.turn ?? ''}:${node.data?.step ?? ''}`));
@@ -368,11 +405,12 @@ React,
         // Keep the complete collected suffix available for explicit navigation.
         const transientParts = parts.filter(part => part.transient);
         const committedParts = parts.filter(part => !part.transient);
-        const visibleParts = authorWindow
+        const visibleParts = displayEnabled
+            ? [...committedParts, ...transientParts]
+            : authorWindow
             ? [...committedParts.slice(0, AUTHOR_FRAME_MAX_ROWS - transientParts.length), ...transientParts]
             : parts;
 
-        const numerical = state?.sessionId === sessionId ? state.numericalState : undefined;
         const displayUpdates = numerical?.sessionId === sessionId
             && (numerical.kind === 'ready' || numerical.kind === 'schema-ready')
             && Array.isArray(numerical.displayUpdates) ? numerical.displayUpdates : [];
@@ -391,15 +429,14 @@ React,
                 ...(accepted ? {displayUpdate: accepted} : {})};
         };
         const visibleTasks = visibleParts.map(taskFor);
-        const beautyScope = sessionId + '\0' + JSON.stringify(rules);
-        const beautyCache = beautyCacheRef.current;
-        beautyCache.selectScope(beautyScope);
         // Keep transient stream text out of regex work; it still gets immediate fallback rendering.
         const beautyTasks = visibleTasks.filter((_, index) => visibleParts[index]!.kind === 'narrator'
             && !visibleParts[index]!.transient);
+        const readerExecution = beautyCache.execution(beautyTasks);
         const beautyInput = JSON.stringify(beautyTasks);
         React.useEffect(
-        () => beautyCache.run(beautyScope, beautyTasks, rules, () => refreshBeauty(n => n + 1)),
+        () => beautyCache.run(beautyScope, beautyTasks, rules, () => refreshBeauty(n => n + 1),
+            displayEnabled && sessionId ? {sessionId, read: fetchReaderDisplay} : undefined),
 
             [beautyScope, beautyInput]
         );
@@ -409,6 +446,8 @@ React,
             ...part,
             displayText: part.kind === 'narrator' ? beautyCache.textFor(visibleTasks[index]!) : part.text,
             html: part.kind === 'narrator' ? applyBeauty(visibleTasks[index]!) : '',
+            fragments: part.kind === 'narrator' ? beautyCache.fragmentsFor(visibleTasks[index]!) : undefined,
+            readerFragments: part.kind === 'narrator' ? beautyCache.readerFragmentsFor(visibleTasks[index]!) : undefined,
         }));
         if (state !== null && selectedNodes.length === 0) {
             console.warn(
@@ -430,24 +469,53 @@ React,
         const committedDocHtml = renderedParts.filter(part => !part.transient).map(part => part.kind === 'narrator' ? part.html : part.text).join('\n');
         const historyBusy = loadingOlder || historySnapshot?.loadingOlder === true;
         const canLoadOlder = windowStart > 0 || (!!loadOlder && historySnapshot?.hasMore === true);
-        const canLoadNewer = authorWindow && visibleParts.length < parts.length;
-        const canLoadLatest = authorWindow && readerStart !== null;
+        const canLoadNewer = displayEnabled ? windowStart + readerNodes.length < selectedNodes.length
+            : authorWindow && visibleParts.length < parts.length;
+        const canLoadLatest = (authorWindow || displayEnabled) && readerStart !== null;
         const readerPartKey = (part: ReaderPart) => part.transient
             ? part.streamKey ?? 'stream:unknown'
             : `${part.kind}:${part.seq ?? ''}:${part.messageId ?? ''}`;
         const renderedHeadKey = renderedParts.length ? readerPartKey(renderedParts[0]!) : null;
         const frameIdentity = JSON.stringify([
             frameEpoch, sessionId, state?.sessionId, state?.preset, authorJs, authorCss, committedDocHtml,
+            beautyCache.hasDocuments(),
         ]);
         frameIdentityRef.current = frameIdentity;
-        const framed = browserStatus.kind === 'inactive' && !!authorJs.trim() && frameFailure?.identity !== frameIdentity;
+        const framed = browserStatus.kind === 'inactive' && (!readerExecution || !!authorJs.trim())
+            && (!!authorJs.trim() || beautyCache.hasDocuments())
+            && frameFailure?.identity !== frameIdentity;
         const activeFrameLayout = frameLayout?.identity === frameIdentity ? frameLayout.value : null;
         const framePayload = JSON.stringify(renderedParts.map(part => ({
-            key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html,
+            key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html, fragments: part.fragments,
         } satisfies AuthorFramePart)));
         const committedBrowserPayload = JSON.stringify(renderedParts.filter(part => !part.transient).map(part => ({
             key: readerPartKey(part), kind: part.kind, text: part.displayText, html: part.html,
         })));
+        const readerDocumentPayload = JSON.stringify(renderedParts.filter(part => !part.transient).map(part =>
+            part.kind === 'user' ? {key: readerPartKey(part),kind: part.kind,text: part.displayText}
+                : {key: readerPartKey(part),kind: part.kind,html: part.html,fragments: part.readerFragments}));
+        const readerDocumentConflict = readerExecution && browserStatus.kind !== 'inactive'
+            && browserStatus.kind !== 'loading' ? 'READER_REGEX_DOCUMENT_LEGACY_FRAME_ACTIVE'
+            : readerExecution && authorJs.trim() ? 'READER_REGEX_DOCUMENT_LEGACY_SCRIPT_ACTIVE' : undefined;
+        React.useEffect(() => {
+            if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay'
+                || !readerDocumentContainerRef.current) return;
+            const controller = createReaderRegexDocumentSession({sessionId,container: readerDocumentContainerRef.current,
+                fill: text => fillComposer(text, false),
+                current: () => readerSessionRef.current === sessionId && readerDocumentControllerRef.current === controller,
+                status: setReaderDocumentStatus,
+                images: (owner,pageId,values) => images?.acceptBrowserImages(sessionId,owner,pageId,values),
+                releaseImages: owner => images?.releaseBrowserImages(owner)});
+            readerDocumentControllerRef.current = controller;
+            setReaderDocumentStatus({kind: 'inactive'});
+            return () => {controller.dispose();if (readerDocumentControllerRef.current === controller) readerDocumentControllerRef.current = null;};
+        }, [sessionId,state?.sessionId,state?.preset]);
+        React.useEffect(() => {
+            const controller = readerDocumentControllerRef.current;
+            if (!controller) return;
+            if (!readerExecution || browserStatus.kind !== 'inactive' || authorJs.trim()) {controller.invalidate();return;}
+            controller.update(readerExecution,{css: READER_BASE_CSS + '\n' + authorCss,parts: JSON.parse(readerDocumentPayload)});
+        }, [readerExecution,readerDocumentPayload,browserStatus.kind,authorJs,authorCss]);
         React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !browserContainerRef.current) return;
             const controller = createAuthorBrowserSession({
@@ -484,7 +552,7 @@ React,
             if (!framed || !sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !frameRef.current) return;
             const identity = frameIdentity;
             const controller = createAuthorFrame(frameRef.current, {
-                source: authorJs,
+                ...(authorJs.trim() ? {mode: 'script' as const, source: authorJs} : {mode: 'static-document' as const}),
                 css: authorCss,
                 baseCss: READER_BASE_CSS,
                 current: () => readerSessionRef.current === sessionId && frameIdentityRef.current === identity,
@@ -547,7 +615,7 @@ React,
             setLoadingOlder(true);
             try {
                 if (windowStart > 0) {
-                    setReaderStart(Math.max(0, windowStart - 500));
+                    setReaderStart(Math.max(0, windowStart - nativePageRows));
                 } else {
                     // A zero local slice offset is not the server's end-of-history.
                     // Once paging starts keep the loaded branch window visible.
@@ -568,7 +636,7 @@ React,
         const requestNewer = () => {
             if (!canLoadNewer || historyBusy || historyRequestRef.current) return;
             // Overlap the pages so an on-screen original-seq row can stay put.
-            const next = visibleParts[Math.max(0, visibleParts.length - 100)];
+            const next = visibleParts[Math.max(0, visibleParts.length - (displayEnabled ? 1 : 100))];
             const nextStart = selectedNodes.findIndex(node => readerNodeSeq(node) === next?.seq);
             if (nextStart <= windowStart) return;
             holdHistoryAnchor(true);
@@ -693,6 +761,9 @@ React,
                 '隔离阅读视图不可用，已保留正文和原生操作；作者脚本未运行。' + frameFailure.reason) : null,
 
             beautyFailed ? React.createElement('div', { className: 'rp-reader-empty', role: 'status' }, '部分美化规则未能安全完成，已保留可读正文和原生操作。修改规则后会重新匹配。') : null,
+            readerDocumentConflict || readerDocumentStatus.kind === 'failed'
+                ? React.createElement('div', {className: 'rp-reader-empty',role: 'status'},
+                    '作者正则文档未执行：' + (readerDocumentConflict ?? readerDocumentStatus.code)) : null,
 
             canLoadOlder || historyBusy || historyError || canLoadNewer || canLoadLatest
                 ? React.createElement(
@@ -725,7 +796,9 @@ React,
                 : null,
 
             React.createElement('div', {className: 'rp-author-frame-host', ref: browserContainerRef,
-                style: {display: actualFramed ? undefined : 'none'}}),
+                style: {display: actualBrowserFramed ? undefined : 'none'}}),
+            React.createElement('div', {className: 'rp-author-frame-host', ref: readerDocumentContainerRef,
+                style: {display: actualReaderFramed ? undefined : 'none'}}),
             actualFramed
                 ? React.createElement('div', {className: 'rp-reader'},
                     renderedParts.map((part, index) => React.createElement('section', {

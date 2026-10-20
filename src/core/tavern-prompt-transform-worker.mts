@@ -9,7 +9,8 @@ try {
   // originals remain owned by the bounded caller's admitted batch input.
   const message:TavernPromptTransformWorkerResultV1=data.projectionTransport==='input-backed'&&result.kind==='transformed'
     ?{kind:'transformed',output:{...result.output,entries:result.output.entries.map(
-      ({rawText:_rawText,storyText:_storyText,inputText:_inputText,...projection})=>projection)}}
+      ({rawText:_rawText,storyText:_storyText,inputText:_inputText,...projection})=>projection)},
+      ...(result.displayProvenance?{displayProvenance:result.displayProvenance}:{})}
     :result
   parentPort?.postMessage(message)
 }

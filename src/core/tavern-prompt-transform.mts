@@ -188,7 +188,8 @@ export async function applyTavernPromptTransformsV1(value:unknown,
   } else {
     current(assertCurrent)
     const data={input,inputSha256:recordSha256(input),
-      policySha256:recordSha256(TAVERN_PROMPT_TRANSFORM_POLICY_V1),inputChars:countInputChars(input)}
+      policySha256:recordSha256(TAVERN_PROMPT_TRANSFORM_POLICY_V1),inputChars:countInputChars(input),
+      ...(dependencies.displayProvenance?{displayProvenance:true as const}:{})}
     // Only an empty rule registry and syntax-free consumed text avoid
     // executable work. Other pipelines retain the bounded Worker.
     const literal=input.rules.length===0&&input.entries.every(entry=>entry.pipeline==='regex-only'

@@ -164,19 +164,36 @@ export interface TavernPromptTransformOutputV1 {
     readonly receipts:number;readonly receiptChars:number}
   readonly outputSha256:string
 }
-export type TavernPromptTransformResultV1={readonly kind:'transformed';readonly output:TavernPromptTransformOutputV1}
+export type TavernPromptDisplayPartV1={readonly kind:'literal'|'capture';readonly text:string}
+export interface TavernPromptDisplayReplacementV1 {
+  readonly ruleId:string
+  readonly sourcePointer:string
+  readonly sourceSnapshotSha256:string
+  readonly start:number
+  readonly end:number
+  readonly parts:readonly TavernPromptDisplayPartV1[]
+}
+/** Ephemeral Reader transport only; never part of a canonical projection/hash. */
+export interface TavernPromptDisplayProvenanceV1 {
+  readonly entryKey:string
+  readonly replacements:readonly TavernPromptDisplayReplacementV1[]
+}
+export type TavernPromptTransformResultV1={readonly kind:'transformed';readonly output:TavernPromptTransformOutputV1;
+  readonly displayProvenance?:readonly TavernPromptDisplayProvenanceV1[]}
   |{readonly kind:'refused'|'cancelled';readonly diagnostics:readonly TavernPromptTransformDiagnosticV1[]}
 /** Internal Worker reply only. The bounded transport owner retains these
  * admitted strings; canonical projections and their hashes remain complete. */
 export type TavernPromptTransformWorkerResultV1={readonly kind:'transformed';readonly output:
   Omit<TavernPromptTransformOutputV1,'entries'> & {readonly entries:readonly
-    Omit<TavernPromptProjectionV1,'rawText'|'storyText'|'inputText'>[]}}
+    Omit<TavernPromptProjectionV1,'rawText'|'storyText'|'inputText'>[]};
+    readonly displayProvenance?:readonly TavernPromptDisplayProvenanceV1[]}
   |Extract<TavernPromptTransformResultV1,{readonly kind:'refused'|'cancelled'}>
 export interface TavernPromptTransformDependenciesV1 {
   /** Actual owner assertion is retained by reference outside the data snapshot.
    * It must be synchronous. Replay hashes never replace this check. */
   readonly assertCurrent:()=>void
   readonly signal?:AbortSignal
+  readonly displayProvenance?:true
 }
 export interface TavernPromptTransformWorkerInputV1 {
   readonly input:TavernPromptTransformInputV1
@@ -186,4 +203,5 @@ export interface TavernPromptTransformWorkerInputV1 {
   /** Opt-in transport metadata, outside canonical input and persisted DATA.
    * Direct Worker consumers without it retain the complete legacy reply. */
   readonly projectionTransport?:'input-backed'
+  readonly displayProvenance?:true
 }

@@ -9,6 +9,12 @@ interface QuoteEdit {node: number; parts: Array<{text: string; html?: never} | {
 type ReaderTask = SourceTask | FallbackTask
 type ReaderResult = SourceResult | FallbackResult
 
+export interface ReaderNarrativeRegexRunner {
+  (task: SourceTask, signal?: AbortSignal): Promise<SourceResult>
+  (task: FallbackTask, signal?: AbortSignal): Promise<FallbackResult>
+  (task: SourceTask | FallbackTask, signal?: AbortSignal): Promise<SourceResult | FallbackResult>
+}
+
 export function readerRegexTask(task: SourceTask): SourceResult
 export function readerRegexTask(task: FallbackTask): FallbackResult
 export function readerRegexTask(task: ReaderTask): ReaderResult {
@@ -95,26 +101,51 @@ export function readerRegexTask(task: ReaderTask): ReaderResult {
 
 let readerRegexQueue: Promise<unknown> = Promise.resolve(), readerRegexWorker: Worker | null = null
 
-export function runReaderRegex(task: SourceTask): Promise<SourceResult>
-export function runReaderRegex(task: FallbackTask): Promise<FallbackResult>
-export function runReaderRegex(task: ReaderTask): Promise<ReaderResult>
-export function runReaderRegex(task: ReaderTask): Promise<ReaderResult> {
-  const run = () => new Promise<ReaderResult>((resolve, reject) => {
-    let timer: ReturnType<typeof setTimeout> | undefined, worker: Worker | undefined
-    const stop = (error: unknown) => {clearTimeout(timer); worker?.terminate(); if(readerRegexWorker===worker)readerRegexWorker=null; reject(error)}
-    try {
-      if(!readerRegexWorker) {
-        const code=`const run=${readerRegexTask.toString()};self.onmessage=e=>{try{self.postMessage({ok:true,value:run(e.data)})}catch{self.postMessage({ok:false})}};`
-        const url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}))
-        try {readerRegexWorker=new Worker(url)} finally {URL.revokeObjectURL(url)}
+export function runReaderRegex(task: SourceTask, signal?: AbortSignal): Promise<SourceResult>
+export function runReaderRegex(task: FallbackTask, signal?: AbortSignal): Promise<FallbackResult>
+export function runReaderRegex(task: SourceTask | FallbackTask, signal?: AbortSignal): Promise<SourceResult | FallbackResult>
+export function runReaderRegex(task: ReaderTask, signal?: AbortSignal): Promise<ReaderResult>
+export function runReaderRegex(task: ReaderTask, signal?: AbortSignal): Promise<ReaderResult> {
+  const run = () => {
+    // A cancelled queued caller keeps its place until the preceding owner is
+    // finished. It cannot release the queue or terminate that owner's Worker.
+    if (signal?.aborted) return Promise.reject(signal.reason)
+    return new Promise<ReaderResult>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined, worker: Worker | undefined
+      let settled = false
+      const cleanup = () => {clearTimeout(timer); signal?.removeEventListener('abort', abort)}
+      const done = (value: ReaderResult) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        resolve(value)
       }
-      worker=readerRegexWorker
-      worker.onmessage=(e: MessageEvent<{ok: true; value: ReaderResult} | {ok: false}>)=>{clearTimeout(timer);e.data?.ok?resolve(e.data.value):stop(new Error('美化规则超过执行限制'))}
-      worker.onerror=()=>stop(new Error('美化工作线程不可用'))
-      timer=setTimeout(()=>stop(new Error('美化正则匹配超时')),250)
-      worker.postMessage(task)
-    } catch(error){stop(error)}
-  })
+      const stop = (error: unknown) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        worker?.terminate()
+        if(readerRegexWorker===worker)readerRegexWorker=null
+        reject(error)
+      }
+      const abort = () => stop(signal?.reason)
+      signal?.addEventListener('abort', abort, {once:true})
+      try {
+        if(!readerRegexWorker) {
+          const code=`const run=${readerRegexTask.toString()};self.onmessage=e=>{try{self.postMessage({ok:true,value:run(e.data)})}catch{self.postMessage({ok:false})}};`
+          const url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}))
+          try {readerRegexWorker=new Worker(url)} finally {URL.revokeObjectURL(url)}
+        }
+        worker=readerRegexWorker
+        worker.onmessage=(e: MessageEvent<{ok: true; value: ReaderResult} | {ok: false}>)=>{
+          e.data?.ok?done(e.data.value):stop(new Error('美化规则超过执行限制'))
+        }
+        worker.onerror=()=>stop(new Error('美化工作线程不可用'))
+        timer=setTimeout(()=>stop(new Error('美化正则匹配超时')),250)
+        worker.postMessage(task)
+      } catch(error){stop(error)}
+    })
+  }
   const result=readerRegexQueue.catch(()=>{}).then(run)
   readerRegexQueue=result.catch(()=>{})
   return result

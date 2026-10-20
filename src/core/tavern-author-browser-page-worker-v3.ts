@@ -1,11 +1,20 @@
 /** Shared-Actor page execution and resource lifetime owner. Source admission,
  * attachment permissions and durable writes belong to the enclosing Worker. */
 import type {BrowserActorV3,BrowserPrimitiveV3,BrowserPromiseResultV3} from './tavern-author-browser-adapter-v3.js'
-import type {BrowserSourcePagePlanV3,BrowserWriterOriginV3} from './tavern-author-browser-types-v3.mjs'
+import type {BrowserWriterOriginV3} from './tavern-author-browser-types-v3.mjs'
+import type {BrowserNativeRenderPlanV3} from './tavern-author-browser-renderer-v3.js'
 import type {BrowserPageApplyResultV3,NativeHandleV3,NativeRequestV3,
   NativeReplyV3} from './tavern-author-browser-native-types-v3.js'
 
 export type BrowserPageLifecycleV3='readystatechange'|'DOMContentLoaded'|'load'
+/** Internal execution shape, deliberately independent of any serialized page
+ * schema or Helper carrier. The enclosing principal owns Source admission. */
+export interface BrowserPageExecutionDataV3 extends BrowserNativeRenderPlanV3 {
+  readonly origin:{readonly htmlSha256:string}
+  readonly pagePlanSha256:string
+}
+export type BrowserPagePrincipalV3={readonly kind:'helper';readonly carrierIdentity:string}
+  |{readonly kind:'reader-regex-document';readonly programSha256:string}
 /** Renderer operations finish at their actual native ACK. Resource readiness
  * includes the renderer's load-blocking requests, including failed requests. */
 export interface BrowserPageNativeSessionV3 {
@@ -20,7 +29,7 @@ export interface BrowserPageNativeSessionV3 {
  * dispose also works during mount, cancels native routes/waits and ACKs native
  * detach. The transport must honor abort without waiting for the Actor. */
 export interface BrowserPageTransportV3<Frame extends object> {
-  mount(frame:Frame,pageId:string,plan:BrowserSourcePagePlanV3,
+  mount(frame:Frame,pageId:string,plan:BrowserPageExecutionDataV3,
     signal:AbortSignal):Promise<BrowserPageNativeSessionV3>
   dispose(frame:Frame,pageId:string):Promise<void>
 }
@@ -37,7 +46,7 @@ export interface BrowserPageGuestControllerV3 {
 export interface BrowserPageBootstrapV3<Frame extends object> {
   readonly pageId:string
   readonly frame:Frame
-  readonly plan:BrowserSourcePagePlanV3
+  readonly plan:BrowserPageExecutionDataV3
   readonly context:any
   readonly parentContext:any
   readonly document:NativeHandleV3
@@ -57,10 +66,10 @@ export interface BrowserPageWorkerOptionsV3<Frame extends object> {
 interface Page<Frame extends object> {
   readonly pageId:string
   readonly frame:Frame
-  readonly plan:BrowserSourcePagePlanV3
+  readonly plan:BrowserPageExecutionDataV3
   readonly parentContext:any
   readonly abort:AbortController
-  readonly scripts:Map<number,BrowserSourcePagePlanV3['parsed']['scripts'][number]>
+  readonly scripts:Map<number,BrowserPageExecutionDataV3['parsed']['scripts'][number]>
   phase:'mounting'|'queued'|'parsing'|'resources'|'ready'|'loaded'|'closed'|'failed'
   session?:BrowserPageNativeSessionV3
   context?:any
@@ -87,7 +96,7 @@ export class BrowserPageWorkerV3<Frame extends object=object> {
   }
   /** Called from a suspended FFI: reserves identity and waits only for native
    * mount. Fresh context creation and author execution happen at entry seams. */
-  async requestMount(frame:Frame,plan:BrowserSourcePagePlanV3,
+  async requestMount(frame:Frame,plan:BrowserPageExecutionDataV3,
     parentContext=this.options.actor.parent):Promise<{readonly pageId:string}> {
     if(!this.active)throw Error('BROWSER3_ATTACHMENT_CLOSED')
     const previous=this.frames.get(frame)

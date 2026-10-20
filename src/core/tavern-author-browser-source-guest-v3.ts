@@ -209,6 +209,17 @@ export function browserSourceGuestBootstrapV3(config:any) {
     }
     throw Error('BROWSER_VARIABLE_SCOPE_UNSUPPORTED')
   }
+  /** Reader consumes the same captured scope frame as MVU's actual read
+   * owner. Prompt-history reindexing and copied UI values are not this scope. */
+  function readerVariables(option:any,state=snapshot):any {
+    if(option.type==='script')throw Error('READER_REGEX_DOCUMENT_SCRIPT_SCOPE_UNAVAILABLE')
+    if(option.type!=='message')return variables(option,state)
+    const rows=state.scopeFrame.messages,id=option.message_id
+    const row=id===undefined||id==='latest'?rows.findLast((row:any)=>!row.isSystem)
+      :rows[id<0?rows.length+id:id]
+    const value=variableValue(row?.variables)
+    return value===undefined?undefined:clone(value)
+  }
   function messages(range:any='0-{{lastMessageId}}',options:any={},state=snapshot):any {
     const rows=state.messages,last=rows.length-1
     const position=(text:any)=>{
@@ -295,7 +306,8 @@ export function browserSourceGuestBootstrapV3(config:any) {
   })
   function createFacade(text:string):any {
     const creator=freeze(parse(text))
-    if(!creator.sourcePage)carrierOrigins.set(creator.pageId,freeze({originalOrdinal:creator.originalOrdinal,
+    const reader=creator.principal==='reader-regex-document'
+    if(!reader&&!creator.sourcePage)carrierOrigins.set(creator.pageId,freeze({originalOrdinal:creator.originalOrdinal,
       scriptIdentity:creator.scriptIdentity,descriptorSha256:creator.descriptorSha256,page:null}))
     function resource(operation:any):any {
       if(!live(creator))throw Error('BROWSER_ATTACHMENT_REVOKED')
@@ -307,8 +319,8 @@ export function browserSourceGuestBootstrapV3(config:any) {
       }})))
       return clone(resources.get(key))
     }
-    const getVariables=(option:any={type:'chat'})=>option.type==='script'
-      ?resource({kind:'self-script-data'}):variables(option,reading(creator))
+    const getVariables=(option:any={type:'chat'})=>reader?readerVariables(option,reading(creator))
+      :option.type==='script'?resource({kind:'self-script-data'}):variables(option,reading(creator))
     const explicitVariables=(option:any={type:'chat'})=>{
       if(option.type!=='script')return getVariables(option)
       if(typeof option.script_id!=='string'||!option.script_id)throw Error('AUTHOR_SCRIPT_RESOURCE_SCRIPT_ID_REQUIRED')
@@ -501,6 +513,25 @@ export function browserSourceGuestBootstrapV3(config:any) {
     }
     const guarded=(value:any)=>Object.fromEntries(Object.entries(value).map(([key,fn])=>
       [key,typeof fn==='function'?guard(fn):fn]))
+    if(reader) {
+      const readSubscribe=(type:string,callback:Function,once=false,first=false)=>{
+        if(type===eventTypes.GENERATION_AFTER_COMMANDS)throw Error('READER_REGEX_DOCUMENT_GENERATION_UNAVAILABLE')
+        return subscribe(creator,type,callback,once,first)
+      }
+      const reads={getVariables,getAllVariables:()=>{
+        const state=reading(creator)
+        return Object.assign({},variables({type:'global'},state),variables({type:'character'},state),
+          chat(state),readerVariables({type:'message'},state))
+      },getChatMessages:apis.getChatMessages,event_types:eventTypes,tavern_events:eventTypes,Mvu:mvu,
+      eventOn:(type:string,callback:Function)=>readSubscribe(type,callback),
+      eventOnce:(type:string,callback:Function)=>readSubscribe(type,callback,true),
+      eventMakeFirst:(type:string,callback:Function)=>readSubscribe(type,callback,false,true),
+      eventRemoveListener:apis.eventRemoveListener,structuredClone:clone}
+      const exposed=guarded(reads)
+      return {...exposed,TavernHelper:freeze({...exposed}),SillyTavern:freeze(guarded(tavern)),
+        NextTavern:freeze({getNumericalState:guard(nextTavern.getNumericalState)}),
+        get name1(){return snapshot.persona.name},get name2(){return snapshot.character?.name??''}}
+    }
     const jquery=guard(personaJQuery) as any
     jquery.fn=freeze({})
     const exposed={...guarded(apis),$:jquery,jQuery:jquery,fetch:guard(avatarFetch)}

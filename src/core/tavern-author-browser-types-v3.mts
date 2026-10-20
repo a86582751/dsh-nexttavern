@@ -14,6 +14,7 @@ import type {SourceHtmlInputV1,HtmlParsedCandidateV1,SourcePageOriginV1} from '.
 import type {MvuPlayerEditResponse} from './roleplay-mvu-player-types.js'
 import type {BrowserSourceEventV3} from './tavern-author-browser-worker-protocol-v3.js'
 import type {BrowserPromptCleanupRequestV3} from './roleplay-author-browser-generation-types.js'
+import type {ReaderRegexDocumentCompilerV1} from './reader-regex-document-types.mjs'
 
 export type BrowserCapabilityV3=BrowserCapabilityV2|'owned-source-html-page'
   |'owned-synchronous-page-events'|'owned-page-canvas-svg'|'owned-page-audio'
@@ -160,6 +161,9 @@ export interface BrowserCompilerV3 {
 }
 export interface OwnedAuthorBrowserRuntimeV3 extends BrowserCompilerV3 {
   readonly artifact:BrowserRuntimeArtifactV3
+  /** Independent current-implementation compiler; historical package factories
+   * need not expose it and cannot gain this capability through an epoch. */
+  readonly compileReaderDocument?:ReaderRegexDocumentCompilerV1['compileReaderDocument']
   dispose():Promise<void>
 }
 export interface BrowserDeclaredChatCaptureV3 {

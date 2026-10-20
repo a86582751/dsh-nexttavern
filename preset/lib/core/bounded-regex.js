@@ -187,7 +187,7 @@ export async function boundedSTPromptTransformBatchV1(data, signal) {
                     ? { kind: 'transformed', output: { ...value.output, entries: value.output.entries.map((projection, index) => {
                                 const original = data.input.entries[index];
                                 return { ...projection, rawText: original.rawText, storyText: original.storyText, inputText: original.inputText };
-                            }) } }
+                            }) }, ...(value.displayProvenance ? { displayProvenance: value.displayProvenance } : {}) }
                     : value;
                 resolve(result);
             };

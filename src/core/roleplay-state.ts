@@ -6,6 +6,7 @@ import { provenImportPreludeAssistants } from './tavern-task-retirement.js'
 import type { StoryEvent } from './roleplay-worldline-types.js'
 import type { ImportRecord } from './roleplay-import-types.js'
 import type { StateSession, StateDependencies, StatePreparation, FailedTurnGroup } from './roleplay-state-types.js'
+import type {ReaderDisplayMessageRef} from './roleplay-reader-display.js'
 
 export const jsonResponse = (status: number, value: unknown) =>
     new Response(JSON.stringify(value), {
@@ -44,7 +45,8 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
   nativeBranchGroupsFor,nativePlayerGroupsFor,assistantMessageId,userForkContext,locatePlayerRecoveryTarget,
   failedForkMembership,isRecoverySourceMember,backfillRecoverySourceMember,importRecordKey,preparationRecordKey,
   tavernTasks,memoryForContext,cloneContextWindow,contextWindowFor,selectedStatusRecord,selectedStatusGeneration,
-  importSummary,chatImportProjection,numericalState,deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
+  importSummary,chatImportProjection,numericalState,readerDisplay,readerDisplayContextVersion,
+  deletedBranchMessageIdsFor,inheritedAssistantMessageIdsFor,
   normalizeDecisionRecord,userValues,svc,resolveRoleplaySession}:StateDependencies) {
   const collectBranchRecords = (session: StateSession) => {
     const prefix = `${session.id}__`
@@ -191,6 +193,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
     const activeImportRecord = activeImport?.importId
       ? T.branch.get(importRecordKey(importSourceSessionId, activeImport.importId))
       : null
+    const activeSourceRecord=activeImportRecord as unknown as ImportRecord|null
     const currentRules=T.rules.get(keyOf(session.id,'spec'));
     const summary=activeImportRecord?importSummary(activeImportRecord as unknown as ImportRecord,currentRules??undefined):null;
     const {authorCoreData,...cardSummary}=summary??{};
@@ -207,6 +210,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
         })
       }
     }
+    const numericalObservation=await numericalState?.(session.id)??null,userinfo=userValues(session.id)
     return {
       ok: true,
       preset: 'roleplay',
@@ -225,7 +229,9 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       statusSpec: T.status.get(keyOf(session.id, 'spec')) ?? null,
       statusPanel: selectedStatusRecord(session),
       statusGeneration: selectedStatusGeneration(session),
-      numericalState: await numericalState?.(session.id) ?? null,
+       numericalState:numericalObservation,
+       readerDisplay:{enabled:activeSourceRecord?.extensionInventory?.entries
+         .some(entry=>entry.key==='regex_scripts'&&entry.valueType==='array')??false},
       rules:currentRules?{...currentRules,...authorCoreData
         ?{core:authorCoreData.text,coreOrigin:authorCoreData.kind}:{}}:null,
       opening: T.opening.get(keyOf(session.id, 'scene')) ?? null,
@@ -248,7 +254,10 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       // The append-only audit log can contain regenerated/deleted siblings.
       // Reader and memory consumers must address only these authoritative
       // nodes, which are exactly what the next model request sees.
-      recordVersions:recordVersionsFor(session),
+       recordVersions:{...recordVersionsFor(session),readerDisplaySource:recordSha256({pointer:activeImport,
+         rawSha256:activeSourceRecord?.rawSha256??null,normalizedSha256:activeSourceRecord?.normalizedSha256??null,
+         transactionId:activeSourceRecord?.activation?.transactionId??null,userinfo,
+         displayContext:readerDisplayContextVersion?.(session.id)??null})},
       surfaceNodes: surfaceEntries(session).map((entry) => ({
         seq: entry.seq,
         kind: entry.kind,
@@ -258,7 +267,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
         time: entry.time,
       })),
        decision: normalizeDecisionRecord(T.decision.get(keyOf(session.id, 'current'))),
-       userinfo: userValues(session.id),
+       userinfo,
       lineage: svc.branchLineage(session),
     }
   }
@@ -267,15 +276,32 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
     () =>
       ctx.connection.fetch.register({requestBody: 'buffered',
         path: '/api/roleplay/state',
-        methods: ['GET'],
+         methods: ['GET','POST'],
         fetch: async (request) => {
           try {
+             if(request.method==='POST') {
+               let body:{action?:unknown;sessionId?:string;messages?:unknown}
+               try {body=await request.json() as typeof body}
+               catch {return jsonResponse(400,{ok:false,code:'READER_DISPLAY_REQUEST_INVALID',error:'请求体必须是 JSON'})}
+               if(body?.action!=='reader-display'||!Array.isArray(body.messages)
+                 ||body.messages.some(ref=>!ref||typeof ref!=='object'||!Number.isSafeInteger(ref.seq)
+                   ||ref.seq<0||typeof ref.messageId!=='string'||!ref.messageId))
+                 return jsonResponse(400,{ok:false,code:'READER_DISPLAY_REQUEST_INVALID',error:'Reader 消息引用无效'})
+               const session=await resolveRoleplaySession(body.sessionId??null)
+               if(!session)return jsonResponse(404,{ok:false,error:'roleplay 会话不存在、无法恢复或并非角色扮演会话'})
+               if(!readerDisplay)return jsonResponse(503,{ok:false,code:'READER_DISPLAY_UNAVAILABLE',error:'Reader 显示接口不可用'})
+               await awaitImportBarrier(session.id)
+               await ensureBranch(session)
+               return jsonResponse(200,await readerDisplay(session,body.messages as ReaderDisplayMessageRef[],request.signal))
+             }
             const url = new URL(request.url)
             const session = await resolveRoleplaySession(url.searchParams.get('sessionId'))
             if (!session) return jsonResponse(404, { ok: false, error: 'roleplay 会话不存在、无法恢复或并非角色扮演会话' })
             return jsonResponse(200, await readRoleplayState(session))
           } catch (error) {
-            return jsonResponse(500, { ok: false, error: String((error as {message?: unknown})?.message ?? error) })
+             const code=String((error as {message?: unknown})?.message??error)
+             return jsonResponse(request.method==='POST'?409:500,{ok:false,
+               ...(request.method==='POST'?{code}:{}),error:code})
           }
         },
       }),

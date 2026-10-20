@@ -1,6 +1,6 @@
 import {createBrowserRuntimeFrameV1} from '../core/tavern-author-browser-frame.js';
 import {createBrowserRuntimeFrameV2} from '../core/tavern-author-browser-frame-v2.js';
-import {createBrowserRuntimeFrameV3} from '../core/tavern-author-browser-frame-v3.js';
+import {createBrowserRuntimeFrameV3,createReaderRegexDocumentFrameV1} from '../core/tavern-author-browser-frame-v3.js';
 import type {BrowserFrameHostV3} from '../core/tavern-author-browser-frame-v3.js';
 import type {AuthorBrowserReply,AuthorBrowserRequest} from '../core/roleplay-author-browser-types.js';
 import type {BrowserBindingV1,BrowserHostBridgeV1,BrowserRenderV1,BrowserSaveReplyV1,BrowserSnapshotV1}
@@ -20,7 +20,10 @@ import type {AuthorBrowserPendingV1,AuthorBrowserWorldbookPendingV2,AuthorBrowse
     from './author-browser-pending.js';
 import type {AuthorScriptResourceRequestV1} from '../core/roleplay-author-script-resources.js';
 import {scopeReaderCss} from './reader-rendering.js';
+import {mountStaticAuthorDocument} from './author-runtime.js';
 import type {BrowserNativeImageV3} from '../core/tavern-author-browser-native-types-v3.js';
+import type {ReaderRegexDocumentExecutionV1,ReaderRegexDocumentRenderV1}
+    from '../core/reader-regex-document-types.mjs';
 
 export interface AuthorBrowserStatus {
     kind: 'loading' | 'inactive' | 'starting' | 'ready' | 'pending' | 'failed';
@@ -28,6 +31,63 @@ export interface AuthorBrowserStatus {
     pending?: AuthorBrowserPendingV1;
     worldbooks?: AuthorBrowserWorldbookPendingV2[];
     personas?: AuthorBrowserPersonaPendingV1[];
+}
+
+/** Reader receives already captured Core DATA. Its local binding owns only
+ * this read-only Worker/native scene; no Core writer/session is fabricated. */
+export function createReaderRegexDocumentSession(options: {
+    sessionId: string;
+    container: HTMLElement;
+    current(): boolean;
+    status(value: AuthorBrowserStatus): void;
+    fill(text: string): void;
+    images?(owner: object,pageId: string,images: readonly BrowserNativeImageV3[]): void;
+    releaseImages?(owner: object): void;
+}) {
+    let active = true, revision = 0, identity = '';
+    let frame: ReturnType<typeof createReaderRegexDocumentFrameV1> | undefined, realm: object | undefined;
+    const current = () => active && options.current();
+    function revoke(): void {
+        frame?.dispose();frame = undefined;
+        if (realm) options.releaseImages?.(realm);
+        realm = undefined;identity = '';options.container.replaceChildren();
+    }
+    return {
+        hasFrame: () => !!frame,
+        invalidate(): void {if (active) {revoke();options.status({kind: 'inactive'});}},
+        update(execution: ReaderRegexDocumentExecutionV1,render: Omit<ReaderRegexDocumentRenderV1,'renderRevision'>): void {
+            if (!current()) return;
+            const key = execution.program.programSha256 + ':' + execution.artifact.executionWorkerSha256;
+            if (key !== identity || !frame) {
+                revoke();identity = key;
+                const owner = {};realm = owner;
+                const outer = options.container.ownerDocument.createElement('iframe');
+                outer.className = 'rp-author-guard-frame';outer.title = '作者正则阅读文档';options.container.append(outer);
+                const binding = {sessionId: options.sessionId,browserSessionId: crypto.randomUUID(),
+                    generation: execution.snapshot.generation,programSha256: execution.program.programSha256};
+                options.status({kind: 'starting'});
+                const controller = createReaderRegexDocumentFrameV1(outer,execution.artifact,binding,execution.program,{
+                    current: () => current() && realm === owner,
+                    mountStaticDocument: (container,html,layout) => mountStaticAuthorDocument(container,html,{
+                        current: () => current() && realm === owner,fill: options.fill,layout}),
+                    layout: () => {},startupDeadlineMs: 15000,
+                    diagnostic: code => {if (current() && realm === owner) options.status({kind: 'starting',code});},
+                    failed: code => {
+                        if (!current() || realm !== owner) return;
+                        revoke();options.status({kind: 'failed',code});
+                    },
+                    onImages: (pageId,values) => {if (current() && realm === owner) options.images?.(owner,pageId,values);},
+                });
+                frame = controller;
+                void controller.started.then(() => {
+                    if (current() && realm === owner) options.status({kind: 'ready'});
+                }).catch(() => {}); // The frame's failure owner publishes its code.
+            }
+            frame.render({...render,css: scopeReaderCss(render.css),renderRevision: ++revision});
+            frame.publishSnapshot(execution.snapshot);
+        },
+        dispose(): void {if (!active) return;active = false;revoke();},
+    };
 }
 export type AuthorBrowserTransport = (request: AuthorBrowserRequest, signal?: AbortSignal) => Promise<AuthorBrowserReply>;
 export const authorBrowserTransport: AuthorBrowserTransport = async (request, signal) => {

@@ -1,3 +1,40 @@
+import type {TavernPromptDisplayPartV1} from '../core/tavern-prompt-transform-types.mjs';
+
+export interface AuthorFrameFragment {
+    kind: 'text' | 'author-document';
+    html: string;
+}
+/** Capture placeholders must be ordinary DOM text nodes. A capture cannot
+ * create markup, CSS, a URL attribute, or a resource declaration. */
+export function prepareStaticAuthorDocument(owner: Document, parts: readonly TavernPromptDisplayPartV1[]): string | undefined {
+    const marker = 'nexttavernCapture' + randomNonce();
+    const captures: string[] = [];
+    let html = parts.map(part => part.kind === 'literal' ? part.text :
+        marker + captures.push(part.text) + 'End').join('').trim();
+    const fence = html.match(/^(`{3,}|~{3,})(?:html)?[ \t]*\r?\n([\s\S]*?)\r?\n\1$/i);
+    if (fence) html = fence[2]!;
+    const template = owner.createElement('template');
+    template.innerHTML = html;
+    const walker = owner.createTreeWalker(template.content, 4), nodes: Text[] = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+    const found = new Set<number>(), pattern = new RegExp(marker + '(\\d+)End', 'g');
+    for (const node of nodes) {
+        if (node.parentElement?.closest('style,script')) continue;
+        const text = node.nodeValue ?? '', fragment = owner.createDocumentFragment();
+        let cursor = 0, matched = false;
+        pattern.lastIndex = 0;
+        for (const match of text.matchAll(pattern)) {
+            fragment.append(owner.createTextNode(text.slice(cursor, match.index)),
+                owner.createTextNode(captures[Number(match[1]) - 1]!));
+            found.add(Number(match[1]));cursor = match.index + match[0].length;matched = true;
+        }
+        if (matched) {fragment.append(owner.createTextNode(text.slice(cursor)));node.replaceWith(fragment);}
+    }
+    if (found.size !== captures.length) return;
+    template.content.querySelectorAll('script,meta[http-equiv="refresh" i]').forEach(node => node.remove());
+    return template.innerHTML;
+}
+
 // Author scripts see only an opaque-origin document. The trusted outer srcdoc
 // supplies a frame-src policy: a sandboxed child may otherwise navigate itself
 // to an attacker URL even when its own connect-src is 'none'.
@@ -6,13 +43,13 @@ export interface AuthorFramePart {
     kind: 'user' | 'narrator';
     text: string;
     html: string;
+    fragments?: readonly AuthorFrameFragment[];
 }
 export interface AuthorFrameLayout {
     height: number;
     rows: number[];
 }
-interface AuthorFrameOptions {
-    source: string;
+interface AuthorFrameCommonOptions {
     css: string;
     baseCss: string;
     current(): boolean;
@@ -20,6 +57,9 @@ interface AuthorFrameOptions {
     layout(value: AuthorFrameLayout): void;
     failed(reason: string): void;
 }
+type AuthorFrameOptions = AuthorFrameCommonOptions & (
+    {mode?: 'script';source: string} | {mode: 'static-document';source?: never}
+);
 const MAX_FRAME_BYTES = 8_000_000;
 const MAX_AUTHOR_BYTES = 2_000_000;
 const MAX_FRAME_HEIGHT = 2_000_000;
@@ -28,11 +68,73 @@ const FRAME_PROTOCOL = 1;
 const FRAME_CSP = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; " +
     "connect-src 'none'; img-src 'none'; media-src 'none'; font-src 'none'; frame-src 'none'; " +
     "worker-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'";
+const STATIC_RESOURCE_CSP =
+    "style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; " +
+    "connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'";
+const staticFrameCsp = (nonce: string) => "default-src 'none'; script-src 'nonce-" + nonce + "'; " + STATIC_RESOURCE_CSP;
+
+/** Existing static Source DATA in its own resource-policy document. The Main
+ * owner supplies DOM, actions and height; this child has no bootstrap script. */
+export function mountStaticAuthorDocument(container: HTMLElement, html: string, options: {
+    current(): boolean;
+    fill(text: string): void;
+    layout(): void;
+}): {dispose(): void;} {
+    const owner = container.ownerDocument, view = owner.defaultView!;
+    const frame = owner.createElement('iframe');
+    frame.title = '作者静态阅读文档';frame.referrerPolicy = 'no-referrer';
+    frame.setAttribute('sandbox', 'allow-same-origin');
+    frame.style.cssText = 'display:block;width:100%;height:1px;border:0';
+    let active = true, scheduled: number | undefined, document: Document | undefined;
+    let resize: ResizeObserver | undefined, mutation: MutationObserver | undefined;
+    const measure = () => {
+        scheduled = undefined;
+        if (!active || !options.current() || !document) return;
+        const height = Math.min(MAX_FRAME_HEIGHT, Math.max(1, Math.ceil(document.body.scrollHeight),
+            Math.ceil(document.body.getBoundingClientRect().height)));
+        if (frame.style.height !== height + 'px') {frame.style.height = height + 'px';options.layout();}
+    };
+    const schedule = () => {
+        if (active && options.current() && scheduled === undefined) scheduled = view.requestAnimationFrame(measure);
+    };
+    const fill = (event: Event) => {
+        if (!active || !options.current()) return;
+        const target = event.target as Element | null, action = target?.closest('.f');
+        if (action || target?.closest('a[href],area[href]')) event.preventDefault();
+        if (!action) return;
+        const text = (action as HTMLElement).innerText || action.textContent || '';
+        if (text.length <= 8192) options.fill(text);
+    };
+    const load = () => {
+        if (!active || !options.current()) return;
+        document = frame.contentDocument!;
+        document.body.innerHTML = html;
+        document.body.addEventListener('click', fill);
+        document.addEventListener('load', schedule, true);
+        resize = new view.ResizeObserver(schedule);resize.observe(document.body);
+        mutation = new view.MutationObserver(schedule);
+        mutation.observe(document.body, {subtree: true, childList: true, attributes: true, characterData: true});
+        void document.fonts?.ready.then(schedule);
+        schedule();
+    };
+    frame.addEventListener('load', load, {once: true});
+    frame.srcdoc = '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="' +
+        "default-src 'none'; script-src 'none'; " + STATIC_RESOURCE_CSP +
+        '"><meta name="referrer" content="no-referrer"><style>html,body{margin:0;overflow:hidden}</style><body></body>';
+    container.appendChild(frame);
+    return {dispose() {
+        if (!active) return;
+        active = false;frame.removeEventListener('load', load);
+        if (scheduled !== undefined) view.cancelAnimationFrame(scheduled);
+        document?.body.removeEventListener('click', fill);document?.removeEventListener('load', schedule, true);
+        resize?.disconnect();mutation?.disconnect();frame.remove();
+    }};
+}
 // This function is serialized into the sandbox document. Do not close over
 // module state or pass parent DOM/functions into it.
-function authorFrameBootstrap(nonce: string, maxRows: number) {
+function authorFrameBootstrap(nonce: string, maxRows: number, mode: 'script' | 'static-document') {
     if (!document.body) {
-        addEventListener('DOMContentLoaded', () => authorFrameBootstrap(nonce, maxRows), {once: true});
+        addEventListener('DOMContentLoaded', () => authorFrameBootstrap(nonce, maxRows, mode), {once: true});
         return;
     }
     const root = document.createElement('div');
@@ -79,7 +181,7 @@ function authorFrameBootstrap(nonce: string, maxRows: number) {
         const next = new Map<string, {node: HTMLElement; signature: string;}>();
         const fragment = document.createDocumentFragment();
         for (const part of parts) {
-            const signature = part.kind + '\0' + part.text + '\0' + part.html;
+            const signature = part.kind + '\0' + part.text + '\0' + part.html + '\0' + JSON.stringify(part.fragments);
             const previous = oldRows.get(part.key);
             let section: HTMLElement;
             if (previous?.signature === signature) {
@@ -96,7 +198,8 @@ function authorFrameBootstrap(nonce: string, maxRows: number) {
                 } else {
                     const narrative = document.createElement('div');
                     narrative.className = 'rp-reader-narrative';
-                    narrative.innerHTML = part.html;
+                    narrative.innerHTML = mode === 'static-document' && part.fragments
+                        ? part.fragments.map(fragment => fragment.html).join('') : part.html;
                     section.append(narrative);
                 }
                 const space = document.createElement('div');
@@ -128,7 +231,7 @@ function authorFrameBootstrap(nonce: string, maxRows: number) {
             render(data.parts);
             if (!started) {
                 started = true;
-                try {
+                if (mode === 'script') try {
                     // Only this opaque-origin realm receives author code and DOM.
                     const author = new Function('root', 'fill', String(data.source ?? ''));
                     author.call(window, root, fill);
@@ -143,10 +246,12 @@ function authorFrameBootstrap(nonce: string, maxRows: number) {
     window.parent.postMessage({v: 1, type: 'ready', nonce}, '*');
 }
 
-function authorDocument(nonce: string): string {
+function authorDocument(nonce: string, mode: 'script' | 'static-document'): string {
     return '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="' +
-        FRAME_CSP + '"><body><script>(' + authorFrameBootstrap.toString().replace(/<\/script/gi, '<\\/script') +
-        ')(' + JSON.stringify(nonce) + ',' + JSON.stringify(AUTHOR_FRAME_MAX_ROWS) + ');</script></body>';
+        (mode === 'static-document' ? staticFrameCsp(nonce) : FRAME_CSP) +
+        '"><meta name="referrer" content="no-referrer"><body><script nonce="' + nonce + '">(' +
+        authorFrameBootstrap.toString().replace(/<\/script/gi, '<\\/script') +
+        ')(' + JSON.stringify(nonce) + ',' + JSON.stringify(AUTHOR_FRAME_MAX_ROWS) + ',' + JSON.stringify(mode) + ');</script></body>';
 }
 
 // The guard owns the child WindowProxy and never gives it to author code.
@@ -186,11 +291,12 @@ function guardFrameBootstrap(authorHtml: string, nonce: string) {
     });
 }
 
-function guardDocument(nonce: string): string {
+function guardDocument(nonce: string, mode: 'script' | 'static-document'): string {
     return '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="' +
-        FRAME_CSP + '"><style>html,body{margin:0;overflow:hidden}iframe{display:block;width:100%;height:150px;border:0}</style>' +
-        '<body><script>(' + guardFrameBootstrap.toString().replace(/<\/script/gi, '<\\/script') + ')(' +
-        JSON.stringify(authorDocument(nonce)).replace(/</g, '\\u003c') + ',' + JSON.stringify(nonce) +
+        (mode === 'static-document' ? staticFrameCsp(nonce) : FRAME_CSP) +
+        '"><style>html,body{margin:0;overflow:hidden}iframe{display:block;width:100%;height:150px;border:0}</style>' +
+        '<body><script nonce="' + nonce + '">(' + guardFrameBootstrap.toString().replace(/<\/script/gi, '<\\/script') + ')(' +
+        JSON.stringify(authorDocument(nonce, mode)).replace(/</g, '\\u003c') + ',' + JSON.stringify(nonce) +
         ');</script></body>';
 }
 
@@ -223,7 +329,7 @@ export function createAuthorFrame(outer: HTMLIFrameElement, options: AuthorFrame
         if (!active || !options.current() || !bound || !port) return;
         port.postMessage({
             v: FRAME_PROTOCOL, nonce, type: 'render', revision: ++revision,
-            source: options.source, css: options.css, baseCss: options.baseCss, parts: pending,
+            source: options.source ?? '', css: options.css, baseCss: options.baseCss, parts: pending,
         });
     };
     const onPortMessage = (event: MessageEvent) => {
@@ -297,12 +403,12 @@ export function createAuthorFrame(outer: HTMLIFrameElement, options: AuthorFrame
     window.addEventListener('message', onGuardMessage);
     // The outer document is trusted static code; only its nested child is sandboxed.
     outer.setAttribute('referrerpolicy', 'no-referrer');
-    outer.srcdoc = guardDocument(nonce);
+    outer.srcdoc = guardDocument(nonce, options.mode ?? 'script');
     return {
         update(parts) {
             if (!active || !options.current()) return;
             if (parts.length > AUTHOR_FRAME_MAX_ROWS || JSON.stringify(parts).length > MAX_FRAME_BYTES ||
-                options.source.length + options.css.length > MAX_AUTHOR_BYTES) {
+                (options.source?.length ?? 0) + options.css.length > MAX_AUTHOR_BYTES) {
                 fail('阅读内容超过隔离视图容量');
                 return;
             }

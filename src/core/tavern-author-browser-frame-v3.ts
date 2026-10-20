@@ -9,6 +9,8 @@ import type {BrowserWorkerRpcV3,BrowserWorkerInputV3,BrowserSourceEventV3} from 
 import type {NativeCallbackDeliveryV3,BrowserNativeImageV3} from './tavern-author-browser-native-types-v3.js'
 import type {BrowserCallbackRegistrationV3,BrowserGenerationInvocationV3,BrowserGenerationResultV3}
   from './roleplay-author-browser-generation-types.js'
+import type {ReaderRegexDocumentProgramV1,ReaderRegexDocumentSnapshotV1,ReaderRegexDocumentRenderV1}
+  from './reader-regex-document-types.mjs'
 
 export interface BrowserFrameHostV3 extends BrowserHostBridgeV3 {
   closeBinding(binding:BrowserBindingV1):Promise<void>
@@ -20,6 +22,7 @@ interface Options {
   diagnostic(code:string):void
   failed?(code:string):void
   onImages?:(pageId:string,images:readonly BrowserNativeImageV3[])=>void
+  mountStaticDocument?:(container:HTMLElement,html:string,layout:()=>void)=>{dispose():void}
   startupDeadlineMs:number
 }
 interface EntryClock {
@@ -91,18 +94,44 @@ export interface BrowserFrameControllerV3 {
   render(value:BrowserRenderV1):void
   dispose():void
 }
+export interface ReaderRegexDocumentFrameControllerV1 {
+  readonly started:Promise<void>
+  readonly disposed:Promise<void>
+  publishSnapshot(value:ReaderRegexDocumentSnapshotV1):void
+  render(value:ReaderRegexDocumentRenderV1):void
+  dispose():void
+}
+type FrameSnapshot=BrowserSnapshotV3|ReaderRegexDocumentSnapshotV1
+type FrameRender=BrowserRenderV1|ReaderRegexDocumentRenderV1
+interface OwnedFrameController extends Omit<BrowserFrameControllerV3,'publishSnapshot'|'render'> {
+  publishSnapshot(value:FrameSnapshot):void
+  render(value:FrameRender):void
+}
 
 export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:BrowserRuntimeArtifactV3,
   binding:BrowserBindingV1,program:BrowserProgramV3,host:BrowserFrameHostV3,options:Options):BrowserFrameControllerV3 {
+  return createOwnedPageRuntimeFrame(outer,artifact,binding,program,host,options)
+}
+/** Same Worker/Actor/native renderer kernel, with an independent Reader
+ * program and a read-only principal. No Browser3 program is manufactured. */
+export function createReaderRegexDocumentFrameV1(outer:HTMLIFrameElement,artifact:BrowserRuntimeArtifactV3,
+  binding:BrowserBindingV1,program:ReaderRegexDocumentProgramV1,
+  options:Options&{mountStaticDocument(container:HTMLElement,html:string,layout:()=>void):{dispose():void}}):ReaderRegexDocumentFrameControllerV1 {
+  return createOwnedPageRuntimeFrame(outer,artifact,binding,program,undefined,options)
+}
+function createOwnedPageRuntimeFrame(outer:HTMLIFrameElement,artifact:BrowserRuntimeArtifactV3,
+  binding:BrowserBindingV1,program:BrowserProgramV3|ReaderRegexDocumentProgramV1,host:BrowserFrameHostV3|undefined,
+  options:Options):OwnedFrameController {
   const view=outer.ownerDocument.defaultView!,abort=new AbortController(),operationPrefix=crypto.randomUUID()
   const workerURL=URL.createObjectURL(new Blob([artifact.executionWorkerJavascript],{type:'text/javascript'}))
   const worker=new Worker(workerURL,{type:'module'})
-  let active=true,latest:BrowserSnapshotV3|undefined,initialized=false,entry:EntryClock|undefined
+  let active=true,latest:FrameSnapshot|undefined,initialized=false,entry:EntryClock|undefined
   let scene:ReturnType<typeof createBrowserNativeSceneV3>|undefined
   let readerRoot:HTMLElement|undefined,readerStyle:HTMLStyleElement|undefined
-  let pendingRender:BrowserRenderV1|undefined,renderRevision=0,layoutFrame:number|undefined
+  let pendingRender:FrameRender|undefined,renderRevision=0,layoutFrame:number|undefined
   let readerResize:ResizeObserver|undefined,readerMutation:MutationObserver|undefined
-  const readerRows=new Map<string,{node:HTMLElement;kind:'user'|'narrator';content:string}>()
+  const readerRows=new Map<string,{node:HTMLElement;kind:'user'|'narrator';content:string;staticDocuments:{dispose():void}[]}>()
+  const documentContainers=new Map<string,HTMLElement>()
   let generationSequence=0
   const registrationRequests=new Map<number,{resolve:(rows:readonly BrowserCallbackRegistrationV3[])=>void;reject:(error:Error)=>void}>()
   const generationRequests=new Map<string,{invocation:BrowserGenerationInvocationV3;
@@ -125,7 +154,7 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
       options.layout({height,renderRevision})
     })
   }
-  function renderReader(value:BrowserRenderV1):void {
+  function renderReader(value:FrameRender):void {
     if(!current())return
     if(!readerRoot||!readerStyle){pendingRender=value;return}
     renderRevision=value.renderRevision
@@ -135,20 +164,37 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     const document=readerRoot.ownerDocument,next=new Set(value.parts.map(part=>part.key))
     // Remove rows leaving the selected history before ordering retained rows,
     // so clipping an older prefix does not reattach unchanged media nodes.
-    for(const [key,row] of readerRows)if(!next.has(key)){row.node.remove();readerRows.delete(key)}
+    for(const [key,row] of readerRows)if(!next.has(key)) {
+      for(const document of row.staticDocuments)document.dispose()
+      row.node.remove();readerRows.delete(key)
+    }
     let cursor=readerRoot.firstChild
     for(const part of value.parts) {
-      const content=part.kind==='user'?part.text:part.html
+      const fragments=part.kind==='narrator'&&'fragments' in part?part.fragments:undefined
+      const content=part.kind==='user'?part.text:fragments?JSON.stringify(fragments):part.html
       let row=readerRows.get(part.key)
       if(!row) {
         const node=document.createElement('section')
         node.className='rp-reader-message';node.dataset.readerKey=part.key
-        row={node,kind:part.kind,content:''};readerRows.set(part.key,row)
+        row={node,kind:part.kind,content:'',staticDocuments:[]};readerRows.set(part.key,row)
       }
       if(!row.node.firstChild||row.kind!==part.kind||row.content!==content) {
+        for(const document of row.staticDocuments)document.dispose()
+        row.staticDocuments=[]
         const body=document.createElement(part.kind==='user'?'p':'div')
         body.className=part.kind==='user'?'rp-user-line':'rp-reader-narrative'
         if(part.kind==='user')body.textContent='◈ 你：'+part.text
+        else if(fragments)for(const fragment of fragments) {
+          const node=document.createElement('div')
+          if(fragment.kind==='text')node.innerHTML=fragment.html // Trusted Reader's existing sanitizer.
+          else if(fragment.kind==='static-document')
+            row.staticDocuments.push(options.mountStaticDocument!(node,fragment.html,scheduleLayout))
+          else {
+            node.dataset.readerRegexDocument=fragment.documentPlanSha256
+            documentContainers.set(fragment.documentPlanSha256,node)
+          }
+          body.appendChild(node)
+        }
         else body.innerHTML=part.html // The trusted Reader owns HTML sanitization.
         row.node.replaceChildren(body);row.node.dataset.kind=part.kind==='user'?'user':'assistant'
         row.kind=part.kind;row.content=content
@@ -160,7 +206,8 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     }
     scheduleLayout()
   }
-  const gestures=createBrowserGenerationGesturesV3(program,current,()=>view.navigator.userActivation.isActive)
+  const gestures=program.encoding==='native-author-browser-program-v3'
+    ?createBrowserGenerationGesturesV3(program,current,()=>view.navigator.userActivation.isActive):undefined
   const send=(message:BrowserWorkerInputV3)=>{if(current())worker.postMessage(message)}
   let bootTimer=view.setTimeout(()=>fail('BROWSER3_WORKER_DEADLINE'),options.startupDeadlineMs)
   function clock():void {
@@ -177,10 +224,11 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     active=false;abort.abort();view.clearTimeout(bootTimer);view.clearTimeout(entry?.timer)
     readerResize?.disconnect();readerMutation?.disconnect()
     if(layoutFrame!==undefined)view.cancelAnimationFrame(layoutFrame)
-    layoutFrame=undefined;pendingRender=undefined;readerRows.clear();readerRoot=undefined;readerStyle=undefined
+    for(const row of readerRows.values())for(const document of row.staticDocuments)document.dispose()
+    layoutFrame=undefined;pendingRender=undefined;readerRows.clear();documentContainers.clear();readerRoot=undefined;readerStyle=undefined
     // Main termination remains independent of a busy or suspended guest. It
     // does not imply graceful VM disposal; Main still frees its own resources.
-    gestures.dispose()
+    gestures?.dispose()
     const error=Error('BROWSER_GENERATION_REVOKED')
     for(const pending of registrationRequests.values())pending.reject(error)
     registrationRequests.clear()
@@ -190,7 +238,7 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     rejectStarted(Error('BROWSER_GENERATION_REVOKED'))
     // Core closes the attachment's prompt resources before removing its private
     // owner. This confirmation must survive termination of the guest Worker.
-    void host.closeBinding(binding).catch(error=>options.diagnostic(String(error)))
+    void (host?host.closeBinding(binding):Promise.resolve()).catch(error=>options.diagnostic(String(error)))
       .finally(async()=>{
         worker.terminate();URL.revokeObjectURL(workerURL)
         try {await scene?.dispose()}
@@ -207,6 +255,7 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     send({type:'callback',delivery:wire})
   }
   async function source(payload:any):Promise<unknown> {
+    if(!host)throw Error('READER_REGEX_DOCUMENT_HOST_OPERATION_UNAVAILABLE')
     if(payload.op==='cleanup-prompts') {
       await host.cleanupPrompts!(binding,payload.request,abort.signal)
       if(payload.request.kind==='resource-closed') {
@@ -222,7 +271,7 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
       return undefined
     }
     if(payload.op==='generate-raw') {
-      gestures.consume(payload.request,payload.invocation)
+      gestures!.consume(payload.request,payload.invocation)
       if(!host.generateRaw)throw Error('BROWSER_GENERATION_UNAVAILABLE')
       return host.generateRaw(binding,payload.request,abort.signal)
     }
@@ -288,7 +337,7 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     }else if(message.type==='startup-complete')resolveStarted()
     else if(message.type==='runtime-error'||message.type==='page-error')fail(message.code)
     else if(message.type==='notice'&&message.notice?.type==='generation-invocation-ended')
-      gestures.finish(message.notice.gestureId)
+      gestures?.finish(message.notice.gestureId)
     else if(message.type==='notice'&&['page-callback-error','source-callback-error'].includes(message.notice?.type))
       options.diagnostic(message.notice.error)
   })
@@ -296,7 +345,9 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     if(!current()||initialized||!scene||!latest)return
     initialized=true
     const bytes=Uint8Array.from(atob(artifact.wasm.data),character=>character.charCodeAt(0))
-    send({type:'start',binding,program,snapshot:latest,wasm:bytes.buffer,operationPrefix})
+    if(program.encoding==='reader-regex-document-program-v1')
+      send({type:'reader-start',binding,program,snapshot:latest as ReaderRegexDocumentSnapshotV1,wasm:bytes.buffer,operationPrefix})
+    else send({type:'start',binding,program,snapshot:latest as BrowserSnapshotV3,wasm:bytes.buffer,operationPrefix})
   }
   function loaded():void {
     if(!current()||scene)return
@@ -311,9 +362,11 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
     readerMutation.observe(document.body,{childList:true,subtree:true,attributes:true,characterData:true})
     if(pendingRender){const value=pendingRender;pendingRender=undefined;renderReader(value)}
     scene=createBrowserNativeSceneV3({program,schedulerWindow:view,onCallback:deliver,
+      ...program.encoding==='reader-regex-document-program-v1'?{readerRootDocument:document,
+        readerDocumentContainer:plan=>documentContainers.get(plan.pagePlanSha256)!}:{},
       onImages:options.onImages,
-      prepareCallback:gestures.prepare,onPageClosed:gestures.closePage,
-      observeNativeEvent:program.generationDeclarationId?gestures.observe:undefined,
+      prepareCallback:gestures?.prepare,onPageClosed:gestures?.closePage,
+      observeNativeEvent:program.encoding==='native-author-browser-program-v3'&&program.generationDeclarationId?gestures?.observe:undefined,
       onSettlement:settlement=>send({type:'settlement',settlement}),
       onFrameClosed:frameId=>send({type:'frame-closed',frameId}),
       async createCarrierDocument(script,contextId,signal) {
@@ -364,7 +417,13 @@ export function createBrowserRuntimeFrameV3(outer:HTMLIFrameElement,artifact:Bro
         send({type:'generation-invocation',invocation})
       })
     },
-    publishSnapshot(value){if(!current())return;latest=value;if(initialized)send({type:'snapshot',snapshot:value});else initialize()},
+    publishSnapshot(value){
+      if(!current())return
+      latest=value
+      if(!initialized)initialize()
+      else if(value.encoding==='reader-regex-document-snapshot-v1')send({type:'reader-snapshot',snapshot:value})
+      else send({type:'snapshot',snapshot:value})
+    },
     publishSaveConfirmation(value){if(value.snapshot)this.publishSnapshot(value.snapshot)},
     publishSourceEvent(event){send({type:'source-event',event})},
     render:renderReader,

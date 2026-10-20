@@ -827,7 +827,8 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                 return one(absent);
             return one(intrinsicValue(name));
         }
-        if (BROWSER_ABSENT_PROBES_V3.includes(name) || name === 'location')
+        if (BROWSER_ABSENT_PROBES_V3.includes(name) || name === 'location'
+            || astOptions.absentGlobals?.includes(name))
             return one(fixedAbsent);
         if (name === 'Blob')
             return one(native('Blob', { capability: 'owned-media', returns: 'guest' }, global));
@@ -2510,7 +2511,7 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
     // Preserve the reader's shared DATA references. Equal HTML bytes in another
     // catalog item never turn that item's data into the selected page resource.
     for (const state of states) {
-        const page = state.input.sourceHtml, caller = state.input.sourceResources.callers.find(row => row.identity === page?.scriptIdentity && row.originalOrdinal === state.input.ordinal);
+        const page = state.input.sourceHtml, caller = state.input.sourceResources?.callers.find(row => row.identity === page?.scriptIdentity && row.originalOrdinal === state.input.ordinal);
         if (!page || !caller)
             continue;
         const path = (page.resourcePath ?? ['data', 'html']).slice(1);
@@ -2679,10 +2680,12 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
         }
         // Native getters are bound to the descriptor that created their facade.
         // Borrowing a getter into another page does not change that DATA owner.
-        const facadeInput = realmInputs.get(fn.receiver?.realm ?? state.input.realm);
+        // Reader's actual parent exports the same captured read facade without an
+        // authored Helper unit or a self-script resource catalog.
+        const facadeInput = realmInputs.get(fn.receiver?.realm ?? state.input.realm) ?? state.input;
         const creatorInput = realmInputs.get(facadeInput.parentRealm) ?? facadeInput;
         const projection = creatorInput.sourceResources;
-        const caller = projection.callers.find(row => row.identity === creatorInput.identity && row.originalOrdinal === creatorInput.ordinal);
+        const caller = projection?.callers.find(row => row.identity === creatorInput.identity && row.originalOrdinal === creatorInput.ordinal);
         if (operation.returns === 'source-id')
             return caller ? one(literal(caller.authorId)) : one(unknown);
         if (operation.returns === 'source-trees') {
@@ -2698,7 +2701,7 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                 return scopes.size ? one(unknown) : new Set();
             // The immutable resource reader throws for global/preset scopes. They
             // have no normal return DATA to feed a caught fallback's guest walker.
-            return selected.has('character') ? one(sourceAtom(projection.characterTrees)) : new Set();
+            return selected.has('character') && projection ? one(sourceAtom(projection.characterTrees)) : new Set();
         }
         if (operation.returns === 'variables') {
             // A syntactically present argument with an empty cell is still pending.
@@ -2740,7 +2743,7 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                             continue;
                         }
                         for (const id of selectedIds)
-                            out.add(sourceAtom(catalog(projection).get(id) ?? emptyData));
+                            out.add(projection ? sourceAtom(catalog(projection).get(id) ?? emptyData) : unknown);
                     }
                     else if (option.written?.has('script_id'))
                         continue;
@@ -3115,7 +3118,8 @@ export function analyseBrowserAstV3(inputs, astOptions = {}) {
                 if (BROWSER_SERVER_GLOBALS_V3.includes(node.text))
                     report(state, 'BROWSER3_SERVER_NATIVE_UNSUPPORTED', node, node.text);
                 if (['eval', 'Function', 'AsyncFunction', 'GeneratorFunction', 'process', 'require', 'module', 'exports',
-                    'XMLHttpRequest', 'WebSocket', 'Worker', 'SharedWorker', 'importScripts', 'indexedDB'].includes(node.text))
+                    'XMLHttpRequest', 'WebSocket', 'Worker', 'SharedWorker', 'importScripts', 'indexedDB'].includes(node.text)
+                    && !astOptions.absentGlobals?.includes(node.text))
                     report(state, 'BROWSER3_GLOBAL_UNSUPPORTED', node, node.text);
             }
             if (unreachable(node))

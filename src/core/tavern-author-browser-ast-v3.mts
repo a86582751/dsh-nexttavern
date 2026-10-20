@@ -20,7 +20,8 @@ export interface BrowserAstUnitV3 {
   readonly pointer:string
   readonly pageId:string|null
   readonly inlineOrdinal:number|null
-  readonly sourceResources:BrowserScriptResourceProjectionV3
+  /** Reader document principals have no executing Helper resource catalog. */
+  readonly sourceResources?:BrowserScriptResourceProjectionV3
   readonly sourceHtml?:{readonly pageId:string;readonly html:string;readonly scriptIdentity:string;
     readonly resourcePath?:readonly string[]}
 }
@@ -162,6 +163,9 @@ function namePosition(node:ts.Identifier):boolean {
 
 export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   astOptions:{readonly captureDiagnosticEvidence?:boolean;
+    /** A separate caller profile owns these fixed absent globals. Default V3
+     * never opts in, so its admitted contract is unchanged. */
+    readonly absentGlobals?:readonly string[];
     readonly loadSourcePage?:(pageId:string)=>readonly BrowserAstUnitV3[]}={}):BrowserAstResultV3 {
   if(ts.version!=='5.9.3')throw Error('BROWSER3_TYPESCRIPT_IDENTITY')
   const diagnostics:BrowserDiagnosticV1[]=[],diagnosticKeys=new Set<string>()
@@ -711,7 +715,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       if(name==='undefined')return one(absent)
       return one(intrinsicValue(name))
     }
-    if(BROWSER_ABSENT_PROBES_V3.includes(name)||name==='location')return one(fixedAbsent)
+    if(BROWSER_ABSENT_PROBES_V3.includes(name)||name==='location'
+      ||astOptions.absentGlobals?.includes(name))return one(fixedAbsent)
     if(name==='Blob')return one(native('Blob',{capability:'owned-media',returns:'guest'},global))
     if(constructors[name])return one(native(name,{capability:constructors[name]!.capability,returns:constructors[name]!.kind},global))
     const operation=BROWSER_METHODS_V3.window?.[name]
@@ -1841,7 +1846,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   // Preserve the reader's shared DATA references. Equal HTML bytes in another
   // catalog item never turn that item's data into the selected page resource.
   for(const state of states){
-    const page=state.input.sourceHtml,caller=state.input.sourceResources.callers.find(row=>
+    const page=state.input.sourceHtml,caller=state.input.sourceResources?.callers.find(row=>
       row.identity===page?.scriptIdentity&&row.originalOrdinal===state.input.ordinal)
     if(!page||!caller)continue
     const path=(page.resourcePath??['data','html']).slice(1)
@@ -1953,10 +1958,12 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     // Native getters are bound to the descriptor that created their facade.
     // Borrowing a getter into another page does not change that DATA owner.
-    const facadeInput=realmInputs.get(fn.receiver?.realm??state.input.realm)!
+    // Reader's actual parent exports the same captured read facade without an
+    // authored Helper unit or a self-script resource catalog.
+    const facadeInput=realmInputs.get(fn.receiver?.realm??state.input.realm)??state.input
     const creatorInput=realmInputs.get(facadeInput.parentRealm)??facadeInput
     const projection=creatorInput.sourceResources
-    const caller=projection.callers.find(row=>row.identity===creatorInput.identity&&row.originalOrdinal===creatorInput.ordinal)
+    const caller=projection?.callers.find(row=>row.identity===creatorInput.identity&&row.originalOrdinal===creatorInput.ordinal)
     if(operation.returns==='source-id')return caller?one(literal(caller.authorId)):one(unknown)
     if(operation.returns==='source-trees'){
       if(!args[0]?.size)return args.length?new Set():one(unknown)
@@ -1966,7 +1973,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       if(!selected)return scopes.size?one(unknown):new Set()
       // The immutable resource reader throws for global/preset scopes. They
       // have no normal return DATA to feed a caught fallback's guest walker.
-      return selected.has('character')?one(sourceAtom(projection.characterTrees)):new Set()
+      return selected.has('character')&&projection?one(sourceAtom(projection.characterTrees)):new Set()
     }
     if(operation.returns==='variables'){
       // A syntactically present argument with an empty cell is still pending.
@@ -1987,7 +1994,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
           if(ids.size){
             const selectedIds=names(ids)
             if(!selectedIds){out.add(unknown);continue}
-            for(const id of selectedIds)out.add(sourceAtom(catalog(projection).get(id)??emptyData))
+            for(const id of selectedIds)out.add(projection?sourceAtom(catalog(projection).get(id)??emptyData):unknown)
           }else if(option.written?.has('script_id'))continue
           else out.add(caller?sourceAtom(caller.data):unknown)
         }
@@ -2237,7 +2244,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(ts.isIdentifier(node)&&!namePosition(node)&&!lookup(scopes.get(node)!,node.text)){
       if(BROWSER_SERVER_GLOBALS_V3.includes(node.text))report(state,'BROWSER3_SERVER_NATIVE_UNSUPPORTED',node,node.text)
       if(['eval','Function','AsyncFunction','GeneratorFunction','process','require','module','exports',
-        'XMLHttpRequest','WebSocket','Worker','SharedWorker','importScripts','indexedDB'].includes(node.text))
+        'XMLHttpRequest','WebSocket','Worker','SharedWorker','importScripts','indexedDB'].includes(node.text)
+        &&!astOptions.absentGlobals?.includes(node.text))
         report(state,'BROWSER3_GLOBAL_UNSUPPORTED',node,node.text)
     }
     if(unreachable(node))continue

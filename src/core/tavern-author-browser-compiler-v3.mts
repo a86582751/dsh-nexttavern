@@ -18,7 +18,10 @@ function declaration(writer:BrowserWriterOriginV3,key:string):BrowserDeclaredCha
   return {declarationId:recordSha256({encoding:'native-author-browser-key-declaration-v3',writerIdentitySha256}),
     scope:'chat',key,kind:'ordinary-source-key',writer,writerIdentitySha256}
 }
-function pageResources(parsed:HtmlParsedCandidateV1,proofs:readonly BrowserAstProofV3[]):readonly BrowserPageResourceV3[] {
+/** Shared resource compiler consumes caller-owned provenance, without
+ * requiring a Helper carrier or changing the serialized V3 page contract. */
+export function browserPageResourcesV3(parsed:Pick<HtmlParsedCandidateV1,'document'|'resources'>&{readonly origin:unknown},
+  proofs:readonly BrowserAstProofV3[]):readonly BrowserPageResourceV3[] {
   const resources:BrowserPageResourceV3[]=[]
   for(const candidate of parsed.resources){
     const node=parsed.document.nodes.find(row=>row.nodeId===candidate.nodeId)
@@ -41,6 +44,11 @@ function htmlRequirements(parsed:HtmlParsedCandidateV1,input:SourceHtmlInputV1):
   const rows:BrowserDiagnosticV1[]=[]
   const fail=(code:string,feature?:string)=>rows.push({code,ordinal:input.carrier.originalOrdinal,
     scriptIdentity:input.carrier.identity,pointer:input.carrier.pointer+'/data/html',...feature?{feature}:{}})
+  browserSourceHtmlRequirementsV3(parsed,fail)
+  return rows
+}
+export function browserSourceHtmlRequirementsV3(parsed:Pick<HtmlParsedCandidateV1,'scripts'|'document'|'resources'>,
+  fail:(code:string,feature?:string)=>unknown):void {
   for(const script of parsed.scripts){
     if(script.mode==='module'||script.attributes.some(attribute=>['src','async','defer'].includes(attribute.name)))
       fail('BROWSER3_PAGE_SCRIPT_LIFECYCLE_UNSUPPORTED','inline-'+script.inlineOrdinal)
@@ -56,7 +64,6 @@ function htmlRequirements(parsed:HtmlParsedCandidateV1,input:SourceHtmlInputV1):
   }
   for(const resource of parsed.resources)if(!/^(?:https?:\/\/|data:)/i.test(resource.value))
     fail('BROWSER3_PAGE_RESOURCE_PROVENANCE_UNSUPPORTED',resource.kind)
-  return rows
 }
 
 export function createBrowserCompilerV3(artifact:BrowserRuntimeArtifactV3) {
@@ -145,7 +152,7 @@ export function createBrowserCompilerV3(artifact:BrowserRuntimeArtifactV3) {
           requiredCapabilities:proof?.capabilities??[],declarations:own}
         admissions.push({...body,admissionSha256:recordSha256(body)});localDeclarations.push(...own)
       }
-      const resources=pageResources(parsed,pageProofs),caps=sorted(['owned-source-html-page','isolated-dom-text',
+      const resources=browserPageResourcesV3(parsed,pageProofs),caps=sorted(['owned-source-html-page','isolated-dom-text',
         ...pageProofs.flatMap(proof=>proof.capabilities),...resources.length?['owned-media' as const]:[]])
       const body={schemaVersion:3 as const,encoding:'native-author-browser-source-page-plan-v3' as const,
         authority:'compiled-program-data-only' as const,origin:parsed.origin,parsed,scripts:admissions,resources,
