@@ -5,11 +5,11 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-llm-deepseek
 
-English | [中文](README.zh.md)
+English | [中文](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm-deepseek/README.zh.md)
 
 ## Summary
 
-Provide the shared DeepSeek Messages transport, request configuration, and model capabilities. Compose [API-key](../llm-deepseek-api-key/README.md) or [account](../llm-deepseek-account/README.md) plugins for authentication, model discovery, and provider registration. Valid settings changes affect subsequent calls while in-flight calls retain their configuration. This package can run beside the [pi-ai adapter](../llm-pi-ai/README.md).
+Provide the shared DeepSeek Messages transport, request configuration, and model capabilities. Compose [API-key](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm-deepseek-api-key/README.md) or [account](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm-deepseek-account/README.md) plugins for authentication, model discovery, and provider registration. Valid settings changes affect subsequent calls while in-flight calls retain their configuration. This package can run beside the [pi-ai adapter](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm-pi-ai/README.md).
 
 `resolveAuth(connection)` returns the provider-owned authentication headers and an optional failure callback bound to that request’s credential. Messages and Files send those headers without selecting a credential mode. Upload reuse is isolated by endpoint and a hash of the authentication headers; raw credentials are not persisted.
 
@@ -29,7 +29,7 @@ Provide the shared DeepSeek Messages transport, request configuration, and model
 
 This package exports the transport library; the provider plugins register routes with the harness LLM service. It captures connection options from Config references once per operation.
 
-The adapter accepts the LLM service's [request-only user inputs](../llm/README.md#use-this-package) alongside durable history; omitting request-only identity and attribution does not alter provider content.
+The adapter accepts the LLM service's [request-only user inputs](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm/README.md#use-this-package) alongside durable history; omitting request-only identity and attribution does not alter provider content.
 
 ### When to choose it
 
@@ -49,7 +49,7 @@ Choose this adapter for DeepSeek's official API or a Messages-compatible gateway
     filesApiTimeoutMs: 60000
 ```
 
-A request selects the route with `provider: deepseek-official`; the model id passes through to the wire, so new DeepSeek models need no re-registration. Omitted `models` advertises the text- and image-capable `deepseek-flash` alongside the text-only `deepseek-v4-pro`, each with a 1,000,000-token context window. An explicit list replaces those defaults, and core calls still pass unlisted model ids through as text-only routes. GUI selection requires a catalog entry; a saved selection can still submit requests after its catalog entry disappears. Clients, including model discovery tools, can read the advisory entries through `ctx.llm.listModels('deepseek-official')`. Image-capable entries may set `imagePixelBudget` to a positive integer or `low`, and may set `imageMaxBytes`. An entry may declare `systemPromptUpdate: in-history` when its endpoint reads the latest `system` message at any position of `messages` as the complete effective system prompt; the adapter reports the mode on the resolved model and the prepared call, and the agent loop then appends a changed prompt after the cached history instead of rewriting the leading system message ([decision rule](../../core/agent-loop/README.md#understand-the-implementation)). The default `deepseek-flash` entry declares this mode; other models require an explicit `models` declaration, and any value other than `in-history` fails at load with `llm-deepseek: catalog model "<id>" systemPromptUpdate must be "in-history" when present`.
+A request selects the route with `provider: deepseek-official`; the model id passes through to the wire, so new DeepSeek models need no re-registration. Omitted `models` advertises the text- and image-capable `deepseek-flash` alongside the text-only `deepseek-v4-pro`, each with a 1,000,000-token context window. An explicit list replaces those defaults, and core calls still pass unlisted model ids through as text-only routes. GUI selection requires a catalog entry; a saved selection can still submit requests after its catalog entry disappears. Clients, including model discovery tools, can read the advisory entries through `ctx.llm.listModels('deepseek-official')`. Image-capable entries may set `imagePixelBudget` to a positive integer or `low`, and may set `imageMaxBytes`. An entry may declare `systemPromptUpdate: in-history` when its endpoint reads the latest `system` message at any position of `messages` as the complete effective system prompt; the adapter reports the mode on the resolved model and the prepared call, and the agent loop then appends a changed prompt after the cached history instead of rewriting the leading system message ([decision rule](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/core/agent-loop/README.md#understand-the-implementation)). The default `deepseek-flash` entry declares this mode; other models require an explicit `models` declaration, and any value other than `in-history` fails at load with `llm-deepseek: catalog model "<id>" systemPromptUpdate must be "in-history" when present`.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -72,9 +72,9 @@ A request selects the route with `provider: deepseek-official`; the model id pas
 | `fileQuotaCleanupBatch` | `100` | Oldest harness-owned files removed before one quota retry |
 | `retryPolicy` | normal, 5 retries | Provider-owned retry policy executed by `dsh-llm-retry` |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-llm-deepseek-api-key) is the exhaustive source for every accepted field and its JSDoc.
+The generated [configuration catalog](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/docs/config-catalog.md#deepseek-aidsh-llm-deepseek-api-key) is the exhaustive source for every accepted field and its JSDoc.
 
-When [proactive compaction](../../compaction/compaction-basic/README.md#use-this-package) is enabled, `models[].contextWindow` (or `defaultContextWindow` when absent) must exceed the effective request `maxTokens` plus the compaction policy’s `headroomTokens`. Requests without an explicit output cap use the model’s `maxTokens` or the adapter default. For small-window deployments, configure headroom within that capacity; lower `thresholdRatio` to compact earlier.
+When [proactive compaction](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/compaction/compaction-basic/README.md#use-this-package) is enabled, `models[].contextWindow` (or `defaultContextWindow` when absent) must exceed the effective request `maxTokens` plus the compaction policy’s `headroomTokens`. Requests without an explicit output cap use the model’s `maxTokens` or the adapter default. For small-window deployments, configure headroom within that capacity; lower `thresholdRatio` to compact earlier.
 
 <a id="endpoint-and-wire-format"></a>
 ### Endpoint and wire format
@@ -85,7 +85,7 @@ Messages sends text, thinking, tool calls, and tool results as content blocks, r
 
 ### Account credentials
 
-`deepseek-official` resolves only its configured API-key reference. `deepseek-account` resolves only the stored grant from the [account provider](../../credentials/deepseek-account-platform/README.md), whose allowed `inferenceOrigin` defaults to `https://api.deepseek.com`. Neither route falls back to the other. Signing out removes the account grant and preserves API keys.
+`deepseek-official` resolves only its configured API-key reference. `deepseek-account` resolves only the stored grant from the [account provider](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/credentials/deepseek-account-platform/README.md), whose allowed `inferenceOrigin` defaults to `https://api.deepseek.com`. Neither route falls back to the other. Signing out removes the account grant and preserves API keys.
 
 Messages and Files requests send account tokens as `x-dsh-auth-token` without a Bearer prefix; API keys use `x-api-key`. Neither credential mode follows redirects. The account provider owns HTTP 401 classification and credential invalidation; the transport passes failures to its callback.
 
@@ -150,15 +150,15 @@ One `stream()` call normally makes one model request: resolve deterministic requ
 
 Read these pages when the package-level contract is not enough. They move from the service contract to the twin adapter, the retry executor, and the shared types.
 
-- [dsh-llm service](../llm/README.md) — the provider-neutral service this adapter registers on.
-- [llm-pi-ai adapter](../llm-pi-ai/README.md) — the library-backed twin serving other providers and gateways.
-- [LLM streaming subsystem](../../../docs/subsystems/llm-streaming.md) — the `StreamChunk` protocol and adapter contract.
-- [llm-retry](../llm-retry/README.md) — the retry executor that applies this adapter's `retryPolicy`.
-- [DeepSeek request extensions](../deepseek-llm-api-extensions/README.md) — lifecycle and acceptance semantics for provider-specific top-level fields.
-- [Session-log upload](../../session/session-log-deepseek/README.md) — the default-on incremental `dsh_session_log` contribution.
-- [Plugin package inventory](../plugin-package-inventory-deepseek/README.md) — the default-on `dsh_plugin_packages` contribution.
-- [Twin LLM adapters](../../../.agents/notes/implemented/architecture/2026-06-13-twin-llm-adapters.md) — why DeepSeek ships two structurally different adapters.
-- [Mandatory app attribution headers](../../../.agents/notes/implemented/architecture/2026-06-21-mandatory-app-attribution-headers.md) — the identity every provider request carries.
+- [dsh-llm service](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm/README.md) — the provider-neutral service this adapter registers on.
+- [llm-pi-ai adapter](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm-pi-ai/README.md) — the library-backed twin serving other providers and gateways.
+- [LLM streaming subsystem](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/docs/subsystems/llm-streaming.md) — the `StreamChunk` protocol and adapter contract.
+- [llm-retry](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm-retry/README.md) — the retry executor that applies this adapter's `retryPolicy`.
+- [DeepSeek request extensions](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/deepseek-llm-api-extensions/README.md) — lifecycle and acceptance semantics for provider-specific top-level fields.
+- [Session-log upload](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/session/session-log-deepseek/README.md) — the default-on incremental `dsh_session_log` contribution.
+- [Plugin package inventory](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/plugin-package-inventory-deepseek/README.md) — the default-on `dsh_plugin_packages` contribution.
+- [Twin LLM adapters](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/.agents/notes/implemented/architecture/2026-06-13-twin-llm-adapters.md) — why DeepSeek ships two structurally different adapters.
+- [Mandatory app attribution headers](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/.agents/notes/implemented/architecture/2026-06-21-mandatory-app-attribution-headers.md) — the identity every provider request carries.
 
 -----
 
@@ -204,10 +204,10 @@ These limits define where the adapter stops and future work begins. They are cur
 - **Replacing `models` replaces the complete catalog list** — use path edits when changing one model entry.
 - **`tool_choice` is not mapped** — not part of the core vocabulary (shared with the pi-ai twin).
 - **Requests use raw `fetch`, not `@cordisjs/plugin-http`** — no shared proxy or interception configuration.
-- **Messages in-history system updates require a retained user or tool-result turn** — if all user input after an update is omitted and the preceding wire turn is assistant, serialization fails with `UNSUPPORTED_CONTENT` before the next assistant or at the end of the request. Text or an empty tool result can retain that turn. Moving the update to an earlier turn is not supported; the [input-history decision](../../../.agents/notes/implemented/bug-fix/2026-09-18-messages-input-history-compatibility.md) records the ordering constraint.
+- **Messages in-history system updates require a retained user or tool-result turn** — if all user input after an update is omitted and the preceding wire turn is assistant, serialization fails with `UNSUPPORTED_CONTENT` before the next assistant or at the end of the request. Text or an empty tool result can retain that turn. Moving the update to an earlier turn is not supported; the [input-history decision](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/.agents/notes/implemented/bug-fix/2026-09-18-messages-input-history-compatibility.md) records the ordering constraint.
 - **Images are input-only durable attachments** — direct external URLs and assistant image output are not supported; DeepSeek input normally uses the Files API and uses inline base64 only for per-request recovery.
 - The default catalog advertises `deepseek-flash` and its text/image and in-history capabilities without probing gateway availability. Requests can fail with `INVALID_REQUEST` until the gateway enables the id.
-- Real API checks in [adapter.e2e.ts](tests/adapter.e2e.ts) and [runtime.e2e.ts](tests/runtime.e2e.ts) require `DEEPSEEK_API_KEY`. Set `DEEPSEEK_IN_HISTORY_MODEL` to a supported nonempty model id to run system-update checks: the adapter suite uses `high` effort, while the runtime suite compares cache reuse with thinking disabled and can be sensitive to instruction-following instability. The runtime image cases additionally require `DEEPSEEK_FLASH_E2E=1` or `DEEPSEEK_VISION_E2E=1`.
+- Real API checks in [adapter.e2e.ts](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm-deepseek/tests/adapter.e2e.ts) and [runtime.e2e.ts](https://github.com/deepseek-ai/deepseek-harness/blob/477b4f420553e8a52c2fbccc464d7561b239c443/packages/llm/llm-deepseek/tests/runtime.e2e.ts) require `DEEPSEEK_API_KEY`. Set `DEEPSEEK_IN_HISTORY_MODEL` to a supported nonempty model id to run system-update checks: the adapter suite uses `high` effort, while the runtime suite compares cache reuse with thinking disabled and can be sensitive to instruction-following instability. The runtime image cases additionally require `DEEPSEEK_FLASH_E2E=1` or `DEEPSEEK_VISION_E2E=1`.
 
 <a id="dev-note"></a>
 ### Dev Note
