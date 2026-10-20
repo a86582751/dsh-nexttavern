@@ -15,7 +15,7 @@ import type {
   RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import type { Context as PiContext, ImageContent, Message as PiMessage, TextContent, Tool as PiTool } from 'dsh-nexttavern-pi-ai'
-import { toPiAssistant } from './replay.js'
+import { toPiAssistant,assertPiRequestProjectionV1 } from './replay.js'
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.js'
 import type {OrderedCompletionsInputV1,OrderedCompletionsMessageV1} from
@@ -50,6 +50,7 @@ function toolResultOf(
 /** Reject unsupported roles, tool-change blocks, and image roles before replay or image offloading. */
 function assertSupportedHistory(messages: readonly RequestMessage[]): void {
   for (const message of messages) {
+    assertPiRequestProjectionV1(message)
     // Developer history is persisted for V4; provider serialization is intentionally deferred.
     if (message.role === 'developer') throw new LlmError('Developer messages are not supported yet', 'UNSUPPORTED_CONTENT')
     if (message.content.some(block => block.type === 'tool-addition' || block.type === 'tool-removal')) {

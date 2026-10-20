@@ -6,7 +6,7 @@
  * @module @deepseek-ai/dsh-token-meter/estimate
  */
 
-import type { ContentBlock, Message } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, RequestMessage } from '@deepseek-ai/dsh-llm'
 import type { EpochHeader } from '@deepseek-ai/dsh-session'
 
 /** Fixed text-density estimate used until exact tokenization is needed. */
@@ -70,13 +70,18 @@ export function estimateContent(blocks: readonly ContentBlock[]): number {
  * @param message - system-role message to price without mutation.
  * @returns heuristic system-prompt tokens; 0 for empty content ("no system prompt").
  */
-export function estimateSystemMessage(message: Message): number {
+export function estimateSystemMessage(message: RequestMessage): number {
   if (message.content.length === 0) return 0
   let characters = 0
   for (const block of message.content) {
     characters += block.type === 'text' ? block.text.length : JSON.stringify(block).length
   }
-  return Math.ceil(characters / CHARS_PER_TOKEN) + ROLE_OVERHEAD
+  return estimateSystemText(characters, true)
+}
+
+/** Shared system-string price for the one-shot slot and rendered system messages. */
+export function estimateSystemText(characters: number, present = characters > 0): number {
+  return present ? Math.ceil(characters / CHARS_PER_TOKEN) + ROLE_OVERHEAD : 0
 }
 
 /**
@@ -85,7 +90,7 @@ export function estimateSystemMessage(message: Message): number {
  * @returns content and role-framing tokens under the fixed heuristic; a
  *   system-role message prices as {@link estimateSystemMessage}.
  */
-export function estimateMessage(message: Message): number {
+export function estimateMessage(message: RequestMessage): number {
   if (message.role === 'system') return estimateSystemMessage(message)
   return estimateContent(message.content) + ROLE_OVERHEAD
 }

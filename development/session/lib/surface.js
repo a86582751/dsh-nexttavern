@@ -64,10 +64,17 @@ export function isAppendSurfaceEvent(event) {
 export function isReplacementSurfaceEvent(event) {
     return isSurfaceEvent(event) && event.surfaceOp !== 'append';
 }
+function isRetiredTaskReceipt(message) {
+    const source = message.source;
+    return message.role === 'user' && message.content.length === 0
+        && source.kind === 'roleplay-tasks' && source.schemaVersion === 1
+        && (source.form === 'maintenance-receipt' || source.form === 'read-evidence-receipt')
+        && typeof source.sourceReceiptSeq === 'number';
+}
 /**
  * Project a single event into the LLM message it derives to, or null when it
  * produces none — a non-surface event (attempt, boundary, log-only record) or an
- * empty-content system, developer, or assistant message. A caller
+ * empty system/developer/assistant message or retired task receipt. A caller
  * reconstructing model input supplies the same prefix's `projectedMessages`
  * from {@link foldSurface}; without that map this function reads original
  * event content. Session instance methods apply the live projection. Messages
@@ -79,7 +86,7 @@ export function isReplacementSurfaceEvent(event) {
 export function deriveEventMessage(event, projectedMessages) {
     const projected = projectedMessages?.get(event.seq);
     if (projected !== undefined)
-        return projected;
+        return isRetiredTaskReceipt(projected) ? null : projected;
     // Intentionally non-exhaustive: only message-producing events derive
     // history; turn/step boundaries, failed attempts, and errors are trace/replay
     // data.
@@ -93,7 +100,9 @@ export function deriveEventMessage(event, projectedMessages) {
         // deferred design note in
         // ../../../../.agents/notes/implemented/simplification/2026-07-20-unwrap-injected-content-envelopes.md
         case 'user/message': {
-            return event.data;
+            // Receipt retirement runs before step/start. Its owned empty marker is
+            // durable user context, while the superseded receipt stays off the wire.
+            return isRetiredTaskReceipt(event.data) ? null : event.data;
         }
         // Empty system and developer nodes retain their surface positions without
         // adding wire messages. An empty assistant event hosts a max-tokens step's

@@ -751,33 +751,47 @@ let LlmRuntime = (() => {
                     : {},
             });
             let dispatched = false;
-            return Object.freeze({
-                config: resolvedConfig,
-                retryPolicy: registration.retryPolicy,
-                adapterDefaults,
-                ...context === undefined ? {} : { context },
-                ...modelInfo.inputModalities === undefined
-                    ? {}
-                    : { inputModalities: Object.freeze([...modelInfo.inputModalities]) },
-                ...modelInfo.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: modelInfo.systemPromptUpdate },
-                ...modelInfo.toolUpdate === undefined ? {} : { toolUpdate: modelInfo.toolUpdate },
-                ...modelInfo.requestMaterialText === undefined ? {} : { requestMaterialText: deepFreeze({ ...modelInfo.requestMaterialText }) },
-                stream: (options) => {
-                    if (dispatched) {
-                        throw new LlmError('a prepared LLM call can only be dispatched once', 'INVALID_PREPARED_CALL');
-                    }
-                    if (!callConfigEquals(options, resolvedConfig)) {
-                        throw new LlmError('prepared LLM call config changed before adapter dispatch', 'INVALID_PREPARED_CALL');
-                    }
-                    dispatched = true;
-                    return this.streamWithRegistration(options, {
-                        registration,
-                        config: resolvedConfig,
-                        modelInfo,
-                        dispatch: options => adapterCall.stream(options),
-                    });
-                },
-            });
+            const prepared = (currentConfig, currentDefaults) => {
+                const projectRequest = this.requestProjector(registration, currentConfig, modelInfo, context);
+                return Object.freeze({
+                    config: currentConfig,
+                    retryPolicy: registration.retryPolicy,
+                    adapterDefaults: currentDefaults,
+                    projectRequest,
+                    ...context === undefined ? {} : { context },
+                    ...modelInfo.inputModalities === undefined
+                        ? {}
+                        : { inputModalities: Object.freeze([...modelInfo.inputModalities]) },
+                    ...modelInfo.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: modelInfo.systemPromptUpdate },
+                    ...modelInfo.toolUpdate === undefined ? {} : { toolUpdate: modelInfo.toolUpdate },
+                    ...modelInfo.requestMaterialText === undefined ? {} : { requestMaterialText: deepFreeze({ ...modelInfo.requestMaterialText }) },
+                    withRequestLocalSampling: (sampling) => {
+                        const derived = this.resolveCallWithInfo({ ...currentConfig,
+                            ...sampling.temperature === undefined ? {} : { temperature: sampling.temperature },
+                            ...sampling.maxTokens === undefined ? {} : { maxTokens: sampling.maxTokens },
+                            ...sampling.stop === undefined ? {} : { stop: [...sampling.stop] } }, modelInfo);
+                        const { maxTokens, ...defaults } = currentDefaults;
+                        return prepared(deepFreeze(structuredClone(derived.config)), deepFreeze(sampling.maxTokens === undefined ? currentDefaults : defaults));
+                    },
+                    stream: (options) => {
+                        if (dispatched) {
+                            throw new LlmError('a prepared LLM call can only be dispatched once', 'INVALID_PREPARED_CALL');
+                        }
+                        if (!callConfigEquals(options, currentConfig)) {
+                            throw new LlmError('prepared LLM call config changed before adapter dispatch', 'INVALID_PREPARED_CALL');
+                        }
+                        dispatched = true;
+                        return this.streamWithRegistration(options, {
+                            registration,
+                            config: currentConfig,
+                            modelInfo,
+                            projectRequest,
+                            dispatch: options => adapterCall.stream(options),
+                        });
+                    },
+                });
+            };
+            return prepared(resolvedConfig, adapterDefaults);
         }
         registration(provider) {
             const registration = this.adapters.get(provider);
@@ -829,6 +843,51 @@ let LlmRuntime = (() => {
             const filtered = { ...options, messages };
             return Object.isFrozen(options) ? deepFreeze(filtered) : filtered;
         }
+        /** One projector owns both candidate pricing and dispatch for a bound route. */
+        requestProjector(registration, config, modelInfo, context) {
+            const cache = new WeakMap();
+            const adapter = registration.adapter;
+            const imageRequestPricing = adapter.imageRequestPricing(config.provider, config.model);
+            return (options) => {
+                if (!callConfigEquals(options, config)) {
+                    throw new LlmError('prepared LLM call config changed before adapter dispatch', 'INVALID_PREPARED_CALL');
+                }
+                const immutable = Object.isFrozen(options);
+                const cached = immutable ? cache.get(options) : undefined;
+                if (cached !== undefined) {
+                    // Native binds its live owner after preview/freeze; forward it again on reuse.
+                    forwardAgentLoopRequestGuard(options, cached.options);
+                    return cached;
+                }
+                let messages = options.messages;
+                if (messages.some(message => contentHasFile(message.content))) {
+                    messages = projectFilesToText(messages, ref => this.fileReadPath(ref));
+                }
+                if (modelInfo.inputModalities !== undefined && !modelInfo.inputModalities.includes('image')
+                    && messages.some(message => contentHasImage(message.content))) {
+                    messages = projectImagesForTextModel(messages);
+                }
+                const tools = projectToolUpdates(messages, options.tools, modelInfo.toolUpdate, options.toolHistory);
+                let projected = options;
+                if (tools.messages !== options.messages || tools.tools !== options.tools) {
+                    projected = {
+                        ...options,
+                        messages: tools.messages,
+                        ...tools.tools === undefined ? {} : { tools: tools.tools },
+                    };
+                    if (Object.isFrozen(options))
+                        deepFreeze(projected);
+                }
+                projected = this.forAdapter(projected, adapter);
+                forwardAgentLoopRequestGuard(options, projected);
+                const request = Object.freeze({ options: projected,
+                    ...imageRequestPricing === undefined ? {} : { imageRequestPricing },
+                    ...context === undefined ? {} : { context } });
+                if (immutable)
+                    cache.set(options, request);
+                return request;
+            };
+        }
         /**
          * Resolve the current execution-world read path of one durable file
          * reference through the mounted attachment and filesystem providers.
@@ -863,16 +922,19 @@ let LlmRuntime = (() => {
                 let modelInfo;
                 let resolvedConfig;
                 let dispatch;
+                let projectRequest;
                 if (prepared === undefined) {
                     const adapterCall = await adapter.prepareCall(options.provider, options.model, options.signal);
                     modelInfo = this.normalizeModelInfo(registration, options.model, adapterCall.model);
                     resolvedConfig = this.resolveCallWithInfo(options, modelInfo).config;
                     dispatch = options => adapterCall.stream(options);
+                    projectRequest = this.requestProjector(registration, resolvedConfig, modelInfo, modelInfo.context);
                 }
                 else {
                     modelInfo = prepared.modelInfo;
                     resolvedConfig = prepared.config;
                     dispatch = prepared.dispatch;
+                    projectRequest = prepared.projectRequest;
                 }
                 if (prepared !== undefined && !callConfigEquals(options, resolvedConfig)) {
                     throw new LlmError('prepared LLM call config changed before adapter dispatch', 'INVALID_PREPARED_CALL');
@@ -882,32 +944,11 @@ let LlmRuntime = (() => {
                     : Object.isFrozen(options)
                         ? deepFreeze({ ...options, ...resolvedConfig })
                         : { ...options, ...resolvedConfig };
-                // Files are never dispatched natively: every route receives handle text.
-                let projectedMessages = resolvedOptions.messages;
-                if (projectedMessages.some(message => contentHasFile(message.content))) {
-                    projectedMessages = projectFilesToText(projectedMessages, ref => this.fileReadPath(ref));
-                }
-                if (modelInfo.inputModalities !== undefined
-                    && !modelInfo.inputModalities.includes('image')
-                    && projectedMessages.some(message => contentHasImage(message.content))) {
-                    projectedMessages = projectImagesForTextModel(projectedMessages);
-                }
-                // Tool changes are logged on every route; the route's declared mode selects what it receives.
-                const projectedTools = projectToolUpdates(projectedMessages, resolvedOptions.tools, modelInfo.toolUpdate, resolvedOptions.toolHistory);
-                projectedMessages = projectedTools.messages;
-                let projectedOptions = resolvedOptions;
-                if (projectedMessages !== resolvedOptions.messages || projectedTools.tools !== resolvedOptions.tools) {
-                    projectedOptions = {
-                        ...resolvedOptions,
-                        messages: projectedMessages,
-                        ...projectedTools.tools === undefined ? {} : { tools: projectedTools.tools },
-                    };
-                    if (Object.isFrozen(resolvedOptions))
-                        deepFreeze(projectedOptions);
-                }
-                const adapterOptions = this.forAdapter(projectedOptions, adapter);
+                const projectedRequest = projectRequest(resolvedOptions);
+                const adapterOptions = projectedRequest.options;
                 forwardAgentLoopRequestGuard(options, adapterOptions);
                 assertAgentLoopRequestCurrent(adapterOptions);
+                this.ctx.emit('llm/request-projected', projectedRequest);
                 const stream = dispatch(adapterOptions);
                 iterator = stream[Symbol.asyncIterator]();
             }

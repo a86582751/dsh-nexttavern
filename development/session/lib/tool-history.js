@@ -39,6 +39,10 @@ export class ToolHistoryProjection {
         }
         else if (event.type === 'developer/message') {
             const { message, headerSeq } = event.data;
+            // Empty replacement nodes and ordinary developer prose do not change
+            // the catalog. Retiring prompt evidence must not grow its tool history.
+            if (!message.content.some(block => block.type === 'tool-addition' || block.type === 'tool-removal'))
+                return;
             const definitions = headerSeq === undefined ? [] : this.headers.get(headerSeq);
             const additions = message.content.flatMap((block) => {
                 if (block.type !== 'tool-addition')

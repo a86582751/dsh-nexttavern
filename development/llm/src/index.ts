@@ -75,7 +75,8 @@ declare module '@deepseek-ai/cordis' {
      * @mode waterfall
      */
     'llm/stream'(this: LlmRuntime, options: GenerateOptions, next: () => AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk>
-
+    /** Final adapter-bound request, after middleware and route projection. No durable body is recorded. */
+    'llm/request-projected'(request: ProjectedLlmRequest): void
   }
 }
 
@@ -168,7 +169,17 @@ export function assertUsableApiKey(raw: string, pkg: string, ref: string): strin
 }
 
 /** One model call whose config and adapter registration were resolved together. */
+export interface ProjectedLlmRequest {
+  readonly options: GenerateOptions
+  readonly imageRequestPricing?: LlmImageRequestPricing
+  readonly context?: LlmModelContext
+}
+
+/** One model call whose config and adapter registration were resolved together. */
 export interface PreparedLlmCall {
+  /** Derive only sampling scalars under the captured adapter/model. All
+   * handles share one dispatch latch; this performs no second preparation. */
+  withRequestLocalSampling?(sampling:import('./types.js').RequestLocalSamplingV1):PreparedLlmCall
   /** Detached, deep-frozen config with any adapter-owned default materialized. */
   readonly config: LlmCallConfig
   /** Immutable retry policy captured with the adapter registration. */
@@ -184,6 +195,8 @@ export interface PreparedLlmCall {
   readonly requestMaterialText?: RequestMaterialTextCapabilityV1
   /** Config fields materialized by the captured adapter rather than proposed by the caller. */
   readonly adapterDefaults: LlmCallConfigAdapterDefaults
+  /** Project a complete candidate through this call's exact adapter generation, without dispatch or Session writes. */
+  projectRequest(options: GenerateOptions): ProjectedLlmRequest
   /**
    * Dispatch this call once through the registration captured during
    * preparation. The request's call-config fields must match {@link config};
@@ -956,10 +969,13 @@ export class LlmRuntime extends TypertRemoteService {
         : {},
     })
     let dispatched = false
-    return Object.freeze({
-      config: resolvedConfig,
+    const prepared=(currentConfig:LlmCallConfig,currentDefaults:LlmCallConfigAdapterDefaults):PreparedLlmCall=>{
+      const projectRequest=this.requestProjector(registration,currentConfig,modelInfo,context)
+      return Object.freeze({
+      config: currentConfig,
       retryPolicy: registration.retryPolicy,
-      adapterDefaults,
+      adapterDefaults:currentDefaults,
+      projectRequest,
       ...context === undefined ? {} : { context },
       ...modelInfo.inputModalities === undefined
         ? {}
@@ -967,11 +983,20 @@ export class LlmRuntime extends TypertRemoteService {
       ...modelInfo.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: modelInfo.systemPromptUpdate },
       ...modelInfo.toolUpdate === undefined ? {} : { toolUpdate: modelInfo.toolUpdate },
       ...modelInfo.requestMaterialText===undefined?{}:{requestMaterialText:deepFreeze({...modelInfo.requestMaterialText})},
+      withRequestLocalSampling:(sampling:import('./types.js').RequestLocalSamplingV1):PreparedLlmCall=>{
+        const derived=this.resolveCallWithInfo({...currentConfig,
+          ...sampling.temperature===undefined?{}:{temperature:sampling.temperature},
+          ...sampling.maxTokens===undefined?{}:{maxTokens:sampling.maxTokens},
+          ...sampling.stop===undefined?{}:{stop:[...sampling.stop]}},modelInfo)
+        const {maxTokens,...defaults}=currentDefaults
+        return prepared(deepFreeze(structuredClone(derived.config)),
+          deepFreeze(sampling.maxTokens===undefined?currentDefaults:defaults))
+      },
       stream: (options: GenerateOptions): AsyncIterable<StreamChunk> => {
         if (dispatched) {
           throw new LlmError('a prepared LLM call can only be dispatched once', 'INVALID_PREPARED_CALL')
         }
-        if (!callConfigEquals(options, resolvedConfig)) {
+        if (!callConfigEquals(options, currentConfig)) {
           throw new LlmError(
             'prepared LLM call config changed before adapter dispatch',
             'INVALID_PREPARED_CALL',
@@ -980,12 +1005,15 @@ export class LlmRuntime extends TypertRemoteService {
         dispatched = true
         return this.streamWithRegistration(options, {
           registration,
-          config: resolvedConfig,
+          config: currentConfig,
           modelInfo,
+          projectRequest,
           dispatch: options => adapterCall.stream(options),
         })
       },
-    })
+      })
+    }
+    return prepared(resolvedConfig,adapterDefaults)
   }
 
   private registration(provider: string): AdapterRegistration {
@@ -1033,6 +1061,55 @@ export class LlmRuntime extends TypertRemoteService {
     return Object.isFrozen(options) ? deepFreeze(filtered) : filtered
   }
 
+  /** One projector owns both candidate pricing and dispatch for a bound route. */
+  private requestProjector(
+    registration: AdapterRegistration,
+    config: LlmCallConfig,
+    modelInfo: LlmResolvedModelInfo,
+    context?: LlmModelContext,
+  ): (options: GenerateOptions) => ProjectedLlmRequest {
+    const cache = new WeakMap<GenerateOptions, ProjectedLlmRequest>()
+    const adapter = registration.adapter
+    const imageRequestPricing = adapter.imageRequestPricing(config.provider, config.model)
+    return (options) => {
+      if (!callConfigEquals(options, config)) {
+        throw new LlmError('prepared LLM call config changed before adapter dispatch', 'INVALID_PREPARED_CALL')
+      }
+      const immutable = Object.isFrozen(options)
+      const cached = immutable ? cache.get(options) : undefined
+      if (cached !== undefined) {
+        // Native binds its live owner after preview/freeze; forward it again on reuse.
+        forwardAgentLoopRequestGuard(options, cached.options)
+        return cached
+      }
+      let messages: readonly RequestMessage[] = options.messages
+      if (messages.some(message => contentHasFile(message.content))) {
+        messages = projectFilesToText(messages, ref => this.fileReadPath(ref))
+      }
+      if (modelInfo.inputModalities !== undefined && !modelInfo.inputModalities.includes('image')
+        && messages.some(message => contentHasImage(message.content))) {
+        messages = projectImagesForTextModel(messages)
+      }
+      const tools = projectToolUpdates(messages, options.tools, modelInfo.toolUpdate, options.toolHistory)
+      let projected = options
+      if (tools.messages !== options.messages || tools.tools !== options.tools) {
+        projected = {
+          ...options,
+          messages: tools.messages as RequestMessage[],
+          ...tools.tools === undefined ? {} : { tools: tools.tools as ToolSchema[] },
+        }
+        if (Object.isFrozen(options)) deepFreeze(projected)
+      }
+      projected = this.forAdapter(projected, adapter)
+      forwardAgentLoopRequestGuard(options, projected)
+      const request = Object.freeze({ options: projected,
+        ...imageRequestPricing === undefined ? {} : { imageRequestPricing },
+        ...context === undefined ? {} : { context } })
+      if (immutable) cache.set(options, request)
+      return request
+    }
+  }
+
   /**
    * Resolve the current execution-world read path of one durable file
    * reference through the mounted attachment and filesystem providers.
@@ -1069,15 +1146,18 @@ export class LlmRuntime extends TypertRemoteService {
       let modelInfo: LlmResolvedModelInfo
       let resolvedConfig: LlmCallConfig
       let dispatch: (options: GenerateOptions) => AsyncIterable<StreamChunk>
+      let projectRequest: (options: GenerateOptions) => ProjectedLlmRequest
       if (prepared === undefined) {
         const adapterCall = await adapter.prepareCall(options.provider, options.model, options.signal)
         modelInfo = this.normalizeModelInfo(registration, options.model, adapterCall.model)
         resolvedConfig = this.resolveCallWithInfo(options, modelInfo).config
         dispatch = options => adapterCall.stream(options)
+        projectRequest = this.requestProjector(registration, resolvedConfig, modelInfo, modelInfo.context)
       } else {
         modelInfo = prepared.modelInfo
         resolvedConfig = prepared.config
         dispatch = prepared.dispatch
+        projectRequest = prepared.projectRequest
       }
       if (prepared !== undefined && !callConfigEquals(options, resolvedConfig)) {
         throw new LlmError(
@@ -1090,31 +1170,11 @@ export class LlmRuntime extends TypertRemoteService {
         : Object.isFrozen(options)
           ? deepFreeze({ ...options, ...resolvedConfig })
           : { ...options, ...resolvedConfig }
-      // Files are never dispatched natively: every route receives handle text.
-      let projectedMessages: readonly RequestMessage[] = resolvedOptions.messages
-      if (projectedMessages.some(message => contentHasFile(message.content))) {
-        projectedMessages = projectFilesToText(projectedMessages, ref => this.fileReadPath(ref))
-      }
-      if (modelInfo.inputModalities !== undefined
-        && !modelInfo.inputModalities.includes('image')
-        && projectedMessages.some(message => contentHasImage(message.content))) {
-        projectedMessages = projectImagesForTextModel(projectedMessages)
-      }
-      // Tool changes are logged on every route; the route's declared mode selects what it receives.
-      const projectedTools = projectToolUpdates(projectedMessages, resolvedOptions.tools, modelInfo.toolUpdate, resolvedOptions.toolHistory)
-      projectedMessages = projectedTools.messages
-      let projectedOptions = resolvedOptions
-      if (projectedMessages !== resolvedOptions.messages || projectedTools.tools !== resolvedOptions.tools) {
-        projectedOptions = {
-          ...resolvedOptions,
-          messages: projectedMessages as RequestMessage[],
-          ...projectedTools.tools === undefined ? {} : { tools: projectedTools.tools as ToolSchema[] },
-        }
-        if (Object.isFrozen(resolvedOptions)) deepFreeze(projectedOptions)
-      }
-      const adapterOptions=this.forAdapter(projectedOptions,adapter)
+      const projectedRequest = projectRequest(resolvedOptions)
+      const adapterOptions = projectedRequest.options
       forwardAgentLoopRequestGuard(options,adapterOptions)
       assertAgentLoopRequestCurrent(adapterOptions)
+      this.ctx.emit('llm/request-projected', projectedRequest)
       const stream = dispatch(adapterOptions)
       iterator = stream[Symbol.asyncIterator]()
     } catch (error: unknown) {
@@ -1202,6 +1262,7 @@ interface PreparedDispatch {
   readonly config: LlmCallConfig
   readonly modelInfo: LlmResolvedModelInfo
   readonly dispatch: (options: GenerateOptions) => AsyncIterable<StreamChunk>
+  readonly projectRequest: (options: GenerateOptions) => ProjectedLlmRequest
 }
 
 export default LlmRuntime

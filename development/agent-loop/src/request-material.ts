@@ -3,14 +3,15 @@
 import {createHash} from 'node:crypto'
 import {types as utilTypes} from 'node:util'
 import {brandString} from '@deepseek-ai/dsh-brand'
-import type {Message,RequestMaterialMessageV1,RequestMessageTextProjectionV2} from '@deepseek-ai/dsh-llm'
+import type {Message,RequestMaterialMessageV1,RequestMessageTextProjectionV2,RequestProjectedMessageV1} from '@deepseek-ai/dsh-llm'
 import {deepFreeze} from '@deepseek-ai/dsh-util-values'
 import {nativeInputSha256} from './input-admission.js'
 import {deriveEventMessage, foldSurface} from '@deepseek-ai/dsh-session/surface'
 import type {SessionMessageProjection} from '@deepseek-ai/dsh-session/surface'
 import type {SessionEvent, SessionSeq,NativeLoreRoleV1,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,
   NativeMaterialInsertionV1,NativeMaterialPlacementV1,
-  NativeRequestMaterialRecord,NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2} from '@deepseek-ai/dsh-session'
+  NativeRequestMaterialRecord,NativeRequestMaterialRecordV1,NativeMessageProjectionV1,
+  NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2} from '@deepseek-ai/dsh-session'
 export type {NativeLoreRoleV1,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,NativeMaterialInsertionV1,
   NativeMaterialPlacementV1,NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
   NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2} from '@deepseek-ai/dsh-session'
@@ -23,7 +24,8 @@ export const NATIVE_REQUEST_MATERIAL_LIMITS_V1 = Object.freeze({
 export type NativeRequestMaterialMessageV1=RequestMaterialMessageV1
 /** Existing SystemMessage/AssistantMessage close source types. Host must explicitly
  * adopt this request-only union; do not pretend these are persisted Messages. */
-export type NativeRequestMessageV1 = Message | NativeRequestMaterialMessageV1 | RequestMessageTextProjectionV2
+export type NativeRequestMessageV1 = Message | NativeRequestMaterialMessageV1
+  | RequestMessageTextProjectionV2 | RequestProjectedMessageV1
 export interface NativeRequestMaterialPlanInputV1 {
   readonly turn: number
   readonly step: number
@@ -37,6 +39,8 @@ export interface NativeRequestMaterialPlanInputV1 {
   readonly baseRefs: readonly NativeMaterialMessageRefV1[]
   readonly protectedPrefixLength: number
   readonly insertions: readonly NativeMaterialInsertionV1[]
+  readonly messageProjection?: NativeMessageProjectionV1
+  readonly requestLocalSampling?: NativeRequestMaterialRecordV1['delta']['requestLocalSampling']
 }
 export interface NativeRequestMaterialPlanInputV2 extends NativeRequestMaterialPlanInputV1 {
   readonly messageTextProjections:readonly NativeMaterialMessageTextProjectionV2[]
@@ -60,6 +64,7 @@ export type NativeRequestMaterialFailureCodeV1 =
   | 'BASE_MISMATCH' | 'BOUNDARY_MISMATCH' | 'HEADER_MISMATCH'
   | 'INSERTION_MISMATCH' | 'TOOL_GROUP_UNSUPPORTED' | 'TOOL_GROUP_SPLIT'
   | 'MATERIAL_MISMATCH' | 'SURFACE_RECONSTRUCTION_FAILED'
+  | 'PROJECTION_MISMATCH' | 'PROJECTION_BOUNDARY'
 export class NativeRequestMaterialFailure extends Error {
   constructor(readonly code: NativeRequestMaterialFailureCodeV1, readonly location: string) {
     super(`native request material ${code} at ${location}`)
@@ -319,6 +324,18 @@ function forbiddenToolBoundaries(base: readonly Message[]): ReadonlySet<number> 
 }
 function materialize(input: NativeRequestMaterialPlanInputV1|NativeRequestMaterialPlanInputV2): NativeRequestMaterialResultV1 {
   validateBase(input)
+  if(input.requestLocalSampling) {
+    const local=input.requestLocalSampling
+    object(local as unknown as Data,['schemaVersion','base'],'requestLocalSampling')
+    if(local.schemaVersion!==1)fail('UNKNOWN_VERSION','requestLocalSampling')
+    const base=local.base
+    object(base as unknown as Data,['temperature','maxTokens','stop'].filter(key=>Object.hasOwn(base,key)),'requestLocalSampling.base')
+    if(base.temperature!==undefined&&!Number.isFinite(base.temperature)
+      ||base.maxTokens!==undefined&&(!safeInt(base.maxTokens)||base.maxTokens<1)
+      ||base.stop!==undefined&&list(base.stop as unknown as Data,128,'requestLocalSampling.stop').some(value=>typeof value!=='string')) {
+      fail('MALFORMED','requestLocalSampling.base')
+    }
+  }
   const insertions = canonicalInsertions(input.insertions)
   const base = {
     boundarySeq: input.boundarySeq, contentGeneration: input.contentGeneration,
@@ -343,7 +360,9 @@ function materialize(input: NativeRequestMaterialPlanInputV1|NativeRequestMateri
     ...version,turn: input.turn, step: input.step,
     header: input.header, snapshot: input.snapshot, plan: input.plan, base,
     delta: {insertions, protectedPrefixLength: input.protectedPrefixLength,
-      ...projections?{messageTextProjections:projections}:{}},
+      ...projections?{messageTextProjections:projections}:{},
+      ...input.messageProjection?{messageProjection:input.messageProjection}:{},
+      ...input.requestLocalSampling?{requestLocalSampling:input.requestLocalSampling}:{}},
   }
   const inputSha = digest(seed as unknown as Data)
   const forbidden = insertions.length > 0 ? forbiddenToolBoundaries(input.baseMessages) : new Set<number>()
@@ -367,6 +386,7 @@ function materialize(input: NativeRequestMaterialPlanInputV1|NativeRequestMateri
     }}
   }).sort((a, b) => a.placement.baseIndex - b.placement.baseIndex || a.item.stableOrder - b.item.stableOrder
     || (a.item.contributionRef < b.item.contributionRef ? -1 : a.item.contributionRef > b.item.contributionRef ? 1 : 0))
+  const groups=projectMessageGroups(input,inputSha,located.map(item=>item.placement.baseIndex))
   const messages: NativeRequestMessageV1[] = []
   let insertion = 0
   for (let index = 0; index <= input.baseMessages.length; index++) {
@@ -376,11 +396,81 @@ function materialize(input: NativeRequestMaterialPlanInputV1|NativeRequestMateri
       messages.push(item.message)
     }
     const item = input.baseMessages[index]
-    if (item) messages.push(projected.get(String(item.id))??item)
+    if (item&&!groups.covered.has(index)) messages.push(projected.get(String(item.id))??item)
+    const replacement=groups.starts.get(index)
+    if(replacement)messages.push(replacement)
   }
   const record = {...seed, placements: located.map(item => item.placement),
     outputSha256: digest(messages as unknown as Data)}
   return ownedData({record, messages}, 'result') as unknown as NativeRequestMaterialResultV1
+}
+
+/** Plain history may change role or collapse into one request-only message.
+ * Opaque replay/signatures, tools and media retain their exact original rows. */
+function projectMessageGroups(input:NativeRequestMaterialPlanInputV1,inputSha:string,insertionPositions:readonly number[]) {
+  const starts=new Map<number,NativeRequestMessageV1>(),covered=new Set<number>()
+  const projection=input.messageProjection
+  if(!projection)return {starts,covered}
+  object(projection as unknown as Data,['schemaVersion','encoding','groups',
+    ...Object.hasOwn(projection,'textEdits')?['textEdits']:[]],'projection')
+  if(projection.schemaVersion!==1||projection.encoding!=='native-request-message-projection-v1')fail('UNKNOWN_VERSION','projection')
+  const groups=list(projection.groups as unknown as Data,limits.baseMessages,'projection.groups')
+  let bytes=0
+  for(const [ordinal,raw] of groups.entries()) {
+    const group=object(raw,['targets','role','renderedText'],'projection.group')
+    const targets=list(group['targets'],limits.baseMessages,'projection.targets')
+    if(!targets.length||!['system','user','assistant'].includes(group['role'] as string)
+      ||typeof group['renderedText']!=='string'||!group['renderedText'].isWellFormed())fail('PROJECTION_MISMATCH','projection.group')
+    bytes+=Buffer.byteLength(group['renderedText'],'utf8')
+    if(bytes>4_194_304)fail('DATA_LIMIT','projection.renderedBytes')
+    let start=-1
+    for(const [offset,rawTarget] of targets.entries()) {
+      const target=object(rawTarget,['id','messageSha256'],'projection.target')
+      const index=input.baseRefs.findIndex(ref=>ref.id===target['id']&&ref.messageSha256===target['messageSha256'])
+      if(offset===0)start=index
+      const message=input.baseMessages[index]
+      if(index<0||index!==start+offset||covered.has(index))fail('PROJECTION_MISMATCH','projection.target')
+      if(index<input.protectedPrefixLength||!message||!['user','assistant'].includes(message.role)
+        ||message.content.some(block=>block.type!=='text'||Object.keys(block).some(key=>!['type','text'].includes(key)))) {
+        fail('PROJECTION_BOUNDARY','projection.target')
+      }
+      covered.add(index)
+    }
+    if(insertionPositions.some(index=>index>start&&index<start+targets.length))fail('PROJECTION_BOUNDARY','projection.insertion')
+    const renderedText=group['renderedText']
+    const payload:Omit<NativeRequestMaterialMessageV1,'role'>={
+      id:brandString<Message['id']>(`native-projection-${inputSha}-${ordinal}`),content:[{type:'text',text:renderedText}],
+      source:{kind:'request-material',schemaVersion:1,encoding:'native-request-material-message-v1',
+        materialInputSha256:inputSha,contributionRef:`projection:${ordinal}`,sourceSha256:digest(targets),
+        renderedSha256:createHash('sha256').update(renderedText,'utf8').digest('hex')},
+      requestProjection:{schemaVersion:1,encoding:'native-request-message-projection-v1',materialInputSha256:inputSha,
+        originalMessages:input.baseMessages.slice(start,start+targets.length)}}
+    const role=group['role']
+    starts.set(start,role==='system'?{...payload,role:'system'}:role==='user'?{...payload,role:'user'}:{...payload,role:'assistant'})
+  }
+  if(projection.textEdits)for(const [ordinal,edit] of projection.textEdits.entries()) {
+    object(edit as unknown as Data,['target','blocks'],'projection.textEdit')
+    object(edit.target as unknown as Data,['id','messageSha256'],'projection.textEdit.target')
+    const index=input.baseRefs.findIndex(ref=>ref.id===edit.target.id&&ref.messageSha256===edit.target.messageSha256)
+    const message=input.baseMessages[index]
+    if(index<0||covered.has(index)||!message)fail('PROJECTION_MISMATCH','projection.textEdit.target')
+    if(index<input.protectedPrefixLength||message.role!=='user'&&message.role!=='assistant')fail('PROJECTION_BOUNDARY','projection.textEdit.target')
+    const blocks=new Map<number,string>()
+    for(const block of edit.blocks) {
+      object(block as unknown as Data,['index','text'],'projection.textEdit.block')
+      if(!safeInt(block.index)||blocks.has(block.index)||message.content[block.index]?.type!=='text'
+        ||typeof block.text!=='string'||!block.text.isWellFormed())fail('PROJECTION_BOUNDARY','projection.textEdit.block')
+      bytes+=Buffer.byteLength(block.text,'utf8')
+      if(bytes>4_194_304)fail('DATA_LIMIT','projection.renderedBytes')
+      blocks.set(block.index,block.text)
+    }
+    covered.add(index)
+    starts.set(index,{...message,id:brandString<Message['id']>(`native-text-projection-${inputSha}-${ordinal}`),
+      content:message.content.map((block,index)=>blocks.has(index)?{type:'text' as const,text:blocks.get(index)!}:block),
+      requestProjection:{schemaVersion:1,encoding:'native-request-message-projection-v1',materialInputSha256:inputSha,
+        originalMessages:[message]}} as RequestProjectedMessageV1)
+  }
+  return {starts,covered}
 }
 
 /** Plan against the exact final canonical Native base. Hash consistency is not
@@ -404,7 +494,9 @@ export function planNativeRequestMaterialV1(input: NativeRequestMaterialPlanInpu
   const hasProjections=Object.hasOwn(data as object,'messageTextProjections')
   object(data, ['turn', 'step', 'header', 'snapshot', 'plan', 'boundarySeq', 'contentGeneration',
     'surfaceNodes', 'baseMessages', 'baseRefs', 'protectedPrefixLength', 'insertions',
-    ...hasProjections?['messageTextProjections']:[]], 'input')
+    ...hasProjections?['messageTextProjections']:[],
+    ...Object.hasOwn(data as object,'messageProjection')?['messageProjection']:[],
+    ...Object.hasOwn(data as object,'requestLocalSampling')?['requestLocalSampling']:[]], 'input')
   const owned = data as unknown as NativeRequestMaterialPlanInputV1|NativeRequestMaterialPlanInputV2
   object(owned.header as unknown as Data, ['seq', 'sha256'], 'header')
   list(owned.surfaceNodes as unknown as Data, limits.baseMessages, 'surfaceNodes')
@@ -423,7 +515,9 @@ function recordData(value: unknown): NativeRequestMaterialRecord {
   const record = object(data, ['schemaVersion', 'encoding', 'turn', 'step', 'header', 'snapshot', 'plan',
     'base', 'delta', 'placements', 'outputSha256'], 'record')
   object(record['base'] as Data, ['boundarySeq', 'contentGeneration', 'surfaceNodes', 'messages', 'sha256'], 'record.base')
-  object(record['delta'] as Data, ['insertions', 'protectedPrefixLength',...version===2?['messageTextProjections']:[]], 'record.delta')
+  object(record['delta'] as Data, ['insertions', 'protectedPrefixLength',...version===2?['messageTextProjections']:[],
+    ...Object.hasOwn(record['delta'] as object,'messageProjection')?['messageProjection']:[],
+    ...Object.hasOwn(record['delta'] as object,'requestLocalSampling')?['requestLocalSampling']:[]], 'record.delta')
   object(record['header'] as Data, ['seq', 'sha256'], 'record.header')
   list(record['placements'], limits.insertions, 'record.placements')
   return record as unknown as NativeRequestMaterialRecord
@@ -547,7 +641,9 @@ function reconstructAgainstPrefix(record: NativeRequestMaterialRecord,
     snapshot: record.snapshot, plan: record.plan, boundarySeq: record.base.boundarySeq,
     contentGeneration, surfaceNodes: folded.nodes, baseMessages, baseRefs,
     protectedPrefixLength: record.delta.protectedPrefixLength, insertions: record.delta.insertions,
-    ...record.schemaVersion===2?{messageTextProjections:record.delta.messageTextProjections}:{}})
+    ...record.schemaVersion===2?{messageTextProjections:record.delta.messageTextProjections}:{},
+    ...record.delta.messageProjection?{messageProjection:record.delta.messageProjection}:{},
+    ...record.delta.requestLocalSampling?{requestLocalSampling:record.delta.requestLocalSampling}:{}})
   if (!same(rebuilt.record, record)) fail('MATERIAL_MISMATCH', 'record.rebuilt')
   return rebuilt
 }

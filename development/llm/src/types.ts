@@ -9,6 +9,22 @@ import type { FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-att
 import type { MessageId, ToolCallId, ProviderRequestId, ReasoningEffortId } from './brand.js'
 import type { Message, UserMessage } from './message.js'
 
+/** Numeric estimate of one complete projected request. The token-meter service
+ * computes this shared DTO; Native consumes it without importing the plugin. */
+export interface TokenRequestMeasurement {
+  readonly inputTokens: number
+  readonly messageTokens: readonly number[]
+  /** Named producer parts; framing/separators remain systemFixed. */
+  readonly messageParts:readonly (readonly {readonly category:string;readonly tokens:number}[])[]
+  /** options.system only; system-role messages belong to messageTokens. */
+  readonly systemTokens: number
+  readonly toolTokens: number
+  readonly schemaBytes: number
+  readonly toolCount: number
+  readonly imageCount: number
+  readonly imagePricing: 'known' | 'unknown' | 'none'
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Events {
     /**
@@ -149,6 +165,23 @@ export interface ContentBlockMap {
 export type ContentBlockType = keyof ContentBlockMap
 /** Any known content block, derived from {@link ContentBlockMap}; switch on `type` and fall through unknowns (merge-extensible). */
 export type ContentBlock = ContentBlockMap[ContentBlockType]
+
+/** Durable story projection facts. Raw stream and replay remain unchanged;
+ * this plan grants no live owner or callback access. */
+export type NativeStoryResponseOperationV1 =
+  | {readonly kind:'extract-transport';readonly name:string;readonly selection:'transport'|'longest'}
+  | {readonly kind:'recover-reasoning';readonly ranges:readonly {
+    readonly blockIndex:number;readonly start:number;readonly end:number;readonly sha256:string}[]}
+  | {readonly kind:'replace-text';readonly expectedTextSha256:string;readonly text:string}
+export interface NativeStoryResponseMaterialV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-story-response-material-v1'
+  readonly rawContentSha256:string
+  readonly canonicalContentSha256:string
+  /** Canonical block -> original raw block, null for newly rendered body. */
+  readonly canonicalOrigins:readonly (number|null)[]
+  readonly plan:readonly NativeStoryResponseOperationV1[]
+}
 
 /**
  * Why a model response stopped.
@@ -511,7 +544,18 @@ interface RequestMaterialTextBaseV1 {
   readonly source:{readonly kind:'request-material';readonly schemaVersion:1;
     readonly encoding:'native-request-material-message-v1';readonly materialInputSha256:string;
     readonly contributionRef:string;readonly sourceSha256:string;readonly renderedSha256:string}
+  readonly requestProjection?:RequestMessageProjectionV1
 }
+export interface RequestMessageProjectionV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-request-message-projection-v1'
+  readonly materialInputSha256:string
+  /** Exact selected originals retain opaque provider metadata for the adapter
+   * to keep signed blocks or refuse a text edit it cannot serialize. */
+  readonly originalMessages:readonly Message[]
+}
+/** Explicit request-only edit preserving the other blocks and original source. */
+export type RequestProjectedMessageV1=Message&{readonly requestProjection:RequestMessageProjectionV1}
 /** Request-only identity: this is never a durable player input or assistant
  * output. Separate arms preserve role narrowing in adapter conversion. */
 export type RequestMaterialMessageV1 =
@@ -530,7 +574,8 @@ export interface RequestMessageTextProjectionV2 {
     readonly target:{readonly id:string;readonly role:'assistant';readonly messageSha256:string};
     readonly textEditsSha256:string}
 }
-export type RequestMessage = Message | RequestUserInput | RequestMaterialMessageV1 | RequestMessageTextProjectionV2
+export type RequestMessage = Message | RequestUserInput | RequestMaterialMessageV1
+  | RequestMessageTextProjectionV2 | RequestProjectedMessageV1
 
 /** Logged tool declarations and update identities since the last declaration reset. */
 export interface ToolHistory {
@@ -546,6 +591,11 @@ export interface ToolHistory {
 }
 
 /** A single model request, fully assembled. */
+export interface RequestLocalSamplingV1 {
+  readonly temperature?:number
+  readonly maxTokens?:number
+  readonly stop?:readonly string[]
+}
 export interface GenerateOptions {
   /** Registered provider route selecting the adapter instance. */
   provider: string

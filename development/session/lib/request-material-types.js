@@ -49,7 +49,26 @@ export function validateNativeRequestMaterialDataV1(value, subject) {
         priorPosition = position;
         ids.add(ref['id']);
     }
-    const delta = record(row['delta'], ['insertions', 'protectedPrefixLength', ...version === 2 ? ['messageTextProjections'] : []], subject);
+    const rawDelta = row['delta'];
+    const delta = record(rawDelta, ['insertions', 'protectedPrefixLength',
+        ...version === 2 ? ['messageTextProjections'] : [],
+        ...Object.hasOwn(rawDelta, 'messageProjection') ? ['messageProjection'] : [],
+        ...Object.hasOwn(rawDelta, 'requestLocalSampling') ? ['requestLocalSampling'] : []], subject);
+    if (delta['messageProjection'] !== undefined)
+        validateNativeMessageProjectionV1(delta['messageProjection'], subject);
+    if (delta['requestLocalSampling'] !== undefined) {
+        const local = record(delta['requestLocalSampling'], ['schemaVersion', 'base'], subject);
+        if (local['schemaVersion'] !== 1)
+            fail(subject);
+        const raw = local['base'];
+        const base = record(raw, ['temperature', 'maxTokens', 'stop'].filter(key => Object.hasOwn(raw, key)), subject);
+        if (base['temperature'] !== undefined && (typeof base['temperature'] !== 'number' || !Number.isFinite(base['temperature'])))
+            fail(subject);
+        if (base['maxTokens'] !== undefined && (!integer(base['maxTokens']) || base['maxTokens'] < 1))
+            fail(subject);
+        if (base['stop'] !== undefined && list(base['stop'], 128, subject).some(value => typeof value !== 'string'))
+            fail(subject);
+    }
     if (!integer(delta['protectedPrefixLength'], messages.length))
         fail(subject);
     if (version === 2) {
@@ -106,4 +125,45 @@ export function validateNativeRequestMaterialDataV1(value, subject) {
         placed.add(placement['contributionRef']);
         placementIds.add(placement['messageId']);
     }
+}
+export function validateNativeMessageProjectionV1(value, subject) {
+    const projection = record(value, ['schemaVersion', 'encoding', 'groups',
+        ...value !== null && typeof value === 'object' && Object.hasOwn(value, 'textEdits') ? ['textEdits'] : []], subject);
+    if (projection['schemaVersion'] !== 1 || projection['encoding'] !== 'native-request-message-projection-v1')
+        fail(subject);
+    const ids = new Set();
+    let bytes = 0;
+    for (const item of list(projection['groups'], 4096, subject)) {
+        const group = record(item, ['targets', 'role', 'renderedText'], subject);
+        const targets = list(group['targets'], 4096, subject);
+        if (!targets.length || !['system', 'user', 'assistant'].includes(String(group['role']))
+            || typeof group['renderedText'] !== 'string' || !group['renderedText'].isWellFormed())
+            fail(subject);
+        bytes += new TextEncoder().encode(group['renderedText']).byteLength;
+        if (bytes > 4194304)
+            fail(subject);
+        for (const value of targets) {
+            const target = record(value, ['id', 'messageSha256'], subject);
+            if (!identity(target['id']) || !sha(target['messageSha256']) || ids.has(target['id']))
+                fail(subject);
+            ids.add(target['id']);
+        }
+    }
+    if (projection['textEdits'] !== undefined)
+        for (const value of list(projection['textEdits'], 4096, subject)) {
+            const edit = record(value, ['target', 'blocks'], subject), target = record(edit['target'], ['id', 'messageSha256'], subject);
+            if (!identity(target['id']) || !sha(target['messageSha256']) || ids.has(target['id']))
+                fail(subject);
+            ids.add(target['id']);
+            const indexes = new Set();
+            for (const value of list(edit['blocks'], 4096, subject)) {
+                const block = record(value, ['index', 'text'], subject);
+                if (!integer(block['index']) || indexes.has(block['index']) || typeof block['text'] !== 'string' || !block['text'].isWellFormed())
+                    fail(subject);
+                indexes.add(block['index']);
+                bytes += new TextEncoder().encode(block['text']).byteLength;
+                if (bytes > 4194304)
+                    fail(subject);
+            }
+        }
 }

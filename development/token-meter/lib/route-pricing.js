@@ -5,7 +5,58 @@
  *
  * @module @deepseek-ai/dsh-token-meter/route-pricing
  */
-import { estimateContent } from './estimate.js';
+import { estimateContent, estimateMessage, estimateStructuralBlock, estimateSystemText, estimateToolsTokens } from './estimate.js';
+/** Price the exact already-projected request once; toolHistory is projection input, never a second schema charge. */
+export function priceRequest(request) {
+    const { options, imageRequestPricing } = request;
+    let imageCount = 0;
+    const nodes = options.messages.map((message, index) => {
+        const images = [];
+        for (const block of message.content) {
+            if (block.type === 'image')
+                images.push(block);
+        }
+        imageCount += images.length;
+        return {
+            // priceSurface only carries this positional identity through; these nodes are never Session events.
+            seq: index,
+            heuristicTokens: estimateMessage(message),
+            imageStructuralTokens: images.reduce((sum, block) => sum + estimateStructuralBlock(block), 0),
+            fileStructuralTokens: 0,
+            images,
+            files: [],
+        };
+    });
+    const surface = priceSurface(nodes, imageRequestPricing);
+    const messageTokens = surface.nodes.map(node => node.tokens);
+    const messageParts = options.messages.map((message, index) => {
+        const source = message.source;
+        if (message.role !== 'system' || source?.kind !== 'system-prompt' || !source.requestAttribution)
+            return Object.freeze([]);
+        let characters = 0, allocated = 0;
+        const parts = source.requestAttribution.parts.map(part => {
+            const before = estimateSystemText(characters, true);
+            characters += part.characters;
+            const tokens = estimateSystemText(characters, true) - before;
+            allocated += tokens;
+            return Object.freeze({ category: part.category, tokens });
+        });
+        // Role framing and any adapter-visible residual have a single owner.
+        parts.push(Object.freeze({ category: 'systemFixed', tokens: messageTokens[index] - allocated }));
+        return Object.freeze(parts);
+    });
+    const systemTokens = estimateSystemText(options.system?.length ?? 0);
+    const toolTokens = estimateToolsTokens(options.tools === undefined ? undefined : { config: options, tools: options.tools });
+    const schemaBytes = options.tools === undefined || options.tools.length === 0
+        ? 0 : new TextEncoder().encode(JSON.stringify(options.tools)).byteLength;
+    return Object.freeze({
+        inputTokens: surface.surfaceTokens + systemTokens + toolTokens,
+        messageTokens: Object.freeze(messageTokens), messageParts: Object.freeze(messageParts), systemTokens, toolTokens, schemaBytes,
+        toolCount: options.tools?.length ?? 0,
+        imageCount,
+        imagePricing: imageCount === 0 ? 'none' : imageRequestPricing === undefined ? 'unknown' : 'known',
+    });
+}
 /**
  * Price one ordered surface under its model-request attachment projection.
  * @param nodes - the fold's current or snapshotted surface, in model-visible order.

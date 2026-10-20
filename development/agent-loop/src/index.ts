@@ -39,6 +39,8 @@ import type {NativeProgrammaticOpeningAgentV1} from './agent.js'
 import { inboxProjectionDefinition } from './inbox.js'
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js'
 import type {} from './runtime-context.js'
+export {readNativeRequestMeasurementV1} from './request-budget.js'
+export type {NativeRequestMeasurementV1,RequestComponent,RequestComponents} from './request-budget.js'
 
 /** Fiber states that cannot own or serve a new lifecycle. */
 // Cordis 4.0.4 declares FiberState as an ambient const enum and exports no
@@ -249,7 +251,7 @@ export type {NativeOpeningGenerationInspectionV1,NativeOpeningHistoryObservation
   NativeInheritedOpeningGenerationObservationV1} from './opening-generation.js'
 export {inspectNativeOpeningGenerationV1,inspectNativeOpeningGenerationObservationV1,
   inspectInheritedOpeningGenerationObservationV1,buildNativeGeneratedOpeningReceiptObservationV1} from './opening-generation.js'
-export type {NativeOpeningMaterialOwnerV1,NativeOpeningMaterialInputV1,NativeOpeningMaterialPrepareInputV1,
+export type {NativeMaterialCandidateBasisV1,NativeMaterialCandidatePreviewV1,NativeOpeningMaterialOwnerV1,NativeOpeningMaterialInputV1,NativeOpeningMaterialPrepareInputV1,
   NativeOpeningMaterialCheckV1,NativeOpeningOwnerIdentityV1,NativeOpeningClosingInputV1,
   NativeOpeningClosingAcknowledgementV1} from './request-material-owner.js'
 export type {NativeOpeningIdentityV1,NativeOpeningInvocationV1,NativeOpeningRequestAttemptV1,
@@ -269,6 +271,8 @@ export type {NativeInboxHistory} from './input-admission.js'
 export {reconstructNativeRequestMaterialV1,NativeRequestMaterialFailure,projectNativeMessageTextV2} from './request-material.js'
 export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
   NativeRequestMaterialEventV1} from './request-material.js'
+export type {NativeStoryRequestPolicyV1,NativeStoryMaterialHooksV1,NativeStoryTextTransformV1} from './story-request.js'
+export type {NativeMessageProjectionV1} from '@deepseek-ai/dsh-session'
 export type {NativeInputRef, NativePreparationReceiptV1, NativeInputLinkV1} from '@deepseek-ai/dsh-session'
 export type {NativeInputAdmissionAgentV2, NativeInputAdmissionCapabilityV2, NativeInputAdmissionHookV2, NativeInputAdmissionHook,
   NativeInputAdmissionCheckV2, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,

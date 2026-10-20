@@ -127,6 +127,60 @@ function readReplayState(value) {
         blocks: blocks,
     };
 }
+/** Native's durable map names exactly which original blocks survived. New
+ * body text never inherits a consumed transport call's provider signature. */
+function messageReplayState(message, source) {
+    const state = readReplayState(source.replayState);
+    const material = source.responseMaterial;
+    if (!material)
+        return state;
+    if (material.canonicalOrigins.length !== message.content.length)
+        return invalidReplay('response projection origin count mismatch');
+    const blocks = message.content.map((block, index) => {
+        const origin = material.canonicalOrigins[index];
+        if (origin === null) {
+            if (block.type !== 'text')
+                return invalidReplay('response projection manufactured a nontext block');
+            return { type: 'text' };
+        }
+        const replay = origin === undefined ? undefined : state.blocks[origin];
+        if (replay === undefined || replay.type !== block.type)
+            return invalidReplay('response projection origin type mismatch');
+        return replay;
+    });
+    const toolCalls = message.content.some(block => block.type === 'tool-call');
+    return { response: { ...state.response, stopReason: toolCalls ? 'toolUse' : state.response.stopReason === 'toolUse' ? 'stop' : state.response.stopReason }, blocks };
+}
+/** Replay signatures belong to individual original blocks. Native carries the
+ * original messages as request-only provenance; this adapter alone interprets
+ * its envelope. Unsigned text may change without discarding signed thinking. */
+export function assertPiRequestProjectionV1(message) {
+    const marker = 'requestProjection' in message ? message.requestProjection : undefined;
+    if (!marker)
+        return;
+    for (const original of marker.originalMessages) {
+        if (original.role !== 'assistant' || original.source.kind !== 'model' || original.source.replayState === undefined)
+            continue;
+        let state;
+        try {
+            state = messageReplayState(original, original.source);
+        }
+        catch {
+            throw new LlmError('Cannot project unknown assistant replay metadata', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
+        }
+        for (const [index, replay] of state.blocks.entries()) {
+            const signed = replay.type === 'text' ? replay.textSignature !== undefined : replay.type === 'reasoning'
+                ? replay.thinkingSignature !== undefined || replay.redacted === true : replay.thoughtSignature !== undefined;
+            if (!signed)
+                continue;
+            const old = original.content[index], current = message.content[index];
+            if (marker.originalMessages.length !== 1 || message.role !== 'assistant'
+                || message.source.kind !== 'model' || JSON.stringify(old) !== JSON.stringify(current)) {
+                throw new LlmError('Cannot rewrite provider-signed blocks; use a separate text contribution', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
+            }
+        }
+    }
+}
 /** Convert provider-neutral blocks without trusting them as same-model replay. */
 function foreignAssistant(message) {
     const source = message.source;
@@ -171,7 +225,7 @@ function foreignAssistant(message) {
 }
 /** Recombine durable Harness content with validated pi-ai replay metadata. */
 function replayedAssistant(message, source, rawState) {
-    const state = readReplayState(rawState);
+    const state = messageReplayState(message, { ...source, replayState: rawState });
     if (state.response.provider !== source.provider)
         return invalidReplay('provider does not match assistant source');
     if (state.response.model !== source.model)

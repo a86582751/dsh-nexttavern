@@ -69,7 +69,11 @@ export function estimateSystemMessage(message) {
     for (const block of message.content) {
         characters += block.type === 'text' ? block.text.length : JSON.stringify(block).length;
     }
-    return Math.ceil(characters / CHARS_PER_TOKEN) + ROLE_OVERHEAD;
+    return estimateSystemText(characters, true);
+}
+/** Shared system-string price for the one-shot slot and rendered system messages. */
+export function estimateSystemText(characters, present = characters > 0) {
+    return present ? Math.ceil(characters / CHARS_PER_TOKEN) + ROLE_OVERHEAD : 0;
 }
 /**
  * Heuristically price one model-visible message.

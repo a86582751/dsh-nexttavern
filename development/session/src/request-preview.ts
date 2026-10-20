@@ -2,14 +2,15 @@
  * snapshots and delegates every surface transition to SurfaceManager. It does
  * not create a Session, run observers, or infer Native input permission. */
 import {deepFreeze, snapshotJsonValue} from '@deepseek-ai/dsh-util-values'
-import type {Message} from '@deepseek-ai/dsh-llm'
+import type {Message,ToolHistory} from '@deepseek-ai/dsh-llm'
+import {ToolHistoryProjection} from './tool-history.js'
 import {SurfaceManager, validateSessionEventData} from './surface.js'
 import type {SessionMessageProjection} from './surface.js'
 import {SessionLogOffset, SessionSeq} from './types.js'
 import type {SessionEvent, SessionEventMap, SessionSeq as EventSeq, SurfaceIntent} from './types.js'
 
 type RequestSurfaceType='system/message'|'user/message'|'developer/message'
-type RequestEnvelopeType='request/header'|'request/context'
+type RequestEnvelopeType='request/header'|'request/context'|'step/start'
 /** Only the existing Native request commits can be previewed here. */
 export type SessionRequestAppendInput = {
   [T in RequestSurfaceType]: {readonly type:T; readonly data:SessionEventMap[T]; readonly intent:SurfaceIntent<T>}
@@ -26,9 +27,10 @@ export interface SessionRequestPreview {
   readonly contentGeneration:number
   readonly messages:readonly Message[]
   readonly messageNodes:readonly {readonly seq:EventSeq; readonly message:Message}[]
+  readonly toolHistory:ToolHistory
 }
 export type SessionRequestBoundary=Omit<SessionRequestPreview,'baseLogLength'|'events'>
-const ALLOWED=new Set<string>(['system/message','user/message','developer/message','request/header','request/context'])
+const ALLOWED=new Set<string>(['system/message','user/message','developer/message','request/header','request/context','step/start'])
 export const SESSION_REQUEST_PREVIEW_BOUNDS=Object.freeze({appends:128,messages:4096,candidateBytes:8_388_608})
 
 /** The complete committed prefix is borrowed, not cloned. The additional
@@ -65,6 +67,8 @@ export function previewSessionRequestAppends(
   const prefix=[...committed,...candidate]
   if(prefix.length===0)throw Error('SESSION_REQUEST_PREVIEW_BOUNDARY_EMPTY')
   const surface=new SurfaceManager(prefix,SessionLogOffset(0),projections)
+  const tools=new ToolHistoryProjection()
+  for(const event of prefix)tools.apply(event)
   const nodes=[...surface.nodes],messageNodes:{seq:EventSeq;message:Message}[]=[]
   for(const seq of nodes){
     const event=prefix[seq]
@@ -75,5 +79,5 @@ export function previewSessionRequestAppends(
   if(messageNodes.length>SESSION_REQUEST_PREVIEW_BOUNDS.messages)throw Error('SESSION_REQUEST_PREVIEW_MESSAGE_BUDGET')
   return deepFreeze({baseLogLength:committed.length,boundarySeq:SessionSeq(prefix.length-1),events:candidate,
     surfaceNodes:nodes,contentGeneration:surface.contentGeneration,
-    messages:messageNodes.map(row=>row.message),messageNodes})
+    messages:messageNodes.map(row=>row.message),messageNodes,toolHistory:tools.snapshot()})
 }

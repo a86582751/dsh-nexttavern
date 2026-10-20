@@ -18,7 +18,7 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
   const physicalPeerPins: {name:string;version:string;packageSha256:string;physical:true}[] = []
   // Public development sources use the manifest's development/ package layout;
   // maintenance sources retain compat/. Neither layout is a Harness installation.
-  const packageRoot = existsSync(new URL('../compat/', import.meta.url)) ? '../compat/' : '../development/'
+  const packageRoot = existsSync(new URL('../development/', import.meta.url)) ? '../development/' : '../development/'
   try {
     let storageJsonPin: StorageJsonPin | undefined
     await mkdir(modules)

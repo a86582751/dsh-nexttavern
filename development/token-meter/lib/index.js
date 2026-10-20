@@ -13,7 +13,7 @@ import { contextBreakdownProjectionDefinition } from './breakdown-projection.js'
 import { contextPressureProjectionDefinition, tokenUsageProjectionDefinition } from './usage-projection.js';
 import { estimateContent, estimateMessage, estimateToolsTokens, ROLE_OVERHEAD } from './estimate.js';
 import { commitSurfaceTokens, planSurfaceTokens } from './surface-fold.js';
-import { priceSurface } from './route-pricing.js';
+import { priceRequest, priceSurface } from './route-pricing.js';
 import { isMessageEdit } from 'dsh-nexttavern-session-format/projection';
 import { planMessageEdit } from './surface-fold.js';
 /** Sum disjoint provider usage buckets without double-counting reasoning output. */
@@ -121,6 +121,10 @@ export class TokenMeter extends Service {
             surfaceTokens: surface.surfaceTokens,
             nodes: surface.nodes,
         }));
+    }
+    /** Estimate only the complete projected input; provider output/cache anchors never enter this price. */
+    measureRequest(request) {
+        return priceRequest(request);
     }
     /** Resolve the routed model's image pricing, when the llm service and route declare one. */
     _routeImagePricing(header) {

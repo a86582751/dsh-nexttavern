@@ -63,6 +63,7 @@ import { ReactLoopAgent, nativeInputAdmissionCapability } from './agent.js';
 import { nativeProgrammaticOpeningCapability } from './agent.js';
 import { inboxProjectionDefinition } from './inbox.js';
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.js';
+export { readNativeRequestMeasurementV1 } from './request-budget.js';
 /** Fiber states that cannot own or serve a new lifecycle. */
 // Cordis 4.0.4 declares FiberState as an ambient const enum and exports no
 // runtime value. Keep its pinned lifecycle codes explicit in this JS output.

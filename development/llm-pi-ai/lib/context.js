@@ -6,7 +6,7 @@
  */
 import { brandString } from '@deepseek-ai/dsh-brand';
 import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm';
-import { toPiAssistant } from './replay.js';
+import { toPiAssistant, assertPiRequestProjectionV1 } from './replay.js';
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment';
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.js';
 /** Join the text blocks of a harness message. */
@@ -31,6 +31,7 @@ function toolResultOf(message, toolNames, content) {
 /** Reject unsupported roles, tool-change blocks, and image roles before replay or image offloading. */
 function assertSupportedHistory(messages) {
     for (const message of messages) {
+        assertPiRequestProjectionV1(message);
         // Developer history is persisted for V4; provider serialization is intentionally deferred.
         if (message.role === 'developer')
             throw new LlmError('Developer messages are not supported yet', 'UNSUPPORTED_CONTENT');

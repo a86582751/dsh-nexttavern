@@ -8,7 +8,7 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-compaction-image-offload/projection'
 import z from '@deepseek-ai/schemastery'
 import { assembleAssistantStream } from '@deepseek-ai/dsh-llm'
-import type { LlmImageRequestPricing, LlmRuntime, Message, TokenUsage } from '@deepseek-ai/dsh-llm'
+import type { LlmImageRequestPricing, LlmRuntime, Message, ProjectedLlmRequest, TokenUsage } from '@deepseek-ai/dsh-llm'
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type {
   EpochHeader,
@@ -29,13 +29,14 @@ import type {
   TokenMeasurement,
   TokenMeasurementBaseline,
   TokenMeterConfig,
+  TokenRequestMeasurement,
 } from './types.js'
 import { contextBreakdownProjectionDefinition } from './breakdown-projection.js'
 import { contextPressureProjectionDefinition, tokenUsageProjectionDefinition } from './usage-projection.js'
 import { estimateContent, estimateMessage, estimateToolsTokens, ROLE_OVERHEAD } from './estimate.js'
 import { commitSurfaceTokens, planSurfaceTokens } from './surface-fold.js'
 import type { MeterSurfaceNode } from './surface-fold.js'
-import { priceSurface } from './route-pricing.js'
+import { priceRequest, priceSurface } from './route-pricing.js'
 import { isMessageEdit } from 'dsh-nexttavern-session-format/projection'
 import { planMessageEdit } from './surface-fold.js'
 
@@ -187,6 +188,11 @@ export class TokenMeter extends Service {
       surfaceTokens: surface.surfaceTokens,
       nodes: surface.nodes,
     }))
+  }
+
+  /** Estimate only the complete projected input; provider output/cache anchors never enter this price. */
+  measureRequest(request: ProjectedLlmRequest): TokenRequestMeasurement {
+    return priceRequest(request)
   }
 
   /** Resolve the routed model's image pricing, when the llm service and route declare one. */

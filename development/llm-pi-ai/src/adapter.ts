@@ -69,6 +69,11 @@ import {catalogProvider} from './catalog.js'
 /** Capability belongs to the frozen resolved serializer configuration, never
  * an API/model label. The exact owned SDK wire contract is tested separately. */
 function supportsRequestMaterialText(profile:ResolvedPiAiProviderProfile,model:Model<Api>):boolean {
+  // These serializers already accept provider-neutral user/assistant text and
+  // preserve each durable assistant's replay metadata. Their system slot stays
+  // separate: this does not promise a system role in the middle of history.
+  if(profile.requestMaterialSerialization===undefined
+    &&['anthropic-messages','google-generative-ai','google-vertex','openai-responses','openai-completions'].includes(model.api))return true
   if(profile.api!=='openai-completions'||model.api!=='openai-completions'
     ||catalogProvider(profile.provider)!==undefined||model.reasoning!==false)return false
   const compat=(model as Model<'openai-completions'>).compat

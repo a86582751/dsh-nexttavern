@@ -16,7 +16,9 @@ import type {
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
 import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
-import type { AssistantMessage, GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
+import type { AssistantMessage, GenerateOptions, LlmCallConfig, Message, PreparedLlmCall, ProjectedLlmRequest } from '@deepseek-ai/dsh-llm'
+import {NativeRequestBudget,retainNativeRequestMeasurement} from './request-budget.js'
+import type {NativeRequestMeasurementV1,NativeRequestMeter} from './request-budget.js'
 import {
   LlmError,
   IMAGE_OFFLOAD_REQUIRED_CODE,
@@ -34,7 +36,7 @@ import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { EpochHeader, RequestContext, Session, SessionEvent, SessionId, SessionSeq, TurnEndReason, UserMessage,
   NativeOpeningIdentityV1,NativeOpeningEventRefV1,NativeGeneratedOpeningReceiptV1 } from '@deepseek-ai/dsh-session'
-import { canonicalHeader, headerEquals } from '@deepseek-ai/dsh-session'
+import { canonicalHeader, headerEquals,SessionLogOffset } from '@deepseek-ai/dsh-session'
 import { joinContextSections, renderContextSections, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-session-projection'
@@ -53,7 +55,7 @@ import type {NativeDurableInputWorkLookup, NativeDurableInputWorkReceiptV1, Nati
 import {nativeCompletedInputReceipt, nativeCompletedInputAcknowledgement} from './input-completion.js'
 import { RuntimeContextProjection } from './runtime-context.js'
 import { AssistantStreamAttempt } from './assistant-stream.js'
-import { SystemPromptProjection } from './runtime-context.js'
+import { SystemPromptProjection,renderAttributedSystemPrompt } from './runtime-context.js'
 import { executeToolCalls } from './tool-calls.js'
 import {nativeRequestMaterialDecisionV1,nativeRequestMaterialOwnerRegistrationV1,
   nativeRequestMaterialOwnerCheckV1,nativeRequestMaterialPrepareDecisionV1,applyNativeOwnedSectionsV1,
@@ -70,6 +72,9 @@ import type {NativeOpeningGenerationInspectionV1} from './opening-generation.js'
 import {planNativeRequestEnvelope} from './request-envelope.js'
 import {planNativeRequestMaterialV1} from './request-material.js'
 import {bindNativeRequestMaterial} from './request-material-sidecar.js'
+import {nativeStoryTransportToolsV1,nativeStorySamplingConfigV1,materializeNativeStoryResponseV1,
+  createNativeStoryStreamProjectionV1,nativeStorySamplingBaseV1,restoreNativeStorySamplingV1} from './story-request.js'
+import type {NativeStoryRequestBindingV1} from './story-request.js'
 import type {SessionRequestAppendInput,SessionRequestBoundary} from '@deepseek-ai/dsh-session'
 
 type Phase =
@@ -133,6 +138,23 @@ type PreparedStep =
     assembly: PromptAssembly
     admission?: InputAdmission
   }
+type EnterStep=Extract<PreparedStep,{kind:'enter'}>
+type PreparedRequest={config:LlmCallConfig;preparedCall?:PreparedLlmCall}
+interface PlannedRequest {
+  readonly firstAttempt:boolean
+  readonly selected:NativeMaterialSelectedBaseV1
+  readonly preview:ReturnType<Session['previewRequestAppends']>
+  readonly envelope:ReturnType<typeof planNativeRequestEnvelope>
+  readonly request:GenerateOptions
+  readonly projection?:ProjectedLlmRequest
+  readonly measurement?:NativeRequestMeasurementV1
+}
+interface PlannedMaterialRequest extends PlannedRequest {
+  readonly kind:'material'
+  readonly plan:NativeRequestMaterialTransform
+  readonly result:ReturnType<typeof planNativeRequestMaterialV1>
+}
+interface PlannedPlainRequest extends PlannedRequest {readonly kind:'plain'}
 type OwnedContinuation = {ref: NativeInputRef; ownerToken: object; parentSha256: string; turn: number; claimed: boolean}
 type AdmissionRegistration = {hook: NativeInputAdmissionHook | NativeInputAdmissionHookV2; active: boolean;
   requestMaterial?:NativeRequestMaterialOwnerV1|NativeRequestMaterialOwnerV2;
@@ -247,6 +269,10 @@ function abortedCancelCause(signal: AbortSignal): AgentCancelCause | undefined {
 
 /** Drives one session through turn and step boundaries. */
 export class ReactLoopAgent implements Agent {
+  private readonly requestBudget=new NativeRequestBudget()
+  private pendingMaterialCandidate?:{decision:EnterStep;planned:PlannedMaterialRequest|PlannedPlainRequest;prepared:PreparedRequest}
+  private requestObservation?:{request:GenerateOptions;turn:number;step:number;signal:AbortSignal;started:number;firstOutputMs:number|null;
+    projection?:ProjectedLlmRequest;measurement?:NativeRequestMeasurementV1}
   readonly inbox: ReactLoopInbox
   private phase: Phase
   private activityDone: Promise<void> = Promise.resolve()
@@ -266,6 +292,8 @@ export class ReactLoopAgent implements Agent {
   /** Process-local revision of assistant frames for this attached Session. */
   private assistantStreamRevision = 0
   private assistantAttemptCounter = 0
+  private readonly storyRequests=new WeakMap<GenerateOptions,NativeStoryRequestBindingV1>()
+  private readonly storyPreparedCalls=new WeakMap<GenerateOptions,PreparedLlmCall>()
   private readonly systemPrompt: SystemPromptProjection
   /** Identities fully frozen by this loop; weak references do not retain replaced history. */
   private readonly frozenMessages = new WeakSet<Message>()
@@ -315,6 +343,15 @@ export class ReactLoopAgent implements Agent {
     this.phase = { kind: 'idle', lastTurn }
     this.runtimeContext = new RuntimeContextProjection(this.ctx, session)
     this.systemPrompt = new SystemPromptProjection(session)
+    this.ctx.on('llm/request-projected',projection=>{
+      const observation=this.requestObservation
+      if(!observation||projection.options.sessionId!==this.session.id||projection.options.signal!==observation.signal)return
+      const meter=this.loopCtx.get('tokenMeter') as NativeRequestMeter|undefined
+      if(!meter?.measureRequest)return
+      observation.projection=projection
+      observation.measurement=this.requestBudget.measure(projection,meter)
+      retainNativeRequestMeasurement(observation.request,observation.measurement)
+    },{global:true})
     nativeAdmissionAgents.add(this)
     if(hasUnclosedNativeOpeningV1(session,this.ctx.sessions.messageProjections))
       this.openingDomainCompletion={status:'unknown',code:'OPENING_COLD_RECOVERY_REQUIRED'}
@@ -1589,8 +1626,7 @@ export class ReactLoopAgent implements Agent {
     this.openingDomainCompletion={status:'blocked',code,invocationRef:openingEventRefV1(owner.opening.invocation)}
     throw Error(code)
   }
-  #selectionCut():MaterialSelectionCut {
-    const boundary=this.session.currentRequestBoundary()
+  #selectionCut(boundary=this.session.currentRequestBoundary()):MaterialSelectionCut {
     return {boundary,sha256:nativeInputSha256({boundarySeq:Number(boundary.boundarySeq),
       contentGeneration:boundary.contentGeneration,surfaceNodes:boundary.surfaceNodes,
       messages:boundary.messageNodes.map(({seq,message})=>({seq:Number(seq),id:String(message.id),
@@ -1636,9 +1672,33 @@ export class ReactLoopAgent implements Agent {
   #assertSelectionCurrent(lineage=this.#materialSelection):void {
     if(!lineage)return
     this.#assertSelectionOwner(lineage)
-    if(this.#selectionCut().sha256!==lineage.expected.sha256){
+    if(!this.#acceptSelectionTitleTail(lineage,this.#selectionCut())){
       this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_BOUNDARY_CHANGED')
     }
+  }
+
+  #acceptSelectionTitleTail(lineage:MaterialSelectionLineage,after:MaterialSelectionCut,
+    capturedTail?:readonly SessionEvent[]):boolean {
+    const before=lineage.expected
+    if(after.sha256===before.sha256)return true
+    if(after.boundary.boundarySeq<=before.boundary.boundarySeq
+      ||this.#selectionCut({...after.boundary,boundarySeq:before.boundary.boundarySeq}).sha256!==before.sha256)return false
+    // The title service and its optional LLM provider append concurrently
+    // after request/header. Both records are metadata, outside the surface.
+    // Adopt that actual tail once; request-changing events still revoke it.
+    // oxlint-disable-next-line typescript/no-deprecated -- Native owns this exact incremental log cut.
+    const tail=capturedTail??this.session.snapshotEvents(SessionLogOffset(Number(before.boundary.boundarySeq)+1),
+      SessionLogOffset(Number(after.boundary.boundarySeq)+1))
+    if(tail.some(event=>!['session/title','session/title-llm-request'].includes(String(event.type))))return false
+    for(const event of tail) {
+      const next=this.#selectionCut({...after.boundary,boundarySeq:event.seq})
+      lineage.events.push(Object.freeze({kind:'native-append',seq:Number(event.seq),type:event.type,
+        sha256:nativeInputSha256(event),beforeBoundarySha256:lineage.expected.sha256,afterBoundarySha256:next.sha256}))
+      lineage.actualEvents.push(event)
+      lineage.expected=next
+      lineage.revision++
+    }
+    return true
   }
 
   #assertSelectionDecision(lineage:MaterialSelectionLineage,admission:InputAdmission|undefined,
@@ -1694,17 +1754,19 @@ export class ReactLoopAgent implements Agent {
       }
     }
     const after=this.#selectionCut()
-    // Publication can synchronously notify arbitrary observers. Only the
-    // actual append's returned event may be the new latest log boundary.
-    if(Number(event.seq)!==Number(before.boundary.boundarySeq)+1||after.boundary.boundarySeq!==event.seq){
+    // Publication can synchronously notify observers. Record our append first,
+    // then account for a title-only tail under the same metadata rule.
+    if(Number(event.seq)!==Number(before.boundary.boundarySeq)+1){
       this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_APPEND_BOUNDARY_CHANGED')
     }
+    const appended=after.boundary.boundarySeq===event.seq?after:
+      this.#selectionCut({...after.boundary,boundarySeq:event.seq})
     this.#assertSelectionOwner(lineage)
     if(pending){
       if(event.type!=='user/message'||nativeInputSha256(event.data)!==pending.messageSha256){
         this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_ADMITTED_MESSAGE_CHANGED')
       }
-      const admitted=after.boundary.messageNodes.find(row=>row.seq===event.seq)
+      const admitted=appended.boundary.messageNodes.find(row=>row.seq===event.seq)
       if(!admitted||nativeInputSha256(admitted.message)!==pending.messageSha256){
         this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_ADMITTED_SURFACE_CHANGED')
       }
@@ -1712,15 +1774,18 @@ export class ReactLoopAgent implements Agent {
     }
     const eventSha256=nativeInputSha256(event)
     lineage.events.push(Object.freeze({kind:'native-append',seq:Number(event.seq),type:event.type,
-      sha256:eventSha256,beforeBoundarySha256:before.sha256,afterBoundarySha256:after.sha256,
+      sha256:eventSha256,beforeBoundarySha256:before.sha256,afterBoundarySha256:appended.sha256,
       ...pending?{admitted:Object.freeze({pendingIndex:lineage.pendingCursor-1,id:pending.id,
         role:'user' as const,messageSha256:pending.messageSha256})}:{}}))
     lineage.actualEvents.push(event)
-    lineage.expected=after
+    lineage.expected=appended
     lineage.revision++
     if(event.type==='step/start')lineage.stepStartSeq=Number(event.seq)
     const actualEvent:SessionEvent=event
     if(actualEvent.type==='assistant/attempt')lineage.lastAttempt={event:actualEvent,sha256:eventSha256}
+    if(!this.#acceptSelectionTitleTail(lineage,after)) {
+      this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_APPEND_BOUNDARY_CHANGED')
+    }
     return event
   }
 
@@ -1728,8 +1793,7 @@ export class ReactLoopAgent implements Agent {
     const lineage=this.#materialSelection
     if(!lineage)return undefined
     this.#assertSelectionCurrent(lineage)
-    if(!lineage.attemptStarted||lineage.pendingCursor!==lineage.pending.length||!lineage.lastAttempt
-      ||lineage.lastAttempt.event.seq!==lineage.expected.boundary.boundarySeq){
+    if(!lineage.attemptStarted||lineage.pendingCursor!==lineage.pending.length||!lineage.lastAttempt){
       this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_RETRY_ATTEMPT_CHANGED')
     }
     // One explicit read cut around this actual failure waterfall. The Session
@@ -1737,7 +1801,7 @@ export class ReactLoopAgent implements Agent {
     // oxlint-disable-next-line typescript/no-deprecated -- Native's exact recovery window requires actual event refs.
     const events=this.session.snapshotEvents()
     if(events.length!==Number(lineage.expected.boundary.boundarySeq)+1
-      ||events.at(-1)!==lineage.lastAttempt.event
+      ||events[Number(lineage.lastAttempt.event.seq)]!==lineage.lastAttempt.event
       ||nativeInputSha256(lineage.lastAttempt.event)!==lineage.lastAttempt.sha256){
       this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_RETRY_LOG_CHANGED')
     }
@@ -1770,18 +1834,18 @@ export class ReactLoopAgent implements Agent {
     if(!cut)return
     const {lineage,before}=cut
     this.#assertSelectionOwner(lineage)
-    if(lineage.expected!==before)this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_RETRY_CUT_CHANGED')
     const after=this.#selectionCut()
     if(cut.offloadImages===undefined){
-      if(after.sha256!==before.sha256)this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_RETRY_FOREIGN_APPEND')
+      if(!this.#acceptSelectionTitleTail(lineage,after)) {
+        this.#failSelection(lineage,'REQUEST_MATERIAL_SELECTION_RETRY_FOREIGN_APPEND')
+      }
       return
     }
     // oxlint-disable-next-line typescript/no-deprecated -- Inspect only the actual recovery tail against the captured frozen prefix.
     const events=this.session.snapshotEvents()
-    const event=events[cut.events.length]
-    if(!event||events.length!==cut.events.length+1||cut.events.some((prior,index)=>events[index]!==prior)
-      ||Number(event.seq)!==cut.events.length||after.boundary.boundarySeq!==event.seq
-      ||String(event.type)!=='image/offload'||Reflect.ownKeys(event).some(key=>
+    const event=events.slice(cut.events.length).find(event=>String(event.type)==='image/offload')
+    if(!event||cut.events.some((prior,index)=>events[index]!==prior)
+      ||Reflect.ownKeys(event).some(key=>
         typeof key!=='string'||!['type','seq','time','data'].includes(key))
       ||nativeInputSha256(event.data)!==nativeInputSha256({targets:cut.targets})
       ||after.boundary.contentGeneration!==before.boundary.contentGeneration+1
@@ -1803,33 +1867,107 @@ export class ReactLoopAgent implements Agent {
         this.#failSelection(lineage,'REQUEST_MATERIAL_IMAGE_OFFLOAD_MESSAGE_CHANGED')
       }
     }
+    const prior=events[Number(event.seq)-1]
+    const beforeImage=this.#selectionCut({...before.boundary,boundarySeq:prior?.seq??before.boundary.boundarySeq})
+    if(!this.#acceptSelectionTitleTail(lineage,beforeImage,
+      events.slice(Number(lineage.expected.boundary.boundarySeq)+1,Number(event.seq)))) {
+      this.#failSelection(lineage,'REQUEST_MATERIAL_IMAGE_OFFLOAD_RECOVERY_CHANGED')
+    }
+    const imageCut=this.#selectionCut({...after.boundary,boundarySeq:event.seq})
     // This certifies the precise effect during Native's failure window, not
     // which plugin handler ran. An identical authorized effect is equivalent.
     lineage.events.push(Object.freeze({kind:'image-offload-recovery',seq:Number(event.seq),type:String(event.type),
-      sha256:nativeInputSha256(event),beforeBoundarySha256:before.sha256,afterBoundarySha256:after.sha256,
+      sha256:nativeInputSha256(event),beforeBoundarySha256:lineage.expected.sha256,afterBoundarySha256:imageCut.sha256,
       failureSha256:cut.failureSha256,offloadImages:cut.offloadImages,targets:cut.targets}))
     lineage.actualEvents.push(event)
-    lineage.expected=after
+    lineage.expected=imageCut
     lineage.revision++
+    if(!this.#acceptSelectionTitleTail(lineage,after,events.slice(Number(event.seq)+1))) {
+      this.#failSelection(lineage,'REQUEST_MATERIAL_IMAGE_OFFLOAD_RECOVERY_CHANGED')
+    }
   }
 
   /** Prepare belongs to this final decision before step/start. Only a fully
    * checked prepared result starts a new private selection lineage. */
   async #prepareRequestMaterial(decision:Extract<PreparedStep,{kind:'enter'}>,
-    position:{turn:number;step:number},signal:AbortSignal):Promise<void> {
+    position:{turn:number;step:number},signal:AbortSignal,prepared:PreparedRequest):Promise<void> {
     this.#retireSelection()
+    this.pendingMaterialCandidate=undefined
     const requestOwner=this.materialRequestOwner(decision)
     if(!requestOwner||!requestOwner.owner.prepare)return
     this.assertMaterialRequestOwner(requestOwner,decision.messages)
-    const selected=this.#materialSelected(decision.messages,true)
+    let selected=this.#materialSelected(decision.messages,true)
     const finalAssembly=deepFreeze(structuredClone(decision.assembly))
     const assemblySha256=nativeInputSha256(finalAssembly)
     const common={schemaVersion:1 as const,...position,signal,finalAssembly,assemblySha256,selected}
+    let candidate:PlannedMaterialRequest|PlannedPlainRequest|undefined,candidateMessages:UserMessage[]|undefined
+    let active=true,previews=0
     let result:ReturnType<typeof nativeRequestMaterialPrepareDecisionV1>
     try {
       if(requestOwner.kind==='player-input') {
         const preparation:NativeRequestMaterialPrepareInputV1=Object.freeze({...common,
-          admission:this.materialAdmission(requestOwner.admission,decision.messages)})
+          admission:this.materialAdmission(requestOwner.admission,decision.messages),candidate:{
+            preview:async(messages,build)=>{
+              if(!active)throw Error('REQUEST_MATERIAL_CANDIDATE_CLOSED')
+              if(++previews>2)throw Error('REQUEST_MATERIAL_CANDIDATE_LIMIT')
+              const pending=messages.map(freezeMessage)
+              // Replanning may replace owned context, never the player's
+              // current pending input. Prior story remains checkpoint-owned.
+              for(const original of decision.messages.filter(message=>message.source.kind==='user')){
+                if(!pending.some(message=>message.id===original.id&&nativeInputSha256(message)===nativeInputSha256(original)))
+                  throw Error('REQUEST_MATERIAL_CANDIDATE_PLAYER_CHANGED')
+              }
+              this.checkInput(requestOwner.admission,pending)
+              const basis=this.#materialSelected(pending,true)
+              const preparedRoute=Object.freeze({configSha256:nativeInputSha256(prepared.config),
+                ...prepared.preparedCall?.requestMaterialText?{requestMaterialText:prepared.preparedCall.requestMaterialText}:{},
+                ...prepared.preparedCall?.systemPromptUpdate?{systemPromptUpdate:prepared.preparedCall.systemPromptUpdate}:{},
+                ...prepared.preparedCall?.toolUpdate?{toolUpdate:prepared.preparedCall.toolUpdate}:{}})
+              const transform=nativeRequestMaterialDecisionV1(await build({selected:basis,finalAssembly,
+                assemblySha256,preparedRoute}))
+              if(transform.kind==='blocked')throw Error(transform.code)
+              signal.throwIfAborted()
+              this.checkInput(requestOwner.admission,pending)
+              if(this.#materialSelected(pending,true).sha256!==basis.sha256
+                ||transform.kind==='transform'&&(transform.expectedSelectedBaseSha256!==basis.sha256
+                  ||transform.expectedAssemblySha256!==assemblySha256))throw Error('REQUEST_MATERIAL_CANDIDATE_CHANGED')
+              const proposed={...decision,messages:pending}
+              const planning={...prepared,...position,signal,firstAttempt:true}
+              candidate=transform.kind==='unchanged'?this.planRequest(proposed,planning,decision.startsRequestSeries===true,true)
+                :this.planMaterialRequest(proposed,planning,transform,basis,true)
+              candidateMessages=pending
+              const prices=new Map(candidate.projection?.options.messages.map((message,index)=>
+                [String(message.id),candidate!.measurement?.estimate.messageTokens[index]]))
+              const allocations=new Map<string,{tokens:number;allocation:'group-text-length-estimate';groupId:string}>()
+              if(candidate.kind==='material')for(const [ordinal,group] of (candidate.plan.messageProjection?.groups??[]).entries()) {
+                const projected=candidate.result.messages.find(message=>{
+                  const source=message.source as {kind?:string;contributionRef?:string}
+                  return source.kind==='request-material'&&source.contributionRef===`projection:${ordinal}`
+                })!
+                const tokens=prices.get(String(projected.id))
+                if(tokens===undefined)continue
+                const targets=group.targets.map(target=>basis.messages.find(row=>row.id===target.id)!)
+                const lengths=targets.map(row=>row.message.content.reduce((sum,block)=>
+                  sum+(block.type==='text'?block.text.length:0),0))
+                const total=lengths.reduce((sum,length)=>sum+length,0)
+                let cumulative=0,charged=0
+                for(const [index,target] of targets.entries()) {
+                  cumulative+=total===0?1:lengths[index]!
+                  const next=index===targets.length-1?tokens:Math.floor(tokens*cumulative/(total||targets.length))
+                  allocations.set(target.id,{tokens:next-charged,allocation:'group-text-length-estimate',
+                    groupId:String(projected.id)})
+                  charged=next
+                }
+              }
+              return Object.freeze({...candidate.measurement?{measurement:candidate.measurement}:{},
+                messageCosts:Object.freeze(basis.messages.flatMap(row=>{
+                  const allocation=allocations.get(row.id)
+                  if(allocation)return [Object.freeze({id:row.id,eventSeq:row.eventSeq,...allocation})]
+                  const tokens=prices.get(row.id)
+                  return tokens===undefined?[]:[Object.freeze({id:row.id,eventSeq:row.eventSeq,tokens})]
+                }))})
+            },
+          }})
         result=nativeRequestMaterialPrepareDecisionV1(await requestOwner.owner.prepare!(preparation))
       }else {
         const preparation:NativeOpeningMaterialPrepareInputV1=Object.freeze({...common,
@@ -1842,8 +1980,16 @@ export class ReactLoopAgent implements Agent {
       const code=error instanceof Error&&/^[A-Z][A-Z0-9_]{0,95}$/.test(error.message)
         ?error.message:'REQUEST_MATERIAL_PREPARATION_FAILED'
       this.abortMaterialRequestOwner(requestOwner,code)
-    }
+    }finally {active=false}
     signal.throwIfAborted()
+    // A refused preparation owns its failure code. Its checkpoint may already
+    // have changed the selected surface, so there is no candidate to adopt.
+    if(result.kind==='blocked')this.abortMaterialRequestOwner(requestOwner,result.code)
+    if(candidate&&candidateMessages){
+      decision.messages=candidateMessages
+      selected=candidate.selected
+      this.pendingMaterialCandidate={decision,planned:candidate,prepared}
+    }
     this.assertMaterialRequestOwner(requestOwner,decision.messages)
     // Preparation may write Core data, but the exact Native request cut and
     // complete assembly cannot change before step/start and checkpoint.
@@ -1853,7 +1999,6 @@ export class ReactLoopAgent implements Agent {
     if(nativeInputSha256(decision.assembly)!==assemblySha256) {
       this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_PREPARATION_ASSEMBLY_CHANGED')
     }
-    if(result.kind==='blocked')this.abortMaterialRequestOwner(requestOwner,result.code)
     if(result.kind!=='prepared') {
       if(requestOwner.kind==='programmatic-opening')this.abortMaterialRequestOwner(requestOwner,'OPENING_MATERIAL_PREPARATION_REQUIRED')
       return
@@ -1929,9 +2074,13 @@ export class ReactLoopAgent implements Agent {
         signal.throwIfAborted()
         // Empty/no-request exits above spend no material work or records. The
         // existing Core step and final decision are retained; hooks do not rerun.
-        if(!phase.programmatic||phase.programmatic.opening)await this.#prepareRequestMaterial(decision,{turn,step},signal)
+        const prepared=await this.prepareRequest(turn,step,signal)
+        if(!phase.programmatic||phase.programmatic.opening)await this.#prepareRequestMaterial(decision,{turn,step},signal,prepared)
         signal.throwIfAborted()
-        const stepStart = this.#recordSelectionAppend(()=>this.session.append('step/start', { turn, step }))
+        const hotCandidate=this.pendingMaterialCandidate
+        const stepStart = this.#recordSelectionAppend(()=>hotCandidate
+          ?this.session.appendRequestPreviewEvent(hotCandidate.planned.preview) as SessionEvent<'step/start'>
+          :this.session.append('step/start', { turn, step }))
         phase.step = step
         try {
           if (step === 1 && decision.admission) await this.checkpointInput(decision.admission, stepStart.seq, decision.messages)
@@ -1942,7 +2091,7 @@ export class ReactLoopAgent implements Agent {
           }
           // max-tokens is sticky: once any step hits the ceiling, later steps
           // that complete normally must not downgrade the turn outcome.
-          const stepEnd = await this.step(decision)
+          const stepEnd = await this.step(decision,prepared)
           // max-tokens stays sticky: a later completed step must not
           // downgrade the turn outcome.
           if (turnEnds === null || turnEnds.kind !== 'max-tokens') turnEnds = stepEnd
@@ -2020,42 +2169,29 @@ export class ReactLoopAgent implements Agent {
     return true
   }
 
-  private async step(decision: Extract<PreparedStep, { kind: 'enter' }>): Promise<StepEndReason | null> {
+  private async step(decision: Extract<PreparedStep, { kind: 'enter' }>,initialPrepared:PreparedRequest): Promise<StepEndReason | null> {
     /* v8 ignore next -- private callers establish the running phase before executing a step */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": step outside running phase`)
     const { turn, step, abort: { signal } } = this.phase
     signal.throwIfAborted()
 
-    const { assembly } = decision
-    const renderedPrompt = renderPrompt(assembly)
     let firstAttempt = true
     while (true) {
       this.recordOpeningRequestAttempt(decision,{turn,step},firstAttempt)
-      const { config, preparedCall } = await this.prepareRequest(turn, step, signal)
+      const { config, preparedCall } = firstAttempt?initialPrepared:await this.prepareRequest(turn, step, signal)
       // Adapter preparation can await arbitrary work. Recheck before every
       // system/user/header commit and provider stream, including retries.
       const admission = decision.admission
       if (admission) this.checkInput(admission, decision.messages)
       const startsRequestSeries = firstAttempt && decision.startsRequestSeries === true
-      let request=this.materialRequestOwner(decision)
+      const candidate=firstAttempt&&this.pendingMaterialCandidate?.decision===decision?this.pendingMaterialCandidate.planned:undefined
+      this.pendingMaterialCandidate=undefined
+      let request=candidate?(candidate.kind==='material'?this.commitMaterialRequest(decision,candidate)
+        :this.commitRequest(candidate)):this.materialRequestOwner(decision)
         ?this.buildMaterialRequest(decision,{config,preparedCall,turn,step,firstAttempt,signal}):undefined
       if(request===undefined){
-        const commits = this.systemPrompt.project(renderedPrompt, {
-          inHistory: preparedCall?.systemPromptUpdate === 'in-history',
-          startsSeries: startsRequestSeries
-            || this.requestSurfaceGeneration !== this.session.surface.contentGeneration
-            || (preparedCall?.toolUpdate === undefined && this.toolsChanged(assembly.tools)),
-        })
-        for (const { message, intent } of commits) {
-          this.#recordSelectionAppend(()=>this.session.append('system/message', { turn, step, message }, intent))
-        }
-        if (firstAttempt) {
-          for (const message of decision.messages) {
-            this.#recordSelectionAppend(()=>this.session.append('user/message', message, { surfaceOp: 'append' }),message)
-          }
-        }
+        request=this.buildRequest(decision,{config,preparedCall,turn,step,firstAttempt,signal},startsRequestSeries)
         firstAttempt=false
-        request=this.buildRequest(config,preparedCall,assembly.tools,{turn,step},startsRequestSeries,signal)
       }else{
         firstAttempt=false
       }
@@ -2069,23 +2205,37 @@ export class ReactLoopAgent implements Agent {
       // Session append notifications can synchronously invalidate Source or
       // readiness. The already-written input is admitted, never replayable.
       if (admission) this.checkInput(admission, decision.messages)
+      const story=this.storyRequests.get(request)
+      const projectStream=story?createNativeStoryStreamProjectionV1(story):undefined
+      let visibleStreamIndex=0
       const live = new AssistantStreamAttempt(
         this.session.id,
         ++this.assistantAttemptCounter,
         () => ++this.assistantStreamRevision,
         turn,
         step,
-        (frame) => { this.dispatch.emit('agent/assistant-stream', { frame }) },
+        (frame) => {
+          if(!projectStream){this.dispatch.emit('agent/assistant-stream',{frame});return}
+          if(frame.type!=='chunk'){
+            this.dispatch.emit('agent/assistant-stream',{frame:frame.type==='end'?{...frame,index:visibleStreamIndex}:frame});return
+          }
+          for(const chunk of projectStream(frame.chunk))this.dispatch.emit('agent/assistant-stream',{
+            frame:{...frame,index:visibleStreamIndex++,revision:++this.assistantStreamRevision,chunk}})
+        },
       )
       let started = false
+      const observation={request,turn,step,signal,started:performance.now(),firstOutputMs:null as number|null}
+      this.requestObservation=observation
       try {
         if (admission) signal.throwIfAborted()
-        const stream = preparedCall?.stream(request) ?? this.loopCtx.llm.stream(request)
+        const stream = (this.storyPreparedCalls.get(request)??preparedCall)?.stream(request) ?? this.loopCtx.llm.stream(request)
         signal.throwIfAborted()
         live.start()
         started = true
         for await (const chunk of stream) {
           signal.throwIfAborted()
+          if(observation.firstOutputMs===null&&['text-delta','reasoning-delta','tool-call-delta'].includes(chunk.type))
+            observation.firstOutputMs=performance.now()-observation.started
           live.push(chunk)
         }
         signal.throwIfAborted()
@@ -2133,15 +2283,29 @@ export class ReactLoopAgent implements Agent {
           )
         }
         throw error
+      } finally {
+        const observed=this.requestObservation
+        this.requestObservation=undefined
+        if(observed?.measurement&&observed.projection)this.ctx.emit('native/request-observed',{
+          schemaVersion:1,sessionId:this.session.id,turn,step,measurement:observed.measurement,
+          usage:this.requestBudget.observeUsage(observed.projection,observed.measurement,live.usage)??'unknown',
+          firstOutputMs:observed.firstOutputMs,elapsedMs:performance.now()-observed.started})
       }
       try {
         const finish = live.finish
         if (finish.kind === 'error' || finish.kind === 'aborted') {
-          live.settle(
-            'assistant/attempt',
-            () => this.#recordSelectionAppend(()=>this.session.append('assistant/attempt', { turn, step, stream: live.stream })).seq,
-          )
-          const recovery=this.#recoveryCut(finish.failure)
+          const failure=new LlmError(finish.failure.message,finish.failure.code,finish.failure)
+          let recovery:MaterialRecoveryCut|undefined
+          try {
+            live.settle(
+              'assistant/attempt',
+              () => this.#recordSelectionAppend(()=>this.session.append('assistant/attempt', { turn, step, stream: live.stream })).seq,
+            )
+            recovery=this.#recoveryCut(finish.failure)
+          }catch(settlementError) {
+            throw new AggregateError([failure,settlementError],
+              'Assistant provider failed and its durable settlement was rejected',{cause:failure})
+          }
           const action = await this.dispatch.waterfall(
             'agent/request-error', {
               turn,
@@ -2155,7 +2319,7 @@ export class ReactLoopAgent implements Agent {
           )
           signal.throwIfAborted()
           if (action?.kind !== 'retry') {
-            throw new LlmError(finish.failure.message, finish.failure.code, finish.failure)
+            throw failure
           }
           this.#acceptRecovery(recovery)
           continue
@@ -2166,12 +2330,15 @@ export class ReactLoopAgent implements Agent {
         // and the next step are admitted under their own fresh preparation.
         this.#retireSelection()
 
+        const rawBlocks=live.blocks()
+        const response=story?materializeNativeStoryResponseV1(rawBlocks,story):undefined
         const createdMessage = createAssistantMessage({
-          content: live.blocks(),
+          content: response?.content??rawBlocks,
           source: {
             provider: request.provider,
             model: request.model,
             ...live.replayState !== undefined ? { replayState: live.replayState } : {},
+            ...response&&response.material.plan.length?{responseMaterial:response.material}:{},
           },
         })
         const message = this.phase.programmatic && step === 1
@@ -2214,6 +2381,12 @@ export class ReactLoopAgent implements Agent {
     // A loop instance starts from its declared route, restoring only an explicit
     // effort owned by that exact model. Later steps re-resolve marked defaults.
     const persistedHeader = session.requestHeader()
+    const headerBoundary=session.requestHeaderBoundary()
+    const lastMaterial=headerBoundary?session.snapshotEvents().findLast(event=>event.type==='request/material'
+      &&event.seq>headerBoundary.seq&&event.data.header.seq===headerBoundary.seq):undefined
+    const baseSampling=lastMaterial?.type==='request/material'?lastMaterial.data.delta.requestLocalSampling:undefined
+    const persistedProposal=persistedHeader?requestProposal(persistedHeader):undefined
+    const baseProposal=persistedProposal&&baseSampling?restoreNativeStorySamplingV1(persistedProposal,baseSampling):persistedProposal
     const persistedConfig = persistedHeader?.config
     const route = { provider: this.options.provider ?? '', model: this.options.model ?? '' }
     const persistedReasoningEffort = persistedConfig?.provider === route.provider
@@ -2226,7 +2399,7 @@ export class ReactLoopAgent implements Agent {
     const seedConfig = deepFreeze(structuredClone(
       this.requestHeaderLogged
         // oxlint-disable-next-line typescript/no-non-null-assertion -- the instance logged the header it now folds
-        ? requestProposal(persistedHeader!)
+        ? baseProposal!
         : {
           ...route,
           ...reasoningEffort === undefined ? {} : { reasoningEffort },
@@ -2313,7 +2486,8 @@ export class ReactLoopAgent implements Agent {
     const requestOwner=this.materialRequestOwner(decision)
     if(!requestOwner)return undefined
     const admission=requestOwner.kind==='player-input'?requestOwner.admission:undefined,owner=requestOwner.owner
-    const {config,preparedCall,turn,step,firstAttempt,signal}=input
+    const {config,turn,step,firstAttempt,signal}=input
+    let preparedCall=input.preparedCall
     signal.throwIfAborted()
     const selected=this.#captureSelection(admission,decision.messages,firstAttempt)
     const finalAssembly=deepFreeze(structuredClone(decision.assembly))
@@ -2352,6 +2526,21 @@ export class ReactLoopAgent implements Agent {
     if(plan.expectedAssemblySha256!==common.assemblySha256||plan.expectedSelectedBaseSha256!==selected.sha256){
       this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_PRECONDITION_CHANGED')
     }
+    return this.commitMaterialRequest(decision,this.planMaterialRequest(decision,input,plan,selected,false))
+  }
+
+  /** The same canonical envelope/material planner serves hot candidates and
+   * committed attempts. A candidate includes its future step/start so no
+   * sequence, generated message ID or tool catalog is repaired afterwards. */
+  private planMaterialRequest(decision:EnterStep,input:PreparedRequest&{
+    turn:number;step:number;firstAttempt:boolean;signal:AbortSignal},plan:NativeRequestMaterialTransform,
+    selected:NativeMaterialSelectedBaseV1,includeStepStart:boolean):PlannedMaterialRequest {
+    const requestOwner=this.materialRequestOwner(decision)!
+    const owner=requestOwner.owner
+    if(plan.story&&!owner.story)this.abortMaterialRequestOwner(requestOwner,'STORY_MATERIAL_OWNER_REQUIRED')
+    const {config,turn,step,firstAttempt,signal}=input
+    let preparedCall=input.preparedCall
+    const finalAssembly=deepFreeze(structuredClone(decision.assembly))
     // A route's system replacement bit is not additive system-at-depth support.
     // Missing exact-route capability refuses each required insertion before writes.
     const capability=preparedCall?.requestMaterialText
@@ -2361,19 +2550,33 @@ export class ReactLoopAgent implements Agent {
         this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
       }
     }
+    for(const group of plan.messageProjection?.groups??[]) {
+      const support=group.role==='system'?capability?.systemAtDepth:capability?.[group.role]
+      if(capability?.schemaVersion!==1||support!=='role-and-position') {
+        this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED')
+      }
+    }
     let assembly:PromptAssembly
     try {assembly=applyNativeOwnedSectionsV1(finalAssembly,plan,owner.sectionNames)}
     catch {this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_SECTION_SUPPRESSED_OR_CHANGED')}
-    const systemCommits=this.systemPrompt.project(renderPrompt(assembly),{
-      inHistory:preparedCall?.systemPromptUpdate==='in-history',startsSeries:true})
+    if(plan.story)assembly={...assembly,tools:nativeStoryTransportToolsV1(assembly.tools,plan.story)}
+    const rendered=renderAttributedSystemPrompt(assembly)
+    const systemCommits=this.systemPrompt.project(rendered.text,{
+      inHistory:preparedCall?.systemPromptUpdate==='in-history',startsSeries:true,attribution:rendered.attribution})
     // Material owns a new request series: normalize old effective system heads
     // so their prior resident contributions cannot survive behind the residual.
-    const appends:SessionRequestAppendInput[]=systemCommits.map(({message,intent})=>({type:'system/message' as const,
-      data:{turn,step,message},intent}))
+    const appends:SessionRequestAppendInput[]=[...includeStepStart?[{type:'step/start' as const,data:{turn,step}}]:[],
+      ...systemCommits.map(({message,intent})=>({type:'system/message' as const,data:{turn,step,message},intent}))]
     if(firstAttempt)for(const message of decision.messages){
       appends.push({type:'user/message',data:message,intent:{surfaceOp:'append'}})
     }
-    const envelope=planNativeRequestEnvelope({config,...preparedCall?{preparedCall}:{},tools:assembly.tools,
+    let effectiveConfig=plan.story?nativeStorySamplingConfigV1(config,plan.story):config
+    if(plan.story?.sampling&&preparedCall) {
+      if(!preparedCall.withRequestLocalSampling)this.abortMaterialRequestOwner(requestOwner,'STORY_SAMPLING_UNSUPPORTED')
+      preparedCall=preparedCall.withRequestLocalSampling(plan.story.sampling)
+      effectiveConfig=preparedCall.config
+    }
+    const envelope=planNativeRequestEnvelope({config:effectiveConfig,...preparedCall?{preparedCall}:{},tools:assembly.tools,
       position:{turn,step},startsSeries:true,requestHeaderLogged:this.requestHeaderLogged,
       nextSeq:Number(this.session.seq)+appends.length,baseline:this.session.requestHeaderBoundary(),
       previousContext:this.session.requestContext()})
@@ -2401,18 +2604,43 @@ export class ReactLoopAgent implements Agent {
       surfaceNodes:preview.surfaceNodes,baseMessages:preview.messages,
       baseRefs:preview.messageNodes.map(({seq,message})=>({seq:Number(seq),id:String(message.id),role:message.role,
         messageSha256:nativeInputSha256(message)})),protectedPrefixLength,insertions:anchored.insertions,
-      ...plan.schemaVersion===2?{messageTextProjections:plan.messageTextProjections}:{}})
+      ...plan.schemaVersion===2?{messageTextProjections:plan.messageTextProjections}:{},
+      ...plan.messageProjection?{messageProjection:plan.messageProjection}:{},
+      ...plan.story?.sampling?{requestLocalSampling:nativeStorySamplingBaseV1(config)}:{}})
     for(const expected of anchored.resolutions) {
       const actual=result.record.placements.find(row=>row.contributionRef===expected.contributionRef)
       if(!actual||actual.baseIndex!==expected.baseIndex) {
         this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_ANCHOR_PLACEMENT_CHANGED')
       }
     }
+    const boundaryMessages=[...result.messages]
+    Object.freeze(boundaryMessages)
+    deepFreeze(envelope.header)
+    const request=markAgentLoopRequest(Object.freeze({...envelope.header.config,messages:boundaryMessages,
+      toolHistory:preview.toolHistory,...envelope.header.tools?{tools:envelope.header.tools}:{},
+      sessionId:this.session.id,signal}))
+    const projection=preparedCall?.projectRequest(request)
+    const meter=this.loopCtx.get('tokenMeter') as NativeRequestMeter|undefined
+    const measurement=projection&&meter?.measureRequest?this.requestBudget.measure(projection,meter):undefined
+    if(measurement)retainNativeRequestMeasurement(request,measurement)
+    if(plan.story?.sampling&&preparedCall)this.storyPreparedCalls.set(request,preparedCall)
+    return {kind:'material',firstAttempt,plan,selected,preview,envelope,result,request,
+      ...projection?{projection}:{},...measurement?{measurement}:{}}
+  }
+
+  private commitMaterialRequest(decision:EnterStep,planned:PlannedMaterialRequest):GenerateOptions {
+    const requestOwner=this.materialRequestOwner(decision)!
+    const {plan,selected,preview,envelope,request}=planned
+    this.assertRequestCapacity(planned.measurement)
     this.checkMaterialOwner(requestOwner,decision.messages,plan,'planned-precommit')
-    if(this.#materialSelected(decision.messages,firstAttempt).sha256!==selected.sha256){
+    if(preview.events[0]?.type!=='step/start'
+      &&this.#materialSelected(decision.messages,planned.firstAttempt).sha256!==selected.sha256){
       this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_SELECTED_BASE_CHANGED')
     }
     for(const planned of preview.events){
+      // The hot candidate's first event was already committed before the
+      // original input checkpoint. The remaining preview is unchanged.
+      if(planned.type==='step/start')continue
       this.checkMaterialOwner(requestOwner,decision.messages,plan,'planned-precommit')
       const event=this.#recordSelectionAppend(()=>{
         const committed=this.session.appendRequestPreviewEvent(preview)
@@ -2430,111 +2658,75 @@ export class ReactLoopAgent implements Agent {
       this.abortMaterialRequestOwner(requestOwner,'REQUEST_MATERIAL_COMMITTED_BASE_CHANGED')
     }
     this.checkMaterialOwner(requestOwner,decision.messages,plan,'committed-predispatch')
-    const material=this.#recordSelectionAppend(()=>this.session.append('request/material',result.record))
+    const material=this.#recordSelectionAppend(()=>this.session.append('request/material',planned.result.record))
     const materialRef={seq:Number(material.seq),sha256:nativeInputSha256(material)}
     this.checkMaterialOwner(requestOwner,decision.messages,plan,'committed-predispatch',materialRef)
-    signal.throwIfAborted()
-    const boundaryMessages=[...result.messages]
-    Object.freeze(boundaryMessages)
-    deepFreeze(envelope.header)
-    const request=markAgentLoopRequest(Object.freeze({...envelope.header.config,messages:boundaryMessages,
-      toolHistory:this.session.toolHistory(),...envelope.header.tools?{tools:envelope.header.tools}:{},
-      sessionId:this.session.id,signal}))
-    bindNativeRequestMaterial(request,{session:this.session,event:material,assertOwnerCurrent:()=>{
-      signal.throwIfAborted()
+    request.signal?.throwIfAborted()
+    bindNativeRequestMaterial(request,{session:this.session,event:material,
+      ...this.#materialSelection?{preparedSelection:true as const}:{},assertOwnerCurrent:()=>{
+      request.signal?.throwIfAborted()
       this.checkMaterialOwner(requestOwner,decision.messages,plan,'committed-predispatch',materialRef)
     }})
+    if(plan.story&&requestOwner.owner.story)this.storyRequests.set(request,{policy:plan.story,hooks:requestOwner.owner.story})
     return request
   }
 
-  /** Log the resolved envelope and derive a frozen request from the admitted surface. */
-  private buildRequest(
-    config: LlmCallConfig,
-    preparedCall: PreparedLlmCall | undefined,
-    tools: GenerateOptions['tools'] & object,
-    position: { turn: number; step: number },
-    startsRequestSeries: boolean,
-    signal: AbortSignal,
-  ): GenerateOptions {
-    const { session } = this
-    const surfaceGeneration = session.surface.contentGeneration
-    const header = canonicalHeader({
-      config,
-      ...preparedCall === undefined ? {} : { adapterDefaults: preparedCall.adapterDefaults },
-      ...tools.length > 0 ? { tools } : {},
-    })
-    const baseline = this.session.requestHeader()
-    const startsSeries = startsRequestSeries
-      || this.requestSurfaceGeneration !== surfaceGeneration
-    let headerSeq: SessionSeq | undefined
-    if (!this.requestHeaderLogged) {
-      // Compaction during the first resumed pre-step must still mark a new series.
-      headerSeq = this.#recordSelectionAppend(()=>this.session.append('request/header', {
-        header,
-        reason: baseline === undefined ? 'initial' : 'resume',
-        ...startsSeries ? { startsSeries: true } : {},
-      })).seq
-      this.requestHeaderLogged = true
-    } else if (baseline === undefined || !headerEquals(baseline, header)) {
-      headerSeq = this.#recordSelectionAppend(()=>this.session.append('request/header', {
-        header,
-        reason: 'change',
-        ...startsSeries ? { startsSeries: true } : {},
-      })).seq
-    } else if (startsSeries) {
-      this.#recordSelectionAppend(()=>this.session.append('request/header', { header, reason: 'series' }))
-    }
-    if (baseline !== undefined && headerSeq !== undefined) {
-      const previousNames = new Set(baseline.tools?.map(tool => tool.name))
-      const currentNames = new Set(tools.map(tool => tool.name))
-      const additions = tools.filter(tool => !previousNames.has(tool.name))
-        .map(tool => ({ type: 'tool-addition' as const, toolName: tool.name }))
-      const removals = (baseline.tools ?? []).filter(tool => !currentNames.has(tool.name))
-        .map(tool => ({ type: 'tool-removal' as const, toolName: tool.name }))
-      if (additions.length > 0 || removals.length > 0) {
-        this.#recordSelectionAppend(()=>session.append('developer/message', {
-          ...position,
-          message: createDeveloperMessage({ source: { kind: 'tool-registry' }, content: [...additions, ...removals] }),
-          ...additions.length > 0 ? { headerSeq } : {},
-        }, { surfaceOp: 'append' }))
-      }
-    }
-    this.requestSurfaceGeneration = surfaceGeneration
+  private assertRequestCapacity(measurement:NativeRequestMeasurementV1|undefined):void {
+    if(measurement?.capacity.status!=='known'||measurement.capacity.excess===0)return
+    const fixed=measurement.estimate.inputTokens-measurement.components.storyPlayer-measurement.components.unattributed
+    const category=fixed>measurement.capacity.availableInput?'必要非剧情内容':'完整请求'
+    throw new LlmError(`${category}超过当前模型的可用输入容量（估算 ${measurement.estimate.inputTokens}，可用 ${measurement.capacity.availableInput}）。当前玩家输入和有效设定已保留；请改用上下文更大的模型，或主动调整设定后恢复。`,
+      'CONTEXT_LENGTH_EXCEEDED')
+  }
 
-    const contextWindow = preparedCall?.context?.contextWindow
-    const systemPromptUpdate = preparedCall?.systemPromptUpdate
-    const requestContext: RequestContext = {
-      provider: config.provider,
-      model: config.model,
-      ...contextWindow === undefined ? {} : { contextWindow },
-      ...systemPromptUpdate === undefined ? {} : { systemPromptUpdate },
-    }
-    const previousContext = session.requestContext()
-    if (previousContext?.provider !== requestContext.provider
-      || previousContext.model !== requestContext.model
-      || previousContext.contextWindow !== requestContext.contextWindow
-      || previousContext.systemPromptUpdate !== requestContext.systemPromptUpdate) {
-      this.#recordSelectionAppend(()=>session.append('request/context', requestContext))
-    }
-    signal.throwIfAborted()
+  /** Preview and price the ordinary path before admitting system/player data. */
+  private buildRequest(decision:EnterStep,input:PreparedRequest&{
+    turn:number;step:number;firstAttempt:boolean;signal:AbortSignal},startsRequestSeries:boolean):GenerateOptions {
+    return this.commitRequest(this.planRequest(decision,input,startsRequestSeries))
+  }
 
-    // canonicalHeader is shallow; append logs a detached snapshot, not these local values.
-    deepFreeze(header)
-    const boundaryMessages = session.deriveMessages()
-    for (const message of boundaryMessages) {
-      if (this.frozenMessages.has(message)) continue
-      deepFreeze(message)
-      this.frozenMessages.add(message)
-    }
+  private planRequest(decision:EnterStep,input:PreparedRequest&{
+    turn:number;step:number;firstAttempt:boolean;signal:AbortSignal},startsRequestSeries:boolean,
+    includeStepStart=false):PlannedPlainRequest {
+    const {config,preparedCall,turn,step,firstAttempt,signal}=input
+    const startsSeries=startsRequestSeries||this.requestSurfaceGeneration!==this.session.surface.contentGeneration
+    const rendered=renderAttributedSystemPrompt(decision.assembly)
+    const commits=this.systemPrompt.project(rendered.text,{
+      inHistory:preparedCall?.systemPromptUpdate==='in-history',startsSeries:startsSeries
+        ||preparedCall?.toolUpdate===undefined&&this.toolsChanged(decision.assembly.tools),attribution:rendered.attribution})
+    const appends:SessionRequestAppendInput[]=[...includeStepStart?[{type:'step/start' as const,data:{turn,step}}]:[],
+      ...commits.map(({message,intent})=>({type:'system/message' as const,data:{turn,step,message},intent}))]
+    if(firstAttempt)for(const message of decision.messages)
+      appends.push({type:'user/message',data:message,intent:{surfaceOp:'append'}})
+    const envelope=planNativeRequestEnvelope({config,...preparedCall?{preparedCall}:{},tools:decision.assembly.tools,
+      position:{turn,step},startsSeries,requestHeaderLogged:this.requestHeaderLogged,
+      nextSeq:Number(this.session.seq)+appends.length,baseline:this.session.requestHeaderBoundary(),
+      previousContext:this.session.requestContext()})
+    appends.push(...envelope.appends)
+    const preview=this.session.previewRequestAppends(appends)
+    const boundaryMessages=[...preview.messages]
     Object.freeze(boundaryMessages)
-    const request = markAgentLoopRequest(Object.freeze({
-      ...header.config,
-      messages: boundaryMessages,
-      toolHistory: session.toolHistory(),
-      ...header.tools !== undefined ? { tools: header.tools } : {},
-      sessionId: this.session.id,
-      signal,
-    }))
+    const request=markAgentLoopRequest(Object.freeze({...envelope.header.config,messages:boundaryMessages,
+      toolHistory:preview.toolHistory,...envelope.header.tools?{tools:envelope.header.tools}:{},sessionId:this.session.id,signal}))
+    const projected=preparedCall?.projectRequest(request)
+    const meter=this.loopCtx.get('tokenMeter') as NativeRequestMeter|undefined
+    const measurement=projected&&meter?.measureRequest?this.requestBudget.measure(projected,meter):undefined
+    if(measurement)retainNativeRequestMeasurement(request,measurement)
+    return {kind:'plain',firstAttempt,selected:this.#materialSelected(decision.messages,firstAttempt),preview,envelope,request,
+      ...projected?{projection:projected}:{},...measurement?{measurement}:{}}
+  }
+
+  private commitRequest(planned:PlannedPlainRequest):GenerateOptions {
+    const {request,preview,measurement}=planned
+    this.assertRequestCapacity(measurement)
+    for(const planned of preview.events){
+      if(planned.type==='step/start')continue
+      this.#recordSelectionAppend(()=>this.session.appendRequestPreviewEvent(preview),
+        planned.type==='user/message'?planned.data:undefined)
+    }
+    this.requestHeaderLogged=true
+    this.requestSurfaceGeneration=preview.contentGeneration
+    request.signal?.throwIfAborted()
     return request
   }
 }

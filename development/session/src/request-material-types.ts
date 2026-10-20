@@ -14,6 +14,25 @@ export interface NativeMaterialPlacementV1 {
   readonly contributionRef:string;readonly baseIndex:number;readonly protectedPrefixLength:number
   readonly effectiveDepth:number;readonly messageId:string
 }
+/** Request-only replacement of contiguous plain text. Original Session rows
+ * and exact target hashes remain the historical reconstruction base. */
+export interface NativeMessageProjectionV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-request-message-projection-v1'
+  readonly groups:readonly {
+    readonly targets:readonly {readonly id:string;readonly messageSha256:string}[]
+    readonly role:NativeLoreRoleV1
+    readonly renderedText:string
+  }[]
+  readonly textEdits?:readonly {
+    readonly target:{readonly id:string;readonly messageSha256:string}
+    readonly blocks:readonly {readonly index:number;readonly text:string}[]
+  }[]
+}
+export interface NativeRequestLocalSamplingV1 {
+  readonly schemaVersion:1
+  readonly base:{readonly temperature?:number;readonly maxTokens?:number;readonly stop?:readonly string[]}
+}
 export interface NativeRequestMaterialRecordV1 {
   readonly schemaVersion:1
   readonly encoding:'native-request-material-v1'
@@ -24,7 +43,8 @@ export interface NativeRequestMaterialRecordV1 {
   readonly plan:NativeMaterialDataRefV1
   readonly base:{readonly boundarySeq:number;readonly contentGeneration:number;readonly surfaceNodes:readonly number[];
     readonly messages:readonly NativeMaterialMessageRefV1[];readonly sha256:string}
-  readonly delta:{readonly insertions:readonly NativeMaterialInsertionV1[];readonly protectedPrefixLength:number}
+  readonly delta:{readonly insertions:readonly NativeMaterialInsertionV1[];readonly protectedPrefixLength:number;
+    readonly messageProjection?:NativeMessageProjectionV1;readonly requestLocalSampling?:NativeRequestLocalSamplingV1}
   readonly placements:readonly NativeMaterialPlacementV1[]
   readonly outputSha256:string
 }
@@ -85,7 +105,21 @@ export function validateNativeRequestMaterialDataV1(value:unknown,subject:string
     if(!integer(ref['seq'])||position<=priorPosition||!identity(ref['id'])||ids.has(ref['id'])
       ||!['system','developer','user','assistant','tool'].includes(String(ref['role']))||!sha(ref['messageSha256']))fail(subject)
     priorPosition=position;ids.add(ref['id'])}
-  const delta=record(row['delta'],['insertions','protectedPrefixLength',...version===2?['messageTextProjections']:[]],subject)
+  const rawDelta=row['delta'] as Record<string,unknown>
+  const delta=record(rawDelta,['insertions','protectedPrefixLength',
+    ...version===2?['messageTextProjections']:[],
+    ...Object.hasOwn(rawDelta,'messageProjection')?['messageProjection']:[],
+    ...Object.hasOwn(rawDelta,'requestLocalSampling')?['requestLocalSampling']:[]],subject)
+  if(delta['messageProjection']!==undefined)validateNativeMessageProjectionV1(delta['messageProjection'],subject)
+  if(delta['requestLocalSampling']!==undefined) {
+    const local=record(delta['requestLocalSampling'],['schemaVersion','base'],subject)
+    if(local['schemaVersion']!==1)fail(subject)
+    const raw=local['base'] as Record<string,unknown>
+    const base=record(raw,['temperature','maxTokens','stop'].filter(key=>Object.hasOwn(raw,key)),subject)
+    if(base['temperature']!==undefined&&(typeof base['temperature']!=='number'||!Number.isFinite(base['temperature'])))fail(subject)
+    if(base['maxTokens']!==undefined&&(!integer(base['maxTokens'])||base['maxTokens']<1))fail(subject)
+    if(base['stop']!==undefined&&list(base['stop'],128,subject).some(value=>typeof value!=='string'))fail(subject)
+  }
   if(!integer(delta['protectedPrefixLength'],messages.length))fail(subject)
   if(version===2) {
     const projected=new Set<string>()
@@ -128,4 +162,38 @@ export function validateNativeRequestMaterialDataV1(value:unknown,subject:string
       ||placement['effectiveDepth']!==messages.length-placement['baseIndex']||!identity(placement['messageId'])
       ||ids.has(placement['messageId'])||placementIds.has(placement['messageId']))fail(subject)
     placed.add(placement['contributionRef']);placementIds.add(placement['messageId'])}
+}
+
+export function validateNativeMessageProjectionV1(value:unknown,subject:string):void {
+  const projection=record(value,['schemaVersion','encoding','groups',
+    ...value!==null&&typeof value==='object'&&Object.hasOwn(value,'textEdits')?['textEdits']:[]],subject)
+  if(projection['schemaVersion']!==1||projection['encoding']!=='native-request-message-projection-v1')fail(subject)
+  const ids=new Set<string>()
+  let bytes=0
+  for(const item of list(projection['groups'],4096,subject)) {
+    const group=record(item,['targets','role','renderedText'],subject)
+    const targets=list(group['targets'],4096,subject)
+    if(!targets.length||!['system','user','assistant'].includes(String(group['role']))
+      ||typeof group['renderedText']!=='string'||!group['renderedText'].isWellFormed())fail(subject)
+    bytes+=new TextEncoder().encode(group['renderedText']).byteLength
+    if(bytes>4194304)fail(subject)
+    for(const value of targets) {
+      const target=record(value,['id','messageSha256'],subject)
+      if(!identity(target['id'])||!sha(target['messageSha256'])||ids.has(target['id']))fail(subject)
+      ids.add(target['id'])
+    }
+  }
+  if(projection['textEdits']!==undefined)for(const value of list(projection['textEdits'],4096,subject)) {
+    const edit=record(value,['target','blocks'],subject),target=record(edit['target'],['id','messageSha256'],subject)
+    if(!identity(target['id'])||!sha(target['messageSha256'])||ids.has(target['id']))fail(subject)
+    ids.add(target['id'])
+    const indexes=new Set<number>()
+    for(const value of list(edit['blocks'],4096,subject)) {
+      const block=record(value,['index','text'],subject)
+      if(!integer(block['index'])||indexes.has(block['index'])||typeof block['text']!=='string'||!block['text'].isWellFormed())fail(subject)
+      indexes.add(block['index'])
+      bytes+=new TextEncoder().encode(block['text']).byteLength
+      if(bytes>4194304)fail(subject)
+    }
+  }
 }

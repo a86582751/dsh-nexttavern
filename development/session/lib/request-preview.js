@@ -3,9 +3,10 @@
  * snapshots and delegates every surface transition to SurfaceManager. It does
  * not create a Session, run observers, or infer Native input permission. */
 import { deepFreeze, snapshotJsonValue } from '@deepseek-ai/dsh-util-values';
+import { ToolHistoryProjection } from './tool-history.js';
 import { SurfaceManager, validateSessionEventData } from './surface.js';
 import { SessionLogOffset, SessionSeq } from './types.js';
-const ALLOWED = new Set(['system/message', 'user/message', 'developer/message', 'request/header', 'request/context']);
+const ALLOWED = new Set(['system/message', 'user/message', 'developer/message', 'request/header', 'request/context', 'step/start']);
 export const SESSION_REQUEST_PREVIEW_BOUNDS = Object.freeze({ appends: 128, messages: 4096, candidateBytes: 8_388_608 });
 /** The complete committed prefix is borrowed, not cloned. The additional
  * events are detached once before validation, so preview and commit read the
@@ -41,6 +42,9 @@ export function previewSessionRequestAppends(committed, projections, inputs) {
     if (prefix.length === 0)
         throw Error('SESSION_REQUEST_PREVIEW_BOUNDARY_EMPTY');
     const surface = new SurfaceManager(prefix, SessionLogOffset(0), projections);
+    const tools = new ToolHistoryProjection();
+    for (const event of prefix)
+        tools.apply(event);
     const nodes = [...surface.nodes], messageNodes = [];
     for (const seq of nodes) {
         const event = prefix[seq];
@@ -54,5 +58,5 @@ export function previewSessionRequestAppends(committed, projections, inputs) {
         throw Error('SESSION_REQUEST_PREVIEW_MESSAGE_BUDGET');
     return deepFreeze({ baseLogLength: committed.length, boundarySeq: SessionSeq(prefix.length - 1), events: candidate,
         surfaceNodes: nodes, contentGeneration: surface.contentGeneration,
-        messages: messageNodes.map(row => row.message), messageNodes });
+        messages: messageNodes.map(row => row.message), messageNodes, toolHistory: tools.snapshot() });
 }

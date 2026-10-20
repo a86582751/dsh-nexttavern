@@ -7,6 +7,7 @@
  */
 import { createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm';
 import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session';
+import { renderPrompt } from '@deepseek-ai/dsh-system-prompt';
 const SOURCE = 'runtime-context';
 const CLEARED = 'Current runtime context: none. Earlier runtime-context snapshots no longer apply.';
 function isOwned(message) {
@@ -15,6 +16,20 @@ function isOwned(message) {
 function textOf(message) {
     const [block] = message.content;
     return message.content.length === 1 && block?.type === 'text' ? block.text : undefined;
+}
+const AUTHOR_SECTIONS = new Set(['roleplay:cards', 'roleplay:rules', 'roleplay:examples',
+    'roleplay:lore-before-character', 'roleplay:lore-after-character', 'roleplay:lore-before-examples', 'roleplay:lore-after-examples']);
+/** Render each real section once with the host renderer. Persist only part
+ * character counts alongside the already-owned system message, never a
+ * duplicate body. The host still owns interpolation and blank-line joining. */
+export function renderAttributedSystemPrompt(assembly) {
+    const sections = assembly.sections.map(section => ({ ...section, interpolate: false,
+        text: renderPrompt({ ...assembly, sections: [section] }) }));
+    const parts = sections.filter(section => section.text.length > 0).flatMap((section, index) => [
+        ...index ? [{ category: 'systemFixed', characters: 2 }] : [],
+        { category: AUTHOR_SECTIONS.has(section.name) ? 'authorEffective' : 'systemFixed', characters: section.text.length }
+    ]);
+    return { text: renderPrompt({ ...assembly, sections }), attribution: { schemaVersion: 1, parts } };
 }
 /** Committed events from the newest backward; the restore scans stop at the first match. */
 function eventsNewestFirst(session) {
@@ -66,23 +81,27 @@ export class SystemPromptProjection {
         const nodes = this.systemNodes();
         const head = nodes[0];
         if (head === undefined) {
-            return [{ message: createSystemMessage(rendered), intent: { surfaceOp: 'append' } }];
+            return [{ message: this.message(rendered, input.attribution), intent: { surfaceOp: 'append' } }];
         }
         const latest = nodes.findLast(node => node.text !== '') ?? head;
         if (!input.inHistory || input.startsSeries || rendered.length === 0) {
             const updates = nodes.slice(1).filter(node => node.text !== '')
                 .map(node => this.replace(node.seq, ''));
             if (head.text !== rendered)
-                updates.push(this.replace(head.seq, rendered));
+                updates.push(this.replace(head.seq, rendered, input.attribution));
             return updates;
         }
         if (latest.text === rendered)
             return [];
-        return [{ message: createSystemMessage(rendered), intent: { surfaceOp: 'append' } }];
+        return [{ message: this.message(rendered, input.attribution), intent: { surfaceOp: 'append' } }];
     }
-    replace(seq, text) {
+    message(text, attribution) {
+        const message = createSystemMessage(text);
+        return attribution && text ? { ...message, source: { ...message.source, requestAttribution: attribution } } : message;
+    }
+    replace(seq, text, attribution) {
         return {
-            message: createSystemMessage(text),
+            message: this.message(text, attribution),
             intent: { surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }, sourceEventSeqs: [seq] },
         };
     }

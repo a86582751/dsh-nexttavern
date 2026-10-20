@@ -13,13 +13,19 @@ export function bindNativeRequestMaterial(request, binding) {
     }
     const captured = Object.freeze({ ...binding });
     bindings.set(request, captured);
-    bindAgentLoopRequestGuard(request, () => { captured.assertOwnerCurrent(); assertBoundMaterialBase(request, captured); });
+    // Prepared owners already have Native's live selection guard. Legacy owners
+    // without prepare retain their original exact-base check across awaits.
+    bindAgentLoopRequestGuard(request, () => {
+        captured.assertOwnerCurrent();
+        if (!captured.preparedSelection)
+            assertBoundMaterialBase(request, captured);
+    });
 }
 /** Reconstruct the current exact base from its actual Session. This live path
  * does not repeatedly refold prior request-only overlays or cache Source. */
 function assertBoundMaterialBase(request, binding) {
     const { session, event } = binding, record = event.data, boundary = session.currentRequestBoundary();
-    if (Number(session.seq) !== event.seq + 1 || event.seq !== record.base.boundarySeq + 1
+    if (!binding.preparedSelection && Number(session.seq) !== event.seq + 1 || event.seq !== record.base.boundarySeq + 1
         || request.sessionId !== session.id) {
         throw Error('REQUEST_MATERIAL_BOUNDARY_CHANGED');
     }
@@ -33,7 +39,9 @@ function assertBoundMaterialBase(request, binding) {
         baseMessages: boundary.messages, baseRefs: boundary.messageNodes.map(({ seq, message }) => ({ seq, id: message.id,
             role: message.role, messageSha256: nativeInputSha256(message) })),
         protectedPrefixLength: record.delta.protectedPrefixLength, insertions: record.delta.insertions,
-        ...record.schemaVersion === 2 ? { messageTextProjections: record.delta.messageTextProjections } : {} });
+        ...record.schemaVersion === 2 ? { messageTextProjections: record.delta.messageTextProjections } : {},
+        ...record.delta.messageProjection ? { messageProjection: record.delta.messageProjection } : {},
+        ...record.delta.requestLocalSampling ? { requestLocalSampling: record.delta.requestLocalSampling } : {} });
     if (nativeInputSha256(result.record) !== nativeInputSha256(record)
         || JSON.stringify(request.messages) !== JSON.stringify(result.messages)) {
         throw Error('REQUEST_MATERIAL_RECONSTRUCTION_CHANGED');

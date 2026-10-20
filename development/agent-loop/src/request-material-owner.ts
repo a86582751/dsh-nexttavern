@@ -12,6 +12,9 @@ import type {NativeInputAdmissionCheckV2} from './input-admission.js'
 import type {NativeMaterialDataRefV1, NativeMaterialInsertionV1,NativeMaterialMessageTextProjectionV2} from './request-material.js'
 export type {NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2} from './request-material.js'
 import {nativeInputSha256} from './input-admission.js'
+import type {NativeMessageProjectionV1} from '@deepseek-ai/dsh-session'
+import type {NativeStoryMaterialHooksV1,NativeStoryRequestPolicyV1} from './story-request.js'
+import type {NativeRequestMeasurementV1} from './request-budget.js'
 
 export interface NativeMaterialSelectedMessageV1 {
   readonly origin:'surface'|'pending-decision'
@@ -74,7 +77,29 @@ export interface NativeRequestMaterialInputV1 {
 /** One actual final step decision, before Native appends step/start. The
  * owning Core has already begun its opaque step and finished Phase A. Route
  * capability is checked later by the synchronous transform after prepareCall. */
-export type NativeRequestMaterialPrepareInputV1=Omit<NativeRequestMaterialInputV1,'preparedRoute'|'firstAttempt'>
+export interface NativeMaterialCandidateBasisV1 {
+  readonly selected:NativeMaterialSelectedBaseV1
+  readonly finalAssembly:Readonly<PromptAssembly>
+  readonly assemblySha256:string
+  readonly preparedRoute:NativeRequestMaterialInputV1['preparedRoute']
+}
+export interface NativeMaterialCandidatePreviewV1 {
+  readonly measurement?:NativeRequestMeasurementV1
+  /** Prices from the final adapter projection. A grouped price is allocated
+   * by original text length for checkpoint selection, not measured per story.
+   * The next full projection remains the authoritative capacity decision. */
+  readonly messageCosts:readonly {readonly id:string;readonly eventSeq:number|null;readonly tokens:number;
+    readonly allocation?:'group-text-length-estimate';readonly groupId?:string}[]
+}
+export type NativeRequestMaterialPrepareInputV1=Omit<NativeRequestMaterialInputV1,'preparedRoute'|'firstAttempt'>&{
+  /** Hot, call-local planning only. Native captures the selected basis before
+   * invoking the builder; this function grants no dispatch permission. */
+  readonly candidate?:{
+    preview(messages:readonly import('@deepseek-ai/dsh-session').UserMessage[],
+      build:(basis:NativeMaterialCandidateBasisV1)=>Promise<NativeRequestMaterialTransform|{readonly kind:'unchanged'}>)
+      :Promise<NativeMaterialCandidatePreviewV1>
+  }
+}
 export type NativeRequestMaterialPrepareDecisionV1={readonly kind:'prepared'}|{readonly kind:'unchanged'}
   |{readonly kind:'blocked';readonly code:string}
 export interface NativeOwnedSectionPreconditionV1 {readonly name:string;readonly sha256:string}
@@ -109,11 +134,14 @@ export interface NativeRequestMaterialTransformV1 {
   /** Versioned consumer intent. Durable Native v1 stores resolved depths;
    * its bound Core plan retains these original explanatory anchor records. */
   readonly anchoredInsertions?:readonly NativeOwnedMaterialAnchoredInsertionV1[]
+  readonly messageProjection?:NativeMessageProjectionV1
+  readonly story?:NativeStoryRequestPolicyV1
 }
 export type NativeRequestMaterialDecisionV1={readonly kind:'unchanged'}
   | {readonly kind:'blocked';readonly code:string}|NativeRequestMaterialTransformV1
 export interface NativeRequestMaterialOwnerV1 {
   readonly schemaVersion:1
+  readonly story?:NativeStoryMaterialHooksV1
   /** Names owned by this actual registration. Final assembly must have one
    * exact surviving section per required precondition; ambiguous names refuse. */
   readonly sectionNames:readonly string[]
@@ -180,6 +208,7 @@ export type NativeOpeningClosingAcknowledgementV1={readonly kind:'settled';reado
   readonly ownerReceiptSha256:string}|{readonly kind:'blocked'|'unknown';readonly receiptSha256:string;readonly code:string}
 export interface NativeOpeningMaterialOwnerV1 {
   readonly schemaVersion:1
+  readonly story?:NativeStoryMaterialHooksV1
   readonly sectionNames:readonly string[]
   prepare(input:NativeOpeningMaterialPrepareInputV1):Promise<NativeRequestMaterialPrepareDecisionV1>
   transform(input:NativeOpeningMaterialInputV1):NativeRequestMaterialDecisionV1
@@ -189,11 +218,13 @@ export interface NativeOpeningMaterialOwnerV1 {
 /** One actual owner is captured and bound. JSON packets cannot create this
  * registration; the Agent/factory verify their live constructor identity. */
 export function nativeOpeningMaterialOwnerRegistrationV1(value:unknown):NativeOpeningMaterialOwnerV1 {
-  const row=object(value,['schemaVersion','sectionNames','prepare','transform','check','closing'])
+  const ownsStory=value!==null&&typeof value==='object'&&!utilTypes.isProxy(value)&&Object.hasOwn(value,'story')
+  const row=object(value,['schemaVersion','sectionNames','prepare','transform','check','closing',...ownsStory?['story']:[]])
   if(row['schemaVersion']!==1||['prepare','transform','check','closing'].some(key=>typeof row[key]!=='function'))return fail()
   const sectionNames=array(row['sectionNames'],NATIVE_REQUEST_OWNER_BOUNDS.sections).map(identity)
   if(!sectionNames.length||new Set(sectionNames).size!==sectionNames.length)return fail()
   return Object.freeze({schemaVersion:1,sectionNames:Object.freeze(sectionNames),
+    ...ownsStory?{story:storyHooks(row['story'])}:{},
     prepare:(row['prepare'] as NativeOpeningMaterialOwnerV1['prepare']).bind(value),
     transform:(row['transform'] as NativeOpeningMaterialOwnerV1['transform']).bind(value),
     check:(row['check'] as NativeOpeningMaterialOwnerV1['check']).bind(value),
@@ -256,12 +287,14 @@ export function nativeRequestMaterialOwnerRegistrationV1(value:NativeRequestMate
 export function nativeRequestMaterialOwnerRegistrationV1(value:unknown):NativeRequestMaterialOwnerV2
 export function nativeRequestMaterialOwnerRegistrationV1(value:unknown):NativeRequestMaterialOwnerV2 {
   const ownsPrepare=value!==null&&typeof value==='object'&&!utilTypes.isProxy(value)&&Object.hasOwn(value,'prepare')
-  const row=object(value,['schemaVersion','sectionNames','transform','check',...ownsPrepare?['prepare']:[]])
+  const ownsStory=value!==null&&typeof value==='object'&&!utilTypes.isProxy(value)&&Object.hasOwn(value,'story')
+  const row=object(value,['schemaVersion','sectionNames','transform','check',...ownsPrepare?['prepare']:[],...ownsStory?['story']:[]])
   if(row['schemaVersion']!==1||typeof row['transform']!=='function'||typeof row['check']!=='function')return fail()
   if(ownsPrepare&&typeof row['prepare']!=='function')return fail()
   const sectionNames=array(row['sectionNames'],NATIVE_REQUEST_OWNER_BOUNDS.sections).map(identity)
   if(!sectionNames.length||new Set(sectionNames).size!==sectionNames.length)return fail()
   return Object.freeze({schemaVersion:1,sectionNames:Object.freeze(sectionNames),
+    ...ownsStory?{story:storyHooks(row['story'])}:{},
     ...ownsPrepare?{prepare:(row['prepare'] as NonNullable<NativeRequestMaterialOwnerV1['prepare']>).bind(value)}:{},
     transform:row['transform'].bind(value) as NativeRequestMaterialOwnerV2['transform'],
     check:row['check'].bind(value) as NativeRequestMaterialOwnerV2['check']})
@@ -307,9 +340,11 @@ export function nativeRequestMaterialDecisionV1(value:unknown):NativeRequestMate
   if(kind!=='transform')return fail()
   const hasAnchors=Object.hasOwn(value,'anchoredInsertions')
   const version=Object.getOwnPropertyDescriptor(value,'schemaVersion')?.value
+  const hasProjection=Object.hasOwn(value,'messageProjection'),hasStory=Object.hasOwn(value,'story')
   const row=object(value,['kind','schemaVersion','encoding','snapshot','plan','captureSha256',
     'expectedAssemblySha256','expectedSelectedBaseSha256','requiredSections','sections','insertions',
-    ...hasAnchors?['anchoredInsertions']:[],...version===2?['messageTextProjections']:[]])
+    ...hasAnchors?['anchoredInsertions']:[],...version===2?['messageTextProjections']:[],
+    ...hasProjection?['messageProjection']:[],...hasStory?['story']:[]])
   if(!(version===1&&row['encoding']==='native-request-material-owner-transform-v1'
     ||version===2&&row['encoding']==='native-request-material-owner-transform-v2'))return fail()
   const requiredSections=array(row['requiredSections'],NATIVE_REQUEST_OWNER_BOUNDS.sections).map(item=>{
@@ -380,9 +415,63 @@ export function nativeRequestMaterialDecisionV1(value:unknown):NativeRequestMate
   const common={kind:'transform' as const,
     snapshot:ref(row['snapshot']),plan:ref(row['plan']),captureSha256:sha(row['captureSha256']),
     expectedAssemblySha256:sha(row['expectedAssemblySha256']),expectedSelectedBaseSha256:sha(row['expectedSelectedBaseSha256']),
-    requiredSections,sections,insertions,...anchoredInsertions?{anchoredInsertions}:{}}
+    requiredSections,sections,insertions,...anchoredInsertions?{anchoredInsertions}:{},
+    ...hasProjection?{messageProjection:messageProjection(row['messageProjection'])}:{},
+    ...hasStory?{story:storyPolicy(row['story'])}:{}}
   return messageTextProjections?deepFreeze({...common,schemaVersion:2,encoding:'native-request-material-owner-transform-v2',messageTextProjections}):
     deepFreeze({...common,schemaVersion:1,encoding:'native-request-material-owner-transform-v1'})
+}
+
+function messageProjection(value:unknown):NativeMessageProjectionV1 {
+  const hasTextEdits=value!==null&&typeof value==='object'&&!utilTypes.isProxy(value)&&Object.hasOwn(value,'textEdits')
+  const row=object(value,['schemaVersion','encoding','groups',...hasTextEdits?['textEdits']:[]])
+  if(row['schemaVersion']!==1||row['encoding']!=='native-request-message-projection-v1')return fail()
+  return {schemaVersion:1,encoding:'native-request-message-projection-v1',
+    groups:array(row['groups'],4096).map(value=>{
+      const group=object(value,['targets','role','renderedText']),role=group['role']
+      if(role!=='system'&&role!=='user'&&role!=='assistant')return fail()
+      return {role,renderedText:text(group['renderedText'],4_194_304),
+        targets:array(group['targets'],4096).map(value=>{const target=object(value,['id','messageSha256'])
+          return {id:identity(target['id']),messageSha256:sha(target['messageSha256'])}})}
+    }),...hasTextEdits?{textEdits:array(row['textEdits'],4096).map(value=>{
+      const edit=object(value,['target','blocks']),target=object(edit['target'],['id','messageSha256'])
+      return {target:{id:identity(target['id']),messageSha256:sha(target['messageSha256'])},
+        blocks:array(edit['blocks'],4096).map(value=>{const block=object(value,['index','text'])
+          return {index:count(block['index']),text:text(block['text'],4_194_304)}})}
+    })}:{}}
+}
+function storyHooks(value:unknown):NativeStoryMaterialHooksV1 {
+  const fields=['normalizeText','recoverText','createTextTransform'].filter(field=>value!==null&&typeof value==='object'
+    &&!utilTypes.isProxy(value)&&Object.hasOwn(value,field))
+  const row=object(value,['schemaVersion',...fields])
+  if(row['schemaVersion']!==1||fields.some(field=>typeof row[field]!=='function'))return fail()
+  return Object.freeze({schemaVersion:1,...row['normalizeText']?{
+    normalizeText:(row['normalizeText'] as NonNullable<NativeStoryMaterialHooksV1['normalizeText']>).bind(value)}:{},
+    ...row['recoverText']?{recoverText:(row['recoverText'] as NonNullable<NativeStoryMaterialHooksV1['recoverText']>).bind(value)}:{},
+    ...row['createTextTransform']?{createTextTransform:(row['createTextTransform'] as
+      NonNullable<NativeStoryMaterialHooksV1['createTextTransform']>).bind(value)}:{}})
+}
+function storyPolicy(value:unknown):NativeStoryRequestPolicyV1 {
+  const fields=['sampling','response'].filter(field=>value!==null&&typeof value==='object'&&!utilTypes.isProxy(value)&&Object.hasOwn(value,field))
+  const row=object(value,['schemaVersion',...fields])
+  if(row['schemaVersion']!==1)return fail()
+  let sampling:NativeStoryRequestPolicyV1['sampling']
+  if(row['sampling']!==undefined) {
+    const raw=row['sampling'],keys=['temperature','maxTokens','stop'].filter(field=>raw!==null&&typeof raw==='object'
+      &&!utilTypes.isProxy(raw)&&Object.hasOwn(raw,field))
+    const data=object(raw,keys),temperature=data['temperature'],maxTokens=data['maxTokens']
+    if(temperature!==undefined&&(typeof temperature!=='number'||!Number.isFinite(temperature)))return fail()
+    if(maxTokens!==undefined&&(typeof maxTokens!=='number'||!Number.isSafeInteger(maxTokens)||maxTokens<1))return fail()
+    sampling={...temperature===undefined?{}:{temperature:temperature as number},...maxTokens===undefined?{}:{maxTokens:maxTokens as number},
+      ...data['stop']===undefined?{}:{stop:array(data['stop'],128).map(value=>text(value,65_536))}}
+  }
+  let response:NativeStoryRequestPolicyV1['response']
+  if(row['response']!==undefined) {
+    const data=object(row['response'],['transport']),transport=data['transport']
+    if(typeof transport!=='string'||transport!=='game_content'&&!/^emit_complete_response_[a-f0-9]{24}$/.test(transport))return fail()
+    response={transport}
+  }
+  return {schemaVersion:1,...sampling?{sampling}:{},...response?{response}:{}}
 }
 
 /** Internal, data-only resolver called once on the actual Session preview.

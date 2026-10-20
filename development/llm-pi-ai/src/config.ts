@@ -340,7 +340,9 @@ const profile = z.object({
   defaultInput: z.array(z.union(MODALITIES)).default([...DEFAULT_INPUT]),
   headers: z.dict(z.string()),
   reasoning: z.union(THINKING_LEVELS),
-  thinkingBudgets,
+  // A missing object must stay absent: an empty budget object is still an
+  // explicit request option and is outside ordered nonreasoning material.
+  thinkingBudgets:z.union([thinkingBudgets]),
   cacheRetention: z.union(['none', 'short', 'long']),
   transport: z.union(['sse', 'websocket', 'websocket-cached', 'auto']),
   timeoutMs: z.natural(),

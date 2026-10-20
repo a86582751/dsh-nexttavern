@@ -10,6 +10,8 @@ import type { ContextFormed, ContextSnapshotSection, Message } from '@deepseek-a
 import type { Session, SessionEvent, SessionSeq, SurfaceIntent, SystemMessage, UserMessage } from '@deepseek-ai/dsh-session'
 import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session'
 import type { Context } from '@deepseek-ai/cordis'
+import {renderPrompt} from '@deepseek-ai/dsh-system-prompt'
+import type {PromptAssembly} from '@deepseek-ai/dsh-system-prompt'
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'runtime-context': { kind: 'runtime-context' } & ContextFormed
@@ -38,6 +40,7 @@ export interface SystemPromptCommit {
 
 /** The request-series facts one prompt decision is made under. */
 export interface SystemPromptDecisionInput {
+  readonly attribution?:{readonly schemaVersion:1;readonly parts:readonly {readonly category:string;readonly characters:number}[]}
   /** Whether the prepared route for this attempt reads a later `system` message as the effective prompt. */
   inHistory: boolean
   /**
@@ -46,6 +49,20 @@ export interface SystemPromptDecisionInput {
    * changed on a route without tool-update support.
    */
   startsSeries: boolean
+}
+
+const AUTHOR_SECTIONS=new Set(['roleplay:cards','roleplay:rules','roleplay:examples',
+  'roleplay:lore-before-character','roleplay:lore-after-character','roleplay:lore-before-examples','roleplay:lore-after-examples'])
+/** Render each real section once with the host renderer. Persist only part
+ * character counts alongside the already-owned system message, never a
+ * duplicate body. The host still owns interpolation and blank-line joining. */
+export function renderAttributedSystemPrompt(assembly:PromptAssembly) {
+  const sections=assembly.sections.map(section=>({...section,interpolate:false as const,
+    text:renderPrompt({...assembly,sections:[section]})}))
+  const parts=sections.filter(section=>section.text.length>0).flatMap((section,index)=>[
+    ...index?[{category:'systemFixed',characters:2}]:[],
+    {category:AUTHOR_SECTIONS.has(section.name)?'authorEffective':'systemFixed',characters:section.text.length}])
+  return {text:renderPrompt({...assembly,sections}),attribution:{schemaVersion:1 as const,parts}}
 }
 
 /** Committed events from the newest backward; the restore scans stop at the first match. */
@@ -98,22 +115,27 @@ export class SystemPromptProjection {
     const nodes = this.systemNodes()
     const head = nodes[0]
     if (head === undefined) {
-      return [{ message: createSystemMessage(rendered), intent: { surfaceOp: 'append' } }]
+      return [{ message: this.message(rendered,input.attribution), intent: { surfaceOp: 'append' } }]
     }
     const latest = nodes.findLast(node => node.text !== '') ?? head
     if (!input.inHistory || input.startsSeries || rendered.length === 0) {
       const updates = nodes.slice(1).filter(node => node.text !== '')
         .map(node => this.replace(node.seq, ''))
-      if (head.text !== rendered) updates.push(this.replace(head.seq, rendered))
+      if (head.text !== rendered) updates.push(this.replace(head.seq, rendered,input.attribution))
       return updates
     }
     if (latest.text === rendered) return []
-    return [{ message: createSystemMessage(rendered), intent: { surfaceOp: 'append' } }]
+    return [{ message: this.message(rendered,input.attribution), intent: { surfaceOp: 'append' } }]
   }
 
-  private replace(seq: SessionSeq, text: string): SystemPromptCommit {
+  private message(text:string,attribution?:SystemPromptDecisionInput['attribution']):SystemMessage {
+    const message=createSystemMessage(text)
+    return attribution&&text?{...message,source:{...message.source,requestAttribution:attribution}} as SystemMessage:message
+  }
+
+  private replace(seq: SessionSeq, text: string,attribution?:SystemPromptDecisionInput['attribution']): SystemPromptCommit {
     return {
-      message: createSystemMessage(text),
+      message: this.message(text,attribution),
       intent: { surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }, sourceEventSeqs: [seq] },
     }
   }

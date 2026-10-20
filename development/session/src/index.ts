@@ -25,12 +25,15 @@ import type { ToolHistory } from '@deepseek-ai/dsh-llm'
 import { buildForkSeed } from './fork.js'
 import {previewSessionRequestAppends} from './request-preview.js'
 import type {SessionRequestAppendInput, SessionRequestPreview, SessionRequestPlannedEvent, SessionRequestBoundary} from './request-preview.js'
+import {validateNativeStoryResponseMaterialV1} from './response-material.js'
+export {applyNativeStoryResponseOperationsV1,planNativeStoryResponseMaterialV1,reconstructNativeStoryResponseMaterialV1,
+  validateNativeStoryResponseMaterialV1,nativeStoryResponseSha256V1,nativeStoryVisibleTextV1} from './response-material.js'
 
 export { buildForkSeed } from './fork.js'
 export * from './types.js'
 export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
   NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,
-  NativeMaterialInsertionV1,NativeMaterialPlacementV1,NativeLoreRoleV1} from './request-material-types.js'
+  NativeMaterialInsertionV1,NativeMaterialPlacementV1,NativeLoreRoleV1,NativeMessageProjectionV1} from './request-material-types.js'
 export { SessionPreparation } from './preparation.js'
 export type { SessionPreparationOptions } from './preparation.js'
 export type { AssistantMessage, DeveloperMessage, SystemMessage, ToolResultMessage, UserMessage } from '@deepseek-ai/dsh-llm'
@@ -384,6 +387,10 @@ function assertMessageEventShape(event: Record<string, unknown>, subject: string
     } else if (sourceRecord['kind'] !== 'model' || !hasProviderModel(sourceRecord)) {
       throw new Error(`${subject} message must have model source`)
     }
+    if(sourceRecord['responseMaterial']!==undefined) {
+      if(sourceRecord['kind']!=='model')throw Error(`${subject} response material requires model source`)
+      validateNativeStoryResponseMaterialV1(sourceRecord['responseMaterial'])
+    }
     return
   }
   if (type !== 'tool/result') return
@@ -725,7 +732,7 @@ export class Session {
     // only this boundary's new containers instead of walking history again.
     return Object.freeze({boundarySeq:SessionSeq(this.log.length-1),surfaceNodes:Object.freeze(surfaceNodes),
       contentGeneration:this.surface.contentGeneration,messages:Object.freeze(messageNodes.map(row=>row.message)),
-      messageNodes:Object.freeze(messageNodes.map(row=>Object.freeze(row)))})
+      messageNodes:Object.freeze(messageNodes.map(row=>Object.freeze(row))),toolHistory:this.toolHistory()})
   }
 
   /** Commit the next exact event of this Session's hot preview. Each call

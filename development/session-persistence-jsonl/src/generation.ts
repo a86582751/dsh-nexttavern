@@ -25,8 +25,10 @@ import { pipeline, Readable } from 'node:stream'
 import { scheduler } from 'node:timers/promises'
 import { isDeepStrictEqual } from 'node:util'
 import { constants, createZstdCompress } from 'node:zlib'
-import { Session } from '@deepseek-ai/dsh-session'
+import { Session,reconstructNativeStoryResponseMaterialV1 } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+// Restored Session forks consume the host-owned inbox event vocabulary too.
+import type {} from '@deepseek-ai/dsh-agent'
 import { BlockAssembler, expandAssistantStream } from '@deepseek-ai/dsh-llm'
 import { SessionFormatError } from '@deepseek-ai/dsh-session-format'
 import type {
@@ -562,8 +564,16 @@ function assertCurrentAssistantStreams(events: readonly SessionEvent[]): void {
     } catch (error: unknown) {
       throw new Error(`seed ${event.type} at index ${index} has an invalid embedded stream`, { cause: error })
     }
-    if (event.type === 'assistant/attempt' || timed.length === 0) continue
-    const content = event.data.interrupted === true ? assembler.interruptedBlocks() : assembler.blocks()
+    if (event.type === 'assistant/attempt') continue
+    if(timed.length===0) {
+      if(event.data.message.source.kind==='model'&&event.data.message.source.responseMaterial) {
+        throw new Error(`seed assistant/message at index ${index} response material has no raw stream`)
+      }
+      continue
+    }
+    const rawContent = event.data.interrupted === true ? assembler.interruptedBlocks() : assembler.blocks()
+    const responseMaterial=event.data.message.source.kind==='model'?event.data.message.source.responseMaterial:undefined
+    const content=responseMaterial?reconstructNativeStoryResponseMaterialV1(rawContent,responseMaterial):rawContent
     if (!isDeepStrictEqual(event.data.message.content, content)) {
       throw new Error(`seed assistant/message at index ${index} content disagrees with its embedded stream`)
     }
