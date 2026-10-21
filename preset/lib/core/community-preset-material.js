@@ -25,15 +25,17 @@ export async function prepareCommunityPresetMaterial(deps, input, signal) {
         ? [{ row, blockIndex, entry: communityRegexEntry(`history-${index}-${blockIndex}`, block.text, policy.fingerprint, { channel: 'prompt', placement: row.role === 'user' ? 1 : 2, depth: input.historyRows.length - index - 1 }) }] : []));
     const output = await applyCommunityRegex(policy, entries.map(row => row.entry), communityRegexMacros(aliases, chat, global, policy.fingerprint), input.scopedRules, signal);
     const historyEdits = new Map();
-    for (const [index, row] of entries.entries())
-        if (output[index] !== row.entry.inputText) {
-            let edit = historyEdits.get(row.row.id);
-            if (!edit) {
-                edit = { target: { id: row.row.id, messageSha256: row.row.messageSha256 }, blocks: [] };
-                historyEdits.set(row.row.id, edit);
-            }
-            edit.blocks.push({ index: row.blockIndex, text: output[index] });
+    for (const [index, row] of entries.entries()) {
+        const text = input.projectHistoryText ? input.projectHistoryText(row.row.id, output[index]) : output[index];
+        if (text === row.entry.inputText)
+            continue;
+        let edit = historyEdits.get(row.row.id);
+        if (!edit) {
+            edit = { target: { id: row.row.id, messageSha256: row.row.messageSha256 }, blocks: [] };
+            historyEdits.set(row.row.id, edit);
         }
+        edit.blocks.push({ index: row.blockIndex, text });
+    }
     promptHistoryTextEdits.push(...historyEdits.values());
     const scopeCache = new WeakMap();
     function scopes(base) {

@@ -25,6 +25,8 @@ type Preparation=Omit<CommunityExecutionInput,'policy'|'variableAttempt'|'modelN
   attemptId:string
   scopedRules:readonly TavernPromptRegexRuleV1[]
   policy?:CommunityPresetPolicy
+  /** Core projects canonical prose before the executor wraps history groups. */
+  projectHistoryText?(messageId:string,text:string):string
 }
 
 /** The bridge freezes one profile/variable attempt and batches actual Native
@@ -53,10 +55,12 @@ export async function prepareCommunityPresetMaterial(deps:CommunityMaterialDepen
   const output=await applyCommunityRegex(policy,entries.map(row=>row.entry),
     communityRegexMacros(aliases,chat,global,policy.fingerprint),input.scopedRules,signal)
   const historyEdits=new Map<string,{target:{id:string;messageSha256:string};blocks:{index:number;text:string}[]}>()
-  for(const [index,row] of entries.entries())if(output[index]!==row.entry.inputText) {
+  for(const [index,row] of entries.entries()) {
+    const text=input.projectHistoryText?input.projectHistoryText(row.row.id,output[index]!):output[index]!
+    if(text===row.entry.inputText)continue
     let edit=historyEdits.get(row.row.id)
     if(!edit){edit={target:{id:row.row.id,messageSha256:row.row.messageSha256},blocks:[]};historyEdits.set(row.row.id,edit)}
-    edit.blocks.push({index:row.blockIndex,text:output[index]!})
+    edit.blocks.push({index:row.blockIndex,text})
   }
   promptHistoryTextEdits.push(...historyEdits.values())
   const scopeCache=new WeakMap<TavernTemplateScopeBindingV1,TavernTemplateScopeBindingV1>()

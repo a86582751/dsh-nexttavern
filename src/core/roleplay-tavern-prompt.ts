@@ -56,6 +56,7 @@ export const TAVERN_NATIVE_PROMPT_POLICY_V1=Object.freeze({schemaVersion:1,
   initialRegex:'fixed-feature-worldinfo-call-without-generate-selector; no-registry-read',
   author:'same-field-producer; macros-then-standalone-EJS; no-rerender-of-output',
   regex:'activated-card-scoped-rules-in-bounded-worker; explicit-native-owned-allow-policy',
+  historyIdentity:'completed-canonical-assistant-text; exact-user-after-regex; opaque-update-container; request-only',
   timing:'actual-Native-material-publication; persisted-consumer-data-only',
   lateAuthor:'scan-and-chat-cut-before-author-EJS; default-persistent-next-generation; once-current-terminal',
   lateActivation:'typed-refusal-after-lore-seal; no-silent-drop-or-invented-next-generation-activation',
@@ -358,8 +359,17 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
         ...preparedRoute?{preparedRoute}:{},currentCardFields}).snapshot
       const aliases=Object.fromEntries([...Object.values(baseMacros.names),...baseMacros.card??[],...baseMacros.dynamic??[]]
         .filter(binding=>binding.value!==null).map(binding=>[binding.key,binding.value!]))
+      const canonicalAssistantIds=new Set(chatClock.data.rows.filter(row=>row.role==='assistant').map(row=>row.id))
+      const projectHistoryText=(messageId:string,text:string)=>{
+        if(!canonicalAssistantIds.has(messageId))return text
+        // Old prose can retain the identity template. Expand it only in the
+        // model's text projection; protocol DATA and saved messages stay exact.
+        return text.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>|\{\{user\}\}/g,
+          token=>token==='{{user}}'?baseMacros.names.user.value!:token)
+      }
       const community=deps.community?await prepareCommunityPresetMaterial(deps.community,{session:scope.session,policy:communityPolicy,
         selected:native.selected,historyRows:storyRows,seed,clockEpochMs,inputText:playerSnapshot?.userText??'',
+        ...invocation.kind==='player'?{projectHistoryText}:{},
         aliases:{...aliases,turn:String(scope.turn),turnPlus1:String(scope.turn+1),chatMessageCount:String(chatClock.scanRows.length)},
         cardData:captured.cardData,inputId:playerSnapshot?.userMessageId??player?.currency.preparationId??opening!.attempt.attemptId,
         attemptId,scopedRules:captureRoleplayTavernScopedRegexV1(captured.cardData,source.sourceSha256,true),
@@ -505,8 +515,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
       if(!community) {
         // The chat-clock owner classified canonical prose; a maintenance
         // assistant never acquires AI_OUTPUT placement through continuity rows.
-        const canonicalAssistantIds=new Set(chatClock.data.rows.filter(row=>row.role==='assistant').map(row=>row.id)),
-          historyRows=invocation.kind==='player'?native.selected.messages.filter(row=>
+        const historyRows=invocation.kind==='player'?native.selected.messages.filter(row=>
             row.role==='user'&&row.message.role==='user'&&row.message.source.kind==='user'
             ||row.role==='assistant'&&canonicalAssistantIds.has(row.id)):[],
           historyBlocks=historyRows.flatMap((selected,index)=>selected.message.content.flatMap((block,blockIndex)=>
@@ -517,9 +526,10 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
             .map(row=>[row.key,row.text]))
         for(const [index,selected] of historyRows.entries()) {
           const textEdits=selected.message.content.flatMap((block,blockIndex)=>{
-            const replacementText=historyTexts.get(joinHistoryBlock(index,blockIndex))
-            return block.type==='text'&&replacementText!==undefined&&replacementText!==block.text
-              ?[{blockIndex,replacementText}]:[]
+            if(block.type!=='text')return []
+            const transformed=historyTexts.get(joinHistoryBlock(index,blockIndex))??block.text,
+              replacementText=projectHistoryText(selected.id,transformed)
+            return replacementText!==block.text?[{blockIndex,replacementText}]:[]
           })
           if(!textEdits.length)continue
           const projected=projectNativeMessageTextV2(selected.message,textEdits)
@@ -578,7 +588,7 @@ export function createRoleplayTavernPromptMaterialV1(deps:Dependencies):Roleplay
           policySha256:recordSha256(policy),tavernEvaluationPlan:evaluated.plan,
           finalLore,layout:layout.layout,variablePacketSha256:variables.packet.packetSha256,
           ...messageTextProjections.length?{historyTextProjection:{
-            policy:'selected-real-user-and-canonical-assistant-per-text-block-prompt-regex-only-v1',
+            policy:'selected-real-user-and-canonical-assistant-per-text-block-prompt-regex-and-assistant-user-identity-v1',
             messageTextProjections}}:{},
           ...authorPrompt?{authorPromptOutputSha256:authorPrompt.output.outputSha256}:{},
           ...authorBrowser?{authorBrowserOutputSha256:authorBrowser.output.outputSha256}:{},
