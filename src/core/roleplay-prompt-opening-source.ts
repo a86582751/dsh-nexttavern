@@ -1,6 +1,7 @@
 /** Actual Source/Native relationship readers plus a pure raw-data calculator.
  * Root separately owns fresh basis, protected execution, intent and publication. */
 import {recordSha256,sha256} from './roleplay-data.js'
+import {validateTavernSourceLegacyCopyV1} from './roleplay-tavern-source-inheritance-data.js'
 import {compileTavernOpeningCandidates} from './tavern-card.js'
 import {assertImportRecordIntegrity,projectStructuredImport,readStructuredImportDataV1} from './roleplay-import-record.js'
 import {compileSchemaMvuInitData,selectNativeMvuInitializationPolicy} from './tavern-mvu-initvar.js'
@@ -196,7 +197,8 @@ export function validatePromptOpeningSourceProofV1(input:unknown):PromptOpeningS
         schemaExecution:'none',native:'not-authorized',protectedRenderer:'not-authorized',publish:'not-authorized'})) {
       openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/selection')
     }
-    exact(proof.sourceRelation,['kind','native','branchMetaRef','inheritance','setup'],'/sourceRelation')
+    exact(proof.sourceRelation,['kind','native','branchMetaRef','inheritance','setup',
+      ...proof.sourceRelation.kind==='legacy-fresh-copy-source'?['legacyCopy']:[]],'/sourceRelation')
     exact(proof.sourceRelation.native,['sessionId','headerId','parentSessionId','inheritedEventCount','origin'],'/native')
     const relation=proof.sourceRelation
     if(relation.native.sessionId!==program.sessionId||relation.native.parentSessionId!==null
@@ -206,6 +208,13 @@ export function validatePromptOpeningSourceProofV1(input:unknown):PromptOpeningS
     if(relation.kind==='own-root-source') {
       if(relation.inheritance!==null||relation.setup!==null||tuple.sourceInheritance!==null
         ||tuple.sourceRecordSessionId!==program.sessionId)openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/relation/root')
+    }else if(relation.kind==='legacy-fresh-copy-source') {
+      const copy=validateTavernSourceLegacyCopyV1(relation.legacyCopy)
+      if(relation.inheritance!==null||relation.setup!==null||tuple.sourceInheritance!==null
+        ||copy.childSessionId!==program.sessionId||copy.freshFirstTurn!==true||copy.seedLength!==0
+        ||copy.parentSessionId!==(tuple.activePointer as unknown as Record<string,unknown>).inheritedFrom) {
+        openingSourceFail('OPENING_SOURCE_PROOF_INVALID','/relation/legacy-fresh')
+      }
     }else if(relation.kind!=='committed-fresh-cut0-source'||!same(relation.inheritance,tuple.sourceInheritance)
       ||relation.inheritance.childSessionId!==program.sessionId||relation.inheritance.nativeCut.kind!=='reserved-fresh-branch'
       ||relation.inheritance.nativeCut.seedLength!==0||!same(relation.setup.applyIntentRef,relation.inheritance.applyIntentRef)
@@ -239,6 +248,16 @@ export function createRoleplayPromptOpeningSourceV1(deps:PromptOpeningSourceDeps
     }
     const native={sessionId:sid,headerId:typeof header.id==='string'?header.id:null,parentSessionId:null,
       inheritedEventCount:0,origin:typeof header.origin==='string'?header.origin:null} as const
+    const copy=source.legacyInheritance
+    if(copy) {
+      if(copy.freshFirstTurn!==true||copy.seedLength!==0) {
+        openingSourceFail('OPENING_SOURCE_RELATION_UNPROVEN','/source/legacy-fresh')
+      }
+      // Source14 owns the copy's metadata/import/Native provenance. This is a
+      // distinct zero-cut relation, with no invented reservation or setup.
+      return seal({kind:'legacy-fresh-copy-source',native,branchMetaRef:meta.ref,
+        inheritance:null,setup:null,legacyCopy:copy})
+    }
     if(!source.inheritance) {
       const pointer=source.original.activePointer as unknown as Record<string,unknown>
       if(source.sourceRecordSessionId!==sid||pointer.inheritedFrom!==undefined

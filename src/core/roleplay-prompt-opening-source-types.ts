@@ -9,7 +9,7 @@ import type {PromptProgramSourceDepsV1,PromptProgramSourceInventoryV1}
   from './roleplay-prompt-program-source-types.js'
 import type {ReadBranchSession} from './roleplay-worldline-types.js'
 import type {TavernSourceInheritanceOwnerV1,TavernSourceInheritanceDescriptorV1,
-  TavernSourceInheritanceRefV1,TavernSourceApplyIntentV1}
+  TavernSourceInheritanceRefV1,TavernSourceApplyIntentV1,TavernSourceLegacyCopyV1}
   from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernLoreBookAbsenceProofV1} from './tavern-lore-plan-types.mjs'
@@ -129,6 +129,9 @@ export type PromptOpeningSourceRelationV1={readonly kind:'own-root-source';reado
     readonly inheritance:TavernSourceInheritanceDescriptorV1;
     readonly setup:{readonly applyIntentRef:TavernSourceInheritanceRefV1;
       readonly nativeSetup:NonNullable<TavernSourceApplyIntentV1['nativeSetup']>;readonly nativeSetupSha256:string}}
+  |{readonly kind:'legacy-fresh-copy-source';readonly native:NativeRelationFactsV1;
+    readonly branchMetaRef:TavernLoreSourceDataV1['current']['rows'][number]['ref'];
+    readonly inheritance:null;readonly setup:null;readonly legacyCopy:TavernSourceLegacyCopyV1}
 export interface PromptOpeningSourceProofV1 {
   readonly schemaVersion:1
   readonly encoding:'native-prompt-opening-source-proof-v1'

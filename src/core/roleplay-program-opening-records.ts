@@ -248,6 +248,11 @@ export function validateProgramOpeningBasisProofV1(input:unknown,rawSource:Promp
   if(relation&&typeof relation==='object'&&!Array.isArray(relation)&&(relation as {kind:unknown}).kind==='own-root') {
     exact(relation,['kind','inheritance'])
     if(data['origin']!=='own-root'||relation['inheritance']!==null||source.sourceRelation.kind!=='own-root-source')fail()
+  }else if(relation&&typeof relation==='object'&&!Array.isArray(relation)
+    &&(relation as {kind:unknown}).kind==='legacy-fresh-child') {
+    exact(relation,['kind','legacyCopy'])
+    if(data['origin']!=='fresh-scene'||source.sourceRelation.kind!=='legacy-fresh-copy-source'
+      ||!same(relation['legacyCopy'],source.sourceRelation.legacyCopy))fail()
   }else {
     exact(relation,['kind','inheritance','setup','setupSha256'])
     if(data['origin']!=='fresh-scene'||relation['kind']!=='reserved-fresh-child'
@@ -258,6 +263,7 @@ export function validateProgramOpeningBasisProofV1(input:unknown,rawSource:Promp
   const checked=data as unknown as ProgramOpeningBasisProofV1
   const sourceRelation=source.sourceRelation,
     expectedSourceRelation=sourceRelation.kind==='own-root-source'?{kind:'own-root',inheritance:null}:
+      sourceRelation.kind==='legacy-fresh-copy-source'?{kind:'legacy-fresh-child',legacyCopy:sourceRelation.legacyCopy}:
       {kind:'reserved-fresh-child',inheritance:sourceRelation.inheritance,setup:sourceRelation.setup,
         setupSha256:recordSha256(sourceRelation.setup)},
     dataHashes=Object.freeze({bodySha256:checked.basisSha256,branchSha256:recordSha256(checked.branch),

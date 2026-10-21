@@ -117,6 +117,12 @@ function basis(value, source, owned) {
             || source.sourceRelation.kind !== 'own-root-source')
             fail();
     }
+    else if (value.sourceRelation.kind === 'legacy-fresh-child') {
+        exact(value.sourceRelation, ['kind', 'legacyCopy']);
+        if (value.origin !== 'fresh-scene' || source.sourceRelation.kind !== 'legacy-fresh-copy-source'
+            || !programGenesisSameV1(value.sourceRelation.legacyCopy, source.sourceRelation.legacyCopy))
+            fail();
+    }
     else {
         exact(value.sourceRelation, ['kind', 'inheritance', 'setup', 'setupSha256']);
         if (value.origin !== 'fresh-scene' || value.sourceRelation.kind !== 'reserved-fresh-child'

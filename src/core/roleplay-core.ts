@@ -3122,9 +3122,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     priorOpeningInHistory:session => {
       const prelude = provenImportPreludeAssistants(session,
         activeOpeningSource(T.branch, session.id))
-      const inherited = T.branch.get(keyOf(session.id, 'meta')) as
-        {freshBranchFrom?: unknown} | undefined
-      if (typeof inherited?.freshBranchFrom === 'string' && inherited.freshBranchFrom) return true
       const internal = internalTaskSeqs(session)
       return surfaceEvents(session).some(event => event.type === 'assistant/message'
         && !internal.has(event.seq) && !prelude.has(event.seq)

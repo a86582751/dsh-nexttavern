@@ -107,8 +107,8 @@ export function createRoleplayProgramOpeningBasisV1(deps:ProgramOpeningBasisDeps
       if(['inheritedFrom','freshBranchFrom','truncatedFrom'].some(key=>Object.hasOwn(meta,key))) {
         fail('PROGRAM_OPENING_RELATION_CHANGED')
       }
-    }else if(relation.kind!=='committed-fresh-cut0-source'||relation.inheritance.childSessionId!==sid
-      ||relation.inheritance.nativeCut.kind!=='reserved-fresh-branch'||relation.inheritance.nativeCut.seedLength!==0) {
+    }else if(relation.kind==='committed-fresh-cut0-source'&&(relation.inheritance.childSessionId!==sid
+      ||relation.inheritance.nativeCut.kind!=='reserved-fresh-branch'||relation.inheritance.nativeCut.seedLength!==0)) {
       fail('PROGRAM_OPENING_RELATION_CHANGED')
     }
     const events=eventsOf(session)
@@ -214,6 +214,7 @@ export function createRoleplayProgramOpeningBasisV1(deps:ProgramOpeningBasisDeps
     if(actual.events.some(oldOpening))fail('PROGRAM_OPENING_PREVIOUS_OPENING_PRESENT')
     const numerical=inventory(source,identity),relation=source.sourceRelation,
       sourceRelation=relation.kind==='own-root-source'?{kind:'own-root' as const,inheritance:null}:
+        relation.kind==='legacy-fresh-copy-source'?{kind:'legacy-fresh-child' as const,legacyCopy:relation.legacyCopy}:
         {kind:'reserved-fresh-child' as const,inheritance:relation.inheritance,setup:relation.setup,
           setupSha256:recordSha256(relation.setup)}
     const body={schemaVersion:1 as const,encoding:'native-program-opening-fresh-basis-proof-v1' as const,
@@ -245,6 +246,7 @@ export function createRoleplayProgramOpeningBasisV1(deps:ProgramOpeningBasisDeps
       ||count>actual.events.length||recordSha256(actual.events.slice(0,count))!==proof.native.historySha256
       ||actual.events.slice(0,count).some(oldOpening)||start!==count) return false
     const relation=plan.source.sourceRelation,expected=relation.kind==='own-root-source'?{kind:'own-root',inheritance:null}:
+      relation.kind==='legacy-fresh-copy-source'?{kind:'legacy-fresh-child',legacyCopy:relation.legacyCopy}:
       {kind:'reserved-fresh-child',inheritance:relation.inheritance,setup:relation.setup,setupSha256:recordSha256(relation.setup)}
     return same(proof.sourceRelation,expected)&&deps.isNativeCurrent(plan,envelope)
   }
@@ -324,6 +326,7 @@ export function createRoleplayProgramOpeningBasisV1(deps:ProgramOpeningBasisDeps
       const start=facts.production==='selected-card-copy'?facts.receipt.turnStartSeq:facts.receipt.invocationRef.seq,
         dataHashes=programOpeningBasisDataHashesV1(proof,source,identity),relation=source.sourceRelation,
         expected=dataHashes?undefined:relation.kind==='own-root-source'?{kind:'own-root',inheritance:null}:
+          relation.kind==='legacy-fresh-copy-source'?{kind:'legacy-fresh-child',legacyCopy:relation.legacyCopy}:
           {kind:'reserved-fresh-child',inheritance:relation.inheritance,setup:relation.setup,
             setupSha256:recordSha256(relation.setup)}
       // This completed-read contract retains the publisher's historical
