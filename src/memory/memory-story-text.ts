@@ -92,7 +92,9 @@ export function cleanStoryText(text: string): CleanStoryText {
         i = end + 1; continue
       }
       const classMatch = rawTag.match(/(?:class|id|data-[\w-]+)\s*=\s*["']([^"']*)/i)
-      const known = knownContainers.test(name) || Boolean(classMatch && /(?:status|decision|details|state|\bst-card\b)/i.test(classMatch[1]!))
+      // The native author protocol puts state operations in this control container.
+      const known = name === 'updatevariable' || knownContainers.test(name)
+        || Boolean(classMatch && /(?:status|decision|details|state|\bst-card\b)/i.test(classMatch[1]!))
       if (known) {
         if (!isClose && !/\/\s*$/.test(rawTag)) { suppressed += 1; stack.push(name) }
         else if (isClose && stack.includes(name)) { while (stack.length && stack.pop() !== name) {} suppressed = stack.length }
@@ -100,7 +102,9 @@ export function cleanStoryText(text: string): CleanStoryText {
       }
       if (suppressed > 0 && !isClose && !voidTag.test(name)&&!/\/\s*$/.test(rawTag)) {stack.push(name);suppressed=stack.length}
       else if (suppressed === 0 && !isClose && !inlineTag.test(name) && !voidTag.test(name) && !/^(?:em|strong|b|i|u|span|a|code|mark)$/i.test(name)) {
-        unresolved = true; suppressed = 1; stack.push(name)
+        // Selected story prose remains readable inside custom markup. Unknown
+        // markup still leaves semantic indexing unresolved; it does not erase text.
+        unresolved = true
       }
       i = end + 1; continue
     }
