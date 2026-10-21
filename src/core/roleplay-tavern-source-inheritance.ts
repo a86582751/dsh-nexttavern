@@ -178,7 +178,7 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       ||!inheritanceSameV1(local.identity,identityOf(source)))inheritanceFailV1('SOURCE_INHERITANCE_JOURNAL_INVALID')
     if(p.editLayers.reduce((sum,layer)=>sum+layer.events.length,0)>TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.events)
       inheritanceFailV1('SOURCE_INHERITANCE_BUDGET')
-    store.publications(p.materialPublications,budget)
+    store.publications(p.materialPublications)
     assertPreparedOpening(p,budget)
     if(p.materialPublications.some(pub=>pub.nativeSeq>=p.nativeCut.seedLength))
       inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID')

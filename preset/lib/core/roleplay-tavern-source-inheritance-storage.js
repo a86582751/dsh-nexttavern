@@ -1,7 +1,7 @@
 // Generated from runtime/alpha3/src/core/roleplay-tavern-source-inheritance-storage.ts; edit the TypeScript source.
 /** Exact Source inheritance storage. Writes settle before the Source FIFO can
  * be released; an error after put is accepted only after exact actual readback. */
-import { recordSha256, sha256, cloneRecord } from './roleplay-data.js';
+import { recordSha256, cloneRecord } from './roleplay-data.js';
 import { types } from 'node:util';
 import { inheritanceDataV1, inheritanceDataSha256V1, inheritanceFailV1, inheritanceSameV1, inheritanceObjectV1, inheritanceRefV1, sealInheritanceDataV1, validateStaticInventoryV1, validateNumericalCaptureV1, validateInheritanceRefV1, inheritanceIdV1, inheritanceHashV1, inheritanceExactV1, TAVERN_SOURCE_INHERITANCE_BOUNDS_V1 } from './roleplay-tavern-source-inheritance-data.js';
 import { validateFrozenPromptScopeRecordV1, validateFrozenNonNumericalOpeningV1, tavernSourceFrozenPromptScopeKeyV1 } from './roleplay-tavern-source-inheritance-data.js';
@@ -683,7 +683,7 @@ export function createSourceInheritanceStorageV1(deps) {
             || recordSha256(record.activation) !== binding.activationSha256)
             inheritanceFailV1('SOURCE_INHERITANCE_ORIGINAL_CHANGED');
     }
-    function publications(raw, budget) {
+    function publications(raw) {
         if (!Array.isArray(raw) || raw.length > TAVERN_SOURCE_INHERITANCE_BOUNDS_V1.publications)
             inheritanceFailV1('SOURCE_INHERITANCE_BUDGET');
         const result = inheritanceDataV1(raw), seen = new Set();
@@ -696,63 +696,10 @@ export function createSourceInheritanceStorageV1(deps) {
                 || seen.has(`${pub.nativeSeq}`))
                 inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
             seen.add(`${pub.nativeSeq}`);
-            const openingSnapshot = readRef(pub.snapshotRef, budget), openingPlan = readRef(pub.planRef, budget);
-            if (inheritanceObjectV1(openingSnapshot) && openingSnapshot.encoding === 'core-program-opening-material-record-v1') {
-                // This is an inert metadata pair. The actual child-prefix reader below
-                // the Source owner still reconstructs Native material and proves its
-                // invocation, seed/input, exact keys, projection and complete catalog.
-                for (const [value, ref, kind] of [[openingSnapshot, pub.snapshotRef, 'snapshot'],
-                    [openingPlan, pub.planRef, 'plan']]) {
-                    inheritanceExactV1(value, ['schemaVersion', 'encoding', 'authority', 'sessionId', 'identity', 'seedRef',
-                        'inputRef', 'nativeOwner', 'turn', 'step', 'kind', 'payload']);
-                    if (value.schemaVersion !== 1 || value.encoding !== 'core-program-opening-material-record-v1'
-                        || value.authority !== 'consumer-data-only' || value.sessionId !== pub.ownerSessionId || value.kind !== kind
-                        || typeof value.turn !== 'number' || !Number.isSafeInteger(value.turn) || value.turn < 1
-                        || typeof value.step !== 'number' || !Number.isSafeInteger(value.step) || value.step < 1
-                        || !inheritanceObjectV1(value.payload)
-                        || !new RegExp(`^${pub.ownerSessionId}__program-opening-material-[a-f0-9]{64}-${kind}$`).test(ref.key))
-                        inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
-                    validateInheritanceRefV1(value.seedRef);
-                    validateInheritanceRefV1(value.inputRef);
-                    inheritanceExactV1(value.identity, ['kind', 'sessionId', 'operationId', 'messageId', 'instruction',
-                        'instructionSha256', 'intentRef']);
-                    inheritanceExactV1(value.nativeOwner, ['kind', 'identity', 'invocationRef']);
-                    inheritanceExactV1(value.nativeOwner.invocationRef, ['seq', 'sha256']);
-                    if (value.identity.kind !== 'programmatic-opening' || value.identity.sessionId !== pub.ownerSessionId
-                        || !inheritanceIdV1(value.identity.operationId) || !inheritanceIdV1(value.identity.messageId)
-                        || typeof value.identity.instruction !== 'string' || !value.identity.instruction.trim()
-                        || !value.identity.instruction.isWellFormed() || Buffer.byteLength(value.identity.instruction, 'utf8') > 65_536
-                        || !inheritanceHashV1(value.identity.instructionSha256)
-                        || sha256(value.identity.instruction) !== value.identity.instructionSha256
-                        || value.nativeOwner.kind !== 'programmatic-opening'
-                        || !inheritanceSameV1(value.nativeOwner.identity, value.identity)
-                        || !inheritanceSameV1(value.identity.intentRef, value.seedRef)
-                        || typeof value.nativeOwner.invocationRef.seq !== 'number'
-                        || !Number.isSafeInteger(value.nativeOwner.invocationRef.seq) || value.nativeOwner.invocationRef.seq < 0
-                        || !inheritanceHashV1(value.nativeOwner.invocationRef.sha256))
-                        inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
-                }
-                if (!inheritanceObjectV1(openingPlan))
-                    inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
-                for (const field of ['identity', 'seedRef', 'inputRef', 'nativeOwner', 'turn', 'step']) {
-                    if (!inheritanceSameV1(openingSnapshot[field], openingPlan[field]))
-                        inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
-                }
-                continue;
-            }
-            for (const [ref, kind] of [[pub.snapshotRef, 'snapshot'], [pub.planRef, 'plan']]) {
-                const value = readRef(ref, budget);
-                if (!inheritanceObjectV1(value) || value.sessionId !== pub.ownerSessionId || value.branchId !== pub.ownerSessionId
-                    || value.schemaVersion !== 1 || value.encoding !== 'core-input-material-record-v1' || value.kind !== kind)
-                    inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
-            }
-            const snapshot = readRef(pub.snapshotRef, budget), plan = readRef(pub.planRef, budget);
-            if (!inheritanceObjectV1(snapshot) || !inheritanceObjectV1(plan))
-                inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
-            for (const field of ['currency', 'preparation', 'originalInputRefs'])
-                if (!inheritanceSameV1(snapshot[field], plan[field]))
-                    inheritanceFailV1('SOURCE_INHERITANCE_MATERIAL_INVALID');
         }
+        // The Native-bound material reader owns the published snapshot/plan rows.
+        // Source retains their references; re-admitting the derived layout here
+        // applies raw Source limits to already admitted, repeated producer data.
         return result;
     }
     function writesFor(parent, child, rows) {
