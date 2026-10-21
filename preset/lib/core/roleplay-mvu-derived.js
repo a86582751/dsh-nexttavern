@@ -528,7 +528,8 @@ export function createRoleplayMvuDerived(deps) {
         if (source.schemaVersion !== 1)
             return (mode === 'current' ? frozenLineage?.current(source)
                 : mode === 'completed' ? frozenLineage?.completedOrigin(source) : frozenLineage?.verifyDenialBindingFacts(source)) === true;
-        return mode !== 'denial' ? lineage.current(source) : lineage.verifyDenialBindingFacts(source);
+        return mode === 'current' ? lineage.current(source)
+            : mode === 'completed' ? lineage.completedOrigin(source) : lineage.verifyDenialBindingFacts(source);
     }
     /** The descendant's actual Source anchors the chain. Older sources are
      * checked against the next generation and Native headers, not today's

@@ -240,60 +240,52 @@ export function createRoleplayMvuFrozenLineage(deps:MvuFrozenLineageDeps) {
       return same(actual.pointer,original.pointer)&&same(actual.importIdentity,original.importIdentity)
     }catch {return false}
   }
+  /** Source already froze today's copy. Join its original pointer to the old
+   * fork origin; account/material changes do not rewrite that numerical birth. */
+  function legacyPredecessorOrigin(prior:MvuDerivedSourceProof,
+    frozen:TavernSourceStaticTransactionV1['prepared']):boolean {
+    const legacy=frozen.parentSource.legacyInheritance,original=frozen.originalBinding,
+      identity=prior.originalImport
+    return frozen.parentSessionId===prior.childSessionId
+      &&!!legacy&&!legacy.freshFirstTurn&&legacy.childSessionId===prior.childSessionId
+      &&legacy.parentSessionId===prior.parentSessionId&&legacy.seedLength===prior.expectedSeedLength
+      &&original.originalPointerRef.sha256===prior.childPointerSha256
+      &&original.sourceRecordSessionId===identity.ownerSessionId&&original.importId===identity.importId
+      &&original.rawSha256===identity.rawSha256&&original.normalizedSha256===identity.normalizedSha256
+      &&original.coverageSha256===identity.coverageSha256&&original.transactionId===identity.transactionId
+      &&original.importRecordRef.sha256===identity.recordSha256&&original.activationSha256===identity.activationSha256
+      &&old.verifyDenialBindingFacts(prior)
+  }
   function historical(priorRaw:unknown,successorRaw:unknown,subjectSessionId?:string):boolean {
     try {
       const closed=historicalProof(successorRaw,subjectSessionId),successor=closed.proof,
         prior=validateMvuDerivedSourceProofUnion(priorRaw)
-      if(successor.parentSessionId!==prior.childSessionId)return false
       if(prior.schemaVersion!==1) {
         // Source owns the direct ancestor transaction. Settings and editable
         // material can change between forks without rewriting that genesis.
-        if(!same(closed.current.prepared.parentSource.inheritance,prior.sourceInheritance))return false
+        if(successor.parentSessionId!==prior.childSessionId
+          ||!same(closed.current.prepared.parentSource.inheritance,prior.sourceInheritance))return false
         historicalProof(prior,subjectSessionId??successor.childSessionId)
         return true
       }
-      if(successor.parentSourceSha256!==prior.childSourceSha256
-        ||successor.parentPointerSha256!==prior.childPointerSha256
-        ||!same(successor.originalImport,prior.originalImport)
-        ||!same(successor.macroContext.valuesSha256,prior.macroContext.valuesSha256)
-        ||successor.macroContext.parentBindingSha256!==prior.macroContext.childBindingSha256)return false
-      if(!old.verifyDenialBindingFacts(prior))return false
-      const rows=new Map(successor.materialRows.map(row=>[`${row.table}:${row.parentKey}`,row]))
-      return prior.materialRows.length===rows.size&&prior.materialRows.every(row=>{
-        const next=rows.get(`${row.table}:${row.childKey}`)
-        return !!next&&next.exists===row.exists&&next.parentValueSha256===row.sha256
-      })
+      return legacyPredecessorOrigin(prior,closed.current.prepared)
     }catch {return false}
   }
   function historicalPrepared(priorRaw:unknown,successorRef:TavernSourceFrozenRefV1,
     subjectSessionId?:string):boolean {
     try {
-      const successor=prepared(successorRef.childSessionId),prior=validateMvuDerivedSourceProofUnion(priorRaw),
-        parent=successor.frozen.parentNumericalSource,original=successor.frozen.originalBinding
-      if(!same(successor.ref,successorRef)||successor.frozen.parentSessionId!==prior.childSessionId)return false
+      const successor=prepared(successorRef.childSessionId),prior=validateMvuDerivedSourceProofUnion(priorRaw)
+      if(!same(successor.ref,successorRef))return false
       if(prior.schemaVersion!==1) {
         // The frozen Source owner already closed this exact ancestor. Its
         // historical numerical proof is checked against that transaction,
         // rather than requiring today's parent rows to match its birth rows.
-        if(!same(successor.frozen.parentSource.inheritance,prior.sourceInheritance))return false
+        if(successor.frozen.parentSessionId!==prior.childSessionId
+          ||!same(successor.frozen.parentSource.inheritance,prior.sourceInheritance))return false
         historicalProof(prior,subjectSessionId)
         return true
       }
-      if(successor.parentSourceSha256!==prior.childSourceSha256
-        ||recordSha256(parent.pointer)!==prior.childPointerSha256
-        ||parent.openingContext.bindingSha256!==prior.macroContext.childBindingSha256
-        ||recordSha256(parent.openingContext.context)!==prior.macroContext.valuesSha256
-        ||original.sourceRecordSessionId!==prior.originalImport.ownerSessionId||original.importId!==prior.originalImport.importId
-        ||original.rawSha256!==prior.originalImport.rawSha256||original.normalizedSha256!==prior.originalImport.normalizedSha256
-        ||original.coverageSha256!==prior.originalImport.coverageSha256||original.transactionId!==prior.originalImport.transactionId
-        ||original.importRecordRef.sha256!==prior.originalImport.recordSha256
-        ||original.activationSha256!==prior.originalImport.activationSha256)return false
-      if(!old.verifyDenialBindingFacts(prior))return false
-      const rows=new Map(parent.staticRows.map(row=>[`${row.table}:${row.key}`,row]))
-      return prior.materialRows.length===rows.size&&prior.materialRows.every(row=>{
-        const next=rows.get(`${row.table}:${row.childKey}`)
-        return !!next&&next.exists===row.exists&&next.sha256===row.sha256
-      })
+      return legacyPredecessorOrigin(prior,successor.frozen)
     }catch {return false}
   }
   const denial=(raw:unknown,subjectSessionId?:string)=>{

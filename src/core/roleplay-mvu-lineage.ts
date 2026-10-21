@@ -326,17 +326,20 @@ export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
       })
     } catch {return false}
   }
+  function currentOrigin(proof: MvuDerivedSourceProof): boolean {
+    const active = pointer(proof.childSessionId), identity = proof.originalImport
+    return recordSha256(active) === proof.childPointerSha256 && active.inheritedFrom === proof.parentSessionId
+      && active.sourceRecordSessionId === identity.ownerSessionId && active.importId === identity.importId
+      && active.normalizedSha256 === identity.normalizedSha256 && active.transactionId === identity.transactionId
+      && active.coverageSha256 === identity.coverageSha256
+  }
   /** Currency consumes the historical owner's immutable result. Its retained
    * original activation and Native cut are dependencies of that owner, while
    * today's pointer, material and context belong to the current caller. */
   function currentProof(proof: MvuDerivedSourceProof): boolean {
     try {
       const sid = proof.childSessionId
-      const active = pointer(sid), identity = proof.originalImport
-      if (recordSha256(active) !== proof.childPointerSha256 || active.inheritedFrom !== proof.parentSessionId
-        || active.sourceRecordSessionId !== identity.ownerSessionId || active.importId !== identity.importId
-        || active.normalizedSha256 !== identity.normalizedSha256 || active.transactionId !== identity.transactionId
-        || active.coverageSha256 !== identity.coverageSha256 || deps.readSourceSha256(sid) !== proof.childSourceSha256) return false
+      if (!currentOrigin(proof) || deps.readSourceSha256(sid) !== proof.childSourceSha256) return false
       const rows = inventory(sid)
       if (rows.length !== proof.materialRows.length) return false
       for (const [index, row] of rows.entries()) {
@@ -352,11 +355,16 @@ export function createRoleplayMvuLineage(deps: MvuLineageDeps) {
   function current(input: unknown): boolean {
     try {return currentProof(historicalProof(input))} catch {return false}
   }
+  /** Completed genesis keeps its actual fork/import origin. Today's Source
+   * and account projection belong to the current input, not its birth proof. */
+  function completedOrigin(input: unknown): boolean {
+    try {return currentOrigin(historicalProof(input))} catch {return false}
+  }
   /** Denial readers still need actual Native boundaries and original activation
    * facts. This does not certify today's static Source or grant story authority. */
   function verifyDenialBindingFacts(input:unknown):boolean {
     try {historicalProof(input);return true} catch {return false}
   }
-  return {capture, current, currentProof, historical, verifyDenialBindingFacts,
+  return {capture, current, currentProof, completedOrigin, historical, verifyDenialBindingFacts,
     validate: validateMvuDerivedSourceProof}
 }
