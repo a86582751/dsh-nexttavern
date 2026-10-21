@@ -221,6 +221,9 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   let decoded:DecodedTavernCard
   try {decoded=readStructuredImportDataV1(record).decoded}
   catch(error) {importFailure(error,'/activeImport/sourceEnvelope')}
+  // Headerless V1 retains the table-backed author path; this Source owns /data cards.
+  if(decoded.format==='json-v1'||decoded.format==='png-v1')
+    outside('LEGACY_SOURCE_OUTSIDE_DOMAIN','/rawDecoded')
   if(!['json-v2','json-v3','png-v2','png-v3','json-nexttavern-v1'].includes(decoded.format)||decoded.document.data!==decoded.data) {
     outside('STRUCTURED_VERSION_OUTSIDE_DOMAIN','/rawDecoded')
   }
