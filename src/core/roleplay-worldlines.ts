@@ -122,8 +122,10 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     for (let index = assistantIndex - 1; index >= 0; index -= 1) {
       const event = surface[index]
       if (event?.type !== 'user/message' || event.data?.source?.kind !== 'user') continue
-      const text = textOf(event.data?.content).trim()
-      if (text) return { event, text }
+      const text = textOf(event.data?.content)
+      // This becomes the canonical player variant; normalization here would
+      // turn a later state read into an edit of the original Native input.
+      if (text.trim()) return { event, text }
     }
     return null
   }
@@ -281,8 +283,8 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
       const event = events[index]
       if (event?.type === 'turn/start') currentTurn = Number(event.data?.turn)
       if (event?.type !== 'user/message' || event.data?.source?.kind !== 'user') continue
-      const text = textOf(event.data?.content).trim()
-      if (!text) continue
+      const text = textOf(event.data?.content)
+      if (!text.trim()) continue
       userCandidates.push({ event, text, turn: currentTurn, index })
     }
     const assistantTurn = Number(assistant.data?.turn)

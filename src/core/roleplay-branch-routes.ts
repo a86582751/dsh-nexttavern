@@ -394,12 +394,12 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
               const child = await resolveRoleplaySession(body?.childSessionId)
               if (!child) return jsonResponse(404, { ok: false, error: '新分支会话尚未在服务器就绪' })
               if(initial.reservedChildSessionId&&initial.reservedChildSessionId!==child.id)return jsonResponse(409,{ok:false,error:'世界线与预留会话标识不匹配'})
-              const promptText = String(body?.promptText ?? '').trim()
+              const promptText = String(body?.promptText ?? '')
               const requestId = initial.kind === 'delete-user' ? '' : String(body?.requestId ?? '').trim()
               if (initial.kind !== 'delete-user' && (!requestId || requestId.length > 256 || /[\u0000-\u001f]/.test(requestId))) {
                 return jsonResponse(400, { ok: false, error: '缺少或无效的分支请求 requestId' })
               }
-              if (!promptText && initial.kind !== 'delete-user') return jsonResponse(400, { ok: false, error: '修改后的消息不能为空' })
+              if (!promptText.trim() && initial.kind !== 'delete-user') return jsonResponse(400, { ok: false, error: '修改后的消息不能为空' })
               if (promptText.length > 1_000_000) return jsonResponse(413, { ok: false, error: '消息超过 1,000,000 字符' })
               if (initial.kind === 'regenerate' && promptText !== initial.anchor.promptText) {
                 return jsonResponse(409, { ok: false, error: '重新生成必须复用原玩家消息；需要修改请使用编辑按钮' })
@@ -416,7 +416,7 @@ export function registerBranchRoutes(deps: BranchRoutesDependencies) {
                   const sameIdentity =
                     String(record.childSessionId ?? '') === child.id &&
                     String(record.requestId ?? '') === requestId &&
-                    String(record.promptSha256 ?? sha256(String(record.promptText ?? '').trim())) === promptSha256
+                    String(record.promptSha256 ?? sha256(String(record.promptText ?? ''))) === promptSha256
                   if (state === 'registering' || state === 'registered') {
                     if (!sameIdentity) throw new Error('同一分支操作已由不同的会话或请求占用')
                     return record
