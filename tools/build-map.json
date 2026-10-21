@@ -8753,6 +8753,16 @@
         "lib/core/tavern-author-reader-surface.js",
         "preset/lib/core/tavern-author-reader-surface.js"
       ]
+    },
+    {
+      "artifact": "memory-agreements-js",
+      "source": "src/memory/memory-agreements.ts",
+      "banner": "runtime/alpha3/src/memory/memory-agreements.ts",
+      "primaryOutput": "lib/memory/memory-agreements.js",
+      "outputs": [
+        "lib/memory/memory-agreements.js",
+        "preset/lib/memory/memory-agreements.js"
+      ]
     }
   ],
   "compilerPlan": {
@@ -46351,6 +46361,16 @@
         "id": "tavern-author-reader-surface-js",
         "source": "lib/core/tavern-author-reader-surface.js",
         "canonicalSource": "runtime/alpha3/lib/core/tavern-author-reader-surface.js"
+      },
+      {
+        "id": "memory-agreements-js",
+        "source": "lib/memory/memory-agreements.js",
+        "canonicalSource": "runtime/alpha3/lib/memory/memory-agreements.js"
+      },
+      {
+        "id": "memory-agreements-typescript",
+        "source": "src/memory/memory-agreements.ts",
+        "canonicalSource": "runtime/alpha3/src/memory/memory-agreements.ts"
       }
     ],
     "publicRelease": {
@@ -46925,6 +46945,10 @@
         {
           "artifact": "quality-test-quality-runner-test-mjs",
           "path": "tests/quality-runner.test.mjs"
+        },
+        {
+          "artifact": "memory-agreements-test",
+          "path": "tests/memory-agreements.test.mts"
         },
         {
           "artifact": "mvu-schema-test-dependencies-fixture-contract",
@@ -169629,6 +169653,101 @@
           "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/src/core/tavern-author-reader-surface.ts"
+      },
+      {
+        "id": "memory-agreements-js-build",
+        "kind": "typescript-module",
+        "artifact": "memory-agreements-js",
+        "entry": "src/memory/memory-agreements.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "src/memory/memory-agreements.ts",
+          "build-tools/tsconfig.json",
+          "lib/operations/build-typescript.mjs",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "development/schema-executors/v1/compat/mvu-schema-runtime/src/descriptor.ts",
+          "development/schema-executors/v1/compat/mvu-schema-runtime/src/index.ts",
+          "development/schema-executors/v1/src/core/roleplay-data.ts",
+          "development/schema-executors/v1/src/core/roleplay-mvu-update.ts",
+          "development/schema-executors/v1/src/core/roleplay-userinfo.ts",
+          "development/schema-executors/v1/src/core/tavern-mvu-schema-compiler-worker.mts",
+          "development/schema-executors/v1/src/core/tavern-mvu-schema-compiler.ts",
+          "development/schema-executors/v1/src/core/tavern-mvu-schema-data.ts",
+          "development/schema-executors/v1/src/core/tavern-mvu-schema-runner.ts",
+          "development/schema-executors/v1/src/core/tavern-mvu-schema-types.ts",
+          "development/schema-executors/v1/src/core/tavern-mvu-schema-worker.mts",
+          "development/mvu-schema-runtime-v2/LICENSE",
+          "development/mvu-schema-runtime-v2/NOTICE.md",
+          "development/mvu-schema-runtime-v2/src/index.ts",
+          "development/mvu-schema-runtime-v2/src/descriptor.ts",
+          "src/core/roleplay-mvu-schema-executor-types.ts",
+          "src/core/tavern-mvu-schema-types-v2.ts",
+          "src/core/tavern-mvu-schema-runner-v2.ts",
+          "src/core/tavern-mvu-schema-worker-v2.mts",
+          "src/core/tavern-mvu-schema-update-effects-v2.ts",
+          "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+          "development/schema-executors/v2/src/core/roleplay-data.ts",
+          "development/schema-executors/v2/src/core/roleplay-userinfo.ts",
+          "development/schema-executors/v2/src/core/roleplay-mvu-update.ts",
+          "development/schema-executors/v2/src/core/roleplay-mvu-update-v2.ts",
+          "development/schema-executors/v2/src/core/tavern-mvu-schema-types.ts",
+          "development/schema-executors/v2/src/core/tavern-mvu-schema-types-v2.ts",
+          "development/schema-executors/v2/src/core/tavern-mvu-schema-data.ts",
+          "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler.ts",
+          "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler-worker.mts",
+          "development/schema-executors/v2/src/core/tavern-mvu-schema-runner-v2.ts",
+          "development/schema-executors/v2/src/core/tavern-mvu-schema-worker-v2.mts",
+          "development/schema-executors/v2/src/core/tavern-mvu-schema-update-effects-v2.ts",
+          "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/index.ts",
+          "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/descriptor.ts",
+          "development/schema-executors/v2/src/core/tavern-mvu-json-types-v2.ts",
+          "development/mvu-schema-runtime-v3/LICENSE",
+          "development/mvu-schema-runtime-v3/NOTICE.md",
+          "development/mvu-schema-runtime-v3/src/index.ts",
+          "development/mvu-schema-runtime-v3/src/descriptor.ts",
+          "src/core/tavern-mvu-schema-types-v3.ts",
+          "src/core/tavern-mvu-schema-runner-v3.ts",
+          "src/core/tavern-mvu-schema-worker-v3.mts",
+          "src/core/tavern-mvu-scope-read-types.ts",
+          "src/core/tavern-mvu-scope-read.ts",
+          "src/core/roleplay-mvu-schema-scope-facts.ts",
+          "src/core/roleplay-mvu-schema-history-tail.ts",
+          "src/core/roleplay-mvu-schema-descriptor-data.ts",
+          "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/index.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler-worker.mts",
+          "development/schema-executors/v3/src/core/tavern-mvu-schema-runner-v3.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-schema-worker-v3.mts",
+          "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/descriptor.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-schema-types.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v3.ts",
+          "development/schema-executors/v3/src/core/roleplay-data.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-schema-data.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-schema-update-effects-v2.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-scope-read.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-scope-read-types.ts",
+          "development/schema-executors/v3/src/core/roleplay-mvu-update-v2.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v2.ts",
+          "development/schema-executors/v3/src/core/roleplay-userinfo.ts",
+          "development/schema-executors/v3/src/core/roleplay-mvu-update.ts",
+          "development/schema-executors/v3/src/core/tavern-mvu-json-types-v3.ts",
+          "src/core/tavern-mvu-author-execution-types-v4.mts",
+          "src/core/tavern-mvu-state-loader-policy-v4.mts",
+          "src/core/tavern-mvu-author-execution-classifier-v4.mts",
+          "src/core/tavern-mvu-schema-program-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-v4.ts",
+          "src/core/tavern-mvu-schema-compiler-worker-v4.mts",
+          "src/core/tavern-mvu-schema-compiler-ast-v4.ts",
+          "src/core/tavern-mvu-schema-types-v4.ts",
+          "src/core/tavern-mvu-schema-runner-v4.ts",
+          "src/core/tavern-mvu-schema-worker-v4.mts",
+          "src/core/tavern-mvu-schema-fresh-selector.ts",
+          "development/mvu-schema-runtime-v4/src/index.ts",
+          "development/mvu-schema-runtime-v4/src/descriptor.ts",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/src/memory/memory-agreements.ts"
       }
     ],
     "typeScript": {

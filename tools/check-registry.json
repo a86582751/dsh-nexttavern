@@ -161,7 +161,8 @@
         "memory-entry*",
         "memory-model-policy*",
         "phase-a-memory*",
-        "phase-b-memory*"
+        "phase-b-memory*",
+        "memory-agreements*"
       ]
     },
     {
@@ -234,7 +235,8 @@
         "memory-embedding*",
         "memory-provenance*",
         "memory-history*",
-        "memory-story-text*"
+        "memory-story-text*",
+        "memory-agreements*"
       ]
     },
     {
@@ -9841,6 +9843,21 @@
         "inventory-runtime-alpha3-build-tools-package-json",
         "test-temp-helper-typescript",
         "plugin-ui-chat-message-edits-test"
+      ]
+    },
+    {
+      "id": "test:memory-agreements.test.mts",
+      "action": "test",
+      "artifact": "memory-agreements-test",
+      "modules": [
+        "notes",
+        "retrieval"
+      ],
+      "depends": [
+        "generated"
+      ],
+      "requires": [
+        "compiler"
       ]
     }
   ]

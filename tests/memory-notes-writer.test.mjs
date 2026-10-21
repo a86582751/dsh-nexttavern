@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createDirectorNotesWriter } from '../lib/memory/memory-notes-writer.js'
+import { createMemorySummarizer } from '../lib/memory/memory-summary.js'
+import { queryMemoryAgreements } from '../lib/memory/memory-agreements.js'
+import { readStoryHistory } from '../lib/memory/memory-history.js'
 
 const legacy = JSON.parse(readFileSync(new URL('./fixtures/memory-notes-writer-legacy-v1.json', import.meta.url), 'utf8'))
 const flush = () => new Promise(resolve => setImmediate(resolve))
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
+const agreement = { schemaVersion: 1, participants: ['Mira', 'Ren'], subject: '归还铜铃',
+  conditions: ['练习结束后'], time: '明晚', place: '河边石台' }
 function fixture() {
   const session = structuredClone(legacy.session), writes = [], requests = []
   const state = { head: structuredClone(legacy.initialHead), active: true, openTurn: null, roleplay: true,
@@ -83,9 +88,50 @@ try {
     const job = h.writer.refreshDirectorNotes(h.session)
     if (change === 'source') h.session.surface.nodes = [1, 2]
     else h.state.active = false
-    result.resolve(legacy.response)
+    result.resolve({ ...legacy.response, deltas: [{ ...legacy.response.deltas[0], agreement }] })
     await assert.rejects(job, /剧情已变更|inactive branch/)
     assert.equal(h.writes.length, 0)
+  }
+  {
+    const h = fixture()
+    const original = 'Mira和Ren约定明晚练习结束后在河边石台归还铜铃。'
+    const selected = h.session.surface.nodes
+    h.session.surface.nodes = [1, 2]
+    await h.writer.refreshDirectorNotes(h.session)
+    const previousNotes = h.state.head.directorNotes.text
+    h.session.surface.nodes = selected
+    h.session.events[6].data.message.content[0].text = original
+    const response = {
+      deltas: [{ evidenceSeq: 6, summary: original, status: 'established', agreement }], conflicts: [] }
+    let modelRequests = 0
+    h.state.summarize = createMemorySummarizer({ get: () => ({ nativeTask: async spec => {
+      modelRequests++
+      return spec.validate(response)
+    } }) }, { agreementElements: 1 })
+    await h.writer.refreshDirectorNotes(h.session, undefined, undefined, undefined, { automatic: true, background: true })
+    const result = queryMemoryAgreements(h.session.id, h.state.head.deltas, { query: 'Mira 铜铃' })
+    assert.equal(result.entries.length, 1)
+    const saved = result.entries[0]
+    assert.deepEqual(saved.agreement, agreement)
+    assert.equal(saved.status, 'established')
+    assert.equal(saved.evidenceSeq, 6)
+    assert.equal(saved.sessionId, h.session.id)
+    assert.match(saved.sourceKey, /^6:[a-f0-9]{64}$/)
+    assert.equal(saved.sourceGeneration, h.state.head.directorNotes.generationId)
+    assert.equal(readStoryHistory(h.session, { seq: saved.evidenceSeq }).text, original)
+    assert.ok(h.state.head.directorNotes.text.startsWith(previousNotes + '\n\n'), 'append keeps the complete prior Notes prefix')
+    assert.ok(h.state.head.directorNotes.text.endsWith(`- ${original} (seq:6)`), 'Notes and recalled agreement share the same complete fact')
+    assert.equal(modelRequests, 1, 'structured deltas publish in the existing Notes request')
+  }
+  {
+    const h = fixture()
+    const response = { ...legacy.response, deltas: [{ ...legacy.response.deltas[0],
+      agreement: { ...agreement, time: [] } }] }
+    h.state.summarize = createMemorySummarizer({ get: () => ({ nativeTask: async spec => spec.validate(response) }) },
+      { agreementElements: 1 })
+    await assert.rejects(h.writer.refreshDirectorNotes(h.session, undefined, undefined, undefined,
+      { automatic: true, background: true }), /人物约定/)
+    assert.equal(h.writes.length, 0, 'a refused native shape cannot publish Notes or deltas')
   }
   {
     const h = fixture(), writeGate = deferred()

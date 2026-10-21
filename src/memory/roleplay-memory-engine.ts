@@ -25,6 +25,7 @@ export { durableCompactionArchives } from './memory-compaction.js'
 import { createDirectorNotesWriter, type NotesEngine, type NotesSettings, type NotesWriteResult } from './memory-notes-writer.js'
 import { createMemoryScheduler } from './memory-scheduler.js'
 import { createMemorySummarizer, type NativeSummaryTask } from './memory-summary.js'
+import { queryMemoryAgreements } from './memory-agreements.js'
 import { surfaceSeqsOf, isCompletedTurnEnd, selectedStoryHistory, queryStoryHistory, readStoryHistory, historySourceKeys, legacyCadenceSlots, memoryNotesCadence, directorNotesForBranch, type NotesRecord } from './memory-history.js'
 export { selectedStoryHistory, queryStoryHistory, readStoryHistory, storyCadenceSlots, legacyCadenceSlots, memoryNotesCadence, directorNotesForBranch } from './memory-history.js'
 import { lastSeqOf, textOf, branchScope, provenanceSeqOf, belongsToBranch, filterMemoryRecordForBranch as typedFilterMemoryRecordForBranch, type MemoryRecordProjection } from './memory-provenance.js'
@@ -198,7 +199,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
   }
 
 
-  const summarizeDetailed = createMemorySummarizer<MemorySession>(ctx)
+  const summarizeDetailed = createMemorySummarizer<MemorySession>(ctx, { agreementElements: 1 })
 
 
 
@@ -318,8 +319,11 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
       return directorNotesForBranch(getEngine()?.memoryHead?.(session.id), session)
     },
     saveDirectorNotes: notesWriter.saveDirectorNotes,
-    history(session: MemorySession, options?: Parameters<typeof queryStoryHistory>[1]) {
+    history(session: MemorySession, options?: Parameters<typeof queryStoryHistory>[1] & { kind?: 'agreements' }) {
       if (!session || !isRoleplaySession(session)) throw new Error('当前会话不是角色扮演会话')
+      if (options?.kind === 'agreements') {
+        return queryMemoryAgreements(session.id, getEngine()?.memoryHead?.(session.id)?.deltas, options)
+      }
       return getEngine()?.retrieval?.search(session,{...options}) ?? queryStoryHistory(session, options)
     },
     historyRead(session: MemorySession, options?: Parameters<typeof readStoryHistory>[1]) {

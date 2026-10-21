@@ -20,6 +20,7 @@ export interface TaskToolArguments extends Record<string, unknown> {
   offset?: number
   maxChars?: number
   action?: string
+  kind?: 'agreements'
   scope?: string
   limit?: number
   character_ids?: string[]

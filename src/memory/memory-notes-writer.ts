@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { selectedStoryHistory, directorNotesForBranch, historySourceKeys, storyCadenceSlots, type StorySession, type StoryRow, type NotesRecord, type DirectorNotes } from './memory-history.js'
 import { scopedLedgerItems } from './memory-provenance.js'
-import { validateDetailedSummary, type SummaryOptions, type SummaryResult, type MemoryDelta, type MemoryConflict } from './memory-summary.js'
+import type { SummaryOptions, SummaryResult, MemoryDelta, MemoryConflict } from './memory-summary.js'
 
 export interface NotesSettings {
   notesBatchChars?: unknown
@@ -140,7 +140,6 @@ export function createDirectorNotesWriter<S extends StorySession>(options: Notes
         const updateStart = processed
         const result = await summarizeDetailed({ session, previousSummary: previous, sourceText, lockedText, maxTokens, timeoutMs, signal, appendDelta,
           background, sourceSeqs:batch.map(entry=>entry.seq),taskStage:background?'background-notes':'notes' })
-        validateDetailedSummary(result.text, sourceText, appendDelta ? [] : locked)
         signal?.throwIfAborted?.()
         if ((notesGeneration.get(session.id) ?? 0) !== generation) throw new Error('导演笔记已由用户修改，后台结果未覆盖用户编辑')
         processed += batch.length

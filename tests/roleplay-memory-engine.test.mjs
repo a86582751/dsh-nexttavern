@@ -751,8 +751,8 @@ async function testDirectorNotesAppendOnlyNewEvidence() {
   assert.equal(notes.projectionMode, 'append-delta')
   assert.deepEqual(notes.updateSourceKeys, notes.sourceKeys.slice(original.sourceKeys.length))
   assert.equal(notes.updateSourceKeys.length, 2)
-  assert.match(h.requests[1].system, /仅输出本次新增或更正/)
-  assert.doesNotMatch(h.requests[1].user, /做增量合并/)
+  assert.match(h.requests[1].user, /两枚铜币仍在口袋里/, 'the append request includes the new completed evidence')
+  assert.doesNotMatch(h.requests[1].user, /玩家走进雨夜车站/, 'the append request does not rescan prior raw story')
   const before = h.requests.length
   await svc.organizeNow({ session })
   assert.equal(h.requests.length, before, 'committed deltas are not appended twice')
@@ -1026,7 +1026,10 @@ async function testNotesFinishBeforeTurnEnd() {
  assert.equal(h.requests.length,count,'completed notes do not create another maintenance model request')
 }
 async function testThreeCanonicalTurnsRunAcrossForegroundTurns() {
- const session=makeSession('three-canonical-turns',completedStoryEvents(),[1,2,3,6,7])
+ const original='小雨对阿明说：“找到车票后，明晚在车站门口归还旧怀表。”'
+ const source=completedStoryEvents()
+ source[3].data.message.content=text(original)
+ const session=makeSession('three-canonical-turns',source,[1,2,3,6,7])
  const h=makeHarness({session,settings:{autoNotesEveryTurns:3}});await apply(h.ctx,{...defaultConfig,autoNotesEveryTurns:1})
  const svc=h.services.get('compaction')
  await svc.finishTurn({session});await svc.organizeIfNeeded({session})
@@ -1040,10 +1043,16 @@ async function testThreeCanonicalTurnsRunAcrossForegroundTurns() {
  }
  const third=appendTurn(9,'第三次推进')
  const firstEvidence=selectedStoryHistory(session).find(entry=>entry.role==='assistant')
+ const agreement={schemaVersion:1,participants:['小雨','阿明'],subject:'归还旧怀表',
+   conditions:['找到车票后'],time:'明晚',place:'车站门口'}
+ const legacy={schemaVersion:1,evidenceSeq:firstEvidence.seq,atSeq:firstEvidence.seq,sessionId:session.id,
+   summary:'旧记录提到两人的约定，但没有结构化要素',status:'uncertain',sourceGeneration:'legacy-notes-generation',
+   sourceKey:`${firstEvidence.seq}:${createHash('sha256').update(`${firstEvidence.role}\n${firstEvidence.text}`).digest('hex')}`}
+ h.heads.set(session.id,{deltas:[legacy]})
  let release,started
  const pause=new Promise(resolve=>{release=resolve}),entered=new Promise(resolve=>{started=resolve})
  h.setNativeTaskHandler(async()=>{started();await pause;return {text:h.summaryText,
-   deltas:[{evidenceSeq:firstEvidence.seq,summary:'第一回合的事实',status:'established'}],
+   deltas:[{evidenceSeq:firstEvidence.seq,summary:'小雨向阿明提出归还旧怀表的约定',status:'established',agreement}],
    conflicts:[{evidenceSeq:third.seq,claim:'新记录',canon:'旧记录',severity:'medium'}]}})
  const background=svc.organizeIfNeeded({session});await entered
  assert.equal(h.requests[0].background,true)
@@ -1063,13 +1072,44 @@ async function testThreeCanonicalTurnsRunAcrossForegroundTurns() {
  const notes=svc.directorNotes(session)
  assert.ok(notes)
  const head=h.heads.get(session.id)
- assert.equal(head.deltas.length,1,'one background result commits ledger and notes together')
+ assert.equal(head.deltas.length,2,'one background result adds its agreement while preserving the old delta')
+ assert.deepEqual(head.deltas[0],legacy,'legacy deltas remain unchanged without agreement backfill')
+ const saved=head.deltas[1]
  assert.equal(head.pendingConfirmations.length,1,'continuity evidence is retained without a separate per-turn model call')
- assert.equal(head.deltas[0].sourceGeneration,notes.generationId)
- assert.equal(head.deltas[0].schemaVersion,1)
- assert.ok(head.deltas[0].sourceKey.startsWith(`${firstEvidence.seq}:`))
- assert.equal(head.deltas[0].atSeq,firstEvidence.seq,'fork provenance follows each fact, not the end of the three-turn batch')
- assert.equal(head.deltas[0].turnId,firstEvidence.turn)
+ assert.equal(saved.sourceGeneration,notes.generationId)
+ assert.equal(saved.schemaVersion,1)
+ assert.ok(saved.sourceKey.startsWith(`${firstEvidence.seq}:`))
+ assert.equal(saved.atSeq,firstEvidence.seq,'fork provenance follows each fact, not the end of the three-turn batch')
+ assert.equal(saved.turnId,firstEvidence.turn)
+ const recalled=svc.history(session,{kind:'agreements',query:'阿明 车票 明晚 车站门口'})
+ assert.equal(recalled.totalEntries,1,'only the admitted optional agreement participates in structured recall')
+ assert.deepEqual(recalled.entries,[{agreement,summary:saved.summary,status:'established',evidenceSeq:firstEvidence.seq,
+   sourceKey:saved.sourceKey,sessionId:session.id,sourceGeneration:notes.generationId}])
+ assert.equal(svc.historyRead(session,{seq:recalled.entries[0].evidenceSeq}).text,original,
+   'the structured result points back to the same original prose that supplied all its fields')
+ // This is a JSON round trip into a fresh in-memory plugin instance, not a cold process.
+ const serialized=JSON.parse(JSON.stringify({events:session.events,surface:session.surface.nodes,head}))
+ const restored=makeSession(session.id,serialized.events,serialized.surface)
+ const recovered=makeHarness({session:restored,memory:serialized.head})
+ await apply(recovered.ctx,defaultConfig)
+ const recoveredSvc=recovered.services.get('compaction')
+ assert.deepEqual(recoveredSvc.history(restored,{kind:'agreements',query:'阿明 车票'}).entries,recalled.entries,
+   'JSON persistence preserves agreement fields, certainty and exact source provenance')
+ assert.equal(recoveredSvc.historyRead(restored,{seq:firstEvidence.seq}).text,original)
+ assert.equal(recovered.requests.length,0,'read-only recovery uses persisted elements without a new summary')
+ for(const [label,seedLength,expected] of [['before-agreement',firstEvidence.seq,[]],
+   ['after-agreement',firstEvidence.seq+2,recalled.entries]]) {
+   const child=makeSession(`${session.id}-${label}`,serialized.events.slice(0,seedLength),
+     serialized.surface.filter(seq=>seq<seedLength),{parentSession:session.id,inheritedEventCount:seedLength})
+   const projected=filterMemoryRecordForBranch(serialized.head,child)
+   const forked=makeHarness({session:child,memory:projected})
+   await apply(forked.ctx,defaultConfig)
+   const forkSvc=forked.services.get('compaction')
+   assert.deepEqual(forkSvc.history(child,{kind:'agreements'}).entries,expected,
+     `${label}: existing branch projection keeps only agreement evidence inside the inherited seed`)
+   if(expected.length)assert.equal(forkSvc.historyRead(child,{seq:firstEvidence.seq}).text,original)
+   assert.equal(forked.requests.length,0,'selected inherited evidence never triggers automatic backfill')
+ }
  assert.ok(!notes.sourceSeqs.includes(fourth.seq),'running snapshot does not claim later plot')
  assert.equal(head.notesCadence.schemaVersion,1,'automatic notes persist a versioned cadence watermark')
  assert.deepEqual(head.notesCadence.slots.map(slot=>slot.turn),[1,2,9], 'watermark records canonical story slots, not text hashes')
@@ -1080,6 +1120,14 @@ async function testThreeCanonicalTurnsRunAcrossForegroundTurns() {
    {surfaceOp:{op:'replace',startSeq:fourth.seq,endSeq:fourth.seq}})
  await svc.organizeIfNeeded({session})
  assert.equal(h.requests.length,1,'regenerating the unsummarized fourth turn does not trigger a new batch')
+ assert.deepEqual(svc.memoryProjection(session).deltas.filter(item=>item.agreement),[saved])
+ session.append('assistant/message',{turn:firstEvidence.turn,message:{id:'a1-edited',content:text('小雨没有作出归还旧怀表的约定。')}},
+   {surfaceOp:{op:'replace',startSeq:firstEvidence.seq,endSeq:firstEvidence.seq}})
+ // This fixture checks the selected projection, not Core's persisted edit cleanup.
+ assert.deepEqual(svc.memoryProjection(session).deltas.filter(item=>item.agreement),[],
+   'editing away the source removes its agreement from the existing selected-memory projection')
+ assert.throws(()=>svc.historyRead(session,{seq:firstEvidence.seq}),/当前选中分支/)
+ assert.deepEqual(head.deltas[1],saved,'projection does not rewrite the append-only memory evidence')
 }
 async function testBackgroundRejectsInventedEvidenceBeforeCommit() {
  const session=makeSession('background-bad-evidence',completedStoryEvents(),[1,2,3,6,7])
@@ -1129,18 +1177,25 @@ async function testEvictionFinishesTailAfterRunningSnapshot() {
  let started,release
  const began=new Promise(resolve=>{started=resolve}),hold=new Promise(resolve=>{release=resolve})
  let calls=0
- h.setNativeTaskHandler(async()=>{if(++calls===1){started();await hold}return h.summaryText})
+ h.setNativeTaskHandler(async()=>{
+  if(++calls===1){started();await hold;return {text:h.summaryText,deltas:[],conflicts:[]}}
+  // Append-mode Notes are built from the same structured facts as recall.
+  // A legacy full-text reply with no deltas cannot save this new tail.
+  return {deltas:[{evidenceSeq:tail.seq,summary:'第三次行动的结果',status:'established'}],conflicts:[]}
+ })
  const svc=h.services.get('compaction'),background=svc.organizeIfNeeded({session})
  await began
  session.append('turn/start',{turn:3})
  session.append('user/message',{source:{kind:'user'},content:text('第三次行动')},{surfaceOp:'append'})
- session.append('assistant/message',{turn:3,message:{content:text('第三次行动的结果')}},{surfaceOp:'append'})
+ const tail=session.append('assistant/message',{turn:3,message:{content:text('第三次行动的结果')}},{surfaceOp:'append'})
  session.append('turn/end',{turn:3,reason:{kind:'completed'}})
  const gate=svc.ensureWindowCheckpoint({session})
  release();await background
  const proof=await gate
  assert.equal(calls,2,'finish the frozen prefix, then save only the newly completed tail')
  assert.deepEqual(proof.sourceSeqs,selectedStoryHistory(session).map(e=>e.seq))
+ assert.equal(h.heads.get(session.id).deltas.at(-1).evidenceSeq,tail.seq,'the new tail fact is saved with its actual source')
+ assert.match(svc.directorNotes(session).text,/第三次行动的结果/,'the same structured fact reaches the appended Notes')
 }
 async function testResumeCompactionInsideOpenTurn(){
  const session=makeSession('resume-open-turn',completedStoryEvents(),[1,2,3,6,7])

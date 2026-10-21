@@ -1,7 +1,16 @@
+import { assertMemoryAgreement, type MemoryAgreement } from './memory-agreements.js'
+
 export interface SummarySession { id: string }
-export interface MemoryDelta { evidenceSeq: number; summary: string; status: 'established' | 'uncertain'; [field: string]: unknown }
+export interface MemoryDelta {
+  evidenceSeq: number
+  summary: string
+  status: 'established' | 'uncertain'
+  agreement?: MemoryAgreement
+  [field: string]: unknown
+}
 export interface MemoryConflict { evidenceSeq: number; claim: string; canon: string; severity: 'low' | 'medium' | 'high'; [field: string]: unknown }
-export interface BackgroundSummary { text: string; deltas: MemoryDelta[]; conflicts: MemoryConflict[]; [field: string]: unknown }
+interface BackgroundFacts { deltas: MemoryDelta[]; conflicts: MemoryConflict[]; [field: string]: unknown }
+export interface BackgroundSummary extends BackgroundFacts { text: string }
 export interface SummaryOptions<S extends SummarySession> {
   session: S
   previousSummary?: string
@@ -42,7 +51,7 @@ export interface SummaryResult {
   deltas?: MemoryDelta[]
   conflicts?: MemoryConflict[]
 }
-type SummaryRequest<S extends SummarySession> = Omit<SummaryOptions<S>, 'previousSummary' | 'sourceText' | 'lockedText' | 'appendDelta'> & {
+type SummaryRequest<S extends SummarySession> = Omit<SummaryOptions<S>, 'previousSummary' | 'sourceText' | 'lockedText'> & {
   system: string
   user: string
   validate: (value: unknown) => string
@@ -69,6 +78,33 @@ const SUMMARY_SYSTEM =
   '\n- 宁可详细，不可精简：目标是高质量长流程 RP，不是节约 tokens' +
   '\n- 只整理剧情。不得把角色卡、世界书、叙事规则、状态栏模板、工具输出或后台提示复制进摘要；这些材料由独立存储按需注入'
 
+const APPEND_SUMMARY_SYSTEM =
+  '你是角色扮演工作台的记忆整理员。本任务只整理本批新增剧情的追加笔记，不重建整份记忆。' +
+  '\n既有笔记与用户锁定事实由后端逐字保留，只作为连续性核对与明确更正的只读对照，不需重新枚举或输出。' +
+  '\n按新增原文事件的发生顺序逐条输出 Markdown 记录，不重组为角色簿、关系图等分类段落，不为无新增的分类填「无」。' +
+  '\n每项事实在 text 中只写一次，写全本次事件涉及的人物、偏好与边界、关系变化、约定、新设定、位置、物品、身体与情绪、动作、环境及未解决线索。' +
+  '\n保留新增剧情全部条件、细节和台词，不以简短为目标。状态变化说明原状态、现状态与发生顺序；明确更正指出旧说法及新证据。' +
+  '\n每条信息末尾附 (seq:来源序号)。保留专名、数字、具体地点和不确定状态；一次性描写不得升级为永久规则。' +
+  '\n不要续写，不要删除、概括或重新抄写旧事件。只整理剧情，不复制角色卡、世界书、叙事规则、状态栏模板、工具输出或后台提示。'
+
+const APPEND_FACTS_SYSTEM =
+  '你是角色扮演工作台的记忆整理员。本任务只记录本批新增剧情事实，不重建整份记忆。' +
+  '\n既有笔记与用户锁定事实由后端逐字保留，只作为连续性核对与明确更正的只读对照，不需重新枚举或输出。' +
+  '\n按新增原文事件的发生顺序输出 deltas。每项事实只写一条完整 summary；程序从这同一组事实生成追加笔记，不另写 text 或分类摘要。' +
+  '\nsummary 写全本次事件涉及的人物、偏好与边界、关系变化、约定、新设定、位置、物品、身体与情绪、动作、环境及未解决线索。' +
+  '\n保留全部条件、细节、关键台词、专名、数字、具体地点、因果与先后顺序，不以简短为目标，不把 summary 缩成检索关键词。状态变化说明原状态、现状态与发生顺序；明确更正指出旧说法及新证据。' +
+  '\n每条事实用 evidenceSeq 指向对应原文；不确定内容保留不确定性，status 为 uncertain，一次性描写不得升级为永久规则。' +
+  '\n不要续写，不要删除、概括或重新抄写旧事件。只整理剧情，不复制角色卡、世界书、叙事规则、状态栏模板、工具输出或后台提示。' +
+  '\n仅返回 JSON 对象：{"deltas":[{"evidenceSeq":原文seq,"summary":"完整的新增事实记录","status":"established或uncertain"}],"conflicts":[{"evidenceSeq":原文seq,"claim":"新说法","canon":"既有记录","severity":"low或medium或high"}]}。conflicts 只列有来源支持的矛盾，不把未知情况当冲突；没有冲突时为空数组。'
+
+const AGREEMENT_ELEMENTS_SYSTEM =
+  '\n人物约定要素：有明确约定或承诺的 delta 可增加可选字段 agreement：' +
+  '{"schemaVersion":1,"participants":["原文人物名"],"subject":"约定事项","conditions":["生效条件"],"time":null,"place":null}。' +
+  '\n所有要素只取自该 delta 的 evidenceSeq 对应的同一条原文，不从其他 seq、既有笔记或角色设定补齐。' +
+  '\n没有来源的 participants/conditions 为空数组；time/place 有原文时用字符串，没有则为 JSON null。不猜测日期、地点或人物知情范围。' +
+  '\nsummary 保留约定全意，status 保留 established/uncertain；提议未获确认时不得写成已确立。' +
+  '\n后来更正须作为新 delta 指向新的原文，不改写旧约定。不是约定的事实不含 agreement；没有约定时不为填字段生成记录。'
+
 
 export function validateDetailedSummary(summary: unknown, sourceText: unknown, lockedFacts: readonly unknown[]): void {
   const text = String(summary ?? '').trim()
@@ -92,16 +128,17 @@ export function validateDetailedSummary(summary: unknown, sourceText: unknown, l
 
 
 async function summarize<S extends SummarySession>(ctx: SummaryContext<S>, {
-  session, system, user, maxTokens, timeoutMs, signal, validate, taskStage, background = false, sourceSeqs,
+  session, system, user, maxTokens, timeoutMs, signal, validate, taskStage, background = false, appendDelta = false, sourceSeqs,
 }: SummaryRequest<S>): Promise<SummaryResult> {
   // Resolve on each request: the roleplay service may mount later or reload.
   const engine = ctx.get('roleplay')
   if (!engine?.nativeTask) throw new Error('原生酒馆任务服务尚未就绪')
-  const assertCombined: (value: unknown) => asserts value is BackgroundSummary = value => {
-    if (!object(value) || typeof value.text !== 'string' || !Array.isArray(value.deltas) || !Array.isArray(value.conflicts)) throw new Error('后台记忆需要笔记、正史增量和冲突数组')
-    validate(value.text)
+  const factsOnly = background && appendDelta
+  const assertCombined: (value: unknown) => asserts value is BackgroundFacts = value => {
+    if (!object(value) || (!factsOnly && typeof value.text !== 'string') || !Array.isArray(value.deltas) || !Array.isArray(value.conflicts)) throw new Error('后台记忆需要正史增量和冲突数组；完整整理还需笔记文本')
     for (const item of value.deltas) {
       if (!object(item) || typeof item.summary !== 'string' || !item.summary.trim() || (item.status !== 'established' && item.status !== 'uncertain') || !Number.isSafeInteger(item.evidenceSeq)) throw new Error('正史增量格式无效')
+      if (item.agreement !== undefined) assertMemoryAgreement(item.agreement)
     }
     for (const item of value.conflicts) {
       if (!object(item) || typeof item.claim !== 'string' || typeof item.canon !== 'string' || (item.severity !== 'low' && item.severity !== 'medium' && item.severity !== 'high') || !Number.isSafeInteger(item.evidenceSeq)) throw new Error('连续性记录格式无效')
@@ -113,7 +150,11 @@ async function summarize<S extends SummarySession>(ctx: SummaryContext<S>, {
   }
   const validateCombined = (value: unknown): BackgroundSummary => {
     assertCombined(value)
-    return value
+    // One fact record feeds both recall and Notes. Native task validation
+    // normalizes that model result once, before the existing atomic writer.
+    const text = validate(factsOnly ? value.deltas.toSorted((a, b) => a.evidenceSeq - b.evidenceSeq)
+      .map(item => `- ${item.status === 'uncertain' ? '[待确认] ' : ''}${item.summary} (seq:${item.evidenceSeq})`).join('\n') : value.text)
+    return factsOnly ? { ...value, text } : value as BackgroundSummary
   }
   let actualRoute: Record<string, unknown> | undefined
   let taskId: string | undefined
@@ -122,48 +163,59 @@ async function summarize<S extends SummarySession>(ctx: SummaryContext<S>, {
     validate: background ? validateCombined : validate, taskStage, background,
     onResult: job => {
       taskId = job.id
-      const route = job.actualRoute
-      if (route && !object(route)) throw new Error('记忆任务返回的模型路由无效')
-      actualRoute = object(route) ? { ...route } : undefined
+      const route = job.actualRoute as Record<string, unknown> | undefined
+      actualRoute = route ? { ...route } : undefined
     },
   })
-  // Recheck the returned boundary even when a service skips its validator.
-  // This performs no retry or additional model request.
-  const combined = background ? validateCombined(result) : undefined
-  const text = combined ? combined.text : validate(result)
+  // Native task submission owns result validation. Publication separately
+  // checks whether its captured story sources are still current.
+  const combined = background ? result as BackgroundSummary : undefined
+  const text = combined ? combined.text : result as string
   const summary: { type: 'text'; text: string }[] = [{ type: 'text', text }]
   return { text, summary, rawOutput: summary, execution: 'native-task', actualRoute, ...(taskId ? {taskId} : {}),
     ...(combined ? { deltas: combined.deltas, conflicts: combined.conflicts } : {}) }
 }
 
-export function createMemorySummarizer<S extends SummarySession>(ctx: SummaryContext<S>) {
+export function createMemorySummarizer<S extends SummarySession>(
+  ctx: SummaryContext<S>,
+  { agreementElements }: { agreementElements?: 1 } = {},
+) {
   async function summarizeDetailed({ session, previousSummary, sourceText, lockedText, maxTokens, timeoutMs, signal, taskStage='notes', appendDelta=false, background=false, sourceSeqs }: SummaryOptions<S>): Promise<SummaryResult> {
+    let system = appendDelta ? APPEND_SUMMARY_SYSTEM : SUMMARY_SYSTEM
+    if (background) {
+      system = appendDelta ? APPEND_FACTS_SYSTEM : system +
+        '\n本次将导演笔记、正史增量与连续性核对合并为一个后台任务。仅返回 JSON 对象：{"text":"完整八段 Markdown 笔记' +
+        '","deltas":[{"evidenceSeq":原文seq,"summary":"已发生事实","status":"established或uncertain"}],"conflicts":[{"evidenceSeq":原文seq,"claim":"新说法","canon":"既有记录","severity":"low或medium或high"}]}。text 保留完整细节；deltas 只列新增事实，conflicts 只列有来源支持的矛盾，不把未知情况当冲突。没有增量或冲突时对应数组为空。'
+      if (agreementElements === 1) system += AGREEMENT_ELEMENTS_SYSTEM
+    }
     // A native task may span several loop steps. Its checkpoint and sources
     // remain durable; do not mislabel it as a direct llm.stream replay.
     return summarize(ctx, {
       session,
-      system: SUMMARY_SYSTEM + (background
-        ? '\n本次将导演笔记、正史增量与连续性核对合并为一个后台任务。仅返回 JSON 对象：{"text":"完整八段 Markdown 笔记","deltas":[{"evidenceSeq":原文seq,"summary":"已发生事实","status":"established或uncertain"}],"conflicts":[{"evidenceSeq":原文seq,"claim":"新说法","canon":"既有记录","severity":"low或medium或high"}]}。text 保留完整细节；deltas 只列新增事实，conflicts 只列有来源支持的矛盾，不把未知情况当冲突。没有增量或冲突时对应数组为空。'
-        : '') + (appendDelta
-        ? '\n本任务是导演笔记的追加更新：仅输出本次新增或更正，不重写既有笔记。仍按八段输出，只填新增信息，无变化的段落写「无」。既有笔记由后端逐字保留；锁定事实也由后端保留，不需重复输出。状态变化必须说明原状态、现状态与发生顺序；明确更正必须指出被纠正的旧说法及新证据。保留新增剧情全部条件、细节和台词，不以简短为目标。不要删除、概括或重新抄写旧事件。'
-        : ''),
+      system,
       user: (appendDelta
         ? '请根据既有笔记核对本次新增剧情，只返回本次追加记录。后端按来源顺序追加，最新有证据的更正与状态变化优先于旧快照；旧事实并不因此全部失效。'
         :
         '请把「既有剧情记忆」与「本次新增的连续剧情原文」做增量合并。既有条目除非被新原文明确纠正，否则不得删除；新原文中的独有细节必须逐项加入。' +
         '\n不要续写，不要把后台材料当剧情，不要为了变短而合并不同事件。') +
-        `\n\n## 既有剧情记忆\n${previousSummary || '（首次整理）'}` +
+        `\n\n## 既有剧情记忆${appendDelta ? '（只读对照，不需重写）' : ''}\n${previousSummary || '（首次整理）'}` +
         `\n\n## 本次新增剧情原文\n${sourceText}` +
-        `\n\n## 用户显式锁定的剧情事实（逐字保留）\n${lockedText || '（无）'}`,
+        `\n\n## 用户显式锁定的剧情事实（${appendDelta ? '后端逐字保留，只读对照' : '逐字保留'}）\n${lockedText || '（无）'}`,
       maxTokens,
       timeoutMs,
       signal,
       taskStage,
       background,
+      appendDelta,
       sourceSeqs,
       validate: text => {
         if (typeof text !== 'string') throw new Error('记忆摘要结果必须为文本')
-        validateDetailedSummary(text, sourceText, !appendDelta && lockedText ? [lockedText] : [])
+        // The writer appends this opaque block after the intact full summary.
+        // Requiring a second eight-section summary made every new fact a
+        // classification task and repeated it across otherwise empty sections.
+        if (appendDelta) {
+          if (!text.trim()) throw new Error('追加记忆摘要不能为空')
+        } else validateDetailedSummary(text, sourceText, lockedText ? [lockedText] : [])
         return text
       },
     })
