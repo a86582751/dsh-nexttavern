@@ -341,6 +341,16 @@ export function openingIntentKey(sessionId: string, importId: string): string {
   return `${sessionId}__opening-choice-${importId}`
 }
 
+/** Historical DATA only. The child consumer must join this original receipt
+ * to its actual Source copy and Native prefix; no ancestor active head is read. */
+export function readRetainedPlainOpeningV4(table:Pick<OpeningTable,'get'>,sessionId:string,importId:string):OpeningIntentV4|undefined {
+  const intent=table.get(openingIntentKey(sessionId,importId)) as OpeningIntent|undefined
+  if(intent?.schemaVersion!==4||intent.sessionId!==sessionId||intent.source?.importId!==importId
+    ||intent.status!=='completed'||intent.mode!=='plain')return undefined
+  validateVersioned(intent)
+  return intent
+}
+
 export function createRoleplayOpeningSelection(deps: OpeningSelectionDeps) {
   const initializationDeps = [deps.prepareInitialization, deps.finishInitialization, deps.readInitialization]
   const initializationEnabled = initializationDeps.every(item => typeof item === 'function')

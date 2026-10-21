@@ -34,7 +34,11 @@ export interface RoleplayInheritedOpeningSpanInputV2 {
   readonly parentSessionId:string
   readonly frozenOpening:Pick<PromptTemplateOnlyInheritedSourceInputV2['frozenOpening'],
     'ownerSessionId'|'intent'|'nativeReceipt'>
-  readonly actualChildCut:PromptTemplateOnlyInheritedSourceInputV2['actualChildCut']
+  readonly actualChildCut:Omit<PromptTemplateOnlyInheritedSourceInputV2['actualChildCut'],'cut'>&{
+    readonly cut:PromptTemplateOnlyInheritedSourceInputV2['actualChildCut']['cut']
+      |Pick<Extract<PromptTemplateOnlyInheritedSourceInputV2['actualChildCut']['cut'],{kind:'native-fork'}>,
+        'kind'|'seedLength'|'prefixSha256'>
+  }
 }
 const unknown = (): {status:'unknown'} => ({status:'unknown'})
 const same = (a:unknown,b:unknown) => recordSha256(a) === recordSha256(b)

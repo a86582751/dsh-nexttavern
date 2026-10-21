@@ -5,15 +5,13 @@ import {compileTavernOpeningCandidates} from './tavern-card.js'
 import {assertImportRecordIntegrity,readStructuredImportDataV1} from './roleplay-import-record.js'
 import type {ImportRecord} from './roleplay-import-types.js'
 import {createRoleplayTavernLoreSourceV1,tavernLoreSourceCurrentIdentityV1} from './roleplay-tavern-lore-source.js'
-import {validateTavernSourceInheritanceDescriptorV1,tavernSourceOwnedRecordKeysV1}
-  from './roleplay-tavern-source-inheritance-data.js'
+import {validateTavernSourceInheritanceDescriptorV1} from './roleplay-tavern-source-inheritance-data.js'
 import {inspectPromptTemplateCurrentRowsV1} from './roleplay-prompt-template-only-source.js'
 import {mapPromptTemplateOnlyOriginsV1} from './roleplay-prompt-template-only-origins.js'
 import {clonePromptTemplateOnlyDataV1,freezePromptTemplateOnlyDataV1,promptTemplateOnlyFail,
   validatePromptTemplateOnlyOpeningIntentV6} from './roleplay-prompt-template-only-data.js'
 import type {PromptTemplateOnlySourceDepsV1,PromptTemplateOnlyInheritedSourceInputV2,
   PromptNonNumericalInventoryV2,PromptInheritedSourceProofV2} from './roleplay-prompt-template-only-types.js'
-import type {MvuSourceRowRef} from './roleplay-mvu-source.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
@@ -28,64 +26,20 @@ function sealed(value:unknown,encoding:string,key:string):asserts value is Recor
   const body={...value};delete body[key]
   if(recordSha256(body)!==value[key])fail('/record')
 }
-function noOpaque(value:unknown,pointer:string):void {
-  if(!value||typeof value!=='object')return
-  for(const [key,child] of Object.entries(value)) {
-    if(/^(?:stat_data|statData|mvu_data|mvu|state|opaqueState|variables|schema|scripts?|callbacks?)$/i.test(key)||key.startsWith('$')) {
-      promptTemplateOnlyFail('PROMPT_TEMPLATE_NUMERICAL_STATE_PRESENT',pointer)
-    }
-    noOpaque(child,pointer)
-  }
-}
-/** This uses actual complete table enumerations. The membership evidence
- * excludes Source-owner packet bodies; their immutable references and current
- * contracts are independently verified by the actual inheritance service. */
+/** This adapter takes no numerical values or additional scope inputs from
+ * generic branch/status rows. Empty projections describe that boundary, not
+ * database-wide absence. Opening, Source, Native and Runtime own currency. */
 export function readPromptNonNumericalInventoryV2(deps:PromptTemplateOnlySourceDepsV1,
   sessionId:string):PromptNonNumericalInventoryV2 {
   const session=deps.session(sessionId)
   if(!session||session.id!==sessionId||!deps.branchReady(sessionId)
     ||typeof session.inheritedEventCount!=='number'
     ||!Number.isSafeInteger(session.inheritedEventCount)||session.inheritedEventCount<0)fail('/inventory/session')
-  const prefix=`${sessionId}__`,seen=new Set<string>(),statusRows:MvuSourceRowRef[]=[]
-  const owned=new Set(tavernSourceOwnedRecordKeysV1(sessionId)),branchClasses:unknown[]=[]
-  owned.add(`${sessionId}__tavern-source-frozen-prompt-scope-v1`)
-  let count=0
-  for(const table of ['branch','status'] as const)for(const [key,supplied] of deps.entries(table)) {
-    if(typeof key!=='string'||!key.startsWith(prefix))continue
-    if(++count>16_384||seen.has(`${table}:${key}`))promptTemplateOnlyFail('PROMPT_TEMPLATE_BUDGET','/inventory')
-    seen.add(`${table}:${key}`)
-    const value=clonePromptTemplateOnlyDataV1(supplied)
-    if(supplied===undefined||!same(supplied,deps.readRow(table,key)))fail('/inventory/rows')
-    const suffix=key.slice(prefix.length)
-    if(table==='status'&&!['spec','panel'].includes(suffix)
-      ||/^(?:mvu|state|stat_data|statData|variables|schema|opaqueState)(?:[-_]|$)/i.test(suffix)) {
-      promptTemplateOnlyFail('PROMPT_TEMPLATE_NUMERICAL_STATE_PRESENT','/inventory')
-    }
-    if(table==='status') {
-      noOpaque(value,'/inventory/status')
-      statusRows.push({table,key,exists:true,sha256:recordSha256(value)})
-    }else if(!owned.has(key)) {
-      // Activation imports carry immutable author bytes checked by Source.
-      // Opening/input ledgers carry typed absence declarations checked by
-      // their respective owners. All other actual branch data is inspected.
-      const importRow=object(value)&&suffix===`import-${String(value.importId)}`
-      if(importRow)assertImportRecordIntegrity(value as unknown as ImportRecord)
-      const inputRow=/^native-input-v2-(?:current|(?:work|stop)-[a-f0-9]{64})$/.test(suffix)
-      const openingRow=object(value)&&suffix===`opening-choice-${String((value.source as Record<string,unknown>)?.importId)}`
-      if(openingRow&&(value.schemaVersion===5||value.schemaVersion===4&&value.mode==='native-json')) {
-        promptTemplateOnlyFail('PROMPT_TEMPLATE_NUMERICAL_STATE_PRESENT','/inventory/opening')
-      }
-      const managed=importRow||suffix==='import-active'||inputRow||openingRow
-      if(!importRow)noOpaque(value,'/inventory/branch')
-      if(!managed&&suffix!=='meta'&&suffix!=='settings')branchClasses.push({key,sha256:recordSha256(value)})
-    }
-  }
-  statusRows.sort((a,b)=>a.key.localeCompare(b.key));branchClasses.sort((a,b)=>recordSha256(a).localeCompare(recordSha256(b)))
   const parentSessionId=typeof session.header?.parentSession==='string'?session.header.parentSession:null
   const body={schemaVersion:2 as const,encoding:'native-prompt-nonnumerical-inventory-v2' as const,
     authority:'consumer-data-only' as const,sessionId,parentSessionId,inheritedEventCount:session.inheritedEventCount,
-    numericalRows:[] as [],opaqueRows:[] as [],statusRows,
-    branchMembershipSha256:recordSha256(branchClasses),statusMembershipSha256:recordSha256(statusRows)}
+    numericalRows:[] as [],opaqueRows:[] as [],statusRows:[],
+    branchMembershipSha256:recordSha256([]),statusMembershipSha256:recordSha256([])}
   return freezePromptTemplateOnlyDataV1({...body,inventorySha256:recordSha256(body)})
 }
 export function validatePromptNonNumericalInventoryV2(value:unknown):PromptNonNumericalInventoryV2 {
@@ -224,6 +178,12 @@ export function createRoleplayPromptInheritedSourceV2(deps:PromptTemplateOnlySou
       assertImportRecordIntegrity(record)
       const original=input.sourceInheritance.originalBinding,frozen=input.frozenOpening.intent
       const snapshot=frozen.schemaVersion===6?frozen.promptTemplateSourceProof.sourceSnapshot:frozen.absenceScopeProof!.sourceSnapshot
+      const pointerMatches=original.legacyCopy
+        ?frozen.schemaVersion===4&&frozen.mode==='plain'&&original.legacyCopy.seedLength>0
+          &&!original.legacyCopy.freshFirstTurn&&snapshot.source.sourceRecordSessionId===original.sourceRecordSessionId
+          &&same(original.originalPointer,{...snapshot.source.pointer,inheritedFrom:original.legacyCopy.parentSessionId,
+            sourceRecordSessionId:original.sourceRecordSessionId})
+        :same(snapshot.source.pointer,original.originalPointer)
       if(source.sourceRecordSessionId!==original.sourceRecordSessionId||record.importId!==original.importId
         ||record.rawSha256!==original.rawSha256||record.normalizedSha256!==original.normalizedSha256
         ||recordSha256(record)!==original.importRecordRef.sha256||source.original.documentSha256!==original.documentSha256
@@ -231,7 +191,7 @@ export function createRoleplayPromptInheritedSourceV2(deps:PromptTemplateOnlySou
         ||snapshot.source.importId!==original.importId||snapshot.source.rawSha256!==original.rawSha256
         ||snapshot.source.normalizedSha256!==original.normalizedSha256||snapshot.source.transactionId!==original.transactionId
         ||snapshot.importRecordSha256!==original.importRecordRef.sha256||snapshot.coverageSha256!==original.coverageSha256
-        ||!same(snapshot.source.pointer,original.originalPointer))fail('/original/binding')
+        ||!pointerMatches)fail('/original/binding')
       const envelope=record.sourceEnvelope
       if(!envelope)fail('/original/envelope')
       const decoded=readStructuredImportDataV1(record).decoded

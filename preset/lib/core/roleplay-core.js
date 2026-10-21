@@ -653,7 +653,7 @@ export async function apply(ctx, config = {}) {
             return { schemaVersion: 1,
                 encoding: 'native-tavern-source-nonnumerical-opening-v1', kind: 'not-inherited', reason: 'fresh-cut-zero' };
         const facts = captured.data, old = facts.encoding === 'native-prompt-inherited-scope-facts-v2'
-            ? facts.sourceProof.input.frozenOpening : undefined, catalog = old ? undefined : openingSelection.readCatalog(parent, openingContext(parent)), intent = old?.intent ?? (catalog ? openingSelection.readIntent(catalog.source) : null);
+            ? facts.sourceProof.input.frozenOpening : 'opening' in captured ? captured.opening : undefined, catalog = old ? undefined : openingSelection.readCatalog(parent, openingContext(parent)), intent = old?.intent ?? (catalog ? openingSelection.readIntent(catalog.source) : null);
         if (!intent || intent.schemaVersion !== 4 && intent.schemaVersion !== 6 || intent.status !== 'completed'
             || !intent.nativeReceipt || intent.schemaVersion === 4 && intent.mode !== 'plain')
             throw Error('SOURCE_INHERITANCE_OPENING_INVALID');

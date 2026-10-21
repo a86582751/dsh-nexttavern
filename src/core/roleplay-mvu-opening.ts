@@ -5,7 +5,8 @@ import {createRoleplayMvuBasis} from './roleplay-mvu-basis.js'
 import {createRoleplayMvuNative} from './roleplay-mvu-native.js'
 import type {RoleplayMvuNativeDeps} from './roleplay-mvu-native.js'
 import {createRoleplayMvuInitialization, prepareNativeMvuOpeningInitialization} from './roleplay-mvu-initialization.js'
-import {openingIntentKey} from './roleplay-opening-selection.js'
+import {openingIntentKey,readRetainedPlainOpeningV4} from './roleplay-opening-selection.js'
+import {createRoleplayTavernLoreSourceV1} from './roleplay-tavern-lore-source.js'
 import {createRoleplayMvuSchemaCore} from './roleplay-mvu-schema-core.js'
 import {createRoleplayMvuSchemaOpening} from './roleplay-mvu-schema-opening.js'
 import {createRoleplayMvuSchemaSource} from './roleplay-mvu-schema-source.js'
@@ -102,6 +103,7 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     session:deps.session,branchReady:deps.branchReady,entries:table=>deps.tables[table].entries(),
     readInheritedPromptTemplateSource:deps.readInheritedPromptTemplateSource,readSourceInheritance:deps.readSourceInheritance}
   const promptTemplateSource=createRoleplayPromptTemplateOnlySourceV1(promptDomainDeps)
+  const legacyPlainSource=createRoleplayTavernLoreSourceV1(promptDomainDeps)
   const inheritedPromptSource=createRoleplayPromptInheritedSourceV2(promptDomainDeps,
     input=>native.readInheritedFrozen(input).status==='committed')
   const observedIntent=(source:OpeningCatalog['source'])=>deps.readOpeningIntentForObservation
@@ -342,6 +344,45 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       return {sessionId,sourceSha256:inputSource(sessionId).sourceSha256,initEvent:ready.event,initHead:ready.head}
     } catch {return undefined}
   }
+  function captureLegacyPlainOpening(sessionId:string,capturedSourceSha256?:string) {
+    try {
+      const pointer=deps.tables.branch.get(deps.importActiveKey(sessionId)) as {inheritedFrom?:unknown}|undefined
+      if(typeof pointer?.inheritedFrom!=='string')return
+      const captured=legacyPlainSource.capture(sessionId)
+      if(captured.kind!=='captured-data')return
+      const source=captured.source,copy=source.legacyInheritance,session=deps.session(sessionId)
+      if(!copy||copy.freshFirstTurn||copy.seedLength<=0||!session)return
+      const original=source.original,intent=readRetainedPlainOpeningV4(deps.tables.branch,source.sourceRecordSessionId,
+        original.activePointer.importId)
+      if(!intent||!intent.nativeReceipt||!intent.absenceScopeProof)return
+      const snapshot=intent.absenceScopeProof.sourceSnapshot,identity=intent.source
+      if(identity.sourceRecordSessionId!==source.sourceRecordSessionId||identity.importId!==original.activePointer.importId
+        ||identity.rawSha256!==original.rawSha256||identity.normalizedSha256!==original.normalizedSha256
+        ||identity.transactionId!==original.transactionId||identity.coverageSha256!==original.coverageSha256
+        ||snapshot.importRecordSha256!==original.importRecordRef.sha256
+        ||!same(original.activePointer,{...identity.pointer,inheritedFrom:copy.parentSessionId,
+          sourceRecordSessionId:source.sourceRecordSessionId}))return
+      const actual=deps.inheritedNativeObservation?.(sessionId),events=actual?.events??eventsOf(session),
+        receipt=intent.nativeReceipt,prefixSha256=recordSha256(events.slice(0,copy.seedLength)),
+        intentRef={key:openingIntentKey(intent.sessionId,intent.source.importId),sha256:recordSha256(intent)},
+        frozenOpening={ownerSessionId:intent.sessionId,intent,nativeReceipt:receipt},
+        actualChildCut={sessionId,parentSessionId:copy.parentSessionId,inheritedEventCount:copy.seedLength,
+          cut:{kind:'native-fork' as const,seedLength:copy.seedLength,prefixSha256},childPrefixSha256:prefixSha256,
+          openingEventSeq:receipt.assistantSeq,openingEventSha256:recordSha256(events[receipt.assistantSeq]),
+          originalMessageVersionSha256:receipt.messageVersion.eventSha256},
+        input={childSessionId:sessionId,parentSessionId:copy.parentSessionId,frozenOpening,actualChildCut}
+      if(native.readInheritedOpeningSpan(input).status!=='committed')return
+      const sourceSha256=capturedSourceSha256??inputSource(sessionId).sourceSha256,
+        absenceScopeRef={kind:'plain-absence' as const,
+          sha256:recordSha256({absence:intent.absenceScopeProof.proofSha256,native:receipt})}
+      const current=()=>{
+        try {return deps.session(sessionId)===session&&legacyPlainSource.current(source)
+          &&recordSha256(deps.tables.branch.get(intentRef.key))===intentRef.sha256
+          &&native.readInheritedOpeningSpan(input).status==='committed'}catch{return false}
+      }
+      return {intent,intentRef,sourceSha256,absenceScopeRef,current}
+    }catch{return undefined}
+  }
   function readInputObservation(sessionId:string):InputObservation {
     const {pointer,imported,sourceSha256}=inputSource(sessionId)
     const management = (reason:string):InputObservation => ({kind:'management',sourceSha256,reason})
@@ -383,6 +424,8 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
           sourceProofSha256:proof.proofSha256,native:proof.input.frozenOpening.nativeReceipt,
           scopeInventorySha256:proof.childInventory.inventorySha256})}}
     }
+    const legacyPlain=captureLegacyPlainOpening(sessionId,sourceSha256)
+    if(legacyPlain)return {kind:'story',sourceSha256,absenceScopeRef:legacyPlain.absenceScopeRef}
     // A Native child uses its own derived root. Missing/partial/corrupt basis
     // cannot fall back to selecting another author opening or empty values.
     if (deps.derivedBasisRequired?.(sessionId)) {
@@ -556,6 +599,14 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
     readerDocumentRuntime:()=>schemaCore?.readerDocumentRuntime(),
     capturePlainPromptScopeFacts:(id:string)=>{
       try {
+        const legacy=captureLegacyPlainOpening(id)
+        if(legacy) {
+          const {intent,intentRef}=legacy
+          const data={schemaVersion:1 as const,encoding:'native-plain-prompt-scope-facts-v1' as const,
+            authority:'consumer-data-only' as const,sessionId:id,sourceSha256:legacy.sourceSha256,
+            absenceScopeRef:legacy.absenceScopeRef,absenceScopeProof:intent.absenceScopeProof!,nativeOpening:intent.nativeReceipt!}
+          return {data,current:legacy.current,opening:{intent,intentRef}}
+        }
         const observation=readInputObservation(id)
         if(observation.kind!=='story'||observation.absenceScopeRef?.kind!=='plain-absence')return undefined
         const catalog=deps.catalog(id),intent=deps.readOpeningIntent?.(catalog.source)
@@ -571,7 +622,8 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
         const current=()=>{const now=readInputObservation(id)
           return now.kind==='story'
             &&now.sourceSha256===observation.sourceSha256&&same(now.absenceScopeRef,observation.absenceScopeRef)}
-        return current()?{data,current}:undefined
+        return current()?{data,current,opening:{intent,
+          intentRef:{key:openingIntentKey(intent.sessionId,intent.source.importId),sha256:recordSha256(intent)}}}:undefined
       }catch{return undefined}
     },
     readSchemaEditBasis:(id:string)=>schemaStory?.readEditBasis(id),

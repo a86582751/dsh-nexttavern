@@ -746,7 +746,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     if(cut.kind==='reserved-fresh-branch')return {schemaVersion:1,
       encoding:'native-tavern-source-nonnumerical-opening-v1',kind:'not-inherited',reason:'fresh-cut-zero'}
     const facts=captured.data,old=facts.encoding==='native-prompt-inherited-scope-facts-v2'
-      ?facts.sourceProof.input.frozenOpening:undefined,
+      ?facts.sourceProof.input.frozenOpening:'opening' in captured?captured.opening:undefined,
       catalog=old?undefined:openingSelection.readCatalog(parent,openingContext(parent)),
       intent=old?.intent??(catalog?openingSelection.readIntent(catalog.source):null)
     if(!intent||intent.schemaVersion!==4&&intent.schemaVersion!==6||intent.status!=='completed'
