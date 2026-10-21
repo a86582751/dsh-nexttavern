@@ -3678,6 +3678,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     T,
     resolveRoleplaySession,
     cloneBranchRecord,
+    releaseWorldlineInheritance:childSessionId=>schemaDerived?.releaseReservation(childSessionId),
     prepareWorldlineInheritance:async(operation,reservation)=>{
       const parent=reservation.sourceSessionId,child=reservation.childSessionId
       if(!mvuOpening.hasSchemaOpening(parent)) {

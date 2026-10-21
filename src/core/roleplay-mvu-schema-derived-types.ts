@@ -9,6 +9,7 @@ import {validateMvuSchemaOpeningIntent,validateMvuSchemaOpeningEvent,validateMvu
 import {validateMvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
 import {validateMvuDerivedSourceProofUnion,validateMvuPreparedSourceRefV1} from './roleplay-mvu-frozen-lineage.js'
 import {freezeImmutableSchemaDescriptorDataV4} from './roleplay-mvu-schema-descriptor-data.js'
+import {inheritanceFreezeV1} from './roleplay-tavern-source-inheritance-data.js'
 import {schemaOriginalProgramSha256,schemaOriginalSnapshot} from './roleplay-mvu-schema-source.js'
 import type {OpeningIntentV5,MvuSchemaOpeningEventV2,MvuSchemaOpeningHeadV2} from './roleplay-mvu-schema-opening-types.js'
 import type {SchemaFrozenOriginal} from './roleplay-mvu-schema-source.js'
@@ -16,7 +17,7 @@ import type {SchemaJournalFrozenCut,SchemaJournalReady} from './roleplay-mvu-sch
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaDerivedHeadV1,MvuSchemaStoryFrontier}
   from './roleplay-mvu-schema-story-types.js'
 import type {MvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
-import type {MvuDerivedSourceProofV2} from './roleplay-mvu-frozen-lineage.js'
+import type {MvuDerivedSourceProofV2,MvuDerivedSourceProofUnion} from './roleplay-mvu-frozen-lineage.js'
 import type {TavernSourceFrozenRefV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {ForkOperation} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
@@ -114,9 +115,9 @@ const hash=(value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value
 const id=(value:unknown)=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(value)
 const integer=(value:unknown)=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0&&!Object.is(value,-0)
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
-// Prefix, prepared, basis and closed table inputs are separate persisted DATA
-// records. Each new envelope pays its whole descriptor budget; Source material
-// remains under the existing material codec, and numerical execution is unchanged.
+// Cold inheritance metadata and prefix leaves have independent admission
+// owners. Assembling admitted children does not charge their graphs again;
+// Source material keeps its existing material codec.
 const inheritanceBounds={nodes:COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorNodes,
   depth:COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorDepth,
   arrayLength:COMBINED_AUTHOR_DATA_BOUNDS_V6.descriptorArrayLength}
@@ -140,8 +141,8 @@ export function freezeMvuSchemaInheritanceData<T>(input:T):T {
   return rememberInheritanceClone(freezeImmutableSchemaDescriptorDataV4(input,67_108_864,inheritanceBounds))
 }
 export function sealMvuSchemaInheritanceFact<T extends object,K extends string>(body:T,key:K):T&Record<K,string> {
-  // Producer fields are already factual DATA. Charge the complete new record,
-  // including its checksum, once before any validator or persistence consumes it.
+  // This full-record sealing entry admits the complete DATA record, including
+  // its checksum. Live basis assembly below instead retains its owned children.
   let sealed=freezeMvuSchemaInheritanceData({...body,[key]:recordSha256(body)}) as T&Record<K,string>
   const children=body as {prefix?:object;prepared?:object}
   for(const field of ['prefix','prepared'] as const)if(children[field]&&inheritanceClones.has(children[field]!)) {
@@ -165,8 +166,8 @@ function inheritanceValidator<T extends object>(validate:(input:T)=>T) {
   },{remember,peek:(input:T)=>successes.get(input)})
 }
 function retainInheritanceChild<T extends object,K extends keyof T>(bounded:T,key:K,child:T[K]):T {
-  // The whole new parent has already been charged. Preserve the concrete
-  // child's validated immutable result rather than minting another copy/cache.
+  // The envelope metadata and child DATA have their own admission owners.
+  // Preserve the concrete immutable child rather than cloning its graph again.
   return rememberInheritanceClone(Object.freeze({...bounded,[key]:child}))
 }
 function fail():never {throw Error('SCHEMA_DERIVED_RECORD_INVALID')}
@@ -228,13 +229,18 @@ export function validateMvuSchemaDerivedPrepared(input:MvuSchemaDerivedPrepared)
   return validateDerivedPreparedDescriptor(input)
 }
 function validateDerivedPreparedUncached(input:MvuSchemaDerivedPrepared):MvuSchemaDerivedPrepared {
-  const bounded=freezeMvuSchemaInheritanceData(input)
-  checksum(bounded,'preparedSha256')
-  return validateDerivedPreparedFields(bounded)
+  const prepared=readDerivedPreparedData(input)
+  checksum(prepared,'preparedSha256')
+  return validateDerivedPreparedFields(prepared)
+}
+function readDerivedPreparedData(input:MvuSchemaDerivedPrepared):MvuSchemaDerivedPrepared {
+  const {prefix:rawPrefix,...metadata}=input
+  const bounded=freezeMvuSchemaInheritanceData(metadata),prefix=freezeMvuSchemaInheritanceData(rawPrefix)
+  return retainInheritanceChild({...bounded,prefix},'prefix',prefix) as MvuSchemaDerivedPrepared
 }
 function validateDerivedPreparedFields(bounded:MvuSchemaDerivedPrepared):MvuSchemaDerivedPrepared {
-  // The outer persisted envelope has already covered this complete graph.
-  // Keep the child's field/cross-record joins without hashing its graph again.
+  // The enclosing checksum covers this complete DATA. Keep the prefix fields
+  // and joins without hashing its graph again through the standalone parser.
   const prefix=validateFrozenPrefixDescriptor.peek(bounded.prefix)??validateFrozenPrefixFields(bounded.prefix)
   const prepared=retainInheritanceChild(bounded,'prefix',prefix)
   exact(prepared,['schemaVersion','encoding','operationId','anchorSha256','parentSessionId','childSessionId',
@@ -272,13 +278,22 @@ export function validateMvuSchemaDerivedBasis(input:MvuSchemaDerivedBasis):MvuSc
   return validateDerivedBasisDescriptor(input)
 }
 function validateDerivedBasisUncached(input:MvuSchemaDerivedBasis):MvuSchemaDerivedBasis {
-  const bounded=freezeMvuSchemaInheritanceData(input)
-  exact(bounded,['schemaVersion','encoding','prepared','source','basisSha256'])
-  checksum(bounded,'basisSha256')
-  const prepared=validateDerivedPreparedDescriptor.peek(bounded.prepared)??validateDerivedPreparedFields(bounded.prepared)
-  const basis=retainInheritanceChild(bounded,'prepared',prepared)
-  const source=basis.schemaVersion===2
-    ?validateMvuDerivedSourceProofUnion(basis.source):validateMvuDerivedSourceProof(basis.source)
+  const {prepared:rawPrepared,source:rawSource,...metadata}=input
+  const bounded=freezeMvuSchemaInheritanceData(metadata),
+    prepared=validateDerivedPreparedDescriptor.peek(rawPrepared)??readDerivedPreparedData(rawPrepared)
+  const source=inheritanceFreezeV1(bounded.schemaVersion===2
+    ?validateMvuDerivedSourceProofUnion(rawSource):validateMvuDerivedSourceProof(rawSource))
+  const basis=rememberInheritanceClone(Object.freeze({...bounded,prepared,source})) as MvuSchemaDerivedBasis
+  exact(basis,['schemaVersion','encoding','prepared','source','basisSha256'])
+  checksum(basis,'basisSha256')
+  const checked=validateDerivedPreparedDescriptor.peek(prepared)??validateDerivedPreparedFields(prepared),
+    retained=retainInheritanceChild(basis,'prepared',checked)
+  validateDerivedBasisJoins(retained,source)
+  validateDerivedPreparedDescriptor.remember(rawPrepared,checked)
+  return retained
+}
+function validateDerivedBasisJoins(basis:MvuSchemaDerivedBasis,source:MvuDerivedSourceProofUnion) {
+  const prepared=basis.prepared
   if((basis.schemaVersion===1?basis.encoding!=='native-mvu-schema-derived-basis-v1'
       ||prepared.schemaVersion!==1||source.schemaVersion!==1:basis.schemaVersion!==2
       ||basis.encoding!=='native-mvu-schema-derived-basis-v2'||prepared.schemaVersion!==2||source.schemaVersion!==2)
@@ -290,7 +305,16 @@ function validateDerivedBasisUncached(input:MvuSchemaDerivedBasis):MvuSchemaDeri
     ||imported.rawSha256!==original.rawSha256||imported.normalizedSha256!==original.normalizedSha256
     ||imported.coverageSha256!==original.coverageSha256||imported.transactionId!==original.transactionId
     ||imported.recordSha256!==originalSnapshot.importRecordSha256)fail()
-  validateDerivedPreparedDescriptor.remember(bounded.prepared,prepared)
+}
+/** The live reservation owns its constructed prepared DATA; Source supplies
+ * its completed proof. This producer owns only the new envelope and joins. */
+export function createMvuSchemaDerivedBasis(prepared:MvuSchemaDerivedPreparedV2,
+  source:MvuDerivedSourceProofV2):MvuSchemaDerivedBasisV2 {
+  const body={schemaVersion:2 as const,encoding:'native-mvu-schema-derived-basis-v2' as const,
+    prepared,source:inheritanceFreezeV1(source)}
+  const basis=Object.freeze({...body,basisSha256:recordSha256(body)})
+  validateDerivedBasisJoins(basis,source)
+  validateDerivedBasisDescriptor.remember(rememberInheritanceClone(basis),basis)
   return basis
 }
 export function mvuSchemaDerivedGenesis(input:MvuSchemaDerivedBasis,

@@ -82,6 +82,8 @@ export interface BranchRoutesDependencies extends Pick<Worldlines,
    * Historical replay remains outside Source's FIFO and Native forkPrepared. */
   prepareWorldlineInheritance?(operation: StoredBranchOperation, reservation: ForkReservation)
     :Promise<TavernSourceInheritancePreparationV1>
+  /** Release the reservation material when its operation fails or is aborted. */
+  releaseWorldlineInheritance?(childSessionId:string):void
   /** Refuse before any Native child/reservation or plain-branch fallback. */
   numericalForkBlockCode?(sessionId:string):string|undefined
   generateProgramOpening?(input:{sessionId:string;operation:StoredBranchOperation;messageId:string;instruction:string})

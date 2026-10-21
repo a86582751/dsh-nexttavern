@@ -5,7 +5,7 @@ import { eventsOf, surfaceEvents } from './roleplay-context.js';
 import { jsonResponse } from './roleplay-state.js';
 import { activeOpeningSource } from './roleplay-import.js';
 export function registerBranchRoutes(deps) {
-    const { ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText, prepareWorldlineInheritance, numericalForkBlockCode } = deps;
+    const { ctx, T, resolveRoleplaySession, cloneBranchRecord, assertStoryBranchActive, withForkMutationLock, forkOperationKey, reconcileCanonicalPlayerVariants, buildForkLookupIndex, userForkContext, locatePlayerRecoveryTarget, assistantMessageId, forkPointerFor, hydrateForkGroup, forkGroupKey, groupMemberForSession, locateForkTarget, locateProgrammaticOpeningTarget, bootstrapChildBranch, registerRecoveryFork, registerNativeFork, forkAnchorLockKey, requestUserEvent, forkPendingKey, reconcileNativeFork, failPendingNativeFork, replaceAssistantText, replaceUserText, prepareWorldlineInheritance, releaseWorldlineInheritance, numericalForkBlockCode } = deps;
     const readOperation = (key) => cloneBranchRecord(T.branch.get(key));
     const updateOperation = (key, work) => T.branch.update(key, current => work(current));
     async function publishWorldlineSelection(operation, child) {
@@ -20,6 +20,8 @@ export function registerBranchRoutes(deps) {
     }
     async function failWorldlineCatalog(operation) {
         const catalog = ctx.get('tavernConversations'), childId = operation.reservedChildSessionId ?? operation.childSessionId;
+        if (childId)
+            releaseWorldlineInheritance?.(childId);
         if (!catalog || !childId)
             return null;
         await catalog.ready;
@@ -128,8 +130,12 @@ export function registerBranchRoutes(deps) {
                         const catalog = ctx.get('tavernConversations');
                         if (!operation || !catalog)
                             return jsonResponse(404, { ok: false, error: '世界线操作或酒馆会话目录不存在' });
-                        if (operation.state === 'failed' || operation.state === 'aborted' || operation.abortedAt || Date.now() > operation.expiresAt)
+                        if (operation.state === 'failed' || operation.state === 'aborted' || operation.abortedAt || Date.now() > operation.expiresAt) {
+                            const childId = operation.reservedChildSessionId ?? operation.childSessionId;
+                            if (childId)
+                                releaseWorldlineInheritance?.(childId);
                             throw new Error('世界线操作已经失效，请重新发起');
+                        }
                         const source = await resolveRoleplaySession(operation.anchor.sourceSessionId);
                         if (!source)
                             throw new Error('源角色扮演会话不可用');
@@ -139,8 +145,10 @@ export function registerBranchRoutes(deps) {
                         assertStoryBranchActive(source);
                         await catalog.ready;
                         const failReservation = async (childId) => {
-                            if (childId)
+                            if (childId) {
+                                releaseWorldlineInheritance?.(childId);
                                 await catalog.fail(childId, operation.operationId);
+                            }
                             await T.branch.put(operationKey, { ...readOperation(operationKey), state: 'failed', failureReason: '世界线创建失败，请重新发起', failedAt: Date.now() });
                         };
                         const lookupReserved = async (childId) => {
@@ -446,8 +454,10 @@ export function registerBranchRoutes(deps) {
                                         throw new Error('同一分支操作已由不同的会话或请求占用');
                                     return record;
                                 }
-                                if (Number(record.expiresAt) < Date.now())
+                                if (Number(record.expiresAt) < Date.now()) {
+                                    releaseWorldlineInheritance?.(child.id);
                                     throw new Error('分支操作已过期，请重试');
+                                }
                                 return {
                                     ...record,
                                     state: 'registering',
@@ -547,13 +557,7 @@ export function registerBranchRoutes(deps) {
                         if (!loadedOperation)
                             return { ok: false, error: '分支操作不存在或已过期' };
                         let operation = loadedOperation;
-                        const failCatalog = async () => {
-                            const catalog = ctx.get('tavernConversations'), childId = operation.childSessionId ?? operation.reservedChildSessionId;
-                            if (!catalog || !childId)
-                                return null;
-                            await catalog.ready;
-                            return catalog.fail(childId, operation.operationId);
-                        };
+                        const failCatalog = () => failWorldlineCatalog(operation);
                         if (operation.abortedAt)
                             return { ok: true, alreadyAborted: true, conversations: await failCatalog() };
                         if (operation.groupId && operation.childSessionId) {
