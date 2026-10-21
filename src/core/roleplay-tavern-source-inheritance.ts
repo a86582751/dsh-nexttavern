@@ -11,6 +11,7 @@ import {inheritanceDataV1,inheritanceDataSha256V1,inheritanceFailV1,inheritanceS
   sealInheritanceDataV1,validatePreparedInheritanceV1,validateApplyInheritanceV1,validateCommitInheritanceV1,
   validateReadyInheritanceV1,validateStaticRowV1,validateTavernSourceInheritanceDescriptorV1,frozenInheritanceRefV1,
   validateTavernSourceLegacyMigrationRecordV1,
+  validateTavernSourceLegacyCopyV1,
   validateFrozenNonNumericalOpeningV1,validateFrozenPromptScopeRecordV1,
   validateFrozenProgramAbsenceOpeningV1,validateTavernSourceProgramAbsenceOpeningRecordV1,
   assertFrozenProgramAbsenceOpeningCutV1,assertProgramAbsenceOriginalBindingV1,
@@ -25,7 +26,7 @@ import type {TavernSourceInheritanceDepsV1,TavernSourceInheritanceOwnerV1,Tavern
   TavernSourceApplyIntentV1,TavernSourceNativeCutV1,TavernSourceCommitV1,TavernSourceReadyV1,
   TavernSourceMaterialBaselineV1,TavernSourceInheritanceReadyBindingV1,TavernSourceInheritanceLayerRefV1,
   TavernSourceInheritanceDescriptorV1,TavernSourceInheritanceRefV1,TavernSourceOwnedRowFactsV1,
-  TavernSourceStaticRowV1,TavernSourceProgramAbsenceObservationV1}
+  TavernSourceStaticRowV1,TavernSourceProgramAbsenceObservationV1,TavernSourceLegacyCopyV1}
   from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernSourceStaticTransactionV1,TavernSourceEditBaselineV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernSourcePrepareAuthorChatForkSeedsV2,TavernSourceAuthorChatForkSeedCaptureV2}
@@ -108,6 +109,25 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     return inheritanceObjectV1(record)&&[4,5,6].includes(Number(record.schemaVersion))
       &&['tavern-fields-v1','tavern-fields-v2','nexttavern-fields-v1'].includes(String(record.normalizer))
   }
+  function readLegacyCopy(sid:string):TavernSourceLegacyCopyV1|undefined {
+    const meta=branch.get(`${sid}__meta`),pointer=branch.get(`${sid}__import-active`)
+    // The old writers committed meta last: ready for Native forks, or
+    // freshBranchFrom for first-turn static copies into a parentless Session.
+    // An explicitly modern binding keeps its own recovery contract.
+    if(!inheritanceObjectV1(meta)||meta.sourceInheritance!==undefined
+      ||!inheritanceObjectV1(pointer)||typeof pointer.inheritedFrom!=='string')return
+    const fresh=typeof meta.freshBranchFrom==='string'
+    if(!fresh&&meta.inheritanceState!=='ready')return
+    const native=deps.readNativeSession(sid)
+    if(!native||native.id!==sid)inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_UNAVAILABLE',sid)
+    const parent=fresh?meta.freshBranchFrom:native.header.parentSession,seedLength=native.inheritedEventCount
+    const originChanged=fresh?!!native.header.parentSession||seedLength!==0:meta.inheritedFrom!==parent
+    if(typeof parent!=='string'||parent===sid||originChanged||pointer.inheritedFrom!==parent
+      ||!Number.isSafeInteger(seedLength)||Number(seedLength)<0||meta.inheritedAtSeedLength!==seedLength)
+      inheritanceFailV1('SOURCE_INHERITANCE_NATIVE_CHANGED',sid)
+    return Object.freeze({schemaVersion:1,encoding:'native-tavern-source-legacy-copy-v1',
+      childSessionId:sid,parentSessionId:parent,seedLength:Number(seedLength),...(fresh?{freshFirstTurn:true as const}:{})})
+  }
   function assertOperation(p:TavernSourcePreparedV1) {
     const operation=branch.get(p.operationKey)
     if(!inheritanceObjectV1(operation)||operation.operationId!==p.operationId
@@ -139,9 +159,16 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
         ||!inheritanceSameV1(p.ancestors,[...inherited.ancestors,
           {childSessionId,parentSessionId,operationId,nativeCut,preparedRef,applyIntentRef,commitRef,readyRef}]))
         inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
-    }else if(p.ancestors.length||source.sourceRecordSessionId!==p.parentSessionId
-      ||!inheritanceSameV1(original.activePointer,binding.originalPointer))
-      inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
+    }else {
+      const legacy=source.legacyInheritance===undefined?undefined:
+        validateTavernSourceLegacyCopyV1(source.legacyInheritance)
+      const originInvalid=legacy
+        ?legacy.childSessionId!==p.parentSessionId||!inheritanceSameV1(legacy,binding.legacyCopy)
+        :source.sourceRecordSessionId!==p.parentSessionId
+      if(p.ancestors.length||!inheritanceSameV1(original.activePointer,binding.originalPointer)
+        ||originInvalid)
+        inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
+    }
     for(const layer of p.editLayers) {
       const parsed=validateFrozenPublishedEditLayerV1(layer)
       for(const event of parsed.events)store.readRef(event.ref,budget)
@@ -701,6 +728,8 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
   }
   async function applyPreparedSourceInheritance(sid:string) {
     if(branch.get(tavernSourcePreparedKeyV1(sid))===undefined) {
+      const legacy=readLegacyCopy(sid)
+      if(legacy)return legacy
       const pointer=branch.get(`${sid}__import-active`),native=store.native(sid),parent=native.header.parentSession
       if(parent) {
         if(structuredPointer(String(parent)))inheritanceFailV1('SOURCE_INHERITANCE_MISSING')
@@ -808,10 +837,13 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
       kind:'committed-data' as const,data:consumerSource.inheritance,
       originalAbsenceProof:consumerSource.prepared.originalAbsenceProof,
       editBaseline:consumerSource.edit,materialBaseline:consumerSource.material}
-    if(branch.get(tavernSourcePreparedKeyV1(sid))===undefined)return {kind:'refused' as const,
-      code:'SOURCE_INHERITANCE_REQUIRES_NEW_SOURCE_ACTIVATION' as const,
-      missingEvidence:['immutable reservation Source, complete published edit journal and Native material terminal evidence']}
     try {
+      if(branch.get(tavernSourcePreparedKeyV1(sid))===undefined) {
+        const legacy=readLegacyCopy(sid)
+        if(legacy)return {kind:'legacy-copy-data' as const,data:legacy}
+        return {kind:'refused' as const,code:'SOURCE_INHERITANCE_REQUIRES_NEW_SOURCE_ACTIVATION' as const,
+          missingEvidence:['completed legacy copy or immutable reservation Source transaction']}
+      }
       const sourceLineage=readCommittedSourceLineage(sid),s=sourceLineage.current
       return {kind:'committed-data' as const,data:s.inheritance,originalAbsenceProof:s.prepared.originalAbsenceProof,
         editBaseline:s.editBaseline,materialBaseline:s.materialBaseline,sourceLineage}
@@ -915,7 +947,9 @@ export function createRoleplayTavernSourceInheritanceV1(deps:TavernSourceInherit
     readCommittedSourceInheritance,assertSourceInheritanceReady:sid=>{
       const pointer=branch.get(`${sid}__import-active`)
       if(inheritanceObjectV1(pointer)&&!pointer.inheritedFrom&&(pointer.sourceRecordSessionId??sid)===sid)return
-      if(branch.get(tavernSourcePreparedKeyV1(sid))===undefined&&!structuredPointer(sid))return
+      if(branch.get(tavernSourcePreparedKeyV1(sid))===undefined) {
+        if(readLegacyCopy(sid)||!structuredPointer(sid))return
+      }
       readStatic(sid,true)
     },inspectLegacySourceInheritance,migrateProvenLegacyInheritance}
 }

@@ -26,6 +26,7 @@ export function captureRoleplayTavernLoreExportDataV1(deps, sessionId) {
         activePointerRef: source.original.activePointerRef, revision: editor.revision, dataSha256: data.dataSha256,
         headRef: data.headRef, journalSha256: data.journalSha256, journalRefs: data.journalRefs,
         ...(data.inheritance ? { inheritance: data.inheritance } : {}),
+        ...(source.legacyInheritance ? { legacyInheritance: source.legacyInheritance } : {}),
         ...(source.inheritance ? { sourceInheritance: source.inheritance } : {}) };
     const materials = editor.entries.flatMap(entry => {
         const entrySource = { ...provenance, rawEntryPointer: entry.rawEntryPointer, rawEntrySha256: entry.rawEntrySha256,

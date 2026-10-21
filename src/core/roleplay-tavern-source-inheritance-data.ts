@@ -8,7 +8,8 @@ import type {TavernSourceInheritanceCodeV1,TavernSourceInheritanceRefV1,TavernSo
   TavernSourceOriginalBindingV1,TavernSourceNativeCutV1,TavernSourcePreparedV1,TavernSourceApplyIntentV1,
   TavernSourceCommitV1,TavernSourceReadyV1,TavernSourceFrozenRefV1,TavernSourceNumericalCaptureV1}
   from './roleplay-tavern-source-inheritance-types.js'
-import type {TavernSourceLegacyMigrationRecordV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {TavernSourceLegacyMigrationRecordV1,TavernSourceLegacyCopyV1}
+  from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernSourceFrozenPromptScopeRecordV1,TavernSourceFrozenNonNumericalOpeningV1}
   from './roleplay-tavern-source-inheritance-types.js'
 import {validateProgramAbsenceOpeningClosureV1} from './roleplay-program-absence-inheritance-data.js'
@@ -305,26 +306,41 @@ export function validateInheritanceCutV1(raw:unknown):asserts raw is TavernSourc
     ||raw.prefixEncoding!=='record-sha256-native-events-prefix-v1'||!inheritanceHashV1(raw.prefixSha256))
     inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
 }
+export function validateTavernSourceLegacyCopyV1(raw:unknown):TavernSourceLegacyCopyV1 {
+  inheritanceExactV1(raw,['schemaVersion','encoding','childSessionId','parentSessionId','seedLength',
+    ...(inheritanceObjectV1(raw)&&Object.hasOwn(raw,'freshFirstTurn')?['freshFirstTurn']:[])])
+  if(raw.schemaVersion!==1||raw.encoding!=='native-tavern-source-legacy-copy-v1'
+    ||!inheritanceIdV1(raw.childSessionId)||!inheritanceIdV1(raw.parentSessionId)
+    ||raw.childSessionId===raw.parentSessionId)inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
+  inheritanceCountV1(raw.seedLength)
+  if(raw.freshFirstTurn!==undefined&&(raw.freshFirstTurn!==true||raw.seedLength!==0))
+    inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
+  return raw as unknown as TavernSourceLegacyCopyV1
+}
 export function validateOriginalInheritanceBindingV1(raw:unknown):asserts raw is TavernSourceOriginalBindingV1 {
   inheritanceExactV1(raw,['sourceRecordSessionId','importId','rawSha256','normalizedSha256','coverageSha256',
     'transactionId','normalizer','documentSha256','dataSha256','importRecordRef','activationSha256',
-    'originalPointer','originalPointerRef'])
+    'originalPointer','originalPointerRef',
+    ...(inheritanceObjectV1(raw)&&Object.hasOwn(raw,'legacyCopy')?['legacyCopy']:[])])
   for(const field of ['sourceRecordSessionId','importId','transactionId'])
     if(!inheritanceIdV1(raw[field]))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
   for(const field of ['rawSha256','normalizedSha256','coverageSha256','documentSha256','dataSha256','activationSha256'])
     if(!inheritanceHashV1(raw[field]))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
   if(!['tavern-fields-v1','tavern-fields-v2','nexttavern-fields-v1'].includes(String(raw.normalizer)))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
   validateInheritanceRefV1(raw.importRecordRef,`${raw.sourceRecordSessionId}__import-${raw.importId}`)
+  const legacy=raw.legacyCopy===undefined?undefined:validateTavernSourceLegacyCopyV1(raw.legacyCopy)
   const pointer=raw.originalPointer
   if(!inheritanceObjectV1(pointer)||Object.keys(pointer).some(key=>!['importId','sourceRecordSessionId',
-    'normalizedSha256','transactionId','coverageSha256','activatedAt'].includes(key))
+    'normalizedSha256','transactionId','coverageSha256','activatedAt',...(legacy?['inheritedFrom']:[])].includes(key))
     ||pointer.importId!==raw.importId||(pointer.sourceRecordSessionId??raw.sourceRecordSessionId)!==raw.sourceRecordSessionId
     ||pointer.normalizedSha256!==raw.normalizedSha256||pointer.transactionId!==raw.transactionId
-    ||pointer.coverageSha256!==raw.coverageSha256)inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
+    ||pointer.coverageSha256!==raw.coverageSha256
+    ||legacy&&pointer.inheritedFrom!==legacy.parentSessionId)inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
   if(pointer.activatedAt!==undefined)inheritanceCountV1(pointer.activatedAt)
   const ref=raw.originalPointerRef
   inheritanceExactV1(ref,['table','key','exists','sha256'])
-  if(ref.table!=='branch'||ref.key!==`${raw.sourceRecordSessionId}__import-active`||ref.exists!==true
+  const pointerOwner=legacy?.childSessionId??raw.sourceRecordSessionId
+  if(ref.table!=='branch'||ref.key!==`${pointerOwner}__import-active`||ref.exists!==true
     ||ref.sha256!==inheritanceDataSha256V1(pointer))inheritanceFailV1('SOURCE_INHERITANCE_INVALID')
 }
 function validateLayer(raw:unknown):asserts raw is TavernSourceInheritanceLayerRefV1 {

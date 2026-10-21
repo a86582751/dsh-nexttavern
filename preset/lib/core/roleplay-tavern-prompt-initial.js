@@ -90,6 +90,7 @@ function verifySourcePlan(source, plan) {
         sourceFormat: original.decodedFormat === 'json-nexttavern-v1' ? 'nexttavern-character-book'
             : original.decodedFormat.endsWith('v3') ? 'ccv3-character-book' : 'ccv2-character-book',
         ...(source.inheritance ? { inheritance: source.inheritance } : {}),
+        ...(source.legacyInheritance ? { legacyInheritance: source.legacyInheritance } : {}),
         ...(primary.binding === 'proven-absence' ? { bookPresence: 'proven-absence', absenceProof: primary.absenceProof } : {}) };
     if (recordSha256(actual) !== recordSha256(expected) || recordSha256(plan.rawBook) !== primary.bookSha256
         || recordSha256(plan.rawBook) !== recordSha256(primary.value)

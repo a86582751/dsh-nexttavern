@@ -571,7 +571,8 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
       transactionId:o.transactionId,normalizer:source.normalizer,documentSha256:o.documentSha256,dataSha256:o.dataSha256,
       importRecordRef:inheritanceRefV1(o.importRecordRef.key,record),activationSha256:recordSha256(record.activation),
       originalPointer:o.activePointer,originalPointerRef:{table:'branch',key:o.activePointerRef.key,exists:true,
-        sha256:recordSha256(o.activePointer)}}
+        sha256:recordSha256(o.activePointer)},
+      ...(source.legacyInheritance?{legacyCopy:source.legacyInheritance}:{})}
   }
   function assertOriginal(binding:TavernSourceOriginalBindingV1,budget?:TavernSourceReadBudgetV1) {
     const record=readRef(binding.importRecordRef,budget)

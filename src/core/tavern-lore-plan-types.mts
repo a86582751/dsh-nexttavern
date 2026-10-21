@@ -2,7 +2,7 @@
  * activated entry, a provider prompt or authority to mutate a database. */
 import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {ImportPointer,ImportRecord} from './roleplay-import-types.js'
-import type {TavernSourceInheritanceDescriptorV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {TavernSourceInheritanceDescriptorV1,TavernSourceLegacyCopyV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {TavernLoreFrozenDerivedContentReferenceV1} from './tavern-lore-derived.mjs'
 import type {TavernLoreMembershipDataV1,TavernLoreMemberIdentityV1} from './roleplay-tavern-lore-membership.js'
 
@@ -47,6 +47,7 @@ export interface TavernLorePresentSourceReferenceV1 {
   /** The caller supplies both source identity and the format it decoded. */
   readonly sourceFormat:'ccv2-character-book'|'ccv3-character-book'|'nexttavern-character-book'
   readonly inheritance?:TavernSourceInheritanceDescriptorV1
+  readonly legacyInheritance?:TavernSourceLegacyCopyV1
 }
 export interface TavernLoreAbsentSourceReferenceV1 extends TavernLorePresentSourceReferenceV1 {
   readonly bookPresence:'proven-absence'

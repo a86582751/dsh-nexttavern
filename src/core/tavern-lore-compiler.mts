@@ -6,7 +6,8 @@ import {types} from 'node:util'
 import {cloneSchemaData,cloneSchemaDescriptorData} from './tavern-mvu-schema-data.js'
 import {CARD_LIMITS,inspectTavernCardDocument} from './tavern-card.js'
 import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
-import {validateTavernSourceInheritanceDescriptorV1} from './roleplay-tavern-source-inheritance-data.js'
+import {validateTavernSourceInheritanceDescriptorV1,validateTavernSourceLegacyCopyV1}
+  from './roleplay-tavern-source-inheritance-data.js'
 import {ST_LORE_COMMIT,ST_LORE_ENTRY_DEFAULTS_V1,ST_LORE_LOGIC_V1,ST_LORE_POSITION_V1,
   ST_LORE_ROLE_V1,ST_LORE_PROFILE_SHA256} from './tavern-lore-fixed-profile.mjs'
 import type {TavernLoreCompilationInputV1,TavernLoreCompilationV1,TavernLoreDiagnosticV1,TavernLoreEntryPlanV1,
@@ -90,7 +91,8 @@ function validateInput(raw:unknown,profile:CompilerProfile=compilerProfiles.O3):
   exact(source,['schemaVersion','encoding','ownerSessionId','sourceRecordSessionId','importId','rawSourceSha256',
     'importRecordSha256','sourceSnapshotSha256','documentSha256','bookPointer','bookValueSha256','sourceFormat',
     ...(has(source,'bookPresence')?['bookPresence','absenceProof']:[]),
-    ...(has(source,'inheritance')?['inheritance']:[])],'/source')
+    ...(has(source,'inheritance')?['inheritance']:[]),
+    ...(has(source,'legacyInheritance')?['legacyInheritance']:[])],'/source')
   if(source.schemaVersion!==1||source.encoding!=='st-character-book-source-reference-v1'
     ||typeof source.sourceFormat!=='string'||!(profile.native
       ?['ccv2-character-book','ccv3-character-book','nexttavern-character-book']
@@ -114,6 +116,13 @@ function validateInput(raw:unknown,profile:CompilerProfile=compilerProfiles.O3):
       ||source.importId!==original.importId||source.rawSourceSha256!==original.rawSha256
       ||source.importRecordSha256!==original.importRecordRef.sha256||source.documentSha256!==original.documentSha256)
       fail('LORE_SOURCE_INHERITANCE_INVALID','/source/inheritance')
+  }
+  if(has(source,'legacyInheritance')) {
+    let legacy:ReturnType<typeof validateTavernSourceLegacyCopyV1>
+    try {legacy=validateTavernSourceLegacyCopyV1(source.legacyInheritance)}
+    catch {fail('LORE_SOURCE_INHERITANCE_INVALID','/source/legacyInheritance')}
+    if(has(source,'inheritance')||source.ownerSessionId!==legacy.childSessionId)
+      fail('LORE_SOURCE_INHERITANCE_INVALID','/source/legacyInheritance')
   }
   if(source.bookValueSha256!==recordSha256(value.book))fail('LORE_SOURCE_VALUE_MISMATCH',source.bookPointer)
   if(value.book===null) {
@@ -151,13 +160,15 @@ function validateBookAbsence(raw:unknown,source:Record<string,unknown>):void {
   const {absenceProofSha256,...body}=raw
   const inherited=has(source,'inheritance')
     ?validateTavernSourceInheritanceDescriptorV1(source.inheritance):undefined,
-    originalOwner=inherited?.originalBinding.sourceRecordSessionId??source.ownerSessionId
+    legacy=inherited?.originalBinding.legacyCopy
+      ??(source.legacyInheritance as ReturnType<typeof validateTavernSourceLegacyCopyV1>|undefined),
+    originalOwner=legacy?.childSessionId??inherited?.originalBinding.sourceRecordSessionId??source.ownerSessionId
   if(raw.schemaVersion!==1||raw.encoding!=='st-character-book-proven-absence-data-v1'
     ||raw.authority!=='consumer-data-only'||!hash(absenceProofSha256)
     ||recordSha256(body)!==absenceProofSha256||raw.documentDataRootPointer!=='/data'
     ||raw.bookPointer!=='/data/character_book'||source.bookPointer!==raw.bookPointer
     ||raw.ownerSessionId!==originalOwner||raw.sourceRecordSessionId!==source.sourceRecordSessionId
-    ||raw.ownerSessionId!==raw.sourceRecordSessionId||raw.importId!==source.importId
+    ||(!legacy&&raw.ownerSessionId!==raw.sourceRecordSessionId)||raw.importId!==source.importId
     ||raw.rawSha256!==source.rawSourceSha256||raw.documentSha256!==source.documentSha256
     ||!['json-v2','json-v3','png-v2','png-v3','json-nexttavern-v1'].includes(String(raw.decodedFormat))) {
     fail('LORE_BOOK_ABSENCE_PROOF_INVALID',at)
@@ -203,7 +214,8 @@ function validateBookAbsence(raw:unknown,source:Record<string,unknown>):void {
     ||recordRef.table!=='branch'||recordRef.key!==`${raw.sourceRecordSessionId}__import-${raw.importId}`
     ||recordRef.exists!==true||recordRef.sha256!==source.importRecordSha256
     ||active.importId!==raw.importId||(active.sourceRecordSessionId??raw.ownerSessionId)!==raw.sourceRecordSessionId
-    ||has(active,'inheritedFrom')||active.normalizedSha256!==raw.normalizedSha256
+    ||(legacy?active.inheritedFrom!==legacy.parentSessionId:has(active,'inheritedFrom'))
+    ||active.normalizedSha256!==raw.normalizedSha256
     ||active.coverageSha256!==raw.coverageSha256||active.transactionId!==raw.transactionId
     ||typeof raw.transactionId!=='string'||!/^[a-zA-Z0-9_-]{1,128}$/.test(raw.transactionId)
     ||activation.transactionId!==raw.transactionId||(active.activatedAt??null)!==raw.activatedAt
@@ -218,12 +230,12 @@ function validateBookAbsence(raw:unknown,source:Record<string,unknown>):void {
   for(const row of activation.writeDigests) {
     if(!object(row)||!['branch','cards','worldbook','rules','status','opening'].includes(String(row.tableName))
       ||typeof row.key!=='string'||!/^[a-zA-Z0-9_-]{1,256}$/.test(row.key)
-      ||!row.key.startsWith(`${raw.ownerSessionId}__`)||row.sha256!=='missing'&&!hash(row.sha256)
+      ||!row.key.startsWith(`${raw.sourceRecordSessionId}__`)||row.sha256!=='missing'&&!hash(row.sha256)
       ||seen.has(`${row.tableName}:${row.key}`)
-      ||row.tableName==='branch'&&row.key!==`${raw.ownerSessionId}__settings`
-      ||row.tableName==='rules'&&row.key!==`${raw.ownerSessionId}__spec`
-      ||row.tableName==='status'&&![`${raw.ownerSessionId}__spec`,`${raw.ownerSessionId}__panel`].includes(row.key)
-      ||row.tableName==='opening'&&row.key!==`${raw.ownerSessionId}__scene`) {
+      ||row.tableName==='branch'&&row.key!==`${raw.sourceRecordSessionId}__settings`
+      ||row.tableName==='rules'&&row.key!==`${raw.sourceRecordSessionId}__spec`
+      ||row.tableName==='status'&&![`${raw.sourceRecordSessionId}__spec`,`${raw.sourceRecordSessionId}__panel`].includes(row.key)
+      ||row.tableName==='opening'&&row.key!==`${raw.sourceRecordSessionId}__scene`) {
       fail('LORE_BOOK_ABSENCE_ACTIVATION_INVALID',`${at}/activation/writeDigests`)
     }
     seen.add(`${row.tableName}:${row.key}`)

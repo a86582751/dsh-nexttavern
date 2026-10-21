@@ -63,6 +63,7 @@ function assemblePromptSourceData(captured:TavernLoreEditSourceDataCaptureV1,edi
       sourceFormat:source.original.decodedFormat==='json-nexttavern-v1'?'nexttavern-character-book'
         :source.original.decodedFormat.endsWith('v3')?'ccv3-character-book':'ccv2-character-book',
       ...(source.inheritance?{inheritance:source.inheritance}:{}),
+      ...(source.legacyInheritance?{legacyInheritance:source.legacyInheritance}:{}),
       ...(source.original.primary.binding==='proven-absence'
         ?{bookPresence:'proven-absence' as const,absenceProof:source.original.primary.absenceProof}:{})},
     book:source.original.primary.value,

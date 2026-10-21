@@ -6,7 +6,8 @@ import {parseMvuYamlData} from './tavern-mvu-yaml.js'
 import {ST_LORE_ENTRY_DEFAULTS_V1} from './tavern-lore-fixed-profile.mjs'
 import {tavernLoreEntrySemanticSha256V1} from './tavern-lore-timed.mjs'
 import {validateTavernLoreAbsentSourceReferenceV1} from './tavern-lore-compiler.mjs'
-import {validateTavernSourceInheritanceDescriptorV1} from './roleplay-tavern-source-inheritance-data.js'
+import {validateTavernSourceInheritanceDescriptorV1,validateTavernSourceLegacyCopyV1}
+  from './roleplay-tavern-source-inheritance-data.js'
 import type {MvuJsonObject,MvuJsonValue} from './tavern-mvu-initvar.js'
 import type {TavernLoreSourceDataV1} from './roleplay-tavern-lore-source-types.js'
 import type {TavernTemplateScopeBindingV1,TavernTemplateScopeV1} from './tavern-template-types.mjs'
@@ -156,7 +157,8 @@ export function promptInitialEntryV1(entry:TavernPromptVariableCatalogEntryV1,in
  * owner reads, physical scope identity and currentness stay with the supplier. */
 export function validatePromptVariableSourceV1(source:TavernLoreSourceDataV1):void {
   promptExact(source,['schemaVersion','encoding','authority','sessionId','sourceRecordSessionId','normalizer',
-    'original','current','sourceSha256',...(Object.hasOwn(source,'inheritance')?['inheritance']:[])])
+    'original','current','sourceSha256',...(Object.hasOwn(source,'inheritance')?['inheritance']:[]),
+    ...(Object.hasOwn(source,'legacyInheritance')?['legacyInheritance']:[])])
   if(source.schemaVersion!==1||source.encoding!=='tavern-lore-current-source-data-v1'
     ||source.authority!=='consumer-data-only'||typeof source.sessionId!=='string'||!source.sessionId
     ||typeof source.sourceRecordSessionId!=='string'||!source.sourceRecordSessionId
@@ -172,6 +174,11 @@ export function validatePromptVariableSourceV1(source:TavernLoreSourceDataV1):vo
       ||original.documentSha256!==source.original.documentSha256||original.dataSha256!==source.original.dataSha256
       ||original.importRecordRef.key!==source.original.importRecordRef.key
       ||original.importRecordRef.sha256!==source.original.importRecordRef.sha256)
+      promptFail('PROMPT_VARIABLE_SOURCE_INHERITANCE_JOIN')
+  }
+  if(source.legacyInheritance) {
+    const legacy=validateTavernSourceLegacyCopyV1(source.legacyInheritance)
+    if(source.inheritance||legacy.childSessionId!==source.sessionId)
       promptFail('PROMPT_VARIABLE_SOURCE_INHERITANCE_JOIN')
   }
   promptExact(source.original,['activePointer','activePointerRef','importRecordRef','rawSha256','normalizedSha256',
@@ -205,6 +212,7 @@ export function validatePromptVariableSourceV1(source:TavernLoreSourceDataV1):vo
       sourceFormat:original.decodedFormat==='json-nexttavern-v1'?'nexttavern-character-book'
         :original.decodedFormat.endsWith('v3')?'ccv3-character-book':'ccv2-character-book',
       ...(source.inheritance?{inheritance:source.inheritance}:{}),
+      ...(source.legacyInheritance?{legacyInheritance:source.legacyInheritance}:{}),
       bookPresence:'proven-absence',absenceProof:proof})
     const ancestor=source.inheritance?.originalBinding,
       expectedPointer=ancestor?.originalPointer??original.activePointer,

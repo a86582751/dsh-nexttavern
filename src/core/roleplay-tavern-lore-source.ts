@@ -138,7 +138,7 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
     ||pointer.inheritedFrom===sessionId))fail('ACTIVE_POINTER_INVALID','/activePointer/inheritedFrom')
   const isInherited=sourceRecordSessionId!==sessionId||Object.hasOwn(pointer,'inheritedFrom')
   const lineage=isInherited?deps.readSourceInheritance?.(sessionId):undefined
-  if(isInherited&&lineage?.kind!=='committed-data') {
+  if(isInherited&&lineage?.kind!=='committed-data'&&lineage?.kind!=='legacy-copy-data') {
     outside('INHERITED_SOURCE_EVIDENCE_MISSING','/activePointer',[
       'actual Native branch parent and frozen cut',
       'committed inheritance/material-copy lineage and own-session current rows',
@@ -146,6 +146,7 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
     ])
   }
   const inheritance=lineage?.kind==='committed-data'?lineage.data:undefined
+  const legacyInheritance=lineage?.kind==='legacy-copy-data'?lineage.data:undefined
   if(inheritance) {
     const original=inheritance.originalBinding
     if(inheritance.childSessionId!==sessionId||inheritance.parentSessionId!==pointer.inheritedFrom
@@ -349,6 +350,7 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   const body:Omit<TavernLoreSourceDataV1,'sourceSha256'>={schemaVersion:1 as const,encoding:'tavern-lore-current-source-data-v1' as const,
     authority:'consumer-data-only' as const,sessionId,sourceRecordSessionId,normalizer,
     ...(inheritance?{inheritance}:{}),
+    ...(legacyInheritance?{legacyInheritance}:{}),
     original:{activePointer:pointer as unknown as ImportPointer,activePointerRef,importRecordRef,
       rawSha256:record.rawSha256,normalizedSha256:record.normalizedSha256,coverageSha256:pointer.coverageSha256 as string,
       transactionId:pointer.transactionId as string,decodedFormat:decoded.format as TavernLoreSourceDataV1['original']['decodedFormat'],

@@ -4,7 +4,8 @@ import { eventsOf, surfaceEntries, visibleCompactionCheckpoint, canonicalAssista
 import { importActiveKey } from './roleplay-import.js'
 import type { InheritanceDependencies, InheritanceDecision, InheritanceSession, InheritanceOptions, TruncationBoundaryCarry } from './roleplay-inheritance-types.js'
 import type { DirectorNotes } from '../memory/memory-history.js'
-import type {TavernSourceInheritanceReadyBindingV1} from './roleplay-tavern-source-inheritance-types.js'
+import type {TavernSourceInheritanceReadyBindingV1,TavernSourceLegacyCopyV1}
+  from './roleplay-tavern-source-inheritance-types.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 
 export function createRoleplayInheritance(deps: InheritanceDependencies) {
@@ -21,7 +22,7 @@ export function createRoleplayInheritance(deps: InheritanceDependencies) {
     st.branchPreparing = (async () => {
       try {
         let pendingSourceReady:Readonly<Record<string,unknown>>|undefined,
-          sourceBinding:TavernSourceInheritanceReadyBindingV1|null|undefined
+          sourceBinding:TavernSourceInheritanceReadyBindingV1|TavernSourceLegacyCopyV1|null|undefined
         const parent = session.header?.parentSession
         if (parent) {
             const meta = cloneBranchRecord(T.branch.get(keyOf(session.id, 'meta')))

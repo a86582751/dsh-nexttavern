@@ -255,6 +255,7 @@ export function compilerInput(source:TavernLoreSourceDataV1,overlay:TavernLoreCu
       sourceFormat:original.decodedFormat==='json-nexttavern-v1'?'nexttavern-character-book'
         :original.decodedFormat.endsWith('v3')?'ccv3-character-book':'ccv2-character-book',
       ...(source.inheritance?{inheritance:source.inheritance}:{}),
+      ...(source.legacyInheritance?{legacyInheritance:source.legacyInheritance}:{}),
       ...(original.primary.binding==='proven-absence'
         ?{bookPresence:'proven-absence' as const,absenceProof:original.primary.absenceProof}:{})},currentNativeOverlay:overlay,
     ...(membership?{currentNativeMembership:membership}:{})}

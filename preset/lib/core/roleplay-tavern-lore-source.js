@@ -141,7 +141,7 @@ function captured(deps, sessionId) {
         fail('ACTIVE_POINTER_INVALID', '/activePointer/inheritedFrom');
     const isInherited = sourceRecordSessionId !== sessionId || Object.hasOwn(pointer, 'inheritedFrom');
     const lineage = isInherited ? deps.readSourceInheritance?.(sessionId) : undefined;
-    if (isInherited && lineage?.kind !== 'committed-data') {
+    if (isInherited && lineage?.kind !== 'committed-data' && lineage?.kind !== 'legacy-copy-data') {
         outside('INHERITED_SOURCE_EVIDENCE_MISSING', '/activePointer', [
             'actual Native branch parent and frozen cut',
             'committed inheritance/material-copy lineage and own-session current rows',
@@ -149,6 +149,7 @@ function captured(deps, sessionId) {
         ]);
     }
     const inheritance = lineage?.kind === 'committed-data' ? lineage.data : undefined;
+    const legacyInheritance = lineage?.kind === 'legacy-copy-data' ? lineage.data : undefined;
     if (inheritance) {
         const original = inheritance.originalBinding;
         if (inheritance.childSessionId !== sessionId || inheritance.parentSessionId !== pointer.inheritedFrom
@@ -401,6 +402,7 @@ function captured(deps, sessionId) {
     const body = { schemaVersion: 1, encoding: 'tavern-lore-current-source-data-v1',
         authority: 'consumer-data-only', sessionId, sourceRecordSessionId, normalizer,
         ...(inheritance ? { inheritance } : {}),
+        ...(legacyInheritance ? { legacyInheritance } : {}),
         original: { activePointer: pointer, activePointerRef, importRecordRef,
             rawSha256: record.rawSha256, normalizedSha256: record.normalizedSha256, coverageSha256: pointer.coverageSha256,
             transactionId: pointer.transactionId, decodedFormat: decoded.format,

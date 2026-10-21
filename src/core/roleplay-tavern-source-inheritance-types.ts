@@ -91,6 +91,21 @@ export interface TavernSourceOriginalBindingV1 {
   /** Historical original pointer; never reread the ancestor's current head. */
   readonly originalPointer:Readonly<ImportPointer>
   readonly originalPointerRef:{readonly table:'branch';readonly key:string;readonly exists:true;readonly sha256:string}
+  /** A pre-transaction writer retained the actual child's pointer, not the
+   * original import owner's former active head. Keep that observed address. */
+  readonly legacyCopy?:TavernSourceLegacyCopyV1
+}
+/** Completed copies made before reservation-time Source transactions existed.
+ * Current child rows remain Source-owned; this DATA grants no MVU authority. */
+export interface TavernSourceLegacyCopyV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-tavern-source-legacy-copy-v1'
+  readonly childSessionId:string
+  readonly parentSessionId:string
+  readonly seedLength:number
+  /** The old writer copied static config into a fresh Native Session, whose
+   * header has no Native parent; parentSessionId names the static Source. */
+  readonly freshFirstTurn?:true
 }
 export interface TavernSourceMaterialPublicationV1 {
   readonly ownerSessionId:string
@@ -336,6 +351,7 @@ export type TavernSourceInheritanceReadV1={readonly kind:'committed-data';readon
   readonly originalAbsenceProof:TavernLoreBookAbsenceProofV1|null;
   readonly sourceLineage?:TavernSourceCommittedLineageV1;
   readonly editBaseline:TavernSourceEditBaselineV1;readonly materialBaseline:TavernSourceMaterialBaselineV1}
+  |{readonly kind:'legacy-copy-data';readonly data:TavernSourceLegacyCopyV1}
   |{readonly kind:'refused';readonly code:TavernSourceInheritanceCodeV1;readonly missingEvidence:readonly string[]}
 export type TavernSourceInheritanceCodeV1='SOURCE_INHERITANCE_INVALID'|'SOURCE_INHERITANCE_MISSING'
   |'SOURCE_INHERITANCE_BUDGET'|'SOURCE_INHERITANCE_NATIVE_UNAVAILABLE'|'SOURCE_INHERITANCE_NATIVE_CHANGED'
@@ -465,7 +481,8 @@ export interface TavernSourceInheritanceOwnerV1 {
   withOwnedRowFacts<T>(childSessionId:string,consume:(sourceRows:TavernSourceOwnedRowFactsV1,
     transaction:TavernSourceStaticTransactionV1,opening:TavernSourceProgramAbsenceObservationV1|undefined)=>T):T
   assertPreparedParentCurrent(childSessionId:string):void
-  applyPreparedSourceInheritance(childSessionId:string):Promise<TavernSourceInheritanceReadyBindingV1|null>
+  applyPreparedSourceInheritance(childSessionId:string):Promise<
+    TavernSourceInheritanceReadyBindingV1|TavernSourceLegacyCopyV1|null>
   publishSourceInheritanceReady(childSessionId:string,metadata:Readonly<Record<string,unknown>>):Promise<void>
   readCommittedSourceInheritance(childSessionId:string):TavernSourceInheritanceReadV1
   assertSourceInheritanceReady(childSessionId:string):void

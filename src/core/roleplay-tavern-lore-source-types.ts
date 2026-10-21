@@ -4,7 +4,7 @@ import type {TavernOpeningContext} from './tavern-card.js'
 import type {LegacyContributionDataRequestV1, LegacyRawEntryDataRefV1,
   LegacyRowRefDataV1} from './roleplay-tavern-lore-contributions.js'
 import type {TavernLoreBookAbsenceProofV1} from './tavern-lore-plan-types.mjs'
-import type {TavernSourceInheritanceDescriptorV1,TavernSourceInheritanceReadV1,
+import type {TavernSourceInheritanceDescriptorV1,TavernSourceInheritanceReadV1,TavernSourceLegacyCopyV1,
   TavernSourceCommittedLineageV1} from './roleplay-tavern-source-inheritance-types.js'
 
 /** Core supplies its actual synchronous tables under the existing import lock.
@@ -61,6 +61,7 @@ export interface TavernLoreSourceDataV1 {
   readonly sourceRecordSessionId: string
   readonly normalizer: 'tavern-fields-v1' | 'tavern-fields-v2' | 'nexttavern-fields-v1'
   readonly inheritance?:TavernSourceInheritanceDescriptorV1
+  readonly legacyInheritance?:TavernSourceLegacyCopyV1
   readonly original: {
     readonly activePointer: Readonly<ImportPointer>
     readonly activePointerRef: LegacyRowRefDataV1
