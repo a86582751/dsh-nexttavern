@@ -20,6 +20,8 @@
 
 [在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md)
 
+0.3 开发专题：[社区卡兼容与转换](COMMUNITY-CARDS.md) · [原生卡格式](NATIVE-CARD-FORMAT.md) · [数值、MVU 与 Ruby](NATIVE-STATE.md) · [社区预设与正则](COMMUNITY-PRESETS.md)。均为开发线说明，尚未随正式 0.3 发布。
+
 ![沉浸式游玩](screenshots/play.png)
 
 Roleplay workspace for DeepSeek Harness: interactive character creation, on-demand worldbook reading, long-form memory, multi-model collaboration, character agents, branching stories, novel exports and one-click installers.

@@ -570,6 +570,11 @@ const FILE_TARGETS = {
     'ARCHITECTURE.md': 'architecture.html',
     'SCREENSHOTS.md': 'screenshots.html',
     'CHANGELOG.md': 'changelog.html',
+    'DEVELOPMENT-0.3.md': 'development-0.3.html',
+    'COMMUNITY-CARDS.md': 'community-cards.html',
+    'NATIVE-CARD-FORMAT.md': 'native-card-format.html',
+    'NATIVE-STATE.md': 'native-state.html',
+    'COMMUNITY-PRESETS.md': 'community-presets.html',
     'CONTRIBUTING.md': 'development.html'
 };
 const pageHeadingSlugs = new Map();

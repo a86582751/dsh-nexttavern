@@ -40,10 +40,10 @@ node site/build.mjs --check
 
 首页标语从皮肤 `HEADLINE_GROUPS` 的 12 条原文中取用，按打字机效果依序展示；启用减少动态效果时显示完整静态文案并停用自动动画。页面隐藏时也会暂停自动轮播。实机截图集中于 `screenshots.html`，首页仅保留入口。支持范围和安装说明沿用公开文档；当前发行与 GitHub/npm 口径对齐，0.3 明确保留“开发中，尚未发布”。页面重设计不增加运行时模型请求。
 
-正文来自 `README.md`、`INSTALL-WINDOWS.md`、`INSTALL-LINUX.md`、`PUBLIC-ACCESS.md`、`ARCHITECTURE.md`、`SCREENSHOTS.md`、`CHANGELOG.md`、`DEVELOPMENT-0.3.md` 和 `CONTRIBUTING.md`。配置中的章节选择器是精确 H2 标题，章节消失会使生成失败。文档内页继续保留侧边导航、面包屑、页内目录与前后页。
+正文来自 `README.md`、安装／公网／架构／截图／变更／开发说明，以及 `COMMUNITY-CARDS.md`、`NATIVE-CARD-FORMAT.md`、`NATIVE-STATE.md`、`COMMUNITY-PRESETS.md` 四篇 0.3 开发专题。专题在导航中独立分组，面向玩家和第三方作者，不发布维护库日志。配置中的章节选择器是精确 H2 标题，章节消失会使生成失败。文档内页继续保留侧边导航、面包屑、页内目录与前后页。新增独立正文时同步 `FILE_TARGETS` 站内链接映射及 Pages 的路径触发条件。
 
 ## 发布
 
 `.github/workflows/pages.yml` 在 `main` 的文档或站点内容变化时渲染并将 `artifacts/site` 发布至 Pages，不改变 npm 包。可选 ffmpeg 安装限时 90 秒；超时使用复制原图的回退。
 
-带 `[skip ci]` 的提交不自动部署。已获当次发布授权时手动 dispatch 一次 Pages，复用该任务，不对同一输入重复本地与云端全量验证。发布前保存上一轮精确 artifact，发布后按本次 head 的 artifact 字节核对线上页面与资源；workflow 成功不能替代 HTTP 读回。
+带 `[skip ci]` 的提交不自动部署。已获当次发布授权时手动 dispatch 一次 Pages，复用该任务，不对同一输入重复本地与云端全量验证。部署记录保存源码 commit、Pages run 及前一成功部署的 commit/run；发布后读取本次目标页面确认可达。按变更需要选择一次本地或线上视觉核对；只有具体内容或缓存异常才定点检查 artifact／资源字节，完整政策见维护库 `docs/website.md`。

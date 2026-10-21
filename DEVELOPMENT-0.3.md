@@ -8,6 +8,8 @@
 
 ## 0.3 想让大家玩到什么
 
+阅读机制与使用边界：[社区卡兼容与转换](COMMUNITY-CARDS.md) · [原生卡格式参考](NATIVE-CARD-FORMAT.md) · [数值、MVU 与 Ruby](NATIVE-STATE.md) · [社区预设与正则](COMMUNITY-PRESETS.md)。这些专题描述开发线，不表示正式包已提供全部能力。
+
 我们希望你把 SillyTavern 社区卡带进 NextTavern 后，能尽量保留它原本的玩法。除了人物设定和对话，还包括卡里的世界书、多个开场、好感度和物品等变量，以及状态栏、小手机、按钮、立绘和音乐。
 
 具体来说，目标是：
