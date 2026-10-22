@@ -201,7 +201,10 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     const currentText = textOf(role === 'assistant' ? event.data?.message?.content : event.data?.content)
     const changed = currentText !== text
     const priorEdit=messageEdits.latest(eventsOf(session),targetSeq)
-    if(changed||priorEdit)beginNumericalEdit?.(session.id)
+    // Reusing a completed text projection must not revoke its ready schema view.
+    // Numerical persistence/reconciliation below still owns unfinished recovery.
+    const committed=!changed&&!!priorEdit&&editEffectsCommitted(session,priorEdit)
+    if((changed||priorEdit)&&!committed)beginNumericalEdit?.(session.id)
     const edit = changed
       ? messageEdits.append(session, targetSeq, {role, messageId}, text)
       : priorEdit
@@ -213,7 +216,6 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     const editSeq = Number(edit.seq)
     const receiptKey = editInvalidationKey(session.id, role, targetSeq)
     const textSha256 = sha256(text)
-    const committed=editEffectsCommitted(session,edit)
     // The native provider drains routed live events at this durability barrier.
     // A flush/invalidation failure leaves the edit available for an idempotent retry.
     if(!committed)await flushEdits(session)
