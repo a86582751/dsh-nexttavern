@@ -11,7 +11,7 @@ export type MvuEditBasisFacts = {kind:'none'}
   | {kind:'verified';sourceSha256:string;root:MvuStateRoot|MvuSchemaStoryRoot;editFloorSeq:number}
   | {kind:'unknown';code?:string}
 export type MvuEditInvalidation = {kind:'clear'}
-  | {kind:'invalidated';code:'NUMERICAL_EDIT_INVALIDATED';fromSeq:number}
+  | {kind:'invalidated';code:'NUMERICAL_EDIT_INVALIDATED';fromSeq:number;editFloorSeq:number}
   | {kind:'unknown';code:string}
 export interface MvuEditInvalidationRecord {
   schemaVersion:1|2
@@ -222,7 +222,8 @@ export function createRoleplayMvuEditFacts(deps:MvuEditFactsDeps) {
         if(!row||actual===undefined||!same(clone(actual),row))fail('NUMERICAL_EDIT_EFFECTS_MISSING')
         fromSeq=Math.min(fromSeq??row.targetSeq,row.targetSeq)
       }
-      return fromSeq===undefined?{kind:'clear'}:{kind:'invalidated',code:'NUMERICAL_EDIT_INVALIDATED',fromSeq}
+      return fromSeq===undefined?{kind:'clear'}:{kind:'invalidated',code:'NUMERICAL_EDIT_INVALIDATED',
+        fromSeq,editFloorSeq:basis.editFloorSeq}
     } catch(error){return {kind:'unknown',code:codeOf(error)}}
   }
   async function persistEdit(input:{sessionId:string;editSeq:number}):Promise<MvuEditPersistence> {

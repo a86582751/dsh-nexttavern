@@ -17,7 +17,7 @@ import type {SchemaJournalFrozenCut,SchemaJournalReady} from './roleplay-mvu-sch
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaDerivedHeadV1,MvuSchemaStoryFrontier}
   from './roleplay-mvu-schema-story-types.js'
 import type {MvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
-import type {MvuDerivedSourceProofV2,MvuDerivedSourceProofUnion} from './roleplay-mvu-frozen-lineage.js'
+import type {MvuDerivedSourceProofV2,MvuDerivedSourceProofV3} from './roleplay-mvu-frozen-lineage.js'
 import type {TavernSourceFrozenRefV1} from './roleplay-tavern-source-inheritance-types.js'
 import type {ForkOperation} from './roleplay-worldline-types.js'
 import type {ForkReservation} from './roleplay-branch-routes-types.js'
@@ -76,8 +76,23 @@ export interface MvuSchemaDerivedBasisV2 {
   source:MvuDerivedSourceProofV2
   basisSha256:string
 }
-export type MvuSchemaDerivedPrepared=MvuSchemaDerivedPreparedV1|MvuSchemaDerivedPreparedV2
-export type MvuSchemaDerivedBasis=MvuSchemaDerivedBasisV1|MvuSchemaDerivedBasisV2
+export interface MvuSchemaHistoryBasisRef {basisKey:string;basisSha256:string}
+/** The actual parent keeps its Source/Native identity. The selected prefix
+ * belongs to an older owner inside this Source-proven frozen DATA container. */
+export interface MvuSchemaDerivedPreparedV3 extends Omit<MvuSchemaDerivedPreparedV2,'schemaVersion'|'encoding'> {
+  schemaVersion:3
+  encoding:'native-mvu-schema-derived-prepared-v3'
+  historyBasis:MvuSchemaHistoryBasisRef
+}
+export interface MvuSchemaDerivedBasisV3 {
+  schemaVersion:3
+  encoding:'native-mvu-schema-derived-basis-v3'
+  prepared:MvuSchemaDerivedPreparedV3
+  source:MvuDerivedSourceProofV3
+  basisSha256:string
+}
+export type MvuSchemaDerivedPrepared=MvuSchemaDerivedPreparedV1|MvuSchemaDerivedPreparedV2|MvuSchemaDerivedPreparedV3
+export type MvuSchemaDerivedBasis=MvuSchemaDerivedBasisV1|MvuSchemaDerivedBasisV2|MvuSchemaDerivedBasisV3
 export interface MvuSchemaDerivedEventV1 {
   schemaVersion:1
   encoding:'native-mvu-schema-derived-event-v1'
@@ -200,7 +215,7 @@ function validateFrozenPrefixFields(prefix:MvuSchemaFrozenPrefixV1):MvuSchemaFro
     ||schemaOriginalProgramSha256(prefix.original)!==snapshot.root.programSha256
     ||prefix.original.realmEpoch!==snapshot.root.realmEpoch||prefix.inheritedEventCount>prefix.journal.nativeCut
     ||!Array.isArray(prefix.eventKeys)||new Set(prefix.eventKeys).size!==prefix.eventKeys.length
-    ||prefix.eventKeys.some(key=>typeof key!=='string'||!key.startsWith(`${prefix.sessionId}__mvu-state-schema-`))
+    ||prefix.eventKeys.some(key=>typeof key!=='string')
     ||!Array.isArray(prefix.consumed)||prefix.consumed.length!==prefix.eventKeys.length
     ||new Set(prefix.consumed.map(item=>item.planSha256)).size!==prefix.consumed.length)fail()
   for(const item of prefix.consumed) {
@@ -245,16 +260,23 @@ function validateDerivedPreparedFields(bounded:MvuSchemaDerivedPrepared):MvuSche
   const prepared=retainInheritanceChild(bounded,'prefix',prefix)
   exact(prepared,['schemaVersion','encoding','operationId','anchorSha256','parentSessionId','childSessionId',
     'seedLength','parentInheritedEventCount','parentSourceSha256','prefix','preparedSha256',
-    ...(prepared.schemaVersion===2?['sourcePreparedRef','parentNumericDescriptorSha256','prefixClosureRef','forkReservationBinding']:[])])
+    ...(prepared.schemaVersion!==1?['sourcePreparedRef','parentNumericDescriptorSha256','prefixClosureRef','forkReservationBinding']:[]),
+    ...(prepared.schemaVersion===3?['historyBasis']:[])])
   if((prepared.schemaVersion===1?prepared.encoding!=='native-mvu-schema-derived-prepared-v1'
-      :prepared.schemaVersion!==2||prepared.encoding!=='native-mvu-schema-derived-prepared-v2')
+      :prepared.schemaVersion===2?prepared.encoding!=='native-mvu-schema-derived-prepared-v2'
+      :prepared.schemaVersion!==3||prepared.encoding!=='native-mvu-schema-derived-prepared-v3')
     ||!hash(prepared.preparedSha256)||![prepared.operationId,prepared.parentSessionId,prepared.childSessionId].every(id)
     ||prepared.parentSessionId===prepared.childSessionId||!hash(prepared.anchorSha256)
     ||!integer(prepared.seedLength)||prepared.seedLength<1||!integer(prepared.parentInheritedEventCount)
-    ||prepared.parentInheritedEventCount>=prepared.seedLength||!hash(prepared.parentSourceSha256)
-    ||prefix.sessionId!==prepared.parentSessionId||prefix.journal.nativeCut!==prepared.seedLength
+    ||!hash(prepared.parentSourceSha256)||prefix.journal.nativeCut!==prepared.seedLength)fail()
+  if(prepared.schemaVersion===3) {
+    exact(prepared.historyBasis,['basisKey','basisSha256'])
+    if(prepared.parentInheritedEventCount<prepared.seedLength||prefix.sessionId===prepared.parentSessionId
+      ||prefix.inheritedEventCount>=prepared.seedLength||!hash(prepared.historyBasis.basisSha256)
+      ||!/^[A-Za-z0-9_-]+__mvu-schema-derived-basis$/.test(prepared.historyBasis.basisKey))fail()
+  }else if(prepared.parentInheritedEventCount>=prepared.seedLength||prefix.sessionId!==prepared.parentSessionId
     ||prefix.inheritedEventCount!==prepared.parentInheritedEventCount||prefix.sourceSha256!==prepared.parentSourceSha256)fail()
-  if(prepared.schemaVersion===2) {
+  if(prepared.schemaVersion!==1) {
     const ref=validateMvuPreparedSourceRefV1(prepared.sourcePreparedRef),binding=prepared.forkReservationBinding
     exact(prepared.prefixClosureRef,['key','sha256','closureSha256'])
     exact(binding,['operationId','anchor','reservation','bindingSha256'])
@@ -281,7 +303,7 @@ function validateDerivedBasisUncached(input:MvuSchemaDerivedBasis):MvuSchemaDeri
   const {prepared:rawPrepared,source:rawSource,...metadata}=input
   const bounded=freezeMvuSchemaInheritanceData(metadata),
     prepared=validateDerivedPreparedDescriptor.peek(rawPrepared)??readDerivedPreparedData(rawPrepared)
-  const source=inheritanceFreezeV1(bounded.schemaVersion===2
+  const source=inheritanceFreezeV1(bounded.schemaVersion!==1
     ?validateMvuDerivedSourceProofUnion(rawSource):validateMvuDerivedSourceProof(rawSource))
   const basis=rememberInheritanceClone(Object.freeze({...bounded,prepared,source})) as MvuSchemaDerivedBasis
   exact(basis,['schemaVersion','encoding','prepared','source','basisSha256'])
@@ -292,11 +314,13 @@ function validateDerivedBasisUncached(input:MvuSchemaDerivedBasis):MvuSchemaDeri
   validateDerivedPreparedDescriptor.remember(rawPrepared,checked)
   return retained
 }
-function validateDerivedBasisJoins(basis:MvuSchemaDerivedBasis,source:MvuDerivedSourceProofUnion) {
+function validateDerivedBasisJoins(basis:MvuSchemaDerivedBasis,source:MvuDerivedSourceProof|MvuDerivedSourceProofV2|MvuDerivedSourceProofV3) {
   const prepared=basis.prepared
   if((basis.schemaVersion===1?basis.encoding!=='native-mvu-schema-derived-basis-v1'
-      ||prepared.schemaVersion!==1||source.schemaVersion!==1:basis.schemaVersion!==2
-      ||basis.encoding!=='native-mvu-schema-derived-basis-v2'||prepared.schemaVersion!==2||source.schemaVersion!==2)
+      ||prepared.schemaVersion!==1||source.schemaVersion!==1:basis.schemaVersion===2
+      ?basis.encoding!=='native-mvu-schema-derived-basis-v2'||prepared.schemaVersion!==2||source.schemaVersion!==2
+      :basis.schemaVersion!==3||basis.encoding!=='native-mvu-schema-derived-basis-v3'
+      ||prepared.schemaVersion!==3||source.schemaVersion!==3)
     ||source.parentSessionId!==prepared.parentSessionId||source.childSessionId!==prepared.childSessionId
     ||source.expectedSeedLength!==prepared.seedLength||source.parentSourceSha256!==prepared.parentSourceSha256)fail()
   const originalSnapshot=schemaOriginalSnapshot(prepared.prefix.original)
@@ -308,10 +332,14 @@ function validateDerivedBasisJoins(basis:MvuSchemaDerivedBasis,source:MvuDerived
 }
 /** The live reservation owns its constructed prepared DATA; Source supplies
  * its completed proof. This producer owns only the new envelope and joins. */
-export function createMvuSchemaDerivedBasis(prepared:MvuSchemaDerivedPreparedV2,
-  source:MvuDerivedSourceProofV2):MvuSchemaDerivedBasisV2 {
-  const body={schemaVersion:2 as const,encoding:'native-mvu-schema-derived-basis-v2' as const,
-    prepared,source:inheritanceFreezeV1(source)}
+export function createMvuSchemaDerivedBasis(prepared:MvuSchemaDerivedPreparedV2,source:MvuDerivedSourceProofV2):MvuSchemaDerivedBasisV2
+export function createMvuSchemaDerivedBasis(prepared:MvuSchemaDerivedPreparedV3,source:MvuDerivedSourceProofV3):MvuSchemaDerivedBasisV3
+export function createMvuSchemaDerivedBasis(prepared:MvuSchemaDerivedPreparedV2|MvuSchemaDerivedPreparedV3,
+  source:MvuDerivedSourceProofV2|MvuDerivedSourceProofV3):MvuSchemaDerivedBasisV2|MvuSchemaDerivedBasisV3 {
+  const frozenSource=inheritanceFreezeV1(source)
+  const body=prepared.schemaVersion===3
+    ?{schemaVersion:3 as const,encoding:'native-mvu-schema-derived-basis-v3' as const,prepared,source:frozenSource as MvuDerivedSourceProofV3}
+    :{schemaVersion:2 as const,encoding:'native-mvu-schema-derived-basis-v2' as const,prepared,source:frozenSource as MvuDerivedSourceProofV2}
   const basis=Object.freeze({...body,basisSha256:recordSha256(body)})
   validateDerivedBasisJoins(basis,source)
   validateDerivedBasisDescriptor.remember(rememberInheritanceClone(basis),basis)
