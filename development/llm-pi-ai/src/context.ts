@@ -18,7 +18,8 @@ import type { Context as PiContext, ImageContent, Message as PiMessage, TextCont
 import { toPiAssistant,assertPiRequestProjectionV1 } from './replay.js'
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
 import { DEFAULT_REQUEST_IMAGE_MAX_BYTES, DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET } from './config.js'
-import type {OrderedCompletionsInputV1,OrderedCompletionsMessageV1} from
+import type {OrderedCompletionsInputV1,OrderedCompletionsMessageV1,
+  OrderedCompletionsInputV2,OrderedCompletionsMessageV2} from
   'dsh-nexttavern-pi-ai/api/openai-ordered-input'
 
 /** Join the text blocks of a harness message. */
@@ -359,6 +360,18 @@ async function prepareImageHistory(messages:readonly RequestMessage[],signal:Abo
  * Signatures/reasoning and tool images are explicit unsupported domains. */
 export async function toOrderedCompletionsInputV1(options:GenerateOptions,images?:PiImageRequestContext,
   onReplayDegrade?:(reason:string)=>void):Promise<OrderedCompletionsInputV1> {
+  return toOrderedCompletionsInput(options,1,images,onReplayDegrade) as Promise<OrderedCompletionsInputV1>
+}
+
+/** V2 carries the durable reasoning text alongside each assistant boundary;
+ * it does not convert reasoning into visible text or reconstruct missing text. */
+export async function toOrderedCompletionsInputV2(options:GenerateOptions,images?:PiImageRequestContext,
+  onReplayDegrade?:(reason:string)=>void):Promise<OrderedCompletionsInputV2> {
+  return toOrderedCompletionsInput(options,2,images,onReplayDegrade) as Promise<OrderedCompletionsInputV2>
+}
+
+async function toOrderedCompletionsInput(options:GenerateOptions,version:1|2,images?:PiImageRequestContext,
+  onReplayDegrade?:(reason:string)=>void):Promise<OrderedCompletionsInputV1|OrderedCompletionsInputV2> {
   if(options.system!==undefined&&options.messages.some(message=>message.source?.kind==='request-material')){
     throw new LlmError('ordered material requires the Native ordered system history','UNSUPPORTED_OPTION')
   }
@@ -375,7 +388,7 @@ export async function toOrderedCompletionsInputV1(options:GenerateOptions,images
   else if(history.some(message=>contentHasImage(message.content))){
     throw new LlmError('ordered chat images require the durable attachment service','UNSUPPORTED_CONTENT')
   }
-  const messages:OrderedCompletionsMessageV1[]=[]
+  const messages:OrderedCompletionsMessageV2[]=[]
   if(options.system!==undefined&&options.system.length>0){
     // One-shot callers own a separate system slot. Place that slot first while
     // retaining the existing explicit-slot projection below. Native material
@@ -400,17 +413,22 @@ export async function toOrderedCompletionsInputV1(options:GenerateOptions,images
     }
     if(message.role==='assistant'){
       const replay=toPiAssistant(message,onReplayDegrade)
-      if(replay.content.some(part=>part.type==='thinking'||part.type==='text'&&part.textSignature!==undefined
+      if(replay.content.some(part=>part.type==='thinking'&&(version===1||part.thinkingSignature!==undefined
+          &&part.thinkingSignature!=='reasoning_content'||part.redacted===true)
+        ||part.type==='text'&&part.textSignature!==undefined
         ||part.type==='toolCall'&&part.thoughtSignature!==undefined)){
         throw new LlmError('ordered chat cannot discard signed or reasoning assistant history','UNSUPPORTED_CONTENT')
       }
       const content:Extract<OrderedCompletionsMessageV1,{role:'assistant'}>['content'][number][]=[]
+      const reasoning:string[]=[]
       for(const part of message.content){
         if(part.type==='text')content.push({type:'text',text:part.text})
         else if(part.type==='tool-call')content.push({type:'tool-call',id:String(part.id),name:part.name,arguments:part.arguments})
+        else if(part.type==='reasoning'&&version===2)reasoning.push(part.text)
         else throw new LlmError('ordered chat cannot represent this assistant block','UNSUPPORTED_CONTENT')
       }
-      messages.push({key,origin:'durable',role:'assistant',content})
+      messages.push({key,origin:'durable',role:'assistant',content,
+        ...reasoning.length?{reasoningContent:reasoning.join('')}: {}})
       continue
     }
     if(message.role==='user'){
@@ -446,6 +464,9 @@ export async function toOrderedCompletionsInputV1(options:GenerateOptions,images
     throw new LlmError('ordered chat requires projected developer history','UNSUPPORTED_CONTENT')
   }
   const tools=toolsOf(options)
-  return {schemaVersion:1,encoding:'nexttavern-ordered-chat-completions-v1',messages,
-    ...tools===undefined?{}:{tools}}
+  return version===1
+    ?{schemaVersion:1,encoding:'nexttavern-ordered-chat-completions-v1',messages,
+      ...tools===undefined?{}:{tools}}
+    :{schemaVersion:2,encoding:'nexttavern-ordered-chat-completions-v2',messages,
+      ...tools===undefined?{}:{tools}}
 }

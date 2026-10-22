@@ -59,9 +59,10 @@ import type {
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.js'
-import { toPiContext,toOrderedCompletionsInputV1 } from './context.js'
+import { toPiContext,toOrderedCompletionsInputV1,toOrderedCompletionsInputV2 } from './context.js'
 import type {PiImageRequestContext} from './context.js'
-import type {OrderedCompletionsInputV1,OrderedCompletionsTraceReceiptV1} from 'dsh-nexttavern-pi-ai/api/openai-ordered-input'
+import type {OrderedCompletionsInputV1,OrderedCompletionsTraceReceiptV1,
+  OrderedCompletionsInputV2,OrderedCompletionsTraceReceiptV2} from 'dsh-nexttavern-pi-ai/api/openai-ordered-input'
 import { createModels, getSupportedThinkingLevels } from './models.js'
 import { toStreamChunks } from './stream.js'
 import {catalogProvider} from './catalog.js'
@@ -85,8 +86,15 @@ function supportsRequestMaterialText(profile:ResolvedPiAiProviderProfile,model:M
 /** The ordered entry has its own narrow protocol domain. Capability must
  * refuse incompatible body/tool/cache modes before Native makes any commits. */
 function supportsOrderedMaterial(profile:ResolvedPiAiProviderProfile,model:Model<Api>):boolean {
+  if(profile.requestMaterialSerialization==='ordered-chat-v2'){
+    // The SDK owns the protocol/model domain. This layer owns profile-only
+    // controls which are not part of the effective SDK model descriptor.
+    return profile.api==='openai-completions'&&profile.apiKeyEnv!==undefined
+      &&(profile.reasoning===undefined||profile.reasoning==='high'||profile.reasoning==='max')
+      &&(profile.transport===undefined||profile.transport==='sse')
+  }
   if(profile.requestMaterialSerialization!=='ordered-chat-v1'||profile.apiKeyEnv===undefined
-    ||!supportsRequestMaterialText(profile,model)||profile.thinkingBudgets!==undefined
+    ||!supportsRequestMaterialText(profile,model)
     ||profile.reasoning!==undefined&&profile.reasoning!=='off'
     ||profile.transport!==undefined&&profile.transport!=='sse')return false
   const compat=(model as Model<'openai-completions'>).compat
@@ -406,7 +414,7 @@ export class PiAiAdapter extends LlmAdapter {
     // the one it started with and the next call picks up the new one.
     const profile = this.profileOf(snapshot, options.provider)
     const model = this.modelOf(snapshot, options.provider, options.model)
-    const ordered=profile.requestMaterialSerialization==='ordered-chat-v1'
+    const ordered=profile.requestMaterialSerialization!==undefined
     const supported=ordered?await this.orderedModelSupported(profile,model):supportsRequestMaterialText(profile,model)
     if(ordered&&!supported){
       throw new LlmError('ordered chat material is unsupported by this captured route',
@@ -459,7 +467,9 @@ export class PiAiAdapter extends LlmAdapter {
         }
       const context=ordered?undefined:imageContext===undefined?toPiContext(options,undefined,onReplayDegrade)
         :await toPiContext({...options,signal:watchdog.signal},imageContext,onReplayDegrade)
-      const orderedInput=ordered?await toOrderedCompletionsInputV1({...options,signal:watchdog.signal},imageContext,onReplayDegrade):undefined
+      const orderedInput=!ordered?undefined:profile.requestMaterialSerialization==='ordered-chat-v2'
+        ?await toOrderedCompletionsInputV2({...options,signal:watchdog.signal},imageContext,onReplayDegrade)
+        :await toOrderedCompletionsInputV1({...options,signal:watchdog.signal},imageContext,onReplayDegrade)
       if(guardedTransport)assertCurrent()
       // SDK auth, lazy API loading and payload hooks may await afterwards.
       // Each HTTP delegation checks the same owner immediately before fetch.
@@ -520,18 +530,19 @@ export class PiAiAdapter extends LlmAdapter {
 
   /** The same captured route and credential reach the owned ordered entry.
    * Lazy import cannot revoke the final guard or select another profile. */
-  private async orderedStream(model:Model<Api>,input:OrderedCompletionsInputV1,
+  private async orderedStream(model:Model<Api>,input:OrderedCompletionsInputV1|OrderedCompletionsInputV2,
     options:SimpleStreamOptions,apiKey:string|undefined,assertCurrent:()=>void){
     if(model.api!=='openai-completions'||apiKey===undefined||!apiKey.trim()){
       throw new LlmError('ordered chat requires its resolved credential','MISSING_CREDENTIAL')
     }
-    const {streamOrderedCompletions}=await import('dsh-nexttavern-pi-ai/api/openai-completions')
+    const {streamOrderedCompletions,streamOrderedCompletionsV2}=await import('dsh-nexttavern-pi-ai/api/openai-completions')
     assertCurrent()
     const {reasoning:_reasoning,thinkingBudgets:_budgets,...ordinary}=options
     const boundaries=input.messages.map(message=>({key:message.key,role:message.role}))
-    const onOrderedTrace=(receipt:OrderedCompletionsTraceReceiptV1):void=>{
+    const onOrderedTrace=(receipt:OrderedCompletionsTraceReceiptV1|OrderedCompletionsTraceReceiptV2):void=>{
       assertCurrent()
-      if(receipt.schemaVersion!==1||receipt.encoding!=='nexttavern-ordered-chat-completions-trace-v1'
+      if(receipt.schemaVersion!==input.schemaVersion
+        ||receipt.encoding!==`nexttavern-ordered-chat-completions-trace-v${input.schemaVersion}`
         ||![receipt.inputSha256,receipt.wireSha256,receipt.traceSha256].every(value=>/^[a-f0-9]{64}$/.test(value))
         ||receipt.trace.length!==boundaries.length||receipt.trace.some((row,index)=>{
           const expected=boundaries[index]
@@ -541,6 +552,10 @@ export class PiAiAdapter extends LlmAdapter {
         throw new LlmError('ordered SDK trace differs from the captured request boundaries','REQUEST_MATERIAL_WIRE_TRACE_INVALID')
       }
     }
+    if(input.schemaVersion===2){
+      return streamOrderedCompletionsV2(model as Model<'openai-completions'>,input,
+        {...ordinary,apiKey,maxRetries:0,reasoningEffort:options.reasoning as 'high'|'max',onOrderedTrace})
+    }
     return streamOrderedCompletions(model as Model<'openai-completions'>,input,
       {...ordinary,apiKey,maxRetries:0,onOrderedTrace})
   }
@@ -549,7 +564,9 @@ export class PiAiAdapter extends LlmAdapter {
    * capability used by dispatch; URL/provider heuristics are not re-guessed. */
   private async orderedModelSupported(profile:ResolvedPiAiProviderProfile,model:Model<Api>):Promise<boolean> {
     if(!supportsOrderedMaterial(profile,model)||model.api!=='openai-completions')return false
-    const {supportsOrderedCompletionsModelV1}=await import('dsh-nexttavern-pi-ai/api/openai-completions')
-    return supportsOrderedCompletionsModelV1(model as Model<'openai-completions'>)
+    const {supportsOrderedCompletionsModelV1,supportsOrderedCompletionsModelV2}=await import('dsh-nexttavern-pi-ai/api/openai-completions')
+    return profile.requestMaterialSerialization==='ordered-chat-v2'
+      ?supportsOrderedCompletionsModelV2(model as Model<'openai-completions'>)
+      :supportsOrderedCompletionsModelV1(model as Model<'openai-completions'>)
   }
 }

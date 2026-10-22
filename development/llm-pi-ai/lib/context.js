@@ -226,6 +226,14 @@ async function prepareImageHistory(messages, signal, images) {
  * LLM has already projected files and tool registry updates before this call.
  * Signatures/reasoning and tool images are explicit unsupported domains. */
 export async function toOrderedCompletionsInputV1(options, images, onReplayDegrade) {
+    return toOrderedCompletionsInput(options, 1, images, onReplayDegrade);
+}
+/** V2 carries the durable reasoning text alongside each assistant boundary;
+ * it does not convert reasoning into visible text or reconstruct missing text. */
+export async function toOrderedCompletionsInputV2(options, images, onReplayDegrade) {
+    return toOrderedCompletionsInput(options, 2, images, onReplayDegrade);
+}
+async function toOrderedCompletionsInput(options, version, images, onReplayDegrade) {
     if (options.system !== undefined && options.messages.some(message => message.source?.kind === 'request-material')) {
         throw new LlmError('ordered material requires the Native ordered system history', 'UNSUPPORTED_OPTION');
     }
@@ -271,20 +279,26 @@ export async function toOrderedCompletionsInputV1(options, images, onReplayDegra
         }
         if (message.role === 'assistant') {
             const replay = toPiAssistant(message, onReplayDegrade);
-            if (replay.content.some(part => part.type === 'thinking' || part.type === 'text' && part.textSignature !== undefined
+            if (replay.content.some(part => part.type === 'thinking' && (version === 1 || part.thinkingSignature !== undefined
+                && part.thinkingSignature !== 'reasoning_content' || part.redacted === true)
+                || part.type === 'text' && part.textSignature !== undefined
                 || part.type === 'toolCall' && part.thoughtSignature !== undefined)) {
                 throw new LlmError('ordered chat cannot discard signed or reasoning assistant history', 'UNSUPPORTED_CONTENT');
             }
             const content = [];
+            const reasoning = [];
             for (const part of message.content) {
                 if (part.type === 'text')
                     content.push({ type: 'text', text: part.text });
                 else if (part.type === 'tool-call')
                     content.push({ type: 'tool-call', id: String(part.id), name: part.name, arguments: part.arguments });
+                else if (part.type === 'reasoning' && version === 2)
+                    reasoning.push(part.text);
                 else
                     throw new LlmError('ordered chat cannot represent this assistant block', 'UNSUPPORTED_CONTENT');
             }
-            messages.push({ key, origin: 'durable', role: 'assistant', content });
+            messages.push({ key, origin: 'durable', role: 'assistant', content,
+                ...reasoning.length ? { reasoningContent: reasoning.join('') } : {} });
             continue;
         }
         if (message.role === 'user') {
@@ -325,6 +339,9 @@ export async function toOrderedCompletionsInputV1(options, images, onReplayDegra
         throw new LlmError('ordered chat requires projected developer history', 'UNSUPPORTED_CONTENT');
     }
     const tools = toolsOf(options);
-    return { schemaVersion: 1, encoding: 'nexttavern-ordered-chat-completions-v1', messages,
-        ...tools === undefined ? {} : { tools } };
+    return version === 1
+        ? { schemaVersion: 1, encoding: 'nexttavern-ordered-chat-completions-v1', messages,
+            ...tools === undefined ? {} : { tools } }
+        : { schemaVersion: 2, encoding: 'nexttavern-ordered-chat-completions-v2', messages,
+            ...tools === undefined ? {} : { tools } };
 }

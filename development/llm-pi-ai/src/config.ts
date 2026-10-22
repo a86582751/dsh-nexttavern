@@ -100,9 +100,9 @@ export interface PiAiProviderProfile {
    * no protocol at all; a route the catalog does not ship must name one.
    */
   api?: string
-  /** Preserve system/user/assistant message boundaries on a declared ordinary
-   * Chat Completions endpoint. Other protocols keep their existing serializer. */
-  requestMaterialSerialization?:'ordered-chat-v1'
+  /** Preserve ordered message boundaries: V1 ordinary Chat Completions, V2
+   * official DeepSeek thinking. Other protocols retain their serializer. */
+  requestMaterialSerialization?:'ordered-chat-v1'|'ordered-chat-v2'
   /** Endpoint for this route's models; defaults to the installed catalog's endpoint. */
   baseURL?: string
   /**
@@ -330,7 +330,7 @@ const profile = z.object({
   apiKeyEnv: z.string().role('credential-ref'),
   displayName: z.string(),
   api: z.union(supportedProtocols()),
-  requestMaterialSerialization:z.union(['ordered-chat-v1']),
+  requestMaterialSerialization:z.union(['ordered-chat-v1','ordered-chat-v2']),
   baseURL: z.string(),
   models: z.array(modelProfile),
   modelOverrides: z.dict(modelOverride),
@@ -425,7 +425,7 @@ export function resolveProfiles(
   for (const [provider, source] of entries) {
     rejectRemovedFields(provider, source)
     if(source.requestMaterialSerialization!==undefined
-      &&(source.requestMaterialSerialization!=='ordered-chat-v1'||source.api!=='openai-completions'
+      &&(!['ordered-chat-v1','ordered-chat-v2'].includes(source.requestMaterialSerialization)||source.api!=='openai-completions'
         ||source.apiKeyEnv===undefined)){
       throw Error(`llm-pi-ai: provider "${provider}" ordered chat material requires openai-completions and a credential reference`)
     }
@@ -499,8 +499,12 @@ export function resolveProfiles(
       catalogError ??= error.message
     }
     const { apiKeyEnv, retryPolicy, models: _models, displayName: _displayName, ...rest } = source
+    // V2 needs an enabled effort in both model defaults and the captured call.
+    const reasoning = source.reasoning
+      ?? (source.requestMaterialSerialization === 'ordered-chat-v2' ? 'high' : undefined)
     resolved.set(provider, {
       ...rest,
+      ...reasoning === undefined ? {} : { reasoning },
       provider,
       displayName,
       ...apiKeyEnv === undefined ? {} : { apiKeyEnv: credentialRef(apiKeyEnv) },

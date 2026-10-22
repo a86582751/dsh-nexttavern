@@ -179,9 +179,16 @@ async function digest(value) {
 /** Strict single-request conversion. No generic transformMessages, synthetic
  * tool result, assistant bridge, Unicode repair, role change or message merge. */
 export async function serializeOrderedCompletionsV1(raw) {
+    return serializeOrderedCompletions(raw, 1);
+}
+/** V2 preserves provider reasoning only when the caller actually supplied it. */
+export async function serializeOrderedCompletionsV2(raw) {
+    return serializeOrderedCompletions(raw, 2);
+}
+async function serializeOrderedCompletions(raw, version) {
     const root = record(cloneJson(raw), '$');
     exact(root, ['schemaVersion', 'encoding', 'messages'], ['tools'], '$');
-    if (root.schemaVersion !== 1 || root.encoding !== 'nexttavern-ordered-chat-completions-v1') {
+    if (root.schemaVersion !== version || root.encoding !== `nexttavern-ordered-chat-completions-v${version}`) {
         fail('$', 'unsupported ordered descriptor version');
     }
     const source = array(root.messages, '$/messages', POLICY.maxMessages);
@@ -204,7 +211,10 @@ export async function serializeOrderedCompletionsV1(raw) {
         const role = string(message.role, `${path}/role`, 16);
         if (!['system', 'user', 'assistant', 'tool'].includes(role))
             fail(`${path}/role`, 'unsupported role');
-        exact(message, ['key', 'origin', 'role', 'content'], role === 'tool' ? ['toolCallId'] : [], path);
+        exact(message, ['key', 'origin', 'role', 'content'], role === 'tool' ? ['toolCallId']
+            : version === 2 && role === 'assistant' ? ['reasoningContent'] : [], path);
+        const reasoningContent = Object.hasOwn(message, 'reasoningContent')
+            ? string(message.reasoningContent, `${path}/reasoningContent`) : undefined;
         const key = identity(message.key, `${path}/key`);
         if (keys.has(key))
             fail(`${path}/key`, 'duplicate boundary key');
@@ -213,7 +223,9 @@ export async function serializeOrderedCompletionsV1(raw) {
             fail(`${path}/origin`, 'unsupported origin');
         const material = message.origin === 'request-material';
         const content = array(message.content, `${path}/content`);
-        if (content.length === 0 || (parts += content.length) > POLICY.maxParts)
+        // A token-limited model reply can retain only its durable reasoning block.
+        if ((content.length === 0 && !(version === 2 && role === 'assistant' && reasoningContent !== undefined))
+            || (parts += content.length) > POLICY.maxParts)
             fail(`${path}/content`, 'empty or excessive content');
         if (pending.size !== 0 && role !== 'tool')
             fail(path, 'cannot split an outstanding tool-call/result group');
@@ -277,6 +289,7 @@ export async function serializeOrderedCompletionsV1(raw) {
             messages.push({ role: 'user', content: messageHasImages ? userParts : texts.join('') });
         else if (role === 'assistant')
             messages.push({ role: 'assistant', content: texts.length ? texts.join('') : null,
+                ...(reasoningContent !== undefined ? { reasoning_content: reasoningContent } : {}),
                 ...(calls.length ? { tool_calls: calls } : {}) });
         else {
             if (material || !Object.hasOwn(message, 'toolCallId'))
@@ -298,8 +311,8 @@ export async function serializeOrderedCompletionsV1(raw) {
     freeze(tools);
     freeze(trace);
     const inputSha256 = await digest(input), wireSha256 = await digest(messages);
-    const traceSha256 = await digest({ schemaVersion: 1, inputSha256, wireSha256, trace });
-    return freeze({ schemaVersion: 1, encoding: 'nexttavern-ordered-chat-completions-trace-v1',
+    const traceSha256 = await digest({ schemaVersion: version, inputSha256, wireSha256, trace });
+    return freeze({ schemaVersion: version, encoding: `nexttavern-ordered-chat-completions-trace-v${version}`,
         input, messages, ...tools === undefined ? {} : { tools }, hasImages, hasToolHistory,
         inputSha256, wireSha256, traceSha256, trace });
 }

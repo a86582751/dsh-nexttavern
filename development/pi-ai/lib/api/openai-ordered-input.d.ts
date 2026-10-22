@@ -64,6 +64,31 @@ export interface OrderedCompletionsSerializationV1 extends OrderedCompletionsTra
     readonly hasToolHistory: boolean;
     readonly hasImages: boolean;
 }
+export type OrderedCompletionsMessageV2 = Exclude<OrderedCompletionsMessageV1, {
+    role: 'assistant';
+}> | (Extract<OrderedCompletionsMessageV1, {
+    role: 'assistant';
+}> & {
+    readonly reasoningContent?: string;
+});
+export interface OrderedCompletionsInputV2 {
+    readonly schemaVersion: 2;
+    readonly encoding: 'nexttavern-ordered-chat-completions-v2';
+    readonly messages: readonly OrderedCompletionsMessageV2[];
+    readonly tools?: readonly Tool[];
+}
+export type OrderedCompletionsTraceRowV2 = OrderedCompletionsTraceRowV1;
+export interface OrderedCompletionsTraceReceiptV2 extends Omit<OrderedCompletionsTraceReceiptV1, 'schemaVersion' | 'encoding'> {
+    readonly schemaVersion: 2;
+    readonly encoding: 'nexttavern-ordered-chat-completions-trace-v2';
+}
+export interface OrderedCompletionsSerializationV2 extends OrderedCompletionsTraceReceiptV2 {
+    readonly input: OrderedCompletionsInputV2;
+    readonly messages: readonly ChatCompletionMessageParam[];
+    readonly tools?: readonly Tool[];
+    readonly hasToolHistory: boolean;
+    readonly hasImages: boolean;
+}
 export declare class OrderedCompletionsInputError extends Error {
     readonly path: string;
     readonly code = "ORDERED_COMPLETIONS_UNSUPPORTED_INPUT";
@@ -81,4 +106,6 @@ export declare const ORDERED_COMPLETIONS_POLICY_V1: Readonly<{
 /** Strict single-request conversion. No generic transformMessages, synthetic
  * tool result, assistant bridge, Unicode repair, role change or message merge. */
 export declare function serializeOrderedCompletionsV1(raw: OrderedCompletionsInputV1): Promise<OrderedCompletionsSerializationV1>;
+/** V2 preserves provider reasoning only when the caller actually supplied it. */
+export declare function serializeOrderedCompletionsV2(raw: OrderedCompletionsInputV2): Promise<OrderedCompletionsSerializationV2>;
 export {};

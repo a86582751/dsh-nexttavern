@@ -50,6 +50,30 @@ export interface OrderedCompletionsSerializationV1 extends OrderedCompletionsTra
 	readonly hasImages:boolean;
 }
 
+export type OrderedCompletionsMessageV2 =
+	| Exclude<OrderedCompletionsMessageV1,{role:'assistant'}>
+	| (Extract<OrderedCompletionsMessageV1,{role:'assistant'}> & {readonly reasoningContent?:string});
+export interface OrderedCompletionsInputV2 {
+	readonly schemaVersion:2;
+	readonly encoding:'nexttavern-ordered-chat-completions-v2';
+	readonly messages:readonly OrderedCompletionsMessageV2[];
+	readonly tools?:readonly Tool[];
+}
+export type OrderedCompletionsTraceRowV2 = OrderedCompletionsTraceRowV1;
+export interface OrderedCompletionsTraceReceiptV2 extends Omit<OrderedCompletionsTraceReceiptV1,'schemaVersion'|'encoding'> {
+	readonly schemaVersion:2;
+	readonly encoding:'nexttavern-ordered-chat-completions-trace-v2';
+}
+export interface OrderedCompletionsSerializationV2 extends OrderedCompletionsTraceReceiptV2 {
+	readonly input:OrderedCompletionsInputV2;
+	readonly messages:readonly ChatCompletionMessageParam[];
+	readonly tools?:readonly Tool[];
+	readonly hasToolHistory:boolean;
+	readonly hasImages:boolean;
+}
+type OrderedCompletionsInput = OrderedCompletionsInputV1|OrderedCompletionsInputV2;
+type OrderedCompletionsSerialization = OrderedCompletionsSerializationV1|OrderedCompletionsSerializationV2;
+
 export class OrderedCompletionsInputError extends Error {
 	readonly code='ORDERED_COMPLETIONS_UNSUPPORTED_INPUT';
 	constructor(readonly path:string, reason:string) {
@@ -197,9 +221,18 @@ async function digest(value:unknown):Promise<string> {
 /** Strict single-request conversion. No generic transformMessages, synthetic
  * tool result, assistant bridge, Unicode repair, role change or message merge. */
 export async function serializeOrderedCompletionsV1(raw:OrderedCompletionsInputV1):Promise<OrderedCompletionsSerializationV1> {
+	return serializeOrderedCompletions(raw,1) as Promise<OrderedCompletionsSerializationV1>;
+}
+
+/** V2 preserves provider reasoning only when the caller actually supplied it. */
+export async function serializeOrderedCompletionsV2(raw:OrderedCompletionsInputV2):Promise<OrderedCompletionsSerializationV2> {
+	return serializeOrderedCompletions(raw,2) as Promise<OrderedCompletionsSerializationV2>;
+}
+
+async function serializeOrderedCompletions(raw:OrderedCompletionsInput,version:1|2):Promise<OrderedCompletionsSerialization> {
 	const root=record(cloneJson(raw),'$');
 	exact(root,['schemaVersion','encoding','messages'],['tools'],'$');
-	if (root.schemaVersion!==1 || root.encoding!=='nexttavern-ordered-chat-completions-v1') {
+	if (root.schemaVersion!==version || root.encoding!==`nexttavern-ordered-chat-completions-v${version}`) {
 		fail('$','unsupported ordered descriptor version');
 	}
 	const source=array(root.messages,'$/messages',POLICY.maxMessages);
@@ -219,14 +252,19 @@ export async function serializeOrderedCompletionsV1(raw:OrderedCompletionsInputV
 		const path=`$/messages/${index}`, message=record(rawMessage,path);
 		const role=string(message.role,`${path}/role`,16);
 		if (!['system','user','assistant','tool'].includes(role)) fail(`${path}/role`,'unsupported role');
-		exact(message,['key','origin','role','content'],role==='tool' ? ['toolCallId'] : [],path);
+		exact(message,['key','origin','role','content'],role==='tool' ? ['toolCallId']
+			: version===2 && role==='assistant' ? ['reasoningContent'] : [],path);
+		const reasoningContent=Object.hasOwn(message,'reasoningContent')
+			? string(message.reasoningContent,`${path}/reasoningContent`) : undefined;
 		const key=identity(message.key,`${path}/key`);
 		if (keys.has(key)) fail(`${path}/key`,'duplicate boundary key');
 		keys.add(key);
 		if (message.origin!=='durable' && message.origin!=='request-material') fail(`${path}/origin`,'unsupported origin');
 		const material=message.origin==='request-material';
 		const content=array(message.content,`${path}/content`);
-		if (content.length===0 || (parts+=content.length)>POLICY.maxParts) fail(`${path}/content`,'empty or excessive content');
+		// A token-limited model reply can retain only its durable reasoning block.
+		if ((content.length===0 && !(version===2 && role==='assistant' && reasoningContent!==undefined))
+			|| (parts+=content.length)>POLICY.maxParts) fail(`${path}/content`,'empty or excessive content');
 		if (pending.size!==0 && role!=='tool') fail(path,'cannot split an outstanding tool-call/result group');
 		if (material && (role==='tool' || content.length!==1)) fail(path,'material must contain exactly one text part');
 		const texts:string[]=[], userParts:({type:'text';text:string}|{type:'image_url';image_url:{url:string}})[]=[];
@@ -266,6 +304,7 @@ export async function serializeOrderedCompletionsV1(raw:OrderedCompletionsInputV
 		if (role==='system') messages.push({role:'system',content:texts.join('')});
 		else if (role==='user') messages.push({role:'user',content:messageHasImages ? userParts : texts.join('')});
 		else if (role==='assistant') messages.push({role:'assistant',content:texts.length ? texts.join('') : null,
+			...(reasoningContent!==undefined ? {reasoning_content:reasoningContent} : {}),
 			...(calls.length ? {tool_calls:calls} : {})});
 		else {
 			if (material || !Object.hasOwn(message,'toolCallId')) fail(path,'tool result must name its durable call ID');
@@ -277,11 +316,11 @@ export async function serializeOrderedCompletionsV1(raw:OrderedCompletionsInputV
 			transformation:messageHasImages ? 'prepared-user-image' : texts.length>1 ? 'text-parts-concatenated' : 'identity'});
 	}
 	if (pending.size!==0) fail('$/messages','missing tool result at end of request');
-	const input=root as unknown as OrderedCompletionsInputV1;
+	const input=root as unknown as OrderedCompletionsInput;
 	freeze(input); freeze(messages); freeze(tools); freeze(trace);
 	const inputSha256=await digest(input), wireSha256=await digest(messages);
-	const traceSha256=await digest({schemaVersion:1,inputSha256,wireSha256,trace});
-	return freeze({schemaVersion:1 as const,encoding:'nexttavern-ordered-chat-completions-trace-v1' as const,
+	const traceSha256=await digest({schemaVersion:version,inputSha256,wireSha256,trace});
+	return freeze({schemaVersion:version,encoding:`nexttavern-ordered-chat-completions-trace-v${version}`,
 		input,messages,...tools===undefined ? {} : {tools},hasImages,hasToolHistory,
-		inputSha256,wireSha256,traceSha256,trace});
+		inputSha256,wireSha256,traceSha256,trace}) as OrderedCompletionsSerialization;
 }

@@ -61,9 +61,13 @@ import { transformMessages } from "./transform-messages.js";
 import {
 	OrderedCompletionsInputError,
 	serializeOrderedCompletionsV1,
+	serializeOrderedCompletionsV2,
 	type OrderedCompletionsInputV1,
+	type OrderedCompletionsInputV2,
 	type OrderedCompletionsSerializationV1,
+	type OrderedCompletionsSerializationV2,
 	type OrderedCompletionsTraceReceiptV1,
+	type OrderedCompletionsTraceReceiptV2,
 } from "./openai-ordered-input.js";
 
 /**
@@ -182,10 +186,21 @@ export interface OrderedCompletionsOptionsV1 extends OpenAICompletionsOptions {
 	/** Synchronous data receipt; a throw refuses transport. It grants no authority. */
 	onOrderedTrace?: (receipt: OrderedCompletionsTraceReceiptV1) => void;
 }
+export interface OrderedCompletionsOptionsV2 extends OpenAICompletionsOptions {
+	apiKey: string;
+	maxRetries: 0;
+	reasoningEffort: "high" | "max";
+	/** Synchronous data receipt; a throw refuses transport. It grants no authority. */
+	onOrderedTrace?: (receipt: OrderedCompletionsTraceReceiptV2) => void;
+}
+type OrderedTraceReceipt = OrderedCompletionsTraceReceiptV1 | OrderedCompletionsTraceReceiptV2;
+type OrderedTraceObserver = NonNullable<OrderedCompletionsOptionsV1["onOrderedTrace"]>
+	| NonNullable<OrderedCompletionsOptionsV2["onOrderedTrace"]>;
 
 type CompletionInput =
 	| { kind: "pi-context"; context: Context }
-	| { kind: "ordered-v1"; input: OrderedCompletionsInputV1 };
+	| { kind: "ordered-v1"; input: OrderedCompletionsInputV1 }
+	| { kind: "ordered-v2"; input: OrderedCompletionsInputV2 };
 type PreparedCompletionInput = {
 	messages: ChatCompletionMessageParam[];
 	tools: readonly Tool[] | undefined;
@@ -194,29 +209,50 @@ type PreparedCompletionInput = {
 } & (
 	| { kind: "pi-context"; context: Context }
 	| { kind: "ordered-v1"; serialization: OrderedCompletionsSerializationV1 }
+	| { kind: "ordered-v2"; serialization: OrderedCompletionsSerializationV2 }
 );
 
 function assertOrderedModelDomain(
 	model: Model<"openai-completions">,
 	compat: ResolvedOpenAICompletionsCompat,
+	version: 1 | 2 = 1,
 ): void {
 	function reject(path: string, reason: string): never {
 		throw new OrderedCompletionsInputError(path, reason);
 	}
-	if (model.api !== "openai-completions" || model.reasoning !== false || model.provider === "github-copilot") {
-		reject("$/model", "ordered v1 requires an ordinary nonreasoning completions route");
-	}
-	const declared = model.compat;
-	if (declared?.supportsDeveloperRole !== false || declared.requiresAssistantAfterToolResult !== false
-		|| declared.requiresThinkingAsText !== false || declared.requiresReasoningContentOnAssistantMessages !== false) {
-		reject("$/model/compat", "ordered v1 requires explicit role/bridge/thinking flags false");
+	if (version === 1) {
+		if (model.api !== "openai-completions" || model.reasoning !== false || model.provider === "github-copilot") {
+			reject("$/model", "ordered v1 requires an ordinary nonreasoning completions route");
+		}
+		const declared = model.compat;
+		if (declared?.supportsDeveloperRole !== false || declared.requiresAssistantAfterToolResult !== false
+			|| declared.requiresThinkingAsText !== false || declared.requiresReasoningContentOnAssistantMessages !== false) {
+			reject("$/model/compat", "ordered v1 requires explicit role/bridge/thinking flags false");
+		}
+	} else {
+		let endpoint: URL;
+		try { endpoint = new URL(model.baseUrl); }
+		catch { return reject("$/model/baseUrl", "ordered v2 requires the official DeepSeek completions endpoint"); }
+		if (endpoint.origin !== "https://api.deepseek.com" || endpoint.username || endpoint.password
+			|| endpoint.search || endpoint.hash || !["", "/v1"].includes(endpoint.pathname.replace(/\/$/, ""))) {
+			reject("$/model/baseUrl", "ordered v2 requires the official DeepSeek completions endpoint");
+		}
+		if (model.api !== "openai-completions" || model.reasoning !== true || model.provider === "github-copilot") {
+			reject("$/model", "ordered v2 requires an official DeepSeek reasoning completions route");
+		}
+		if (compat.thinkingFormat !== "deepseek" || !compat.supportsReasoningEffort
+			|| !compat.requiresReasoningContentOnAssistantMessages || compat.supportsDeveloperRole
+			|| compat.requiresAssistantAfterToolResult || compat.requiresThinkingAsText
+			|| compat.thinkingTokenBudgetField !== undefined || compat.supportsThinkingTokenBudget) {
+			reject("$/model/compat", "ordered v2 requires DeepSeek reasoning without role/bridge transformations");
+		}
 	}
 	if (compat.deferredToolsMode !== undefined || compat.cacheControlFormat !== undefined
 		|| compat.supportsOpenAIGrammarTools || compat.zaiToolStream || compat.requiresToolResultName) {
 		reject("$/model/compat", "unsupported deferred/cache/grammar/tool dialect");
 	}
 	if (model.samplingParams !== undefined) {
-		reject("$/model/samplingParams", "ordered v1 disallows model body overrides");
+		reject("$/model/samplingParams", `ordered v${version} disallows model body overrides`);
 	}
 }
 
@@ -236,22 +272,49 @@ export function supportsOrderedCompletionsModelV1(model: Model<"openai-completio
 	}
 }
 
+export function assertOrderedCompletionsModelV2(model: Model<"openai-completions">): void {
+	assertOrderedModelDomain(model, getCompat(model), 2);
+}
+
+export function supportsOrderedCompletionsModelV2(model: Model<"openai-completions">): boolean {
+	try {
+		assertOrderedCompletionsModelV2(model);
+		return true;
+	} catch (error) {
+		if (error instanceof OrderedCompletionsInputError) return false;
+		throw error;
+	}
+}
+
 function assertOrderedDomain(
 	model: Model<"openai-completions">,
 	options: OpenAICompletionsOptions | undefined,
 	compat: ResolvedOpenAICompletionsCompat,
+	version: 1 | 2,
 ): void {
-	assertOrderedModelDomain(model, compat);
+	assertOrderedModelDomain(model, compat, version);
 	function reject(path: string, reason: string): never {
 		throw new OrderedCompletionsInputError(path, reason);
 	}
 	if (!options?.apiKey || typeof options.apiKey !== "string" || options.maxRetries !== 0) {
 		reject("$/options", "explicit resolved apiKey and zero SDK retries are required");
 	}
-	if (options.onPayload !== undefined || options.samplingParams !== undefined
+	if (version === 1 && (options.onPayload !== undefined || options.samplingParams !== undefined
 		|| options.reasoningEffort !== undefined || options.thinkingBudgets !== undefined
-		|| (options.transport !== undefined && options.transport !== "sse")) {
+		|| (options.transport !== undefined && options.transport !== "sse"))) {
 		reject("$/options", "ordered v1 disallows body overrides, reasoning and alternate transport");
+	}
+	if (version === 2 && (options.onPayload !== undefined || options.samplingParams !== undefined
+		|| options.thinkingBudgets !== undefined
+		|| (options.transport !== undefined && options.transport !== "sse"))) {
+		reject("$/options", "ordered v2 disallows body overrides, thinking budgets and alternate transport");
+	}
+	if (version === 2) {
+		const effort = options.reasoningEffort;
+		if ((effort !== "high" && effort !== "max")
+			|| (model.thinkingLevelMap?.[effort] !== undefined && model.thinkingLevelMap[effort] !== effort)) {
+			reject("$/options/reasoningEffort", "ordered v2 requires unchanged high or max reasoning effort");
+		}
 	}
 }
 
@@ -268,18 +331,24 @@ function preparePiContextInput(
 
 async function prepareOrderedInput(
 	model: Model<"openai-completions">,
-	input: OrderedCompletionsInputV1,
+	input: OrderedCompletionsInputV1 | OrderedCompletionsInputV2,
 	options: OpenAICompletionsOptions | undefined,
 	compat: ResolvedOpenAICompletionsCompat,
+	version: 1 | 2,
 ): Promise<PreparedCompletionInput> {
-	assertOrderedDomain(model, options, compat);
-	const serialization = await serializeOrderedCompletionsV1(input);
+	assertOrderedDomain(model, options, compat, version);
+	const serialization = await (version === 1
+		? serializeOrderedCompletionsV1(input as OrderedCompletionsInputV1)
+		: serializeOrderedCompletionsV2(input as OrderedCompletionsInputV2));
 	if (serialization.hasImages && !model.input.includes("image")) {
 		throw new OrderedCompletionsInputError("$/messages", "prepared user images require actual image modality");
 	}
-	return { kind: "ordered-v1", serialization, messages: [...serialization.messages],
+	const prepared = { messages: [...serialization.messages],
 		tools: serialization.tools, hasToolHistory: serialization.hasToolHistory,
 		grammarToolInputProperties: new Map() };
+	return serialization.schemaVersion === 1
+		? { kind: "ordered-v1", serialization, ...prepared }
+		: { kind: "ordered-v2", serialization, ...prepared };
 }
 
 export interface ConvertCompletionsMessagesOptions {
@@ -441,10 +510,18 @@ export function streamOrderedCompletions(
 	return executeCompletions(model, { kind: "ordered-v1", input }, options);
 }
 
+export function streamOrderedCompletionsV2(
+	model: Model<"openai-completions">,
+	input: OrderedCompletionsInputV2,
+	options: OrderedCompletionsOptionsV2,
+): AssistantMessageEventStream {
+	return executeCompletions(model, { kind: "ordered-v2", input }, options);
+}
+
 function executeCompletions(
 	model: Model<"openai-completions">,
 	input: CompletionInput,
-	options?: OpenAICompletionsOptions & Pick<OrderedCompletionsOptionsV1, "onOrderedTrace">,
+	options?: OpenAICompletionsOptions & { onOrderedTrace?: OrderedTraceObserver },
 ): AssistantMessageEventStream {
 	const stream = new AssistantMessageEventStream();
 
@@ -481,7 +558,7 @@ function executeCompletions(
 			const compat = getCompat(model);
 			const facts = input.kind === "pi-context"
 				? preparePiContextInput(model, input.context, compat)
-				: await prepareOrderedInput(model, input.input, options, compat);
+				: await prepareOrderedInput(model, input.input, options, compat, input.kind === "ordered-v1" ? 1 : 2);
 			const grammarToolInputProperties = facts.grammarToolInputProperties;
 			const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
 			const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
@@ -494,11 +571,12 @@ function executeCompletions(
 				}
 			} else if (options?.onOrderedTrace) {
 				const serialized = facts.serialization;
-				const receipt = Object.freeze({ schemaVersion: 1 as const,
-					encoding: "nexttavern-ordered-chat-completions-trace-v1" as const,
+				const receipt = Object.freeze({ schemaVersion: serialized.schemaVersion,
+					encoding: serialized.encoding,
 					inputSha256: serialized.inputSha256, wireSha256: serialized.wireSha256,
-					traceSha256: serialized.traceSha256, trace: serialized.trace });
-				const returned: unknown = options.onOrderedTrace(receipt);
+					traceSha256: serialized.traceSha256, trace: serialized.trace }) as OrderedTraceReceipt;
+				const observe = options.onOrderedTrace as (receipt: OrderedTraceReceipt) => void;
+				const returned: unknown = observe(receipt);
 				if (returned !== undefined) {
 					throw new OrderedCompletionsInputError("$/options/onOrderedTrace", "trace observer must be synchronous and return void");
 				}

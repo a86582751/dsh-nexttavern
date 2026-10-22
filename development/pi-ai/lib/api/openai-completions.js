@@ -15,7 +15,7 @@ import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copi
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.js";
 import { buildBaseOptions, clampThinkingBudgetToAnswerRoom, thinkingBudgetForLevel } from "./simple-options.js";
 import { transformMessages } from "./transform-messages.js";
-import { OrderedCompletionsInputError, serializeOrderedCompletionsV1, } from "./openai-ordered-input.js";
+import { OrderedCompletionsInputError, serializeOrderedCompletionsV1, serializeOrderedCompletionsV2, } from "./openai-ordered-input.js";
 /**
  * Check if conversation messages contain tool calls or tool results.
  * This is needed because Anthropic (via proxy) requires the tools param
@@ -106,24 +106,48 @@ function isOpenAIReasoningDetail(detail) {
             return false;
     }
 }
-function assertOrderedModelDomain(model, compat) {
+function assertOrderedModelDomain(model, compat, version = 1) {
     function reject(path, reason) {
         throw new OrderedCompletionsInputError(path, reason);
     }
-    if (model.api !== "openai-completions" || model.reasoning !== false || model.provider === "github-copilot") {
-        reject("$/model", "ordered v1 requires an ordinary nonreasoning completions route");
+    if (version === 1) {
+        if (model.api !== "openai-completions" || model.reasoning !== false || model.provider === "github-copilot") {
+            reject("$/model", "ordered v1 requires an ordinary nonreasoning completions route");
+        }
+        const declared = model.compat;
+        if (declared?.supportsDeveloperRole !== false || declared.requiresAssistantAfterToolResult !== false
+            || declared.requiresThinkingAsText !== false || declared.requiresReasoningContentOnAssistantMessages !== false) {
+            reject("$/model/compat", "ordered v1 requires explicit role/bridge/thinking flags false");
+        }
     }
-    const declared = model.compat;
-    if (declared?.supportsDeveloperRole !== false || declared.requiresAssistantAfterToolResult !== false
-        || declared.requiresThinkingAsText !== false || declared.requiresReasoningContentOnAssistantMessages !== false) {
-        reject("$/model/compat", "ordered v1 requires explicit role/bridge/thinking flags false");
+    else {
+        let endpoint;
+        try {
+            endpoint = new URL(model.baseUrl);
+        }
+        catch {
+            return reject("$/model/baseUrl", "ordered v2 requires the official DeepSeek completions endpoint");
+        }
+        if (endpoint.origin !== "https://api.deepseek.com" || endpoint.username || endpoint.password
+            || endpoint.search || endpoint.hash || !["", "/v1"].includes(endpoint.pathname.replace(/\/$/, ""))) {
+            reject("$/model/baseUrl", "ordered v2 requires the official DeepSeek completions endpoint");
+        }
+        if (model.api !== "openai-completions" || model.reasoning !== true || model.provider === "github-copilot") {
+            reject("$/model", "ordered v2 requires an official DeepSeek reasoning completions route");
+        }
+        if (compat.thinkingFormat !== "deepseek" || !compat.supportsReasoningEffort
+            || !compat.requiresReasoningContentOnAssistantMessages || compat.supportsDeveloperRole
+            || compat.requiresAssistantAfterToolResult || compat.requiresThinkingAsText
+            || compat.thinkingTokenBudgetField !== undefined || compat.supportsThinkingTokenBudget) {
+            reject("$/model/compat", "ordered v2 requires DeepSeek reasoning without role/bridge transformations");
+        }
     }
     if (compat.deferredToolsMode !== undefined || compat.cacheControlFormat !== undefined
         || compat.supportsOpenAIGrammarTools || compat.zaiToolStream || compat.requiresToolResultName) {
         reject("$/model/compat", "unsupported deferred/cache/grammar/tool dialect");
     }
     if (model.samplingParams !== undefined) {
-        reject("$/model/samplingParams", "ordered v1 disallows model body overrides");
+        reject("$/model/samplingParams", `ordered v${version} disallows model body overrides`);
     }
 }
 /** Adapter preparation and dispatch share this exact effective SDK model
@@ -142,18 +166,44 @@ export function supportsOrderedCompletionsModelV1(model) {
         throw error;
     }
 }
-function assertOrderedDomain(model, options, compat) {
-    assertOrderedModelDomain(model, compat);
+export function assertOrderedCompletionsModelV2(model) {
+    assertOrderedModelDomain(model, getCompat(model), 2);
+}
+export function supportsOrderedCompletionsModelV2(model) {
+    try {
+        assertOrderedCompletionsModelV2(model);
+        return true;
+    }
+    catch (error) {
+        if (error instanceof OrderedCompletionsInputError)
+            return false;
+        throw error;
+    }
+}
+function assertOrderedDomain(model, options, compat, version) {
+    assertOrderedModelDomain(model, compat, version);
     function reject(path, reason) {
         throw new OrderedCompletionsInputError(path, reason);
     }
     if (!options?.apiKey || typeof options.apiKey !== "string" || options.maxRetries !== 0) {
         reject("$/options", "explicit resolved apiKey and zero SDK retries are required");
     }
-    if (options.onPayload !== undefined || options.samplingParams !== undefined
+    if (version === 1 && (options.onPayload !== undefined || options.samplingParams !== undefined
         || options.reasoningEffort !== undefined || options.thinkingBudgets !== undefined
-        || (options.transport !== undefined && options.transport !== "sse")) {
+        || (options.transport !== undefined && options.transport !== "sse"))) {
         reject("$/options", "ordered v1 disallows body overrides, reasoning and alternate transport");
+    }
+    if (version === 2 && (options.onPayload !== undefined || options.samplingParams !== undefined
+        || options.thinkingBudgets !== undefined
+        || (options.transport !== undefined && options.transport !== "sse"))) {
+        reject("$/options", "ordered v2 disallows body overrides, thinking budgets and alternate transport");
+    }
+    if (version === 2) {
+        const effort = options.reasoningEffort;
+        if ((effort !== "high" && effort !== "max")
+            || (model.thinkingLevelMap?.[effort] !== undefined && model.thinkingLevelMap[effort] !== effort)) {
+            reject("$/options/reasoningEffort", "ordered v2 requires unchanged high or max reasoning effort");
+        }
     }
 }
 function preparePiContextInput(model, context, compat) {
@@ -162,15 +212,20 @@ function preparePiContextInput(model, context, compat) {
         messages: convertMessages(model, context, compat, { grammarToolInputProperties }),
         hasToolHistory: hasToolHistory(context.messages), grammarToolInputProperties };
 }
-async function prepareOrderedInput(model, input, options, compat) {
-    assertOrderedDomain(model, options, compat);
-    const serialization = await serializeOrderedCompletionsV1(input);
+async function prepareOrderedInput(model, input, options, compat, version) {
+    assertOrderedDomain(model, options, compat, version);
+    const serialization = await (version === 1
+        ? serializeOrderedCompletionsV1(input)
+        : serializeOrderedCompletionsV2(input));
     if (serialization.hasImages && !model.input.includes("image")) {
         throw new OrderedCompletionsInputError("$/messages", "prepared user images require actual image modality");
     }
-    return { kind: "ordered-v1", serialization, messages: [...serialization.messages],
+    const prepared = { messages: [...serialization.messages],
         tools: serialization.tools, hasToolHistory: serialization.hasToolHistory,
         grammarToolInputProperties: new Map() };
+    return serialization.schemaVersion === 1
+        ? { kind: "ordered-v1", serialization, ...prepared }
+        : { kind: "ordered-v2", serialization, ...prepared };
 }
 function parseOpenAIReasoningDetails(signature) {
     if (!signature)
@@ -241,6 +296,9 @@ export const stream = (model, context, options) => {
 export function streamOrderedCompletions(model, input, options) {
     return executeCompletions(model, { kind: "ordered-v1", input }, options);
 }
+export function streamOrderedCompletionsV2(model, input, options) {
+    return executeCompletions(model, { kind: "ordered-v2", input }, options);
+}
 function executeCompletions(model, input, options) {
     const stream = new AssistantMessageEventStream();
     (async () => {
@@ -274,7 +332,7 @@ function executeCompletions(model, input, options) {
             const compat = getCompat(model);
             const facts = input.kind === "pi-context"
                 ? preparePiContextInput(model, input.context, compat)
-                : await prepareOrderedInput(model, input.input, options, compat);
+                : await prepareOrderedInput(model, input.input, options, compat, input.kind === "ordered-v1" ? 1 : 2);
             const grammarToolInputProperties = facts.grammarToolInputProperties;
             const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
             const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
@@ -288,11 +346,12 @@ function executeCompletions(model, input, options) {
             }
             else if (options?.onOrderedTrace) {
                 const serialized = facts.serialization;
-                const receipt = Object.freeze({ schemaVersion: 1,
-                    encoding: "nexttavern-ordered-chat-completions-trace-v1",
+                const receipt = Object.freeze({ schemaVersion: serialized.schemaVersion,
+                    encoding: serialized.encoding,
                     inputSha256: serialized.inputSha256, wireSha256: serialized.wireSha256,
                     traceSha256: serialized.traceSha256, trace: serialized.trace });
-                const returned = options.onOrderedTrace(receipt);
+                const observe = options.onOrderedTrace;
+                const returned = observe(receipt);
                 if (returned !== undefined) {
                     throw new OrderedCompletionsInputError("$/options/onOrderedTrace", "trace observer must be synchronous and return void");
                 }

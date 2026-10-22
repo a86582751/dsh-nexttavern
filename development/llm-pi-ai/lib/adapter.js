@@ -80,7 +80,7 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
 });
 import { attributionHeaders, contentHasImage, LlmAdapter, LlmError, assertAgentLoopRequestCurrent, ReasoningEffortId, } from '@deepseek-ai/dsh-llm';
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout';
-import { toPiContext, toOrderedCompletionsInputV1 } from './context.js';
+import { toPiContext, toOrderedCompletionsInputV1, toOrderedCompletionsInputV2 } from './context.js';
 import { createModels, getSupportedThinkingLevels } from './models.js';
 import { toStreamChunks } from './stream.js';
 import { catalogProvider } from './catalog.js';
@@ -104,8 +104,15 @@ function supportsRequestMaterialText(profile, model) {
 /** The ordered entry has its own narrow protocol domain. Capability must
  * refuse incompatible body/tool/cache modes before Native makes any commits. */
 function supportsOrderedMaterial(profile, model) {
+    if (profile.requestMaterialSerialization === 'ordered-chat-v2') {
+        // The SDK owns the protocol/model domain. This layer owns profile-only
+        // controls which are not part of the effective SDK model descriptor.
+        return profile.api === 'openai-completions' && profile.apiKeyEnv !== undefined
+            && (profile.reasoning === undefined || profile.reasoning === 'high' || profile.reasoning === 'max')
+            && (profile.transport === undefined || profile.transport === 'sse');
+    }
     if (profile.requestMaterialSerialization !== 'ordered-chat-v1' || profile.apiKeyEnv === undefined
-        || !supportsRequestMaterialText(profile, model) || profile.thinkingBudgets !== undefined
+        || !supportsRequestMaterialText(profile, model)
         || profile.reasoning !== undefined && profile.reasoning !== 'off'
         || profile.transport !== undefined && profile.transport !== 'sse')
         return false;
@@ -350,7 +357,7 @@ export class PiAiAdapter extends LlmAdapter {
             // the one it started with and the next call picks up the new one.
             const profile = this.profileOf(snapshot, options.provider);
             const model = this.modelOf(snapshot, options.provider, options.model);
-            const ordered = profile.requestMaterialSerialization === 'ordered-chat-v1';
+            const ordered = profile.requestMaterialSerialization !== undefined;
             const supported = ordered ? await this.orderedModelSupported(profile, model) : supportsRequestMaterialText(profile, model);
             if (ordered && !supported) {
                 throw new LlmError('ordered chat material is unsupported by this captured route', 'REQUEST_MATERIAL_ROLE_POSITION_UNSUPPORTED');
@@ -399,7 +406,9 @@ export class PiAiAdapter extends LlmAdapter {
                 };
                 const context = ordered ? undefined : imageContext === undefined ? toPiContext(options, undefined, onReplayDegrade)
                     : await toPiContext({ ...options, signal: watchdog.signal }, imageContext, onReplayDegrade);
-                const orderedInput = ordered ? await toOrderedCompletionsInputV1({ ...options, signal: watchdog.signal }, imageContext, onReplayDegrade) : undefined;
+                const orderedInput = !ordered ? undefined : profile.requestMaterialSerialization === 'ordered-chat-v2'
+                    ? await toOrderedCompletionsInputV2({ ...options, signal: watchdog.signal }, imageContext, onReplayDegrade)
+                    : await toOrderedCompletionsInputV1({ ...options, signal: watchdog.signal }, imageContext, onReplayDegrade);
                 if (guardedTransport)
                     assertCurrent();
                 // SDK auth, lazy API loading and payload hooks may await afterwards.
@@ -477,13 +486,14 @@ export class PiAiAdapter extends LlmAdapter {
         if (model.api !== 'openai-completions' || apiKey === undefined || !apiKey.trim()) {
             throw new LlmError('ordered chat requires its resolved credential', 'MISSING_CREDENTIAL');
         }
-        const { streamOrderedCompletions } = await import('dsh-nexttavern-pi-ai/api/openai-completions');
+        const { streamOrderedCompletions, streamOrderedCompletionsV2 } = await import('dsh-nexttavern-pi-ai/api/openai-completions');
         assertCurrent();
         const { reasoning: _reasoning, thinkingBudgets: _budgets, ...ordinary } = options;
         const boundaries = input.messages.map(message => ({ key: message.key, role: message.role }));
         const onOrderedTrace = (receipt) => {
             assertCurrent();
-            if (receipt.schemaVersion !== 1 || receipt.encoding !== 'nexttavern-ordered-chat-completions-trace-v1'
+            if (receipt.schemaVersion !== input.schemaVersion
+                || receipt.encoding !== `nexttavern-ordered-chat-completions-trace-v${input.schemaVersion}`
                 || ![receipt.inputSha256, receipt.wireSha256, receipt.traceSha256].every(value => /^[a-f0-9]{64}$/.test(value))
                 || receipt.trace.length !== boundaries.length || receipt.trace.some((row, index) => {
                 const expected = boundaries[index];
@@ -493,6 +503,9 @@ export class PiAiAdapter extends LlmAdapter {
                 throw new LlmError('ordered SDK trace differs from the captured request boundaries', 'REQUEST_MATERIAL_WIRE_TRACE_INVALID');
             }
         };
+        if (input.schemaVersion === 2) {
+            return streamOrderedCompletionsV2(model, input, { ...ordinary, apiKey, maxRetries: 0, reasoningEffort: options.reasoning, onOrderedTrace });
+        }
         return streamOrderedCompletions(model, input, { ...ordinary, apiKey, maxRetries: 0, onOrderedTrace });
     }
     /** Actual effective SDK defaults participate in the same captured model
@@ -500,7 +513,9 @@ export class PiAiAdapter extends LlmAdapter {
     async orderedModelSupported(profile, model) {
         if (!supportsOrderedMaterial(profile, model) || model.api !== 'openai-completions')
             return false;
-        const { supportsOrderedCompletionsModelV1 } = await import('dsh-nexttavern-pi-ai/api/openai-completions');
-        return supportsOrderedCompletionsModelV1(model);
+        const { supportsOrderedCompletionsModelV1, supportsOrderedCompletionsModelV2 } = await import('dsh-nexttavern-pi-ai/api/openai-completions');
+        return profile.requestMaterialSerialization === 'ordered-chat-v2'
+            ? supportsOrderedCompletionsModelV2(model)
+            : supportsOrderedCompletionsModelV1(model);
     }
 }

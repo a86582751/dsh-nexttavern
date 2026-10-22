@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.js";
 import type { Context, Model, OpenAICompletionsCompat, SimpleStreamOptions, StreamFunction, StreamOptions, ThinkingBudgets } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
-import { type OrderedCompletionsInputV1, type OrderedCompletionsTraceReceiptV1 } from "./openai-ordered-input.js";
+import { type OrderedCompletionsInputV1, type OrderedCompletionsInputV2, type OrderedCompletionsTraceReceiptV1, type OrderedCompletionsTraceReceiptV2 } from "./openai-ordered-input.js";
 export interface OpenAICompletionsOptions extends StreamOptions {
     toolChoice?: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption;
     reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -18,10 +18,19 @@ export interface OrderedCompletionsOptionsV1 extends OpenAICompletionsOptions {
     /** Synchronous data receipt; a throw refuses transport. It grants no authority. */
     onOrderedTrace?: (receipt: OrderedCompletionsTraceReceiptV1) => void;
 }
+export interface OrderedCompletionsOptionsV2 extends OpenAICompletionsOptions {
+    apiKey: string;
+    maxRetries: 0;
+    reasoningEffort: "high" | "max";
+    /** Synchronous data receipt; a throw refuses transport. It grants no authority. */
+    onOrderedTrace?: (receipt: OrderedCompletionsTraceReceiptV2) => void;
+}
 /** Adapter preparation and dispatch share this exact effective SDK model
  * predicate, including provider/baseUrl detection. It reads no credentials. */
 export declare function assertOrderedCompletionsModelV1(model: Model<"openai-completions">): void;
 export declare function supportsOrderedCompletionsModelV1(model: Model<"openai-completions">): boolean;
+export declare function assertOrderedCompletionsModelV2(model: Model<"openai-completions">): void;
+export declare function supportsOrderedCompletionsModelV2(model: Model<"openai-completions">): boolean;
 export interface ConvertCompletionsMessagesOptions {
     grammarToolInputProperties?: ReadonlyMap<string, string>;
 }
@@ -36,6 +45,7 @@ export declare const stream: StreamFunction<"openai-completions", OpenAICompleti
 /** Initial params come directly from the ordered serializer. Generic Pi
  * Context/Message and all other provider protocols keep their existing shape. */
 export declare function streamOrderedCompletions(model: Model<"openai-completions">, input: OrderedCompletionsInputV1, options: OrderedCompletionsOptionsV1): AssistantMessageEventStream;
+export declare function streamOrderedCompletionsV2(model: Model<"openai-completions">, input: OrderedCompletionsInputV2, options: OrderedCompletionsOptionsV2): AssistantMessageEventStream;
 export declare const streamSimple: StreamFunction<"openai-completions", SimpleStreamOptions>;
 export declare function convertMessages(model: Model<"openai-completions">, context: Context, compat: ResolvedOpenAICompletionsCompat, options?: ConvertCompletionsMessagesOptions): ChatCompletionMessageParam[];
 export {};
