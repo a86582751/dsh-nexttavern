@@ -341,14 +341,15 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const inventory:ConsumedEventRow[]=eventRows(sid,events.length,ledger),root=initial.root,consumed=new Map<string,string>()
     const rows:typeof inventory=[],partial:typeof inventory=[]
     for(const row of inventory) {
-      const event=row.event,closed=event.encoding==='native-mvu-schema-player-event-v1'
-        ?prefixInputs.branch.get(mvuSchemaPlayerCompletionKey(sid,event.plan.operation.operationId))!==undefined
-        :readInputCompletion(prefixInputs.branch,sid,event.plan.scope.currency.preparationId)?.status==='settled'
-      if(readOnlyTail&&!closed)partial.push(row)
-      else {
-        if(partial.length)fail('SCHEMA_HISTORICAL_TAIL_UNPROVEN')
-        rows.push(row)
+      const event=row.event
+      if(readOnlyTail) {
+        const closed=event.encoding==='native-mvu-schema-player-event-v1'
+          ?prefixInputs.branch.get(mvuSchemaPlayerCompletionKey(sid,event.plan.operation.operationId))!==undefined
+          :readInputCompletion(prefixInputs.branch,sid,event.plan.scope.currency.preparationId)?.status==='settled'
+        if(!closed) {partial.push(row);continue}
       }
+      if(partial.length)fail('SCHEMA_HISTORICAL_TAIL_UNPROVEN')
+      rows.push(row)
     }
     let state=initial
     let chat=scopeSeed?.chat

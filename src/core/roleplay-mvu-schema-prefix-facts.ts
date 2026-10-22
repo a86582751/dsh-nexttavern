@@ -220,11 +220,11 @@ function terminalSettlement(input:unknown,plan:MvuSchemaStoryPlan):void {
 }
 
 function readStoryPlanFacts(request:MvuSchemaInheritedStoryPlanRequest,
-  deps:MvuSchemaInheritedStoryDeps,mode:'inherited'):MvuSchemaInheritedStoryPlanFacts
+  deps:MvuSchemaInheritedStoryDeps,mode:'inherited',parsedPlan?:MvuSchemaStoryPlan):MvuSchemaInheritedStoryPlanFacts
 function readStoryPlanFacts(request:MvuSchemaInheritedStoryPlanRequest,
   deps:MvuSchemaInheritedStoryDeps,mode:'unpublished-tail'):MvuSchemaUnpublishedStoryPlanFacts
 function readStoryPlanFacts(request:MvuSchemaInheritedStoryPlanRequest,
-  deps:MvuSchemaInheritedStoryDeps,mode:StoryPlanReadMode):MvuSchemaUnpublishedStoryPlanFacts {
+  deps:MvuSchemaInheritedStoryDeps,mode:StoryPlanReadMode,parsedPlan?:MvuSchemaStoryPlan):MvuSchemaUnpublishedStoryPlanFacts {
   try {
     exact(request,['ownerSessionId','ownerInheritedEventCount','events','plan'])
     inspect(request.events)
@@ -232,7 +232,9 @@ function readStoryPlanFacts(request:MvuSchemaInheritedStoryPlanRequest,
     if(!id(sid)||!integer(request.ownerInheritedEventCount)||!Array.isArray(events)
       ||request.ownerInheritedEventCount>events.length||events.length>100000
       ||events.some((event,index)=>!object(event)||event.seq!==index||typeof event.type!=='string'))fail()
-    const plan=validateMvuSchemaStoryPlan(request.plan)
+    // The validated event already owns this plan's pure DATA grammar. Public
+    // raw-plan readers still enter the complete parser here.
+    const plan=parsedPlan??validateMvuSchemaStoryPlan(request.plan)
     const {scope}=plan,{currency,receipt}=scope,checkpoint=receipt.checkpoint
     if(plan.base.sessionId!==sid||checkpoint.sessionId!==sid||receipt.turnEndSeq>=events.length
       ||plan.initialCut.nativeCut>events.length
@@ -330,8 +332,8 @@ export function readMvuSchemaInheritedStoryFacts(request:MvuSchemaInheritedStory
     exact(request,['ownerSessionId','ownerInheritedEventCount','events','event'])
     const event=validateMvuSchemaStoryEvent(request.event),sid=request.ownerSessionId
     if(event.sessionId!==sid||event.frontier.nativeCut>request.events.length)fail()
-    const facts=readMvuSchemaInheritedStoryPlanFacts({ownerSessionId:sid,
-      ownerInheritedEventCount:request.ownerInheritedEventCount,events:request.events,plan:event.plan},deps)
+    const facts=readStoryPlanFacts({ownerSessionId:sid,
+      ownerInheritedEventCount:request.ownerInheritedEventCount,events:request.events,plan:event.plan},deps,'inherited',event.plan)
     const eventKey=mvuSchemaStoryEventKey(sid,event.eventId),storedEvent=read(deps.status,eventKey)
     if(!same(storedEvent,event))fail()
     const settlementKey=mvuSchemaStorySettlementKey(sid,event.plan.planSha256)
