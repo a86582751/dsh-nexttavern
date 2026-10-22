@@ -419,6 +419,7 @@
         "native-fork-host-plan*",
         "native-fork-host-apply*",
         "native-fork-host-activation*",
+        "storage-json-cold-load*",
         "test-temp*",
         "tool-resolution*",
         "qwen-*",

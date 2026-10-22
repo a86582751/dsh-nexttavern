@@ -8003,6 +8003,51 @@
       ]
     },
     {
+      "artifact": "compat-storage-json-index-js",
+      "source": "development/storage-json/src/index.ts",
+      "banner": "runtime/alpha3/compat/storage-json/src/index.ts",
+      "primaryOutput": "development/storage-json/lib/index.js",
+      "outputs": [
+        "development/storage-json/lib/index.js"
+      ]
+    },
+    {
+      "artifact": "compat-storage-json-atomic-js",
+      "source": "development/storage-json/src/atomic.ts",
+      "banner": "runtime/alpha3/compat/storage-json/src/atomic.ts",
+      "primaryOutput": "development/storage-json/lib/atomic.js",
+      "outputs": [
+        "development/storage-json/lib/atomic.js"
+      ]
+    },
+    {
+      "artifact": "compat-storage-json-format-js",
+      "source": "development/storage-json/src/format.ts",
+      "banner": "runtime/alpha3/compat/storage-json/src/format.ts",
+      "primaryOutput": "development/storage-json/lib/format.js",
+      "outputs": [
+        "development/storage-json/lib/format.js"
+      ]
+    },
+    {
+      "artifact": "compat-storage-json-per-record-unit-js",
+      "source": "development/storage-json/src/per-record-unit.ts",
+      "banner": "runtime/alpha3/compat/storage-json/src/per-record-unit.ts",
+      "primaryOutput": "development/storage-json/lib/per-record-unit.js",
+      "outputs": [
+        "development/storage-json/lib/per-record-unit.js"
+      ]
+    },
+    {
+      "artifact": "compat-storage-json-single-unit-js",
+      "source": "development/storage-json/src/single-unit.ts",
+      "banner": "runtime/alpha3/compat/storage-json/src/single-unit.ts",
+      "primaryOutput": "development/storage-json/lib/single-unit.js",
+      "outputs": [
+        "development/storage-json/lib/single-unit.js"
+      ]
+    },
+    {
       "artifact": "roleplay-source-images-parser-js",
       "source": "src/core/roleplay-source-images-parser.mts",
       "banner": "runtime/alpha3/src/core/roleplay-source-images-parser.mts",
@@ -44121,6 +44166,86 @@
         "id": "compat-http-proxy-origin-json",
         "source": "development/http-proxy/ORIGIN.json",
         "canonicalSource": "runtime/alpha3/compat/http-proxy/ORIGIN.json"
+      },
+      {
+        "id": "compat-storage-json-index-ts",
+        "source": "development/storage-json/src/index.ts",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/src/index.ts"
+      },
+      {
+        "id": "compat-storage-json-index-js",
+        "source": "development/storage-json/lib/index.js",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/lib/index.js"
+      },
+      {
+        "id": "compat-storage-json-atomic-ts",
+        "source": "development/storage-json/src/atomic.ts",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/src/atomic.ts"
+      },
+      {
+        "id": "compat-storage-json-atomic-js",
+        "source": "development/storage-json/lib/atomic.js",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/lib/atomic.js"
+      },
+      {
+        "id": "compat-storage-json-format-ts",
+        "source": "development/storage-json/src/format.ts",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/src/format.ts"
+      },
+      {
+        "id": "compat-storage-json-format-js",
+        "source": "development/storage-json/lib/format.js",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/lib/format.js"
+      },
+      {
+        "id": "compat-storage-json-per-record-unit-ts",
+        "source": "development/storage-json/src/per-record-unit.ts",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/src/per-record-unit.ts"
+      },
+      {
+        "id": "compat-storage-json-per-record-unit-js",
+        "source": "development/storage-json/lib/per-record-unit.js",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/lib/per-record-unit.js"
+      },
+      {
+        "id": "compat-storage-json-single-unit-ts",
+        "source": "development/storage-json/src/single-unit.ts",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/src/single-unit.ts"
+      },
+      {
+        "id": "compat-storage-json-single-unit-js",
+        "source": "development/storage-json/lib/single-unit.js",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/lib/single-unit.js"
+      },
+      {
+        "id": "compat-storage-json-package-json",
+        "source": "development/storage-json/package.json",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/package.json"
+      },
+      {
+        "id": "compat-storage-json-readme-md",
+        "source": "development/storage-json/README.md",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/README.md"
+      },
+      {
+        "id": "compat-storage-json-license",
+        "source": "development/storage-json/LICENSE",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/LICENSE"
+      },
+      {
+        "id": "compat-storage-json-license-upstream",
+        "source": "development/storage-json/LICENSE.upstream",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/LICENSE.upstream"
+      },
+      {
+        "id": "compat-storage-json-notice",
+        "source": "development/storage-json/NOTICE",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/NOTICE"
+      },
+      {
+        "id": "compat-storage-json-origin-json",
+        "source": "development/storage-json/ORIGIN.json",
+        "canonicalSource": "runtime/alpha3/compat/storage-json/ORIGIN.json"
       },
       {
         "id": "roleplay-source-images-typescript",
@@ -165410,6 +165535,106 @@
           "src/operations/build-typescript.mts"
         ],
         "banner": "runtime/alpha3/compat/http-proxy/src/policy.ts"
+      },
+      {
+        "id": "compat-storage-json-index-build",
+        "kind": "typescript-module",
+        "artifact": "compat-storage-json-index-js",
+        "entry": "development/storage-json/src/index.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/storage-json/src/index.ts",
+          "development/storage-json/src/atomic.ts",
+          "development/storage-json/src/format.ts",
+          "development/storage-json/src/per-record-unit.ts",
+          "development/storage-json/src/single-unit.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/storage-json/src/index.ts"
+      },
+      {
+        "id": "compat-storage-json-atomic-build",
+        "kind": "typescript-module",
+        "artifact": "compat-storage-json-atomic-js",
+        "entry": "development/storage-json/src/atomic.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/storage-json/src/index.ts",
+          "development/storage-json/src/atomic.ts",
+          "development/storage-json/src/format.ts",
+          "development/storage-json/src/per-record-unit.ts",
+          "development/storage-json/src/single-unit.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/storage-json/src/atomic.ts"
+      },
+      {
+        "id": "compat-storage-json-format-build",
+        "kind": "typescript-module",
+        "artifact": "compat-storage-json-format-js",
+        "entry": "development/storage-json/src/format.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/storage-json/src/index.ts",
+          "development/storage-json/src/atomic.ts",
+          "development/storage-json/src/format.ts",
+          "development/storage-json/src/per-record-unit.ts",
+          "development/storage-json/src/single-unit.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/storage-json/src/format.ts"
+      },
+      {
+        "id": "compat-storage-json-per-record-unit-build",
+        "kind": "typescript-module",
+        "artifact": "compat-storage-json-per-record-unit-js",
+        "entry": "development/storage-json/src/per-record-unit.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/storage-json/src/index.ts",
+          "development/storage-json/src/atomic.ts",
+          "development/storage-json/src/format.ts",
+          "development/storage-json/src/per-record-unit.ts",
+          "development/storage-json/src/single-unit.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/storage-json/src/per-record-unit.ts"
+      },
+      {
+        "id": "compat-storage-json-single-unit-build",
+        "kind": "typescript-module",
+        "artifact": "compat-storage-json-single-unit-js",
+        "entry": "development/storage-json/src/single-unit.ts",
+        "builder": "runtime/alpha3/lib/operations/build-typescript.mjs",
+        "inputs": [
+          "development/storage-json/src/index.ts",
+          "development/storage-json/src/atomic.ts",
+          "development/storage-json/src/format.ts",
+          "development/storage-json/src/per-record-unit.ts",
+          "development/storage-json/src/single-unit.ts",
+          "build-tools/tsconfig.json",
+          "build-tools/package.json",
+          "build-tools/package-lock.json",
+          "lib/operations/build-typescript.mjs",
+          "src/operations/build-typescript.mts"
+        ],
+        "banner": "runtime/alpha3/compat/storage-json/src/single-unit.ts"
       },
       {
         "id": "roleplay-source-images-parser-build",

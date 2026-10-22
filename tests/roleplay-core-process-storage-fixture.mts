@@ -1,4 +1,4 @@
-/** Official JSON storage in a small locked-peer test graph. No Harness boot,
+/** Explicitly selected JSON storage in a small locked-peer test graph. No Harness boot,
  * profile mutation, replacement backend, or persisted Native authority lives here. */
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
@@ -54,11 +54,15 @@ export async function processFixtureDataRoot(input: string): Promise<string> {
   return actual
 }
 
-/** Copy only the installed official adapter metadata/lib, binding its peer
- * imports to the fixture's existing graph. Never modify or execute the Harness. */
-export async function copyStorageJsonPackage(installed: string): Promise<StorageJsonPin> {
-  const source = await realpath(path.resolve(fixtureRepo,
-    '../dsh-public-access/artifacts/auth-native/harness/node_modules/@deepseek-ai/dsh-storage-json'))
+/** Copy only the selected adapter metadata/lib, binding its peer imports to
+ * the fixture's existing graph. Installed means the fixed Harness package path;
+ * neither selection modifies or executes the Harness. */
+export async function copyStorageJsonPackage(installed: string,
+  selection: 'installed' | 'maintained' = 'installed'): Promise<StorageJsonPin> {
+  const source = await realpath(selection === 'maintained'
+    ? path.join(fixtureRepo, 'runtime/alpha3/compat/storage-json')
+    : path.resolve(fixtureRepo,
+      '../dsh-public-access/artifacts/auth-native/harness/node_modules/@deepseek-ai/dsh-storage-json'))
   const metadataBytes = await readFile(path.join(source, 'package.json'))
   const metadata = JSON.parse(metadataBytes.toString('utf8'))
   assert.equal(metadata.name, '@deepseek-ai/dsh-storage-json')
@@ -66,7 +70,7 @@ export async function copyStorageJsonPackage(installed: string): Promise<Storage
   const captured: {path: string; bytes: Buffer}[] = [{path: 'package.json', bytes: metadataBytes}]
   async function collect(relative: string) {
     for (const entry of (await readdir(path.join(source, relative), {withFileTypes: true})).sort((a,b)=>a.name.localeCompare(b.name))) {
-      assert.equal(entry.isSymbolicLink(), false, 'official JSON package lib must not link another package')
+      assert.equal(entry.isSymbolicLink(), false, 'selected JSON package lib must not link another package')
       const child = `${relative}/${entry.name}`
       if (entry.isDirectory()) await collect(child)
       else {
@@ -98,7 +102,7 @@ interface PackageGraph {
 /** All plugin code is loaded through the same graph that created Context and
  * Native Agents. Equal version strings alone do not prove peer identity. */
 export async function installProcessStorage(ctx: any, graph: PackageGraph, dataRoot: string) {
-  assert.ok(graph.storageJsonPin, 'real process storage requires its exact official adapter pin')
+  assert.ok(graph.storageJsonPin, 'real process storage requires its exact selected adapter pin')
   const cordisFile = await realpath(graph.require.resolve('@deepseek-ai/cordis'))
   const storageFile = await realpath(graph.require.resolve('@deepseek-ai/dsh-storage'))
   const moduleUrls: Record<string,string> = {cordis:pathToFileURL(cordisFile).href,storage:pathToFileURL(storageFile).href}

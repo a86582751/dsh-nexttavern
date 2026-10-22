@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/dsh-storage-json",
+  "version": "0.1.7-rc.2",
+  "license": "MIT",
+  "upstream": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+    "packagePath": "packages/storage/storage-json",
+    "packageJsonSha256": "786d00746aafc9530cd1aa9c173d1e7fc808fa90e1dea72fadc6b3570cb6c324",
+    "licensePath": "LICENSE",
+    "licenseSha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+    "sourceFiles": [
+      {
+        "path": "src/atomic.ts",
+        "sha256": "ccb2372d1b78fb7c5b00f688435519ea7a44a700e2a206c4df3fb58c1ac54d72"
+      },
+      {
+        "path": "src/format.ts",
+        "sha256": "398c5edbc96ccad21bd6ba788ed3b41d1799e6b77dd6c602affd29c8ccc83f89"
+      },
+      {
+        "path": "src/index.ts",
+        "sha256": "bae1a1c29859dea20d21c2730bbf3c5a30e31ed6cd7d872b8e1c726e65a33a63"
+      },
+      {
+        "path": "src/per-record-unit.ts",
+        "sha256": "a41c8c459ee97a056c4497d90bf4915efa06fdbcfe803f8743a92f9f991465d9"
+      },
+      {
+        "path": "src/single-unit.ts",
+        "sha256": "db857ab80f6f77bb2e2ad4c7e798dc795417e4a34e753e613a7a2be0163e1f76"
+      }
+    ]
+  },
+  "maintainedChanges": [
+    "Relative ESM import specifiers target generated .js modules.",
+    "Per-record cold-load reads and per-table loadAll traversal run sequentially."
+  ],
+  "synchronization": "Maintained compatibility fork; source hashes above identify upstream files, not the modified local files."
+}

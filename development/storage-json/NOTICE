@@ -1,0 +1,11 @@
+This package is based on `@deepseek-ai/dsh-storage-json` from the DeepSeek
+Harness repository at commit
+`477b4f420553e8a52c2fbccc464d7561b239c443`, under the MIT License. The exact
+upstream license is included in `LICENSE.upstream`.
+
+NextTavern's maintained delta changes relative ESM import specifiers to `.js`
+and serializes the per-record file-read and per-table `loadAll()` fan-outs. It
+does not change the storage API, persistence format, configured limits, prompt,
+or model request behavior. Cold-load serialization applies within this
+backend call; it is not a process-wide concurrency limit. Host activation stays
+manual-only after package delivery.

@@ -1,0 +1,39 @@
+{
+  "name": "@deepseek-ai/dsh-storage-json",
+  "description": "NextTavern maintained JSON storage compatibility fork with serialized cold loading; not an upstream release",
+  "version": "0.1.7-rc.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/storage/storage-json"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "README.md",
+    "LICENSE",
+    "LICENSE.upstream",
+    "NOTICE",
+    "ORIGIN.json"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-storage": "0.1.7-rc.2",
+    "@deepseek-ai/cordis": "4.0.4"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.4"
+  },
+  "private": true
+}

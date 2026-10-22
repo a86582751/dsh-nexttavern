@@ -9,8 +9,8 @@ import {createTestDirectory, cleanupTestDirectory} from '../src/operations/test-
 import {copyStorageJsonPackage, type StorageJsonPin} from './roleplay-core-process-storage-fixture.mts'
 
 export async function ownedPackages(units: readonly string[], extraPeers: readonly string[] = [],
-  options: {localSession?: boolean; storageJson?: boolean; physicalPeers?: readonly string[]} = {}) {
-  if (options.storageJson && !options.localSession) throw Error('Official JSON fixture needs the isolated locked peer scope')
+  options: {localSession?: boolean; storageJson?: boolean | 'maintained'; physicalPeers?: readonly string[]} = {}) {
+  if (options.storageJson && !options.localSession) throw Error('Selected JSON fixture needs the isolated locked peer scope')
   const directory = createTestDirectory('owned-compat-packages-')
   const modules = path.join(directory, 'node_modules')
   const peers = fileURLToPath(new URL('../build-tools/node_modules/', import.meta.url))
@@ -41,7 +41,8 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
         if (name === 'dsh-session' || name === 'dsh-session-persistence') continue
         await symlink(path.join(lockedScope, name), path.join(scope, name), 'junction')
       }
-      if (options.storageJson) storageJsonPin = await copyStorageJsonPackage(path.join(scope, 'dsh-storage-json'))
+      if (options.storageJson) storageJsonPin = await copyStorageJsonPackage(path.join(scope, 'dsh-storage-json'),
+        options.storageJson === 'maintained' ? 'maintained' : 'installed')
       const localSession = fileURLToPath(new URL(`${packageRoot}session/`, import.meta.url))
       for (const [name, source] of [
         ['dsh-session', localSession],
