@@ -190406,7 +190406,7 @@
               "path": "src/core/roleplay-data.ts"
             },
             {
-              "artifact": "roleplay-mvu-schema-executor-types-typescript",
+              "artifact": "update-batch-predecessor-9c3a13ad6929e7be0086",
               "path": "src/core/roleplay-mvu-schema-executor-types.ts"
             },
             {
@@ -190414,7 +190414,7 @@
               "path": "src/core/roleplay-mvu-schema-journal.ts"
             },
             {
-              "artifact": "roleplay-mvu-schema-replay-typescript",
+              "artifact": "browser3-author-dialog-predecessor-26786fb1ff50dd77fab2",
               "path": "src/core/roleplay-mvu-schema-replay.ts"
             },
             {
@@ -190470,7 +190470,7 @@
               "path": "src/core/tavern-author-combined-data-v6.mts"
             },
             {
-              "artifact": "tavern-author-combined-data-typescript",
+              "artifact": "update-batch-predecessor-f8b802dd5912b4bceb59",
               "path": "src/core/tavern-author-combined-data.mts"
             },
             {
@@ -190502,7 +190502,7 @@
               "path": "src/core/tavern-mvu-schema-import-policy.ts"
             },
             {
-              "artifact": "tavern-mvu-schema-program-v4-typescript",
+              "artifact": "update-batch-predecessor-e9b3be4aa95d1bd0c36d",
               "path": "src/core/tavern-mvu-schema-program-v4.ts"
             },
             {
@@ -190514,7 +190514,7 @@
               "path": "src/core/tavern-mvu-schema-runner-v3.ts"
             },
             {
-              "artifact": "tavern-mvu-schema-runner-v4-typescript",
+              "artifact": "browser3-author-dialog-predecessor-11d24913ae5219defaf4",
               "path": "src/core/tavern-mvu-schema-runner-v4.ts"
             },
             {
@@ -190522,7 +190522,7 @@
               "path": "src/core/tavern-mvu-schema-types.ts"
             },
             {
-              "artifact": "tavern-mvu-schema-update-effects-v2-typescript",
+              "artifact": "update-batch-predecessor-6f5aeecf80fc7541b9b6",
               "path": "src/core/tavern-mvu-schema-update-effects-v2.ts"
             },
             {
