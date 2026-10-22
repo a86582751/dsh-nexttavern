@@ -262,8 +262,8 @@ export const inject = [
 ]
 
 const DEFAULT_CONFIG = {
-  workerProvider: 'deepseek-official' as string | null,
-  workerModel: 'deepseek-flash' as string | null,
+  workerProvider: null as string | null,
+  workerModel: null as string | null,
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
@@ -1484,6 +1484,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const result=await mvuEdits.persistEdit({sessionId:id,editSeq})
       if(result.kind==='unknown')throw Error(result.code)
     },
+    reconcileNumericalEdit:async(id,editSeq)=>{await mvuOpening.reconcileSchemaStoryEdit(id,editSeq)},
     confirmUnchangedNumericalEdit:id=>mvuEdits.confirmNoEdit(id),
     flushEdits: async session => {
       if (!await ctx.sessions.flush(session)) throw new Error('会话编辑尚无持久化提供者，未提交派生状态')
@@ -2330,6 +2331,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     // Derived shares the frozen inherited DATA. Today's Source authority is
     // collected by the current waiter outside that historical footprint.
     readSchemaDerivedGenesis:id=>schemaDerived?.readGenesis(id),
+    captureSchemaRevisionPrefix:(id,cut)=>schemaDerived!.captureRevisionPrefix(id,cut),
+    recoverSchemaRevisionPrefix:input=>schemaDerived!.recoverRevisionPrefix(input),
     readSchemaEditInvalidation:id=>mvuEdits.readInvalidation(id),
     branchReady:id => ensureState(id).branchReady,importActiveKey,importRecordKey,
     withSourceLock:(id,work) => withImportLock(id,'mvu-initialization',work),

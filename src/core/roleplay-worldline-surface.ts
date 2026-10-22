@@ -42,7 +42,8 @@ type SurfaceDependencies = Pick<WorldlineDependencies,
   'textOf' | 'cloneBranchRecord' | 'internalTaskSeqs' | 'isRoleplaySession' |
   'durableSeq' | 'canonicalAssistantForTurn' | 'surfaceEntries' |
   'withDecisionMutationLock' | 'normalizeDecisionRecord' | 'cloneRecord' | 'provenanceSeq' |
-  'messageEdits' | 'flushEdits' | 'beginNumericalEdit' | 'persistNumericalEdit' | 'confirmUnchangedNumericalEdit'>
+  'messageEdits' | 'flushEdits' | 'beginNumericalEdit' | 'persistNumericalEdit' | 'reconcileNumericalEdit'
+  | 'confirmUnchangedNumericalEdit'>
 
 export function assertBranchSession(session: ReadBranchSession): asserts session is BranchSession {
   if (!('append' in session) || typeof session.append !== 'function') throw new Error('会话暂不可写入分支历史')
@@ -57,6 +58,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     flushEdits,
     beginNumericalEdit,
     persistNumericalEdit,
+    reconcileNumericalEdit,
     confirmUnchangedNumericalEdit,
     safeId,
     keyOf,
@@ -227,6 +229,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
       })
     }
     if(numericalFailure&&!options.repair)throw numericalFailure.error
+    if(!numericalFailure)await reconcileNumericalEdit?.(session.id,editSeq)
     return {changed, editSeq}
   }
 

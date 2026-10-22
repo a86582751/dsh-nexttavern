@@ -18,7 +18,7 @@ import type {MvuSchemaCoreDeps} from './roleplay-mvu-schema-core.js'
 import type {mvuPlayerMarkers} from 'dsh-nexttavern-session-format/mvu-player-marker'
 import type {MvuStateObservation} from './roleplay-mvu-player-types.js'
 import type {SchemaOpeningSelectionAdapter} from './roleplay-mvu-schema-opening-types.js'
-import type {Session} from '@deepseek-ai/dsh-session'
+import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
 import type {MvuSourceDeps} from './roleplay-mvu-source.js'
 import type {MvuOpeningIdentity} from './roleplay-mvu-initialization.js'
 import type {OpeningCatalog, OpeningIntent, OpeningSelectionDeps} from './roleplay-opening-selection.js'
@@ -68,6 +68,8 @@ export interface MvuOpeningDependencies {
   derivedBasisRequired?(sessionId:string):boolean
   schemaDerivedRequired?(sessionId:string):boolean
   readSchemaDerivedGenesis?(sessionId:string):MvuSchemaDerivedGenesis|undefined
+  captureSchemaRevisionPrefix?:MvuSchemaStoryCoreDeps['captureRevisionPrefix']
+  recoverSchemaRevisionPrefix?:MvuSchemaStoryCoreDeps['recoverRevisionPrefix']
   readSchemaEditInvalidation?:MvuSchemaStoryCoreDeps['readEditInvalidation']
   /** Private actual product/Native owner. No persisted capability satisfies it. */
   promptTemplateRuntime?:PromptTemplateOnlyRuntimeOwnerV1
@@ -211,8 +213,11 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       captureManualLedger:(id:string)=>schemaPlayer?.captureLedger(id),
       manualEditBlockCode:(id:string)=>schemaPlayer?.editBlockCode(id),
       derivedRequired:deps.schemaDerivedRequired,readDerivedGenesis:deps.readSchemaDerivedGenesis,
+      captureRevisionPrefix:deps.captureSchemaRevisionPrefix,
+      recoverRevisionPrefix:deps.recoverSchemaRevisionPrefix,
       readEditInvalidation:deps.readSchemaEditInvalidation,
       projectPrefix:events=>deps.messageEdits.projectPrefix(events),editProtocol:deps.messageEdits,
+      currentEdits:session=>deps.messageEdits.current(session as never,session.snapshotEvents() as never) as unknown as readonly SessionEvent[],
       activePointer:id=>deps.tables.branch.get(deps.importActiveKey(id)),sourceSha256:id=>inputSource(id).sourceSha256,
       protectedRuntime:schemaCore.protectedRuntime,withSourceLock:deps.withSourceLock})
     schemaPlayer??=createRoleplayMvuSchemaPlayerCore({...common,story:schemaStory,
@@ -627,6 +632,8 @@ export function createRoleplayMvuOpening(deps:MvuOpeningDependencies) {
       }catch{return undefined}
     },
     readSchemaEditBasis:(id:string)=>schemaStory?.readEditBasis(id),
+    reconcileSchemaStoryEdit:(id:string,editSeq:number)=>hasSchemaOpening(id)
+      ?schemaStory?.reconcileAcceptedEdit(id,editSeq)??Promise.resolve():Promise.resolve(),
     submitSchemaPlayer:(input:unknown,current?:()=>boolean)=>schemaPlayer?.submit(input,current)??Promise.resolve({ok:false,
       code:'SCHEMA_PLAYER_UNAVAILABLE',error:'SCHEMA_PLAYER_UNAVAILABLE'}),
     confirmSchemaPlayer:(input:unknown)=>schemaPlayer?.confirm(input)??Promise.resolve({ok:false,

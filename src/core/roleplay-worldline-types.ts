@@ -150,6 +150,7 @@ export interface WorldlineDependencies {
   /** Synchronous denial precedes append/fanout; durable denial follows flush. */
   beginNumericalEdit?(sessionId:string):void
   persistNumericalEdit?(sessionId:string,editSeq:number):Promise<void>
+  reconcileNumericalEdit?(sessionId:string,editSeq:number):Promise<void>
   confirmUnchangedNumericalEdit?(sessionId:string):boolean
   safeId(value: unknown): string
   keyOf(sessionId: string, suffix: string): string
