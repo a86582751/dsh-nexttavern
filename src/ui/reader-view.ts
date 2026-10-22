@@ -20,6 +20,7 @@ import {COMMUNITY_READER_WINDOW_MESSAGES} from '../core/community-preset-types.j
 
 
 import type { ReaderRule } from './reader-regex.js';
+import type {ReaderSubmissionClaim,ReaderSubmissionHandoff} from './reader-submission-handoff.js';
 
 
 interface ReaderNode extends Record<string, unknown> {
@@ -79,6 +80,7 @@ interface ReaderDependencies extends Pick<MessageComponents, 'UserActions' | 'As
     ActivityBanner: ActivityComponents['ActivityBanner'];
     ACTIVITY_CSS: string;
     images?: Pick<ReturnType<typeof createSessionImages>, 'acceptBrowserImages' | 'releaseBrowserImages'>;
+    readerHandoff?: Pick<ReaderSubmissionHandoff,'mount'>;
 }
 
 export function createReaderView({
@@ -108,7 +110,8 @@ React,
      pendingPlayerBubble,
      ActivityBanner,
      ACTIVITY_CSS,
-     images
+     images,
+     readerHandoff
 }: ReaderDependencies) {
     const noopSnapshotHook = () => null;
     function ReaderView(props: ReaderViewProps) {
@@ -145,6 +148,7 @@ React,
         const frameControllerRef = React.useRef<ReturnType<typeof createAuthorFrame> | null>(null);
         const browserContainerRef = React.useRef<HTMLDivElement>(null);
         const browserControllerRef = React.useRef<ReturnType<typeof createAuthorBrowserSession> | null>(null);
+        const readerSubmissionRef = React.useRef<ReaderSubmissionClaim | null>(null);
         const readerDocumentContainerRef = React.useRef<HTMLDivElement>(null);
         const readerDocumentControllerRef = React.useRef<ReturnType<typeof createReaderRegexDocumentSession> | null>(null);
         const readerSurfaceRef = React.useRef<AuthorReaderSurface | null>(null);
@@ -177,6 +181,8 @@ React,
             historyAnchorRef.current = null;
             if (!sessionId) return;
             if (!isRoleplaySession(sessionId)) return;
+            const readerSubmission=readerHandoff?.mount(sessionId);
+            readerSubmissionRef.current=readerSubmission??null;
             let alive = true;
             const requestedSessionId = sessionId;
             const load = (evenWhenHidden = false) => {
@@ -185,11 +191,13 @@ React,
                 fetchState(requestedSessionId, true).then((d) => {
                     if (!alive || request !== stateRequestRef.current) return;
                     if (d?.sessionId && d.sessionId !== requestedSessionId) return;
+                    if(d?.ok===false)readerSubmission?.publish({kind:'failed',code:String(d.error??'角色扮演状态不可用')});
                     setLoadError(d?.ok === false ? String(d.error ?? '角色扮演状态不可用') : null);
                     setState(d);
                 }).catch(error => {
                     if (!alive || request !== stateRequestRef.current) return;
                     const message = error && typeof error === 'object' && 'message' in error ? error.message : error;
+                    readerSubmission?.publish({kind:'failed',code:String(message)});
                     setLoadError(String(message));
                 });
             };
@@ -207,6 +215,8 @@ React,
                 load(true);
             });
             return () => { alive = false; stateRequestRef.current++; clearInterval(timer); unsubscribe();
+                readerSubmission?.dispose();
+                if(readerSubmissionRef.current===readerSubmission)readerSubmissionRef.current=null;
                 window.removeEventListener('dsh-community-preset-changed',communityChanged); };
         },
             [sessionId]
@@ -659,11 +669,13 @@ React,
         }, [readerExecution,readerDocumentPayload,helperAllowsReader,authorJs,sharedReaderCss]);
         React.useEffect(() => {
             if (!sessionId || state?.sessionId !== sessionId || state?.preset !== 'roleplay' || !browserContainerRef.current) return;
+            const readerSubmission=readerSubmissionRef.current;
             const controller = createAuthorBrowserSession({
                 sessionId, container: browserContainerRef.current,
                 surface: () => readerSurfaceFactoryRef.current!(),
                 current: () => readerSessionRef.current === sessionId && browserControllerRef.current === controller,
                 status: setBrowserStatus,
+                preparation: value=>readerSubmission?.publish(value),
                 images: (owner,pageId,values) => images?.acceptBrowserImages(sessionId,owner,pageId,values),
                 releaseImages: owner => images?.releaseBrowserImages(owner),
             });

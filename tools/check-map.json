@@ -31859,6 +31859,14 @@
       "source": "tests/memory-agreements.test.mts"
     },
     {
+      "id": "reader-submission-handoff",
+      "source": "lib/ui/reader-submission-handoff.js"
+    },
+    {
+      "id": "reader-submission-handoff-typescript",
+      "source": "src/ui/reader-submission-handoff.ts"
+    },
+    {
       "id": "quality-registry",
       "source": "tools/check-registry.json"
     },
@@ -32830,7 +32838,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -49926,7 +49935,8 @@
         "src/core/tavern-mvu-schema-fresh-selector.ts",
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
-        "src/operations/build-typescript.mts"
+        "src/operations/build-typescript.mts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -50266,7 +50276,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/core/roleplay-mvu-display-facts.ts",
-        "src/core/roleplay-tavern-lore-export.ts"
+        "src/core/roleplay-tavern-lore-export.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -50606,7 +50617,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/core/roleplay-mvu-display-facts.ts",
-        "src/core/roleplay-tavern-lore-export.ts"
+        "src/core/roleplay-tavern-lore-export.ts",
+        "src/ui/reader-submission-handoff.ts"
       ],
       "banner": "runtime/alpha3/compat/mvu-schema-runtime/src/descriptor.ts"
     },
@@ -50947,7 +50959,8 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/core/roleplay-mvu-display-facts.ts",
-        "src/core/roleplay-tavern-lore-export.ts"
+        "src/core/roleplay-tavern-lore-export.ts",
+        "src/ui/reader-submission-handoff.ts"
       ],
       "banner": "runtime/alpha3/compat/mvu-schema-runtime/src/index.ts"
     },
@@ -63636,7 +63649,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -67088,7 +67102,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -69047,7 +69062,8 @@
         "src/core/tavern-prompt-transform-output.mts",
         "src/core/roleplay-tavern-current-overlay.ts",
         "src/core/roleplay-tavern-legacy-write-target-types.ts",
-        "src/core/roleplay-mvu-display-facts.ts"
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -84223,7 +84239,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -84673,7 +84690,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -85121,7 +85139,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -85568,7 +85587,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -87141,7 +87161,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -87588,7 +87609,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -88033,7 +88055,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -88480,7 +88503,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -89196,7 +89220,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -89641,7 +89666,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -90086,7 +90112,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -90829,7 +90856,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -91275,7 +91303,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -91993,7 +92022,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -117942,7 +117972,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -119115,7 +119146,8 @@
         "src/core/tavern-mvu-schema-fresh-selector.ts",
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
-        "src/operations/build-typescript.mts"
+        "src/operations/build-typescript.mts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -133548,7 +133580,8 @@
         "src/core/roleplay-reader-display.ts",
         "src/core/roleplay-reader-narrative-display.ts",
         "development/agent-loop/src/request-budget.ts",
-        "development/token-meter/src/types.ts"
+        "development/token-meter/src/types.ts",
+        "src/ui/reader-submission-handoff.ts"
       ]
     },
     {
@@ -158984,6 +159017,21 @@
         "development/mvu-schema-runtime-v4/src/index.ts",
         "development/mvu-schema-runtime-v4/src/descriptor.ts",
         "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "reader-submission-handoff-js",
+      "kind": "typescript-module",
+      "artifact": "reader-submission-handoff",
+      "entry": "src/ui/reader-submission-handoff.ts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/ui/reader-submission-handoff.ts",
+        "build-tools/tsconfig.json",
+        "lib/operations/build-typescript.mjs",
+        "src/operations/build-typescript.mts",
+        "build-tools/package.json",
+        "build-tools/package-lock.json"
       ]
     }
   ],

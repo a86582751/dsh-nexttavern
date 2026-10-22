@@ -100,6 +100,7 @@ import { createToastController, confirmWithDialog } from './message-actions.js'
 export { createToastController, confirmWithDialog } from './message-actions.js'
 import { createMessageActionComponents } from './message-actions.js'
 import { createRoleplayActions } from './session-actions.js'
+import { createReaderSubmissionHandoff } from './reader-submission-handoff.js'
 import { createRoleplayStateStore } from './state-store.js'
 import { updatePanelDraft } from './panel-state.js'
 export {
@@ -135,6 +136,8 @@ export function apply(ctx: ClientContext) {
   const React = require('react')
   const slots = ctx.get('slots')
   const mainSelection = ctx.get('uiSession').adapter.current
+  const readerHandoff = createReaderSubmissionHandoff(mainSelection)
+  ctx.effect(() => () => readerHandoff.dispose(), 'roleplay-ui: Reader submission handoff')
   const sessionBgm = createSessionBgm()
   ctx.effect(() => () => sessionBgm.dispose(), 'roleplay-ui: session background music')
   const uploadFile = async (sessionId: string, file: Blob, name: string) => {
@@ -261,6 +264,7 @@ export function apply(ctx: ClientContext) {
       invalidateState,
       acceptConversations,
       loadConversations,
+      readerHandoff,
       toast
     })
 
@@ -815,6 +819,7 @@ export function apply(ctx: ClientContext) {
       {
         React,
         images: sessionImages,
+        readerHandoff,
         resolveActiveSessionId,
         isRoleplaySession,
         useTavernActivity,

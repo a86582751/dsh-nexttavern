@@ -25,6 +25,7 @@ import {mountStaticAuthorDocument} from './author-runtime.js';
 import type {BrowserNativeImageV3} from '../core/tavern-author-browser-native-types-v3.js';
 import type {ReaderRegexDocumentExecutionV1,ReaderRegexDocumentRenderV1}
     from '../core/reader-regex-document-types.mjs';
+import type {ReaderPreparationState} from './reader-submission-handoff.js';
 
 export interface AuthorBrowserStatus {
     kind: 'loading' | 'inactive' | 'starting' | 'ready' | 'pending' | 'failed';
@@ -131,6 +132,7 @@ export function createAuthorBrowserSession(options: {
     container: HTMLElement;
     current(): boolean;
     status(value: AuthorBrowserStatus): void;
+    preparation?(value: ReaderPreparationState): void;
     surface?(): AuthorReaderSurface;
     transport?: AuthorBrowserTransport;
     storage?: Pick<Storage, 'getItem' | 'setItem'>;
@@ -155,6 +157,7 @@ export function createAuthorBrowserSession(options: {
     const worldbookChecks = new Map<string, Promise<void>>();
     const personaChecks = new Map<string, Promise<void>>();
     const current = () => active && options.current();
+    const preparation = (value: ReaderPreparationState) => options.preparation?.(value);
     const notify = (value: AuthorBrowserStatus) => {
         if (!current()) return;
         lastStatus = {...value, worldbooks: store.readWorldbooks(options.sessionId), personas: store.readPersonas(options.sessionId)};
@@ -164,6 +167,7 @@ export function createAuthorBrowserSession(options: {
         void transport({action: 'dispose', binding: old}).catch(() => {});
     };
     const revoke = () => {
+        preparation({kind: 'starting'});
         generationWait?.abort();generationWait=undefined;
         if(realm)options.releaseImages?.(realm);
         const frameClosesBinding=Boolean(frame?.invokeGenerationV3);
@@ -322,16 +326,25 @@ export function createAuthorBrowserSession(options: {
         const waiting=new AbortController();generationWait?.abort();generationWait=waiting;
         try {
             while(current()&&realm===owner&&frame===controller&&!waiting.signal.aborted) {
+                preparation({kind: 'starting'});
                 const registrations=controller.generationCallbacks?await controller.generationCallbacks():controller.registrations??[];
                 if(!current()||realm!==owner||waiting.signal.aborted)return;
                 let reply:AuthorBrowserReply;
-                try {reply=await transport({action:'generation-wait',binding:target,registrations},waiting.signal);}
+                try {
+                    const invocation=transport({action:'generation-wait',binding:target,registrations},waiting.signal);
+                    // Core already waits for this matching reader. Local startup
+                    // is dispatched now; awaiting its invocation would deadlock send.
+                    preparation({kind: 'waiting'});
+                    reply=await invocation;
+                }
                 catch(error) {
                     if(controller.generationCallbacks&&error instanceof Error
                         &&error.message==='BROWSER_GENERATION_RESOURCE_RETIRED')continue;
                     throw error;
                 }
-                if(reply.kind!=='generation-invocation')return;
+                if(reply.kind!=='generation-invocation') {
+                    preparation({kind:'failed',code:'作者生成连接已结束。'});return;
+                }
                 const result=reply.invocation.schemaVersion===3
                     ?await controller.invokeGenerationV3!(reply.invocation,waiting.signal)
                     :await controller.invokeGeneration!(reply.invocation);
@@ -349,16 +362,20 @@ export function createAuthorBrowserSession(options: {
                 }
             }
         }catch(error) {
-            if(!waiting.signal.aborted&&current()&&realm===owner)
+            if(!waiting.signal.aborted&&current()&&realm===owner) {
+                preparation({kind:'failed',code:error instanceof Error?error.message:'BROWSER_GENERATION_WAIT_FAILED'});
                 notify({kind:'ready',code:error instanceof Error?error.message:'BROWSER_GENERATION_WAIT_FAILED'});
+            }
         }finally{if(generationWait===waiting)generationWait=undefined;}
     }
     async function refreshOnce() {
         if(store.readPersonas(options.sessionId).some(value=>value.state!=='terminal')) {
+            if(!frame)preparation({kind:'blocked',code:'高级人物操作尚未确认，请先处理阅读视图中的提示。'});
             notify({kind:'pending'});return;
         }
         const pending = store.read(options.sessionId);
         if (!frame && pending && pending.state !== 'terminal') {
+            preparation({kind:'blocked',code:'作者数值操作尚未确认，请先处理阅读视图中的提示。'});
             notify({kind: 'pending', pending});return;
         }
         const target = binding;
@@ -367,7 +384,9 @@ export function createAuthorBrowserSession(options: {
             if (reply.kind === 'attached') release(reply.attachment.binding);
             return;
         }
-        if (reply.kind === 'inactive') {revoke();notify({kind: 'inactive', code: reply.code});return;}
+        if (reply.kind === 'inactive') {
+            revoke();preparation({kind:'not-required'});notify({kind: 'inactive', code: reply.code});return;
+        }
         if (reply.kind !== 'attached') throw Error('BROWSER_ATTACHMENT_UNAVAILABLE');
         const attachment = reply.attachment;
         const book = 'worldbook' in attachment.snapshot ? attachment.snapshot.worldbook : undefined;
@@ -389,10 +408,14 @@ export function createAuthorBrowserSession(options: {
             const previous = binding;
             revoke();
             if (!previous || !sameBinding(previous, attachment.binding)) release(attachment.binding);
+            preparation({kind:'blocked',code:'世界书操作尚未确认，请先处理阅读视图中的提示。'});
             notify({kind: 'pending'});return;
         }
         if (!sameBinding(binding, attachment.binding)) revoke();
-        else {frame?.dispose();frame = undefined;ready = false;if (!sharedSurface) options.container.replaceChildren();}
+        else {
+            preparation({kind:'starting'});
+            frame?.dispose();frame = undefined;ready = false;if (!sharedSurface) options.container.replaceChildren();
+        }
         binding = attachment.binding;captured = attachment.snapshot;
         const realmOwner = {};realm = realmOwner;
         sharedSurface = attachment.schemaVersion === 3 && !!options.surface;
@@ -414,6 +437,7 @@ export function createAuthorBrowserSession(options: {
             },
             failed: (code:string) => {
                 if (!current() || realm !== realmOwner) return;
+                preparation({kind:'failed',code});
                 options.releaseImages?.(realmOwner);
                 generationWait?.abort();generationWait=undefined;
                 frame = undefined;realm = undefined;ready = false;
@@ -444,9 +468,11 @@ export function createAuthorBrowserSession(options: {
                 const pending = store.read(options.sessionId);
                 notify(pending && pending.state !== 'terminal' ? {kind: 'pending', pending} : {kind: 'ready'});
                 if(controller.invokeGeneration||controller.invokeGenerationV3)void generationLoop(realmOwner,controller,realmBinding);
+                else preparation({kind:'not-required'});
             }
         }).catch(error => {
             if (current() && frame === controller) {
+                preparation({kind:'failed',code:String(error.message)});
                 options.releaseImages?.(realmOwner);
                 frame = undefined;ready = false;if (!sharedSurface) options.container.replaceChildren();
                 notify({kind: 'failed', code: String(error.message)});
@@ -460,7 +486,10 @@ export function createAuthorBrowserSession(options: {
         refreshing = (async () => {
             try {
                 while (current() && refreshAgain) {refreshAgain = false;await refreshOnce();}
-            } catch (error) {notify({kind: 'failed', code: error instanceof Error ? error.message : String(error)});}
+            } catch (error) {
+                const code=error instanceof Error ? error.message : String(error);
+                preparation({kind:'failed',code});notify({kind:'failed',code});
+            }
             finally {refreshing = undefined;}
         })();
         return refreshing;
@@ -493,10 +522,14 @@ export function createAuthorBrowserSession(options: {
                         await installReceipt(envelope, reply.result);
                         pending = store.read(options.sessionId);
                     }
-                    if (!terminalBrowserReceipt(reply.result)) return;
+                    if (!terminalBrowserReceipt(reply.result)) {
+                        if(!frame)preparation({kind:'blocked',code:'作者数值操作尚未确认，请先处理阅读视图中的提示。'});
+                        return;
+                    }
                 }
                 await refresh();
             } catch (error) {
+                if(!frame)preparation({kind:'failed',code:error instanceof Error?error.message:String(error)});
                 notify({kind: pending && pending.state !== 'terminal' ? 'pending' : 'failed', pending,
                     code: error instanceof Error ? error.message : String(error)});
             }
