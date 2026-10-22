@@ -21,7 +21,7 @@ const schemaAssetPath=(value:string)=>typeof value==='string'&&value.length>0&&!
 export interface MvuSchemaRuntimeAssetRecipe {
   schemaVersion:1
   executorVersion?:1|2|3|4
-  commandPolicy?:'registered-command-policy-v1'
+  commandPolicy?:'registered-command-policy-v1'|'update-batch-atomic-v1'
   immutableGeneration?:string
   packageArtifact:string
   modules:readonly {role:SchemaRuntimeRole;artifact:string;output:string}[]
@@ -87,7 +87,8 @@ export async function buildMvuSchemaRuntimeAssets(options:{
     SCHEMA_RUNTIME_NAME+'-v4-policy-save-joins-v1',SCHEMA_RUNTIME_NAME+'-v4-policy-save-facts-v1',
     SCHEMA_RUNTIME_NAME+'-v4-policy-save-step-facts-v1',SCHEMA_RUNTIME_NAME+'-v4-policy-save-continuous-v1',
     SCHEMA_RUNTIME_NAME+'-v4-policy-save-codec-v1',SCHEMA_RUNTIME_NAME+'-v4-policy-save-material-owner-v1',
-    SCHEMA_RUNTIME_NAME+'-v4-server-candidates-v1',SCHEMA_RUNTIME_NAME+'-v4-server-candidates-v2']:
+    SCHEMA_RUNTIME_NAME+'-v4-server-candidates-v1',SCHEMA_RUNTIME_NAME+'-v4-server-candidates-v2',
+    SCHEMA_RUNTIME_NAME+'-v4-update-batch-v1']:
     [version===1?SCHEMA_RUNTIME_NAME:SCHEMA_RUNTIME_NAME+'-v'+version]
   if(!supportedNames.includes(packageName)||packageVersion!==(version===4?'0.4.0':SCHEMA_RUNTIME_VERSION)
     ||!same(metadata.dependencies,SCHEMA_RUNTIME_PINS))throw Error('SCHEMA_ASSET_PACKAGE_INVALID')
