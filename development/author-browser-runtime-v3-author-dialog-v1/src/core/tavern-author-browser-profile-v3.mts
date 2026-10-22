@@ -7,7 +7,7 @@ export const BROWSER_BOUNDS_V3=Object.freeze({scripts:64,pages:64,sourceBytes:3*
 export type BrowserFacadeKindV3='window'|'document'|'node'|'frame'|'frame-parent'|'style'|'class-list'
   |'event'|'canvas'|'point'|'matrix'|'audio'|'file'|'file-reader'|'observer'|'media-query'
   |'viewport'|'preferences'|'url'|'helper'|'tavern'|'context'|'mvu'|'navigator'|'performance'|'gradient'|'frame-style'|'dataset'
-  |'persona-catalog'|'persona-row'|'persona-dataset'|'next-tavern'
+  |'persona-catalog'|'persona-row'|'persona-dataset'|'next-tavern'|'page-collection'
 export interface BrowserOperationV3 {
   readonly capability:BrowserCapabilityV3
   readonly returns:'guest'|'void'|BrowserFacadeKindV3|'nodes'|'variables'|'source-id'|'source-trees'|'object-url'
@@ -42,6 +42,28 @@ export const BROWSER_APIS_V3:Readonly<Record<string,BrowserOperationV3>>=Object.
   createPersona:operation('owned-native-personas'),replacePersona:operation('owned-native-personas'),
   $:operation('owned-native-personas','persona-catalog'),jQuery:operation('owned-native-personas','persona-catalog'),
   fetch:operation('owned-native-personas','avatar-fetch'),
+})
+/** Reader principals select this page-owned contract explicitly. Source Helpers
+ * keep the captured persona catalog and never inherit these guest bindings. */
+export const READER_PAGE_AST_APIS_V3=Object.freeze({
+  apis:Object.freeze({$:operation('isolated-dom-text','page-collection'),
+    jQuery:operation('isolated-dom-text','page-collection')}),
+  methods:Object.freeze({
+    text:operation('isolated-dom-text','page-collection'),attr:operation('isolated-dom-text','page-collection'),
+    css:operation('isolated-dom-style','page-collection'),
+    addClass:operation('isolated-dom-style','page-collection'),removeClass:operation('isolated-dom-style','page-collection'),
+    hide:operation('isolated-dom-style','page-collection'),fadeIn:operation('isolated-dom-style','page-collection'),
+    fadeOut:operation('isolated-dom-style','page-collection'),
+    on:operation('owned-synchronous-page-events','page-collection'),
+  }),
+  properties:Object.freeze({length:'guest'}),
+  guestHelpers:Object.freeze(['_.get','errorCatched','waitGlobalInitialized']),
+  resourceMethods:Object.freeze(['fadeIn','fadeOut']),
+  semantics:Object.freeze({selection:'owned-page-selector-or-node-ready-function',indices:'owned-node-or-undefined',
+    setters:'same-collection',getters:'guest-scalar',eventThis:'original-node',eventArgument:'owned-dom-event',
+    readyCallbacks:'owned-page-lifecycle',animations:'owned-page-frame-queue',
+    get:'pure-data-string-dotpath-default-preserving-provenance',errorCatched:'callable-forwarding-wrapper',
+    readiness:'Mvu-only-guest-promise',modules:'independent-lexical-scope-shared-page-global-implicit-strict'}),
 })
 /** Methods are selected only after proving the receiver's specific facade kind. */
 export const BROWSER_METHODS_V3:Readonly<Partial<Record<BrowserFacadeKindV3,Readonly<Record<string,BrowserOperationV3>>>>>=Object.freeze({

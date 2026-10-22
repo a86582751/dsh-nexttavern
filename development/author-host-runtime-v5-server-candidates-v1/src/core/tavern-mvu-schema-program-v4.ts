@@ -308,8 +308,11 @@ function executionPlan(raw: unknown, scripts: readonly RawAuthorScriptV4[],
   if(Object.hasOwn(raw,'commandPolicyProfile')) {
     const profile=raw.commandPolicyProfile
     exact(profile,['schemaVersion','encoding','errorPolicy','bindings','profileSha256'])
-    if(profile.schemaVersion!==1||profile.encoding!=='native-mvu-registered-command-policy-profile-v1'
-      ||profile.errorPolicy!=='registered-command-policy-v1'||!Array.isArray(profile.bindings)) {
+    const legacy=profile.encoding==='native-mvu-registered-command-policy-profile-v1'
+      &&profile.errorPolicy==='registered-command-policy-v1'
+    const batch=profile.encoding==='native-mvu-update-batch-policy-profile-v1'
+      &&profile.errorPolicy==='update-batch-atomic-v1'
+    if(profile.schemaVersion!==1||!legacy&&!batch||!Array.isArray(profile.bindings)) {
       fail('SCHEMA_V4_COMMAND_POLICY_PROFILE')
     }
     for(const item of profile.bindings) {
@@ -318,7 +321,9 @@ function executionPlan(raw: unknown, scripts: readonly RawAuthorScriptV4[],
       const original=scripts[item.scriptOrdinal]!,row=raw.scripts[item.scriptOrdinal]
       if(!original.enabled||row.classification!=='server-schema'||item.scriptIdentity!==original.identity
         ||typeof item.specifier!=='string'||!fixedCSpecifiers.has(item.specifier)
-        ||item.policy!=='stagedog-command-discard-v1')fail('SCHEMA_V4_COMMAND_POLICY_BINDING')
+        ||item.policy!==(batch?'schema-update-batch-atomic-v1':'stagedog-command-discard-v1')) {
+        fail('SCHEMA_V4_COMMAND_POLICY_BINDING')
+      }
       span(item.sourceSpan,original.source.length)
       if(item.importKind==='named') {
         if(item.importedName!=='registerMvuSchema'||!text(item.localName,256))fail('SCHEMA_V4_COMMAND_POLICY_BINDING')

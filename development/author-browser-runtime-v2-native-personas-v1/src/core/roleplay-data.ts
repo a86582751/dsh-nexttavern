@@ -87,16 +87,73 @@ export function cloneRecord<T>(value: T): T {
 // Persisted record hashes use UTF-16 key order, omit undefined object fields and
 // encode undefined array values as null. Do not replace this with export JSON's
 // locale-aware ordering: that would invalidate existing record CAS hashes.
+function appendStableJson(item: unknown, write: (fragment: string) => void, objectField = false): void {
+  if (item === undefined) {
+    write('null')
+    return
+  }
+  if (item === null || typeof item !== 'object') {
+    const scalar = JSON.stringify(item)
+    write(scalar === undefined ? (objectField ? 'undefined' : '') : scalar)
+    return
+  }
+  if (Array.isArray(item)) {
+    write('[')
+    const length = item.length
+    for (let index = 0; index < length; index++) {
+      if (index) write(',')
+      // map/join leaves holes empty, but explicit undefined becomes null.
+      if (index in item) appendStableJson(item[index], write)
+    }
+    write(']')
+    return
+  }
+  const record = item as Record<string, unknown>
+  const keys = Object.keys(record).filter(key => record[key] !== undefined).sort()
+  write('{')
+  for (let index = 0; index < keys.length; index++) {
+    if (index) write(',')
+    const key = keys[index]!
+    write(JSON.stringify(key))
+    write(':')
+    appendStableJson(record[key], write, true)
+  }
+  write('}')
+}
+
 export function stableJson(value: unknown): string | undefined {
   if (value === undefined) return 'null'
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
-  const record = value as Record<string, unknown>
-  return `{${Object.keys(record).filter((key) => record[key] !== undefined).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`
+  const chunks: string[] = []
+  // Join once so nested records do not copy their descendants at every level.
+  appendStableJson(value, fragment => { chunks.push(fragment) })
+  return chunks.join('')
 }
 
 export function recordSha256(value: unknown) {
-  return value === undefined ? 'missing' : sha256(stableJson(value))
+  if (value === undefined) return 'missing'
+  const hash = createHash('sha256')
+  const fragments: string[] = []
+  let length = 0
+  const flush = () => {
+    if (!length) return
+    hash.update(fragments.join(''))
+    fragments.length = 0
+    length = 0
+  }
+  appendStableJson(value, fragment => {
+    // Whole fragments preserve UTF-8 encoding; 64 Ki code units bound small-fragment batching.
+    if (fragment.length >= 65536) {
+      flush()
+      hash.update(fragment)
+      return
+    }
+    if (length + fragment.length > 65536) flush()
+    fragments.push(fragment)
+    length += fragment.length
+  })
+  flush()
+  return hash.digest('hex')
 }
 
 export function isPathWithin(root: string, candidate: string) {

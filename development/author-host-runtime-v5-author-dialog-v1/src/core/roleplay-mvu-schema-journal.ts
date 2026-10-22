@@ -130,7 +130,7 @@ export interface SchemaJournalTable {
   entries():Iterable<[string,unknown]>
   put(key:string,value:SchemaJournalRecord):Promise<unknown>
 }
-export interface SchemaJournalFrozenCut {
+export interface SchemaJournalFrozenCutV1 {
   schemaVersion:1
   encoding:'native-mvu-schema-frozen-cut-v1'
   sessionId:string
@@ -140,6 +140,22 @@ export interface SchemaJournalFrozenCut {
   records:readonly SchemaJournalRow[]
   frontierSha256:string
 }
+export interface SchemaJournalRevisionFact {
+  marker:SchemaNativeMarkerRef
+  descriptor:SchemaJournalRef&{value:unknown}
+  editSeq:number
+  completionSeq:number
+  superseded:readonly {batchId:string;dispatch:SchemaJournalRef;completion:SchemaJournalRef;
+    dispatchMarker:SchemaNativeMarkerRef;completionMarker:SchemaNativeMarkerRef}[]
+}
+/** The Native owner selects effective pairs. Complete superseded references
+ * remain in this DATA cut so recovery never silently drops an execution. */
+export interface SchemaJournalFrozenCutV2 extends Omit<SchemaJournalFrozenCutV1,'schemaVersion'|'encoding'> {
+  schemaVersion:2
+  encoding:'native-mvu-schema-frozen-cut-v2'
+  revisions:readonly SchemaJournalRevisionFact[]
+}
+export type SchemaJournalFrozenCut=SchemaJournalFrozenCutV1|SchemaJournalFrozenCutV2
 export interface SchemaJournalStepFacts {
   dispatch:SchemaDispatchRecord
   completion:SchemaCompletionRecord
@@ -494,7 +510,8 @@ function rowsForReady(ready:SchemaJournalReady):CheckedRows {
 }
 function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:string,events:readonly SessionEvent[],
   input:CheckedRows|BoundedRows|{records:readonly SchemaJournalRow[]},historical=false,
-  recordOwner?:SchemaJournalRecordOwner,inherited?:SchemaJournalFrozenCut):SchemaJournalCapture {
+  recordOwner?:SchemaJournalRecordOwner,inherited?:SchemaJournalReady,
+  readRevision?:(ref:SchemaJournalRef,markerSeq:number)=>unknown):SchemaJournalCapture {
   try {
     if(!id(sessionId)||!hash(realmEpoch))fail('SCHEMA_JOURNAL_LIMIT')
     const checked=input instanceof CheckedRows
@@ -506,7 +523,7 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
     const length=Object.getOwnPropertyDescriptor(rows,'length')
     if(!length||!Object.hasOwn(length,'value')||typeof length.value!=='number')fail('SCHEMA_NON_JSON_VALUE')
     if(length.value>SCHEMA_JOURNAL_BOUNDS.records)fail('SCHEMA_JOURNAL_LIMIT')
-    markers.assertHistory(events)
+    const effective=markers.readEffectiveHistory(events),nativeEpoch=effective.epochs.get(realmEpoch)
     const supplied=checked?rows:bounded?rows:freezeSchemaJournalData(rows),
       all=new Map<string,SchemaJournalRecord>(),records:SchemaJournalRow[]=[]
     for(const row of supplied) {
@@ -518,8 +535,23 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
     Object.freeze(records)
     const relevant=records.filter(item=>item.record.realmEpoch===realmEpoch)
     const epochs=relevant.filter(item=>isEpoch(item.record))
-    const native=events.filter(event=>(event.type===markers.dispatchEventType||event.type===markers.completionEventType)
-      &&event.data.realmEpoch===realmEpoch)
+    const native:SessionEvent[]=nativeEpoch?.pairs.flatMap(pair=>[pair.dispatch,pair.completion])??[]
+    if(nativeEpoch?.pending)native.push(events[nativeEpoch.pending.seq]!)
+    const superseded=new Set(nativeEpoch?.revisions.flatMap(revision=>revision.superseded.map(pair=>pair.dispatch.data.batchId)))
+    const revisions:SchemaJournalRevisionFact[]=(nativeEpoch?.revisions??[]).map(revision=>{
+      const marker=revision.event,ref=marker.data.descriptor,value=readRevision?.(ref,marker.seq)
+      if(value===undefined||recordSha256(value)!==ref.sha256)fail('SCHEMA_REVISION_DESCRIPTOR_UNPROVEN')
+      return freezeSchemaJournalData({marker:{seq:marker.seq,sha256:recordSha256(marker)},descriptor:{...ref,value},
+        editSeq:marker.data.editSeq,completionSeq:marker.data.completionSeq,
+        superseded:revision.superseded.map(pair=>({batchId:pair.dispatch.data.batchId,
+          dispatch:{key:schemaDispatchKey(pair.dispatch.data.sessionId,realmEpoch,pair.dispatch.data.batchId),
+            sha256:pair.dispatch.data.dispatchRecordSha256},
+          completion:{key:schemaCompletionKey(pair.completion.data.sessionId,realmEpoch,pair.completion.data.batchId),
+            sha256:pair.completion.data.completionRecordSha256},
+          dispatchMarker:{seq:pair.dispatch.seq,sha256:recordSha256(pair.dispatch)},
+          completionMarker:{seq:pair.completion.seq,sha256:recordSha256(pair.completion)}}))})
+    })
+    Object.freeze(revisions)
     if(!epochs.length&&!relevant.length&&!native.length)return {kind:'absent',code:'SCHEMA_REALM_HISTORY_UNPROVEN'}
     if(epochs.length!==1)fail('SCHEMA_REALM_HISTORY_UNPROVEN')
     const epoch=epochs[0]!.record as SchemaEpochRecord,epochRef=reference(epoch)
@@ -528,13 +560,13 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
     // A valid checksum cannot permit a dispatch/completion from another wire.
     if(relevant.some(item=>item.record.schemaVersion!==epoch.schemaVersion))fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
     const cuts:number[]=native.filter(event=>event.type===markers.dispatchEventType).map(event=>event.seq)
-    if(inherited)cuts.push(inherited.nativeCut)
+    if(inherited)cuts.push(inherited.frozen.nativeCut)
     const nativePrefixes=schemaNativePrefixSha256(events,cuts)
     // A checked DATA result never fixes the descendant's actual Native prefix.
     // Join its cut in this fold's existing prefix derivation, without a second
     // inherited serialization/hash or another complete journal parse.
-    if(inherited&&(inherited.realmEpoch!==realmEpoch
-      ||nativePrefixes.get(inherited.nativeCut)!==inherited.nativePrefixSha256))fail('SCHEMA_FROZEN_CUT_INVALID')
+    if(inherited&&(inherited.frozen.realmEpoch!==realmEpoch
+      ||nativePrefixes.get(inherited.frozen.nativeCut)!==inherited.frozen.nativePrefixSha256))fail('SCHEMA_FROZEN_CUT_INVALID')
     let tail=execution.loadAnchorSha256
     let pending:Pick<SchemaJournalStepFacts,'dispatch'|'dispatchRef'|'dispatchMarker'>|undefined
     const steps:SchemaJournalStepFacts[]=[],selected=new Set<string>([epochRef.key]),seenEvents=new Set<string>()
@@ -552,19 +584,22 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
         if(steps.length===0&&!same(execution.loadFrame.sourceNativeCutSha256,row.requestedStep.frame.sourceNativeCutSha256)) {
           fail('SCHEMA_LOAD_BOUNDARY_INVALID')
         }
+        const inheritedDispatch=inherited?.steps.some(pair=>pair.dispatch===row)
         if(row.schemaVersion===3) {
           if(epoch.schemaVersion!==3)fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
-          validateSchemaScopeProgramFrameV3(epoch.program,row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
+          if(!inheritedDispatch)validateSchemaScopeProgramFrameV3(epoch.program,
+            row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
         }
         if(row.schemaVersion===4) {
           if(epoch.schemaVersion!==4)fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
-          validateSchemaScopeProgramFrameV4(epoch.program,row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
+          if(!inheritedDispatch)validateSchemaScopeProgramFrameV4(epoch.program,
+            row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
         }
         if(row.schemaVersion===5) {
           if(epoch.schemaVersion!==5)fail('SCHEMA_JOURNAL_VERSION_MISMATCH')
           if(row.combinedProgramSha256!==epoch.program.combinedProgramSha256
             ||row.serverProgramSha256!==epoch.program.serverProgram!.programSha256)fail('SCHEMA_DISPATCH_UNPROVEN')
-          validateSchemaScopeProgramFrameV4(epoch.program.serverProgram!,
+          if(!inheritedDispatch)validateSchemaScopeProgramFrameV4(epoch.program.serverProgram!,
             row.requestedStep.frame.input.scopeReadFrame,row.requestedStep.frame)
         }
         seenEvents.add(row.requestedStep.eventId);selected.add(key)
@@ -572,38 +607,44 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
       } else if(event.type===markers.completionEventType) {
         const marker=event.data,key=schemaCompletionKey(marker.sessionId,realmEpoch,marker.batchId),row=all.get(key)
         if(!pending||!row||!isCompletion(row))fail('SCHEMA_COMPLETION_UNPROVEN')
+        const dispatch=pending.dispatch,inheritedStep=inherited?.steps.find(pair=>pair.dispatch===dispatch&&pair.completion===row)
         if(row.recordSha256!==marker.completionRecordSha256||!same(row.runner,execution.runner)||!same(row.dispatch,pending.dispatchRef)
           ||!same(row.dispatchMarker,pending.dispatchMarker)||marker.dispatchSeq!==pending.dispatchMarker.seq
           ||marker.dispatchRecordSha256!==pending.dispatch.recordSha256||row.step.ordinal!==steps.length+1
           ||row.step.previousStepSha256!==tail||row.step.eventId!==pending.dispatch.requestedStep.eventId
-          ||row.step.frameSha256!==(recordOwner?.dispatchFrameSha256?.(pending.dispatch)
-            ??recordSha256(pending.dispatch.requestedStep.frame))
+          ||(!inheritedStep&&row.step.frameSha256!==(recordOwner?.dispatchFrameSha256?.(dispatch)
+            ??recordSha256(dispatch.requestedStep.frame)))
           ||marker.completedTailSha256!==row.step.stepSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
         if(row.schemaVersion===5) {
           if(epoch.schemaVersion!==5||row.combinedProgramSha256!==epoch.program.combinedProgramSha256
             ||row.serverProgramSha256!==epoch.program.serverProgram!.programSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
         }
-        const {frameSha256:_frameHash,...receipt}=row.step
-        const step={...receipt,frame:pending.dispatch.requestedStep.frame} as SchemaTraceStepRecord
-        const {stepSha256}=step
-        if(epoch.schemaVersion===2) {
-          validateSchemaGuestOutputV2(step.output,validateSchemaEvaluationInputV2(pending.dispatch.requestedStep.frame.input))
+        // The exact inherited pair already owns these DATA relationships. This
+        // fold still selects it through the descendant's actual Native history.
+        let step:SchemaTraceStepRecord
+        if(inheritedStep)step=inheritedStep.step
+        else {
+          const {frameSha256:_frameHash,...receipt}=row.step
+          step={...receipt,frame:dispatch.requestedStep.frame} as SchemaTraceStepRecord
+          if(epoch.schemaVersion===2) {
+            validateSchemaGuestOutputV2(step.output,validateSchemaEvaluationInputV2(dispatch.requestedStep.frame.input))
+          }
+          if(epoch.schemaVersion===3) {
+            validateSchemaGuestOutputV3(step.output,validateSchemaEvaluationInputV3(dispatch.requestedStep.frame.input))
+          }
+          if(epoch.schemaVersion===4) {
+            // Each row was parsed before this fold. The epoch fixes their wire;
+            // only the actual program/phase/output relationships remain here.
+            assertSchemaGuestOutputBindingsV4(step.output as MvuSchemaGuestOutputV4,epoch.program,
+              dispatch.requestedStep.frame.input as MvuSchemaEvaluationInputV4)
+          }
+          if(epoch.schemaVersion===5) {
+            assertSchemaGuestOutputBindingsV4(step.output as MvuSchemaGuestOutputV4,epoch.program.serverProgram!,
+              dispatch.requestedStep.frame.input as MvuSchemaEvaluationInputV4)
+          }
+          if((recordOwner?.fullStepSha256?.(row,dispatch)
+            ??schemaJournalFullStepSha256(row,dispatch))!==step.stepSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
         }
-        if(epoch.schemaVersion===3) {
-          validateSchemaGuestOutputV3(step.output,validateSchemaEvaluationInputV3(pending.dispatch.requestedStep.frame.input))
-        }
-        if(epoch.schemaVersion===4) {
-          // Each row was parsed before this fold. The epoch fixes their wire;
-          // only the actual program/phase/output relationships remain here.
-          assertSchemaGuestOutputBindingsV4(step.output as MvuSchemaGuestOutputV4,epoch.program,
-            pending.dispatch.requestedStep.frame.input as MvuSchemaEvaluationInputV4)
-        }
-        if(epoch.schemaVersion===5) {
-          assertSchemaGuestOutputBindingsV4(step.output as MvuSchemaGuestOutputV4,epoch.program.serverProgram!,
-            pending.dispatch.requestedStep.frame.input as MvuSchemaEvaluationInputV4)
-        }
-        if((recordOwner?.fullStepSha256?.(row,pending.dispatch)
-          ??schemaJournalFullStepSha256(row,pending.dispatch))!==stepSha256)fail('SCHEMA_COMPLETION_UNPROVEN')
         selected.add(key)
         steps.push({...pending,completion:row,completionRef:reference(row),step,
           completionMarker:{seq:event.seq,sha256:recordSha256(event)}})
@@ -611,8 +652,8 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
       }
     }
     if(pending)fail('SCHEMA_NATIVE_PAIR_PENDING')
-    if(steps.length>MVU_SCHEMA_BOUNDS.traceSteps)fail('SCHEMA_JOURNAL_LIMIT')
     for(const {key,record} of relevant)if(!selected.has(key)) {
+      if(!isEpoch(record)&&superseded.has(record.batchId))continue
       if(historical&&isDispatch(record)&&record.sourceNativeCut.nativeCut>=events.length)continue
       if(historical&&isCompletion(record)&&record.dispatchMarker.seq>=events.length)continue
       if(historical&&isUnavailable(record)&&record.sourceNativeCut.nativeCut>=events.length)continue
@@ -620,9 +661,12 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
     }
     if(!steps.length)fail('SCHEMA_REALM_HISTORY_UNPROVEN')
     const frontierSha256=schemaJournalFrontierSha256(epochRef,steps)
-    const frozen:SchemaJournalFrozenCut={schemaVersion:1,encoding:'native-mvu-schema-frozen-cut-v1',sessionId,realmEpoch,
+    const frozen:SchemaJournalFrozenCut={...(revisions.length?{schemaVersion:2 as const,
+      encoding:'native-mvu-schema-frozen-cut-v2' as const,revisions}:{schemaVersion:1 as const,
+      encoding:'native-mvu-schema-frozen-cut-v1' as const}),sessionId,realmEpoch,
       nativeCut:events.length,nativePrefixSha256:nativePrefixes.get(events.length)!,
-      records:Object.freeze(records.filter(item=>selected.has(item.key))),frontierSha256}
+      records:Object.freeze(records.filter(item=>selected.has(item.key)
+        ||revisions.length&&!isEpoch(item.record)&&superseded.has(item.record.batchId))),frontierSha256}
     // Actual owner reads or the public container parse deeply froze these rows.
     // Reuse their immutable frames in facts rather than cloning the same input
     // again into both the steps view and its persisted-cut view.
@@ -718,31 +762,53 @@ export function createRoleplayMvuSchemaJournal(deps:{table:SchemaJournalTable;ma
       // Historical Source selection consumes this owner's checked inventory.
       // Keep duplicate/future local rows for the actual historical Native fold.
       if(historical&&inherited===null)return captured(deps.markers,sessionId,realmEpoch,events,
-        new CheckedRows(inventory(sessionId)),true,deps.recordOwner)
+        new CheckedRows(inventory(sessionId)),true,deps.recordOwner,undefined,ref=>deps.table.get(ref.key))
       const rows=[...(inherited?rowsForReady(inherited).records:[])]
       for(const row of inventory(sessionId)) {
         const previous=rows.find(item=>item.key===row.key)
         if(previous&&previous.record.recordSha256!==row.record.recordSha256)fail('SCHEMA_JOURNAL_WRITE_CONFLICT')
         if(!previous)rows.push(row)
       }
+      const inheritedDescriptors=inherited?.frozen.schemaVersion===2
+        ?new Map(inherited.frozen.revisions.map(revision=>[revision.descriptor.key,revision.descriptor.value] as const))
+        :undefined
       // The genuine captured result owns inherited grammar. Local inventory
       // owns all new DATA; this fold alone joins them to the actual Native cut.
+      // Ancestor markers consume their frozen descriptor DATA. Reading today's
+      // parent table here would make a child's closed prefix depend on its parent.
       return captured(deps.markers,sessionId,realmEpoch,events,
-        new CheckedRows(rows),historical,deps.recordOwner,inherited?.frozen)
+        new CheckedRows(rows),historical,deps.recordOwner,inherited??undefined,(ref,markerSeq)=>
+          inherited&&markerSeq<inherited.frozen.nativeCut
+            ?inheritedDescriptors?.get(ref.key):deps.table.get(ref.key))
     } catch(error) {return {kind:'blocked',code:codeOf(error)}}
   }
   function recutChecked(sessionId:string,realmEpoch:string,events:readonly SessionEvent[],
     ready:SchemaJournalReady):SchemaJournalCapture {
-    try {return captured(deps.markers,sessionId,realmEpoch,events,rowsForReady(ready),true,deps.recordOwner)}
+    try {
+      const descriptors=ready.frozen.schemaVersion===2
+        ?new Map(ready.frozen.revisions.map(revision=>[revision.descriptor.key,revision.descriptor.value] as const))
+        :undefined
+      // A recut selects from this already captured history, including its
+      // descriptors; it cannot acquire later parent Domain rows.
+      return captured(deps.markers,sessionId,realmEpoch,events,rowsForReady(ready),true,deps.recordOwner,
+        undefined,ref=>descriptors?.get(ref.key))
+    }
     catch(error) {return {kind:'blocked',code:codeOf(error)}}
   }
   function validateFrozenReady(input:SchemaJournalFrozenCut,events:readonly SessionEvent[]):SchemaJournalReady {
     const frozen=freezeSchemaJournalData(input)
-    exact(frozen,['schemaVersion','encoding','sessionId','realmEpoch','nativeCut','nativePrefixSha256','records','frontierSha256'])
-    if(frozen.schemaVersion!==1||frozen.encoding!=='native-mvu-schema-frozen-cut-v1'||frozen.nativeCut!==events.length
+    exact(frozen,['schemaVersion','encoding','sessionId','realmEpoch','nativeCut','nativePrefixSha256','records','frontierSha256',
+      ...(frozen.schemaVersion===2?['revisions']:[])])
+    if(!(frozen.schemaVersion===1&&frozen.encoding==='native-mvu-schema-frozen-cut-v1'
+      ||frozen.schemaVersion===2&&frozen.encoding==='native-mvu-schema-frozen-cut-v2')||frozen.nativeCut!==events.length
       ||frozen.nativePrefixSha256!==recordSha256(events))fail('SCHEMA_FROZEN_CUT_INVALID')
-    const result=captured(deps.markers,frozen.sessionId,frozen.realmEpoch,events,new BoundedRows(frozen.records),true)
-    if(result.kind!=='ready'||schemaJournalHostFrontierSha256(result)!==frozen.frontierSha256) {
+    const descriptors=new Map(frozen.schemaVersion===2?frozen.revisions.map(revision=>
+      [revision.descriptor.key,revision.descriptor.value] as const):[])
+    const result=captured(deps.markers,frozen.sessionId,frozen.realmEpoch,events,new BoundedRows(frozen.records),true,
+      undefined,undefined,ref=>descriptors.get(ref.key))
+    if(result.kind!=='ready'||schemaJournalHostFrontierSha256(result)!==frozen.frontierSha256
+      ||result.frozen.schemaVersion!==frozen.schemaVersion
+      ||frozen.schemaVersion===2&&!same(frozen.revisions,(result.frozen as SchemaJournalFrozenCutV2).revisions)) {
       fail(result.kind==='blocked'?result.code:'SCHEMA_FROZEN_CUT_INVALID')
     }
     // Capture validates every supplied row before selecting this cut. Expose
@@ -758,5 +824,6 @@ export function createRoleplayMvuSchemaJournal(deps:{table:SchemaJournalTable;ma
     // The actual readback owns its grammar; a producer receipt cannot settle it.
     putProduced:write,read,inventory,capture,captureChecked,recutChecked,validateFrozen,validateFrozenReady,
     captureFrozen:(sessionId:string,realmEpoch:string,events:readonly SessionEvent[],rows:readonly SchemaJournalRow[])=>
-      captured(deps.markers,sessionId,realmEpoch,events,{records:rows},true)}
+      captured(deps.markers,sessionId,realmEpoch,events,{records:rows},true,undefined,undefined,
+        ref=>deps.table.get(ref.key))}
 }

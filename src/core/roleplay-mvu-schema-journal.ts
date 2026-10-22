@@ -130,7 +130,7 @@ export interface SchemaJournalTable {
   entries():Iterable<[string,unknown]>
   put(key:string,value:SchemaJournalRecord):Promise<unknown>
 }
-export interface SchemaJournalFrozenCut {
+export interface SchemaJournalFrozenCutV1 {
   schemaVersion:1
   encoding:'native-mvu-schema-frozen-cut-v1'
   sessionId:string
@@ -140,6 +140,22 @@ export interface SchemaJournalFrozenCut {
   records:readonly SchemaJournalRow[]
   frontierSha256:string
 }
+export interface SchemaJournalRevisionFact {
+  marker:SchemaNativeMarkerRef
+  descriptor:SchemaJournalRef&{value:unknown}
+  editSeq:number
+  completionSeq:number
+  superseded:readonly {batchId:string;dispatch:SchemaJournalRef;completion:SchemaJournalRef;
+    dispatchMarker:SchemaNativeMarkerRef;completionMarker:SchemaNativeMarkerRef}[]
+}
+/** The Native owner selects effective pairs. Complete superseded references
+ * remain in this DATA cut so recovery never silently drops an execution. */
+export interface SchemaJournalFrozenCutV2 extends Omit<SchemaJournalFrozenCutV1,'schemaVersion'|'encoding'> {
+  schemaVersion:2
+  encoding:'native-mvu-schema-frozen-cut-v2'
+  revisions:readonly SchemaJournalRevisionFact[]
+}
+export type SchemaJournalFrozenCut=SchemaJournalFrozenCutV1|SchemaJournalFrozenCutV2
 export interface SchemaJournalStepFacts {
   dispatch:SchemaDispatchRecord
   completion:SchemaCompletionRecord
@@ -364,7 +380,7 @@ function output(value:SchemaGuestOutput,version:1|2|3|4):void {
     }
   } else fail('SCHEMA_OUTPUT_INVALID')
 }
-/** Only the public wrapper or a raw container's aggregate clone supplies rows.
+/** The public wrapper or an admitted container's aggregate clone supplies rows.
  * Keep semantic/hash checks intact while avoiding a second whole-row clone. */
 function validateClonedSchemaJournalRecord(row:SchemaJournalRecord):SchemaJournalRecord {
   const common=['schemaVersion','encoding','sessionId','realmEpoch','recordSha256']
@@ -494,7 +510,8 @@ function rowsForReady(ready:SchemaJournalReady):CheckedRows {
 }
 function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:string,events:readonly SessionEvent[],
   input:CheckedRows|BoundedRows|{records:readonly SchemaJournalRow[]},historical=false,
-  recordOwner?:SchemaJournalRecordOwner,inherited?:SchemaJournalReady):SchemaJournalCapture {
+  recordOwner?:SchemaJournalRecordOwner,inherited?:SchemaJournalReady,
+  readRevision?:(ref:SchemaJournalRef,markerSeq:number)=>unknown):SchemaJournalCapture {
   try {
     if(!id(sessionId)||!hash(realmEpoch))fail('SCHEMA_JOURNAL_LIMIT')
     const checked=input instanceof CheckedRows
@@ -506,7 +523,7 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
     const length=Object.getOwnPropertyDescriptor(rows,'length')
     if(!length||!Object.hasOwn(length,'value')||typeof length.value!=='number')fail('SCHEMA_NON_JSON_VALUE')
     if(length.value>SCHEMA_JOURNAL_BOUNDS.records)fail('SCHEMA_JOURNAL_LIMIT')
-    markers.assertHistory(events)
+    const effective=markers.readEffectiveHistory(events),nativeEpoch=effective.epochs.get(realmEpoch)
     const supplied=checked?rows:bounded?rows:freezeSchemaJournalData(rows),
       all=new Map<string,SchemaJournalRecord>(),records:SchemaJournalRow[]=[]
     for(const row of supplied) {
@@ -518,8 +535,23 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
     Object.freeze(records)
     const relevant=records.filter(item=>item.record.realmEpoch===realmEpoch)
     const epochs=relevant.filter(item=>isEpoch(item.record))
-    const native=events.filter(event=>(event.type===markers.dispatchEventType||event.type===markers.completionEventType)
-      &&event.data.realmEpoch===realmEpoch)
+    const native:SessionEvent[]=nativeEpoch?.pairs.flatMap(pair=>[pair.dispatch,pair.completion])??[]
+    if(nativeEpoch?.pending)native.push(events[nativeEpoch.pending.seq]!)
+    const superseded=new Set(nativeEpoch?.revisions.flatMap(revision=>revision.superseded.map(pair=>pair.dispatch.data.batchId)))
+    const revisions:SchemaJournalRevisionFact[]=(nativeEpoch?.revisions??[]).map(revision=>{
+      const marker=revision.event,ref=marker.data.descriptor,value=readRevision?.(ref,marker.seq)
+      if(value===undefined||recordSha256(value)!==ref.sha256)fail('SCHEMA_REVISION_DESCRIPTOR_UNPROVEN')
+      return freezeSchemaJournalData({marker:{seq:marker.seq,sha256:recordSha256(marker)},descriptor:{...ref,value},
+        editSeq:marker.data.editSeq,completionSeq:marker.data.completionSeq,
+        superseded:revision.superseded.map(pair=>({batchId:pair.dispatch.data.batchId,
+          dispatch:{key:schemaDispatchKey(pair.dispatch.data.sessionId,realmEpoch,pair.dispatch.data.batchId),
+            sha256:pair.dispatch.data.dispatchRecordSha256},
+          completion:{key:schemaCompletionKey(pair.completion.data.sessionId,realmEpoch,pair.completion.data.batchId),
+            sha256:pair.completion.data.completionRecordSha256},
+          dispatchMarker:{seq:pair.dispatch.seq,sha256:recordSha256(pair.dispatch)},
+          completionMarker:{seq:pair.completion.seq,sha256:recordSha256(pair.completion)}}))})
+    })
+    Object.freeze(revisions)
     if(!epochs.length&&!relevant.length&&!native.length)return {kind:'absent',code:'SCHEMA_REALM_HISTORY_UNPROVEN'}
     if(epochs.length!==1)fail('SCHEMA_REALM_HISTORY_UNPROVEN')
     const epoch=epochs[0]!.record as SchemaEpochRecord,epochRef=reference(epoch)
@@ -620,8 +652,8 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
       }
     }
     if(pending)fail('SCHEMA_NATIVE_PAIR_PENDING')
-    if(steps.length>MVU_SCHEMA_BOUNDS.traceSteps)fail('SCHEMA_JOURNAL_LIMIT')
     for(const {key,record} of relevant)if(!selected.has(key)) {
+      if(!isEpoch(record)&&superseded.has(record.batchId))continue
       if(historical&&isDispatch(record)&&record.sourceNativeCut.nativeCut>=events.length)continue
       if(historical&&isCompletion(record)&&record.dispatchMarker.seq>=events.length)continue
       if(historical&&isUnavailable(record)&&record.sourceNativeCut.nativeCut>=events.length)continue
@@ -629,9 +661,12 @@ function captured(markers:typeof mvuSchemaMarkers,sessionId:string,realmEpoch:st
     }
     if(!steps.length)fail('SCHEMA_REALM_HISTORY_UNPROVEN')
     const frontierSha256=schemaJournalFrontierSha256(epochRef,steps)
-    const frozen:SchemaJournalFrozenCut={schemaVersion:1,encoding:'native-mvu-schema-frozen-cut-v1',sessionId,realmEpoch,
+    const frozen:SchemaJournalFrozenCut={...(revisions.length?{schemaVersion:2 as const,
+      encoding:'native-mvu-schema-frozen-cut-v2' as const,revisions}:{schemaVersion:1 as const,
+      encoding:'native-mvu-schema-frozen-cut-v1' as const}),sessionId,realmEpoch,
       nativeCut:events.length,nativePrefixSha256:nativePrefixes.get(events.length)!,
-      records:Object.freeze(records.filter(item=>selected.has(item.key))),frontierSha256}
+      records:Object.freeze(records.filter(item=>selected.has(item.key)
+        ||revisions.length&&!isEpoch(item.record)&&superseded.has(item.record.batchId))),frontierSha256}
     // Actual owner reads or the public container parse deeply froze these rows.
     // Reuse their immutable frames in facts rather than cloning the same input
     // again into both the steps view and its persisted-cut view.
@@ -727,31 +762,53 @@ export function createRoleplayMvuSchemaJournal(deps:{table:SchemaJournalTable;ma
       // Historical Source selection consumes this owner's checked inventory.
       // Keep duplicate/future local rows for the actual historical Native fold.
       if(historical&&inherited===null)return captured(deps.markers,sessionId,realmEpoch,events,
-        new CheckedRows(inventory(sessionId)),true,deps.recordOwner)
+        new CheckedRows(inventory(sessionId)),true,deps.recordOwner,undefined,ref=>deps.table.get(ref.key))
       const rows=[...(inherited?rowsForReady(inherited).records:[])]
       for(const row of inventory(sessionId)) {
         const previous=rows.find(item=>item.key===row.key)
         if(previous&&previous.record.recordSha256!==row.record.recordSha256)fail('SCHEMA_JOURNAL_WRITE_CONFLICT')
         if(!previous)rows.push(row)
       }
+      const inheritedDescriptors=inherited?.frozen.schemaVersion===2
+        ?new Map(inherited.frozen.revisions.map(revision=>[revision.descriptor.key,revision.descriptor.value] as const))
+        :undefined
       // The genuine captured result owns inherited grammar. Local inventory
       // owns all new DATA; this fold alone joins them to the actual Native cut.
+      // Ancestor markers consume their frozen descriptor DATA. Reading today's
+      // parent table here would make a child's closed prefix depend on its parent.
       return captured(deps.markers,sessionId,realmEpoch,events,
-        new CheckedRows(rows),historical,deps.recordOwner,inherited??undefined)
+        new CheckedRows(rows),historical,deps.recordOwner,inherited??undefined,(ref,markerSeq)=>
+          inherited&&markerSeq<inherited.frozen.nativeCut
+            ?inheritedDescriptors?.get(ref.key):deps.table.get(ref.key))
     } catch(error) {return {kind:'blocked',code:codeOf(error)}}
   }
   function recutChecked(sessionId:string,realmEpoch:string,events:readonly SessionEvent[],
     ready:SchemaJournalReady):SchemaJournalCapture {
-    try {return captured(deps.markers,sessionId,realmEpoch,events,rowsForReady(ready),true,deps.recordOwner)}
+    try {
+      const descriptors=ready.frozen.schemaVersion===2
+        ?new Map(ready.frozen.revisions.map(revision=>[revision.descriptor.key,revision.descriptor.value] as const))
+        :undefined
+      // A recut selects from this already captured history, including its
+      // descriptors; it cannot acquire later parent Domain rows.
+      return captured(deps.markers,sessionId,realmEpoch,events,rowsForReady(ready),true,deps.recordOwner,
+        undefined,ref=>descriptors?.get(ref.key))
+    }
     catch(error) {return {kind:'blocked',code:codeOf(error)}}
   }
   function validateFrozenReady(input:SchemaJournalFrozenCut,events:readonly SessionEvent[]):SchemaJournalReady {
     const frozen=freezeSchemaJournalData(input)
-    exact(frozen,['schemaVersion','encoding','sessionId','realmEpoch','nativeCut','nativePrefixSha256','records','frontierSha256'])
-    if(frozen.schemaVersion!==1||frozen.encoding!=='native-mvu-schema-frozen-cut-v1'||frozen.nativeCut!==events.length
+    exact(frozen,['schemaVersion','encoding','sessionId','realmEpoch','nativeCut','nativePrefixSha256','records','frontierSha256',
+      ...(frozen.schemaVersion===2?['revisions']:[])])
+    if(!(frozen.schemaVersion===1&&frozen.encoding==='native-mvu-schema-frozen-cut-v1'
+      ||frozen.schemaVersion===2&&frozen.encoding==='native-mvu-schema-frozen-cut-v2')||frozen.nativeCut!==events.length
       ||frozen.nativePrefixSha256!==recordSha256(events))fail('SCHEMA_FROZEN_CUT_INVALID')
-    const result=captured(deps.markers,frozen.sessionId,frozen.realmEpoch,events,new BoundedRows(frozen.records),true)
-    if(result.kind!=='ready'||schemaJournalHostFrontierSha256(result)!==frozen.frontierSha256) {
+    const descriptors=new Map(frozen.schemaVersion===2?frozen.revisions.map(revision=>
+      [revision.descriptor.key,revision.descriptor.value] as const):[])
+    const result=captured(deps.markers,frozen.sessionId,frozen.realmEpoch,events,new BoundedRows(frozen.records),true,
+      undefined,undefined,ref=>descriptors.get(ref.key))
+    if(result.kind!=='ready'||schemaJournalHostFrontierSha256(result)!==frozen.frontierSha256
+      ||result.frozen.schemaVersion!==frozen.schemaVersion
+      ||frozen.schemaVersion===2&&!same(frozen.revisions,(result.frozen as SchemaJournalFrozenCutV2).revisions)) {
       fail(result.kind==='blocked'?result.code:'SCHEMA_FROZEN_CUT_INVALID')
     }
     // Capture validates every supplied row before selecting this cut. Expose
@@ -762,10 +819,44 @@ export function createRoleplayMvuSchemaJournal(deps:{table:SchemaJournalTable;ma
   function validateFrozen(input:SchemaJournalFrozenCut,events:readonly SessionEvent[]):SchemaJournalFrozenCut {
     return validateFrozenReady(input,events).frozen
   }
+  /** Internal closed-prefix recovery. The prefix owner has admitted this DATA;
+   * inherited copies select genuine prior rows by reference, never by body. */
+  function recoverFrozenReady(frozen:SchemaJournalFrozenCut,events:readonly SessionEvent[],
+    prior:SchemaJournalReady,recut=false):SchemaJournalReady {
+    exact(frozen,['schemaVersion','encoding','sessionId','realmEpoch','nativeCut','nativePrefixSha256','records','frontierSha256',
+      ...(frozen.schemaVersion===2?['revisions']:[])])
+    if(!(frozen.schemaVersion===1&&frozen.encoding==='native-mvu-schema-frozen-cut-v1'
+      ||frozen.schemaVersion===2&&frozen.encoding==='native-mvu-schema-frozen-cut-v2')
+      ||(recut?events.length>frozen.nativeCut:frozen.nativeCut!==events.length))fail('SCHEMA_FROZEN_CUT_INVALID')
+    const inherited=rowsForReady(prior).records
+    // Retain the supplied membership and order. Unioning the entire prior would
+    // silently repair a missing ancestor record in the closed cut.
+    const rows=frozen.records.map(row=>{
+      const previous=inherited.find(item=>item.key===row.key)
+      if(previous) {
+        if(previous.record.recordSha256!==row.record.recordSha256)fail('SCHEMA_JOURNAL_WRITE_CONFLICT')
+        return previous
+      }
+      return Object.freeze({key:row.key,record:validateClonedSchemaJournalRecord(row.record)})
+    })
+    const descriptors=new Map(frozen.schemaVersion===2?frozen.revisions.map(revision=>
+      [revision.descriptor.key,revision.descriptor.value] as const):[])
+    const result=captured(deps.markers,frozen.sessionId,frozen.realmEpoch,events,
+      new CheckedRows(Object.freeze(rows)),true,deps.recordOwner,prior,ref=>descriptors.get(ref.key))
+    if(result.kind!=='ready'||!recut&&(result.frozen.nativePrefixSha256!==frozen.nativePrefixSha256
+      ||schemaJournalHostFrontierSha256(result)!==frozen.frontierSha256
+      ||result.frozen.schemaVersion!==frozen.schemaVersion
+      ||frozen.schemaVersion===2&&!same(frozen.revisions,(result.frozen as SchemaJournalFrozenCutV2).revisions))) {
+      fail(result.kind==='blocked'?result.code:'SCHEMA_FROZEN_CUT_INVALID')
+    }
+    return result
+  }
   return {put,
     // Replay constructs and seals each production row from its owned inputs.
     // The actual readback owns its grammar; a producer receipt cannot settle it.
-    putProduced:write,read,inventory,capture,captureChecked,recutChecked,validateFrozen,validateFrozenReady,
-    captureFrozen:(sessionId:string,realmEpoch:string,events:readonly SessionEvent[],rows:readonly SchemaJournalRow[])=>
-      captured(deps.markers,sessionId,realmEpoch,events,{records:rows},true)}
+    putProduced:write,read,inventory,capture,captureChecked,recutChecked,validateFrozen,validateFrozenReady,recoverFrozenReady,
+    captureFrozen:(sessionId:string,realmEpoch:string,events:readonly SessionEvent[],rows:readonly SchemaJournalRow[],
+      readRevision:(ref:SchemaJournalRef,markerSeq:number)=>unknown=ref=>deps.table.get(ref.key))=>
+      captured(deps.markers,sessionId,realmEpoch,events,{records:rows},true,undefined,undefined,
+        readRevision)}
 }

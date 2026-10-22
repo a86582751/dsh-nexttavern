@@ -237,7 +237,7 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
     const data={sourceNativeCut:freezeSchemaJournalData(scope.sourceNativeCut),
       inheritedCut,journalCut,
       compiledProgram:owner.compiledProgram,
-      ...scope.authorInput.schemaVersion===6&&!owner.compiledProgram
+      ...(scope.authorInput.schemaVersion===6||scope.authorInput.schemaVersion===7)&&!owner.compiledProgram
         ?{compilationResources:captureSchemaCompilationResourcesV6(owner.author)}:{}}
     const captured:SchemaCapturedScope=scope.loadFrame===undefined?{...scope,...data,
       authorInput:freezeSchemaJournalData(scope.authorInput),loadFrame:undefined,requestedStep:undefined}:
@@ -290,7 +290,7 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
     if(!same(completeSource.material,author.material))fail('SCHEMA_ORIGINAL_SOURCE_CHANGED')
     if(cut.epoch.schemaVersion===5) {
       return {authorInput:combinedCompilationInputForProgram(cut.epoch.program),
-        ...cut.epoch.program.schemaVersion===6
+        ...(cut.epoch.program.schemaVersion===6||cut.epoch.program.schemaVersion===7)
           ?{compilationResources:captureSchemaCompilationResourcesV6(author)}:{},
         ready:cut,frozen:cut.frozen,events:all}
     }
@@ -345,9 +345,11 @@ export function createRoleplayMvuSchemaCore(deps:MvuSchemaCoreDeps) {
       const version=source.initSource.schemaVersion===2
         ?{schemaVersion:6 as const,encoding:'native-author-opening-preparation-v6' as const}
         :{schemaVersion:5 as const,encoding:'native-author-opening-preparation-v5' as const}
+      // Only new Sources use the default Host's current DATA tag. Recovery
+      // retains its recorded input and frozen Host; compiler identity stays V1.
       const preparation=validateMvuSchemaOpeningPreparation(sealMvuSchemaOpeningFact({...version,host:runtime.host.identity,
         compilation:runtime.browser.runtime.version===3
-          ?{schemaVersion:6,encoding:'native-author-combined-compilation-input-v6',original,
+          ?{schemaVersion:7,encoding:'native-author-combined-compilation-input-v7',original,
             sourceRecordSessionId:source.authorSource.snapshot.source.sourceRecordSessionId}
           :runtime.browser.runtime.version===2
           ?{schemaVersion:5,encoding:'native-author-combined-compilation-input-v5',original,

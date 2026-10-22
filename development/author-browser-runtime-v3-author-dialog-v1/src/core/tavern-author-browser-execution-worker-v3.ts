@@ -10,6 +10,7 @@ import type {BrowserNativeFrameFactV3,BrowserWorkerInputV3,BrowserWorkerRequestV
   from './tavern-author-browser-worker-protocol-v3.js'
 import type {NativeHandleV3} from './tavern-author-browser-native-types-v3.js'
 import type {BrowserProgramV3} from './tavern-author-browser-types-v3.mjs'
+import type {ReaderRegexDocumentProgramV1} from './reader-regex-document-types.mjs'
 import type {BrowserGenerationInvocationV3,BrowserGenerationOutputV3,BrowserGenerationResultV3}
   from './roleplay-author-browser-generation-types.js'
 
@@ -24,7 +25,7 @@ const waits=new Map<number,{resolve:(value:any)=>void;reject:(error:Error)=>void
 const frames=new Map<number,BrowserNativeFrameFactV3>()
 const references=new Map<string,BrowserNativeFrameFactV3>()
 let actor:BrowserActorV3|undefined,attachment:BrowserAttachmentWorkerV3<BrowserNativeFrameFactV3>|undefined
-let program:BrowserProgramV3
+let program:BrowserProgramV3|ReaderRegexDocumentProgramV1
 const generationInvocations=new Map<string,BrowserGenerationInvocationV3>()
 let active=true,sequence=0,workSequence=0,entrySequence=0,actorEntry:number|undefined
 let tail:Promise<unknown>=Promise.resolve()
@@ -105,7 +106,7 @@ function pageSession(pageId:string):BrowserPageNativeSessionV3 {
     awaitResourcesReady:signal=>rpc({op:'page-resources',pageId},signal),
   }
 }
-async function start(message:Extract<BrowserWorkerInputV3,{type:'start'}>):Promise<void> {
+async function start(message:Extract<BrowserWorkerInputV3,{type:'start'|'reader-start'}>):Promise<void> {
   program=message.program
   const module=await core.newQuickJSAsyncWASMModuleFromVariant(core.newVariant(Variant,{
     wasmBinary:message.wasm,locateFile:()=> 'https://browser3.invalid/emscripten-module.wasm',
@@ -138,6 +139,11 @@ async function start(message:Extract<BrowserWorkerInputV3,{type:'start'}>):Promi
         request:(request,requestSignal)=>rpc({op:'native',contextId,request},requestSignal),
         setDocumentState:(state,stateSignal)=>rpc({op:'carrier-state',contextId,state},stateSignal),
         dispose:()=>active?rpc({op:'carrier-dispose',contextId}):Promise.resolve()}
+    },
+    async createReaderRoot() {
+      const value=await rpc({op:'reader-root-create'})
+      return {document:value.document,frames:value.frames.map((fact:BrowserNativeFrameFactV3)=>({
+        frame:frames.get(fact.frameId)!,documentPlanSha256:fact.kind==='reader-regex-document'?fact.documentPlanSha256:''}))}
     },
     nativeRequest:(contextId,request,signal)=>rpc({op:'native',contextId,request},signal),
     sourceRequest:(payload,signal)=>rpc({op:'source',payload},signal),
@@ -175,8 +181,8 @@ owner.addEventListener('message',event=>{
   if(message.type==='result'){result(message);return}
   if(message.type==='dispose'){void dispose();return}
   if(!active)return
-  if(message.type==='start')root(()=>start(message))
-  else if(message.type==='snapshot')root(()=>attachment!.snapshot(message.snapshot))
+  if(message.type==='start'||message.type==='reader-start')root(()=>start(message))
+  else if(message.type==='snapshot'||message.type==='reader-snapshot')root(()=>attachment!.snapshot(message.snapshot))
   else if(message.type==='source-event')root(()=>attachment!.deliverSourceEvent(message.event))
   else if(message.type==='generation-registrations-request')root(async()=>{
     try {send({type:'generation-registrations-result',id:message.id,registrations:await attachment!.generationCallbacks()})}

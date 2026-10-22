@@ -9,6 +9,9 @@ import type {CombinedCompilationInputV5,CombinedAuthorProgramV5,CombinedCompilat
   from './tavern-author-combined-types-v5.mjs'
 import type {CombinedCompilationInputV6,CombinedAuthorProgramV6,CombinedCompilationV6,CombinedSourceResourcesV6}
   from './tavern-author-combined-types-v6.mjs'
+import type {CombinedCompilationInputV7,CombinedAuthorProgramV7,CombinedCompilationV7,AuthorExecutionPlanV4}
+  from './tavern-author-combined-types-v7.mjs'
+export type {CombinedPlanRowV4,AuthorExecutionPlanV4} from './tavern-author-combined-types-v7.mjs'
 
 export interface CombinedCompilerIdentityV1 {
   readonly id:'native-author-combined-compiler'
@@ -89,10 +92,13 @@ export interface CombinedAuthorProgramV4 extends Omit<CombinedAuthorProgramV3,'s
 }
 export type CombinedCompilationV4={readonly kind:'compiled';readonly program:CombinedAuthorProgramV4}
   |{readonly kind:'refused';readonly diagnostics:readonly (MvuSchemaDiagnostic|BrowserDiagnosticV1|PromptDiagnosticV1)[]}
-export type CombinedCompilationInput=CombinedCompilationInputV3|CombinedCompilationInputV4|CombinedCompilationInputV5|CombinedCompilationInputV6
-export type CombinedAuthorProgram=CombinedAuthorProgramV3|CombinedAuthorProgramV4|CombinedAuthorProgramV5|CombinedAuthorProgramV6
-export type AuthorExecutionPlan=AuthorExecutionPlanV2|AuthorExecutionPlanV3
-export type CombinedCompilation=CombinedCompilationV3|CombinedCompilationV4|CombinedCompilationV5|CombinedCompilationV6
+export type CombinedCompilationInput=CombinedCompilationInputV3|CombinedCompilationInputV4|CombinedCompilationInputV5
+  |CombinedCompilationInputV6|CombinedCompilationInputV7
+export type CombinedAuthorProgram=CombinedAuthorProgramV3|CombinedAuthorProgramV4|CombinedAuthorProgramV5
+  |CombinedAuthorProgramV6|CombinedAuthorProgramV7
+export type AuthorExecutionPlan=AuthorExecutionPlanV2|AuthorExecutionPlanV3|AuthorExecutionPlanV4
+export type CombinedCompilation=CombinedCompilationV3|CombinedCompilationV4|CombinedCompilationV5
+  |CombinedCompilationV6|CombinedCompilationV7
 /** Host accepts tagged historical inputs. Each actual compiler implements its
  * own input version; a new generation cannot execute a legacy identity. */
 export interface CombinedAuthorCompiler {

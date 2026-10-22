@@ -94,6 +94,9 @@ export interface SchemaCurrentOriginalRead {
   sessionId:string
   table:Pick<SchemaJournalTable,'get'|'entries'>
   events:readonly SessionEvent[]
+  /** The same Core journal owner already selected the actual effective cut.
+   * Source consumes that result instead of selecting Native markers again. */
+  ready?:SchemaJournalReady
 }
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 function fail(code:string):never {throw Error(code)}
@@ -210,7 +213,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     // reads. The real immutable ImportRecord still supplies envelope/coverage.
     return {...deps,
       readActivePointer:()=>snapshot.source.pointer,
-      readImportRecord:()=>originalRecord({sourceSnapshot:snapshot}),
+      readImportRecord:()=>deps.readImportRecord(snapshot.source.sourceRecordSessionId,snapshot.source.importId),
       readRow:(table,key)=>{
         const row=byKey.get(`${table}:${key}`)
         if(!row)fail('SCHEMA_FROZEN_MATERIAL_INVALID')
@@ -259,18 +262,17 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       return {ready,original:originalFromCheckedJournal(preparation,ready,actualEvents)}
     } catch(error) {fail(codeOf(error))}
   }
+  /** Consume the actual Journal owner's checked result. External frozen DATA
+   * enters recoverFrozenOriginal before reaching this Source-only read. */
   function readFrozenOriginal(input:MvuSchemaOpeningPreparation,ready:SchemaJournalReady,
     actualEvents:readonly SessionEvent[]):SchemaFrozenOriginal {
     try {
       const preparation=validateMvuSchemaOpeningPreparation(input)
-      const actual=readFrozenJournal(preparation,ready.frozen,actualEvents)
-      if(!same(actual,ready))fail('SCHEMA_NATIVE_CUT_UNPROVEN')
-      // An external frozen input always performs its own complete recovery read.
-      return originalFromCheckedJournal(preparation,actual,actualEvents)
+      return originalFromCheckedJournal(preparation,ready,actualEvents)
     } catch(error) {fail(codeOf(error))}
   }
-  // Only this owner's capture/recovery paths reach this constructor.
-  // It never accepts a caller's ready/seal/token as proof of checked grammar.
+  // Only consumption of a checked Journal or the complete frozen recovery
+  // reaches this constructor; a persisted cut is not a checked ready result.
   function originalFromCheckedJournal(preparation:MvuSchemaOpeningPreparation,actual:SchemaJournalReady,
     actualEvents:readonly SessionEvent[]):SchemaFrozenOriginal {
     if(preparation.schemaVersion===5||preparation.schemaVersion===6) {
@@ -394,8 +396,8 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     return original
   }
   /** Capture and consume are one synchronous call. External/cold/fork frozen
-   * inputs continue through readFrozenOriginal's complete frozen validation.
-   * The central owner retains immutable Original data until its exact inputs change. */
+   * inputs use recoverFrozenOriginal without requiring a live ancestor;
+   * managed current/historical consumers retain their central Original owner. */
   function captureCurrentOriginal(input:MvuSchemaOpeningPreparation,current:SchemaCurrentOriginalRead,
     historical=false):{ready:SchemaJournalReady;original:SchemaFrozenOriginal} {
     try {
@@ -408,7 +410,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       // fold. Historical edit cuts retain the existing raw inventory budget
       // and duplicate/future-row failure contract; no merge is introduced.
       const events=current.events
-      const ready=journal.capture(sid,preparation.realmEpoch,events,null,historical)
+      const ready=current.ready??journal.capture(sid,preparation.realmEpoch,events,null,historical)
       if(ready.kind!=='ready')fail(ready.code)
       // Join only after the original caller's inventory and Native checks, so
       // a foreign preparation cannot change journal addresses or first errors.
@@ -445,7 +447,12 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
       }
       original=freezeSchemaJournalData(original)
       const {originalSha256,...body}=original
-      if(original.schemaVersion===5)return hostOriginalFactsCurrent(original,body,originalSha256)
+      if(original.schemaVersion===5) {
+        // V7 recovery is owned by the checked Journal and its private Original.
+        // An external DTO cannot replace that result with a second plan parser.
+        if(original.preparation.compilation.schemaVersion===7)return false
+        return hostOriginalFactsCurrent(original,body,originalSha256)
+      }
       exact(original,['schemaVersion','encoding','sessionId','preparation','sourceSnapshot','authorInput',
         'programSha256','realmEpoch','originalSha256'])
       validateMvuSchemaOpeningPreparation(original.preparation)
@@ -541,7 +548,7 @@ export function createRoleplayMvuSchemaSource(deps:MvuSourceDeps&{inputState:Rol
     let original=input
     if(!parsedOriginals.has(original)) {
       // Host5 projection membership must originate in the same checked epoch.
-      // Cold/fork callers first use readFrozenOriginal with the real Native cut;
+      // Cold/fork callers first use recoverFrozenOriginal with the real Native cut;
       // a copied DTO and internally consistent Plan2 cannot mint this owner.
       if(original.schemaVersion===5)fail('SCHEMA_HOST_ORIGINAL_UNPROVEN')
       // External DATA gets its own complete parser and actual Import check.

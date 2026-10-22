@@ -21,7 +21,7 @@ import type {SchemaExecutorVersion,SchemaExecutorIdentityTuple,OwnedMvuSchemaExe
 import {validateSchemaExecutorIdentityTuple} from './roleplay-mvu-schema-executor-types.js'
 
 const packageName='dsh-nexttavern-mvu-schema-runtime'
-const policyPackageName=packageName+'-v4-server-candidates-v2'
+const policyPackageName=packageName+'-v4-update-batch-v1'
 const sameDirectory=(left:URL,right:string)=>left.protocol==='file:'
   &&fs.realpathSync(fileURLToPath(left))===right
 
@@ -45,34 +45,31 @@ export function createRoleplayMvuSchemaAssetOwner() {
   type AdmittedRuntime={version:SchemaExecutorVersion;runtime:MvuSchemaRuntime|MvuSchemaRuntimeV2|MvuSchemaRuntimeV3|MvuSchemaRuntimeV4;
     executor:OwnedMvuSchemaExecutor}
   const runtimes=new Map<string,Promise<AdmittedRuntime>>()
-  async function load(version:SchemaExecutorVersion,name:string):Promise<AdmittedRuntime> {
+  async function load(version:SchemaExecutorVersion,name:string,component?:string):Promise<AdmittedRuntime> {
     const packageVersion=version===4?'0.4.0':'0.3.0'
-    const root=productRoot(name,packageVersion),require=createRequire(path.join(root,'package.json'))
-    const metadataPath=fs.realpathSync(require.resolve(name+'/package.json'))
-    const owned=fs.realpathSync(path.join(root,'node_modules',name))
-    if(metadataPath!==path.join(owned,'package.json'))throw Error('SCHEMA_RUNTIME_PACKAGE_OWNER_CHANGED')
-    const entry=fs.realpathSync(require.resolve(name))
-    const relative=path.relative(owned,entry)
-    if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)) {
-      throw Error('SCHEMA_RUNTIME_ENTRY_OWNER_CHANGED')
-    }
+    const root=productRoot(component===undefined?name:policyPackageName,packageVersion),
+      require=createRequire(path.join(root,'package.json'))
     const bootstrap=await import(pathToFileURL(path.join(root,'lib/operations/bundled-package-bootstrap.mjs')).href) as
       typeof import('../operations/bundled-package-bootstrap.mjs')
     const protection=await import(pathToFileURL(path.join(root,'lib/operations/protected-packages.mjs')).href) as
       typeof import('../operations/protected-packages.mjs')
-    const verify=()=>{
-      const identity=bootstrap.readBundleIdentity(root)
-      const specs=identity.packages.filter(spec=>spec.name===name)
-      if(identity.productRoot!==root||specs.length!==1||specs[0]!.version!==packageVersion
-        ||fs.realpathSync(require.resolve(name+'/package.json'))!==metadataPath
-        ||fs.realpathSync(path.join(root,'node_modules',name))!==owned) {
-        throw Error('SCHEMA_RUNTIME_INVENTORY_OWNER_CHANGED')
-      }
-      const spec=specs[0]!
-      protection.verifyProtectedPackage(owned,spec)
-      return {name,version:packageVersion,files:structuredClone(spec.files),generation:spec.generation}
+    const identity=bootstrap.readBundleIdentity(root)
+    const historical=component===undefined?undefined:identity.historicalComponents.find(spec=>spec.path===component)
+    const specs=historical?[historical]:component===undefined?identity.packages.filter(spec=>spec.name===name):[]
+    if(identity.productRoot!==root||specs.length!==1||specs[0]!.name!==name||specs[0]!.version!==packageVersion) {
+      throw Error('SCHEMA_RUNTIME_INVENTORY_OWNER_CHANGED')
     }
-    const inventory=verify()
+    const spec=specs[0]!
+    const owned=fs.realpathSync(historical?.source??path.join(root,'node_modules',name))
+    const metadataPath=fs.realpathSync(historical?path.join(owned,'package.json'):require.resolve(name+'/package.json'))
+    if(metadataPath!==path.join(owned,'package.json'))throw Error('SCHEMA_RUNTIME_PACKAGE_OWNER_CHANGED')
+    const entry=fs.realpathSync(historical?path.join(owned,'dist','index.mjs'):require.resolve(name))
+    const relative=path.relative(owned,entry)
+    if(path.isAbsolute(relative)||relative==='..'||relative.startsWith('..'+path.sep)) {
+      throw Error('SCHEMA_RUNTIME_ENTRY_OWNER_CHANGED')
+    }
+    protection.verifyProtectedPackage(owned,spec)
+    const inventory={name,version:packageVersion,files:structuredClone(spec.files),generation:spec.generation}
     if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
     const verifyOwnedPackage=(fixed:URL)=>{
       if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
@@ -188,12 +185,14 @@ export function createRoleplayMvuSchemaAssetOwner() {
     return {version,runtime:loaded,executor}
   }
   async function admitted(version:SchemaExecutorVersion,
-    name=version===4?policyPackageName:version===1?packageName:packageName+'-v'+version):Promise<AdmittedRuntime> {
+    name=version===4?policyPackageName:version===1?packageName:packageName+'-v'+version,
+    component?:string):Promise<AdmittedRuntime> {
     if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
-    let pending=runtimes.get(name)
+    const key=name+'\0'+(component??'')
+    let pending=runtimes.get(key)
     if(!pending) {
-      pending=load(version,name).catch(error=>{runtimes.delete(name);throw error})
-      runtimes.set(name,pending)
+      pending=load(version,name,component).catch(error=>{runtimes.delete(key);throw error})
+      runtimes.set(key,pending)
     }
     const actual=await pending
     if(closed)throw Error('SCHEMA_RUNTIME_DISPOSED')
@@ -220,7 +219,7 @@ export function createRoleplayMvuSchemaAssetOwner() {
         const verified=validateSchemaExecutorIdentityTuple(tuple)
         const version=verified.runner.version as SchemaExecutorVersion
         const implementationKey=recordSha256(verified)
-        let name:string|undefined
+        let name:string|undefined,component:string|undefined
         if(version===4) {
           const root=productRoot(policyPackageName,'0.4.0')
           const bootstrap=await import(pathToFileURL(path.join(root,'lib/operations/bundled-package-bootstrap.mjs')).href) as
@@ -228,9 +227,9 @@ export function createRoleplayMvuSchemaAssetOwner() {
           const entry=bootstrap.readBundleIdentity(root).authorRuntimeHistory.find(row=>recordSha256({
             compiler:row.server.compiler,bridge:row.server.bridge,libraries:row.server.libraries,
             runner:row.server.runner})===implementationKey)
-          name=entry?.serverPackage
+          name=entry?.serverPackage;component=entry?.serverComponent
         }
-        const actual=(await admitted(version,name)).executor
+        const actual=(await admitted(version,name,component)).executor
         if(actual.implementationKey!==implementationKey)throw Error('SCHEMA_HISTORY_EXECUTOR_UNAVAILABLE')
         return actual
       } catch {throw Error('SCHEMA_HISTORY_EXECUTOR_UNAVAILABLE')}

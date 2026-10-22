@@ -8,6 +8,7 @@ import {MVU_SCHEMA_BOUNDS} from './tavern-mvu-schema-types.js'
 import {validatePromptProgramV1} from './tavern-author-prompt-data.mjs'
 import {validateCombinedAuthorProgramV5} from './tavern-author-combined-data-v5.mjs'
 import {validateCombinedAuthorProgramV6,combinedCompilationInputForProgramV6} from './tavern-author-combined-data-v6.mjs'
+import {validateCombinedAuthorProgramV7,combinedCompilationInputForProgramV7} from './tavern-author-combined-data-v7.mjs'
 import type {CombinedAuthorProgramV3,CombinedPlanRowV2,CombinedAuthorProgramV4,CombinedPlanRowV3,
   CombinedAuthorProgram,CombinedCompilationInput} from './tavern-author-combined-types.mjs'
 const same=(left:unknown,right:unknown)=>recordSha256(left)===recordSha256(right)
@@ -174,6 +175,7 @@ export function validateCombinedAuthorProgramV4(input:unknown):CombinedAuthorPro
   return program
 }
 export function validateCombinedAuthorProgram(input:unknown):CombinedAuthorProgram {
+  if((input as {schemaVersion?:unknown})?.schemaVersion===7)return validateCombinedAuthorProgramV7(input)
   if((input as {schemaVersion?:unknown})?.schemaVersion===6)return validateCombinedAuthorProgramV6(input)
   if((input as {schemaVersion?:unknown})?.schemaVersion===5)return validateCombinedAuthorProgramV5(input)
   return (input as {schemaVersion?:unknown})?.schemaVersion===4
@@ -182,6 +184,7 @@ export function validateCombinedAuthorProgram(input:unknown):CombinedAuthorProgr
 /** Rebuild only the tagged input envelope. The complete original Source and
  * descriptors stay with the program and are never repartitioned here. */
 export function combinedCompilationInputForProgram(program:CombinedAuthorProgram):CombinedCompilationInput {
+  if(program.schemaVersion===7)return combinedCompilationInputForProgramV7(program)
   if(program.schemaVersion===6)return combinedCompilationInputForProgramV6(program)
   const common={original:program.original,sourceRecordSessionId:program.sourceRecordSessionId}
   if(program.schemaVersion===5)return {schemaVersion:5,encoding:'native-author-combined-compilation-input-v5',...common}

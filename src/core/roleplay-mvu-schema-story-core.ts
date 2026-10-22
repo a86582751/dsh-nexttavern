@@ -800,7 +800,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   function historicalCutFacts(original:SchemaFrozenOriginal,ready:SchemaJournalReady,session:Session)
     :{facts:HistoricalCutFacts;originalSha256:string} {
     return Object.freeze({facts:Object.freeze({authorInput:schemaOriginalReplayCompilationInput(original),
-      ...original.schemaVersion===5&&original.preparation.compilation.schemaVersion===6
+      ...original.schemaVersion===5
+        &&(original.preparation.compilation.schemaVersion===6||original.preparation.compilation.schemaVersion===7)
         ?{compilationResources:deps.source.captureOriginalCompilationResources(original)}:{},
       ready,frozen:ready.frozen,events:all(session)}),originalSha256:original.originalSha256})
   }
@@ -1306,7 +1307,9 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
           signal:AbortSignal.any([owner.view.signal,owner.abort.signal]),authorInput:schemaOriginalReplayCompilationInput(owner.original),
           realmEpoch:plan.realmEpoch,loadFrame:schemaEpochExecution(ready.epoch).loadFrame,inheritedCut:owner.inheritedCut,
           sourceNativeCut:freezeSchemaJournalData(cut),requestedStep,journalCut:ready,compiledProgram:owner.compiledProgram,
-          ...owner.original.schemaVersion===5&&owner.original.preparation.compilation.schemaVersion===6&&!owner.compiledProgram
+          ...owner.original.schemaVersion===5
+            &&(owner.original.preparation.compilation.schemaVersion===6||owner.original.preparation.compilation.schemaVersion===7)
+            &&!owner.compiledProgram
             ?{compilationResources:deps.source.captureOriginalCompilationResources(owner.original)}:{}}
         // Replay may be a separate Host5 bundle. The actual Node producer owns
         // this capture; its checked DATA never becomes a cross-bundle token.
@@ -1380,12 +1383,13 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       const scopeReadFrame=history.ready.epoch.schemaVersion>=3&&history.readScopes
         ?scopeFrameAt(history.readScopes,history.original,frame,initialCut,events):undefined
       const ready=history.ready,executorVersion=isAuthorHostJournalReadyV5(ready)?4:ready.epoch.schemaVersion
+      const errorPolicy=isAuthorHostJournalReadyV5(ready)
+        ?schemaPhaseErrorPolicyForProgramV4(ready.epoch.program.serverProgram!):undefined
       const plan=transaction.makePlan(scope,canonical,base,frame,history.original.realmEpoch,schemaOriginalProgramSha256(history.original),
         initialCut,events[scope.receipt.turnEndSeq]!.time,executorVersion,scopeReadFrame,
         isAuthorHostJournalReadyV5(ready)?{epoch:ready.epochRef,
           serverProgramSha256:ready.epoch.program.serverProgram!.programSha256,
-          ...(schemaPhaseErrorPolicyForProgramV4(ready.epoch.program.serverProgram!)==='registered-command-policy-v1'
-            ?{errorPolicy:'registered-command-policy-v1' as const}:{})}:undefined)
+          ...(errorPolicy&&errorPolicy!=='atomic-refusal'?{errorPolicy}:{})}:undefined)
       if(owners.has(sid))fail('SCHEMA_STORY_OWNER_EXISTS')
       const baseline=new Map([...prefixInputs.status.entries()].filter(([key])=>key.startsWith(`${sid}__mvu-`)
         &&!key.startsWith(`${sid}__mvu-schema-`)).map(([key,value])=>[key,recordSha256(value)]))

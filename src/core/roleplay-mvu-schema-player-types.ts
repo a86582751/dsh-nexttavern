@@ -32,6 +32,7 @@ import type {SchemaExecutionAssociation,SchemaExecutionSelector,SchemaExecutionR
   from './roleplay-mvu-schema-replay.js'
 import type {SchemaNativeMarkerRef,SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
+import type {MvuSchemaPhaseErrorPolicyV4} from './tavern-mvu-schema-types-v4.js'
 
 export type MvuSchemaPlayerRequest=Omit<MvuPlayerEditRequest,'expected'> & {
   expected:Omit<MvuPlayerEditExpected,'root'> & {root:MvuSchemaStoryRoot}
@@ -59,7 +60,7 @@ export interface MvuSchemaPlayerPlanV3 extends Omit<MvuSchemaPlayerPlanLegacyV1,
 }
 export interface MvuSchemaPlayerPlanV4 extends Omit<MvuSchemaPlayerPlanV3,'schemaVersion'|'encoding'|'executorVersion'> {
   schemaVersion:4;encoding:'native-mvu-schema-player-plan-v4';executorVersion:4
-  errorPolicy?:'registered-command-policy-v1'
+  errorPolicy?:Exclude<MvuSchemaPhaseErrorPolicyV4,'atomic-refusal'>
 }
 /** Host5's Combined identity does not change manual phase ABI4. */
 export interface MvuSchemaPlayerPlanV5 extends Omit<MvuSchemaPlayerPlanV4,'schemaVersion'|'encoding'> {
@@ -210,7 +211,8 @@ export function validateMvuSchemaPlayerPlan(input:MvuSchemaPlayerPlanV1):MvuSche
     ...(plan.schemaVersion>=3?['scopeReadFrame']:[]),
     ...(plan.schemaVersion===5?['epoch','serverProgramSha256']:[]),
     ...(plan.schemaVersion>=4&&'errorPolicy' in plan?['errorPolicy']:[])])
-  if('errorPolicy' in plan&&plan.errorPolicy!=='registered-command-policy-v1')fail()
+  if('errorPolicy' in plan&&plan.errorPolicy!=='registered-command-policy-v1'
+    &&plan.errorPolicy!=='update-batch-atomic-v1')fail()
   fact(plan,'planSha256')
   const op=validateMvuSchemaPlayerOperation(plan.operation),cut=validateSchemaSourceCut(plan.initialCut)
   validateSchemaStorySourceFrame(plan.currentFrame);marker(plan.marker)

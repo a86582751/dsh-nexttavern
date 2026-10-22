@@ -38,8 +38,8 @@ type RunnerFailure=Extract<MvuSchemaRunResultV4,{kind:'unavailable'|'cancelled'}
 const unavailable=(code:string):RunnerFailure=>({kind:'unavailable',diagnostics:diagnostic(code)})
 const cancelled=():RunnerFailure=>({kind:'cancelled',diagnostics:diagnostic('SCHEMA_CANCELLED')})
 const evaluationBytes=MVU_SCHEMA_BOUNDS.inputBytes+MVU_SCHEMA_BOUNDS.outputBytes+4096
-// Trace frames live exactly once in input. Compact headers need at most 128KiB
-// for 64 escaped event identifiers, hashes and fixed keys; guest limits stay put.
+// Trace frames live exactly once in input; compact headers share the bounded
+// evaluation envelope with guest output. Guest execution limits stay put.
 const traceEvaluationBytes=MVU_SCHEMA_BOUNDS.inputBytes+MVU_SCHEMA_BOUNDS.outputBytes+131072
 const evaluationBounds={nodes:MVU_SCHEMA_BOUNDS.evaluationNodes,depth:MVU_SCHEMA_BOUNDS.evaluationDepth}
 const hash=(value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
@@ -248,7 +248,7 @@ function traceInputData(program:MvuSchemaProgramV4,input:unknown):{input:MvuSche
   const value=cloneSchemaEnvelopeV4(input,MVU_SCHEMA_BOUNDS.inputBytes) as MvuSchemaTraceInputV4
   exact(value,['schemaVersion','encoding','realmEpoch','loadFrame','prefix','requestedStep'])
   if(value.schemaVersion!==4||value.encoding!=='native-mvu-author-schema-trace-input-v4'
-    ||!hash(value.realmEpoch)||!Array.isArray(value.prefix)||value.prefix.length>=MVU_SCHEMA_BOUNDS.traceSteps) {
+    ||!hash(value.realmEpoch)||!Array.isArray(value.prefix)) {
     throw Error('SCHEMA_TRACE_INPUT_INVALID')
   }
   const binding=(frame:{ownerSessionId:string;sourceNativeCutSha256:string;material:object})=>{

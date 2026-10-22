@@ -75,6 +75,7 @@ function browserData(program:BrowserProgramV3):BrowserProgramV3 {
   checksum(program,'programSha256')
   return program
 }
+export {browserData as validateStoredBrowserProgramDataV3}
 
 export function validateCombinedAuthorProgramV6(input:unknown):CombinedAuthorProgramV6 {
   if(validatedPrograms.has(input as object))return input as CombinedAuthorProgramV6

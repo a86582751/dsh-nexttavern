@@ -23,6 +23,7 @@ import type {MvuSchemaStoryDeps,MvuSchemaStoryCanonical,MvuSchemaNumericalSnapsh
   MvuSchemaStoryPublicationBoundary,MvuSchemaStoryEventV2,MvuSchemaStorySettlementV2}
   from './roleplay-mvu-schema-story-types.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
+import type {MvuSchemaPhaseErrorPolicyV4} from './tavern-mvu-schema-types-v4.js'
 
 export type {MvuSchemaStoryDeps,MvuSchemaStoryPlan,MvuSchemaStoryPlanV2,MvuSchemaStoryPlanV3,MvuSchemaStoryPlanV4,MvuSchemaStoryPlanV5,MvuSchemaStoryPlanV6,
   MvuSchemaNumericalSnapshotV2,MvuSchemaStorySettlementV2}
@@ -42,12 +43,14 @@ export function createRoleplayMvuSchemaStory(deps:MvuSchemaStoryDeps) {
   function makePlan<V extends 1|2|3|4>(scope:InputCompletionScope,canonical:MvuSchemaStoryCanonical,base:MvuSchemaNumericalSnapshotV2,
     currentFrame:SchemaStorySourceFrame,realmEpoch:string,programSha256:string,initialCut:SourceNativeCutFacts,
     clockEpochMs:number,executorVersion:V,scopeReadFrame:MvuScopeReadFrameV1|undefined,
-    hostEpoch:{epoch:SchemaJournalRef;serverProgramSha256:string;errorPolicy?:'registered-command-policy-v1'}|undefined):
+    hostEpoch:{epoch:SchemaJournalRef;serverProgramSha256:string;
+      errorPolicy?:Exclude<MvuSchemaPhaseErrorPolicyV4,'atomic-refusal'>}|undefined):
     V extends 4?MvuSchemaStoryPlanV5|MvuSchemaStoryPlanV6:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2
   function makePlan<V extends 1|2|3|4=1>(scope:InputCompletionScope,canonical:MvuSchemaStoryCanonical,base:MvuSchemaNumericalSnapshotV2,
     currentFrame:SchemaStorySourceFrame,realmEpoch:string,programSha256:string,initialCut:SourceNativeCutFacts,
     clockEpochMs=0,executorVersion:V=1 as V,scopeReadFrame?:MvuScopeReadFrameV1,
-    hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string;errorPolicy?:'registered-command-policy-v1'}):
+    hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string;
+      errorPolicy?:Exclude<MvuSchemaPhaseErrorPolicyV4,'atomic-refusal'>}):
     V extends 4?MvuSchemaStoryPlanV5|MvuSchemaStoryPlanV6:V extends 3?MvuSchemaStoryPlanV4:V extends 2?MvuSchemaStoryPlanV3:MvuSchemaStoryPlanV2 {
     const input=freezeMvuSchemaStoryData({scope,canonical,base,currentFrame,realmEpoch,programSha256,initialCut,clockEpochMs})
     scope=input.scope;canonical=input.canonical;base=input.base;currentFrame=input.currentFrame

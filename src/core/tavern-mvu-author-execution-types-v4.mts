@@ -79,6 +79,18 @@ export interface RegisteredCommandPolicyProfileV1 {
   readonly bindings:readonly RegisteredCommandPolicyBindingV1[]
   readonly profileSha256:string
 }
+export interface UpdateBatchCommandPolicyBindingV1 extends Omit<RegisteredCommandPolicyBindingV1,'policy'> {
+  readonly policy:'schema-update-batch-atomic-v1'
+}
+/** One parsed update block is reduced before any registration validates it.
+ * This discriminator never upgrades the retained per-command C policy. */
+export interface UpdateBatchCommandPolicyProfileV1 {
+  readonly schemaVersion:1
+  readonly encoding:'native-mvu-update-batch-policy-profile-v1'
+  readonly errorPolicy:'update-batch-atomic-v1'
+  readonly bindings:readonly UpdateBatchCommandPolicyBindingV1[]
+  readonly profileSha256:string
+}
 export interface InitializationWriteBindingV1 {
   readonly scriptOrdinal:number
   readonly scriptIdentity:string
@@ -117,7 +129,7 @@ export interface AuthorExecutionPlanV1 {
    * descriptive, never a capability or production admission result. */
   readonly containsLocalAuditEvidence: boolean
   /** Absent in retained atomic plans; no historical shape or hash is upgraded. */
-  readonly commandPolicyProfile?:RegisteredCommandPolicyProfileV1
+  readonly commandPolicyProfile?:RegisteredCommandPolicyProfileV1|UpdateBatchCommandPolicyProfileV1
   readonly initializationWriteProfile?:InitializationWriteProfileV1
   readonly executionPlanSha256: string
 }

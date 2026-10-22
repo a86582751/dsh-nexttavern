@@ -11,8 +11,10 @@ import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 export type MvuSchemaDiagnosticV4=MvuSchemaDiagnosticV2
   | {code:'SCHEMA_SCOPE_READ_FAILED';scriptPointer:string;readCode:string}
   | {code:'STATE_ONLY_UPDATE_OPERATION_REJECTED';commandIndex:number;updateCode:string;pointer?:string}
+  | {code:'SCHEMA_UPDATE_BATCH_OPERATION_REJECTED';commandIndex:number;updateCode:string;pointer?:string}
+  | {code:'SCHEMA_UPDATE_BATCH_VALIDATION_FAILED';registrationIndex:number}
 export type MvuSchemaDiscardedDiagnosticV4=Extract<MvuSchemaDiagnosticV2,{commandIndex:number}>
-export type MvuSchemaPhaseErrorPolicyV4='atomic-refusal'|'registered-command-policy-v1'
+export type MvuSchemaPhaseErrorPolicyV4='atomic-refusal'|'registered-command-policy-v1'|'update-batch-atomic-v1'
 export interface MvuSchemaEvaluationInputV4 {
   schemaVersion:4
   encoding:'native-mvu-author-schema-phase-input-v4'
@@ -41,7 +43,7 @@ interface AcceptedPhaseOutputV4 {
   registrations:number
 }
 export type MvuSchemaGuestOutputV4=PhaseOutputV4 & (
-  | ({errorPolicy:'atomic-refusal'} & (AcceptedPhaseOutputV4
+  | ({errorPolicy:'atomic-refusal'|'update-batch-atomic-v1'} & (AcceptedPhaseOutputV4
       | {kind:'refused';diagnostics:readonly MvuSchemaDiagnosticV4[]}))
   | ({errorPolicy:'registered-command-policy-v1'} & (
       (AcceptedPhaseOutputV4 & {discarded:readonly MvuSchemaDiscardedDiagnosticV4[]})

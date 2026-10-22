@@ -16,6 +16,9 @@ export type MvuSchemaCleanupEffectV2=
 export type MvuSchemaReducedOperationV2=
   | {kind:'prepared';values:MvuJsonObject;cleanupEffect:MvuSchemaCleanupEffectV2}
   | {kind:'rejected';code:string;pointer?:string}
+export type MvuSchemaReducedBatchV2=
+  | {kind:'prepared';values:MvuJsonObject;cleanupEffects:readonly MvuSchemaCleanupEffectV2[]}
+  | {kind:'rejected';code:string;pointer?:string;operationIndex:number}
 
 const knownRejectionCodes=new Set([
   'OPERATION_SHAPE','OPERATION_UNSUPPORTED','OPERATION_KIND_UNSUPPORTED','OPERATION_KIND_MISMATCH',
@@ -174,6 +177,41 @@ export function mergeSchemaUpdateValuesV2(before:MvuJsonObject,reduced:MvuJsonOb
         container.splice(cleanup.index,1)
       }
     }
+  }
+  for(const name of Object.keys(validated))merged[name]=validated[name]!
+  return cloneSchemaValues(merged)
+}
+
+/** Operations share one temporary candidate. Schema validation starts only
+ * after this ordered reduction has completed; failure publishes no candidate. */
+export function reduceSchemaUpdateBatchV2(before:MvuJsonObject,
+  operations:readonly MvuUpdateOperationV2[]):MvuSchemaReducedBatchV2 {
+  let values=before
+  const cleanupEffects:MvuSchemaCleanupEffectV2[]=[]
+  for(const [operationIndex,operation] of operations.entries()) {
+    const reduced=reduceSchemaUpdateOperationV2(values,operation)
+    if(reduced.kind==='rejected')return {...reduced,operationIndex}
+    const root=operation.kind==='jsonpatch'&&operation.operation.path===''
+      &&operation.operation.op!=='test'&&operation.operation.op!=='remove'
+      &&!(operation.operation.op==='move'&&operation.operation.from===operation.operation.path)
+    cleanupEffects.push(root?{kind:'replace-root'}:reduced.cleanupEffect)
+    values=reduced.values
+  }
+  return {kind:'prepared',values,cleanupEffects}
+}
+
+/** Cleanup follows the final candidate, so shifted array indices and later
+ * insertions cannot replay an earlier deletion against the original basis. */
+export function mergeSchemaUpdateBatchValuesV2(before:MvuJsonObject,reduced:MvuJsonObject,
+  parsed:MvuJsonObject,effects:readonly MvuSchemaCleanupEffectV2[]):MvuJsonObject {
+  const next=cloneSchemaValues(reduced),validated=cloneSchemaValues(parsed)
+  const merged=effects.some(effect=>effect?.kind==='replace-root')?next:cloneSchemaValues(before)
+  for(const effect of effects) {
+    if(effect?.kind!=='remove-member')continue
+    const topRoot=(effect.parent[0]??(effect.collection==='object'?effect.key:undefined))!
+    if(Object.hasOwn(validated,topRoot))continue
+    if(Object.hasOwn(next,topRoot))merged[topRoot]=next[topRoot]!
+    else delete merged[topRoot]
   }
   for(const name of Object.keys(validated))merged[name]=validated[name]!
   return cloneSchemaValues(merged)

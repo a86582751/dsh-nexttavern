@@ -2,7 +2,8 @@
 import ts from 'typescript'
 import {sha256} from './roleplay-data.js'
 import {BROWSER_BOUNDS_V3,BROWSER_APIS_V3,BROWSER_METHODS_V3,BROWSER_PROPERTIES_V3,
-  BROWSER_GUEST_INTRINSICS_V3,BROWSER_ABSENT_PROBES_V3,BROWSER_CLOSED_DOM_FACADES_V3,BROWSER_SERVER_GLOBALS_V3}
+  BROWSER_GUEST_INTRINSICS_V3,BROWSER_ABSENT_PROBES_V3,BROWSER_CLOSED_DOM_FACADES_V3,BROWSER_SERVER_GLOBALS_V3,
+  READER_PAGE_AST_APIS_V3}
   from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserFacadeKindV3,BrowserOperationV3} from './tavern-author-browser-profile-v3.mjs'
 import type {BrowserAstCoverageV3,BrowserCapabilityV3,BrowserScriptResourceProjectionV3}
@@ -20,7 +21,9 @@ export interface BrowserAstUnitV3 {
   readonly pointer:string
   readonly pageId:string|null
   readonly inlineOrdinal:number|null
-  readonly sourceResources:BrowserScriptResourceProjectionV3
+  readonly scriptMode?:'classic'|'module'
+  /** Reader document principals have no executing Helper resource catalog. */
+  readonly sourceResources?:BrowserScriptResourceProjectionV3
   readonly sourceHtml?:{readonly pageId:string;readonly html:string;readonly scriptIdentity:string;
     readonly resourcePath?:readonly string[]}
 }
@@ -113,6 +116,7 @@ interface Atom {
   readonly choicePure?:Cell
   readonly callback?:{readonly recipe:FactoryRecipe;readonly captures:Map<Cell,Value>;readonly plan:FactoryPlan}
   readonly callbackTargets?:Cell
+  readonly strictThis?:boolean
 }
 type FactoryRecipe={readonly kind:'existing';readonly expression:ts.Expression}
   |{readonly kind:'binding';readonly binding:Cell;readonly expression:ts.Identifier}
@@ -162,6 +166,10 @@ function namePosition(node:ts.Identifier):boolean {
 
 export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   astOptions:{readonly captureDiagnosticEvidence?:boolean;
+    /** A separate caller profile owns these fixed absent globals. Default V3
+     * never opts in, so its admitted contract is unchanged. */
+    readonly absentGlobals?:readonly string[];
+    readonly readerPageApis?:true;
     readonly loadSourcePage?:(pageId:string)=>readonly BrowserAstUnitV3[]}={}):BrowserAstResultV3 {
   if(ts.version!=='5.9.3')throw Error('BROWSER3_TYPESCRIPT_IDENTITY')
   const diagnostics:BrowserDiagnosticV1[]=[],diagnosticKeys=new Set<string>()
@@ -240,7 +248,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     let found=roots.get(input.realm)
     if(!found){found={parent:null,functionScope:true,bindings:new Map(),lexical:new Set(),global:realm(input.realm),fn:null}
       roots.set(input.realm,found)}
-    return found
+    // Module var/function declarations belong to this unit, while reads still
+    // see the page's classic global lexical environment and ordinary global.
+    return input.scriptMode==='module'?{parent:found,functionScope:true,bindings:new Map(),
+      lexical:new Set(),global:found.global,fn:null}:found
   }
   function declare(scope:Scope,name:string,isVar:boolean,state:UnitState,node:ts.Node,
     duplicateBlockFunction=false):Cell {
@@ -292,7 +303,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(parse.length)report(state,'BROWSER3_JAVASCRIPT_SYNTAX',file)
     const aliases:{node:ts.FunctionDeclaration;scope:Scope;fn:Atom}[]=[]
     const stack:{node:ts.Node;scope:Scope;depth:number;strict:boolean}[]=[{
-      node:file,scope:root(input),depth:0,strict:strictDirective(file.statements)}]
+      node:file,scope:root(input),depth:0,strict:input.scriptMode==='module'||strictDirective(file.statements)}]
     let exceeded=false
     while(stack.length){const {node,scope,depth,strict}=stack.pop()!;nodes.push(node);units.set(node,state)
       if(!exceeded&&(nodes.length>BROWSER_BOUNDS_V3.syntaxNodes||depth>BROWSER_BOUNDS_V3.syntaxDepth)){
@@ -302,9 +313,10 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       let nextStrict=strict||ts.isClassDeclaration(node)||ts.isClassExpression(node)
       if(callable(node)){
         const lexicalThis=ts.isArrowFunction(node)?scope.fn?.thisValue??cell():cell()
-        if(ts.isArrowFunction(node)&&!scope.fn)add(lexicalThis,one(scope.global))
+        if(ts.isArrowFunction(node)&&!scope.fn)add(lexicalThis,one(input.scriptMode==='module'?absent:scope.global))
+        const functionStrict=strict||!!node.body&&ts.isBlock(node.body)&&strictDirective(node.body.statements)
         const fn=atom('function',{fn:node,params:node.parameters.map(()=>cell()),returns:cell(),thisValue:lexicalThis,
-          fields:new Map(),written:new Set()})
+          strictThis:functionStrict,fields:new Map(),written:new Set()})
         functions.set(node,fn)
         if(ts.isFunctionDeclaration(node)&&node.name){
           const blockFunction=ts.isBlock(node.parent)&&!callable(node.parent.parent)
@@ -320,7 +332,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
           add(declare(functionParent,node.name.text,false,state,node),one(fn))
         }
         next={parent:functionParent,functionScope:true,bindings:new Map(),lexical:new Set(),global:scope.global,fn}
-        nextStrict=strict||!!node.body&&ts.isBlock(node.body)&&strictDirective(node.body.statements)
+        nextStrict=functionStrict
         declare(next,'arguments',true,state,node);add(next.bindings.get('arguments')!,one(guest))
         for(let p=0;p<node.parameters.length;p++){
           const parameter=node.parameters[p]!
@@ -448,7 +460,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     // A null receiver throws in the actual VM. It cannot produce an opaque
     // callable or resource that contaminates a guarded finite getter's array.
     if(receiver.kind==='literal'&&receiver.literal===null)return one(absent)
-    if(receiver.kind==='native'||receiver.kind==='function'||receiver.kind==='bound'||receiver.kind==='factory-callback'){
+    if(receiver.kind==='native'||receiver.kind==='function'||receiver.kind==='bound'||receiver.kind==='factory-callback'
+      ||readerGuestHelper(receiver)){
       if(names?.size===1){
         const name=[...names][0]!,own=read(field(receiver,name),node)
         if(own.size)return new Set(own)
@@ -551,8 +564,17 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         if(receiver.handle==='event'&&['touches','changedTouches'].includes(name)){
           out.add(touchList(receiver,name));continue
         }
-        const method=BROWSER_METHODS_V3[receiver.handle!]?.[name]
+        const method=astOptions.readerPageApis&&receiver.handle==='page-collection'
+          ?READER_PAGE_AST_APIS_V3.methods[name as keyof typeof READER_PAGE_AST_APIS_V3.methods]
+          :astOptions.readerPageApis&&(receiver.handle==='window'||receiver.handle==='helper')
+            &&name in READER_PAGE_AST_APIS_V3.apis
+            ?READER_PAGE_AST_APIS_V3.apis[name as keyof typeof READER_PAGE_AST_APIS_V3.apis]
+            :BROWSER_METHODS_V3[receiver.handle!]?.[name]
         if(method){out.add(native(name,method,receiver));continue}
+        if(astOptions.readerPageApis&&receiver.handle==='page-collection'){
+          if(/^\d+$/.test(name)){out.add(handle('node',receiver.realm!));out.add(absent);continue}
+          if(name==='length'){out.add(guest);continue}
+        }
         if(receiver.handle==='persona-catalog'&&/^\d+$/.test(name)){
           out.add(handle('persona-row',receiver.realm!));out.add(absent);continue
         }
@@ -604,10 +626,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     if(receiver.kind==='guest'&&receiver.nativeName&&names?.size===1){
       if(names.has('constructor'))return one(intrinsicValue('Function'))
-      const name=receiver.nativeName+'.'+[...names][0]!,id='guest:'+name
-      let fn=nativeAtoms.get(id)
-      if(!fn){fn=atom('guest',{nativeName:name});nativeAtoms.set(id,fn)}
-      return one(fn)
+      return one(intrinsicValue(receiver.nativeName+'.'+[...names][0]!))
     }
     if(receiver.kind==='literal'||receiver.kind==='guest')return one(guest)
     if(receiver.kind==='html')return one(guest)
@@ -673,7 +692,9 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   function intrinsicValue(name:string):Atom {
     const id='guest:'+name
     let intrinsic=nativeAtoms.get(id)
-    if(!intrinsic){intrinsic=atom('guest',{nativeName:name});nativeAtoms.set(id,intrinsic)}
+    if(!intrinsic){intrinsic=atom('guest',{nativeName:name,
+      ...astOptions.readerPageApis&&name.startsWith('reader.')?{fields:new Map(),written:new Set()}: {}})
+      nativeAtoms.set(id,intrinsic)}
     return intrinsic
   }
   function globalValue(name:string,global:Atom,node:ts.Node,namedProperty=false):Value {
@@ -707,11 +728,18 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     if(name==='performance')return one(handle('performance',global.realm!))
     if(name==='visualViewport')return one(handle('viewport',global.realm!))
     if(name==='event_types'||name==='tavern_events')return one(sourceDictionary('events',sourceEventFields))
+    if(astOptions.readerPageApis){
+      const pageApi=READER_PAGE_AST_APIS_V3.apis[name as keyof typeof READER_PAGE_AST_APIS_V3.apis]
+      if(pageApi)return one(native(name,pageApi,global))
+      if(name==='_')return one(intrinsicValue('reader._'))
+      if(name==='errorCatched'||name==='waitGlobalInitialized')return one(intrinsicValue('reader.'+name))
+    }
     if(BROWSER_GUEST_INTRINSICS_V3.includes(name)){
       if(name==='undefined')return one(absent)
       return one(intrinsicValue(name))
     }
-    if(BROWSER_ABSENT_PROBES_V3.includes(name)||name==='location')return one(fixedAbsent)
+    if(BROWSER_ABSENT_PROBES_V3.includes(name)||name==='location'
+      ||astOptions.absentGlobals?.includes(name))return one(fixedAbsent)
     if(name==='Blob')return one(native('Blob',{capability:'owned-media',returns:'guest'},global))
     if(constructors[name])return one(native(name,{capability:constructors[name]!.capability,returns:constructors[name]!.kind},global))
     const operation=BROWSER_METHODS_V3.window?.[name]
@@ -834,7 +862,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       add(fn.params![i]!,incoming)
       if(!ts.isIdentifier(parameter.name))bindPattern(parameter.name,new Set(read(fn.params![i]!,node)),parameter)
     }
-    if(!ts.isArrowFunction(fn.fn!))add(fn.thisValue!,receiver??one(scopes.get(node)!.global))
+    if(!ts.isArrowFunction(fn.fn!))add(fn.thisValue!,receiver??one(fn.strictThis?absent:scopes.get(node)!.global))
     return new Set(read(fn.returns!,node))
   }
   const factoryPlans=new Map<Atom,FactoryPlan|null>(),buildingFactories=new Set<Atom>()
@@ -1423,6 +1451,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   const boundFunctions=new Map<ts.Node,Map<Atom,Atom>>()
   const unprovenNativeBoundCalls=new Set<ts.Node>()
   function invokeFunction(fn:Atom,args:readonly Value[],node:ts.Node,receiver?:Value,selectorExpression?:ts.Expression):Value {
+    if(readerGuestHelper(fn))return readerGuestResult(fn,args,node)
     if(fn.kind==='choice'){
       const result:Value=new Set()
       for(const target of choiceValues(one(fn),node))for(const item of invokeFunction(target,args,node,receiver))result.add(item)
@@ -1554,7 +1583,8 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       }else emit(globalValue(node.text,scope.global,node))
       return
     }
-    if(node.kind===ts.SyntaxKind.ThisKeyword){emit(scope.fn?read(scope.fn.thisValue!,node):one(scope.global));return}
+    if(node.kind===ts.SyntaxKind.ThisKeyword){emit(scope.fn?read(scope.fn.thisValue!,node)
+      :one(state.input.scriptMode==='module'?absent:scope.global));return}
     if(callable(node)){emit(one(functions.get(node)!))
       if(ts.isArrowFunction(node)&&!ts.isBlock(node.body))add(functions.get(node)!.returns!,value(node.body,node))
       return}
@@ -1752,6 +1782,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         }
         else if(fn.kind==='native')emit(invokeFunction(fn,args,node,receiver))
         else if(fn.kind==='guest'){
+          if(readerGuestHelper(fn)){emit(readerGuestResult(fn,args,node));continue}
           if(fn.nativeName&&fn.nativeName!=='Object.assign'){
             const reflected=reflection(fn.nativeName,args,node)
             if(reflected){emit(reflected);continue}
@@ -1841,7 +1872,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
   // Preserve the reader's shared DATA references. Equal HTML bytes in another
   // catalog item never turn that item's data into the selected page resource.
   for(const state of states){
-    const page=state.input.sourceHtml,caller=state.input.sourceResources.callers.find(row=>
+    const page=state.input.sourceHtml,caller=state.input.sourceResources?.callers.find(row=>
       row.identity===page?.scriptIdentity&&row.originalOrdinal===state.input.ordinal)
     if(!page||!caller)continue
     const path=(page.resourcePath??['data','html']).slice(1)
@@ -1897,8 +1928,60 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       found.set(row.authorId,row.data)
     return found
   }
+  function readerDataGet(args:readonly Value[],node:ts.Node):Value {
+    if(!args[0]?.size||!args[1]?.size)return new Set()
+    const selected=names(args[1])
+    // Unmodeled guest path forms still retain every actual Native reference.
+    // They cannot hide a Native callee inside the helper's ordinary DATA result.
+    if(!selected||[...selected].some(path=>/[\[\]]/.test(path)))return unknownResult(args,node)
+    const result:Value=new Set()
+    for(const path of selected){
+      let current=args[0]
+      for(const part of path.split('.')){
+        const next:Value=new Set()
+        for(const owner of current)for(const item of memberValues(owner,new Set([part]),node))next.add(item)
+        current=next
+      }
+      for(const item of current)if(item.kind==='absent'){
+        for(const fallback of args[2]??one(absent))result.add(fallback)
+      }else result.add(item)
+    }
+    return result
+  }
+  function readerGuestHelper(value:Atom):boolean {
+    return !!astOptions.readerPageApis&&value.kind==='guest'
+      &&['reader.errorCatched','reader.waitGlobalInitialized','reader._.get'].includes(value.nativeName??'')
+  }
+  const readerGuestCalls=new Map<ts.Node,Map<string,readonly Value[]>>()
+  function readerGuestResult(fn:Atom,args:readonly Value[],node:ts.Node):Value {
+    let calls=readerGuestCalls.get(node)
+    if(!calls){calls=new Map();readerGuestCalls.set(node,calls)}
+    const previous=calls.get(fn.nativeName!),merged:Value[]=[]
+    for(let index=0;index<Math.max(previous?.length??0,args.length);index++)
+      merged.push(new Set([...(previous?.[index]??[]),...(args[index]??one(absent))]))
+    calls.set(fn.nativeName!,merged)
+    // The real wrapper forwards to this callable, including its async body.
+    // Retain its provenance through aliases, bind/call and ready/event calls.
+    if(fn.nativeName==='reader.errorCatched')return args[0]??one(absent)
+    if(fn.nativeName==='reader._.get')return readerDataGet(args,node)
+    return sourcePromise(node,'reader-mvu-ready',absent)
+  }
   function nativeResult(fn:Atom,args:readonly Value[],node:ts.Node):Value {
     const state=units.get(node)!,realmName=state.input.realm,name=fn.nativeName!,operation=fn.operation!
+    if(astOptions.readerPageApis&&operation.returns==='page-collection'){
+      const receiver=fn.receiver!,collection=receiver.handle==='page-collection'
+        ?receiver:handle('page-collection',receiver.realm??realmName)
+      if(name==='$'||name==='jQuery'){
+        for(const callback of args[0]??[])if(['function','factory-callback','choice','bound','native'].includes(callback.kind))
+          invokeFunction(callback,[one(native('$',READER_PAGE_AST_APIS_V3.apis.$,realm(collection.realm!)))],
+            node,one(handle('document',collection.realm!)))
+      }else if(name==='on'){
+        for(const callback of args[1]??[])if(['function','factory-callback','choice','bound','native'].includes(callback.kind))
+          invokeFunction(callback,[one(handle('event',collection.realm!))],node,one(handle('node',collection.realm!)))
+      }else if(name==='text'&&!args.length||name==='attr'&&args.length===1||name==='css'&&args.length===1)
+        return one(guest)
+      return one(collection)
+    }
     if(operation.callbacks)for(const argument of args)for(const callback of argument)
       if(['function','factory-callback','choice','bound','native'].includes(callback.kind)){
       const incoming=[one(operation.callbacks==='event'?handle('event',fn.receiver?.realm??realmName):guest)]
@@ -1953,10 +2036,12 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
     // Native getters are bound to the descriptor that created their facade.
     // Borrowing a getter into another page does not change that DATA owner.
-    const facadeInput=realmInputs.get(fn.receiver?.realm??state.input.realm)!
+    // Reader's actual parent exports the same captured read facade without an
+    // authored Helper unit or a self-script resource catalog.
+    const facadeInput=realmInputs.get(fn.receiver?.realm??state.input.realm)??state.input
     const creatorInput=realmInputs.get(facadeInput.parentRealm)??facadeInput
     const projection=creatorInput.sourceResources
-    const caller=projection.callers.find(row=>row.identity===creatorInput.identity&&row.originalOrdinal===creatorInput.ordinal)
+    const caller=projection?.callers.find(row=>row.identity===creatorInput.identity&&row.originalOrdinal===creatorInput.ordinal)
     if(operation.returns==='source-id')return caller?one(literal(caller.authorId)):one(unknown)
     if(operation.returns==='source-trees'){
       if(!args[0]?.size)return args.length?new Set():one(unknown)
@@ -1966,7 +2051,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
       if(!selected)return scopes.size?one(unknown):new Set()
       // The immutable resource reader throws for global/preset scopes. They
       // have no normal return DATA to feed a caught fallback's guest walker.
-      return selected.has('character')?one(sourceAtom(projection.characterTrees)):new Set()
+      return selected.has('character')&&projection?one(sourceAtom(projection.characterTrees)):new Set()
     }
     if(operation.returns==='variables'){
       // A syntactically present argument with an empty cell is still pending.
@@ -1987,7 +2072,7 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
           if(ids.size){
             const selectedIds=names(ids)
             if(!selectedIds){out.add(unknown);continue}
-            for(const id of selectedIds)out.add(sourceAtom(catalog(projection).get(id)??emptyData))
+            for(const id of selectedIds)out.add(projection?sourceAtom(catalog(projection).get(id)??emptyData):unknown)
           }else if(option.written?.has('script_id'))continue
           else out.add(caller?sourceAtom(caller.data):unknown)
         }
@@ -2230,14 +2315,28 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
     }
   }
   for(const state of states)for(const node of state.nodes){
+    if(state.input.scriptMode==='module'){
+      const exported=ts.canHaveModifiers(node)&&ts.getModifiers(node)?.some(modifier=>
+        modifier.kind===ts.SyntaxKind.ExportKeyword||modifier.kind===ts.SyntaxKind.DefaultKeyword)
+      if(ts.isImportDeclaration(node)||ts.isExportDeclaration(node)||ts.isExportAssignment(node)||exported
+        ||ts.isImportEqualsDeclaration(node)||ts.isMetaProperty(node)&&node.keywordToken===ts.SyntaxKind.ImportKeyword)
+        report(state,'BROWSER3_MODULE_LINKAGE_UNSUPPORTED',node)
+      if(ts.isAwaitExpression(node)||ts.isForOfStatement(node)&&node.awaitModifier){
+        let parent=node.parent
+        while(parent&&!callable(parent))parent=parent.parent
+        if(!parent)report(state,'BROWSER3_MODULE_TOP_LEVEL_AWAIT_UNSUPPORTED',node)
+      }
+    }
     if(ts.isImportDeclaration(node)||ts.isExportDeclaration(node)||ts.isExportAssignment(node)
       ||ts.isTypeNode(node)||ts.isAsExpression(node)||ts.isNonNullExpression(node)){
-      report(state,'BROWSER3_ORIGINAL_CLASSIC_JAVASCRIPT_REQUIRED',node,ts.SyntaxKind[node.kind])
+      if(state.input.scriptMode!=='module'||ts.isTypeNode(node)||ts.isAsExpression(node)||ts.isNonNullExpression(node))
+        report(state,'BROWSER3_ORIGINAL_CLASSIC_JAVASCRIPT_REQUIRED',node,ts.SyntaxKind[node.kind])
     }
     if(ts.isIdentifier(node)&&!namePosition(node)&&!lookup(scopes.get(node)!,node.text)){
       if(BROWSER_SERVER_GLOBALS_V3.includes(node.text))report(state,'BROWSER3_SERVER_NATIVE_UNSUPPORTED',node,node.text)
       if(['eval','Function','AsyncFunction','GeneratorFunction','process','require','module','exports',
-        'XMLHttpRequest','WebSocket','Worker','SharedWorker','importScripts','indexedDB'].includes(node.text))
+        'XMLHttpRequest','WebSocket','Worker','SharedWorker','importScripts','indexedDB'].includes(node.text)
+        &&!astOptions.absentGlobals?.includes(node.text))
         report(state,'BROWSER3_GLOBAL_UNSUPPORTED',node,node.text)
     }
     if(unreachable(node))continue
@@ -2260,7 +2359,18 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
         if(fn.kind==='guest'&&fn.nativeName==='Function')report(state,'BROWSER3_DYNAMIC_CODE_UNSUPPORTED',node,'Function')
       }
     }
+    const readinessArgs=readerGuestCalls.get(node)?.get('reader.waitGlobalInitialized')
+    if(readinessArgs){
+      const selected=names(readinessArgs[0]??new Set())
+      if(selected?.size!==1||!selected.has('Mvu'))
+        report(state,'BROWSER3_READER_GLOBAL_READINESS_UNSUPPORTED',node)
+    }
     for(const [fn,args] of nativeCalls.get(node)??[]){
+        if(astOptions.readerPageApis&&fn.operation!.returns==='page-collection'
+          &&(READER_PAGE_AST_APIS_V3.resourceMethods.includes(fn.nativeName!)
+            ||['$','jQuery'].includes(fn.nativeName!)&&[...args[0]??[]].some(item=>
+              ['function','factory-callback','choice','bound','native'].includes(item.kind))))
+          state.caps.add('owned-resource-callbacks')
         if(fn.nativeName==='insertOrAssignVariables')insertion(args,state,node)
         else if(fn.nativeName==='updateVariablesWith')update(args,fn,state,node)
         else state.caps.add(fn.operation!.capability)
@@ -2268,9 +2378,9 @@ export function analyseBrowserAstV3(inputs:readonly BrowserAstUnitV3[],
           const events=args[0]?names(args[0]):undefined
           if(events?.has('GENERATION_AFTER_COMMANDS'))state.caps.add('owned-generation-callbacks')
         }
-        // Script DATA comes from the captured Source reader at runtime. Keep
-        // that transport with this caller's proof, including finite aliases.
-        if(fn.nativeName==='getAllVariables'||fn.nativeName==='getVariables'
+        // Helper getAllVariables includes captured script DATA. Reader's same
+        // name merges only its owned variable snapshots, without that catalog.
+        if(fn.nativeName==='getAllVariables'&&!astOptions.readerPageApis||fn.nativeName==='getVariables'
           &&[...args[0]??[]].some(option=>option.fields&&names(field(option,'type').values)?.has('script')))
           state.caps.add('owned-script-source-resources')
         if(fn.operation!.returns==='avatar-fetch'){

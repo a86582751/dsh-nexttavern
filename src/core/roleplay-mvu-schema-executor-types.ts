@@ -24,7 +24,7 @@ import type {MvuSchemaProgramV4,MvuSchemaCompilationInputV4,CompilationV4}
 import type {MvuSchemaEvaluationInputV4,MvuSchemaGuestOutputV4,MvuSchemaRealmLoadFrameV4,
   MvuSchemaTraceRequestedStepV4,MvuSchemaTraceStepRecordV4,MvuSchemaTraceEvaluationStepV4,
   MvuSchemaTraceInputV4,MvuSchemaTraceEvaluationV4,MvuSchemaTraceRunResultV4,MvuSchemaNextRunResultV4,
-  MvuSchemaOpenManualRunResultV4}
+  MvuSchemaOpenManualRunResultV4,MvuSchemaPhaseErrorPolicyV4}
   from './tavern-mvu-schema-types-v4.js'
 
 export type SchemaExecutorVersion=1|2|3|4
@@ -133,7 +133,7 @@ export function validateSchemaExecutorIdentityTuple(input:unknown):SchemaExecuto
 export function schemaEmptyPhaseInput(version:SchemaExecutorVersion,
   phase:MvuSchemaEvaluationInput['phase'],base:MvuJsonObject|null,values:MvuJsonObject,
   context:MvuJsonObject,clockEpochMs:number,randomSeed:string,scopeReadFrame?:MvuScopeReadFrameV1,
-  errorPolicy:'atomic-refusal'|'registered-command-policy-v1'='atomic-refusal'):SchemaEvaluationInput {
+  errorPolicy:MvuSchemaPhaseErrorPolicyV4='atomic-refusal'):SchemaEvaluationInput {
   const body={phase,base,values,commands:[],context,clockEpochMs,randomSeed}
   if(version===4) {
     if(!scopeReadFrame)throw Error('SCHEMA_SCOPE_READ_REQUIRED')

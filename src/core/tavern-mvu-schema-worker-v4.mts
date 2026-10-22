@@ -7,7 +7,8 @@ import {dirname,resolve} from 'node:path'
 import {newQuickJSWASMModuleFromVariant} from 'quickjs-emscripten-core'
 import variant from '@jitl/quickjs-wasmfile-release-sync'
 import ts from 'typescript'
-import {reduceSchemaUpdateOperationV2,mergeSchemaUpdateValuesV2} from './tavern-mvu-schema-update-effects-v2.js'
+import {reduceSchemaUpdateOperationV2,mergeSchemaUpdateValuesV2,
+  reduceSchemaUpdateBatchV2,mergeSchemaUpdateBatchValuesV2} from './tavern-mvu-schema-update-effects-v2.js'
 import {recordSha256} from './roleplay-data.js'
 import {cloneSchemaData,unpackSchemaEnvelopeV4,cloneSchemaValues,schemaTextSha256} from './tavern-mvu-schema-data.js'
 import type {SchemaMaterialEnvelopeV4} from './tavern-mvu-schema-data.js'
@@ -178,7 +179,8 @@ const DETERMINISM=String.raw`(wire=>{
  * Proxy is unavailable to author code, and serialization never calls toJSON,
  * getters, valueOf or a guest object's iterator. Input strings are VM values,
  * not concatenated source. The controller handles stay private to this worker. */
-const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,reduceOperation,mergeOperation,readOperation)=>{
+const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,reduceOperation,mergeOperation,
+  reduceBatch,mergeBatch,readOperation)=>{
   'use strict';
   const G=globalThis,O=Object,A=Array,Jparse=JSON.parse,Jstring=JSON.stringify,apply=Reflect.apply;
   const descriptors=O.getOwnPropertyDescriptors,keys=O.keys,symbols=O.getOwnPropertySymbols,proto=O.getPrototypeOf;
@@ -412,6 +414,27 @@ const BOOTSTRAP=String.raw`((wire,materialWire,libraryWire,scriptWire,planWire,r
             for(let field=0;field<names.length;field++)define(merged,names[field],{value:parsed[names[field]],enumerable:true,writable:true,configurable:true});
             values=numerical(merged);}
         }
+      }else if(input.phase==='command-parsed'&&plan.errorPolicy==='update-batch-atomic-v1') {
+        if(commands.length){
+          const reduced=Jparse(reduceBatch(encode({schemaVersion:2,
+            encoding:'native-mvu-schema-reduce-batch-input-v2',values,operations:commands},8388608)));
+          if(reduced.kind==='rejected')return refused([{code:'SCHEMA_UPDATE_BATCH_OPERATION_REJECTED',
+            commandIndex:reduced.operationIndex,updateCode:reduced.code,
+            ...(own(reduced,'pointer')?{pointer:reduced.pointer}:{})}]);
+          if(reduced.kind!=='prepared')fail('SCHEMA_UPDATE_CALLBACK_FAILED');
+          let candidate=numerical(reduced.values),basis=values;
+          for(let registration=0;registration<registrations.length;registration++){
+            const parsed=parse(schemaFor(registrations[registration]),candidate);
+            if(parsed===null)return refused([{code:'SCHEMA_UPDATE_BATCH_VALIDATION_FAILED',registrationIndex:registration}]);
+            const merged=Jparse(mergeBatch(encode({schemaVersion:2,
+              encoding:'native-mvu-schema-merge-batch-input-v2',before:basis,reduced:candidate,
+              parsed,cleanupEffects:reduced.cleanupEffects},8388608)));
+            if(merged.kind!=='merged')fail('SCHEMA_COMMAND_CLEANUP_FAILED');
+            candidate=numerical(merged.values);basis=candidate;
+          }
+          values=candidate;
+        }
+        commands=[];
       }else if(input.phase==='command-parsed') {
         // Indices belong to this original phase array, not a shrinking list or
         // descriptor equality. Identical commands remain distinguishable.
@@ -587,6 +610,30 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
           kind:'unavailable',code:callbackFault}))
       }
     });owned.push(merge)
+    const reduceBatch=context.newFunction('nativeMvuReduceBatchV2',wireHandle=>{
+      try {
+        const payload=callbackPayload(wireHandle,'native-mvu-schema-reduce-batch-input-v2',
+          ['schemaVersion','encoding','values','operations'])
+        const result=reduceSchemaUpdateBatchV2(payload.values as MvuJsonObject,payload.operations as MvuUpdateOperationV2[])
+        return context.newString(JSON.stringify(result))
+      } catch(error) {
+        callbackFault=error instanceof Error&&error.message==='SCHEMA_UPDATE_INPUT_UNKNOWN'?
+          'SCHEMA_UPDATE_INPUT_UNKNOWN':'SCHEMA_UPDATE_CALLBACK_FAILED'
+        return context.newString(JSON.stringify({kind:'unavailable',code:callbackFault}))
+      }
+    });owned.push(reduceBatch)
+    const mergeBatch=context.newFunction('nativeMvuMergeBatchV2',wireHandle=>{
+      try {
+        const payload=callbackPayload(wireHandle,'native-mvu-schema-merge-batch-input-v2',
+          ['schemaVersion','encoding','before','reduced','parsed','cleanupEffects'])
+        const values=mergeSchemaUpdateBatchValuesV2(payload.before as MvuJsonObject,payload.reduced as MvuJsonObject,
+          payload.parsed as MvuJsonObject,payload.cleanupEffects as MvuSchemaCleanupEffectV2[])
+        return context.newString(JSON.stringify({kind:'merged',values}))
+      } catch {
+        callbackFault='SCHEMA_COMMAND_CLEANUP_FAILED'
+        return context.newString(JSON.stringify({kind:'unavailable',code:callbackFault}))
+      }
+    });owned.push(mergeBatch)
     const read=context.newFunction('nativeMvuReadScopeV1',wireHandle=>{
       try {
         if(context.typeof(wireHandle)!=='string')throw new MvuScopeReadError('SCOPE_READ_REQUEST_INVALID')
@@ -626,7 +673,7 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
     owned.push(material,names,scriptScopes,execution)
     const bootstrap=checked(context.evalCode(BOOTSTRAP,'trusted-schema-bridge.js'));owned.push(bootstrap)
     const controller=checked(context.callFunction(bootstrap,context.undefined,inputHandle,material,names,scriptScopes,
-      execution,reduce,merge,read))
+      execution,reduce,merge,reduceBatch,mergeBatch,read))
     owned.push(controller)
     if(initializationWriters.size) {
       initializationWriteError=context.getProp(controller,'initializationWriteError')
@@ -707,7 +754,8 @@ async function evaluateGuest(request:MvuSchemaWorkerRequestV4,manual?:ManualWork
     // object, then delete the temporary global before evaluating any author.
     for(const {index,script} of serverScripts) {
       const exports=[{module:scopeModules.get(index)!,policy:'atomic-refusal'}]
-      if(stagedogModules.has(index))exports.push({module:stagedogModules.get(index)!,policy:'stagedog-command-discard-v1'})
+      if(stagedogModules.has(index))exports.push({module:stagedogModules.get(index)!,
+        policy:plan.commandPolicyProfile!.bindings.find(binding=>binding.scriptOrdinal===index)!.policy})
       for(const entry of exports) {
         const id=context.newString(script.identity),policy=context.newString(entry.policy)
         const bound=(()=>{

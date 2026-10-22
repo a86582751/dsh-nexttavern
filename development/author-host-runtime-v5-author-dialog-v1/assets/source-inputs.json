@@ -11,7 +11,7 @@
     "esbuildVersion": "0.24.2",
     "lock": {
       "artifact": "inventory-runtime-alpha3-build-tools-package-lock-json",
-      "sha256": "9a556808cf0f910bd9766cfd6b5b45417b0cccea018c451c879ab72f1d7fff32"
+      "sha256": "74f850945a52604259088721391f2ee4d09b403846543fdecb1a5b487ab50e04"
     }
   },
   "dependencyClosure": "bundled-owned-host-source-only",
@@ -30,12 +30,12 @@
       {
         "artifact": "roleplay-mvu-schema-journal-typescript",
         "path": "src/core/roleplay-mvu-schema-journal.ts",
-        "sha256": "6e0e8d82c5560df0388f2f3230840910220cb0bfd0b07824e156c02af03d6a21"
+        "sha256": "ecfb38c65f66fa6959ae2ee84b80cb6edd358eb94936ca0b82648e563debf120"
       },
       {
         "artifact": "roleplay-mvu-schema-replay-typescript",
         "path": "src/core/roleplay-mvu-schema-replay.ts",
-        "sha256": "8e4a82b9f7abc304327aae9e3ec740e487ef6456372c1cc2919d748ae510163d"
+        "sha256": "68ec8efd8f86dcec849b1c45a458d3ea727a60b63efc1451aa57746aa8d4a023"
       },
       {
         "artifact": "roleplay-mvu-update-v2-typescript",
@@ -160,7 +160,7 @@
       {
         "artifact": "tavern-mvu-schema-runner-v4-typescript",
         "path": "src/core/tavern-mvu-schema-runner-v4.ts",
-        "sha256": "66b3da4fafeab28d00234ed5f79759b8454ac699793c71f4f0395a952ab035c0"
+        "sha256": "b4389315cb46aa381cab9057242197ddf7d5313d5970c890ff949e72b6e95639"
       },
       {
         "artifact": "tavern-mvu-schema-types-typescript",

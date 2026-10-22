@@ -26,6 +26,7 @@ import type {SchemaExecutionAssociation,SchemaExecutionSelector,SchemaExecutionR
 import type {SchemaGuestOutput,SchemaEvaluationInput} from './roleplay-mvu-schema-executor-types.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
 import type {SchemaJournalRef} from './roleplay-mvu-schema-journal.js'
+import type {MvuSchemaPhaseErrorPolicyV4} from './tavern-mvu-schema-types-v4.js'
 
 export const MVU_SCHEMA_STORY_PHASES=Object.freeze(['command-parsed','commands-parsed','update-ended'] as const)
 export type MvuSchemaStoryPhase=typeof MVU_SCHEMA_STORY_PHASES[number]
@@ -131,7 +132,7 @@ export interface MvuSchemaStoryPlanV5 extends Omit<MvuSchemaStoryPlanV4,'schemaV
   schemaVersion:5
   encoding:'native-mvu-schema-story-plan-v5'
   executorVersion:4
-  errorPolicy?:'registered-command-policy-v1'
+  errorPolicy?:Exclude<MvuSchemaPhaseErrorPolicyV4,'atomic-refusal'>
 }
 /** Host5 keeps Combined as the root identity; phase execution remains ABI4. */
 export interface MvuSchemaStoryPlanV6 extends Omit<MvuSchemaStoryPlanV5,'schemaVersion'|'encoding'> {
@@ -326,7 +327,8 @@ export function validateMvuSchemaStoryPlan<T extends MvuSchemaStoryPlan>(input:T
     ...(value.schemaVersion>=3?['executorVersion']:[]),
     ...(value.schemaVersion>=4?['scopeReadFrame']:[]),
     ...(value.schemaVersion===6?['epoch','serverProgramSha256']:[])],value.schemaVersion>=5?['errorPolicy']:[])
-  if('errorPolicy' in value&&value.errorPolicy!=='registered-command-policy-v1')fail()
+  if('errorPolicy' in value&&value.errorPolicy!=='registered-command-policy-v1'
+    &&value.errorPolicy!=='update-batch-atomic-v1')fail()
   fact(value,'planSha256');validateMvuSchemaNumericalSnapshot(value.base)
   validateSchemaStorySourceFrame(value.currentFrame)
   const scope=value.scope,currency=scope.currency,receipt=scope.receipt,canonical=value.canonical,frame=value.currentFrame

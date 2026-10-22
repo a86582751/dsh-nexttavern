@@ -7,6 +7,8 @@ import {loadOwnedAuthorBrowserArtifactV3,ownedBrowserAstWorkerURLV3,
   ownedBrowserCompilerIdentityV3,ownedBrowserRuntimeIdentityV3} from './tavern-author-browser-artifact-v3.mjs'
 import type {BrowserCompilationInputV3,BrowserCompilationV3,OwnedAuthorBrowserRuntimeV3}
   from './tavern-author-browser-types-v3.mjs'
+import type {ReaderRegexDocumentInputV1,ReaderRegexDocumentCompilationV1}
+  from './reader-regex-document-types.mjs'
 
 /** Original AST alone took about 5.6 s. A fresh Worker also loads the parser,
  * builds full HTML DATA and assembles the complete program; V2's 5 s bound
@@ -19,8 +21,11 @@ export function createOwnedAuthorBrowserCompilerV3():OwnedAuthorBrowserRuntimeV3
   const artifact=loadOwnedAuthorBrowserArtifactV3(),workerUrl=ownedBrowserAstWorkerURLV3(artifact)
   const identity=ownedBrowserCompilerIdentityV3(artifact),runtime=ownedBrowserRuntimeIdentityV3(artifact)
   let disposed=false,disposal:Promise<void>|undefined
-  const active=new Map<Worker,{finish(result:BrowserCompilationV3):void;closed:Promise<void>}>()
-  async function compile(input:BrowserCompilationInputV3,signal?:AbortSignal):Promise<BrowserCompilationV3> {
+  type Compilation=BrowserCompilationV3|ReaderRegexDocumentCompilationV1
+  const active=new Map<Worker,{finish(result:Compilation):void;closed:Promise<void>}>()
+  function run(wire:BrowserCompilationInputV3,signal?:AbortSignal):Promise<BrowserCompilationV3>
+  function run(wire:ReaderRegexDocumentInputV1,signal?:AbortSignal):Promise<ReaderRegexDocumentCompilationV1>
+  async function run(wire:BrowserCompilationInputV3|ReaderRegexDocumentInputV1,signal?:AbortSignal):Promise<Compilation> {
     if(disposed)return refused('BROWSER_AST_COMPILER_DISPOSED')
     if(signal?.aborted)return refused('BROWSER_AST_CANCELLED')
     if(active.size)return refused('BROWSER_AST_COMPILER_BUSY')
@@ -28,8 +33,6 @@ export function createOwnedAuthorBrowserCompilerV3():OwnedAuthorBrowserRuntimeV3
     try {
       // Complete V3 Source resources are required by cross-realm proof. Only
       // these input fields cross the Worker boundary; posted artifacts do not.
-      const wire:BrowserCompilationInputV3={schemaVersion:input.schemaVersion,encoding:input.encoding,
-        source:input.source,scripts:input.scripts,sourcePages:input.sourcePages,sourceResources:input.sourceResources}
       quantifyBrowserTransport(wire)
       worker=new Worker(workerUrl,{workerData:wire,execArgv:[],env:{TZ:'UTC'},
         resourceLimits:{maxOldGenerationSizeMb:AUTHOR_BROWSER_COMPILE_BUDGET_V3.maxOldGenerationSizeMb,
@@ -37,11 +40,11 @@ export function createOwnedAuthorBrowserCompilerV3():OwnedAuthorBrowserRuntimeV3
     }catch(error) {return refused(error instanceof BrowserBudgetError?error.code:'BROWSER_AST_WORKER_UNAVAILABLE')}
     let release!:()=>void
     const closed=new Promise<void>(resolve=>{release=resolve})
-    let outcome:BrowserCompilationV3
+    let outcome:Compilation
     try {
-      outcome=await new Promise<BrowserCompilationV3>(resolve=>{
+      outcome=await new Promise<Compilation>(resolve=>{
         let settled=false
-        const finish=(result:BrowserCompilationV3)=>{
+        const finish=(result:Compilation)=>{
           if(settled)return
           settled=true;clearTimeout(timer);signal?.removeEventListener('abort',abort);resolve(result)
         }
@@ -49,7 +52,7 @@ export function createOwnedAuthorBrowserCompilerV3():OwnedAuthorBrowserRuntimeV3
         const timer=setTimeout(()=>finish(refused('BROWSER_AST_HARD_TIMEOUT')),AUTHOR_BROWSER_COMPILE_BUDGET_V3.deadlineMs)
         active.set(worker,{finish,closed})
         signal?.addEventListener('abort',abort,{once:true})
-        worker.once('message',(result:BrowserCompilationV3)=>finish(result))
+        worker.once('message',(result:Compilation)=>finish(result))
         worker.once('error',()=>finish(refused('BROWSER_AST_WORKER_UNAVAILABLE')))
         worker.once('exit',()=>finish(refused('BROWSER_AST_WORKER_EXIT')))
         if(signal?.aborted)abort()
@@ -64,7 +67,15 @@ export function createOwnedAuthorBrowserCompilerV3():OwnedAuthorBrowserRuntimeV3
     if(disposed)return refused('BROWSER_AST_COMPILER_DISPOSED')
     return freezeBrowserSnapshot(outcome)
   }
-  return {identity,runtime,artifact,compile,dispose(){
+  return {identity,runtime,artifact,
+    compile(input,signal){
+      return run({schemaVersion:input.schemaVersion,encoding:input.encoding,source:input.source,
+        scripts:input.scripts,sourcePages:input.sourcePages,sourceResources:input.sourceResources},signal)
+    },
+    compileReaderDocument(input,signal){
+      return run({schemaVersion:input.schemaVersion,encoding:input.encoding,source:input.source,
+        documents:input.documents},signal)
+    },dispose(){
     if(disposal)return disposal
     disposed=true
     const closing=[...active.values()]

@@ -58,9 +58,9 @@ const eventProperties=new Set(['type','target','currentTarget','key','code','key
 const mediaProperties=new Set(['src','currentTime','duration','volume','loop','preload','paused','ended','readyState',
   'error','muted','playbackRate'])
 const safeAttributes=new Set(['class','id','style','title','role','type','name','value','placeholder','disabled','hidden','checked',
-  'selected','multiple','accept','maxlength','minlength','rows','cols','for','open','alt','width','height','loading',
+  'selected','multiple','accept','maxlength','minlength','rows','cols','for','open','alt','width','height','loading','referrerpolicy',
   'src','href','download','viewbox','points','d','x','y','cx','cy','r','rx','ry','x1','x2','y1','y2','fill','stroke',
-  'stroke-width','transform','opacity','xmlns','preserveaspectratio','gradientunits','offset','stop-color','stop-opacity'])
+  'stroke-width','stroke-dasharray','transform','opacity','xmlns','preserveaspectratio','gradientunits','offset','stop-color','stop-opacity'])
 const HTML_NS='http://www.w3.org/1999/xhtml',SVG_NS='http://www.w3.org/2000/svg'
 const inertScriptType='application/x-owned-browser-script'
 const inertStyleType='application/x-owned-browser-stylesheet'
@@ -114,6 +114,9 @@ export interface BrowserPageRendererOptionsV3 {
   readonly carrierScript?:{readonly javascript:string;readonly identity:string;
     readonly mediaSources?:readonly string[];
     readonly captured:(reference:NativeHandleV3)=>void}
+  /** The actual isolated Reader outer document is already Main-owned DOM.
+   * It is a native parent, with no invented Source candidate or carrier script. */
+  readonly readerRootDocument?:true
   readonly pageId:string
   readonly onCallback?:(delivery:NativeCallbackDeliveryV3)=>void
   /** Main-only capture hook, before any Source listener; the Event stays Native. */
@@ -135,9 +138,11 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   // Transport has already entered this trusted bootstrap and handed over its
   // document. Detached nodes cannot affect author selectors/:nth-child/CSS;
   // removing the CSP META does not revoke the already applied native policy.
-  for(const node of Array.from(shellHead.childNodes))trustedHead.appendChild(node)
-  for(const node of Array.from(shellBody.childNodes))trustedBody.appendChild(node)
-  shellHead.remove();shellBody.remove()
+  if(!options.readerRootDocument) {
+    for(const node of Array.from(shellHead.childNodes))trustedHead.appendChild(node)
+    for(const node of Array.from(shellBody.childNodes))trustedBody.appendChild(node)
+    shellHead.remove();shellBody.remove()
+  }
   const handles=new Map<number,HandleOwner>(),reverse=new WeakMap<object,number>()
   const images=new Map<number,BrowserNativeImageV3>()
   const nodes=new Map<number,Node>(),ownedNodes=new Set<Node>([doc])
@@ -187,6 +192,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(handle!==undefined&&images.delete(handle))publishImages()
   }
   const visibleNode=(node:Node)=>ownedNodes.has(node)||!!options.externalFrames?.encode(node)
+    ||options.readerRootDocument===true&&node.ownerDocument===doc
   function owned(reference:NativeHandleV3):HandleOwner {
     const result=reference.pageId===pageId?handles.get(reference.handle):undefined
     if(!result)throw Error('BROWSER3_DOM_HANDLE_UNAVAILABLE')
@@ -327,7 +333,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(value===view)return {tag:'page-window',pageId}
     if(value===doc)return documentHandle
     if(value instanceof view.Node)return options.externalFrames?.encode(value)
-      ??(ownedNodes.has(value)?ref(value,value instanceof view.HTMLMediaElement?'audio':'node'):null)
+      ??(visibleNode(value)?ref(value,value instanceof view.HTMLMediaElement?'audio':'node'):null)
     if(value instanceof view.Event)return ref(value,'event')
     if(value instanceof view.File)return ref(value,'file')
     if(value instanceof view.Blob)return ref(value,'blob')
@@ -522,7 +528,6 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(name==='style')value=css(value,parsed)
     else if(['src','href','xlink:href','poster','action','formaction','data'].includes(name))
       value=resourceUrl(value,name==='src'&&target instanceof view.HTMLImageElement)
-    if(name==='src'&&(target instanceof view.HTMLImageElement||target instanceof view.HTMLMediaElement))target.crossOrigin='anonymous'
     if(!parsed) {
       const clean=cleanDisplayAttribute(target,name,value,displayPolicy)
       if(clean===null)throw Error('BROWSER3_DOM_ATTRIBUTE_UNSUPPORTED')
@@ -723,7 +728,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(key==='src') {
       if(!(target instanceof view.HTMLImageElement))throw Error('BROWSER3_MEDIA_TARGET_UNSUPPORTED')
       const url=resourceUrl(String(value),true)
-      target.crossOrigin='anonymous';beginLoad(target);target.src=url
+      beginLoad(target);target.src=url
       imageAssigned(target,String(value));return
     }
     if(key==='textContent'&&target instanceof view.HTMLStyleElement)value=css(String(value))
@@ -828,7 +833,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   function create(creation:NativeCreateV3):NativeWireValueV3 {
     if(creation.kind==='image')return encode(own(new view.Image()))
     if(creation.kind==='audio') {
-      const audio=new view.Audio();audio.crossOrigin='anonymous';own(audio)
+      const audio=new view.Audio();own(audio)
       if(creation.source!==undefined){const url=resourceUrl(creation.source);beginLoad(audio);audio.src=url}
       return ref(audio,'audio')
     }
@@ -879,7 +884,11 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   }
   if(options.onNativeEvent)for(const type of generationEvents)doc.addEventListener(type,options.onNativeEvent,true)
   doc.addEventListener('submit',preventNavigation,true);doc.addEventListener('click',preventNavigation,true)
-  if(options.carrierScript) {
+  if(options.readerRootDocument) {
+    logicalHtml=own(shellHtml,false) as Element
+    logicalHead=own(shellHead,false) as Element;logicalBody=own(shellBody,false) as Element
+    ended=true
+  }else if(options.carrierScript) {
     logicalHtml=own(shellHtml,false) as Element
     logicalHead=own(doc.createElement('head')) as Element
     logicalBody=own(doc.createElement('body')) as Element
@@ -1007,8 +1016,10 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
       for(const id of [...pendingPromises])settlePromise(id,{kind:'rejected',error:'BROWSER3_PAGE_CLOSED'})
       for(const node of ownedNodes)if(node!==doc&&node!==logicalHtml&&node!==logicalHead&&node!==logicalBody)node.parentNode?.removeChild(node)
       ownedNodes.clear();nodes.clear();handles.clear();callbackReferences.clear()
-      if(shellHtml.parentNode!==doc)doc.appendChild(shellHtml)
-      shellHtml.append(shellHead,shellBody);shellHead.appendChild(trustedHead);shellBody.appendChild(trustedBody)
+      if(!options.readerRootDocument) {
+        if(shellHtml.parentNode!==doc)doc.appendChild(shellHtml)
+        shellHtml.append(shellHead,shellBody);shellHead.appendChild(trustedHead);shellBody.appendChild(trustedBody)
+      }
       doc.removeEventListener('submit',preventNavigation,true);doc.removeEventListener('click',preventNavigation,true)
       if(options.onNativeEvent)for(const type of generationEvents)doc.removeEventListener(type,options.onNativeEvent,true)
       for(const root of shadowRoots)for(const type of shadowEvents)root.removeEventListener(type,observeShadowEvent,true)

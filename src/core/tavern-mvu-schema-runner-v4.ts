@@ -38,8 +38,8 @@ type RunnerFailure=Extract<MvuSchemaRunResultV4,{kind:'unavailable'|'cancelled'}
 const unavailable=(code:string):RunnerFailure=>({kind:'unavailable',diagnostics:diagnostic(code)})
 const cancelled=():RunnerFailure=>({kind:'cancelled',diagnostics:diagnostic('SCHEMA_CANCELLED')})
 const evaluationBytes=MVU_SCHEMA_BOUNDS.inputBytes+MVU_SCHEMA_BOUNDS.outputBytes+4096
-// Trace frames live exactly once in input. Compact headers need at most 128KiB
-// for 64 escaped event identifiers, hashes and fixed keys; guest limits stay put.
+// Trace frames live exactly once in input; compact headers share the bounded
+// evaluation envelope with guest output. Guest execution limits stay put.
 const traceEvaluationBytes=MVU_SCHEMA_BOUNDS.inputBytes+MVU_SCHEMA_BOUNDS.outputBytes+131072
 const evaluationBounds={nodes:MVU_SCHEMA_BOUNDS.evaluationNodes,depth:MVU_SCHEMA_BOUNDS.evaluationDepth}
 const hash=(value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value)
@@ -69,7 +69,7 @@ function evaluationInputData(value:MvuSchemaEvaluationInputV4,program?:MvuSchema
   const object=(v:unknown)=>v!==null&&typeof v==='object'&&!Array.isArray(v)
   if(value.schemaVersion!==4||value.encoding!=='native-mvu-author-schema-phase-input-v4'
     ||value.commandsEncoding!=='native-mvu-update-operations-v2'
-    ||!['atomic-refusal','registered-command-policy-v1'].includes(value.errorPolicy)
+    ||!['atomic-refusal','registered-command-policy-v1','update-batch-atomic-v1'].includes(value.errorPolicy)
     ||!['initialization','command-parsed','commands-parsed','update-ended','manual-replacement'].includes(value.phase)
     ||value.base!==null&&!object(value.base)||!object(value.values)||!object(value.context)
     ||!Array.isArray(value.commands)||!Number.isSafeInteger(value.clockEpochMs)
@@ -112,7 +112,7 @@ function parseGuestOutputV4(raw:unknown):MvuSchemaGuestOutputV4 {
   const wire=['schemaVersion','encoding','commandsEncoding','errorPolicy','executionPlanSha256']
   if(!output||output.schemaVersion!==4||output.encoding!=='native-mvu-author-schema-phase-output-v4'
     ||output.commandsEncoding!=='native-mvu-update-operations-v2'
-    ||!['atomic-refusal','registered-command-policy-v1'].includes(output.errorPolicy)
+    ||!['atomic-refusal','registered-command-policy-v1','update-batch-atomic-v1'].includes(output.errorPolicy)
     ||!hash(output.executionPlanSha256)) {
     throw Error('SCHEMA_OUTPUT_INVALID')
   }
@@ -134,14 +134,15 @@ function parseGuestOutputV4(raw:unknown):MvuSchemaGuestOutputV4 {
   } else if(output.kind==='refused') {
     exact(output,[...wire,'kind','diagnostics'])
     if(!Array.isArray(output.diagnostics)||!output.diagnostics.length||output.diagnostics.length>64)throw Error('SCHEMA_OUTPUT_INVALID')
-    parseSchemaDiagnosticListV4(output.diagnostics,output.errorPolicy==='registered-command-policy-v1',false)
+    parseSchemaDiagnosticListV4(output.diagnostics,output.errorPolicy==='registered-command-policy-v1',false,
+      undefined,output.errorPolicy==='update-batch-atomic-v1')
   } else throw Error('SCHEMA_OUTPUT_INVALID')
   return output
 }
 /** Refusals and final C discards share the existing diagnostic wire. Only a
  * registered command phase may carry several stable rejected-command rows. */
 function parseSchemaDiagnosticListV4(diagnostics:readonly MvuSchemaDiagnosticV4[],
-  registered:boolean,discarded:boolean,registrations?:number) {
+  registered:boolean,discarded:boolean,registrations?:number,batch=false) {
   const index=(value:unknown,max=64)=>Number.isSafeInteger(value)&&typeof value==='number'&&value>=0&&value<max
   let previousCommand=-1
   let failedRegistrationCount:number|undefined
@@ -162,16 +163,25 @@ function parseSchemaDiagnosticListV4(diagnostics:readonly MvuSchemaDiagnosticV4[
           ||discarded||!isKnownSchemaUpdateRejectionV2(item.updateCode)||diagnostics.length!==1
           ||item.pointer!==undefined&&(typeof item.pointer!=='string'
             ||Buffer.byteLength(item.pointer,'utf8')>MVU_SCHEMA_BOUNDS.valuesBytes))throw Error('SCHEMA_OUTPUT_INVALID')
+      } else if(item.code==='SCHEMA_UPDATE_BATCH_OPERATION_REJECTED') {
+        exact(item,['code','commandIndex','updateCode',...(Object.hasOwn(item,'pointer')?['pointer']:[])])
+        if(!batch||discarded||diagnostics.length!==1||!index(item.commandIndex)
+          ||!isKnownSchemaUpdateRejectionV2(item.updateCode)
+          ||item.pointer!==undefined&&(typeof item.pointer!=='string'
+            ||Buffer.byteLength(item.pointer,'utf8')>MVU_SCHEMA_BOUNDS.valuesBytes))throw Error('SCHEMA_OUTPUT_INVALID')
+      } else if(item.code==='SCHEMA_UPDATE_BATCH_VALIDATION_FAILED') {
+        exact(item,['code','registrationIndex'])
+        if(!batch||discarded||diagnostics.length!==1||!index(item.registrationIndex))throw Error('SCHEMA_OUTPUT_INVALID')
       } else if(item.code==='SCHEMA_UPDATE_OPERATION_REJECTED') {
         exact(item,['code','commandIndex','registrationIndex','updateCode',...(Object.hasOwn(item,'pointer')?['pointer']:[])])
-        if(!index(item.commandIndex)||!index(item.registrationIndex,registrations??64)
+        if(batch||!index(item.commandIndex)||!index(item.registrationIndex,registrations??64)
           ||!isKnownSchemaUpdateRejectionV2(item.updateCode)||!registered&&diagnostics.length!==1
           ||item.pointer!==undefined&&(typeof item.pointer!=='string'
             ||Buffer.byteLength(item.pointer,'utf8')>MVU_SCHEMA_BOUNDS.valuesBytes))throw Error('SCHEMA_OUTPUT_INVALID')
       } else if(item.code==='SCHEMA_VALIDATION_FAILED') {
         if('commandIndex' in item) {
           exact(item,['code','commandIndex','failedRegistrationIndexes'])
-          if(!index(item.commandIndex)||!registered&&item.commandIndex<=previousCommand
+          if(batch||!index(item.commandIndex)||!registered&&item.commandIndex<=previousCommand
             ||!Array.isArray(item.failedRegistrationIndexes)||!item.failedRegistrationIndexes.length
             ||item.failedRegistrationIndexes.length>64)throw Error('SCHEMA_OUTPUT_INVALID')
           if(!registered)previousCommand=item.commandIndex
@@ -198,6 +208,8 @@ function assertOutputInputBindingsV4(output:MvuSchemaGuestOutputV4,input:MvuSche
       if(!input.scopeReadFrame.scripts.some(script=>script.pointer===item.scriptPointer))throw Error('SCHEMA_OUTPUT_INVALID')
     }else if('commandIndex' in item) {
       if(input.phase!=='command-parsed'||item.commandIndex>=input.commands.length)throw Error('SCHEMA_OUTPUT_INVALID')
+    }else if(item.code==='SCHEMA_UPDATE_BATCH_VALIDATION_FAILED') {
+      if(input.phase!=='command-parsed'||!input.commands.length)throw Error('SCHEMA_OUTPUT_INVALID')
     }else if(item.code==='SCHEMA_VALIDATION_FAILED'
       &&!['initialization','manual-replacement'].includes(input.phase))throw Error('SCHEMA_OUTPUT_INVALID')
   }
@@ -248,7 +260,7 @@ function traceInputData(program:MvuSchemaProgramV4,input:unknown):{input:MvuSche
   const value=cloneSchemaEnvelopeV4(input,MVU_SCHEMA_BOUNDS.inputBytes) as MvuSchemaTraceInputV4
   exact(value,['schemaVersion','encoding','realmEpoch','loadFrame','prefix','requestedStep'])
   if(value.schemaVersion!==4||value.encoding!=='native-mvu-author-schema-trace-input-v4'
-    ||!hash(value.realmEpoch)||!Array.isArray(value.prefix)||value.prefix.length>=MVU_SCHEMA_BOUNDS.traceSteps) {
+    ||!hash(value.realmEpoch)||!Array.isArray(value.prefix)) {
     throw Error('SCHEMA_TRACE_INPUT_INVALID')
   }
   const binding=(frame:{ownerSessionId:string;sourceNativeCutSha256:string;material:object})=>{

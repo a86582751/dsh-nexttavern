@@ -6,13 +6,14 @@ import { MESSAGE_EDIT_EVENT, assertMessageEdit } from './projection.js';
 import { foldSurface } from '@deepseek-ai/dsh-session/surface';
 import { currentSessionMessageProjections } from './catalog.js';
 import { MVU_PLAYER_EDIT_EVENT, assertMvuPlayerEditEvent, assertMvuPlayerMarkerBoundary } from './mvu-player-marker.js';
-import { MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT, assertMvuSchemaMarkerEvent, assertMvuSchemaHistory, assertMvuSchemaEventVocabulary } from './mvu-schema-marker.js';
+import { MVU_SCHEMA_DISPATCH_EVENT, MVU_SCHEMA_COMPLETION_EVENT, MVU_SCHEMA_REVISION_EVENT, assertMvuSchemaMarkerEvent, assertMvuSchemaHistory, assertMvuSchemaEventVocabulary } from './mvu-schema-marker.js';
 import { AUTHOR_INJECTION_CLEANUP_EVENT, assertAuthorInjectionCleanup } from './author-injection-cleanup.js';
 export * from '@deepseek-ai/dsh-session-persistence';
 /** Required edit/marker batches validate against their actual durable prefix. */
 export function validateMessageEditHistory(events) {
     foldSurface(events, currentSessionMessageProjections);
-    if (events.some(event => event.type === MVU_SCHEMA_DISPATCH_EVENT || event.type === MVU_SCHEMA_COMPLETION_EVENT)) {
+    if (events.some(event => event.type === MVU_SCHEMA_DISPATCH_EVENT || event.type === MVU_SCHEMA_COMPLETION_EVENT
+        || event.type === MVU_SCHEMA_REVISION_EVENT)) {
         assertMvuSchemaHistory(events);
     }
     for (const event of events)
@@ -33,7 +34,8 @@ export const validateStoredEvents = (meta, events, location) => {
             assertMvuPlayerEditEvent(event);
             events[index] = adoptSessionEvent(event);
         }
-        else if (event.type === MVU_SCHEMA_DISPATCH_EVENT || event.type === MVU_SCHEMA_COMPLETION_EVENT) {
+        else if (event.type === MVU_SCHEMA_DISPATCH_EVENT || event.type === MVU_SCHEMA_COMPLETION_EVENT
+            || event.type === MVU_SCHEMA_REVISION_EVENT) {
             assertMvuSchemaMarkerEvent(event);
             events[index] = adoptSessionEvent(event);
         }

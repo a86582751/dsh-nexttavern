@@ -209,3 +209,40 @@ export function mergeSchemaUpdateValuesV2(before, reduced, parsed, effect) {
         merged[name] = validated[name];
     return cloneSchemaValues(merged);
 }
+/** Operations share one temporary candidate. Schema validation starts only
+ * after this ordered reduction has completed; failure publishes no candidate. */
+export function reduceSchemaUpdateBatchV2(before, operations) {
+    let values = before;
+    const cleanupEffects = [];
+    for (const [operationIndex, operation] of operations.entries()) {
+        const reduced = reduceSchemaUpdateOperationV2(values, operation);
+        if (reduced.kind === 'rejected')
+            return { ...reduced, operationIndex };
+        const root = operation.kind === 'jsonpatch' && operation.operation.path === ''
+            && operation.operation.op !== 'test' && operation.operation.op !== 'remove'
+            && !(operation.operation.op === 'move' && operation.operation.from === operation.operation.path);
+        cleanupEffects.push(root ? { kind: 'replace-root' } : reduced.cleanupEffect);
+        values = reduced.values;
+    }
+    return { kind: 'prepared', values, cleanupEffects };
+}
+/** Cleanup follows the final candidate, so shifted array indices and later
+ * insertions cannot replay an earlier deletion against the original basis. */
+export function mergeSchemaUpdateBatchValuesV2(before, reduced, parsed, effects) {
+    const next = cloneSchemaValues(reduced), validated = cloneSchemaValues(parsed);
+    const merged = effects.some(effect => effect?.kind === 'replace-root') ? next : cloneSchemaValues(before);
+    for (const effect of effects) {
+        if (effect?.kind !== 'remove-member')
+            continue;
+        const topRoot = (effect.parent[0] ?? (effect.collection === 'object' ? effect.key : undefined));
+        if (Object.hasOwn(validated, topRoot))
+            continue;
+        if (Object.hasOwn(next, topRoot))
+            merged[topRoot] = next[topRoot];
+        else
+            delete merged[topRoot];
+    }
+    for (const name of Object.keys(validated))
+        merged[name] = validated[name];
+    return cloneSchemaValues(merged);
+}

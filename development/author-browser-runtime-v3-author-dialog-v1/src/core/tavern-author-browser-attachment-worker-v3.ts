@@ -10,6 +10,8 @@ import {browserSourceGuestBootstrapV3} from './tavern-author-browser-source-gues
 import type {BrowserProgramV3,BrowserSnapshotV3,BrowserCompiledScriptV3,BrowserSourcePagePlanV3}
   from './tavern-author-browser-types-v3.mjs'
 import type {BrowserBindingV1} from './tavern-author-browser-types.mjs'
+import type {ReaderRegexDocumentProgramV1,ReaderRegexDocumentPlanV1,ReaderRegexDocumentSnapshotV1}
+  from './reader-regex-document-types.mjs'
 import type {BrowserCallbackRegistrationV3,BrowserGenerationInvocationV3}
   from './roleplay-author-browser-generation-types.js'
 import type {NativeHandleV3,NativeRequestV3,NativeWireValueV3,
@@ -26,10 +28,16 @@ interface GuestController extends BrowserPageGuestControllerV3 {
   readonly context:any
   readonly methods:Readonly<Record<string,any>>
 }
+type AttachmentPrincipal={readonly kind:'helper';readonly script:BrowserCompiledScriptV3;
+  readonly sourcePage?:BrowserSourcePagePlanV3}|{readonly kind:'reader-regex-document';
+  readonly programSha256:string;readonly document?:ReaderRegexDocumentPlanV1}
+type AttachmentProgram=BrowserProgramV3|ReaderRegexDocumentProgramV1
+const readerProgram=(program:AttachmentProgram):program is ReaderRegexDocumentProgramV1=>
+  program.encoding==='reader-regex-document-program-v1'
 export interface BrowserAttachmentWorkerOptionsV3<Frame extends object> {
   readonly actor:BrowserActorV3
-  readonly program:BrowserProgramV3
-  readonly snapshot:BrowserSnapshotV3
+  readonly program:AttachmentProgram
+  readonly snapshot:BrowserSnapshotV3|ReaderRegexDocumentSnapshotV1
   readonly binding:BrowserBindingV1
   readonly operationPrefix:string
   readonly methods:Readonly<Record<string,readonly string[]>>
@@ -38,10 +46,16 @@ export interface BrowserAttachmentWorkerOptionsV3<Frame extends object> {
   /** Supplied by the actual native frame owner after joining its document
    * resource to the selected compiled Source page. It accepts no posted owner. */
   frameOwner(frame:Frame):{readonly carrierIdentity:string;readonly parentPageId:string}
+    |{readonly kind:'reader-regex-document';readonly programSha256:string;
+      readonly documentPlanSha256:string;readonly parentPageId:string}
   resolveFrame(reference:NativeHandleV3):Frame
   frameReference(frame:Frame):NativeHandleV3
   recordFrameLocation(frame:Frame,location:{readonly src?:string;readonly srcdoc?:string}):void
   createCarrier(script:BrowserCompiledScriptV3,carrierId:string,signal:AbortSignal):Promise<BrowserCarrierNativeSessionV3>
+  /** Actual Main Reader document and its registered frames; no author-created
+   * Helper descriptor or posted frame ID can satisfy this native ownership. */
+  createReaderRoot?():Promise<{readonly document:NativeHandleV3;
+    readonly frames:readonly {readonly frame:Frame;readonly documentPlanSha256:string}[]}>
   /** This actual caller route owns native DOM/frame resources. It may suspend
    * for their ACK, but must never enter or wait for an Actor method. */
   nativeRequest?(contextId:string,request:NativeRequestV3,signal:AbortSignal):Promise<NativeReplyV3>
@@ -113,10 +127,11 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       context.setProp(context.global,'__ownedSourceNotifyV3',notify);notify.dispose()
     })
     const program=this.options.program
-    const generation=program.generationDeclarationId
+    const generation=!readerProgram(program)&&program.generationDeclarationId
       ?program.declarations.find(row=>row.declarationId===program.generationDeclarationId):undefined
     const controller=await actor.capture(context,'('+browserSourceGuestBootstrapV3.toString()+')('+JSON.stringify({
       snapshot:this.options.snapshot,binding:this.options.binding,operationPrefix:this.options.operationPrefix,
+      readerDocument:readerProgram(program),
       generationWriterIdentity:generation?.writer.scriptIdentity})+')')
     const methods:Record<string,any>={}
     await actor.enter(()=>{
@@ -139,20 +154,22 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     })
     if(this.active)await this.pages.drain()
   }
-  private async sourceFacade(context:any,script:BrowserCompiledScriptV3,pageId:string,updateChatKey:string|null,
-    sourcePage?:BrowserSourcePagePlanV3):Promise<void> {
+  private async sourceFacade(context:any,principal:AttachmentPrincipal,pageId:string,updateChatKey:string|null):Promise<void> {
     const {actor}=this.options,source=actor.parent
     let creator:any
-    await actor.enter(()=>{creator=source.newString(JSON.stringify({scriptIdentity:script.descriptor.identity,
-      descriptorSha256:script.descriptorSha256,pageId,originalOrdinal:script.ordinal,updateChatKey,
-      ...sourcePage?{sourcePage:{htmlSha256:sourcePage.origin.htmlSha256}}:{}}))})
+    await actor.enter(()=>{creator=source.newString(JSON.stringify(principal.kind==='helper'
+      ?{scriptIdentity:principal.script.descriptor.identity,descriptorSha256:principal.script.descriptorSha256,
+        pageId,originalOrdinal:principal.script.ordinal,updateChatKey,
+        ...principal.sourcePage?{sourcePage:{htmlSha256:principal.sourcePage.origin.htmlSha256}}:{}}
+      :{principal:principal.kind,programSha256:principal.programSha256,pageId,
+        ...principal.document?{documentPlanSha256:principal.document.pagePlanSha256}:{}}))})
     let facade:any
     try {facade=await actor.captureCall(source,this.sourceMethods!.createFacade,[creator])}
     finally {creator.dispose()}
     await actor.call(source,this.sourceMethods!.installFacade,[facade,context.global])
   }
   private async bootstrap(context:any,id:string,parent:any,document:NativeHandleV3,
-    script:BrowserCompiledScriptV3,updateChatKey:string|null=null,sourcePage?:BrowserSourcePagePlanV3):Promise<GuestController> {
+    principal:AttachmentPrincipal,updateChatKey:string|null=null):Promise<GuestController> {
     const {actor}=this.options
     await actor.enter(()=>{
       context.setProp(context.global,'parent',parent.global)
@@ -162,7 +179,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
         const request=JSON.parse(context.getString(input)) as NativeRequestV3
         let reply:unknown
         try {
-          reply=await this.requestNative(id,script,request)
+          reply=await this.requestNative(id,principal,request)
         }catch(error) {reply={error:errorCode(error)}}
         return context.newString(JSON.stringify(reply))
       })
@@ -187,12 +204,14 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     let name:any
     await actor.enter(()=>{name=actor.parent.newString(id)})
     try {await actor.call(actor.parent,this.sourceMethods!.registerPage,[name,captured])}finally {name.dispose()}
-    await this.sourceFacade(context,script,id,updateChatKey,sourcePage)
+    await this.sourceFacade(context,principal,id,updateChatKey)
     const controller:GuestController={context,methods,
       setCurrentScript:node=>this.primitive(context,methods.setCurrentScript,node),
       setSourceScriptOrigin:page=>this.primitive(actor.parent,this.sourceMethods!.setScriptOrigin,{pageId:id,
-        origin:page?{originalOrdinal:script.ordinal,scriptIdentity:script.descriptor.identity,
-          descriptorSha256:script.descriptorSha256,page}:null}),
+        origin:page?principal.kind==='helper'?{originalOrdinal:principal.script.ordinal,
+          scriptIdentity:principal.script.descriptor.identity,descriptorSha256:principal.script.descriptorSha256,page}
+          :{principal:principal.kind,programSha256:principal.programSha256,
+            origin:principal.document?.origin,page}:null}),
       dispatchLifecycle:type=>this.primitive(context,methods.dispatchLifecycle,{type}),
       disposeHandles:()=>{for(const method of Object.values(methods))method.dispose()},
     }
@@ -200,11 +219,13 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     return controller
   }
   private async sourcePlan(html:string):Promise<BrowserSourcePagePlanV3|undefined> {
+    const program=this.options.program
+    if(readerProgram(program))return
     const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(html))
     const hash=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('')
-    return this.options.program.sourcePages.find(plan=>plan.origin.htmlSha256===hash)
+    return program.sourcePages.find(plan=>plan.origin.htmlSha256===hash)
   }
-  private async requestNative(id:string,script:BrowserCompiledScriptV3,request:NativeRequestV3):Promise<NativeReplyV3> {
+  private async requestNative(id:string,principal:AttachmentPrincipal,request:NativeRequestV3):Promise<NativeReplyV3> {
     if(request.op==='create'&&request.creation.kind==='blob'&&request.creation.mime.toLowerCase().split(';')[0]!.trim()==='text/html'
       &&request.creation.parts.every(part=>typeof part==='string')) {
       const html=request.creation.parts.join(''),plan=await this.sourcePlan(html)
@@ -237,14 +258,21 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     }
     if(request.op==='revoke-object-url'&&this.sourceURLs.delete(request.url))return {value:{tag:'undefined'}}
     return this.options.nativeRequest?await this.options.nativeRequest(id,request,this.abort.signal)
-      :this.carriers.get(script.descriptor.identity)?.id===id
-      ?await this.carriers.get(script.descriptor.identity)!.native.request(request,this.abort.signal)
+      :principal.kind==='helper'&&this.carriers.get(principal.script.descriptor.identity)?.id===id
+      ?await this.carriers.get(principal.script.descriptor.identity)!.native.request(request,this.abort.signal)
       :await this.pages.requestNative(id,request)
   }
   private async bootstrapPage(page:BrowserPageBootstrapV3<Frame>):Promise<GuestController> {
     await this.retirePending()
-    const script=this.options.program.scripts.find(row=>row.descriptor.identity===page.plan.origin.carrier.identity)!
-    const controller=await this.bootstrap(page.context,page.pageId,page.parentContext,page.document,script,null,page.plan)
+    const program=this.options.program
+    let principal:AttachmentPrincipal
+    if(readerProgram(program))principal={kind:'reader-regex-document',programSha256:program.programSha256,
+      document:program.documents.find(plan=>plan.pagePlanSha256===page.plan.pagePlanSha256)!}
+    else {
+      const sourcePage=program.sourcePages.find(plan=>plan.pagePlanSha256===page.plan.pagePlanSha256)!
+      principal={kind:'helper',script:program.scripts.find(row=>row.descriptor.identity===sourcePage.origin.carrier.identity)!,sourcePage}
+    }
+    const controller=await this.bootstrap(page.context,page.pageId,page.parentContext,page.document,principal)
     const parent=[...this.controllers.values()].find(row=>row.context===page.parentContext)!
     let reference:any
     await this.options.actor.enter(()=>{reference=parent.context.newString(JSON.stringify(this.options.frameReference(page.frame)))})
@@ -257,6 +285,17 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
   async start():Promise<void> {
     const {actor,program}=this.options
     await this.startSource()
+    if(readerProgram(program)) {
+      const native=await this.options.createReaderRoot!()
+      await this.bootstrap(actor.parent,'reader-root',actor.parent,native.document,
+        {kind:'reader-regex-document',programSha256:program.programSha256})
+      for(const owned of native.frames) {
+        const plan=program.documents.find(plan=>plan.pagePlanSha256===owned.documentPlanSha256)!
+        await this.requestMount(owned.frame,plan)
+      }
+      await this.pages.pump();await this.pages.drain()
+      return
+    }
     for(const script of program.scripts)if(script.disposition==='compiled-browser') {
       const id='carrier-'+script.ordinal,context=await actor.createPage(id)
       const native=await this.options.createCarrier(script,id,this.abort.signal)
@@ -265,7 +304,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       // have no retained unit owner, so their shared facade receives no key.
       const ordinaryKeys=script.declarations.filter(row=>row.kind==='ordinary-source-key').map(row=>row.key)
       const updateChatKey=ordinaryKeys.length===1?ordinaryKeys[0]!:null
-      const controller=await this.bootstrap(context,id,context,native.document,script,updateChatKey)
+      const controller=await this.bootstrap(context,id,context,native.document,{kind:'helper',script},updateChatKey)
       await native.setDocumentState('loading',this.abort.signal)
       await controller.setCurrentScript(native.script)
       try {await this.pages.enterOriginal(context,script.javascript,
@@ -282,16 +321,26 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
   }
   /** The trusted frame resource router supplies frame identity and selected
    * plan. Neither a posted page object nor an arbitrary HTML string is used. */
-  requestMount(frame:Frame,plan:BrowserSourcePagePlanV3):Promise<{readonly pageId:string}> {
-    const {carrierIdentity,parentPageId}=this.options.frameOwner(frame)
-    const carrier=this.carriers.get(carrierIdentity)!
+  requestMount(frame:Frame,plan:BrowserSourcePagePlanV3|ReaderRegexDocumentPlanV1):Promise<{readonly pageId:string}> {
+    const owner=this.options.frameOwner(frame),program=this.options.program
+    let parentContext:any
+    if(readerProgram(program)) {
+      if(!('kind' in owner)||owner.kind!=='reader-regex-document'
+        ||owner.programSha256!==program.programSha256||owner.documentPlanSha256!==plan.pagePlanSha256
+        ||owner.parentPageId!=='reader-root')return Promise.reject(Error('READER_REGEX_DOCUMENT_PARENT_UNPROVEN'))
+      parentContext=this.options.actor.parent
+    }else {
+      if(!('carrierIdentity' in owner))return Promise.reject(Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN'))
+      const {carrierIdentity,parentPageId}=owner,carrier=this.carriers.get(carrierIdentity)!
     // Native document ownership is independent of the Source getter's creator.
     // The compiler supports this carrier parent, not a nested page parent.
-    if(carrier.id!==parentPageId||plan.origin.carrier.identity!==carrierIdentity)
-      return Promise.reject(Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN'))
+      if(carrier.id!==parentPageId||plan.encoding!=='native-author-browser-source-page-plan-v3'
+        ||plan.origin.carrier.identity!==carrierIdentity)return Promise.reject(Error('BROWSER3_SOURCE_PAGE_PARENT_UNPROVEN'))
+      parentContext=carrier.context
+    }
     const previous=this.framePages.get(frame)
     if(previous)this.retiringPages.add(previous)
-    return this.pages.requestMount(frame,plan,carrier.context).then(result=>{
+    return this.pages.requestMount(frame,plan,parentContext).then(result=>{
       this.framePages.set(frame,result.pageId);return result
     })
   }
@@ -330,7 +379,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
     await this.primitive(controller.context,controller.methods.settle,settlement,true)
     if(this.active)await this.pages.drain()
   }
-  async snapshot(snapshot:BrowserSnapshotV3):Promise<void> {
+  async snapshot(snapshot:BrowserSnapshotV3|ReaderRegexDocumentSnapshotV1):Promise<void> {
     if(this.active)await this.retirePending()
     if(this.active)await this.primitive(this.options.actor.parent,this.sourceMethods!.snapshot,snapshot,true)
     if(this.active)await this.pages.drain()
@@ -371,6 +420,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
         for(const promise of this.hostWaits.values())promise.dispose()
         this.hostWaits.clear()
         for(const carrier of this.carriers.values())this.controllers.get(carrier.id)?.disposeHandles()
+        this.controllers.get('reader-root')?.disposeHandles()
         for(const method of Object.values(this.sourceMethods??{}))method.dispose()
         this.nativeRegistry?.dispose()
       })

@@ -19,6 +19,7 @@ import type {SchemaNativeMarkerRef,SchemaJournalRef} from './roleplay-mvu-schema
 import type {SchemaStorySourceFrame} from './roleplay-mvu-schema-source.js'
 import type {SourceNativeCutFacts} from './roleplay-mvu-schema-replay.js'
 import type {MvuScopeReadFrameV1} from './tavern-mvu-scope-read-types.js'
+import type {MvuSchemaPhaseErrorPolicyV4} from './tavern-mvu-schema-types-v4.js'
 
 export type {MvuSchemaPlayerDeps,MvuSchemaPlayerPlanV1,MvuSchemaPlayerPlanV3,MvuSchemaPlayerPlanV5,MvuSchemaPlayerSettlementV1}
   from './roleplay-mvu-schema-player-types.js'
@@ -32,7 +33,8 @@ export function createRoleplayMvuSchemaPlayer(deps:MvuSchemaPlayerDeps) {
   function makePlan(operation:MvuSchemaPlayerOperationV1,marker:SchemaNativeMarkerRef,
     currentFrame:SchemaStorySourceFrame,initialCut:SourceNativeCutFacts,clockEpochMs=0,executorVersion:1|2|3|4=1,
     scopeReadFrame?:MvuScopeReadFrameV1,
-    hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string;errorPolicy?:'registered-command-policy-v1'}):MvuSchemaPlayerPlanV1 {
+    hostEpoch?:{epoch:SchemaJournalRef;serverProgramSha256:string;
+      errorPolicy?:Exclude<MvuSchemaPhaseErrorPolicyV4,'atomic-refusal'>}):MvuSchemaPlayerPlanV1 {
     if(executorVersion>=3&&!scopeReadFrame)fail('SCHEMA_SCOPE_READ_REQUIRED')
     if(hostEpoch&&executorVersion!==4)fail('SCHEMA_EXECUTOR_VERSION_MISMATCH')
     // Core supplies the actual Source and operation facts. This constructor

@@ -389,7 +389,6 @@ export function createRoleplayMvuSchemaReplay(deps:SchemaReplayDeps) {
       const trace=traceInput(epoch,prefix,scope.requestedStep)
       // Retained closures are never truncated to fit the transport budget.
       if(executorVersion===1)cloneSchemaData(trace,MVU_SCHEMA_BOUNDS.inputBytes)
-      if(prefix.length>=MVU_SCHEMA_BOUNDS.traceSteps)fail('SCHEMA_TRACE_LIMIT')
       let epochRef:SchemaJournalRef
       epochRef=await deps.withSourceBoundary(scope,async()=>{
         check('history-verified')

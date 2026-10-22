@@ -285,7 +285,9 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
                 authorInput: schemaOriginalReplayCompilationInput(owner.basis.original), realmEpoch: plan.realmEpoch,
                 loadFrame: schemaEpochExecution(ready.epoch).loadFrame,
                 inheritedCut: owner.basis.inheritedCut, sourceNativeCut: cut, requestedStep, journalCut: ready, compiledProgram: owner.compiledProgram,
-                ...owner.basis.original.schemaVersion === 5 && owner.basis.original.preparation.compilation.schemaVersion === 6 && !owner.compiledProgram
+                ...owner.basis.original.schemaVersion === 5
+                    && (owner.basis.original.preparation.compilation.schemaVersion === 6 || owner.basis.original.preparation.compilation.schemaVersion === 7)
+                    && !owner.compiledProgram
                     ? { compilationResources: deps.source.captureOriginalCompilationResources(owner.basis.original) } : {} };
             if (owner.basis.inheritedReady)
                 Object.defineProperty(owner.scope, 'inheritedReady', { value: owner.basis.inheritedReady });
@@ -491,10 +493,11 @@ export function createRoleplayMvuSchemaPlayerCore(deps) {
                                 anchor: { kind: 'manual', operationId: request.operationId, requestSha256: operation.requestSha256,
                                     observedNativeSeq: request.expected.observedNativeSeq } };
                             const ready = basis.ready, executorVersion = isAuthorHostJournalReadyV5(ready) ? 4 : ready.epoch.schemaVersion;
+                            const errorPolicy = isAuthorHostJournalReadyV5(ready)
+                                ? schemaPhaseErrorPolicyForProgramV4(ready.epoch.program.serverProgram) : undefined;
                             const plan = transaction.makePlan(operation, { seq: marker.seq, sha256: recordSha256(marker) }, frame, initialCut, marker.time, executorVersion, executorVersion >= 3 ? basis.scopeReadFrame(initialCut) : undefined, isAuthorHostJournalReadyV5(ready) ? { epoch: ready.epochRef,
                                 serverProgramSha256: ready.epoch.program.serverProgram.programSha256,
-                                ...(schemaPhaseErrorPolicyForProgramV4(ready.epoch.program.serverProgram) === 'registered-command-policy-v1'
-                                    ? { errorPolicy: 'registered-command-policy-v1' } : {}) } : undefined);
+                                ...(errorPolicy && errorPolicy !== 'atomic-refusal' ? { errorPolicy } : {}) } : undefined);
                             await putExact(mvuSchemaPlayerPlanKey(sid, operation.operationId), plan);
                             const owner = { reservation, basis, operation, plan, token: Object.freeze({}),
                                 baseline: new Map(stateRows(sid).map(([key, row]) => [key, recordSha256(row)])), associations: [] };

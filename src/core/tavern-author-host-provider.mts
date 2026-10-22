@@ -2,7 +2,7 @@
  * same maintained replay/journal source; no lower replay plus JSON stamp can
  * mint its evidence. Source, locks and Native callbacks stay with Core. */
 import {recordSha256} from './roleplay-data.js'
-import {createCombinedAuthorCompilerV6} from './tavern-author-combined-compiler-v6.mjs'
+import {createCombinedAuthorCompilerV7} from './tavern-author-combined-compiler-v7.mjs'
 import {createRoleplayMvuSchemaReplay} from './roleplay-mvu-schema-replay.js'
 import type {SchemaReplayDeps} from './roleplay-mvu-schema-replay.js'
 import type {OwnedMvuSchemaExecutor} from './roleplay-mvu-schema-executor-types.js'
@@ -13,7 +13,7 @@ import type {CombinedAuthorCompiler} from './tavern-author-combined-types.mjs'
 import type {OwnedAuthorPromptRuntimeV1} from './tavern-author-prompt-types.mjs'
 import type {AuthorHostIdentityV5,AuthorServerExecutorV4} from './roleplay-author-host-types-v5.js'
 
-export const AUTHOR_HOST_NAME_V5='dsh-nexttavern-author-host-runtime-v5-author-dialog-v1'
+export const AUTHOR_HOST_NAME_V5='dsh-nexttavern-author-host-runtime-v5-update-batch-v1'
 export const AUTHOR_HOST_VERSION_V5='0.6.0'
 export interface AuthorHostInventoryV5 {
   name:typeof AUTHOR_HOST_NAME_V5|'dsh-nexttavern-author-host-runtime-v5-policy-init-chat-v1'
@@ -57,7 +57,7 @@ export async function createOwnedAuthorHostRuntimeV5(deps:{
     runner:deps.server.runner.identity as AuthorServerExecutorV4['runner']})
   const compilerDependencies={server:candidateCompiler,
     prompt:deps.prompt.compiler,implementationSha256:pin.generation}
-  const actualCompiler:CombinedAuthorCompiler=createCombinedAuthorCompilerV6({...compilerDependencies,browser:deps.browser})
+  const actualCompiler:CombinedAuthorCompiler=createCombinedAuthorCompilerV7({...compilerDependencies,browser:deps.browser})
   const identity:AuthorHostIdentityV5=Object.freeze({id:'native-author-host',version:5,
     implementationSha256:recordSha256({encoding:'native-author-host-implementation-v5',generation:pin.generation,
       combinedCompiler:actualCompiler.identity,server,browser:{compiler:deps.browser.identity,runtime:deps.browser.runtime},

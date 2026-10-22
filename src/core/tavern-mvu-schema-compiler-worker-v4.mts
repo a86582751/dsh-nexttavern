@@ -80,9 +80,10 @@ function compile(): CompilationCodeV4 | ServerCandidateCodePartitionV4 {
   }
   const selectedScripts = partition ? serverOrdinals.map(ordinal => input.scripts[ordinal]!) : input.scripts
   const classified = partition ? planner.assemblePlan(serverRows) : planner.plan(input.scripts)
-  const profileBody={schemaVersion:1 as const,encoding:'native-mvu-registered-command-policy-profile-v1' as const,
-    errorPolicy:'registered-command-policy-v1' as const,
-    bindings:selectedScripts.flatMap(script=>compiledByIdentity.get(script.identity)?.commandPolicyBindings??[])}
+  const profileBody={schemaVersion:1 as const,encoding:'native-mvu-update-batch-policy-profile-v1' as const,
+    errorPolicy:'update-batch-atomic-v1' as const,
+    bindings:selectedScripts.flatMap(script=>compiledByIdentity.get(script.identity)?.commandPolicyBindings??[])
+      .map(binding=>({...binding,policy:'schema-update-batch-atomic-v1' as const}))}
   const commandPolicyProfile={...profileBody,profileSha256:recordSha256(profileBody)}
   const initializationWriteBindings=selectedScripts.flatMap(script=>
     compiledByIdentity.get(script.identity)?.initializationWriteBindings??[])
