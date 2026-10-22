@@ -504,7 +504,9 @@ export function createSourceInheritanceStorageV1(deps:TavernSourceInheritanceDep
   function readRef(ref:TavernSourceInheritanceRefV1,budget?:TavernSourceReadBudgetV1):unknown {
     validateInheritanceRefV1(ref)
     const actual=readKey(ref.key,budget)
-    if(readOwnedShaV1(ref.key,actual)!==ref.sha256)inheritanceFailV1('SOURCE_INHERITANCE_INVALID',ref.key)
+    // readKey records this actual observation's hash in the same budget.
+    const actualSha256=budget?budget.refs.get(ref.key)!.sha256:readOwnedShaV1(ref.key,actual)
+    if(actualSha256!==ref.sha256)inheritanceFailV1('SOURCE_INHERITANCE_INVALID',ref.key)
     return actual
   }
   async function putExact(table:TavernSourceStaticTableV1,key:string,value:object,prior:unknown=undefined) {
