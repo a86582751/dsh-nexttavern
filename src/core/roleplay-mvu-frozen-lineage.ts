@@ -272,9 +272,15 @@ export function createRoleplayMvuFrozenLineage(deps:MvuFrozenLineageDeps) {
     }catch {return false}
   }
   function historicalPrepared(priorRaw:unknown,successorRef:TavernSourceFrozenRefV1,
-    subjectSessionId?:string):boolean {
+    subjectSessionId?:string,closedSources?:{
+      readonly successor:ReturnType<typeof prepared>|undefined
+      prior?:ReturnType<typeof prepared>
+    }):boolean {
     try {
-      const successor=prepared(successorRef.childSessionId),prior=validateMvuDerivedSourceProofUnion(priorRaw)
+      // A closed read supplies its successor DATA; a precommit caller may only
+      // have the prepared row, whose original Source reader remains the fallback.
+      const successor=closedSources?.successor??prepared(successorRef.childSessionId),
+        prior=validateMvuDerivedSourceProofUnion(priorRaw)
       if(!same(successor.ref,successorRef))return false
       if(prior.schemaVersion!==1) {
         // The frozen Source owner already closed this exact ancestor. Its
@@ -282,7 +288,10 @@ export function createRoleplayMvuFrozenLineage(deps:MvuFrozenLineageDeps) {
         // rather than requiring today's parent rows to match its birth rows.
         if(successor.frozen.parentSessionId!==prior.childSessionId
           ||!same(successor.frozen.parentSource.inheritance,prior.sourceInheritance))return false
-        historicalProof(prior,subjectSessionId)
+        const {current}=historicalProof(prior,subjectSessionId)
+        // The recursive numerical reader consumes this same Source transaction.
+        // Reopening its prepared row would discard the owner's completed joins.
+        if(closedSources)closedSources.prior=preparedData(current.prepared)
         return true
       }
       return legacyPredecessorOrigin(prior,successor.frozen)

@@ -245,9 +245,11 @@ export function createRoleplayMvuFrozenLineage(deps) {
             return false;
         }
     }
-    function historicalPrepared(priorRaw, successorRef, subjectSessionId) {
+    function historicalPrepared(priorRaw, successorRef, subjectSessionId, closedSources) {
         try {
-            const successor = prepared(successorRef.childSessionId), prior = validateMvuDerivedSourceProofUnion(priorRaw);
+            // A closed read supplies its successor DATA; a precommit caller may only
+            // have the prepared row, whose original Source reader remains the fallback.
+            const successor = closedSources?.successor ?? prepared(successorRef.childSessionId), prior = validateMvuDerivedSourceProofUnion(priorRaw);
             if (!same(successor.ref, successorRef))
                 return false;
             if (prior.schemaVersion !== 1) {
@@ -257,7 +259,11 @@ export function createRoleplayMvuFrozenLineage(deps) {
                 if (successor.frozen.parentSessionId !== prior.childSessionId
                     || !same(successor.frozen.parentSource.inheritance, prior.sourceInheritance))
                     return false;
-                historicalProof(prior, subjectSessionId);
+                const { current } = historicalProof(prior, subjectSessionId);
+                // The recursive numerical reader consumes this same Source transaction.
+                // Reopening its prepared row would discard the owner's completed joins.
+                if (closedSources)
+                    closedSources.prior = preparedData(current.prepared);
                 return true;
             }
             return legacyPredecessorOrigin(prior, successor.frozen);

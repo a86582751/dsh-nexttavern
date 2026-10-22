@@ -59,11 +59,11 @@ export function createRoleplayMvuSchemaDerived(deps) {
         if (!same(table.get(key), value))
             fail('SCHEMA_DERIVED_WRITE_UNCONFIRMED');
     }
-    function historicalSource(prior, next) {
+    function historicalSource(prior, next, subjectSessionId, closedSources) {
         if (next.encoding === 'native-tavern-source-inheritance-frozen-ref-v1')
-            return frozenLineage?.historicalPrepared(prior, next) === true;
+            return frozenLineage?.historicalPrepared(prior, next, subjectSessionId, closedSources) === true;
         if (next.schemaVersion === 2)
-            return frozenLineage?.historical(prior, next) === true;
+            return frozenLineage?.historical(prior, next, subjectSessionId) === true;
         return prior.schemaVersion === 1 && lineage.historical(prior, next);
     }
     function sourceCurrent(source, current) {
@@ -72,21 +72,23 @@ export function createRoleplayMvuSchemaDerived(deps) {
                 ? current ? frozenLineage.current(source) : frozenLineage.verifyDenialBindingFacts(source) : false;
         return current ? lineage.current(source) : lineage.verifyDenialBindingFacts(source);
     }
-    function verifyPrepared(input, events, source, seen) {
+    function verifyPrepared(input, events, source, seen, subjectSessionId, closedSource) {
         const prepared = validateMvuSchemaDerivedPrepared(input);
         if (events.length !== prepared.seedLength || prepared.prefix.journal.nativePrefixSha256 !== recordSha256(events)
             || prepared.schemaVersion === 1 && !operationCurrent(prepared) || !nativeBasisCurrent(prepared))
             fail('SCHEMA_DERIVED_BASIS_UNPROVEN');
+        let actualSource = closedSource;
         if (prepared.schemaVersion === 2) {
-            const actual = frozenLineage?.prepared(prepared.childSessionId);
-            if (!actual || !same(actual.ref, prepared.sourcePreparedRef)
-                || actual.parentSourceSha256 !== prepared.parentSourceSha256
-                || actual.frozen.nativeCut.parentInheritedEventCount !== prepared.parentInheritedEventCount)
+            actualSource ??= frozenLineage?.prepared(prepared.childSessionId);
+            if (!actualSource || !same(actualSource.ref, prepared.sourcePreparedRef)
+                || actualSource.parentSourceSha256 !== prepared.parentSourceSha256
+                || actualSource.frozen.nativeCut.parentInheritedEventCount !== prepared.parentInheritedEventCount)
                 fail('SCHEMA_DERIVED_FROZEN_SOURCE_CHANGED');
         }
         const seed = prepared.prefix.seed;
         const successor = prepared.schemaVersion === 2 ? prepared.sourcePreparedRef : source;
-        const initial = seed.kind === 'derived' ? readHistorical(prepared.parentSessionId, events, successor, seen) : undefined;
+        const initial = seed.kind === 'derived'
+            ? readHistorical(prepared.parentSessionId, events, successor, seen, subjectSessionId, actualSource) : undefined;
         if (seed.kind === 'derived' && (!initial || initial.basisKey !== seed.basisKey || initial.basisSha256 !== seed.basisSha256)) {
             fail('SCHEMA_DERIVED_PARENT_UNPROVEN');
         }
@@ -147,25 +149,30 @@ export function createRoleplayMvuSchemaDerived(deps) {
             fail('SCHEMA_DERIVED_FROZEN_SOURCE_CHANGED');
         if (!child)
             fail('SCHEMA_DERIVED_BASIS_UNPROVEN');
+        // Source has not committed this child yet; its active parent owns the
+        // historical Source admission needed by an ownerless precommit recovery.
         const events = prefix(child, prepared.seedLength), { ready } = owner
             ? verifyReservation(owner, events)
-            : verifyPrepared(prepared, events, prepared.sourcePreparedRef, new Set([childId]));
+            : verifyPrepared(prepared, events, prepared.sourcePreparedRef, new Set([childId]), prepared.parentSessionId);
         if (!isAuthorHostJournalReadyV5(ready) || ready.epoch.program.browserProgram?.schemaVersion !== 3)
             return;
         return Object.freeze({ program: ready.epoch.program.browserProgram, epochRef: ready.epochRef });
     }
     /** Validate an older generation against the actual descendant prefix and
      * the next frozen Source, never that ancestor's current pointer or head. */
-    function readHistorical(sid, events, successor, seen) {
+    function readHistorical(sid, events, successor, seen, subjectSessionId, closedSuccessor) {
         try {
             if (seen.size >= 32 || seen.has(sid))
                 return;
             seen.add(sid);
             const basis = validateMvuSchemaDerivedBasis(deps.branch.get(mvuSchemaDerivedBasisKey(sid)));
+            const closedSources = { successor: closedSuccessor };
             if (basis.prepared.childSessionId !== sid || basis.prepared.seedLength > events.length
-                || !historicalSource(basis.source, successor))
+                || !historicalSource(basis.source, successor, subjectSessionId, closedSources))
                 return;
-            const checked = verifyPrepared(basis.prepared, events.slice(0, basis.prepared.seedLength), basis.source, seen);
+            // The comparison already closed both Source transactions in this subject's
+            // lineage. Keep that DATA for the recursive numerical joins.
+            const checked = verifyPrepared(basis.prepared, events.slice(0, basis.prepared.seedLength), basis.source, seen, subjectSessionId, closedSources.prior);
             return closedRows(basis, checked.ready);
         }
         catch {
@@ -177,10 +184,24 @@ export function createRoleplayMvuSchemaDerived(deps) {
         if (!session)
             return;
         const basis = validateMvuSchemaDerivedBasis(deps.branch.get(mvuSchemaDerivedBasisKey(sid)));
-        if (basis.prepared.childSessionId !== sid || session.inheritedEventCount !== basis.prepared.seedLength
-            || !sourceCurrent(basis.source, false))
+        if (basis.prepared.childSessionId !== sid || session.inheritedEventCount !== basis.prepared.seedLength)
             return;
-        const checked = verifyPrepared(basis.prepared, prefix(session, basis.prepared.seedLength), basis.source, new Set([sid]));
+        let closedSource;
+        if (basis.source.schemaVersion === 2) {
+            // The former boolean Source check discarded the same verified prepared
+            // DATA that numerical recovery needs immediately afterward.
+            try {
+                closedSource = frozenLineage?.readHistorical(basis.source, sid).prepared;
+            }
+            catch {
+                return;
+            }
+            if (!closedSource)
+                return;
+        }
+        else if (!sourceCurrent(basis.source, false))
+            return;
+        const checked = verifyPrepared(basis.prepared, prefix(session, basis.prepared.seedLength), basis.source, new Set([sid]), sid, closedSource);
         return Object.freeze({ basis, genesis: closedRows(basis, checked.ready) });
     }
     function readGenesis(sid) {
