@@ -288,6 +288,5 @@ export function captureRoleplayTavernTimedHistoryV2(deps) {
         deps.inheritedHistory?.assertCurrent();
         deps.clock.assertCurrent();
     };
-    assertCurrent();
     return { timed, evidence, assertCurrent };
 }

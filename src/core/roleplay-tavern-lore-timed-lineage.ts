@@ -303,6 +303,5 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
     deps.assertOwnerCurrent();deps.assertSourceLineageCurrent()
     deps.ownHistory.assertCurrent();deps.inheritedHistory?.assertCurrent();deps.clock.assertCurrent()
   }
-  assertCurrent()
   return {timed,evidence,assertCurrent}
 }

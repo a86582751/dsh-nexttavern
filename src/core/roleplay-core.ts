@@ -880,7 +880,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     captureMaterialPublications:(id,cut)=>{
       const history=captureRoleplayTavernMaterialPrefixV1(materialReadScope(id,cut)),
         refs=tavernMaterialPublicationRefsV1(history)
-      history.assertCurrent()
       return refs
     },
     assertMaterialPublications:(id,publications)=>{
@@ -2738,7 +2737,6 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
           throw Error('INPUT_MATERIAL_TIMED_SOURCE_REF_CHANGED')
         inheritedHistory.assertCurrent()
       }
-      assertCurrent()
       return {sourceLineage:lineage,inheritedHistory,assertCurrent}
   }
   const rubyCapture=createRoleplayRubyCaptureV1({source:tavernSource,edits:tavernLoreEdits,inputState,
