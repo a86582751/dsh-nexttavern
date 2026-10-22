@@ -3,9 +3,13 @@
  * QuickJS supplies no indexedDB binding: original author catch code handles
  * the actual ReferenceError. This grants no database or persistence facade. */
 import { recordSha256 } from './roleplay-data.js';
-const body = { id: 'nexttavern-reader-regex-document', version: 1,
+import { READER_PAGE_AST_APIS_V3 } from './tavern-author-browser-profile-v3.mjs';
+const body = { id: 'nexttavern-reader-regex-document', version: 2,
     absentGlobals: ['indexedDB'], sourceReads: 'captured-source-and-selected-native-scope-frame',
-    writes: 'none', modelRequests: 'none' };
+    writes: 'none', modelRequests: 'none', pageApis: READER_PAGE_AST_APIS_V3,
+    inlineModules: { linkage: 'none', topLevelAwait: false, evaluation: 'quickjs-module',
+        timing: 'parser-ended-before-dom-content-loaded' },
+    mvuReady: 'captured-numerical-state-ready', mvuUpdate: 'selected-published-state-snapshot' };
 export const READER_REGEX_DOCUMENT_PROFILE_V1 = Object.freeze({
     ...body, sha256: recordSha256(body)
 });

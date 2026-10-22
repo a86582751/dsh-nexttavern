@@ -58,9 +58,9 @@ const eventProperties=new Set(['type','target','currentTarget','key','code','key
 const mediaProperties=new Set(['src','currentTime','duration','volume','loop','preload','paused','ended','readyState',
   'error','muted','playbackRate'])
 const safeAttributes=new Set(['class','id','style','title','role','type','name','value','placeholder','disabled','hidden','checked',
-  'selected','multiple','accept','maxlength','minlength','rows','cols','for','open','alt','width','height','loading',
+  'selected','multiple','accept','maxlength','minlength','rows','cols','for','open','alt','width','height','loading','referrerpolicy',
   'src','href','download','viewbox','points','d','x','y','cx','cy','r','rx','ry','x1','x2','y1','y2','fill','stroke',
-  'stroke-width','transform','opacity','xmlns','preserveaspectratio','gradientunits','offset','stop-color','stop-opacity'])
+  'stroke-width','stroke-dasharray','transform','opacity','xmlns','preserveaspectratio','gradientunits','offset','stop-color','stop-opacity'])
 const HTML_NS='http://www.w3.org/1999/xhtml',SVG_NS='http://www.w3.org/2000/svg'
 const inertScriptType='application/x-owned-browser-script'
 const inertStyleType='application/x-owned-browser-stylesheet'
@@ -528,7 +528,6 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(name==='style')value=css(value,parsed)
     else if(['src','href','xlink:href','poster','action','formaction','data'].includes(name))
       value=resourceUrl(value,name==='src'&&target instanceof view.HTMLImageElement)
-    if(name==='src'&&(target instanceof view.HTMLImageElement||target instanceof view.HTMLMediaElement))target.crossOrigin='anonymous'
     if(!parsed) {
       const clean=cleanDisplayAttribute(target,name,value,displayPolicy)
       if(clean===null)throw Error('BROWSER3_DOM_ATTRIBUTE_UNSUPPORTED')
@@ -729,7 +728,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
     if(key==='src') {
       if(!(target instanceof view.HTMLImageElement))throw Error('BROWSER3_MEDIA_TARGET_UNSUPPORTED')
       const url=resourceUrl(String(value),true)
-      target.crossOrigin='anonymous';beginLoad(target);target.src=url
+      beginLoad(target);target.src=url
       imageAssigned(target,String(value));return
     }
     if(key==='textContent'&&target instanceof view.HTMLStyleElement)value=css(String(value))
@@ -834,7 +833,7 @@ export function createBrowserPageRendererV3(options:BrowserPageRendererOptionsV3
   function create(creation:NativeCreateV3):NativeWireValueV3 {
     if(creation.kind==='image')return encode(own(new view.Image()))
     if(creation.kind==='audio') {
-      const audio=new view.Audio();audio.crossOrigin='anonymous';own(audio)
+      const audio=new view.Audio();own(audio)
       if(creation.source!==undefined){const url=resourceUrl(creation.source);beginLoad(audio);audio.src=url}
       return ref(audio,'audio')
     }

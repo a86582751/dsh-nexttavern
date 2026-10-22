@@ -105,12 +105,14 @@ export class BrowserActorV3 {
     }
     return {value:context.memory.heapValueHandle(pointer)}
   }
-  private async evalHandle(context:any,code:string,filename:string):Promise<VmResult> {
+  private async evalHandle(context:any,code:string,filename:string,scriptMode:'classic'|'module'='classic'):Promise<VmResult> {
     const text=context.memory.newHeapCharPointer(code)
     let pointer:number
     try {
+      // QuickJS 0.32.0 JS_EVAL_TYPE_MODULE is 1. Detection alone treats an
+      // import-free inline module as global code, losing its lexical/this rules.
       pointer=await context.ffi.QTS_Eval_MaybeAsync(context.ctx.value,text.value.ptr,
-        text.value.strlen,filename,1,0)
+        text.value.strlen,filename,scriptMode==='module'?0:1,scriptMode==='module'?1:0)
     }finally {text.dispose()}
     return this.resultHandle(context,pointer!)
   }
@@ -158,6 +160,24 @@ export class BrowserActorV3 {
       result.value.dispose()
     })
   }
+  /** Admission owns the import/export/TLA restriction. Observe only the
+   * module evaluation result, never an author's separately started Promise. */
+  runModuleSource(context:any,code:string,filename:string):Promise<void> {
+    return this.enter(async()=>{
+      const result=await this.evalHandle(context,code,filename,'module')
+      if(result.error)throw await this.guestError(context,result.error)
+      try {
+        let state=context.getPromiseState(result.value)
+        if(state.type==='pending') {
+          await this.drainJobs()
+          state=context.getPromiseState(result.value)
+        }
+        if(state.type==='rejected')throw await this.guestError(context,state.error)
+        if(state.type==='pending')throw Error('BROWSER_MODULE_EVALUATION_PENDING')
+        if(!state.notAPromise)state.value.dispose()
+      }finally {result.value.dispose()}
+    })
+  }
   /** Retain the original value/closure until its owning realm closes. */
   capture(context:any,code:string,filename='owned-browser-capture-v3.js'):Promise<any> {
     return this.enter(async()=>{
@@ -195,26 +215,27 @@ export class BrowserActorV3 {
       return {kind:'fulfilled',value}
     })
   }
-  drain():Promise<void> {
-    return this.enter(async()=>{
-      while(this.runtime.hasPendingJob()) {
-        const output=this.runtime.memory.newMutablePointerArray(1)
-        let pointer:number,contextPointer:number
-        try {
-          pointer=await this.asyncJob(this.runtime.rt.value,1,output.value.ptr)
-          // Asyncify may grow memory: read the fresh heap after resumption.
-          contextPointer=new Int32Array(this.runtime.module.HEAPU8.buffer)[output.value.ptr>>2]!
-        }finally {output.dispose()}
-        if(contextPointer===0) {
-          this.runtime.ffi.QTS_FreeValuePointerRuntime(this.runtime.rt.value,pointer!)
-          continue
-        }
-        const context=this.runtime.contextMap.get(contextPointer!)
-        const result=context.memory.heapValueHandle(pointer!)
-        if(context.typeof(result)!=='number')throw await this.guestError(context,result)
-        result.dispose()
+  private async drainJobs():Promise<void> {
+    while(this.runtime.hasPendingJob()) {
+      const output=this.runtime.memory.newMutablePointerArray(1)
+      let pointer:number,contextPointer:number
+      try {
+        pointer=await this.asyncJob(this.runtime.rt.value,1,output.value.ptr)
+        // Asyncify may grow memory: read the fresh heap after resumption.
+        contextPointer=new Int32Array(this.runtime.module.HEAPU8.buffer)[output.value.ptr>>2]!
+      }finally {output.dispose()}
+      if(contextPointer===0) {
+        this.runtime.ffi.QTS_FreeValuePointerRuntime(this.runtime.rt.value,pointer!)
+        continue
       }
-    })
+      const context=this.runtime.contextMap.get(contextPointer!)
+      const result=context.memory.heapValueHandle(pointer!)
+      if(context.typeof(result)!=='number')throw await this.guestError(context,result)
+      result.dispose()
+    }
+  }
+  drain():Promise<void> {
+    return this.enter(()=>this.drainJobs())
   }
   private closePage(id:string,context:any):void {
     const group=this.realms.get(context)!

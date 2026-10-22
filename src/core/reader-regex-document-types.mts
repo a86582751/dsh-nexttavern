@@ -63,7 +63,7 @@ export interface ReaderRegexDocumentPlanV1 {
 }
 export interface ReaderRegexDocumentProfileV1 {
   readonly id:'nexttavern-reader-regex-document'
-  readonly version:1
+  readonly version:1|2
   readonly absentGlobals:readonly ['indexedDB']
   readonly sourceReads:'captured-source-and-selected-native-scope-frame'
   readonly writes:'none'

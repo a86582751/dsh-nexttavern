@@ -70,6 +70,7 @@ interface Page<Frame extends object> {
   readonly parentContext:any
   readonly abort:AbortController
   readonly scripts:Map<number,BrowserPageExecutionDataV3['parsed']['scripts'][number]>
+  readonly modules:BrowserPageExecutionDataV3['parsed']['scripts'][number][]
   phase:'mounting'|'queued'|'parsing'|'resources'|'ready'|'loaded'|'closed'|'failed'
   session?:BrowserPageNativeSessionV3
   context?:any
@@ -101,7 +102,7 @@ export class BrowserPageWorkerV3<Frame extends object=object> {
     if(!this.active)throw Error('BROWSER3_ATTACHMENT_CLOSED')
     const previous=this.frames.get(frame)
     const page:Page<Frame>={pageId:`source-page-${++this.nextPage}`,frame,plan,parentContext,
-      abort:new AbortController(),scripts:new Map(plan.parsed.scripts.map(script=>[script.inlineOrdinal,script])),
+      abort:new AbortController(),scripts:new Map(plan.parsed.scripts.map(script=>[script.inlineOrdinal,script])),modules:[],
       phase:'mounting'}
     // A repeated navigation closes its original resource before the new native
     // mount; it never transfers old handles or its realm to the fresh page.
@@ -230,6 +231,13 @@ export class BrowserPageWorkerV3<Frame extends object=object> {
         this.mountQueue.push(page)
         return
       }
+      if(script.mode==='module') {
+        // Inline modules are deferred until the parser has installed the full
+        // document. The checkpoint still belongs to the original source order.
+        page.modules.push(script)
+        this.mountQueue.push(page)
+        return
+      }
       const node=await session.getParsedNodeHandle(ack.boundary.nodeId,signal)
       if(!this.live(page))return
       await page.controller!.setCurrentScript(node)
@@ -252,6 +260,22 @@ export class BrowserPageWorkerV3<Frame extends object=object> {
     if(!this.live(page))return
     await page.controller!.dispatchLifecycle('readystatechange')
     if(!this.live(page))return
+    for(const script of page.modules) {
+      await page.controller!.setSourceScriptOrigin?.({htmlSha256:page.plan.origin.htmlSha256,
+        inlineOrdinal:script.inlineOrdinal,javascriptSha256:script.javascriptSha256})
+      try {
+        // currentScript stays null for modules; writer provenance remains the
+        // original inline script independently of that DOM-facing property.
+        if(this.live(page))await actor.runModuleSource(page.context,script.javascript,
+          `source-page-${page.pageId}-module-${script.inlineOrdinal}.mjs`)
+      }finally {
+        if(this.live(page))await page.controller!.setSourceScriptOrigin?.(null)
+      }
+      if(!this.live(page))return
+      await actor.drain()
+      if(!this.live(page))return
+    }
+    page.modules.length=0
     await page.controller!.dispatchLifecycle('DOMContentLoaded')
     if(!this.live(page))return
     await actor.drain()

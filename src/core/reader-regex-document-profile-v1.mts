@@ -4,10 +4,14 @@
 import {recordSha256} from './roleplay-data.js'
 import type {BrowserCapabilityV3} from './tavern-author-browser-types-v3.mjs'
 import type {ReaderRegexDocumentProfileV1} from './reader-regex-document-types.mjs'
+import {READER_PAGE_AST_APIS_V3} from './tavern-author-browser-profile-v3.mjs'
 
-const body={id:'nexttavern-reader-regex-document' as const,version:1 as const,
+const body={id:'nexttavern-reader-regex-document' as const,version:2 as const,
   absentGlobals:['indexedDB'] as const,sourceReads:'captured-source-and-selected-native-scope-frame' as const,
-  writes:'none' as const,modelRequests:'none' as const}
+  writes:'none' as const,modelRequests:'none' as const,pageApis:READER_PAGE_AST_APIS_V3,
+  inlineModules:{linkage:'none',topLevelAwait:false,evaluation:'quickjs-module',
+    timing:'parser-ended-before-dom-content-loaded'},
+  mvuReady:'captured-numerical-state-ready',mvuUpdate:'selected-published-state-snapshot'}
 export const READER_REGEX_DOCUMENT_PROFILE_V1:ReaderRegexDocumentProfileV1=Object.freeze({
   ...body,sha256:recordSha256(body)})
 /** Shared DOM/media/event receiver contracts stay with their real owners.

@@ -131,6 +131,7 @@ export class BrowserAttachmentWorkerV3<Frame extends object=object> {
       ?program.declarations.find(row=>row.declarationId===program.generationDeclarationId):undefined
     const controller=await actor.capture(context,'('+browserSourceGuestBootstrapV3.toString()+')('+JSON.stringify({
       snapshot:this.options.snapshot,binding:this.options.binding,operationPrefix:this.options.operationPrefix,
+      readerDocument:readerProgram(program),
       generationWriterIdentity:generation?.writer.scriptIdentity})+')')
     const methods:Record<string,any>={}
     await actor.enter(()=>{

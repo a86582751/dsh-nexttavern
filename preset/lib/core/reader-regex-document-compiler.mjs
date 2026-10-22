@@ -85,16 +85,16 @@ export function createReaderRegexDocumentCompilerV1(artifact) {
                         continue;
                     }
                     const parsed = parseSourceHtmlDocumentV1(html.slice(displaySpan.start, displaySpan.end));
-                    browserSourceHtmlRequirementsV3(parsed, fail);
+                    browserSourceHtmlRequirementsV3(parsed, fail, { inlineModules: true });
                     if (parsed.diagnostics.some(row => row.phase !== 'html'))
                         fail('READER_REGEX_DOCUMENT_SYNTAX_UNSUPPORTED');
                     const pageId = 'reader-regex-document-' + index;
-                    const units = parsed.scripts.filter(script => script.mode === 'classic').map(script => ({
+                    const units = parsed.scripts.filter(script => script.mode !== 'data').map(script => ({
                         realm: pageId, parentRealm: 'reader-root', javascript: script.javascript, ordinal: regex.ordinal,
                         identity: regex.id, pointer: regex.pointer + '/replaceString#inline-' + script.inlineOrdinal,
-                        pageId, inlineOrdinal: script.inlineOrdinal
+                        pageId, inlineOrdinal: script.inlineOrdinal, scriptMode: script.mode
                     }));
-                    const result = analyseBrowserAstV3(units, { absentGlobals: profile.absentGlobals });
+                    const result = analyseBrowserAstV3(units, { absentGlobals: profile.absentGlobals, readerPageApis: true });
                     diagnostics.push(...result.diagnostics);
                     const unsupported = new Set(result.proofs.flatMap(proof => proof.capabilities)
                         .filter(capability => !READER_REGEX_DOCUMENT_CAPABILITIES_V1.includes(capability)));

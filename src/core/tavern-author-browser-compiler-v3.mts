@@ -47,12 +47,16 @@ function htmlRequirements(parsed:HtmlParsedCandidateV1,input:SourceHtmlInputV1):
   browserSourceHtmlRequirementsV3(parsed,fail)
   return rows
 }
+/** The opt-in caller submits module units to the AST restriction owner. The
+ * default Helper compiler retains its classic-only lifecycle contract. */
 export function browserSourceHtmlRequirementsV3(parsed:Pick<HtmlParsedCandidateV1,'scripts'|'document'|'resources'>,
-  fail:(code:string,feature?:string)=>unknown):void {
+  fail:(code:string,feature?:string)=>unknown,
+  options:{readonly inlineModules?:boolean}={}):void {
   for(const script of parsed.scripts){
-    if(script.mode==='module'||script.attributes.some(attribute=>['src','async','defer'].includes(attribute.name)))
+    if(script.mode==='module'&&!options.inlineModules
+      ||script.attributes.some(attribute=>['src','async','defer'].includes(attribute.name)))
       fail('BROWSER3_PAGE_SCRIPT_LIFECYCLE_UNSUPPORTED','inline-'+script.inlineOrdinal)
-    if(script.inTemplate&&script.mode==='classic')fail('BROWSER3_TEMPLATE_SCRIPT_LIFECYCLE_UNSUPPORTED','inline-'+script.inlineOrdinal)
+    if(script.inTemplate&&script.mode!=='data')fail('BROWSER3_TEMPLATE_SCRIPT_LIFECYCLE_UNSUPPORTED','inline-'+script.inlineOrdinal)
   }
   for(const node of parsed.document.nodes)if(node.kind==='element'){
     if(['iframe','object','embed','base'].includes(node.tagName))fail('BROWSER3_ACTIVE_HTML_ELEMENT_UNSUPPORTED',node.tagName)

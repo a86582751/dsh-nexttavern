@@ -280,16 +280,116 @@ export function browserPageGuestBootstrapV3(config:any) {
     }}
   }
 
+  function ready(fn:Function,jquery:Function):void {
+    rememberOrigin(fn)
+    // The page owns parser readiness. Source keeps the real callback and
+    // creator-bound $; neither is serialized or executed in the Main realm.
+    const run=()=>{if(active)invoke(fn,document,[jquery])}
+    if(document.readyState==='loading')listen(document,'DOMContentLoaded',run,{once:true})
+    else void Promise.resolve().then(run)
+  }
+
+  // Collections retain the existing opaque nodes. They do not create another
+  // document or serialize author callbacks through the Source read service.
+  const hiddenDisplay=new WeakMap<object,string>()
+  const effects=new WeakMap<object,any>(),runningEffects=new Set<any>()
+  const cssName=(name:string)=>name.startsWith('--')?name:name.replace(/[A-Z]/g,value=>'-'+value.toLowerCase())
+  function hide(node:any):void {
+    const display=node.style.display
+    if(display!=='none')hiddenDisplay.set(node,display)
+    node.style.display='none'
+  }
+  function show(node:any):void {
+    if(node.style.display==='none')node.style.display=hiddenDisplay.get(node)??''
+    if(global.getComputedStyle(node).display!=='none')return
+    // A stylesheet-hidden element has no saved inline display. Measure its
+    // actual tag in this document, as the collection's default-display owner.
+    const sample=document.createElement(node.tagName)
+    document.body.appendChild(sample)
+    try {
+      const display=global.getComputedStyle(sample).display
+      node.style.display=display&&display!=='none'?display:'block'
+    }
+    finally {sample.remove()}
+  }
+  function nextEffect(effect:any):void {
+    const direction=effect.queue.shift()
+    if(direction===undefined){effect.running=false;runningEffects.delete(effect);return}
+    effect.running=true;runningEffects.add(effect)
+    const node=effect.node,hidden=global.getComputedStyle(node).display==='none'
+    if(direction&&!hidden||!direction&&hidden){nextEffect(effect);return}
+    const originalOpacity=node.style.opacity
+    if(direction){show(node);node.style.opacity='0'}
+    const opacity=Number.parseFloat(global.getComputedStyle(node).opacity)
+    const from=direction?0:Number.isNaN(opacity)?1:opacity,to=direction?1:0
+    const started=global.performance.now()
+    const finish=()=>{
+      effect.frame=undefined
+      if(!direction)hide(node)
+      node.style.opacity=originalOpacity
+      nextEffect(effect)
+    }
+    const tick=(now:number)=>{
+      const progress=Math.min(1,Math.max(0,(now-started)/400))
+      node.style.opacity=String(from+(to-from)*(0.5-Math.cos(progress*Math.PI)/2))
+      if(progress===1)finish()
+      else effect.frame=global.requestAnimationFrame(tick)
+    }
+    effect.frame=global.requestAnimationFrame(tick)
+  }
+  function fade(node:any,direction:boolean):void {
+    let effect=effects.get(node)
+    if(!effect){effect={node,queue:[],running:false,frame:undefined};effects.set(node,effect)}
+    effect.queue.push(direction)
+    if(!effect.running)nextEffect(effect)
+  }
+  function pageQuery(selector:any):any {
+    if(typeof selector==='function'){ready(selector,pageQuery);return pageQuery(document)}
+    const nodes=typeof selector==='string'?[...document.querySelectorAll(selector)]:
+      ['node','document'].includes(metadata.get(selector)?.kind)?[selector]:[]
+    const collection:any={length:nodes.length,
+      text(...args:any[]) {
+        if(args.length===0)return nodes.map(node=>node.textContent??'').join('')
+        for(const node of nodes)node.textContent=args[0]===null?'':String(args[0])
+        return collection
+      },
+      attr(name:string,...args:any[]) {
+        if(args.length===0)return nodes[0]?.getAttribute(name)??undefined
+        for(const node of nodes)if(args[0]===null)node.removeAttribute(name)
+          else node.setAttribute(name,String(args[0]))
+        return collection
+      },
+      css(name:string,...args:any[]) {
+        const property=cssName(name)
+        if(args.length===0)return nodes[0]?global.getComputedStyle(nodes[0]).getPropertyValue(property):undefined
+        for(const node of nodes)node.style.setProperty(property,String(args[0]))
+        return collection
+      },
+      on(type:string,fn:Function) {
+        for(const node of nodes)node.addEventListener(type,fn)
+        return collection
+      },
+      addClass(names:string) {
+        const tokens=names.match(/\S+/g)??[]
+        for(const node of nodes)node.classList.add(...tokens)
+        return collection
+      },
+      removeClass(names:string) {
+        const tokens=names.match(/\S+/g)??[]
+        for(const node of nodes)node.classList.remove(...tokens)
+        return collection
+      },
+      hide(){for(const node of nodes)hide(node);return collection},
+      fadeIn(){for(const node of nodes)fade(node,true);return collection},
+      fadeOut(){for(const node of nodes)fade(node,false);return collection},
+    }
+    nodes.forEach((node,index)=>{collection[index]=node})
+    return Object.freeze(collection)
+  }
+  pageQuery.fn=Object.freeze({})
+
   return {
-    ready(fn:Function,jquery:Function) {
-      rememberOrigin(fn)
-      // The page owns parser readiness. Source keeps the real callback and
-      // creator-bound $; neither is serialized or executed in the Main realm.
-      const run=()=>{if(active)invoke(fn,document,[jquery])}
-      if(document.readyState==='loading')listen(document,'DOMContentLoaded',run,{once:true})
-      else void Promise.resolve().then(run)
-      return undefined
-    },
+    ready,jquery:pageQuery,
     setCurrentScript(text:string){currentScript=decode(parse(text));return undefined},
     dispatchLifecycle(text:string) {
       const {type}=parse(text)
@@ -325,6 +425,11 @@ export function browserPageGuestBootstrapV3(config:any) {
       return undefined
     },
     retire() {
+      for(const effect of runningEffects){
+        if(effect.frame!==undefined)global.cancelAnimationFrame(effect.frame)
+        effect.queue.length=0;effect.running=false
+      }
+      runningEffects.clear()
       active=false;currentScript=null;lifecycle.clear();properties.clear();registrations.clear();localPreferences.clear();sessionPreferences.clear()
       // Keep callback/function identities until attachment disposal. A
       // parent-owned timer can still borrow an old page closure normally.
