@@ -2,6 +2,7 @@ import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuNumericalSnapshot, MvuStateRoot} from './roleplay-mvu-state.js'
 import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryRoot} from './roleplay-mvu-schema-story-types.js'
 import type {MvuAcceptedDisplayUpdate} from './roleplay-mvu-display-facts.js'
+import type {CombinedPlanRowV4} from './tavern-author-combined-types-v7.mjs'
 
 export interface MvuDiscardedCommandObservation {
   source:'opening'|'story'
@@ -23,6 +24,7 @@ export type MvuStateObservation = {
   | {kind:'schema-ready';values:MvuJsonObject;valuesSha256:string;sourceSha256:string;eventId:string;
     snapshot:MvuSchemaNumericalSnapshotV2;canEdit:boolean;editBlockCode?:string;
     displayUpdates?:readonly MvuAcceptedDisplayUpdate[];
+    unavailableExternalAddons?:readonly Extract<CombinedPlanRowV4,{disposition:'external-addon-unavailable'}>[];
     commandDiagnostics?:readonly MvuDiscardedCommandObservation[]}
   | {kind: 'blocked' | 'unknown'; code: string; canEdit: false}
 )

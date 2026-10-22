@@ -262,8 +262,8 @@ export const inject = [
 ]
 
 const DEFAULT_CONFIG = {
-  workerProvider: null as string | null,
-  workerModel: null as string | null,
+  workerProvider: 'deepseek-official' as string | null,
+  workerModel: 'deepseek-flash' as string | null,
   sceneWorkerTimeoutMs: 45000,
   memoryWorkerTimeoutMs: 45000,
   phaseATimeoutMs: 60000,
@@ -2592,6 +2592,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     return {...basis,observedNativeSeq:currentNativeSeq,kind:'schema-ready',values:structuredClone(snapshot.values),
       valuesSha256:snapshot.valuesSha256,sourceSha256:snapshot.sourceSha256,eventId:snapshot.currentHead.eventId,
       snapshot,displayUpdates:observation!.displayUpdates,
+      ...observation!.unavailableExternalAddons
+        ?{unavailableExternalAddons:observation!.unavailableExternalAddons}:{},
       ...observation!.commandDiagnostics?{commandDiagnostics:observation!.commandDiagnostics}:{},
       canEdit:!editBlockCode,...(editBlockCode?{editBlockCode}:{})}
   }

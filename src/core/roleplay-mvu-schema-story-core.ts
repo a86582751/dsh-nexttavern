@@ -50,7 +50,7 @@ import {verifyMvuSchemaUnpublishedTail} from './roleplay-mvu-schema-history-tail
 import type {Session,SessionEvent} from '@deepseek-ai/dsh-session'
 import type {NativeInputAdmissionAgentV2} from '@deepseek-ai/dsh-agent-loop'
 import type {OwnedMvuSchemaExecutor,SchemaExecutorIdentityTuple,SchemaAuthorProgram} from './roleplay-mvu-schema-executor-types.js'
-import type {CombinedAuthorProgram} from './tavern-author-combined-types.mjs'
+import type {CombinedAuthorProgram,CombinedPlanRowV4} from './tavern-author-combined-types.mjs'
 import type {ProtectedAuthorHostRuntimeV5} from './roleplay-author-host-assets.js'
 import type {AuthorHostIdentityV5} from './roleplay-author-host-types-v5.js'
 import type {SchemaReplayDeps} from './roleplay-mvu-schema-replay.js'
@@ -978,10 +978,16 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   }
   function readSchemaObservation(sid:string):{snapshot:MvuSchemaNumericalSnapshotV2;
     displayUpdates:readonly MvuAcceptedDisplayUpdate[];
+    unavailableExternalAddons?:readonly Extract<CombinedPlanRowV4,{disposition:'external-addon-unavailable'}>[];
     commandDiagnostics?:readonly MvuDiscardedCommandObservation[]}|undefined {
     const view=views.get(sid),history=view&&viewCurrent(view)?view.history:undefined
-    return history?{snapshot:structuredClone(history.snapshot),displayUpdates:history.displayUpdates??[],
-      ...history.commandDiagnostics.length?{commandDiagnostics:history.commandDiagnostics}:{}}:undefined
+    if(!history)return undefined
+    const epoch=history.ready.epoch,program=epoch.schemaVersion===5?epoch.program:undefined
+    const unavailableExternalAddons=program?.schemaVersion===7
+      ?program.executionPlan.scripts.filter(row=>row.disposition==='external-addon-unavailable'):undefined
+    return {snapshot:structuredClone(history.snapshot),displayUpdates:history.displayUpdates??[],
+      ...history.commandDiagnostics.length?{commandDiagnostics:history.commandDiagnostics}:{},
+      ...unavailableExternalAddons?.length?{unavailableExternalAddons}:{}}
   }
   /** Read existing completed scope facts for a frozen prompt. This creates no
    * schema execution cut, selector, closing lease, write or Native permission.
