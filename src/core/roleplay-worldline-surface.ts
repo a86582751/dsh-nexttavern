@@ -168,6 +168,10 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     return [...surfaceEvents(session)].reverse().find(predicate) ?? null
   }
 
+  function inheritedEdit(session: ReadBranchSession, edit: StoryEvent): boolean {
+    return Number(edit.seq) < (session.inheritedEventCount ?? 0)
+  }
+
   function editEffectsCommitted(session: ReadBranchSession, edit: StoryEvent,
     receipt=cloneBranchRecord(T.branch.get(editInvalidationKey(session.id,
       String(edit.data?.role), Number(edit.data?.targetSeq))))) {
@@ -201,6 +205,11 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     const currentText = textOf(role === 'assistant' ? event.data?.message?.content : event.data?.content)
     const changed = currentText !== text
     const priorEdit=messageEdits.latest(eventsOf(session),targetSeq)
+    // The selected Native prefix already owns these effects. Replaying them
+    // against the child would revoke its published derived numerical state.
+    if(!changed&&priorEdit&&inheritedEdit(session,priorEdit)) {
+      return {changed:false,editSeq:Number(priorEdit.seq),inherited:true}
+    }
     // Reusing a completed text projection must not revoke its ready schema view.
     // Numerical persistence/reconciliation below still owns unfinished recovery.
     const committed=!changed&&!!priorEdit&&editEffectsCommitted(session,priorEdit)
@@ -406,6 +415,7 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
     // receipt completion must not depend on the player retrying the HTTP call.
     let recoveredEdits = 0
     for (const edit of messageEdits.current(session, eventsOf(session))) {
+      if(inheritedEdit(session,edit))continue
       const committed=editEffectsCommitted(session,edit)
       const target = eventsOf(session)[Number(edit.data?.targetSeq)]
       if (!target) throw new Error('编辑来源节点缺失，无法恢复派生状态')
@@ -597,7 +607,10 @@ export function createWorldlineSurface(deps: SurfaceDependencies, forks: ForkAcc
           await T.branch.put(forkGroupKey(group.groupId), group)
         }
         matched++
-        if(applied.editSeq===null)confirmUnchangedNumericalEdit?.(targetSession.id)
+        // Its inherited edit is below the child's basis. Let the numerical owner
+        // retire this fanout denial while preserving any actual local invalidation.
+        if(applied.inherited)await persistNumericalEdit?.(targetSession.id,applied.editSeq)
+        else if(applied.editSeq===null)confirmUnchangedNumericalEdit?.(targetSession.id)
         if (applied.changed) changed++
       }
       if (matched === 0) throw new Error('玩家消息编辑未能写入当前分支')
