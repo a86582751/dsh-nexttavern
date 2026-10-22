@@ -4877,6 +4877,22 @@
       "source": "AGENTS.md"
     },
     {
+      "id": "public-v03-community-cards-guide",
+      "source": "COMMUNITY-CARDS.md"
+    },
+    {
+      "id": "public-v03-native-card-format-guide",
+      "source": "NATIVE-CARD-FORMAT.md"
+    },
+    {
+      "id": "public-v03-native-state-guide",
+      "source": "NATIVE-STATE.md"
+    },
+    {
+      "id": "public-v03-community-presets-guide",
+      "source": "COMMUNITY-PRESETS.md"
+    },
+    {
       "id": "public-architecture-guide",
       "source": "ARCHITECTURE.md"
     },
@@ -31865,6 +31881,474 @@
     {
       "id": "reader-submission-handoff-typescript",
       "source": "src/ui/reader-submission-handoff.ts"
+    },
+    {
+      "id": "tavern-author-combined-types-v7-typescript",
+      "source": "src/core/tavern-author-combined-types-v7.mts"
+    },
+    {
+      "id": "tavern-author-combined-types-v7-generated",
+      "source": "lib/core/tavern-author-combined-types-v7.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-types-v7.mjs"
+      ]
+    },
+    {
+      "id": "tavern-author-combined-data-v7-typescript",
+      "source": "src/core/tavern-author-combined-data-v7.mts"
+    },
+    {
+      "id": "tavern-author-combined-data-v7-generated",
+      "source": "lib/core/tavern-author-combined-data-v7.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-data-v7.mjs"
+      ]
+    },
+    {
+      "id": "tavern-author-combined-compiler-v7-typescript",
+      "source": "src/core/tavern-author-combined-compiler-v7.mts"
+    },
+    {
+      "id": "tavern-author-combined-compiler-v7-generated",
+      "source": "lib/core/tavern-author-combined-compiler-v7.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-combined-compiler-v7.mjs"
+      ]
+    },
+    {
+      "id": "tavern-author-external-addons-typescript",
+      "source": "src/core/tavern-author-external-addons.mts"
+    },
+    {
+      "id": "tavern-author-external-addons-generated",
+      "source": "lib/core/tavern-author-external-addons.mjs",
+      "aliases": [
+        "preset/lib/core/tavern-author-external-addons.mjs"
+      ]
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-src-descriptor-ts",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/src/descriptor.ts"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-descriptor-generated",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/lib/descriptor.js"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-src-index-ts",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/src/index.ts"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-index-generated",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/lib/index.js"
+    },
+    {
+      "id": "update-batch-predecessor-6b5a0290420e5688f95d",
+      "source": "development/history/update-batch-predecessor-v1/compat/mvu-schema-runtime-v4-server-candidates-v2/src/descriptor.ts"
+    },
+    {
+      "id": "update-batch-predecessor-65e861a7b82eec3ba463",
+      "source": "development/history/update-batch-predecessor-v1/compat/mvu-schema-runtime-v4-server-candidates-v2/src/index.ts"
+    },
+    {
+      "id": "update-batch-predecessor-6641085eb78ad673963e",
+      "source": "development/history/update-batch-predecessor-v1/src/core/roleplay-data.ts"
+    },
+    {
+      "id": "update-batch-predecessor-9c3a13ad6929e7be0086",
+      "source": "development/history/update-batch-predecessor-v1/src/core/roleplay-mvu-schema-executor-types.ts"
+    },
+    {
+      "id": "update-batch-predecessor-962a6f785798e8d894fd",
+      "source": "development/history/update-batch-predecessor-v1/src/core/roleplay-mvu-schema-journal.ts"
+    },
+    {
+      "id": "update-batch-predecessor-5508b4c9ac5e07ad04d7",
+      "source": "development/history/update-batch-predecessor-v1/src/core/roleplay-mvu-schema-replay.ts"
+    },
+    {
+      "id": "update-batch-predecessor-ad160975c218c0aadeea",
+      "source": "development/history/update-batch-predecessor-v1/src/core/roleplay-mvu-update-v2.ts"
+    },
+    {
+      "id": "update-batch-predecessor-e930835399e559f6a433",
+      "source": "development/history/update-batch-predecessor-v1/src/core/roleplay-mvu-update.ts"
+    },
+    {
+      "id": "update-batch-predecessor-723064b3d422805d2e15",
+      "source": "development/history/update-batch-predecessor-v1/src/core/roleplay-userinfo.ts"
+    },
+    {
+      "id": "update-batch-predecessor-0bec8c398338cfe1607a",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-browser-artifact-v2.mts"
+    },
+    {
+      "id": "update-batch-predecessor-d43da3c811a4dd3de24e",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-browser-budget.ts"
+    },
+    {
+      "id": "update-batch-predecessor-3838029a44b6f1e375bf",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-browser-child-v2.ts"
+    },
+    {
+      "id": "update-batch-predecessor-1d1b750b4c52819d7c97",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-browser-compiler-v2.mts"
+    },
+    {
+      "id": "update-batch-predecessor-a7372d866efcb44f9e77",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-browser-descriptor-v2.mts"
+    },
+    {
+      "id": "update-batch-predecessor-d5fb21863ac25f694b6d",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-browser-profile-v2.mts"
+    },
+    {
+      "id": "update-batch-predecessor-5429da5c1806acbc500a",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-browser-source-projection-v3.mts"
+    },
+    {
+      "id": "update-batch-predecessor-bb1a041801ee5dd26b0e",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-combined-compiler-v6.mts"
+    },
+    {
+      "id": "update-batch-predecessor-cb775e00dcf0ac105580",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-combined-data-v5.mts"
+    },
+    {
+      "id": "update-batch-predecessor-9a911c5f5267709d56cb",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-combined-data-v6.mts"
+    },
+    {
+      "id": "update-batch-predecessor-f8b802dd5912b4bceb59",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-combined-data.mts"
+    },
+    {
+      "id": "update-batch-predecessor-f7149527fc71e9771316",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-combined-types-v6.mts"
+    },
+    {
+      "id": "update-batch-predecessor-ee68ef61a90e69a08adb",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-host-provider.mts"
+    },
+    {
+      "id": "update-batch-predecessor-7d63b19ed7eabbeac228",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-prompt-data.mts"
+    },
+    {
+      "id": "update-batch-predecessor-a36aee897a66af62f0ac",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-author-prompt-profile.mts"
+    },
+    {
+      "id": "update-batch-predecessor-c9202dcee5b7d25ffc97",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-display-html.ts"
+    },
+    {
+      "id": "update-batch-predecessor-34143923a67b75b5da8c",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-data.ts"
+    },
+    {
+      "id": "update-batch-predecessor-2880a6784edb34b48f3c",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-import-policy.ts"
+    },
+    {
+      "id": "update-batch-predecessor-e9b3be4aa95d1bd0c36d",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-program-v4.ts"
+    },
+    {
+      "id": "update-batch-predecessor-722a8c27eb00f0496ff0",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-runner-v2.ts"
+    },
+    {
+      "id": "update-batch-predecessor-9e4ce3cdf2eabacc0ec3",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-runner-v3.ts"
+    },
+    {
+      "id": "update-batch-predecessor-c273a746a1b03439ac48",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-runner-v4.ts"
+    },
+    {
+      "id": "update-batch-predecessor-4c101961b0071aea5281",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-types.ts"
+    },
+    {
+      "id": "update-batch-predecessor-6f5aeecf80fc7541b9b6",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-update-effects-v2.ts"
+    },
+    {
+      "id": "update-batch-predecessor-c4c1afd033c04f825ce3",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-scope-read-types.ts"
+    },
+    {
+      "id": "update-batch-predecessor-a2e31b4c99dfc7349d87",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-scope-read.ts"
+    },
+    {
+      "id": "update-batch-predecessor-e4cd489709049bc242f7",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-state-loader-policy-v4.mts"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-package-json",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/package.json"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-LICENSE",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/LICENSE"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-NOTICE-md",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/NOTICE.md"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-assets-LICENSE-lodash-4-18-1",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/assets/LICENSE.lodash-4.18.1"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-assets-LICENSE-zod-4-4-3",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/assets/LICENSE.zod-4.4.3"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-assets-lodash-4-18-1-js",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/assets/lodash-4.18.1.js"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-assets-runtime-json",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/assets/runtime.json"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-assets-zod-4-4-3-js",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/assets/zod-4.4.3.js"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-dist-compiler-mjs",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/dist/compiler.mjs"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-dist-index-mjs",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/dist/index.mjs"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-dist-runner-mjs",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/dist/runner.mjs"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-dist-tavern-mvu-schema-compiler-worker-mjs",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/dist/tavern-mvu-schema-compiler-worker.mjs"
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-output-dist-tavern-mvu-schema-worker-mjs",
+      "source": "development/mvu-schema-runtime-v4-update-batch-v1/dist/tavern-mvu-schema-worker.mjs"
+    },
+    {
+      "id": "author-host-runtime-v5-update-batch-v1-package-json",
+      "source": "development/author-host-runtime-v5-update-batch-v1/package.json"
+    },
+    {
+      "id": "author-host-runtime-v5-update-batch-v1-LICENSE",
+      "source": "development/author-host-runtime-v5-update-batch-v1/LICENSE"
+    },
+    {
+      "id": "author-host-runtime-v5-update-batch-v1-NOTICE-md",
+      "source": "development/author-host-runtime-v5-update-batch-v1/NOTICE.md"
+    },
+    {
+      "id": "author-host-runtime-v5-update-batch-v1-assets-source-inputs-json",
+      "source": "development/author-host-runtime-v5-update-batch-v1/assets/source-inputs.json"
+    },
+    {
+      "id": "author-host-runtime-v5-update-batch-v1-dist-index-mjs",
+      "source": "development/author-host-runtime-v5-update-batch-v1/dist/index.mjs"
+    },
+    {
+      "id": "server-candidates-v2-trace64-predecessor-server-package-json",
+      "source": "development/server-candidates-v2-trace64-predecessor/server/package.json"
+    },
+    {
+      "id": "server-candidates-v2-trace64-predecessor-server-index-mjs",
+      "source": "development/server-candidates-v2-trace64-predecessor/server/dist/index.mjs"
+    },
+    {
+      "id": "server-candidates-v2-trace64-predecessor-server-runner-mjs",
+      "source": "development/server-candidates-v2-trace64-predecessor/server/dist/runner.mjs"
+    },
+    {
+      "id": "server-candidates-v2-trace64-predecessor-server-compiler-worker-mjs",
+      "source": "development/server-candidates-v2-trace64-predecessor/server/dist/tavern-mvu-schema-compiler-worker.mjs"
+    },
+    {
+      "id": "c20-cold-journal-before-20261022-host-package-json",
+      "source": "development/history/c20-cold-journal-before-20261022/host/package.json"
+    },
+    {
+      "id": "c20-cold-journal-before-20261022-host-b2346b7256a333b2fe5f",
+      "source": "development/history/c20-cold-journal-before-20261022/host/assets/source-inputs.json"
+    },
+    {
+      "id": "c20-cold-journal-before-20261022-host-c8b7bc25beeba114ccd3",
+      "source": "development/history/c20-cold-journal-before-20261022/host/dist/index.mjs"
+    },
+    {
+      "id": "reader-regex-document-before-20261018-host-cc39443e41fd827b9efa",
+      "source": "development/history/reader-regex-document-before-20261018/host/src/core/roleplay-mvu-schema-executor-types.ts"
+    },
+    {
+      "id": "c20-cold-journal-before-20261022-host-f423d207f2dde6683f6e",
+      "source": "development/history/c20-cold-journal-before-20261022/host/src/core/roleplay-mvu-schema-journal.ts"
+    },
+    {
+      "id": "ancestor-cut-before-20261019-host-53ca3bfdaf0220f6eeac",
+      "source": "development/history/ancestor-cut-before-20261019/host/src/core/roleplay-mvu-schema-replay.ts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-7cdb93853c1c4e40663b",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/roleplay-mvu-update-v2.ts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-f4c5140bdb3c7efe465e",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-browser-artifact-v2.mts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-fa07f53b01dd175d08ae",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-browser-child-v2.ts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-1c105adff842708a2a92",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-browser-compiler-v2.mts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-a2829f1c01523baa229e",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-browser-profile-v2.mts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-b574550c57d00cf4114d",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-browser-source-projection-v3.mts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-d5bea7c06ab8a5f9994b",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-combined-compiler-v6.mts"
+    },
+    {
+      "id": "ancestor-cut-before-20261019-host-71c8672e466899863a63",
+      "source": "development/history/ancestor-cut-before-20261019/host/src/core/tavern-author-combined-compiler-v7.mts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-97716faca383c3131274",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-combined-data-v5.mts"
+    },
+    {
+      "id": "ancestor-cut-before-20261019-host-fd50104a61d26dd23ac5",
+      "source": "development/history/ancestor-cut-before-20261019/host/src/core/tavern-author-combined-data-v6.mts"
+    },
+    {
+      "id": "ancestor-cut-before-20261019-host-c8b8098acd7621739a18",
+      "source": "development/history/ancestor-cut-before-20261019/host/src/core/tavern-author-combined-data-v7.mts"
+    },
+    {
+      "id": "ancestor-cut-before-20261019-host-684dd9996eed783eb6a0",
+      "source": "development/history/ancestor-cut-before-20261019/host/src/core/tavern-author-combined-data.mts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-87e73c459df71651b8be",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-author-combined-types-v6.mts"
+    },
+    {
+      "id": "ancestor-cut-before-20261019-host-0e5cb08ce2971cc5380d",
+      "source": "development/history/ancestor-cut-before-20261019/host/src/core/tavern-author-combined-types-v7.mts"
+    },
+    {
+      "id": "ancestor-cut-before-20261019-host-50d8645c8e589c2609a6",
+      "source": "development/history/ancestor-cut-before-20261019/host/src/core/tavern-author-external-addons.mts"
+    },
+    {
+      "id": "ancestor-cut-before-20261019-host-15f720a463f9b071ff6a",
+      "source": "development/history/ancestor-cut-before-20261019/host/src/core/tavern-author-host-provider.mts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-00a400ca943e7779cf75",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-mvu-schema-data.ts"
+    },
+    {
+      "id": "reader-regex-document-before-20261018-host-1ccf73e96f8af3567ff3",
+      "source": "development/history/reader-regex-document-before-20261018/host/src/core/tavern-mvu-schema-program-v4.ts"
+    },
+    {
+      "id": "schema-edit-predecessor-v5-dialog-host-32a6d447332096ddc8a9",
+      "source": "development/history/schema-edit-predecessor-v5-dialog/host/src/core/tavern-mvu-schema-runner-v3.ts"
+    },
+    {
+      "id": "c20-cold-journal-before-20261022-host-d7f1bab387eea51a8b69",
+      "source": "development/history/c20-cold-journal-before-20261022/host/src/core/tavern-mvu-schema-runner-v4.ts"
+    },
+    {
+      "id": "reader-regex-document-before-20261018-host-f4d0075898503a660a9d",
+      "source": "development/history/reader-regex-document-before-20261018/host/src/core/tavern-mvu-schema-update-effects-v2.ts"
+    },
+    {
+      "id": "update-batch-predecessor-03aaf7048f7641007a74",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-worker-v4.mts"
+    },
+    {
+      "id": "update-batch-predecessor-13ba6828590e6b8c0eb0",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-author-execution-types-v4.mts"
+    },
+    {
+      "id": "update-batch-predecessor-53ad7abe438f5c3f13ce",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-types-v4.ts"
+    },
+    {
+      "id": "update-batch-predecessor-d83c8b403b1e528502a5",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-compiler-worker-v4.mts"
+    },
+    {
+      "id": "update-batch-predecessor-206e13fdbccc94676e1b",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-compiler-v4.ts"
+    },
+    {
+      "id": "update-batch-predecessor-17eb0923c8cb02ccc005",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-author-execution-classifier-v4.mts"
+    },
+    {
+      "id": "update-batch-predecessor-55681be1352c975ff812",
+      "source": "development/history/update-batch-predecessor-v1/src/core/tavern-mvu-schema-compiler-ast-v4.ts"
+    },
+    {
+      "id": "update-batch-predecessor-929594ba903b1d4d5c85",
+      "source": "development/history/update-batch-predecessor-v1/build-tools/package-lock.json"
+    },
+    {
+      "id": "reader-regex-document-predecessor-20261020-server-package-json",
+      "source": "development/mvu-schema-runtime-v4-server-candidates-v2/package.json"
+    },
+    {
+      "id": "reader-regex-document-predecessor-20261020-server-dist-runner-mjs",
+      "source": "development/history/reader-regex-document-predecessor-20261020/server/dist/runner.mjs"
+    },
+    {
+      "id": "reader-regex-document-predecessor-20261020-current-host-assets-source-inputs-json",
+      "source": "development/history/reader-regex-document-predecessor-20261020/current-host/assets/source-inputs.json"
+    },
+    {
+      "id": "reader-regex-document-predecessor-20261020-current-host-dist-index-mjs",
+      "source": "development/history/reader-regex-document-predecessor-20261020/current-host/dist/index.mjs"
+    },
+    {
+      "id": "reader-regex-document-predecessor-20261020-current-host-src-core-roleplay-mvu-schema-journal-ts",
+      "source": "development/history/reader-regex-document-predecessor-20261020/current-host/src/core/roleplay-mvu-schema-journal.ts"
+    },
+    {
+      "id": "reader-regex-document-predecessor-20261020-current-host-src-core-roleplay-mvu-schema-replay-ts",
+      "source": "development/history/reader-regex-document-predecessor-20261020/current-host/src/core/roleplay-mvu-schema-replay.ts"
+    },
+    {
+      "id": "reader-regex-document-predecessor-20261020-current-host-src-core-tavern-mvu-schema-runner-v4-ts",
+      "source": "development/history/reader-regex-document-predecessor-20261020/current-host/src/core/tavern-mvu-schema-runner-v4.ts"
+    },
+    {
+      "id": "reader-regex-document-predecessor-20261020-current-host-package-json",
+      "source": "development/author-host-runtime-v5-author-dialog-v1/package.json"
+    },
+    {
+      "id": "author-host-runtime-v5-update-batch-v1-build-lock",
+      "source": "development/history/author-host-runtime-v5-update-batch-v1-build/package-lock.json"
     },
     {
       "id": "quality-registry",
@@ -159032,6 +159516,571 @@
         "src/operations/build-typescript.mts",
         "build-tools/package.json",
         "build-tools/package-lock.json"
+      ]
+    },
+    {
+      "id": "tavern-author-combined-types-v7-build",
+      "kind": "typescript-module",
+      "artifact": "tavern-author-combined-types-v7-generated",
+      "entry": "src/core/tavern-author-combined-types-v7.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/tavern-author-combined-types-v7.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "tavern-author-combined-data-v7-build",
+      "kind": "typescript-module",
+      "artifact": "tavern-author-combined-data-v7-generated",
+      "entry": "src/core/tavern-author-combined-data-v7.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/tavern-author-combined-data-v7.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "tavern-author-combined-compiler-v7-build",
+      "kind": "typescript-module",
+      "artifact": "tavern-author-combined-compiler-v7-generated",
+      "entry": "src/core/tavern-author-combined-compiler-v7.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/tavern-author-combined-compiler-v7.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "tavern-author-external-addons-build",
+      "kind": "typescript-module",
+      "artifact": "tavern-author-external-addons-generated",
+      "entry": "src/core/tavern-author-external-addons.mts",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "src/core/tavern-author-external-addons.mts",
+        "build-tools/tsconfig.json",
+        "build-tools/package.json",
+        "build-tools/package-lock.json",
+        "src/operations/build-typescript.mts"
+      ]
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-descriptor-build",
+      "kind": "typescript-module",
+      "artifact": "mvu-schema-runtime-v4-update-batch-v1-descriptor-generated",
+      "entry": "development/mvu-schema-runtime-v4-update-batch-v1/src/descriptor.ts",
+      "typeContext": "default",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "build-tools/package-lock.json",
+        "build-tools/package.json",
+        "build-tools/tsconfig.json",
+        "development/mvu-schema-runtime-v2/LICENSE",
+        "development/mvu-schema-runtime-v2/NOTICE.md",
+        "development/mvu-schema-runtime-v2/src/descriptor.ts",
+        "development/mvu-schema-runtime-v2/src/index.ts",
+        "development/mvu-schema-runtime-v3/LICENSE",
+        "development/mvu-schema-runtime-v3/NOTICE.md",
+        "development/mvu-schema-runtime-v3/src/descriptor.ts",
+        "development/mvu-schema-runtime-v3/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-init-chat-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-init-chat-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy/src/index.ts",
+        "development/mvu-schema-runtime-v4/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4/src/index.ts",
+        "lib/operations/build-typescript.mjs",
+        "development/schema-executors/v1/compat/mvu-schema-runtime/src/descriptor.ts",
+        "development/schema-executors/v1/compat/mvu-schema-runtime/src/index.ts",
+        "development/schema-executors/v1/src/core/roleplay-data.ts",
+        "development/schema-executors/v1/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v1/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-runner.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-worker.mts",
+        "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/descriptor.ts",
+        "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/index.ts",
+        "development/schema-executors/v2/src/core/roleplay-data.ts",
+        "development/schema-executors/v2/src/core/roleplay-mvu-update-v2.ts",
+        "development/schema-executors/v2/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v2/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-json-types-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-runner-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-types-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-worker-v2.mts",
+        "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/descriptor.ts",
+        "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/index.ts",
+        "development/schema-executors/v3/src/core/roleplay-data.ts",
+        "development/schema-executors/v3/src/core/roleplay-mvu-update-v2.ts",
+        "development/schema-executors/v3/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v3/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-json-types-v3.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-runner-v3.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v2.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v3.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-worker-v3.mts",
+        "development/schema-executors/v3/src/core/tavern-mvu-scope-read-types.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-scope-read.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/roleplay-author-script-resources.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/roleplay-mvu-schema-core.ts",
+        "src/core/roleplay-mvu-schema-descriptor-data.ts",
+        "src/core/roleplay-mvu-schema-executor-types.ts",
+        "src/core/roleplay-mvu-schema-history-tail.ts",
+        "src/core/roleplay-mvu-schema-opening-types.ts",
+        "src/core/roleplay-mvu-schema-opening.ts",
+        "src/core/roleplay-mvu-schema-scope-facts.ts",
+        "src/core/roleplay-mvu-schema-source.ts",
+        "src/core/roleplay-mvu-schema-story-core.ts",
+        "src/core/roleplay-mvu-schema-story-types.ts",
+        "src/core/roleplay-mvu-schema-story.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/roleplay-tavern-lore-export.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/tavern-mvu-author-execution-classifier-v4.mts",
+        "src/core/tavern-mvu-author-execution-types-v4.mts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/tavern-mvu-schema-compiler-ast-v4.ts",
+        "src/core/tavern-mvu-schema-compiler-v4.ts",
+        "src/core/tavern-mvu-schema-compiler-worker-v4.mts",
+        "src/core/tavern-mvu-schema-fresh-selector.ts",
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/tavern-mvu-schema-program-v4.ts",
+        "src/core/tavern-mvu-schema-runner-v2.ts",
+        "src/core/tavern-mvu-schema-runner-v3.ts",
+        "src/core/tavern-mvu-schema-runner-v4.ts",
+        "src/core/tavern-mvu-schema-types-v2.ts",
+        "src/core/tavern-mvu-schema-types-v3.ts",
+        "src/core/tavern-mvu-schema-types-v4.ts",
+        "src/core/tavern-mvu-schema-types.ts",
+        "src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "src/core/tavern-mvu-schema-worker-v2.mts",
+        "src/core/tavern-mvu-schema-worker-v3.mts",
+        "src/core/tavern-mvu-schema-worker-v4.mts",
+        "src/core/tavern-mvu-scope-read-types.ts",
+        "src/core/tavern-mvu-scope-read.ts",
+        "src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/tavern-task-context.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-tasks.ts",
+        "src/memory/memory-provenance.ts",
+        "src/operations/build-typescript.mts",
+        "development/mvu-schema-runtime-v4-policy-save-next-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-next-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-joins-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-joins-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-facts-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-facts-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-step-facts-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-step-facts-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-continuous-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-continuous-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-codec-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-codec-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-update-batch-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-update-batch-v1/src/descriptor.ts"
+      ]
+    },
+    {
+      "id": "mvu-schema-runtime-v4-update-batch-v1-index-build",
+      "kind": "typescript-module",
+      "artifact": "mvu-schema-runtime-v4-update-batch-v1-index-generated",
+      "entry": "development/mvu-schema-runtime-v4-update-batch-v1/src/index.ts",
+      "typeContext": "default",
+      "builder": "tools/build-modules.mjs",
+      "inputs": [
+        "build-tools/package-lock.json",
+        "build-tools/package.json",
+        "build-tools/tsconfig.json",
+        "development/agent-loop/src/agent.ts",
+        "development/agent-loop/src/assistant-stream.ts",
+        "development/agent-loop/src/constants.ts",
+        "development/agent-loop/src/inbox.ts",
+        "development/agent-loop/src/index.ts",
+        "development/agent-loop/src/input-admission.ts",
+        "development/agent-loop/src/input-completion.ts",
+        "development/agent-loop/src/opening-generation.ts",
+        "development/agent-loop/src/opening-record-hashes.ts",
+        "development/agent-loop/src/programmatic-commit.ts",
+        "development/agent-loop/src/request-envelope.ts",
+        "development/agent-loop/src/request-material-owner.ts",
+        "development/agent-loop/src/request-material-sidecar.ts",
+        "development/agent-loop/src/request-material.ts",
+        "development/agent-loop/src/runtime-context.ts",
+        "development/agent-loop/src/tool-calls.ts",
+        "development/llm/src/adapter-failure.ts",
+        "development/llm/src/api-key.ts",
+        "development/llm/src/assembler.ts",
+        "development/llm/src/assistant-stream.ts",
+        "development/llm/src/attribution.ts",
+        "development/llm/src/brand.ts",
+        "development/llm/src/call-config.ts",
+        "development/llm/src/content.ts",
+        "development/llm/src/error.ts",
+        "development/llm/src/index.ts",
+        "development/llm/src/message.ts",
+        "development/llm/src/retry-policy.ts",
+        "development/llm/src/types.ts",
+        "development/mvu-schema-runtime-v2/LICENSE",
+        "development/mvu-schema-runtime-v2/NOTICE.md",
+        "development/mvu-schema-runtime-v2/src/descriptor.ts",
+        "development/mvu-schema-runtime-v2/src/index.ts",
+        "development/mvu-schema-runtime-v3/LICENSE",
+        "development/mvu-schema-runtime-v3/NOTICE.md",
+        "development/mvu-schema-runtime-v3/src/descriptor.ts",
+        "development/mvu-schema-runtime-v3/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-init-chat-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-init-chat-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy/src/index.ts",
+        "development/mvu-schema-runtime-v4/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4/src/index.ts",
+        "development/session-format/src/mvu-player-marker.ts",
+        "development/session-format/src/mvu-schema-marker.ts",
+        "development/session-format/src/projection.ts",
+        "development/session/src/fork.ts",
+        "development/session/src/index.ts",
+        "development/session/src/known-event-types.ts",
+        "development/session/src/opening-records.ts",
+        "development/session/src/preparation.ts",
+        "development/session/src/repair.ts",
+        "development/session/src/request-header.ts",
+        "development/session/src/request-material-types.ts",
+        "development/session/src/request-preview.ts",
+        "development/session/src/seq-ranges.ts",
+        "development/session/src/surface.ts",
+        "development/session/src/tool-history.ts",
+        "development/session/src/types.ts",
+        "development/subagent/src/author-dialog-activation.ts",
+        "development/subagent/src/owned-ruby-task.ts",
+        "lib/operations/build-typescript.mjs",
+        "development/schema-executors/v1/compat/mvu-schema-runtime/src/descriptor.ts",
+        "development/schema-executors/v1/compat/mvu-schema-runtime/src/index.ts",
+        "development/schema-executors/v1/src/core/roleplay-data.ts",
+        "development/schema-executors/v1/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v1/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-json-types-v1.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-runner.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v1/src/core/tavern-mvu-schema-worker.mts",
+        "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/descriptor.ts",
+        "development/schema-executors/v2/compat/mvu-schema-runtime-v2/src/index.ts",
+        "development/schema-executors/v2/src/core/roleplay-data.ts",
+        "development/schema-executors/v2/src/core/roleplay-mvu-update-v2.ts",
+        "development/schema-executors/v2/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v2/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-json-types-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-runner-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-types-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "development/schema-executors/v2/src/core/tavern-mvu-schema-worker-v2.mts",
+        "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/descriptor.ts",
+        "development/schema-executors/v3/compat/mvu-schema-runtime-v3/src/index.ts",
+        "development/schema-executors/v3/src/core/roleplay-data.ts",
+        "development/schema-executors/v3/src/core/roleplay-mvu-update-v2.ts",
+        "development/schema-executors/v3/src/core/roleplay-mvu-update.ts",
+        "development/schema-executors/v3/src/core/roleplay-userinfo.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-json-types-v3.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler-worker.mts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-compiler.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-data.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-runner-v3.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v2.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types-v3.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-types.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-schema-worker-v3.mts",
+        "development/schema-executors/v3/src/core/tavern-mvu-scope-read-types.ts",
+        "development/schema-executors/v3/src/core/tavern-mvu-scope-read.ts",
+        "src/core/bounded-regex.ts",
+        "src/core/card-adaptation-context.ts",
+        "src/core/card-export-projection.ts",
+        "src/core/card-export.ts",
+        "src/core/character-cluster-projection.ts",
+        "src/core/character-cluster-settings.ts",
+        "src/core/character-cluster.ts",
+        "src/core/narrative-preset-catalog.ts",
+        "src/core/narrative-preset-default.ts",
+        "src/core/narrative-presets.ts",
+        "src/core/narrative-styles/annalistic.ts",
+        "src/core/narrative-styles/cinematic.ts",
+        "src/core/narrative-styles/classical.ts",
+        "src/core/narrative-styles/comedy.ts",
+        "src/core/narrative-styles/cosmic-romance.ts",
+        "src/core/narrative-styles/delicate.ts",
+        "src/core/narrative-styles/fantasy.ts",
+        "src/core/narrative-styles/horror.ts",
+        "src/core/narrative-styles/jrpg.ts",
+        "src/core/narrative-styles/light-novel.ts",
+        "src/core/narrative-styles/luxun.ts",
+        "src/core/narrative-styles/lyrical.ts",
+        "src/core/narrative-styles/minimal.ts",
+        "src/core/narrative-styles/otome.ts",
+        "src/core/nexttavern-card.ts",
+        "src/core/novel-export-projection.ts",
+        "src/core/roleplay-author-browser-generation-types.ts",
+        "src/core/roleplay-author-chat-state-types.ts",
+        "src/core/roleplay-author-chat-state.ts",
+        "src/core/roleplay-author-context-types.ts",
+        "src/core/roleplay-author-context.ts",
+        "src/core/roleplay-author-contributions.ts",
+        "src/core/roleplay-author-host-assets.ts",
+        "src/core/roleplay-author-host-types-v5.ts",
+        "src/core/roleplay-author-prompt-assets.ts",
+        "src/core/roleplay-author-prompt-capture.ts",
+        "src/core/roleplay-author-script-resources.ts",
+        "src/core/roleplay-author-tools-types.ts",
+        "src/core/roleplay-branch-routes-types.ts",
+        "src/core/roleplay-card-attachment.ts",
+        "src/core/roleplay-card-export-opening.ts",
+        "src/core/roleplay-card-workflow-types.ts",
+        "src/core/roleplay-chat-card-source.ts",
+        "src/core/roleplay-context.ts",
+        "src/core/roleplay-data.ts",
+        "src/core/roleplay-import-record.ts",
+        "src/core/roleplay-import-types.ts",
+        "src/core/roleplay-import.ts",
+        "src/core/roleplay-input-cold-row-facts.ts",
+        "src/core/roleplay-input-completion.ts",
+        "src/core/roleplay-input-continuation.ts",
+        "src/core/roleplay-input-material.ts",
+        "src/core/roleplay-input-preparation.ts",
+        "src/core/roleplay-input-source-data.ts",
+        "src/core/roleplay-input-state.ts",
+        "src/core/roleplay-input-terminal.ts",
+        "src/core/roleplay-message-view.ts",
+        "src/core/roleplay-mvu-ancestry.ts",
+        "src/core/roleplay-mvu-display-facts.ts",
+        "src/core/roleplay-mvu-edit-facts.ts",
+        "src/core/roleplay-mvu-frozen-lineage.ts",
+        "src/core/roleplay-mvu-initialization.ts",
+        "src/core/roleplay-mvu-lineage.ts",
+        "src/core/roleplay-mvu-player-facts.ts",
+        "src/core/roleplay-mvu-player-records.ts",
+        "src/core/roleplay-mvu-player-types.ts",
+        "src/core/roleplay-mvu-prefix-facts.ts",
+        "src/core/roleplay-mvu-prefix-ledger.ts",
+        "src/core/roleplay-mvu-prompt-numerical-facts.ts",
+        "src/core/roleplay-mvu-schema-assets.ts",
+        "src/core/roleplay-mvu-schema-core.ts",
+        "src/core/roleplay-mvu-schema-derived-types.ts",
+        "src/core/roleplay-mvu-schema-descriptor-data.ts",
+        "src/core/roleplay-mvu-schema-executor-types.ts",
+        "src/core/roleplay-mvu-schema-frozen-prefix-input.ts",
+        "src/core/roleplay-mvu-schema-history-tail.ts",
+        "src/core/roleplay-mvu-schema-journal.ts",
+        "src/core/roleplay-mvu-schema-opening-types.ts",
+        "src/core/roleplay-mvu-schema-opening.ts",
+        "src/core/roleplay-mvu-schema-player-types.ts",
+        "src/core/roleplay-mvu-schema-prefix-facts.ts",
+        "src/core/roleplay-mvu-schema-replay.ts",
+        "src/core/roleplay-mvu-schema-scope-facts.ts",
+        "src/core/roleplay-mvu-schema-source.ts",
+        "src/core/roleplay-mvu-schema-story-core.ts",
+        "src/core/roleplay-mvu-schema-story-types.ts",
+        "src/core/roleplay-mvu-schema-story.ts",
+        "src/core/roleplay-mvu-source-policy.ts",
+        "src/core/roleplay-mvu-source.ts",
+        "src/core/roleplay-mvu-state.ts",
+        "src/core/roleplay-mvu-story.ts",
+        "src/core/roleplay-mvu-update-v2.ts",
+        "src/core/roleplay-mvu-update.ts",
+        "src/core/roleplay-opening-material.ts",
+        "src/core/roleplay-opening-selection.ts",
+        "src/core/roleplay-phase-a-row-facts.ts",
+        "src/core/roleplay-preparation-types.ts",
+        "src/core/roleplay-preparation.ts",
+        "src/core/roleplay-program-absence-inheritance-data.ts",
+        "src/core/roleplay-program-absence-inventory.ts",
+        "src/core/roleplay-program-copy-span.ts",
+        "src/core/roleplay-program-genesis-data.ts",
+        "src/core/roleplay-program-genesis-types.ts",
+        "src/core/roleplay-program-opening-basis-types.ts",
+        "src/core/roleplay-program-opening-records.ts",
+        "src/core/roleplay-prompt-opening-source-data.ts",
+        "src/core/roleplay-prompt-opening-source-types.ts",
+        "src/core/roleplay-prompt-opening-source.ts",
+        "src/core/roleplay-prompt-program-source-types.ts",
+        "src/core/roleplay-prompt-program-source.ts",
+        "src/core/roleplay-prompt-template-only-data.ts",
+        "src/core/roleplay-prompt-template-only-origins.ts",
+        "src/core/roleplay-prompt-template-only-types.ts",
+        "src/core/roleplay-resource-bridge-types.ts",
+        "src/core/roleplay-source-lock.ts",
+        "src/core/roleplay-status-types.ts",
+        "src/core/roleplay-task-host-types.ts",
+        "src/core/roleplay-tavern-chat-clock.ts",
+        "src/core/roleplay-tavern-current-overlay.ts",
+        "src/core/roleplay-tavern-layout.ts",
+        "src/core/roleplay-tavern-legacy-write-target-types.ts",
+        "src/core/roleplay-tavern-lore-contributions.ts",
+        "src/core/roleplay-tavern-lore-data.ts",
+        "src/core/roleplay-tavern-lore-edits-data.ts",
+        "src/core/roleplay-tavern-lore-edits-journal.ts",
+        "src/core/roleplay-tavern-lore-edits-types.ts",
+        "src/core/roleplay-tavern-lore-edits.ts",
+        "src/core/roleplay-tavern-lore-export.ts",
+        "src/core/roleplay-tavern-lore-source-types.ts",
+        "src/core/roleplay-tavern-lore-source.ts",
+        "src/core/roleplay-tavern-material-history.ts",
+        "src/core/roleplay-tavern-prompt-macros.ts",
+        "src/core/roleplay-tavern-prompt-source.ts",
+        "src/core/roleplay-tavern-source-edit-baseline.ts",
+        "src/core/roleplay-tavern-source-inheritance-data.ts",
+        "src/core/roleplay-tavern-source-inheritance-types.ts",
+        "src/core/roleplay-userinfo.ts",
+        "src/core/roleplay-worldline-surface.ts",
+        "src/core/roleplay-worldline-types.ts",
+        "src/core/roleplay-worldlines.ts",
+        "src/core/session-history.ts",
+        "src/core/tavern-author-browser-artifact-v2.mts",
+        "src/core/tavern-author-browser-budget.ts",
+        "src/core/tavern-author-browser-child-v2.ts",
+        "src/core/tavern-author-browser-compiler-v2.mts",
+        "src/core/tavern-author-browser-descriptor-v2.mts",
+        "src/core/tavern-author-browser-profile-v2.mts",
+        "src/core/tavern-author-browser-types-v2.mts",
+        "src/core/tavern-author-browser-types.mts",
+        "src/core/tavern-author-combined-compiler.mts",
+        "src/core/tavern-author-combined-data-v5.mts",
+        "src/core/tavern-author-combined-data.mts",
+        "src/core/tavern-author-combined-types-v5.mts",
+        "src/core/tavern-author-combined-types.mts",
+        "src/core/tavern-author-host-provider.mts",
+        "src/core/tavern-author-prompt-compiler.mts",
+        "src/core/tavern-author-prompt-data.mts",
+        "src/core/tavern-author-prompt-descriptor.mts",
+        "src/core/tavern-author-prompt-profile.mts",
+        "src/core/tavern-author-prompt-provider.mts",
+        "src/core/tavern-author-prompt-runtime.mts",
+        "src/core/tavern-author-prompt-types.mts",
+        "src/core/tavern-card-crc.ts",
+        "src/core/tavern-card.ts",
+        "src/core/tavern-conversations.ts",
+        "src/core/tavern-display-html.ts",
+        "src/core/tavern-library-input.ts",
+        "src/core/tavern-library-record.ts",
+        "src/core/tavern-library.ts",
+        "src/core/tavern-lore-compiler.mts",
+        "src/core/tavern-lore-evaluator-types.mts",
+        "src/core/tavern-lore-fixed-profile.mts",
+        "src/core/tavern-lore-match.mts",
+        "src/core/tavern-lore-plan-types.mts",
+        "src/core/tavern-lore-snapshot.mts",
+        "src/core/tavern-model-policy.ts",
+        "src/core/tavern-mvu-author-execution-classifier-v4.mts",
+        "src/core/tavern-mvu-author-execution-types-v4.mts",
+        "src/core/tavern-mvu-initvar.ts",
+        "src/core/tavern-mvu-schema-compiler-ast-v4.ts",
+        "src/core/tavern-mvu-schema-compiler-v4.ts",
+        "src/core/tavern-mvu-schema-compiler-worker-v4.mts",
+        "src/core/tavern-mvu-schema-data.ts",
+        "src/core/tavern-mvu-schema-fresh-selector.ts",
+        "src/core/tavern-mvu-schema-import-policy.ts",
+        "src/core/tavern-mvu-schema-program-v4.ts",
+        "src/core/tavern-mvu-schema-runner-v2.ts",
+        "src/core/tavern-mvu-schema-runner-v3.ts",
+        "src/core/tavern-mvu-schema-runner-v4.ts",
+        "src/core/tavern-mvu-schema-types-v2.ts",
+        "src/core/tavern-mvu-schema-types-v3.ts",
+        "src/core/tavern-mvu-schema-types-v4.ts",
+        "src/core/tavern-mvu-schema-types.ts",
+        "src/core/tavern-mvu-schema-update-effects-v2.ts",
+        "src/core/tavern-mvu-schema-worker-v2.mts",
+        "src/core/tavern-mvu-schema-worker-v3.mts",
+        "src/core/tavern-mvu-schema-worker-v4.mts",
+        "src/core/tavern-mvu-scope-read-types.ts",
+        "src/core/tavern-mvu-scope-read.ts",
+        "src/core/tavern-mvu-state-loader-policy-v4.mts",
+        "src/core/tavern-mvu-yaml.ts",
+        "src/core/tavern-prompt-transform-output.mts",
+        "src/core/tavern-prompt-transform-types.mts",
+        "src/core/tavern-prompt-transform-worker.mts",
+        "src/core/tavern-prompt-transform.mts",
+        "src/core/tavern-task-context.ts",
+        "src/core/tavern-task-primitives.ts",
+        "src/core/tavern-task-retirement.ts",
+        "src/core/tavern-task-support.ts",
+        "src/core/tavern-task-types.ts",
+        "src/core/tavern-tasks.ts",
+        "src/core/tavern-template-data.mts",
+        "src/core/tavern-template-types.mts",
+        "src/memory/memory-history.ts",
+        "src/memory/memory-provenance.ts",
+        "src/operations/build-typescript.mts",
+        "src/operations/bundled-package-bootstrap.mts",
+        "src/operations/protected-packages.mts",
+        "src/operations/public-transaction.mts",
+        "src/status-template.ts",
+        "development/mvu-schema-runtime-v4-policy-save-next-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-next-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-joins-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-joins-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-facts-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-facts-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-step-facts-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-step-facts-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-continuous-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-continuous-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-policy-save-codec-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-policy-save-codec-v1/src/descriptor.ts",
+        "development/mvu-schema-runtime-v4-update-batch-v1/src/index.ts",
+        "development/mvu-schema-runtime-v4-update-batch-v1/src/descriptor.ts"
       ]
     }
   ],

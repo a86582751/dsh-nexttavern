@@ -8806,7 +8806,8 @@
       "banner": "runtime/alpha3/src/core/tavern-author-combined-types-v7.mts",
       "primaryOutput": "lib/core/tavern-author-combined-types-v7.mjs",
       "outputs": [
-        "lib/core/tavern-author-combined-types-v7.mjs"
+        "lib/core/tavern-author-combined-types-v7.mjs",
+        "preset/lib/core/tavern-author-combined-types-v7.mjs"
       ]
     },
     {
@@ -8815,7 +8816,8 @@
       "banner": "runtime/alpha3/src/core/tavern-author-combined-data-v7.mts",
       "primaryOutput": "lib/core/tavern-author-combined-data-v7.mjs",
       "outputs": [
-        "lib/core/tavern-author-combined-data-v7.mjs"
+        "lib/core/tavern-author-combined-data-v7.mjs",
+        "preset/lib/core/tavern-author-combined-data-v7.mjs"
       ]
     },
     {
@@ -8824,7 +8826,8 @@
       "banner": "runtime/alpha3/src/core/tavern-author-combined-compiler-v7.mts",
       "primaryOutput": "lib/core/tavern-author-combined-compiler-v7.mjs",
       "outputs": [
-        "lib/core/tavern-author-combined-compiler-v7.mjs"
+        "lib/core/tavern-author-combined-compiler-v7.mjs",
+        "preset/lib/core/tavern-author-combined-compiler-v7.mjs"
       ]
     },
     {
@@ -8833,7 +8836,8 @@
       "banner": "runtime/alpha3/src/core/tavern-author-external-addons.mts",
       "primaryOutput": "lib/core/tavern-author-external-addons.mjs",
       "outputs": [
-        "lib/core/tavern-author-external-addons.mjs"
+        "lib/core/tavern-author-external-addons.mjs",
+        "preset/lib/core/tavern-author-external-addons.mjs"
       ]
     },
     {
