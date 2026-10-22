@@ -6,5 +6,8 @@
     "@huggingface/transformers": "3.8.1",
     "onnxruntime-node": "1.29.0"
   },
-  "overrides": {"onnxruntime-node": "$onnxruntime-node"}
+  "overrides": {
+    "onnxruntime-node": "$onnxruntime-node",
+    "@huggingface/transformers@3.8.1": {"sharp": "0.35.5"}
+  }
 }
