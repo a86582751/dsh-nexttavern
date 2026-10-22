@@ -33,7 +33,11 @@ import {validateMvuSchemaStoryPlan,validateMvuSchemaStoryRevisionDescriptor,vali
   validateMvuSchemaStoryRevisionBasis,mvuSchemaStoryRevisionBasisKey} from './roleplay-mvu-schema-story-types.js'
 import {parseMvuUpdateV2} from './roleplay-mvu-update-v2.js'
 import {validateMvuSchemaPlayerEvent,joinMvuSchemaPlayerCompletedEvent,mvuSchemaPlayerEventKey,
-  mvuSchemaPlayerHead,mvuSchemaPlayerOperationKey,mvuSchemaPlayerCompletionKey} from './roleplay-mvu-schema-player-types.js'
+  mvuSchemaPlayerHead,mvuSchemaPlayerOperationKey,mvuSchemaPlayerCompletionKey,
+  MVU_SCHEMA_PLAYER_PHASES,mvuSchemaPlayerPhaseInput,mvuSchemaPlayerReducerBridge,
+  deriveMvuSchemaPlayerRevisionSelectors,validateMvuSchemaPlayerRevisionPlan,
+  mvuSchemaPlayerRevisionEventId,mvuSchemaPlayerRevisionEvent,validateMvuSchemaPlayerRevisionEvent,
+  mvuSchemaPlayerRevisionHead} from './roleplay-mvu-schema-player-types.js'
 import {validateMvuSchemaFrozenPrefix,validateMvuSchemaDerivedBasis,sealMvuSchemaInheritanceFact}
   from './roleplay-mvu-schema-derived-types.js'
 import {buildSchemaScopeReadFrame,schemaScopeSource,schemaScopeInitialChat,schemaScopeConfiguration,
@@ -73,8 +77,11 @@ import type {MvuSchemaNumericalSnapshotV2,MvuSchemaStoryPlan,MvuSchemaStoryPhase
   MvuSchemaStoryLive,MvuSchemaStoryPublicationBoundary} from './roleplay-mvu-schema-story-types.js'
 import type {MvuSchemaStoryRevisionDescriptorV1,MvuSchemaStoryRevisionPlanV1,MvuSchemaStoryRevisionEventV1,
   MvuSchemaStoryRevisionDescriptorV2,MvuSchemaStoryRevisionPlanV2,MvuSchemaStoryRevisionEventV2,
+  MvuSchemaStoryRevisionDescriptorV3,MvuSchemaStoryRevisionCompletionV3,
   MvuSchemaStoryRevisionDescriptor,MvuSchemaStoryRevisionPlan,MvuSchemaStoryRevisionEvent,
   MvuSchemaStoryRevisionCompletionV2,MvuSchemaStoryPhaseFact,MvuSchemaStoryReducerBridge} from './roleplay-mvu-schema-story-types.js'
+import type {MvuSchemaPlayerEventV1,MvuSchemaPlayerRevisionPlanV1,MvuSchemaPlayerRevisionEventV1,
+  MvuSchemaPlayerPhaseFact} from './roleplay-mvu-schema-player-types.js'
 import type {MvuSchemaDerivedGenesis,MvuSchemaFrozenPrefixV1,MvuSchemaPrefixSeed}
   from './roleplay-mvu-schema-derived-types.js'
 import type {MvuSchemaForkCapture,createRoleplayMvuSchemaDerived} from './roleplay-mvu-schema-derived.js'
@@ -167,11 +174,39 @@ interface Owner {
 interface RevisionOwner {
   session:Session;agent:NativeInputAdmissionAgentV2;signal:AbortSignal;inSource:boolean
   original:SchemaFrozenOriginal;frame:SchemaStorySourceFrame;basis:History
-  descriptor:MvuSchemaStoryRevisionDescriptor;plan:MvuSchemaStoryRevisionPlan
+  descriptor:MvuSchemaStoryRevisionDescriptor;plan:RevisionPlan
   driver:ReturnType<typeof createRoleplayMvuSchemaReplay>;token:object
   scope?:SchemaOwnedScope;associations:SchemaExecutionAssociation[];lastLive?:MvuSchemaStoryLive
   compiledProgram?:SchemaAuthorProgram|CombinedAuthorProgram
   projection?:ReturnType<WorldlineMessageEdits['projectPrefix']>
+}
+type SuffixDescriptor=MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3
+type SuffixPlan=MvuSchemaStoryRevisionPlanV2|MvuSchemaPlayerRevisionPlanV1
+type SuffixEvent=MvuSchemaStoryRevisionEventV2|MvuSchemaPlayerRevisionEventV1
+type RevisionPlan=MvuSchemaStoryRevisionPlan|MvuSchemaPlayerRevisionPlanV1
+type RevisionEvent=MvuSchemaStoryRevisionEvent|MvuSchemaPlayerRevisionEventV1
+type OriginalStoryEvent=ReturnType<typeof validateMvuSchemaStoryEvent>
+type OriginalEvent=OriginalStoryEvent|MvuSchemaPlayerEventV1
+type HistoricalEvent=OriginalEvent|RevisionEvent
+const isManualRevision=(event:HistoricalEvent):event is MvuSchemaPlayerRevisionEventV1=>
+  event.encoding==='native-mvu-schema-player-revision-event-v1'
+const isSuffixEvent=(event:HistoricalEvent):event is SuffixEvent=>
+  event.encoding==='native-mvu-schema-story-revision-event-v2'||isManualRevision(event)
+const isManualEvent=(event:HistoricalEvent):event is MvuSchemaPlayerEventV1|MvuSchemaPlayerRevisionEventV1=>
+  event.encoding==='native-mvu-schema-player-event-v1'||isManualRevision(event)
+function suffixOriginals(descriptor:SuffixDescriptor):MvuSchemaStoryRevisionDescriptorV3['originals'] {
+  return descriptor.schemaVersion===3?descriptor.originals:descriptor.originals.map(event=>({kind:'story' as const,event}))
+}
+function readRevisionEvent(input:RevisionEvent):RevisionEvent {
+  return input.encoding==='native-mvu-schema-player-revision-event-v1'
+    ?validateMvuSchemaPlayerRevisionEvent(input):validateMvuSchemaStoryRevisionEvent(input)
+}
+function suffixHead(event:SuffixEvent) {
+  return isManualRevision(event)?mvuSchemaPlayerRevisionHead(event):mvuSchemaStoryRevisionHead(event)
+}
+function manualChatAtBase(chat:MvuScopeVariablesV1,base:MvuSchemaNumericalSnapshotV2):boolean {
+  return chat.kind==='available'&&chat.provenance.kind==='published-state'
+    &&chat.provenance.state.kind==='manual'&&chat.provenance.state.revision===base.revision
 }
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const openingPhaseCount=(plan:FrozenMvuOpeningInitializationV3)=>plan.schemaVersion===8?plan.phases.length:1
@@ -348,7 +383,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         ||key.startsWith(`${sid}__mvu-state-schema-revision-event-`))
       .map(([key,row])=>{
         if(key.startsWith(`${sid}__mvu-state-schema-revision-event-`))
-          return {key,event:validateMvuSchemaStoryRevisionEvent(row as MvuSchemaStoryRevisionEvent)}
+          return {key,event:readRevisionEvent(row as RevisionEvent)}
         if(!key.startsWith(`${sid}__mvu-state-schema-player-event-`))
           return {key,event:validateMvuSchemaStoryEvent(row as never)}
         if(!ledger)return {key,event:validateMvuSchemaPlayerEvent(row as never)}
@@ -388,11 +423,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(!canonical||!same(plan.canonical,{...canonical,narrativeSha256:sha256(canonical.narrative)}))fail('SCHEMA_STORY_CANONICAL_UNPROVEN')
     return {terminal,event,settlement}
   }
-  type RevisionBases=ReadonlyMap<string,{descriptor:MvuSchemaStoryRevisionDescriptorV2;
+  type RevisionBases=ReadonlyMap<string,{descriptor:SuffixDescriptor;
     prefix:MvuSchemaFrozenPrefixV1;ready:SchemaJournalReady}>
   function prepareRevisionBases(ownerSid:string,events:readonly SessionEvent[],
     table:Pick<Table,'get'>=prefixInputs.status,subjectSid=ownerSid):RevisionBases {
-    const bases=new Map<string,{descriptor:MvuSchemaStoryRevisionDescriptorV2;
+    const bases=new Map<string,{descriptor:SuffixDescriptor;
       prefix:MvuSchemaFrozenPrefixV1;ready:SchemaJournalReady}>()
     // Native rewind leaves one suffix at this level. Its baseline already
     // folds any retained earlier revision, so recovering older bases here
@@ -401,7 +436,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       const marker=events[index]!
       if(marker.type!==deps.markers.revisionEventType||marker.data.sessionId!==ownerSid)continue
       const descriptor=validateMvuSchemaStoryRevisionDescriptor(table.get(marker.data.descriptor.key) as MvuSchemaStoryRevisionDescriptor)
-      if(descriptor.schemaVersion!==2||descriptor.sessionId!==ownerSid)continue
+      if(descriptor.schemaVersion===1||descriptor.sessionId!==ownerSid)continue
       const basis=validateMvuSchemaStoryRevisionBasis(table.get(descriptor.basis.record.key) as never)
       if(recordSha256(descriptor)!==marker.data.descriptor.sha256
         ||recordSha256(basis)!==descriptor.basis.record.sha256||basis.sessionId!==descriptor.sessionId
@@ -418,16 +453,16 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     }
     return bases
   }
-  function revisionClosureV2(event:MvuSchemaStoryRevisionEventV2,events:readonly SessionEvent[],
+  function revisionClosureV2(event:SuffixEvent,events:readonly SessionEvent[],
     ready:SchemaJournalReady,bases:RevisionBases,owners:ScopeFacts['owners']) {
     const ref=event.plan.revision.descriptor,selected=bases.get(ref.sha256)
     if(!selected)fail('SCHEMA_REVISION_BASE_UNPROVEN')
-    const descriptor=validateMvuSchemaStoryRevisionDescriptor(prefixInputs.status.get(ref.key) as MvuSchemaStoryRevisionDescriptorV2)
+    const descriptor=validateMvuSchemaStoryRevisionDescriptor(prefixInputs.status.get(ref.key) as SuffixDescriptor)
     const completion=validateMvuSchemaStoryRevisionCompletion(prefixInputs.status.get(
-      mvuSchemaStoryRevisionCompletionKey(event.sessionId,ref.sha256)) as MvuSchemaStoryRevisionCompletionV2)
+      mvuSchemaStoryRevisionCompletionKey(event.sessionId,ref.sha256)) as MvuSchemaStoryRevisionCompletionV2|MvuSchemaStoryRevisionCompletionV3)
     const marker=ready.frozen.schemaVersion===2&&ready.frozen.revisions.find(row=>
       row.descriptor.key===ref.key&&row.descriptor.sha256===ref.sha256)
-    if(!same(descriptor,selected.descriptor)||!same(completion.descriptor,ref)
+    if(completion.schemaVersion!==descriptor.schemaVersion||!same(descriptor,selected.descriptor)||!same(completion.descriptor,ref)
       ||completion.sessionId!==event.sessionId||completion.events.length!==descriptor.originals.length
       ||!marker||marker.editSeq!==descriptor.edits.at(-1)!.seq
       ||marker.completionSeq!==descriptor.completionSeq)fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
@@ -437,30 +472,48 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       if(raw?.type!=='roleplay/message-edit'||recordSha256(raw)!==edit.sha256||raw.data.targetSeq!==edit.targetSeq
         ||target?.type!=='assistant/message'||target.data.message.id!==edit.messageId)fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
     }
-    const originals=descriptor.originals.map(originalRef=>{
-      const originalEvent=validateMvuSchemaStoryEvent(prefixInputs.status.get(originalRef.key) as never)
+    const originalEntries=suffixOriginals(descriptor)
+    const originals=originalEntries.map(entry=>{
+      const originalRef=entry.event,raw=prefixInputs.status.get(originalRef.key)
+      const originalEvent=entry.kind==='manual'?validateMvuSchemaPlayerEvent(raw as MvuSchemaPlayerEventV1)
+        :validateMvuSchemaStoryEvent(raw as OriginalStoryEvent)
       if(recordSha256(originalEvent)!==originalRef.sha256)fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
       const owner=originalEvent.sessionId,range=owners.find(row=>row.sessionId===owner)
       if(!range)fail('SCHEMA_SCOPE_MESSAGE_OWNER_UNPROVEN')
+      if(originalEvent.encoding==='native-mvu-schema-player-event-v1') {
+        return joinMvuSchemaPlayerCompletedEvent(prefixInputs.branch,prefixInputs.status,originalEvent,
+          events.slice(0,originalEvent.frontier.nativeCut))
+      }
       return closedStoryFacts(owner,range.fromSeq,events.slice(0,originalEvent.frontier.nativeCut),originalEvent,true)
     })
     let base=selected.prefix.snapshot
     const revised=completion.events.map((eventRef,index)=>{
-      const item=validateMvuSchemaStoryRevisionEvent(prefixInputs.status.get(eventRef.key) as MvuSchemaStoryRevisionEventV2)
-      const original=originals[index]!.event,target=events[original.plan.canonical.seq]
-      if(target?.type!=='assistant/message')fail('SCHEMA_REVISION_CANONICAL_UNPROVEN')
-      const message=projection.projectedMessageAt(target.seq)??target.data.message
-      const canonical={seq:target.seq,messageId:original.plan.canonical.messageId,versionSha256:recordSha256(message),
-        narrative:textOf(message.content),narrativeSha256:sha256(textOf(message.content))}
-      if(item.encoding!=='native-mvu-schema-story-revision-event-v2'||recordSha256(item)!==eventRef.sha256
+      const item=readRevisionEvent(prefixInputs.status.get(eventRef.key) as RevisionEvent)
+      const original=originals[index]!.event
+      if(!isSuffixEvent(item)||recordSha256(item)!==eventRef.sha256
         ||eventRef.key!==mvuSchemaStoryRevisionEventKey(item.sessionId,item.eventId)
         ||!same(item.plan.revision.descriptor,ref)||item.plan.revision.index!==index
         ||item.plan.revision.publicationRevision!==descriptor.publicationRevision+index
         ||item.plan.logicalNativeCut!==original.plan.initialCut.nativeCut
-        ||!same(item.plan.scope,original.plan.scope)||!same(item.plan.canonical,canonical)
         ||!same(item.plan.base,base)||item.sessionId!==descriptor.sessionId
-        ||item.sourceSha256!==descriptor.sourceSha256||item.outcome==='refused')fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
-      const head=mvuSchemaStoryRevisionHead(item)
+        ||item.sourceSha256!==descriptor.sourceSha256)fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
+      if(isManualRevision(item)) {
+        if(original.encoding!=='native-mvu-schema-player-event-v1'
+          ||!same(item.plan.original,originalEntries[index]!.event)
+          ||!same(item.plan.operation,original.plan.operation)||!same(item.plan.marker,original.plan.marker)
+          ||item.plan.clockEpochMs!==original.plan.clockEpochMs)fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
+      }else {
+        if(original.encoding==='native-mvu-schema-player-event-v1'||item.outcome==='refused')
+          fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
+        const target=events[original.plan.canonical.seq]
+        if(target?.type!=='assistant/message')fail('SCHEMA_REVISION_CANONICAL_UNPROVEN')
+        const message=projection.projectedMessageAt(target.seq)??target.data.message
+        const canonical={seq:target.seq,messageId:original.plan.canonical.messageId,versionSha256:recordSha256(message),
+          narrative:textOf(message.content),narrativeSha256:sha256(textOf(message.content))}
+        if(!same(item.plan.scope,original.plan.scope)||!same(item.plan.canonical,canonical))
+          fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
+      }
+      const head=suffixHead(item)
       base=snapshot({schemaVersion:2,encoding:'native-mvu-schema-state-snapshot-v2',sessionId:item.sessionId,
         sourceSha256:item.sourceSha256,root:item.plan.execution.root,currentHead:head,revision:head.revision,
         headSha256:recordSha256(head),values:item.values,valuesSha256:item.valuesSha256,
@@ -501,7 +554,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       ?new Set(ready.frozen.revisions.flatMap(revision=>revision.superseded.map(pair=>pair.batchId))):undefined
     const closedStories=new Map<string,ReturnType<typeof closedStoryFacts>>()
     const revisionClosures=new Map<string,ReturnType<typeof revisionClosureV2>>()
-    const revisionClosure=(event:MvuSchemaStoryRevisionEventV2)=>{
+    const revisionClosure=(event:SuffixEvent)=>{
       const id=event.plan.revision.descriptor.sha256
       let closure=revisionClosures.get(id)
       if(!closure) {
@@ -540,8 +593,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         continue
       }
       if(readOnlyTail) {
-        const closed=event.encoding==='native-mvu-schema-story-revision-event-v1'
-          ||event.encoding==='native-mvu-schema-story-revision-event-v2'?true:
+        const closed=event.encoding==='native-mvu-schema-story-revision-event-v1'||isSuffixEvent(event)?true:
           event.encoding==='native-mvu-schema-player-event-v1'
           ?prefixInputs.branch.get(mvuSchemaPlayerCompletionKey(sid,event.plan.operation.operationId))!==undefined
           :readInputCompletion(prefixInputs.branch,sid,event.plan.scope.currency.preparationId)?.status==='settled'
@@ -561,11 +613,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       return row.playerFacts??=joinMvuSchemaPlayerCompletedEvent(prefixInputs.branch,prefixInputs.status,row.event,events)
     }
     for(const event of events)if(event.type==='roleplay/mvu-manual-edit'
-      &&event.seq>=inheritedEventCount&&event.data.sessionId===sid) {
+      &&event.seq>=Math.max(inheritedEventCount,reset?.prefix.journal.nativeCut??0)&&event.data.sessionId===sid) {
       const operation=prefixInputs.branch.get(mvuSchemaPlayerOperationKey(sid,event.data.operationId))
       if(operation===undefined)fail('SCHEMA_PLAYER_HISTORY_UNPROVEN')
       if(frozen&&!readOnlyTail) {
-        const row=rows.find(row=>row.event.encoding==='native-mvu-schema-player-event-v1'
+        const row=inventory.find(row=>row.event.encoding==='native-mvu-schema-player-event-v1'
           &&row.event.plan.operation.operationId===event.data.operationId)
         if(!row)fail('SCHEMA_PLAYER_HISTORY_UNPROVEN')
         playerFacts(row)
@@ -573,12 +625,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     }
     for(const row of rows) {
       const {key,event}=row
-      const plan=event.plan,base='operation' in plan?plan.operation.base:plan.base
+      const plan=event.plan,base='operation' in plan&&plan.schemaVersion!==9?plan.operation.base:plan.base
       // Accepted plans retain their parsed frame DATA and journal/closure bindings.
       // Current Source belongs to captureFrame; do not rebuild each historical Source.
       const eventKey=event.encoding==='native-mvu-schema-player-event-v1'
-        ?mvuSchemaPlayerEventKey(sid,event.eventId):event.encoding==='native-mvu-schema-story-revision-event-v1'
-          ||event.encoding==='native-mvu-schema-story-revision-event-v2'
+        ?mvuSchemaPlayerEventKey(sid,event.eventId):event.encoding==='native-mvu-schema-story-revision-event-v1'||isSuffixEvent(event)
           ?mvuSchemaStoryRevisionEventKey(sid,event.eventId):mvuSchemaStoryEventKey(sid,event.eventId)
       if(key!==eventKey||!same(base.root,root)
         ||!same(base,snapshot({...state,sourceSha256:base.sourceSha256})))fail('SCHEMA_STORY_BASE_CHAIN_INVALID')
@@ -586,10 +637,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       if(event.encoding==='native-mvu-schema-player-event-v1') {
         const facts=playerFacts(row)
         closure={operation:facts.operation,plan:facts.plan,event,settlement:facts.settlement,completion:facts.completion}
-      } else if(event.encoding==='native-mvu-schema-story-revision-event-v2') {
+      } else if(isSuffixEvent(event)) {
         closure=revisionClosure(event)
         for(const edit of (closure as ReturnType<typeof revisionClosureV2>).descriptor.edits)
-          if(edit.targetSeq<=event.plan.canonical.seq)resolvedEdits.add(edit.seq)
+          if(isManualRevision(event)?edit.targetSeq<event.plan.logicalNativeCut:edit.targetSeq<=event.plan.canonical.seq)
+            resolvedEdits.add(edit.seq)
       } else if(event.encoding==='native-mvu-schema-story-revision-event-v1') {
         const ref=event.plan.revision.descriptor
         const descriptor=validateMvuSchemaStoryRevisionDescriptor(prefixInputs.status.get(ref.key) as never)
@@ -630,29 +682,32 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
           ||step.dispatch.sourceNativeCut.materialSha256!==plan.currentFrame.materialSha256)fail('SCHEMA_STORY_JOURNAL_UNPROVEN')
         if(step.step.frame.input.schemaVersion===3||step.step.frame.input.schemaVersion===4) {
           if(!scopeSeed||!chat||!messageStates||!original)fail('SCHEMA_SCOPE_HISTORY_UNPROVEN')
-          const revised=event.encoding==='native-mvu-schema-story-revision-event-v2'?revisionClosure(event):undefined
+          const revised=isSuffixEvent(event)?revisionClosure(event):undefined
           const expected=scopeFrameAt({...scopeSeed,chat,messages:messageStates},original,plan.currentFrame,
-            step.dispatch.sourceNativeCut,events,plan.schemaVersion===8?plan.logicalNativeCut:undefined,revised?.projection)
+            step.dispatch.sourceNativeCut,events,plan.schemaVersion===8||plan.schemaVersion===9?plan.logicalNativeCut:undefined,
+            revised?.projection)
           if(!same(step.step.frame.input.scopeReadFrame,expected))fail('SCHEMA_SCOPE_HISTORY_UNPROVEN')
         }
       }
       let head:MvuSchemaNumericalSnapshotV2['currentHead']
-      if(event.encoding==='native-mvu-schema-player-event-v1')head=mvuSchemaPlayerHead(event)
+      if(isManualRevision(event))head=mvuSchemaPlayerRevisionHead(event)
+      else if(event.encoding==='native-mvu-schema-player-event-v1')head=mvuSchemaPlayerHead(event)
       else if(event.encoding==='native-mvu-schema-story-revision-event-v1'
         ||event.encoding==='native-mvu-schema-story-revision-event-v2') {
         head=event.outcome==='refused'?event.plan.base.currentHead:mvuSchemaStoryRevisionHead(event)
       }else head=mvuSchemaStoryHead(event)
-      if(event.encoding==='native-mvu-schema-story-revision-event-v2')root=event.plan.execution.root
+      if(isSuffixEvent(event))root=event.plan.execution.root
       state=snapshot({schemaVersion:2,encoding:'native-mvu-schema-state-snapshot-v2',sessionId:sid,
         sourceSha256:base.sourceSha256,root,currentHead:head,revision:head.revision,headSha256:recordSha256(head),
         values:event.values,valuesSha256:event.valuesSha256,context:event.context,schemaFrontier:event.frontier})
-      if(scopeSeed&&messageStates&&event.outcome!=='refused') {
+      if(scopeSeed&&messageStates&&(event.outcome!=='refused'
+        ||isManualRevision(event)&&manualChatAtBase(chat!,event.plan.base))) {
         const source=schemaScopeSource(plan.currentFrame.snapshot)
-        const manual=event.encoding==='native-mvu-schema-player-event-v1'
+        const manual=isManualEvent(event)
         const stateRef={kind:manual?'manual' as const:'story' as const,ownerSessionId:sid,
           recordKey:key,recordSha256:recordSha256(event),valuesSha256:event.valuesSha256,revision:state.revision}
         if(manual||scopeSeed.updateChat)chat=schemaScopePublished(schemaScopeOwner(source,'chat'),stateRef,event.values,event.context)
-        if(event.encoding!=='native-mvu-schema-player-event-v1') {
+        if(!isManualEvent(event)) {
           const canonical=event.plan.canonical
           const messageOwner=scopeOwnerForSeq(scopeSeed,canonical.seq)
           const variables=schemaScopePublished(schemaScopeOwner(source,'message',canonical.messageId,sid),stateRef,event.values,event.context)
@@ -661,7 +716,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       }
       consumed.set(plan.planSha256,recordSha256(closure))
       eventKeys.push(key)
-      if(displayUpdates&&event.encoding!=='native-mvu-schema-player-event-v1'
+      if(displayUpdates&&!isManualEvent(event)
         &&event.outcome!=='refused'&&event.plan.candidate.kind==='parsed') {
         const item=acceptedMvuDisplayUpdate(sid,event.plan.canonical,event.plan.candidate.protocol)
         if(item)displayUpdates.push(item)
@@ -981,10 +1036,10 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(!first)fail('SCHEMA_HISTORICAL_TAIL_UNPROVEN')
     if(ready.frozen.schemaVersion===2)for(const revision of ready.frozen.revisions) {
       const descriptor=validateMvuSchemaStoryRevisionDescriptor(revision.descriptor.value as MvuSchemaStoryRevisionDescriptor)
-      if(descriptor.schemaVersion===2) {
+      if(descriptor.schemaVersion!==1) {
         const plan=prefixInputs.status.get(mvuSchemaStoryRevisionPlanKey(sid,
           recordSha256({descriptor:{key:revision.descriptor.key,sha256:revision.descriptor.sha256},index:0}))) as
-          MvuSchemaStoryRevisionPlanV2|undefined
+          SuffixPlan|undefined
         if(plan?.selectors[0]?.batchId===first.dispatch.batchId)return plan.execution.sourceSha256
         continue
       }
@@ -1259,35 +1314,44 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(history.inheritedReady)Object.defineProperty(basis,'inheritedReady',{value:history.inheritedReady})
     return basis
   }
-  function revisionPlanEventId(plan:MvuSchemaStoryRevisionPlan):string {
+  function revisionPlanEventId(plan:RevisionPlan):string {
+    if(plan.schemaVersion===9)return mvuSchemaPlayerRevisionEventId(plan)
     return recordSha256({encoding:plan.schemaVersion===8?'native-mvu-schema-story-revision-event-identity-v2'
       :'native-mvu-schema-story-revision-event-identity-v1',planSha256:plan.planSha256})
   }
-  function recoverRevision(owner:RevisionOwner):MvuSchemaStoryRevisionEvent {
+  function recoverRevision(owner:RevisionOwner):RevisionEvent {
     const plan=owner.plan,events=all(owner.session)
     const ready=journal.captureChecked(owner.session.id,plan.realmEpoch,events,owner.basis.inheritedReady??null)
     if(ready.kind!=='ready')fail('SCHEMA_REVISION_EXECUTION_UNKNOWN')
-    const phases:MvuSchemaStoryPhaseFact[]=[]
+    const phases:(MvuSchemaStoryPhaseFact|MvuSchemaPlayerPhaseFact)[]=[]
+    const phaseNames=plan.schemaVersion===9?MVU_SCHEMA_PLAYER_PHASES:MVU_SCHEMA_STORY_PHASES
     let reducer:MvuSchemaStoryReducerBridge|null=null
     for(const [index,selector] of plan.selectors.entries()) {
       const ordinal=ready.steps.findIndex(step=>step.dispatch.batchId===selector.batchId),step=ready.steps[ordinal]
       // An incomplete attempt retains its original anchor. Recovery consumes
       // completed Journal output; it never executes the remaining selectors.
       if(!step)fail('SCHEMA_REVISION_EXECUTION_UNKNOWN')
-      phases.push(freezeSchemaJournalData({phase:MVU_SCHEMA_STORY_PHASES[index]!,input:step.step.frame.input,
+      phases.push(freezeSchemaJournalData({phase:phaseNames[index]!,input:step.step.frame.input,
         association:associationAt(owner.session.id,events,ready,ordinal),output:step.step.output}))
       if(step.step.output.kind==='refused')break
-      if(index===0) {
-        reducer=mvuSchemaStoryReducerBridge(phases[0]!)
+      if(plan.schemaVersion===9) {
+        if(step.step.output.commands.length)break
+        if(index===1&&mvuSchemaPlayerReducerBridge(phases[1] as MvuSchemaPlayerPhaseFact).result.kind==='rejected')break
+      }else if(index===0) {
+        reducer=mvuSchemaStoryReducerBridge(phases[0] as MvuSchemaStoryPhaseFact)
         if(reducer.result.kind==='rejected')break
       }
     }
-    return validateMvuSchemaStoryRevisionEvent(mvuSchemaStoryRevisionEvent(plan as never,phases,reducer) as MvuSchemaStoryRevisionEvent)
+    return plan.schemaVersion===9
+      ?validateMvuSchemaPlayerRevisionEvent(mvuSchemaPlayerRevisionEvent(plan,phases as MvuSchemaPlayerPhaseFact[]))
+      :validateMvuSchemaStoryRevisionEvent(mvuSchemaStoryRevisionEvent(plan as never,
+        phases as MvuSchemaStoryPhaseFact[],reducer) as MvuSchemaStoryRevisionEvent)
   }
-  async function executeRevision(owner:RevisionOwner):Promise<MvuSchemaStoryRevisionEvent> {
-    const phases:MvuSchemaStoryPhaseFact[]=[],plan=owner.plan
+  async function executeRevision(owner:RevisionOwner):Promise<RevisionEvent> {
+    const phases:(MvuSchemaStoryPhaseFact|MvuSchemaPlayerPhaseFact)[]=[],plan=owner.plan
+    const phaseNames=plan.schemaVersion===9?MVU_SCHEMA_PLAYER_PHASES:MVU_SCHEMA_STORY_PHASES
     let reducer:MvuSchemaStoryReducerBridge|null=null
-    for(const [index,phase] of MVU_SCHEMA_STORY_PHASES.entries()) {
+    for(const [index,phase] of phaseNames.entries()) {
       const selector=plan.selectors[index]!,events=all(owner.session)
       const captureJournal=()=>journal.captureChecked(owner.session.id,plan.realmEpoch,all(owner.session),
         owner.basis.inheritedReady??null)
@@ -1297,8 +1361,9 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       const cut:SourceNativeCutFacts={...plan.initialCut,nativeCut:ready.frozen.nativeCut,
         nativePrefixSha256:ready.frozen.nativePrefixSha256,anchor:selector.anchor}
       const frame=scopeFrameAt(owner.basis.readScopes!,owner.original,owner.frame,cut,events,
-        plan.schemaVersion===8?plan.logicalNativeCut:undefined,owner.projection)
-      const input=mvuSchemaStoryPhaseInput(plan,index,phases,reducer,frame)
+        plan.schemaVersion===8||plan.schemaVersion===9?plan.logicalNativeCut:undefined,owner.projection)
+      const input=plan.schemaVersion===9?mvuSchemaPlayerPhaseInput(plan,index,phases as MvuSchemaPlayerPhaseFact[],frame)
+        :mvuSchemaStoryPhaseInput(plan,index,phases as MvuSchemaStoryPhaseFact[],reducer,frame)
       const requestedStep=schemaTraceRequestedStep(selector.batchId,
         {ownerSessionId:owner.session.id,sourceNativeCutSha256:recordSha256(cut),material:owner.frame.material},input)
       owner.scope={owner:owner.token,incarnation:owner.agent,session:owner.session,signal:owner.signal,
@@ -1318,8 +1383,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       owner.associations.push(result.association)
       phases.push(freezeSchemaJournalData({phase,input,association:result.association,output:result.output}))
       if(result.output.kind==='refused')break
-      if(index===0) {
-        reducer=mvuSchemaStoryReducerBridge(phases[0]!)
+      if(plan.schemaVersion===9) {
+        if(result.output.commands.length)break
+        if(index===1&&mvuSchemaPlayerReducerBridge(phases[1] as MvuSchemaPlayerPhaseFact).result.kind==='rejected')break
+      }else if(index===0) {
+        reducer=mvuSchemaStoryReducerBridge(phases[0] as MvuSchemaStoryPhaseFact)
         if(reducer.result.kind==='rejected')break
       }
     }
@@ -1329,7 +1397,10 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     try {verified=owner.driver.checkEvidence(last.evidence,{association:last.association,output:last.output})}
     finally {owner.associations.push(last.association)}
     if(!verified)fail('SCHEMA_REVISION_EXECUTION_UNPROVEN')
-    return validateMvuSchemaStoryRevisionEvent(mvuSchemaStoryRevisionEvent(plan as never,phases,reducer) as MvuSchemaStoryRevisionEvent)
+    return plan.schemaVersion===9
+      ?validateMvuSchemaPlayerRevisionEvent(mvuSchemaPlayerRevisionEvent(plan,phases as MvuSchemaPlayerPhaseFact[]))
+      :validateMvuSchemaStoryRevisionEvent(mvuSchemaStoryRevisionEvent(plan as never,
+        phases as MvuSchemaStoryPhaseFact[],reducer) as MvuSchemaStoryRevisionEvent)
   }
   /** Only this owner interprets durable edit resolution. Native owns its
    * maintenance reservation and marker rewind; old completion facts stay intact. */
@@ -1337,12 +1408,25 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     if(await reconcileStorySuffix(sid,requestedSeq))return
     await reconcileAcceptedEditV1(sid,requestedSeq)
   }
-  function revisionResultBasis(history:History,event:MvuSchemaStoryRevisionEventV2):History {
-    const head=mvuSchemaStoryRevisionHead(event),state=snapshot({schemaVersion:2,
+  function revisionResultBasis(history:History,event:SuffixEvent):History {
+    const head=suffixHead(event),state=snapshot({schemaVersion:2,
       encoding:'native-mvu-schema-state-snapshot-v2',sessionId:event.sessionId,sourceSha256:event.sourceSha256,
       root:event.plan.execution.root,currentHead:head,revision:head.revision,headSha256:recordSha256(head),
       values:event.values,valuesSha256:event.valuesSha256,context:event.context,schemaFrontier:event.frontier})
     const facts=history.readScopes!
+    if(isManualRevision(event)) {
+      const stateRef={kind:'manual' as const,ownerSessionId:event.sessionId,
+        recordKey:mvuSchemaStoryRevisionEventKey(event.sessionId,event.eventId),recordSha256:recordSha256(event),
+        valuesSha256:event.valuesSha256,revision:state.revision}
+      // A completed refusal preserves DATA. Rebind only a current manual chat;
+      // an older chat must not shadow a later Story's message state in Browser.
+      const readScopes=event.outcome==='refused'&&!manualChatAtBase(facts.chat,event.plan.base)?facts:{...facts,
+        chat:schemaScopePublished(schemaScopeOwner(schemaScopeSource(event.plan.currentFrame.snapshot),'chat'),
+          stateRef,event.values,event.context)}
+      const next={...history,snapshot:state,readScopes}
+      if(history.inheritedReady)Object.defineProperty(next,'inheritedReady',{value:history.inheritedReady})
+      return next
+    }
     const source=schemaScopeSource(event.plan.currentFrame.snapshot),canonical=event.plan.canonical
     const messageOwner=scopeOwnerForSeq(facts,canonical.seq)
     const stateRef={kind:'story' as const,ownerSessionId:event.sessionId,
@@ -1358,16 +1442,17 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
   }
   /** One maintenance reservation owns the whole deterministic Story suffix.
    * Original scopes describe history; only this current Native owner executes. */
-  function savedSuffixRefusal(descriptor:MvuSchemaStoryRevisionDescriptorV2,ref:{key:string;sha256:string}) {
+  function savedSuffixRefusal(descriptor:SuffixDescriptor,ref:{key:string;sha256:string}) {
     for(let index=0;index<descriptor.originals.length;index++) {
       const raw=prefixInputs.status.get(mvuSchemaStoryRevisionPlanKey(descriptor.sessionId,recordSha256({descriptor:ref,index})))
       if(raw===undefined)continue
-      const plan=validateMvuSchemaStoryPlan(raw as MvuSchemaStoryRevisionPlanV2)
+      const supplied=raw as SuffixPlan
+      const plan=supplied.schemaVersion===9?validateMvuSchemaPlayerRevisionPlan(supplied):validateMvuSchemaStoryPlan(supplied)
       const key=mvuSchemaStoryRevisionEventKey(descriptor.sessionId,revisionPlanEventId(plan))
       const saved=prefixInputs.status.get(key)
       if(saved===undefined)continue
-      const event=validateMvuSchemaStoryRevisionEvent(saved as MvuSchemaStoryRevisionEventV2)
-      if(event.outcome==='refused')return {key,event}
+      const event=readRevisionEvent(saved as RevisionEvent)
+      if(event.encoding==='native-mvu-schema-story-revision-event-v2'&&event.outcome==='refused')return {key,event}
     }
     return undefined
   }
@@ -1390,7 +1475,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const descriptorKey=mvuSchemaStoryRevisionDescriptorKey(sid,recordSha256({
       encoding:'native-mvu-schema-story-revision-request-v2',edits}))
     const saved=prefixInputs.status.get(descriptorKey)
-    const stored=saved===undefined?undefined:validateMvuSchemaStoryRevisionDescriptor(saved as MvuSchemaStoryRevisionDescriptorV2)
+    const stored=saved===undefined?undefined:validateMvuSchemaStoryRevisionDescriptor(saved as SuffixDescriptor)
     if(stored) {
       if(savedSuffixRefusal(stored,{key:descriptorKey,sha256:recordSha256(stored)})) {
         if(requestedSeq===undefined)fail(invalidation.code)
@@ -1398,12 +1483,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       }
       const completed=prefixInputs.status.get(mvuSchemaStoryRevisionCompletionKey(sid,recordSha256(stored)))
       if(completed!==undefined) {
-        const closure=validateMvuSchemaStoryRevisionCompletion(completed as MvuSchemaStoryRevisionCompletionV2)
-        const last=closure.events.at(-1)!,event=validateMvuSchemaStoryRevisionEvent(
-          prefixInputs.status.get(last.key) as MvuSchemaStoryRevisionEventV2)
-        if(recordSha256(event)!==last.sha256)fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
+        const closure=validateMvuSchemaStoryRevisionCompletion(completed as MvuSchemaStoryRevisionCompletionV2|MvuSchemaStoryRevisionCompletionV3)
+        const last=closure.events.at(-1)!,event=readRevisionEvent(prefixInputs.status.get(last.key) as RevisionEvent)
+        if(!isSuffixEvent(event)||recordSha256(event)!==last.sha256)fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
         const head=prefixInputs.status.get(mvuStateCurrentHeadKey(sid)) as {revision?:number}|undefined
-        if(same(head,mvuSchemaStoryRevisionHead(event))
+        if(same(head,suffixHead(event))
           ||Number(head?.revision)>event.plan.revision.publicationRevision)return true
       }
     }
@@ -1411,14 +1495,14 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       row.type===deps.markers.revisionEventType)
     const marker=stored&&markers.find(row=>row.data.descriptor.key===descriptorKey)
     let resolved=new Set<number>()
-    let refused:{priorCut:number;descriptor:MvuSchemaStoryRevisionDescriptorV2;
+    let refused:{priorCut:number;descriptor:SuffixDescriptor;
       result:NonNullable<ReturnType<typeof savedSuffixRefusal>>}|undefined
     for(const row of markers) {
       const descriptor=validateMvuSchemaStoryRevisionDescriptor(prefixInputs.status.get(row.data.descriptor.key) as MvuSchemaStoryRevisionDescriptor)
-      if(descriptor.schemaVersion!==2)continue
+      if(descriptor.schemaVersion===1)continue
       const raw=prefixInputs.status.get(mvuSchemaStoryRevisionCompletionKey(sid,row.data.descriptor.sha256))
       if(raw!==undefined) {
-        validateMvuSchemaStoryRevisionCompletion(raw as MvuSchemaStoryRevisionCompletionV2)
+        validateMvuSchemaStoryRevisionCompletion(raw as MvuSchemaStoryRevisionCompletionV2|MvuSchemaStoryRevisionCompletionV3)
         refused=undefined
         resolved=new Set(descriptor.edits.filter(edit=>edits.some(actual=>actual.seq===edit.seq&&actual.sha256===edit.sha256)).map(edit=>edit.seq))
       }else if(descriptor.sessionId===sid) {
@@ -1451,32 +1535,42 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
     const activeRows=allRows.filter(row=>batches.has(row.event.phases[0]!.association.batchId))
       .sort((a,b)=>a.event.phases[0]!.association.dispatchMarker.seq-b.event.phases[0]!.association.dispatchMarker.seq)
     const earliest=Math.min(...unresolved.map(edit=>edit.targetSeq))
-    const first=activeRows.findIndex(row=>row.event.encoding!=='native-mvu-schema-player-event-v1'
+    const first=activeRows.findIndex(row=>!isManualEvent(row.event)
       &&row.event.plan.canonical.seq>=earliest)
-    if(!stored&&(first<0||activeRows.slice(first).some(row=>row.event.encoding==='native-mvu-schema-player-event-v1')))return true
-    const originalFor=(row:ReturnType<typeof eventRows>[number])=>{
+    if(!stored&&first<0)return true
+    const originalFor=(row:ReturnType<typeof eventRows>[number]):MvuSchemaStoryRevisionDescriptorV3['originals'][number]=>{
       const item=row.event
-      if(item.encoding==='native-mvu-schema-player-event-v1')fail('SCHEMA_REVISION_SUFFIX_UNSUPPORTED')
-      if(item.encoding==='native-mvu-schema-story-event-v2')return {key:row.key,sha256:recordSha256(item)}
+      if(item.encoding==='native-mvu-schema-player-event-v1'||item.encoding==='native-mvu-schema-story-event-v2')
+        return {kind:item.encoding==='native-mvu-schema-player-event-v1'?'manual':'story',
+          event:{key:row.key,sha256:recordSha256(item)}}
       const descriptor=validateMvuSchemaStoryRevisionDescriptor(prefixInputs.status.get(item.plan.revision.descriptor.key) as MvuSchemaStoryRevisionDescriptor)
-      return descriptor.schemaVersion===2?descriptor.originals[item.plan.schemaVersion===8?item.plan.revision.index:0]!:descriptor.original
+      return descriptor.schemaVersion===1?{kind:'story',event:descriptor.original}
+        :suffixOriginals(descriptor)[item.plan.schemaVersion===8||item.plan.schemaVersion===9?item.plan.revision.index:0]!
     }
-    const refs=stored?.originals??activeRows.slice(first).map(originalFor)
-    const originals=refs.map(ref=>{
-      const event=validateMvuSchemaStoryEvent(prefixInputs.status.get(ref.key) as never)
+    const entries=stored?suffixOriginals(stored):activeRows.slice(first).map(originalFor)
+    const originals=entries.map(entry=>{
+      const ref=entry.event,raw=prefixInputs.status.get(ref.key)
+      const event=entry.kind==='manual'?validateMvuSchemaPlayerEvent(raw as MvuSchemaPlayerEventV1)
+        :validateMvuSchemaStoryEvent(raw as OriginalStoryEvent)
       if(recordSha256(event)!==ref.sha256)fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
+      if(event.encoding==='native-mvu-schema-player-event-v1') {
+        joinMvuSchemaPlayerCompletedEvent(prefixInputs.branch,prefixInputs.status,event,events.slice(0,event.frontier.nativeCut))
+      }
       return event
     })
-    if(!originals.length||!stored&&!unresolved.some(edit=>edit.targetSeq===originals[0]!.plan.canonical.seq))return true
+    const firstOriginal=originals[0]
+    if(!firstOriginal||firstOriginal.encoding==='native-mvu-schema-player-event-v1'
+      ||!stored&&!unresolved.some(edit=>edit.targetSeq===firstOriginal.plan.canonical.seq))return true
     const projection=deps.projectPrefix(events.slice(0,edits.at(-1)!.seq+1) as never)
     const canonical=originals.map(original=>{
+      if(original.encoding==='native-mvu-schema-player-event-v1')return null
       const target=events[original.plan.canonical.seq]
       if(target?.type!=='assistant/message')fail('SCHEMA_REVISION_TARGET_UNPROVEN')
       const message=projection.projectedMessageAt(target.seq)??target.data.message,narrative=textOf(message.content)
       return {seq:target.seq,messageId:original.plan.canonical.messageId,versionSha256:recordSha256(message),narrative,narrativeSha256:sha256(narrative)}
     })
-    const candidates=canonical.map(body=>parseMvuUpdateV2(body.narrative))
-    if(candidates.some(candidate=>candidate.kind==='rejected'))return true
+    const candidates=canonical.map(body=>body&&parseMvuUpdateV2(body.narrative))
+    if(candidates.some(candidate=>candidate?.kind==='rejected'))return true
     let captured:MvuSchemaForkCapture,basisRecord:ReturnType<typeof validateMvuSchemaStoryRevisionBasis>
     if(stored) {
       basisRecord=validateMvuSchemaStoryRevisionBasis(prefixInputs.status.get(stored.basis.record.key) as never)
@@ -1486,8 +1580,8 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
       captured=recovered
     }else {
       const previous=activeRows[first-1]?.event
-      const previousRevision=previous?.encoding==='native-mvu-schema-story-revision-event-v2'?previous:undefined
-      const firstBase=originals[0]!.plan.base,head=firstBase.currentHead
+      const previousRevision=previous&&isSuffixEvent(previous)?previous:undefined
+      const firstBase=firstOriginal.plan.base,head=firstBase.currentHead
       // Opening values finish before its visible Native message is appended.
       // That publication is part of a readable baseline, unlike later Story
       // work whose numerical result we are about to replace.
@@ -1508,19 +1602,27 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         prefix:selected.prefix,closure:selected.closure},'basisSha256'))
     }
     const basisRef={key:mvuSchemaStoryRevisionBasisKey(sid,basisRecord.basisSha256),sha256:recordSha256(basisRecord)}
-    const tail=activeRows.at(-1),lastRevision=tail?.event.encoding==='native-mvu-schema-story-revision-event-v2'
+    const tail=activeRows.at(-1),lastRevision=tail&&isSuffixEvent(tail.event)
       ||tail?.event.encoding==='native-mvu-schema-story-revision-event-v1'?tail:undefined
-    const next=stored??validateMvuSchemaStoryRevisionDescriptor(sealMvuSchemaStoryFact({schemaVersion:2 as const,
-      encoding:'native-mvu-schema-story-revision-descriptor-v2' as const,sessionId:sid,edits,
+    const mixed=stored?.schemaVersion===3||entries.some(entry=>entry.kind==='manual')
+    const descriptorBase={sessionId:sid,edits,
       basis:{record:basisRef,nativeCut:captured.prefix.journal.nativeCut,historyBasis:basisRecord.historyBasis,
         closedRevision:basisRecord.closedRevision,prefixSha256:captured.prefix.prefixSha256,
-        stateSnapshotSha256:captured.prefix.snapshot.stateSnapshotSha256},originals:refs,
+        stateSnapshotSha256:captured.prefix.snapshot.stateSnapshotSha256}}
+    const descriptorTail={
       previous:refused?{key:refused.result.key,sha256:recordSha256(refused.result.event)}
         :lastRevision?{key:lastRevision.key,sha256:recordSha256(lastRevision.event)}:null,
       completionSeq:captured.prefix.snapshot.schemaFrontier.nativeCut-1,
       publicationRevision:Math.max(prior.snapshot.revision,refused
         ?refused.descriptor.publicationRevision+refused.descriptor.originals.length-1:0)+1,
-      sourceSha256:deps.sourceSha256(sid)},'descriptorSha256'))
+      sourceSha256:deps.sourceSha256(sid)}
+    const next=stored??(mixed
+      ?validateMvuSchemaStoryRevisionDescriptor(sealMvuSchemaStoryFact({schemaVersion:3 as const,
+        encoding:'native-mvu-schema-story-revision-descriptor-v3' as const,...descriptorBase,
+        originals:entries,...descriptorTail},'descriptorSha256'))
+      :validateMvuSchemaStoryRevisionDescriptor(sealMvuSchemaStoryFact({schemaVersion:2 as const,
+        encoding:'native-mvu-schema-story-revision-descriptor-v2' as const,...descriptorBase,
+        originals:entries.map(entry=>entry.event),...descriptorTail},'descriptorSha256')))
     const ref={key:descriptorKey,sha256:recordSha256(next)},agent=deps.agent(session)
     const restored=captured.ready&&recoveredPrefixes.get(captured.ready)
     if(!agent||!captured.ready||!restored?.scopes||!prior.readScopes)fail('SCHEMA_REVISION_OWNER_UNPROVEN')
@@ -1555,47 +1657,76 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         for(const [index,original] of originals.entries()) {
           const planKey=mvuSchemaStoryRevisionPlanKey(sid,recordSha256({descriptor:ref,index}))
           const planRaw=prefixInputs.status.get(planKey)
-          let plan:MvuSchemaStoryRevisionPlanV2
-          if(planRaw)plan=validateMvuSchemaStoryPlan(planRaw as MvuSchemaStoryRevisionPlanV2)
+          let plan:SuffixPlan
+          if(planRaw) {
+            const supplied=planRaw as SuffixPlan
+            plan=supplied.schemaVersion===9?validateMvuSchemaPlayerRevisionPlan(supplied):validateMvuSchemaStoryPlan(supplied)
+          }
           else {
-            const selectors=deriveMvuSchemaStoryRevisionSelectorsV2(original.plan.scope,canonical[index]!,
-              prior.original.realmEpoch,ref,index,sid),nativeEvents=all(session)
+            const selectors=original.encoding==='native-mvu-schema-player-event-v1'
+              ?deriveMvuSchemaPlayerRevisionSelectors(original.plan.operation,entries[index]!.event,ref,index,sid)
+              :deriveMvuSchemaStoryRevisionSelectorsV2(original.plan.scope,canonical[index]!,prior.original.realmEpoch,ref,index,sid)
+            const nativeEvents=all(session)
             if(selectors.some(selector=>priorDispatches.has(selector.batchId)))fail('SCHEMA_REVISION_EXECUTION_UNKNOWN')
             const cut:SourceNativeCutFacts={...original.plan.initialCut,sessionId:sid,ownerSessionId:sid,
               nativeCut:nativeEvents.length,nativePrefixSha256:recordSha256(nativeEvents),
               sourceSnapshotSha256:frame.snapshotSha256,materialSha256:frame.materialSha256,anchor:selectors[0]!.anchor}
-            const {planSha256:_old,...originalPlan}=original.plan
-            plan=validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact({...originalPlan,schemaVersion:8 as const,
-              encoding:'native-mvu-schema-story-revision-plan-v2' as const,canonical:canonical[index]!,
-              candidate:candidates[index]!,executorVersion:4 as const,
-              base:owner?.basis.snapshot??basis.snapshot,currentFrame:frame,initialCut:cut,selectors,
-              randomSeed:recordSha256({scope:original.plan.scope,canonical:canonical[index]!,revision:ref,index}),
-              epoch:priorReady.epochRef,serverProgramSha256:priorReady.epoch.program.serverProgram!.programSha256,
-              logicalNativeCut:original.plan.initialCut.nativeCut,
-              scopeReadFrame:scopeFrameAt(owner?.basis.readScopes??basis.readScopes!,prior.original,frame,cut,nativeEvents,
-                original.plan.initialCut.nativeCut,projection),
-              execution:{sessionId:sid,sourceSha256:next.sourceSha256,root:prior.initial.root},
-              revision:{descriptor:ref,index,publicationRevision:next.publicationRevision+index}},'planSha256'))
+            const base=owner?.basis.snapshot??basis.snapshot,execution={sessionId:sid,sourceSha256:next.sourceSha256,root:prior.initial.root}
+            const revision={descriptor:ref,index,publicationRevision:next.publicationRevision+index}
+            const scopeReadFrame=scopeFrameAt(owner?.basis.readScopes??basis.readScopes!,prior.original,frame,cut,nativeEvents,
+              original.plan.initialCut.nativeCut,projection)
+            if(original.encoding==='native-mvu-schema-player-event-v1') {
+              const {planSha256:_oldPlayer,...originalPlayerPlan}=original.plan
+              plan=validateMvuSchemaPlayerRevisionPlan(sealMvuSchemaStoryFact({...originalPlayerPlan,
+                schemaVersion:9 as const,encoding:'native-mvu-schema-player-revision-plan-v1' as const,
+                original:entries[index]!.event,base,currentFrame:frame,initialCut:cut,selectors,executorVersion:4 as const,
+                randomSeed:recordSha256({operation:original.plan.operation,original:entries[index]!.event,revision:ref,index}),
+                epoch:priorReady.epochRef,serverProgramSha256:priorReady.epoch.program.serverProgram!.programSha256,
+                scopeReadFrame,logicalNativeCut:original.plan.initialCut.nativeCut,execution,revision},'planSha256'))
+            }else {
+              const {planSha256:_old,...originalPlan}=original.plan
+              plan=validateMvuSchemaStoryPlan(sealMvuSchemaStoryFact({...originalPlan,schemaVersion:8 as const,
+                encoding:'native-mvu-schema-story-revision-plan-v2' as const,canonical:canonical[index]!,
+                candidate:candidates[index]!,executorVersion:4 as const,
+                base,currentFrame:frame,initialCut:cut,selectors,
+                randomSeed:recordSha256({scope:original.plan.scope,canonical:canonical[index]!,revision:ref,index}),
+                epoch:priorReady.epochRef,serverProgramSha256:priorReady.epoch.program.serverProgram!.programSha256,
+                logicalNativeCut:original.plan.initialCut.nativeCut,
+                scopeReadFrame,execution,revision},'planSha256'))
+            }
             await putRevisionFact(planKey,plan)
           }
           if(!owner) {
             owner={session,agent,signal,inSource:true,original:prior.original,frame,basis,
               descriptor:next,plan,driver,token:Object.freeze({}),associations:[],projection}
             revisionOwners.set(sid,owner);revisionScopes.set(owner.token,owner)
-          }else {owner.plan=plan;owner.associations=[];owner.lastLive=undefined}
+          }else {
+            // Manual phases share a live run within one item. A later item
+            // must restore from its own accumulated Journal, including Story
+            // phases that did not advance that earlier manual run.
+            driver.invalidateOwner(owner.token)
+            revisionScopes.delete(owner.token)
+            owner.token=Object.freeze({})
+            owner.plan=plan;owner.scope=undefined;owner.associations=[];owner.lastLive=undefined
+            revisionScopes.set(owner.token,owner)
+          }
           const eventKey=mvuSchemaStoryRevisionEventKey(sid,revisionPlanEventId(plan)),savedEvent=prefixInputs.status.get(eventKey)
           // A completed predecessor does not make this Story's undispatched work unknown.
           const recoverOnly=plan.selectors.some(selector=>priorDispatches.has(selector.batchId))
-          const event=savedEvent?validateMvuSchemaStoryRevisionEvent(savedEvent as MvuSchemaStoryRevisionEventV2)
+          const event=savedEvent?readRevisionEvent(savedEvent as RevisionEvent)
             :recoverOnly?recoverRevision(owner):await executeRevision(owner)
-          if(event.encoding!=='native-mvu-schema-story-revision-event-v2')fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
+          if(!isSuffixEvent(event))fail('SCHEMA_REVISION_HISTORY_UNPROVEN')
+          // As with the original Player publisher, evidence survives closing
+          // the parked manual VM; its cleanup precedes durable publication.
+          if(plan.schemaVersion===9)await driver.closeOwner(owner.token)
           await putRevisionFact(eventKey,event)
-          if(event.outcome==='refused') {deps.inputState.invalidateSession(sid);return}
+          if(!isManualRevision(event)&&event.outcome==='refused') {deps.inputState.invalidateSession(sid);return}
           completedRefs.push({key:eventKey,sha256:recordSha256(event)})
           owner.basis=revisionResultBasis(owner.basis,event)
         }
-        const completion=validateMvuSchemaStoryRevisionCompletion(sealMvuSchemaStoryFact({schemaVersion:2 as const,
-          encoding:'native-mvu-schema-story-revision-completion-v2' as const,sessionId:sid,descriptor:ref,
+        const completion=validateMvuSchemaStoryRevisionCompletion(sealMvuSchemaStoryFact({
+          ...(next.schemaVersion===3?{schemaVersion:3 as const,encoding:'native-mvu-schema-story-revision-completion-v3' as const}
+            :{schemaVersion:2 as const,encoding:'native-mvu-schema-story-revision-completion-v2' as const}),sessionId:sid,descriptor:ref,
           events:completedRefs},'completionSha256'))
         await putRevisionFact(mvuSchemaStoryRevisionCompletionKey(sid,ref.sha256),completion)
         const head=owner!.basis.snapshot.currentHead
@@ -1612,7 +1743,11 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         if(!same(read.data.history.snapshot.currentHead,head))fail('SCHEMA_REVISION_PUBLICATION_UNPROVEN')
         publishSchemaRead(read)
       }finally {
-        if(owner) {owner.inSource=false;revisionOwners.delete(sid);driver.invalidateOwner(owner.token)}
+        if(owner) {
+          owner.inSource=false;revisionOwners.delete(sid);revisionScopes.delete(owner.token)
+          driver.invalidateOwner(owner.token)
+          await driver.closeOwner(owner.token)
+        }
       }
     }))
     return true
@@ -1748,7 +1883,7 @@ export function createRoleplayMvuSchemaStoryCore(deps:MvuSchemaStoryCoreDeps) {
         else {
           recovered=all(session).some(entry=>entry.type===deps.markers.dispatchEventType
             &&plan.selectors.some(selector=>selector.batchId===entry.data.batchId))
-          event=recovered?recoverRevision(owner):await executeRevision(owner)
+          event=(recovered?recoverRevision(owner):await executeRevision(owner)) as MvuSchemaStoryRevisionEvent
           await putRevisionFact(eventKey,event)
         }
         if(recovered) {

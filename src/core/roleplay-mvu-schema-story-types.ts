@@ -64,6 +64,10 @@ export interface MvuSchemaPlayerHeadV1 extends Omit<MvuSchemaStoryHeadV2,'schema
   schemaVersion:1
   encoding:'native-mvu-schema-player-head-v1'
 }
+export interface MvuSchemaPlayerRevisionHeadV1 extends Omit<MvuSchemaStoryHeadV2,'schemaVersion'|'encoding'> {
+  schemaVersion:1
+  encoding:'native-mvu-schema-player-revision-head-v1'
+}
 export interface MvuSchemaStoryRevisionHeadV1 extends Omit<MvuSchemaStoryHeadV2,'schemaVersion'|'encoding'> {
   schemaVersion:1
   encoding:'native-mvu-schema-story-revision-head-v1'
@@ -85,7 +89,7 @@ export interface MvuSchemaDerivedHeadV1 {
   valuesSha256:string
 }
 export type MvuSchemaNumericalHead=MvuSchemaOpeningHeadV2|MvuSchemaStoryHeadV2|MvuSchemaPlayerHeadV1
-  |MvuSchemaDerivedHeadV1|MvuSchemaStoryRevisionHead
+  |MvuSchemaDerivedHeadV1|MvuSchemaStoryRevisionHead|MvuSchemaPlayerRevisionHeadV1
 export const isMvuSchemaGenesisHead=(head:MvuSchemaNumericalHead)=>head.encoding==='mvu-schema-opening-head-v2'
   ||head.encoding==='native-mvu-schema-derived-head-v1'
 export interface MvuSchemaStoryFrontier {nativeCut:number;tailSha256:string;frontierSha256:string}
@@ -206,7 +210,14 @@ export interface MvuSchemaStoryRevisionDescriptorV2 {
   sourceSha256:string
   descriptorSha256:string
 }
+export interface MvuSchemaStoryRevisionDescriptorV3 extends Omit<MvuSchemaStoryRevisionDescriptorV2,
+  'schemaVersion'|'encoding'|'originals'> {
+  schemaVersion:3
+  encoding:'native-mvu-schema-story-revision-descriptor-v3'
+  originals:readonly {kind:'story'|'manual';event:SchemaJournalRef}[]
+}
 export type MvuSchemaStoryRevisionDescriptor=MvuSchemaStoryRevisionDescriptorV1|MvuSchemaStoryRevisionDescriptorV2
+  |MvuSchemaStoryRevisionDescriptorV3
 export interface MvuSchemaStoryRevisionCompletionV2 {
   schemaVersion:2
   encoding:'native-mvu-schema-story-revision-completion-v2'
@@ -215,6 +226,12 @@ export interface MvuSchemaStoryRevisionCompletionV2 {
   events:readonly SchemaJournalRef[]
   completionSha256:string
 }
+export interface MvuSchemaStoryRevisionCompletionV3 extends Omit<MvuSchemaStoryRevisionCompletionV2,
+  'schemaVersion'|'encoding'> {
+  schemaVersion:3
+  encoding:'native-mvu-schema-story-revision-completion-v3'
+}
+export type MvuSchemaStoryRevisionCompletion=MvuSchemaStoryRevisionCompletionV2|MvuSchemaStoryRevisionCompletionV3
 export type MvuSchemaStoryPlan=MvuSchemaStoryPlanV2|MvuSchemaStoryPlanV3|MvuSchemaStoryPlanV4|MvuSchemaStoryPlanV5
   |MvuSchemaStoryPlanV6|MvuSchemaStoryRevisionPlan
 export interface MvuSchemaStoryPhaseFact {
@@ -370,7 +387,8 @@ export function validateMvuSchemaStoryHead(input:MvuSchemaNumericalHead):MvuSche
   if(!(head.schemaVersion===2&&(head.encoding==='native-mvu-schema-story-head-v2'
       ||head.encoding==='native-mvu-schema-story-revision-head-v2')
     ||head.schemaVersion===1&&(head.encoding==='native-mvu-schema-player-head-v1'
-      ||head.encoding==='native-mvu-schema-story-revision-head-v1'))||!id(head.sessionId,64)
+       ||head.encoding==='native-mvu-schema-story-revision-head-v1'
+       ||head.encoding==='native-mvu-schema-player-revision-head-v1'))||!id(head.sessionId,64)
     ||!integer(head.revision,2)||![head.sourceSha256,head.eventId,head.eventSha256,head.planSha256,head.valuesSha256].every(hash))fail()
   return head
 }
@@ -839,13 +857,14 @@ export function validateMvuSchemaStoryRevisionBasis(input:MvuSchemaStoryRevision
   if(value.closedRevision!==null)revisionReference(value.closedRevision)
   return value
 }
-function validateRevisionDescriptorV2(value:MvuSchemaStoryRevisionDescriptorV2):MvuSchemaStoryRevisionDescriptorV2 {
+function validateRevisionDescriptorV2<T extends MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3>(value:T):T {
   exact(value,['schemaVersion','encoding','sessionId','edits','basis','originals','previous',
     'completionSeq','publicationRevision','sourceSha256','descriptorSha256'])
   exact(value.basis,['record','nativeCut','historyBasis','closedRevision','prefixSha256','stateSnapshotSha256'])
   revisionReference(value.basis.record)
   fact(value,'descriptorSha256')
-  if(value.schemaVersion!==2||value.encoding!=='native-mvu-schema-story-revision-descriptor-v2'
+  if((value.schemaVersion===2?value.encoding!=='native-mvu-schema-story-revision-descriptor-v2'
+      :value.encoding!=='native-mvu-schema-story-revision-descriptor-v3')
     ||!id(value.sessionId,64)||!Array.isArray(value.edits)||!Array.isArray(value.originals)
     ||!integer(value.basis.nativeCut)||!integer(value.completionSeq)||!integer(value.publicationRevision,2)
     ||![value.basis.prefixSha256,value.basis.stateSnapshotSha256,value.sourceSha256].every(hash))fail()
@@ -856,13 +875,18 @@ function validateRevisionDescriptorV2(value:MvuSchemaStoryRevisionDescriptorV2):
     if(!integer(edit.seq)||!integer(edit.targetSeq)||edit.targetSeq>=edit.seq||!id(edit.messageId)
       ||![edit.sha256,edit.messageVersionSha256,edit.narrativeSha256].every(hash))fail()
   }
-  for(const original of value.originals)revisionReference(original)
+  if(value.schemaVersion===3)for(const original of value.originals) {
+    exact(original,['kind','event'])
+    if(original.kind!=='story'&&original.kind!=='manual')fail()
+    revisionReference(original.event)
+  }
+  else for(const original of value.originals)revisionReference(original)
   if(value.previous!==null)revisionReference(value.previous)
   return value
 }
 const validateRevisionDescriptor=createImmutableDescriptorValidator((input:MvuSchemaStoryRevisionDescriptor)=>{
   const value=freezeMvuSchemaStoryData(input)
-  if(value.schemaVersion===2)return validateRevisionDescriptorV2(value)
+  if(value.schemaVersion===2||value.schemaVersion===3)return validateRevisionDescriptorV2(value)
   exact(value,['schemaVersion','encoding','sessionId','edit','original','previous','baseStateSnapshotSha256',
     'completionSeq','publicationRevision','sourceSha256','descriptorSha256'])
   exact(value.edit,['seq','sha256','targetSeq','messageId','messageVersionSha256','narrativeSha256'])
@@ -880,17 +904,21 @@ const validateRevisionDescriptor=createImmutableDescriptorValidator((input:MvuSc
 })
 export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV1):MvuSchemaStoryRevisionDescriptorV1
 export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV2):MvuSchemaStoryRevisionDescriptorV2
+export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV3):MvuSchemaStoryRevisionDescriptorV3
+export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3)
+  :MvuSchemaStoryRevisionDescriptorV2|MvuSchemaStoryRevisionDescriptorV3
 export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptor):MvuSchemaStoryRevisionDescriptor
 export function validateMvuSchemaStoryRevisionDescriptor(input:MvuSchemaStoryRevisionDescriptor):MvuSchemaStoryRevisionDescriptor {
   return validateRevisionDescriptor(input)
 }
 /** Only descriptor integrity is established here. The publishing owner joins
  * the ordered event refs to its selected originals and complete suffix. */
-export function validateMvuSchemaStoryRevisionCompletion(input:MvuSchemaStoryRevisionCompletionV2):MvuSchemaStoryRevisionCompletionV2 {
+export function validateMvuSchemaStoryRevisionCompletion<T extends MvuSchemaStoryRevisionCompletion>(input:T):T {
   const value=freezeMvuSchemaStoryData(input)
   exact(value,['schemaVersion','encoding','sessionId','descriptor','events','completionSha256'])
   fact(value,'completionSha256')
-  if(value.schemaVersion!==2||value.encoding!=='native-mvu-schema-story-revision-completion-v2'
+  if(!(value.schemaVersion===2&&value.encoding==='native-mvu-schema-story-revision-completion-v2'
+      ||value.schemaVersion===3&&value.encoding==='native-mvu-schema-story-revision-completion-v3')
     ||!id(value.sessionId,64)||!Array.isArray(value.events))fail()
   revisionReference(value.descriptor)
   for(const event of value.events)revisionReference(event)
