@@ -7,7 +7,7 @@ import type {RoleplayInputSourceDescriptorV1} from './roleplay-input-source-data
 import {createRoleplayMvuLineage,validateMvuDerivedSourceProof} from './roleplay-mvu-lineage.js'
 import type {MvuDerivedSourceProof,MvuLineageDeps} from './roleplay-mvu-lineage.js'
 import {inheritanceDataV1,inheritanceExactV1,inheritanceHashV1,inheritanceIdV1,
-  validateTavernSourceInheritanceDescriptorV1,validateNumericalCaptureV1,frozenInheritanceRefV1}
+  validateTavernSourceInheritanceDescriptorV1,frozenInheritanceRefV1}
   from './roleplay-tavern-source-inheritance-data.js'
 import type {TavernSourceInheritanceOwnerV1,TavernSourceInheritanceDescriptorV1,
   TavernSourceNumericalCaptureV1,TavernSourceFrozenRefV1,TavernSourceStaticTransactionV1} from './roleplay-tavern-source-inheritance-types.js'
@@ -143,8 +143,9 @@ export function validateMvuDerivedSourceProofUnion(raw:unknown):MvuDerivedSource
   return value.schemaVersion===2?validateMvuFrozenDerivedSourceProofV2(value)
     :value.schemaVersion===3?validateMvuFrozenDerivedSourceProofV3(value):validateMvuDerivedSourceProof(value)
 }
-const descriptor=(raw:TavernSourceNumericalCaptureV1)=>
-  describeRoleplayInputSourceV1(validateNumericalCaptureV1(raw).inputSource)
+// Source owns numerical capture validation and returns deeply frozen transactions.
+const descriptor=(capture:TavernSourceNumericalCaptureV1)=>
+  describeRoleplayInputSourceV1(capture.inputSource)
 
 export function createRoleplayMvuFrozenLineage(deps:MvuFrozenLineageDeps) {
   const old=createRoleplayMvuLineage(deps)
