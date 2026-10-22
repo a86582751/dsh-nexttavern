@@ -6,9 +6,8 @@ import { registerHooks } from 'node:module'
 import {mkdtempSync,writeFileSync,rmSync} from 'node:fs'
 import {testTempRoot as tmpdir, createTestDirectory,cleanupTestDirectory} from '../lib/operations/test-temp.mjs'
 import {join} from 'node:path'
-import {ownedPackages} from './plugin-owned-packages-fixture.mts'
+import {ownedPackages, mountMaintainedPeer} from './plugin-owned-packages-fixture.mts'
 import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
-import {mountMaintainedPeer} from './native-request-material-fixture.mts'
 
 const closeSchemaPeers=installSchemaTestDependencies()
 process.once('exit',closeSchemaPeers)

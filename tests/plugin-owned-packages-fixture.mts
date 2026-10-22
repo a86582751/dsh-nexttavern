@@ -1,5 +1,6 @@
 /** Small generated-package fixtures sharing the locked host peers; never a Harness install. */
-import {cp, lstat, mkdir, readFile, readdir, symlink} from 'node:fs/promises'
+import assert from 'node:assert/strict'
+import {cp, lstat, mkdir, readFile, readdir, rm, symlink} from 'node:fs/promises'
 import {existsSync} from 'node:fs'
 import {createHash} from 'node:crypto'
 import {createRequire} from 'node:module'
@@ -7,6 +8,10 @@ import {fileURLToPath, pathToFileURL} from 'node:url'
 import path from 'node:path'
 import {createTestDirectory, cleanupTestDirectory} from '../src/operations/test-temp.mts'
 import {copyStorageJsonPackage, type StorageJsonPin} from './roleplay-core-process-storage-fixture.mts'
+
+// Public development sources use the manifest's development/ package layout;
+// maintenance sources retain compat/. Neither layout is a Harness installation.
+const packageRoot = existsSync(new URL('../development/', import.meta.url)) ? '../development/' : '../development/'
 
 export async function ownedPackages(units: readonly string[], extraPeers: readonly string[] = [],
   options: {localSession?: boolean; storageJson?: boolean | 'maintained'; physicalPeers?: readonly string[]} = {}) {
@@ -16,9 +21,6 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
   const peers = fileURLToPath(new URL('../build-tools/node_modules/', import.meta.url))
   const hostRequire = createRequire(new URL('../build-tools/package.json', import.meta.url))
   const physicalPeerPins: {name:string;version:string;packageSha256:string;physical:true}[] = []
-  // Public development sources use the manifest's development/ package layout;
-  // maintenance sources retain compat/. Neither layout is a Harness installation.
-  const packageRoot = existsSync(new URL('../development/', import.meta.url)) ? '../development/' : '../development/'
   try {
     let storageJsonPin: StorageJsonPin | undefined
     await mkdir(modules)
@@ -100,4 +102,19 @@ export async function ownedPackages(units: readonly string[], extraPeers: readon
     cleanupTestDirectory(directory)
     throw error
   }
+}
+
+/** Only a generated package fixture link is replaced. Do not follow/remove its
+ * locked source directory: it is shared with other tests and other conversations. */
+export async function mountMaintainedPeer(
+  packages: Awaited<ReturnType<typeof ownedPackages>>, name: 'agent-loop' | 'llm',
+): Promise<void> {
+  const installed = path.join(packages.directory, 'node_modules', '@deepseek-ai', `dsh-${name}`)
+  const existing = await lstat(installed)
+  assert.ok(existing.isSymbolicLink(), 'only the fixture-owned peer link may be replaced')
+  await rm(installed)
+  await mkdir(installed)
+  const source = fileURLToPath(new URL(`${packageRoot}${name}/`, import.meta.url))
+  await cp(path.join(source, 'package.json'), path.join(installed, 'package.json'))
+  await cp(path.join(source, 'lib'), path.join(installed, 'lib'), {recursive: true})
 }
