@@ -153,6 +153,8 @@ export function canonicalAssistantSeqsOf(session, seqs = surfaceSeqsOf(session),
 /** Restore only archived plot on the selected surface, never edited/deleted alternatives. */
 const selectedStoryCache = new WeakMap();
 const selectedChatCache = new WeakMap();
+const ownedStoryRows = new WeakSet();
+const storySourceKeys = new WeakMap();
 const immutableStoryValues = new WeakSet();
 const storyDataTypes = new Set(['turn/start', 'turn/end', 'user/message', 'assistant/message', 'tool/call', 'compaction/end', 'compaction/summary']);
 function immutableStoryValue(value) {
@@ -214,7 +216,7 @@ function selectedCanonicalHistory(session, includeOpenUsers) {
     const cached = cache.get(session);
     if (generation !== null && cached?.generation === generation && cached.log === log &&
         cached.id === session.id && cached.surfaceKey === surfaceKey)
-        return cached.rows.map(row => ({ ...row }));
+        return cached.rows;
     // Token chunks contribute only immutable type/seq, not their payload. Story
     // evidence payloads must also be deeply immutable, including legacy callers.
     let cacheable = generation !== null && Object.isFrozen(log);
@@ -278,13 +280,23 @@ function selectedCanonicalHistory(session, includeOpenUsers) {
         text: textOf(contentOfEvent(event)),
         time: event.time ?? null,
     }));
+    const snapshot = Object.freeze(rows.map(row => {
+        const owned = Object.freeze(row);
+        ownedStoryRows.add(owned);
+        return owned;
+    }));
     if (cacheable && generation !== null)
         cache.set(session, {
-            log, id: session.id, surfaceKey, generation, rows: rows.map(row => ({ ...row })),
+            log, id: session.id, surfaceKey, generation, rows: snapshot,
         });
-    return rows;
+    return snapshot;
 }
 export function selectedStoryHistory(session) {
+    return selectedStoryHistorySnapshot(session).map(row => ({ ...row }));
+}
+/** The history owner retains this immutable view until its actual log,
+ * selection or projection changes. Export readers can reuse its text index. */
+export function selectedStoryHistorySnapshot(session) {
     return selectedCanonicalHistory(session, false);
 }
 /** Full logical selected chat: canonical completed prose plus still selected
@@ -292,11 +304,11 @@ export function selectedStoryHistory(session) {
  * events; tool commentary, management and alternative/deleted replies remain
  * governed by the same owner policy used for the original story history. */
 export function selectedCanonicalChatHistory(session) {
-    return selectedCanonicalHistory(session, true);
+    return selectedCanonicalHistory(session, true).map(row => ({ ...row }));
 }
 function queryHistoryRows(session, scope) {
     if (scope === 'story' || scope === undefined)
-        return selectedStoryHistory(session);
+        return selectedStoryHistorySnapshot(session);
     if (scope !== 'tools')
         throw new Error('历史查询范围无效');
     const log = eventsOf(session);
@@ -359,7 +371,17 @@ export function readStoryHistory(session, { seq, offset = 0, maxChars = 12000, s
         nextOffset: end < entry.text.length ? end : null };
 }
 export function historySourceKeys(entries) {
-    return entries.map((entry) => `${entry.seq}:${createHash('sha256').update(`${entry.role}\n${entry.text}`).digest('hex')}`);
+    return entries.map(entry => {
+        const cached = storySourceKeys.get(entry);
+        if (cached !== undefined)
+            return cached;
+        const key = `${entry.seq}:${createHash('sha256').update(`${entry.role}\n${entry.text}`).digest('hex')}`;
+        // Only rows created and frozen by this history owner can retain a key.
+        // Public mutable entries continue to reflect their current text and role.
+        if (ownedStoryRows.has(entry))
+            storySourceKeys.set(entry, key);
+        return key;
+    });
 }
 export function storyCadenceSlots(entries) {
     const anchors = new Map();
@@ -388,7 +410,7 @@ export function legacyCadenceSlots(entries, record) {
 }
 /** Count canonical story slots, not physical agent turns or regenerated versions. */
 export function memoryNotesCadence(session, record, everyTurns = 3) {
-    const entries = selectedStoryHistory(session);
+    const entries = selectedStoryHistorySnapshot(session);
     const notes = directorNotesForBranch(record, session, entries);
     const slots = storyCadenceSlots(entries);
     const storedSlots = record?.notesCadence?.schemaVersion === 1 && Array.isArray(record.notesCadence.slots)
@@ -409,7 +431,7 @@ export function memoryNotesCadence(session, record, everyTurns = 3) {
         validCoveredTurns, rebuildRequired, due: pendingTurns >= interval };
 }
 /** Exact content provenance rejects stale notes after edits or sibling switches. */
-export function directorNotesForBranch(value, session, entries = selectedStoryHistory(session)) {
+export function directorNotesForBranch(value, session, entries = selectedStoryHistorySnapshot(session)) {
     const object = (input) => input !== null && typeof input === 'object';
     const record = object(value) ? value : {};
     const actual = historySourceKeys(entries);

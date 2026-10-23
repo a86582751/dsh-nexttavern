@@ -352,6 +352,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
             }
         }
         const internal = internalTaskSeqs(session), visible = [...(session.surface?.nodes ?? [])], groups = [];
+        const visibleResults = new Map();
         let group = [];
         const flush = () => {
             if (group.length)
@@ -360,6 +361,14 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
         };
         for (const seq of visible) {
             const e = lookup.get(seq), source = e.type === 'user/message' ? e.data?.source : undefined, owner = owners.get(seq);
+            const callId = e.type === 'tool/result' ? e.data?.message?.source?.callId : undefined;
+            if (typeof callId === 'string') {
+                const results = visibleResults.get(callId);
+                if (results)
+                    results.push(seq);
+                else
+                    visibleResults.set(callId, [seq]);
+            }
             if (owner === undefined || owner >= currentTurn || !ended.has(owner)
                 || group.length && owners.get(group[0]) !== owner) {
                 flush();
@@ -489,10 +498,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }) {
             // A stopped attempt can have no result. It is safe to retire the call only
             // when no still-visible result elsewhere would become orphaned.
             const selectedSet = new Set(selected);
-            if (visible.some(seq => {
-                const e = lookup.get(seq);
-                return !selectedSet.has(seq) && e?.type === 'tool/result' && calls.has(e.data?.message?.source?.callId ?? '');
-            }))
+            if ([...calls].some(callId => visibleResults.get(callId)?.some(seq => !selectedSet.has(seq))))
                 continue;
             const details = [...attempts.values()], recover = details.filter(a => a.state === 'failed'), stale = details.some(a => a.state === 'stale'), sourceTurn = owners.get(selected[0]);
             const text = `先前维护尝试已结束或被新尝试替代，完整参数、输出与错误记录保留在历史 seq ${selected[0]}–${selected.at(-1)}。成功结果采用最新状态及笔记；失败、取消或过期不是剧情事实。任务概况：${JSON.stringify(details.slice(0, 8).map(({ id, kind, state, failure }) => ({

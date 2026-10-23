@@ -7,6 +7,7 @@ import {ownedPackages, mountMaintainedPeer} from './plugin-owned-packages-fixtur
 import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixture.mts'
 import { apply, directorNotesForBranch, durableCompactionArchives, filterMemoryRecordForBranch, queryStoryHistory, readStoryHistory, selectedStoryHistory, memoryNotesCadence } from '../lib/memory/roleplay-memory-engine.js'
 import { legacyCadenceSlots, storyCadenceSlots } from '../lib/memory/roleplay-memory-engine.js'
+import {selectedStoryHistorySnapshot,historySourceKeys} from '../lib/memory/memory-history.js'
 const closeSchemaPeers=installSchemaTestDependencies()
 const packages=await ownedPackages(['session-format'],[],{localSession:true})
 await mountMaintainedPeer(packages,'llm')
@@ -131,12 +132,23 @@ const text = (value) => [{ type: 'text', text: value }]
  session.events=Object.freeze(session.events.map(event=>Object.freeze({...event,get type(){scans++;return event.type}})))
  const first=selectedStoryHistory(session)
  assert.ok(first.length>0)
+ const snapshot=selectedStoryHistorySnapshot(session)
+ assert.strictEqual(selectedStoryHistorySnapshot(session),snapshot,'unchanged owner view retains its immutable snapshot')
+ assert.throws(()=>{snapshot[0].text='cannot mutate owned story'},TypeError)
+ const sourceKeys=historySourceKeys(snapshot),expectedKeys=snapshot.map(row=>`${row.seq}:${createHash('sha256').update(`${row.role}\n${row.text}`).digest('hex')}`)
+ assert.deepEqual(sourceKeys,expectedKeys,'owned source keys retain their original role/newline/text SHA encoding')
+ sourceKeys[0]='caller key edit'
+ assert.deepEqual(historySourceKeys(snapshot),expectedKeys,'the returned key array remains independent of owned source facts')
+ const mutableEntries=snapshot.map(row=>({...row})),mutableKeys=historySourceKeys(mutableEntries)
+ mutableEntries[0].text+=' current caller text'
+ assert.notEqual(historySourceKeys(mutableEntries)[0],mutableKeys[0],'arbitrary public mutable entries are hashed from current content')
  scans=0
  const repeat=selectedStoryHistory(session)
  assert.equal(scans,0,'same immutable log and selected surface must reuse validated story projection')
  repeat[0].text='caller mutation'
  assert.deepEqual(selectedStoryHistory(session),first,'callers cannot corrupt cached story evidence')
  session.surface.nodes=session.surface.nodes.filter(seq=>seq!==first[0].seq)
+ assert.notStrictEqual(selectedStoryHistorySnapshot(session),snapshot,'selection changes publish a new story snapshot')
  assert.ok(!selectedStoryHistory(session).some(e=>e.seq===first[0].seq),'surface replacement invalidates cache')
  const previousScans=scans
  session.events=Object.freeze([...session.events,{seq:session.events.length,type:'checkpoint',data:{}}])
@@ -147,8 +159,10 @@ const text = (value) => [{ type: 'text', text: value }]
  const mutable=makeSession('shallow-frozen-history',completedStoryEvents(),[1,2,3,6,7])
  mutable.events=Object.freeze(mutable.events.map(event=>Object.freeze({...event})))
  const old=selectedStoryHistory(mutable).find(e=>e.role==='assistant')
+ const oldKey=historySourceKeys(selectedStoryHistorySnapshot(mutable)).find(key=>key.startsWith(`${old.seq}:`))
  mutable.events[old.seq].data.message.content[0].text='edited nested evidence'
  assert.equal(selectedStoryHistory(mutable).find(e=>e.seq===old.seq).text,'edited nested evidence','shallow frozen arrays do not authorize caching mutable evidence')
+ assert.notEqual(historySourceKeys(selectedStoryHistorySnapshot(mutable)).find(key=>key.startsWith(`${old.seq}:`)),oldKey,'same-seq mutable edits still replace the source key')
 }
 {
  const session=makeSession('checkpoint-selected',completedStoryEvents(),[1,2,3,6,7])

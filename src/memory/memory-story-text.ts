@@ -1,10 +1,44 @@
-import { selectedStoryHistory, importManagementInputs, type StorySession, type StoryRow, type StoryEvent, type StoryBlock } from './memory-history.js'
+import {createHash} from 'node:crypto'
+import { selectedStoryHistorySnapshot, importManagementInputs, type StorySession, type StoryRow, type StoryEvent, type StoryBlock } from './memory-history.js'
 import { projectStoryEvent } from '../core/roleplay-message-view.js'
 import {sessionEvents} from '../core/session-history.js'
 
 export interface SourceSpan { start: number; end: number }
 export interface CleanStoryText { text: string; spans: SourceSpan[]; unresolved: boolean }
 export type RetrievalRow = StoryRow & { rawText: string; spans: SourceSpan[]; unresolved: boolean }
+export type RetrievalReadRow = Readonly<Omit<RetrievalRow, 'spans'>> & {readonly spans: readonly Readonly<SourceSpan>[]}
+
+const retrievalSnapshots = new WeakMap<StorySession, {
+  events: readonly StoryEvent[]; history: readonly Readonly<StoryRow>[]; id: string; rows: readonly RetrievalReadRow[]
+}>()
+const ownedRetrievalRows = new WeakSet<RetrievalReadRow>()
+const ownedRetrievalSnapshots = new WeakSet<readonly RetrievalReadRow[]>()
+const rowHashes = new WeakMap<RetrievalReadRow, string>()
+const rowLowerText = new WeakMap<RetrievalReadRow, string>()
+const sourceFingerprints = new WeakMap<readonly RetrievalReadRow[], string>()
+const hash = (text: string) => createHash('sha256').update(text).digest('hex')
+
+export function retrievalRowHash(row: RetrievalReadRow): string {
+  const cached = rowHashes.get(row)
+  if (cached !== undefined) return cached
+  const value = hash(row.text)
+  if (ownedRetrievalRows.has(row)) rowHashes.set(row, value)
+  return value
+}
+export function retrievalSourceFingerprint(rows: readonly RetrievalReadRow[]): string {
+  const cached = sourceFingerprints.get(rows)
+  if (cached !== undefined) return cached
+  const value = hash(JSON.stringify(rows.map(row => [row.id, row.text])))
+  if (ownedRetrievalSnapshots.has(rows)) sourceFingerprints.set(rows, value)
+  return value
+}
+function lowerText(row: RetrievalReadRow): string {
+  const cached = rowLowerText.get(row)
+  if (cached !== undefined) return cached
+  const value = row.text.toLocaleLowerCase()
+  if (ownedRetrievalRows.has(row)) rowLowerText.set(row, value)
+  return value
+}
 
 interface RetrievalOptions { query?: unknown; beforeSeq?: unknown; limit?: unknown; maxChars?: unknown }
 interface ReadOptions { seq?: unknown; offset?: unknown; maxChars?: unknown }
@@ -13,11 +47,6 @@ const knownContainers = /^(?:status|state|details|decision|rp-status|rp-state|rp
 const closing = /^(\/)?\s*([a-z][\w:-]*)/i
 const voidTag = /^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i
 const inlineTag = /^(?:p|div|section|article|li|blockquote|h[1-6]|pre)$/i
-
-function eventFor(session: StorySession, seq: number): StoryEvent | null {
-  const events = sessionEvents(session)
-  return events.find(event => Number(event?.seq) === seq) ?? null
-}
 
 function blockType(block: StoryBlock): string { return typeof block?.type === 'string' ? block.type.toLowerCase() : '' }
 function blockText(block: StoryBlock): string { return typeof block?.text === 'string' ? block.text : '' }
@@ -59,6 +88,7 @@ function emit(out: string[], spans: SourceSpan[], value: string, start: number, 
 export function cleanStoryText(text: string): CleanStoryText {
   const source = String(text ?? ''), out: string[] = [], spans: SourceSpan[] = []
   let unresolved = false, i = 0, suppressed = 0
+  let fence = source.indexOf('```')
   const stack: string[] = []
   while (i < source.length) {
     if (source.startsWith('```', i) && (i === 0 || source[i - 1] === '\n')) {
@@ -74,6 +104,11 @@ export function cleanStoryText(text: string): CleanStoryText {
           continue
         }
       }
+      // Ordinary code fences are story text. Consume their marker so the next
+      // text interval cannot rediscover the same fence without advancing.
+      if (suppressed === 0) emit(out, spans, '```', i, i + 3)
+      i += 3
+      continue
     }
     if (source[i] === '<') {
       const end = source.indexOf('>', i + 1)
@@ -108,7 +143,9 @@ export function cleanStoryText(text: string): CleanStoryText {
       }
       i = end + 1; continue
     }
-    const next = source.indexOf('<', i), fence = source.indexOf('```', i), nextFence = fence >= 0 && (fence === 0 || source[fence - 1] === '\n') ? fence : -1
+    // Reuse both the next position and a failed search while consuming tags.
+    if (fence >= 0 && fence < i) fence = source.indexOf('```', i)
+    const next = source.indexOf('<', i), nextFence = fence >= 0 && (fence === 0 || source[fence - 1] === '\n') ? fence : -1
     const candidates = [next, nextFence].filter(value => value >= 0), end = candidates.length ? Math.min(...candidates) : source.length
     if (suppressed === 0) emit(out, spans, source.slice(i, end), i, end)
     i = end
@@ -117,9 +154,17 @@ export function cleanStoryText(text: string): CleanStoryText {
 }
 
 export function selectedRetrievalRows(session: StorySession): RetrievalRow[] {
-  const events = sessionEvents(session)
+  return selectedRetrievalRowsSnapshot(session).map(row => ({...row, spans: row.spans.map(span => ({...span}))}))
+}
+
+/** The story owner checks the actual log/selection/projection (including its
+ * live getter) before this derived view can reuse cleaned text and offsets. */
+export function selectedRetrievalRowsSnapshot(session: StorySession): readonly RetrievalReadRow[] {
+  const history = selectedStoryHistorySnapshot(session), events = sessionEvents(session)
+  const cached = retrievalSnapshots.get(session)
+  if (cached?.history === history && cached.events === events && cached.id === session.id) return cached.rows
   const bySeq = new Map(events.map(event => [Number(event?.seq), event]))
-  const selected = selectedStoryHistory(session).flatMap(row => {
+  const selected = history.flatMap(row => {
     const source = rawTextFor(session, row, bySeq.get(row.seq) ?? null)
     if (!source.raw) return []
     const cleaned = cleanStoryText(source.raw)
@@ -140,15 +185,28 @@ export function selectedRetrievalRows(session: StorySession): RetrievalRow[] {
       const cleaned = cleanStoryText(source.raw); if (!cleaned.text) return []
       return [{ ...row, text: cleaned.text, rawText: source.raw, spans: cleaned.spans, unresolved: source.unresolved || cleaned.unresolved }]
     })
-  for (const row of extra) {
-    const at = visibleIndex.get(row.seq)!
-    const index = selected.findIndex(existing => (visibleIndex.get(existing.seq) ?? Number.POSITIVE_INFINITY) > at)
-    if (index < 0) selected.push(row); else selected.splice(index, 0, row)
+  extra.sort((left, right) => visibleIndex.get(left.seq)! - visibleIndex.get(right.seq)!)
+  const merged: RetrievalRow[] = []
+  let cursor = 0
+  // Keep the selected story's logical order, including expanded compacted rows
+  // absent from the surface. Each extra still precedes its first greater rank.
+  for (const row of selected) {
+    const at = visibleIndex.get(row.seq) ?? Number.POSITIVE_INFINITY
+    while (cursor < extra.length && visibleIndex.get(extra[cursor]!.seq)! < at) merged.push(extra[cursor++]!)
+    merged.push(row)
   }
-  return selected
+  while (cursor < extra.length) merged.push(extra[cursor++]!)
+  const rows = Object.freeze(merged.map(row => {
+    const owned = Object.freeze({...row, spans: Object.freeze(row.spans.map(span => Object.freeze(span)))})
+    ownedRetrievalRows.add(owned)
+    return owned
+  }))
+  ownedRetrievalSnapshots.add(rows)
+  retrievalSnapshots.set(session, {events, history, id: session.id, rows})
+  return rows
 }
 
-export function projectedSourceOffset(row: Pick<RetrievalRow, 'spans'>, index: number): number {
+export function projectedSourceOffset(row: Pick<RetrievalReadRow, 'spans'>, index: number): number {
   let cursor = 0
   for (const span of row.spans) {
     const length = span.end - span.start
@@ -161,22 +219,22 @@ export function projectedSourceOffset(row: Pick<RetrievalRow, 'spans'>, index: n
 function bounds(value: unknown, fallback: number, max: number) {
   const n = Number(value); return Number.isFinite(n) ? Math.max(1, Math.min(max, Math.floor(n))) : fallback
 }
-function sourceOffset(row: Pick<RetrievalRow, 'spans'>, index: number) { return projectedSourceOffset(row, index) }
+function sourceOffset(row: Pick<RetrievalReadRow, 'spans'>, index: number) { return projectedSourceOffset(row, index) }
 
-function publicRow(row: RetrievalRow, text: string, spans: SourceSpan[], textOffset: number, truncated: boolean | undefined = undefined) {
+function publicRow(row: RetrievalReadRow, text: string, spans: readonly Readonly<SourceSpan>[], textOffset: number, truncated: boolean | undefined = undefined) {
   return { id: row.id, seq: row.seq, turn: row.turn, role: row.role, messageId: row.messageId, text, time: row.time, textOffset, ...(truncated === undefined ? {} : {truncated}) }
 }
 
-export function queryRetrievalRows(rows: readonly RetrievalRow[], sessionId: string, options: RetrievalOptions = {}) {
+export function queryRetrievalRows(rows: readonly RetrievalReadRow[], sessionId: string, options: RetrievalOptions = {}) {
   const limit = bounds(options.limit, 12, 100), budget = Math.max(256, Math.min(60000, Number(options.maxChars) || 12000))
   const before = Number.isSafeInteger(options.beforeSeq) ? Number(options.beforeSeq) : null
   const end = before === null ? rows.length : rows.findIndex(row => row.seq === before)
   if (end < 0) throw new Error('历史游标不属于当前选中分支')
   const terms = String(options.query ?? '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
-  const candidates = rows.slice(0, end).filter(row => terms.every(term => row.text.toLocaleLowerCase().includes(term)))
+  const candidates = rows.slice(0, end).filter(row => terms.every(term => lowerText(row).includes(term)))
   const found: Array<ReturnType<typeof publicRow>> = []; let used = 0
   for (let n = candidates.length - 1; n >= 0 && found.length < limit && used < budget; n -= 1) {
-    const row = candidates[n]!, first = terms.length ? Math.max(0, row.text.toLocaleLowerCase().indexOf(terms[0]!) - 240) : 0
+    const row = candidates[n]!, first = terms.length ? Math.max(0, lowerText(row).indexOf(terms[0]!) - 240) : 0
     const count = Math.min(row.text.length - first, budget - used), last = first + count
     const item = publicRow(row, row.text.slice(first, last), row.spans, sourceOffset(row, first), first > 0 || last < row.text.length)
     found.push(item); used += count
@@ -186,7 +244,7 @@ export function queryRetrievalRows(rows: readonly RetrievalRow[], sessionId: str
     nextBeforeSeq: candidates.length > found.length ? found[0]?.seq ?? null : null }
 }
 
-export function readRetrievalRows(rows: readonly RetrievalRow[], options: ReadOptions = {}) {
+export function readRetrievalRows(rows: readonly RetrievalReadRow[], options: ReadOptions = {}) {
   const seq = Number.isSafeInteger(options.seq) ? Number(options.seq) : null, row = rows.find(item => item.seq === seq)
   if (!row) throw new Error('历史条目不属于当前选中分支')
   const offset = Number.isSafeInteger(options.offset) ? Math.max(0, Number(options.offset)) : 0, budget = bounds(options.maxChars, 12000, 60000)

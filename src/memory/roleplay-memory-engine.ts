@@ -26,7 +26,7 @@ import { createDirectorNotesWriter, type NotesEngine, type NotesSettings, type N
 import { createMemoryScheduler } from './memory-scheduler.js'
 import { createMemorySummarizer, type NativeSummaryTask } from './memory-summary.js'
 import { queryMemoryAgreements } from './memory-agreements.js'
-import { surfaceSeqsOf, isCompletedTurnEnd, selectedStoryHistory, queryStoryHistory, readStoryHistory, historySourceKeys, legacyCadenceSlots, memoryNotesCadence, directorNotesForBranch, type NotesRecord } from './memory-history.js'
+import { surfaceSeqsOf, isCompletedTurnEnd, selectedStoryHistory, selectedStoryHistorySnapshot, queryStoryHistory, readStoryHistory, historySourceKeys, legacyCadenceSlots, memoryNotesCadence, directorNotesForBranch, type NotesRecord } from './memory-history.js'
 export { selectedStoryHistory, queryStoryHistory, readStoryHistory, storyCadenceSlots, legacyCadenceSlots, memoryNotesCadence, directorNotesForBranch } from './memory-history.js'
 import { lastSeqOf, textOf, branchScope, provenanceSeqOf, belongsToBranch, filterMemoryRecordForBranch as typedFilterMemoryRecordForBranch, type MemoryRecordProjection } from './memory-provenance.js'
 
@@ -236,7 +236,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
         try { await wait(active) } catch (error) { if (signal?.aborted) throw error }
       }
       const covered = () => {
-        const entries = selectedStoryHistory(session)
+        const entries = selectedStoryHistorySnapshot(session)
         const notes = directorNotesForBranch(getEngine()?.memoryHead?.(session.id), session, entries)
         return { entries, notes, complete: entries.length === (notes?.sourceKeys.length ?? 0) }
       }
@@ -272,14 +272,17 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
     storyEvidence(session: MemorySession | null | undefined) {
       return session && isRoleplaySession(session) ? selectedStoryHistory(session) : []
     },
+    storyEvidenceSnapshot(session: MemorySession | null | undefined) {
+      return session && isRoleplaySession(session) ? selectedStoryHistorySnapshot(session) : []
+    },
     legacyCadenceSlotsFor(session: MemorySession | null | undefined, record?: NotesRecord | null) {
-      return session && isRoleplaySession(session) ? legacyCadenceSlots(selectedStoryHistory(session), record) : []
+      return session && isRoleplaySession(session) ? legacyCadenceSlots(selectedStoryHistorySnapshot(session), record) : []
     },
     memoryProjection(session: MemorySession | null | undefined) {
       if (!session || !isRoleplaySession(session)) return null
       const projected = memoryForSession(session)
       if (!projected) return null
-      const history = selectedStoryHistory(session)
+      const history = selectedStoryHistorySnapshot(session)
       const live = new Set([...surfaceSeqsOf(session), ...history.map(entry => entry.seq)])
       const scoped = (items: readonly Record<string, unknown>[]) => (Array.isArray(items) ? items : []).filter(item => {
         const seq = provenanceSeqOf(item)
@@ -307,7 +310,7 @@ export async function apply(ctx: MemoryContext, config: MemoryConfig = {}): Prom
         await compact(session, agent, signal, undefined, { manual: false })
       }
       if (cfg.autoNotes !== false) scheduleNotes(agent)
-      const entries = selectedStoryHistory(session)
+      const entries = selectedStoryHistorySnapshot(session)
       const notes = directorNotesForBranch(getEngine()?.memoryHead?.(session.id), session, entries)
       return { schemaVersion: 1, branchId: session.id, generationId: randomUUID(),
         sourceSeqs: entries.map(entry => entry.seq), status: 'ready',

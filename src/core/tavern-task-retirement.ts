@@ -362,6 +362,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             }
         }
         const internal = internalTaskSeqs(session), visible = [...(session.surface?.nodes ?? [])], groups: number[][] = [];
+        const visibleResults = new Map<string, number[]>();
         let group: number[] = [];
         const flush = () => {
             if (group.length)
@@ -370,6 +371,12 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
         };
         for (const seq of visible) {
             const e = lookup.get(seq)!, source = e.type === 'user/message' ? e.data?.source : undefined, owner = owners.get(seq);
+            const callId = e.type === 'tool/result' ? e.data?.message?.source?.callId : undefined;
+            if (typeof callId === 'string') {
+                const results = visibleResults.get(callId);
+                if (results) results.push(seq);
+                else visibleResults.set(callId, [seq]);
+            }
             if (owner === undefined || owner >= currentTurn || !ended.has(owner)
                 || group.length && owners.get(group[0]!) !== owner) {
                 flush();
@@ -506,10 +513,7 @@ export function createTaskRetirement({ internalTaskSeqs, inlineTaskEnvelope }: {
             // A stopped attempt can have no result. It is safe to retire the call only
             // when no still-visible result elsewhere would become orphaned.
             const selectedSet = new Set(selected);
-            if (visible.some(seq => {
-                const e = lookup.get(seq);
-                return !selectedSet.has(seq) && e?.type === 'tool/result' && calls.has(e.data?.message?.source?.callId ?? '');
-            }))
+            if ([...calls].some(callId => visibleResults.get(callId)?.some(seq => !selectedSet.has(seq))))
                 continue;
             const details = [...attempts.values()],
                  recover = details.filter(a => a.state === 'failed'),

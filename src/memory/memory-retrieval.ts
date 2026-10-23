@@ -6,12 +6,14 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    selectedRetrievalRows,
+    selectedRetrievalRowsSnapshot,
+    retrievalSourceFingerprint,
+    retrievalRowHash,
     queryRetrievalRows,
     readRetrievalRows,
     projectedSourceOffset,
 } from './memory-story-text.js';
-import type { RetrievalRow } from './memory-story-text.js';
+import type { RetrievalReadRow } from './memory-story-text.js';
 import type { StorySession, StoryEvent } from './memory-history.js';
 import { LOCAL_MODELS, localTokenBudget } from './memory-local-catalog.js';
 import { boundedJSON } from './memory-embedding-api.js';
@@ -426,8 +428,8 @@ export function createMemoryRetrieval(deps: Dependencies) {
             });
         });
     }
-    const vectorSources = (session: Session, rows: RetrievalRow[]): VectorSource[] => eligible(session) ? rows.filter(r => !r.unresolved).map(row => ({
-        id: row.id, sessionId: session.id, seq: row.seq, role: row.role, text: row.text, hash: hash(row.text)
+    const vectorSources = (session: Session, rows: readonly RetrievalReadRow[]): VectorSource[] => eligible(session) ? rows.filter(r => !r.unresolved).map(row => ({
+        id: row.id, sessionId: session.id, seq: row.seq, role: row.role, text: row.text, hash: retrievalRowHash(row)
     })) : [];
     async function configure(session: Session) {
         await ensureSessionHistory(session);
@@ -464,7 +466,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         if (!sessionEnabled(cfg, session) || !cfg.activeProviderId)
             return;
         await configure(session);
-        const rows = selectedRetrievalRows(session);
+        const rows = selectedRetrievalRowsSnapshot(session);
         await request({
             action: 'sync', workspace: ws, legacyWorkspace: pathWorkspace(session), sources: vectorSources(session, rows)
         }, 30000);
@@ -566,7 +568,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
                 action: 'status',
                 workspace: ws,
                 legacyWorkspace: pathWorkspace(session),
-                sources: vectorSources(session, selectedRetrievalRows(session))
+                sources: vectorSources(session, selectedRetrievalRowsSnapshot(session))
             }) as typeof status;
         }
         return {
@@ -627,7 +629,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         if (worker && configured.get(ws) === generation) {
             try {
                 const reply = await request({
-                    action: 'status', workspace: ws, sources: vectorSources(session, selectedRetrievalRows(session))
+                    action: 'status', workspace: ws, sources: vectorSources(session, selectedRetrievalRowsSnapshot(session))
                 }, 3000) as {
                     progress: Record<string, unknown>;
                 };
@@ -1005,7 +1007,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
             throw Error('剧情检索只允许玩家输入和有效正文');
         if (!eligible(session) || !deps.active(session))
             throw Error('当前世界线已失效');
-        const rows = selectedRetrievalRows(session), cfg = settings(), mode = modeFor(session, cfg);
+        const rows = selectedRetrievalRowsSnapshot(session), cfg = settings(), mode = modeFor(session, cfg);
         const keyword = queryRetrievalRows(rows, session.id, options), started = Date.now();
         const p = cfg.providers.find(p => p.id === cfg.activeProviderId);
         if (mode === 'keyword' || !String(options.query ?? '').trim())
@@ -1016,7 +1018,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
             return {
                 ...keyword, mode: 'keyword', requestedMode: mode, fallback: '向量来源未就绪'
             };
-        const fingerprint = hash(JSON.stringify(rows.map(r => [r.id, r.text])));
+        const fingerprint = retrievalSourceFingerprint(rows);
         try {
             await configure(session);
             const before = Number.isSafeInteger(options.beforeSeq) ? rows.findIndex(r => r.seq === options.beforeSeq) : rows.length;
@@ -1037,7 +1039,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
                 offset: number;
             }[];
             if (!deps.active(session)
-                || fingerprint !== hash(JSON.stringify(selectedRetrievalRows(session).map(r => [r.id, r.text])))
+                || fingerprint !== retrievalSourceFingerprint(selectedRetrievalRowsSnapshot(session))
                 || settings().activeProviderId !== p.id
                 || settings().providers.find(x => x.id === p.id)?.revision !== p.revision
                 || settings().chunkChars !== cfg.chunkChars)
@@ -1133,7 +1135,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
         }
         catch (error) {
             if (!deps.active(session)
-                || fingerprint !== hash(JSON.stringify(selectedRetrievalRows(session).map(r => [r.id, r.text]))))
+                || fingerprint !== retrievalSourceFingerprint(selectedRetrievalRowsSnapshot(session)))
                 throw Error('查询期间来源已变化，请重新查询');
             if (/来源已变化|世界线/.test(String((error as Error).message)))
                 throw error;
@@ -1150,7 +1152,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
                 model: p.name + ' · ' + p.model,
                 reason: String((error as Error).message),
                 key: `${workspace(session)}:${cfg.revision}`,
-                valid: () => thisIsCurrent() && fingerprint === hash(JSON.stringify(selectedRetrievalRows(session).map(r => [r.id, r.text]))),
+                valid: () => thisIsCurrent() && fingerprint === retrievalSourceFingerprint(selectedRetrievalRowsSnapshot(session)),
                 confirm: () => mutate(session, {
                     action: 'rebuild-index', expectedRevision: cfg.revision, confirmProviderId: p.id
                 })
@@ -1173,7 +1175,7 @@ export function createMemoryRetrieval(deps: Dependencies) {
             throw Error('当前世界线已失效');
         if (options.scope && options.scope !== 'story')
             throw Error('只允许正文回读');
-        return readRetrievalRows(selectedRetrievalRows(session), options);
+        return readRetrievalRows(selectedRetrievalRowsSnapshot(session), options);
     }
     /** A separate workspace namespace keeps novel research out of story sources, scans and clear/rebuild operations. */
     async function adaptation(

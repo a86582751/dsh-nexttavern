@@ -1,6 +1,6 @@
 // Generated from runtime/alpha3/src/memory/memory-notes-writer.ts; edit the TypeScript source.
 import { randomUUID } from 'node:crypto';
-import { selectedStoryHistory, directorNotesForBranch, historySourceKeys, storyCadenceSlots } from './memory-history.js';
+import { selectedStoryHistorySnapshot, directorNotesForBranch, historySourceKeys, storyCadenceSlots } from './memory-history.js';
 import { scopedLedgerItems } from './memory-provenance.js';
 export function createDirectorNotesWriter(options) {
     const { config: cfg, getEngine, branchSettings, assertBranchActive, isRoleplaySession, inspectCompactionState, summarizeDetailed } = options;
@@ -44,7 +44,7 @@ export function createDirectorNotesWriter(options) {
             signal?.throwIfAborted?.();
             if (!automatic && inspectCompactionState(session).openTurn !== null)
                 throw new Error('导演笔记整理只能在 agent 空闲时执行');
-            const entries = selectedStoryHistory(session);
+            const entries = selectedStoryHistorySnapshot(session);
             assertBranchActive(session);
             if (entries.length === 0)
                 return { kind: 'notes', changed: false, entries: 0, reason: 'no-completed-story' };
@@ -111,7 +111,7 @@ export function createDirectorNotesWriter(options) {
                     assertBranchActive(session);
                     if ((notesGeneration.get(session.id) ?? 0) !== generation)
                         throw new Error('导演笔记已由用户修改，后台结果未覆盖用户编辑');
-                    const currentKeys = historySourceKeys(selectedStoryHistory(session));
+                    const currentKeys = historySourceKeys(selectedStoryHistorySnapshot(session));
                     if (originalKeys.some((key, index) => currentKeys[index] !== key))
                         throw new Error('整理期间当前分支剧情已变更；未保存过期笔记');
                     const head = engine.memoryHead?.(session.id) ?? {};
@@ -151,7 +151,7 @@ export function createDirectorNotesWriter(options) {
     async function saveDirectorNotes(session, text) {
         if (!session || !isRoleplaySession(session))
             throw new Error('当前会话不是角色扮演会话');
-        const entries = selectedStoryHistory(session);
+        const entries = selectedStoryHistorySnapshot(session);
         notesGeneration.set(session.id, (notesGeneration.get(session.id) ?? 0) + 1);
         await writeNotes(session.id, () => getEngine().memoryUpdate(session.id, { directorNotes: {
                 schemaVersion: 1, generationId: randomUUID(), branchId: session.id,

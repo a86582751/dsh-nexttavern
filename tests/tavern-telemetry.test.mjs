@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { foldSessionCalls, aggregateUsage, createTelemetry, timeRange, queryUsageRequests } from '../lib/core/tavern-telemetry.js'
+import {createRoleplayInputStateOwner} from '../lib/core/roleplay-input-state.js'
 class Table extends Map { async put(k,v){this.set(k,structuredClone(v))} }
 class IdentityTable extends Map {
   constructor(){super();this.durable=new Map()}
@@ -7,6 +8,95 @@ class IdentityTable extends Map {
 }
 const event=(seq,type,data,time=1000+seq*100)=>({seq,type,data,time})
 const usage={inputTokens:100,outputTokens:20,cacheReadTokens:900,cacheWriteTokens:0}
+{
+ const sessions=new Map(['inventory-a','inventory-b'].map(id=>[id,{id,header:{id,agentPreset:'roleplay'},events:[]}]))
+ const owner=createRoleplayInputStateOwner({domainName:'roleplay',session:id=>sessions.get(id),agent:()=>undefined,active:()=>true})
+ const rows=new Map(),table={get:key=>rows.get(key),entries:()=>rows.entries(),async put(key,value){
+  rows.set(key,structuredClone(value));owner.domainChanged({domain:'roleplay',table:'branch',key,operation:'put',value:rows.get(key)})
+ }}
+ const tracked=owner.table('branch',table),prefixes=['tavern_job__','tavern_cardjob__','tavern_novel__']
+ const read=()=>[...tracked.entries(prefixes)].filter(([key])=>prefixes.some(prefix=>key.startsWith(prefix))).map(([,value])=>value)
+ const api=createTelemetry({table:tracked,sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]},
+  jobs:id=>id?owner.captureHistoricalFacts(id,'telemetry-job-inventory',read).data:read(),
+  streamRows:(id,read)=>owner.captureHistoricalFacts(id,'telemetry-stream-inventory',read).data})
+ const a=sessions.get('inventory-a'),b=sessions.get('inventory-b')
+ await api.ingest(a)
+ for await(const _chunk of api.observe({sessionId:a.id},async function*(){yield {type:'finish',reason:{kind:'stop'}}})){}
+ await table.put('tavern_cardjob__new',{id:'new',sessionId:a.id,childSessionId:a.id,kind:'card-export',status:'running',createdAt:1})
+ await api.ingest(a)
+ const associated=api.calls().find(call=>call.sessionId===a.id)
+ assert(associated.source.jobIds.includes('new'),'a new job is associated even when source event count is unchanged')
+ await table.put('tavern_novel__peer',{id:'peer',sessionId:b.id,childSessionId:b.id,kind:'novel-export',status:'running',createdAt:2})
+ for await(const _chunk of api.observe({sessionId:b.id},async function*(){yield {type:'finish',reason:{kind:'stop'}}})){}
+ assert.equal(api.calls().find(call=>call.sessionId===b.id).kind,'novel-export','another session consumes its own live job inventory')
+ owner.dispose()
+}
+{
+ const table=new Table(),s={id:'indexed-attribution',header:{id:'indexed-attribution',agentPreset:'roleplay'},events:[
+  event(0,'step/start',{turn:1,step:1},1000),
+  event(1,'request/header',{header:{config:{provider:'first',model:'m'}}},1100),
+  event(2,'llm/retry',{turn:1,step:1},1200),
+  event(3,'llm/retry-started',{turn:1,step:1},1300),
+  event(4,'request/header',{header:{config:{provider:'retry',model:'m'}}},1400),
+  event(5,'assistant/message',{turn:1,step:1,usage,message:{content:[{type:'text'}]}},1500),
+  event(6,'step/end',{turn:1,step:1},1600),
+  event(7,'step/start',{turn:1,step:2},1700),
+  event(8,'request/header',{header:{config:{provider:'second-step',model:'m'}}},1800),
+  event(9,'assistant/message',{turn:1,step:2,usage,message:{content:[{type:'text'}]}},1900),
+  event(10,'step/end',{turn:1,step:2},2000),
+  event(11,'tool/call',{turn:1,step:1,callId:'tool',name:'read_file'},2100),
+  event(12,'tool/result',{turn:1,step:1,callId:'tool'},2200),
+  event(13,'turn/end',{turn:1},2300),
+  event(14,'compaction/end',{},2400),
+ ]}
+ const native=foldSessionCalls(s)
+ for(const call of native)await table.put('tavern_usage__'+call.id,call)
+ for(const [id,startSeq,startedAt,purpose] of [
+  ['too-early',0,999,null],['first-match',0,1100,null],['later-match',0,1150,null],
+  ['purpose-call',3,1350,'maintenance'],['too-late',3,1600,null],['retry-match',3,1400,null],
+  ['second-match',7,1750,null],
+ ])await table.put('tavern_usage__'+id,{...native[0],id,status:'running',startedAt,source:{kind:'stream',startSeq,purpose}})
+ const api=createTelemetry({table,sessions:{get:()=>s,list:()=>[s]}})
+ await api.ingest(s)
+ assert.equal(table.get('tavern_usage__first-match').status,'failed','the first eligible stream in table order wins its native time window')
+ assert.equal(table.get('tavern_usage__later-match').status,'running','later eligible streams do not replace the first match')
+ assert.equal(table.get('tavern_usage__too-early').status,'running')
+ assert.equal(table.get('tavern_usage__too-late').status,'running')
+ assert.equal(table.get('tavern_usage__purpose-call').status,'running','purpose streams remain independent charges')
+ assert.equal(table.get('tavern_usage__retry-match').status,'completed')
+ assert(native.every(call=>table.get('tavern_usage__'+call.id).superseded===true),'native echoes remain superseded by actual stream charges')
+ const logs=api.logs().filter(row=>row.source?.kind==='session-event')
+ assert.equal(logs.find(row=>row.source.seq===5).provider,'retry','same-step retries use the last matching attempt')
+ assert.equal(logs.find(row=>row.source.seq===12).provider,'retry','tool results retain turn and step attribution')
+ assert.equal(logs.find(row=>row.source.seq===13).provider,'second-step','turn/end without a step uses the last attempt of the turn')
+ assert.equal(logs.find(row=>row.source.seq===14).provider,null,'missing turn identity does not borrow a different turn')
+}
+for(const trackedRead of [false,true]){
+ const s={id:'association-write',header:{id:'association-write',agentPreset:'roleplay'},events:[
+  event(0,'step/start',{turn:1,step:1},1000),event(1,'assistant/message',{turn:1,step:1,usage},2000),event(2,'step/end',{},2100),
+ ]}
+ const owner=trackedRead?createRoleplayInputStateOwner({domainName:'roleplay',session:()=>s,agent:()=>undefined,active:()=>true}):null
+ const changed=(key,value)=>owner?.domainChanged({domain:'roleplay',table:'branch',key,operation:'put',value})
+ const base={...foldSessionCalls(s)[0],id:'old-stream',status:'running',source:{kind:'stream',startSeq:99,purpose:null}}
+ class AssociatingTable extends Table {
+  async put(key,value){
+   await super.put(key,value)
+   changed(key,this.get(key))
+   if(key==='tavern_usage__old-stream'&&value.source.jobIds?.length&&!this.has('tavern_usage__new-stream')){
+    const current={...base,id:'new-stream',startedAt:1100,source:{kind:'stream',startSeq:0,purpose:null}}
+    await super.put('tavern_usage__new-stream',current);changed('tavern_usage__new-stream',this.get('tavern_usage__new-stream'))
+   }
+  }
+ }
+ const actual=new AssociatingTable(),table=owner?owner.table('branch',actual):actual;await table.put('tavern_usage__old-stream',base)
+ const api=createTelemetry({table,sessions:{get:()=>s,list:()=>[s]},streamRows:owner?(id,read)=>owner.captureHistoricalFacts(id,'telemetry-stream-inventory',read).data:undefined,jobs:()=>[
+  {id:'job',sessionId:s.id,childSessionId:s.id,kind:'status',status:'completed',createdAt:1},
+ ]})
+ await api.ingest(s)
+ assert.equal(table.get('tavern_usage__new-stream').status,'completed','an actual stream published while job association yields participates in reconciliation')
+ assert(!api.calls().some(call=>call.source.kind==='session-attempt'),'the new stream prevents a duplicate native charge')
+ owner?.dispose()
+}
 {
  const table=new Table(),s={id:'measured-stream',header:{id:'measured-stream',agentPreset:'roleplay'},events:[]}
  const api=createTelemetry({table,sessions:{get:id=>id===s.id?s:null,list:()=>[s]}})

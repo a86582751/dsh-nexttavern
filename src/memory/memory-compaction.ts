@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { estimateTokens, durableSeq, textOf } from './memory-provenance.js'
-import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistory, historySourceKeys, isCompactedStoryEvent, type StorySession, type StoryEvent, type NotesRecord } from './memory-history.js'
+import { surfaceSeqsOf, contentOfEvent, importManagementInputs, isStoryEvent, isCompletedTurnEnd, canonicalAssistantSeqsOf, selectedStoryHistorySnapshot, historySourceKeys, isCompactedStoryEvent, type StorySession, type StoryEvent, type NotesRecord } from './memory-history.js'
 import { validateDetailedSummary, type SummaryOptions, type SummaryResult } from './memory-summary.js'
 import { projectStoryEvent, type StorySurfaceReplacement } from '../core/roleplay-message-view.js'
 import {sessionEvents} from '../core/session-history.js'
@@ -353,7 +353,7 @@ export function createMemoryCompactor<S extends CompactionSession>(options: Comp
       surface: { nodes: range.shadowedSeqs, contentGeneration: session.surface?.contentGeneration },
       deriveEventMessage: session.deriveEventMessage?.bind(session),
     }
-    const history = selectedStoryHistory(selected)
+    const history = selectedStoryHistorySnapshot(selected)
     const expected = historySourceKeys(history)
     if (!expected.length) return null
     const candidates = [mem.directorNotes, ...(Array.isArray(mem.directorCheckpoints) ? mem.directorCheckpoints.toReversed() : [])]

@@ -137,17 +137,21 @@ function presetOf(s) {
     return p;
 }
 /** No prompts, tool arguments, output text, headers or credentials are stored. */
-export function createTelemetry({ table, sessions, query, jobs: readJobs = () => [] }) {
-    const jobs = () => readJobs().filter(isTelemetryJob);
+export function createTelemetry({ table, sessions, query, jobs: readJobs = () => [], streamRows }) {
+    const jobs = (sessionId) => readJobs(sessionId).filter(isTelemetryJob);
     let syncPromise = null, persistenceFailures = 0, lastSyncAt = 0, coverage = {
         scanning: false, scannedSessions: 0, totalSessions: 0, failedSessions: 0
     };
     const scanned = new Map(), known = new Map(), active = new Set(), coldRead = new Set(), persisted = new Map();
     // Existing schema rows are selected by namespace; migration does not filter or rewrite legacy records.
-    const values = (prefix) => [...table.entries()]
+    const values = (prefix) => [...table.entries(prefix)]
         .filter(([k]) => k.startsWith(prefix))
         .map(([, v]) => v);
     const records = () => values(PREFIX).filter(v => !v.superseded);
+    const sessionStreamsOf = (sessionId) => {
+        const read = () => records().filter(row => row.sessionId === sessionId && row.source?.kind === 'stream');
+        return streamRows ? streamRows(sessionId, read) : read();
+    };
     const meta = (s) => known.set(s.id, s.header);
     const owner = (s) => {
         let h = s.header, seen = new Set();
@@ -182,31 +186,48 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
         meta(s);
         if (!eligible(s))
             return;
-        const ownerSessionId = owner(s), relatedJobIds = jobs()
+        const ownerSessionId = owner(s), relatedJobIds = jobs(s.id)
             .filter(j => j?.childSessionId === s.id && (j.sessionId ?? j.branchId) === ownerSessionId && j.id)
             .map(j => j.id), fingerprint = events(s).length;
-        if (relatedJobIds.length)
-            for (const stream of records().filter(r => r.sessionId === s.id && r.source?.kind === 'stream')) {
+        let sessionStreams;
+        if (relatedJobIds.length) {
+            sessionStreams = sessionStreamsOf(s.id);
+            for (const stream of sessionStreams) {
                 const jobIds = [
                     ...new Set([
                         ...(stream.source.jobIds ?? []), ...(stream.source.jobId ? [stream.source.jobId] : []), ...relatedJobIds
                     ])
                 ];
-                if (jobIds.length !== stream.source.jobIds?.length || jobIds.some((id, i) => id !== stream.source.jobIds?.[i]))
+                if (jobIds.length !== stream.source.jobIds?.length || jobIds.some((id, i) => id !== stream.source.jobIds?.[i])) {
                     await put({
                         ...stream, source: {
                             ...stream.source, jobIds
                         }
                     });
+                    // A write may yield to a live stream update. Reuse the
+                    // snapshot only while no persistence boundary was crossed.
+                    sessionStreams = undefined;
+                }
             }
+        }
         if (scanned.get(s.id) === fingerprint)
             return;
-        const streams = records().filter(r => r.sessionId === s.id && r.source?.kind === 'stream' && !r.source.purpose);
+        sessionStreams ??= sessionStreamsOf(s.id);
+        const streamsByStart = new Map();
+        for (const stream of sessionStreams) {
+            if (stream.source.purpose)
+                continue;
+            const start = stream.source.startSeq, sameStart = streamsByStart.get(start);
+            if (sameStart)
+                sameStart.push(stream);
+            else
+                streamsByStart.set(start, [stream]);
+        }
         // Reuse the fold unless append-only history advanced while persistence yielded.
         let attempts = foldSessionCalls(s);
         for (const call of attempts) {
             call.ownerSessionId = ownerSessionId;
-            const actual = streams.find(r => r.source.startSeq === call.source.startSeq && r.startedAt >= call.startedAt
+            const actual = streamsByStart.get(call.source.startSeq)?.find(r => r.startedAt >= call.startedAt
                 && r.startedAt <= (call.completedAt ?? Infinity));
             if (actual) {
                 if (!active.has(actual.id))
@@ -234,6 +255,18 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
         }
         if (events(s).length !== fingerprint)
             attempts = foldSessionCalls(s);
+        const lastByTurn = new Map();
+        const lastByTurnStep = new Map();
+        for (const attempt of attempts) {
+            const { turn, step } = attempt.source;
+            lastByTurn.set(turn, attempt);
+            let steps = lastByTurnStep.get(turn);
+            if (!steps) {
+                steps = new Map();
+                lastByTurnStep.set(turn, steps);
+            }
+            steps.set(step, attempt);
+        }
         const seed = Number(s.inheritedEventCount ?? 0), toolStarts = new Map();
         for (const e of events(s)) {
             if (typeof e.time !== 'number' || !Number.isFinite(e.time))
@@ -250,7 +283,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
                 || d.isError === true
                 || d.result?.isError === true
                 || d.reason?.kind === 'error';
-            const attempt = attempts.findLast(c => c.source.turn === d.turn && (!d.step || c.source.step === d.step));
+            const attempt = d.step ? lastByTurnStep.get(d.turn)?.get(d.step) : lastByTurn.get(d.turn);
             if (e.type === 'assistant/message'
                 && (attempt?.kind !== 'narrative' || !d.message?.content?.some(b => b.type === 'text')
                     || d.message?.content?.some(b => b.type === 'tool-call')))
@@ -494,7 +527,7 @@ export function createTelemetry({ table, sessions, query, jobs: readJobs = () =>
             return;
         }
         const boundary = events(s).findLast(e => e.type === 'step/start' || e.type === 'llm/retry-started');
-        const startedAt = Date.now(), id = randomUUID(), job = jobs().find(j => j.childSessionId === s.id);
+        const startedAt = Date.now(), id = randomUUID(), job = jobs(s.id ?? undefined).find(j => j.childSessionId === s.id);
         const message = events(s).findLast(e => e.type === 'user/message')?.data, phase = message?.source?.kind === 'roleplay-tasks'
             ? (message.source.jobKind ?? message.source.stage ?? 'management')
             : 'narrative';

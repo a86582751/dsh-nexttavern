@@ -149,7 +149,7 @@ export function registerJobRoutes({ctx, T, resolveRoleplaySession, novelExports,
       const resource=await originalCardResource(session)
       return libraryFor(session).openDownload(resource.id)
     }],
-    ['/api/roleplay/resources',async(session)=>{const lib=await migrateResources(session);return jsonResponse(200,{ok:true,resources:lib.list(),pending:lib.pending()})}],
+    ['/api/roleplay/resources',async(session)=>{const lib=await migrateResources(session);return jsonResponse(200,{ok:true,...lib.listWithPending()})}],
     ['/api/roleplay/resource',async(session,url)=>{const lib=libraryFor(session),id=url.searchParams.get('resourceId'),resource=lib.metadata(id);let text
       if(resource.type==='image/png')text=JSON.stringify(decodeTavernCard(Buffer.from(await lib.openDownload(id).arrayBuffer()),'.png').data,null,2)
       else try{text=lib.read(id).text}catch{}
