@@ -7,6 +7,8 @@ import {recordSha256} from './roleplay-data.js'
 import {cloneRoleplayTavernLoreDataV1} from './roleplay-tavern-lore-data.js'
 import {captureRoleplayTavernMaterialHistoryV1,captureRoleplayTavernInheritedMaterialHistoryV1}
   from './roleplay-tavern-material-history.js'
+import {tavernMaterialProjectionIdentityV1,tavernMaterialNativePrefixSha256V1} from './roleplay-tavern-material-history.js'
+import type {createRoleplayInputStateOwner} from './roleplay-input-state.js'
 import {readTavernTimedPublicationV1,replayTavernTimedPublicationV1,applyTavernTimedActionV1}
   from './roleplay-tavern-lore-timed-history.js'
 import {readTavernCanonicalChatRowsAtCutV1,verifyTavernCanonicalChatClockV1} from './roleplay-tavern-chat-clock.js'
@@ -41,6 +43,18 @@ interface State {
   mode:'legacy'|'full';publications:readonly Record<string,unknown>[];baseline:Record<string,unknown>;
   clockTransition:Record<string,unknown>|null
 }
+interface StateCheckpoint {
+  readonly state:Omit<State,'intervals'|'origins'|'publications'>&{
+    readonly intervals:readonly Interval[];readonly origins:readonly (readonly [string,OriginV1])[]
+  }
+  readonly tail:PublicationLink|null
+}
+interface PublicationLink {
+  readonly previous:PublicationLink|null
+  readonly planKey:string
+  readonly attemptKey:string
+  readonly publication:Record<string,unknown>
+}
 interface Dependencies {
   readonly sessionId:string
   readonly source:TavernLoreSourceDataV1
@@ -52,6 +66,8 @@ interface Dependencies {
   readonly projections:readonly SessionMessageProjection[]
   readonly assertOwnerCurrent:()=>void
   readonly assertSourceLineageCurrent:()=>void
+  readonly inputState?:Pick<ReturnType<typeof createRoleplayInputStateOwner>,'captureHistoricalFacts'>
+  readonly table?:{get(key:string):unknown}
 }
 const same=(a:unknown,b:unknown)=>recordSha256(a)===recordSha256(b)
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
@@ -104,13 +120,39 @@ function entryId(owner:string,epoch:EpochV2,entry:EntryAddressV1):string {
 const stateDigest=(state:State)=>recordSha256({ownerSessionId:state.ownerSessionId,revision:state.revision,
   mode:state.mode,intervals:[...state.intervals.values()],origins:[...state.origins],publications:state.publications})
 const copyState=(state:State):State=>({...state,intervals:new Map(state.intervals),origins:new Map(state.origins)})
+const checkpointState=(state:State,tail:PublicationLink|null):StateCheckpoint=>{
+  const {publications:_publications,...body}=state
+  return Object.freeze({state:frozen({...body,intervals:[...state.intervals.values()],origins:[...state.origins]}),tail})
+}
+function publicationLinks(checkpoint:StateCheckpoint):PublicationLink[] {
+  const links:PublicationLink[]=[]
+  for(let link=checkpoint.tail;link;link=link.previous)links.push(link)
+  return links.reverse()
+}
+const restoreState=(checkpoint:StateCheckpoint,publications=publicationLinks(checkpoint).map(link=>link.publication)):State=>
+  ({...checkpoint.state,publications,
+  intervals:new Map(checkpoint.state.intervals.map(interval=>[intervalKey(interval),interval])),
+  origins:new Map(checkpoint.state.origins)})
 
 export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
   deps.assertOwnerCurrent()
   const epoch=epochOf(deps.source),epochSha256=recordSha256(epoch),events=deps.ownHistory.events,
     publications=[...(deps.inheritedHistory?.publications??[]),...deps.ownHistory.publications],
     transactions=new Map<string,Transaction>(),memo=new Map<string,State>(),reading=new Set<string>(),
-    fullClocks=new Map<number,OriginV1['fullClock']>(),reads=new Map<Publication,Read>()
+    fullClocks=new Map<number,OriginV1['fullClock']>(),reads=new Map<Publication,Read>(),epochs=new Map<Publication,EpochV2>(),
+    projectionIdentity=tavernMaterialProjectionIdentityV1(deps.projections)
+  function historical<T>(purpose:string,publications:readonly Publication[],compute:()=>T,prepare?:()=>void):T {
+    if(!deps.inputState){prepare?.();return compute()}
+    return deps.inputState.captureHistoricalFacts(deps.sessionId,`tavern-timed:${projectionIdentity}:${purpose}`,()=>{
+      // These are real Domain reads in this historical slot. The publication
+      // object is immutable DATA; it cannot subscribe a new owner on its own.
+      for(const publication of publications){
+        deps.table!.get(publication.event.data.snapshot.key)
+        deps.table!.get(publication.event.data.plan.key)
+      }
+      return compute()
+    },prepare).data
+  }
   if(deps.compilation.plan.source.ownerSessionId!==deps.sessionId
     ||deps.compilation.plan.source.sourceRecordSessionId!==epoch.sourceRecordSessionId
     ||deps.compilation.plan.source.importRecordSha256!==epoch.importRecordSha256
@@ -132,7 +174,11 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
   for(const publication of publications) {
     if(publication.event.seq<=previous||!allowed.has(publication.snapshot.sessionId))fail()
     previous=publication.event.seq
-    reads.set(publication,readTavernTimedPublicationV1(publication,publication.snapshot.sessionId))
+    const facts=historical(`publication:${publication.event.seq}`, [publication],()=>{
+      const read=readTavernTimedPublicationV1(publication,publication.snapshot.sessionId)
+      return {read,epoch:publicationEpoch(read)}
+    })
+    reads.set(publication,facts.read);epochs.set(publication,facts.epoch)
   }
   // A material read captures every Core reference at the owner cut, including
   // prior Source epochs. Filtering only timer-producing rows would let a cold
@@ -152,12 +198,16 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
     return [...refs].map(([key,sha256])=>({key,sha256}))
   }
   const knownEntries=new Map(deps.compilation.plan.entries.map(entry=>[address(entry).addressSha256,address(entry)]))
+  const foldIdentity=recordSha256({epochSha256,entryAddresses:[...knownEntries.values()],
+    lineage:[...transactions.values()].map(transaction=>transaction.inheritance.commitRef)})
   function fullAt(read:Read):OriginV1['fullClock'] {
     const seq=Number(read.publication.event.seq),existing=fullClocks.get(seq)
     if(existing)return existing
-    const rows=readTavernCanonicalChatRowsAtCutV1(read.plan.sessionId,events,seq,deps.projections),
-      full={nativeCut:seq,prefixSha256:nativeInputSha256(events.slice(0,seq)),chatIndex:rows.length,
+    const full=historical(`legacy-clock:${read.plan.sessionId}:${seq}`,[read.publication],()=>{
+      const rows=readTavernCanonicalChatRowsAtCutV1(read.plan.sessionId,events,seq,deps.projections)
+      return {nativeCut:seq,prefixSha256:tavernMaterialNativePrefixSha256V1(deps,events.slice(0,seq)),chatIndex:rows.length,
         membershipSha256:recordSha256(rows.map(row=>row.ref)),clockSha256:null}
+    })
     fullClocks.set(seq,full)
     return full
   }
@@ -203,7 +253,7 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
       ownerSessionId:owner,sourceEpochSha256:epochSha256,reason,
       sourceRefs:transaction?{prepared:transaction.inheritance.preparedRef,commit:transaction.inheritance.commitRef,
         ready:transaction.inheritance.readyRef,materialBaseline:transaction.inheritance.materialBaselineRef}:null,
-      inheritedCut:cut,inheritedPrefixSha256:nativeInputSha256(events.slice(0,cut)),
+      inheritedCut:cut,inheritedPrefixSha256:tavernMaterialNativePrefixSha256V1(deps,events.slice(0,cut)),
       parentFold:null,entryMappings:[],intervals:[],intervalOrigins:[],clockTransition:null},'baselineSha256')
   }
   function fold(owner:string,cut:number):State {
@@ -213,37 +263,60 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
     reading.add(owner)
     try {
       const transaction=transactions.get(owner),own=publications.filter(pub=>pub.snapshot.sessionId===owner
-        &&pub.event.seq<cut&&same(publicationEpoch(reads.get(pub)!),epoch)),
+        &&pub.event.seq<cut&&same(epochs.get(pub),epoch)),
         firstEvidence=own[0]?.snapshot.payload.timed,
-        historicalLegacy=object(firstEvidence)&&firstEvidence.encoding==='native-material-lore-timed-read-v1'
-      let intervals=new Map<string,Interval>(),origins=new Map<string,OriginV1>(),baseline:Record<string,unknown>,
-        mode:State['mode']=historicalLegacy?'legacy':'full'
-      if(historicalLegacy)baseline=emptyBaseline(owner,'historical-own-v1-empty-policy',0,transaction)
-      // Replay the original owner's producer baseline. The current reader may
-      // be a descendant, but that cannot change a persisted parent's identity.
-      else if(!transaction)baseline=emptyBaseline(owner,'verified-own-source-epoch',0)
-      else if(!same(epochOf(transaction.prepared.parentSource),epoch))
-        baseline=emptyBaseline(owner,'source-epoch-changed-at-birth',Math.min(cut,transaction.prepared.nativeCut.seedLength),transaction)
-      else if(transaction.prepared.nativeCut.kind==='reserved-fresh-branch')
-        baseline=emptyBaseline(owner,'actual-fresh-cut-zero',0,transaction)
-      else {
-        const inheritedCut=Math.min(cut,transaction.prepared.nativeCut.seedLength),
-          parent=migrate(fold(transaction.prepared.parentSessionId,inheritedCut)),mapped=mapParent(parent,owner)
-        intervals=mapped.intervals;origins=mapped.origins
-        baseline=seal({schemaVersion:1,encoding:'native-material-lore-timed-baseline-v1',kind:'frozen-inherited',
-          ownerSessionId:owner,sourceEpochSha256:epochSha256,
-          sourceRefs:{prepared:transaction.inheritance.preparedRef,commit:transaction.inheritance.commitRef,
-            ready:transaction.inheritance.readyRef,materialBaseline:transaction.inheritance.materialBaselineRef},
-          inheritedCut,inheritedPrefixSha256:nativeInputSha256(events.slice(0,inheritedCut)),
-          parentFold:{ownerSessionId:parent.ownerSessionId,revision:parent.revision,stateSha256:stateDigest(parent),
-            publicationsSha256:recordSha256(parent.publications)},entryMappings:mapped.mappings,
-          intervals:[...intervals.values()],intervalOrigins:[...origins],clockTransition:parent.clockTransition},'baselineSha256')
+        historicalLegacy=object(firstEvidence)&&firstEvidence.encoding==='native-material-lore-timed-read-v1',
+        inheritedCut=Math.min(cut,transaction?.prepared.nativeCut.seedLength??0),
+        purpose=`${foldIdentity}:${owner}:${inheritedCut}:${historicalLegacy?'legacy':'full'}`
+      function initialize():StateCheckpoint {
+        // The baseline consumes the actual original Import and lineage rows.
+        // Later states depend on this immutable baseline through InputState.
+        deps.table?.get(deps.source.original.importRecordRef.key)
+        for(const row of transactions.values())for(const ref of [row.inheritance.preparedRef,
+          row.inheritance.applyIntentRef,row.inheritance.commitRef,row.inheritance.readyRef,
+          row.inheritance.editBaselineRef,row.inheritance.materialBaselineRef,row.inheritance.originalBinding.importRecordRef])
+          deps.table?.get(ref.key)
+        let intervals=new Map<string,Interval>(),origins=new Map<string,OriginV1>(),baseline:Record<string,unknown>
+        const mode:State['mode']=historicalLegacy?'legacy':'full'
+        if(historicalLegacy)baseline=emptyBaseline(owner,'historical-own-v1-empty-policy',0,transaction)
+        // Replay the original owner's producer baseline; descendants retain
+        // the actual parent's identity and its cut rather than today's head.
+        else if(!transaction)baseline=emptyBaseline(owner,'verified-own-source-epoch',0)
+        else if(!same(epochOf(transaction.prepared.parentSource),epoch))
+          baseline=emptyBaseline(owner,'source-epoch-changed-at-birth',inheritedCut,transaction)
+        else if(transaction.prepared.nativeCut.kind==='reserved-fresh-branch')
+          baseline=emptyBaseline(owner,'actual-fresh-cut-zero',0,transaction)
+        else {
+          const parent=migrate(fold(transaction.prepared.parentSessionId,inheritedCut)),mapped=mapParent(parent,owner)
+          intervals=mapped.intervals;origins=mapped.origins
+          baseline=seal({schemaVersion:1,encoding:'native-material-lore-timed-baseline-v1',kind:'frozen-inherited',
+            ownerSessionId:owner,sourceEpochSha256:epochSha256,
+            sourceRefs:{prepared:transaction.inheritance.preparedRef,commit:transaction.inheritance.commitRef,
+              ready:transaction.inheritance.readyRef,materialBaseline:transaction.inheritance.materialBaselineRef},
+            inheritedCut,inheritedPrefixSha256:tavernMaterialNativePrefixSha256V1(deps,events.slice(0,inheritedCut)),
+            parentFold:{ownerSessionId:parent.ownerSessionId,revision:parent.revision,stateSha256:stateDigest(parent),
+              publicationsSha256:recordSha256(parent.publications)},entryMappings:mapped.mappings,
+            intervals:[...intervals.values()],intervalOrigins:[...origins],clockTransition:parent.clockTransition},'baselineSha256')
+        }
+        return checkpointState({ownerSessionId:owner,revision:0,intervals,origins,mode,publications:[],baseline,
+          clockTransition:null},null)
       }
-      let state:State={ownerSessionId:owner,revision:0,intervals,origins,mode,publications:[],baseline,clockTransition:null}
-      const seenPlans=new Set<string>(),seenAttempts=new Map<string,string>(),published:Record<string,unknown>[]=[]
-      for(const publication of own) {
+      // One mutable replay cursor belongs to this fold only. Checkpoints keep
+      // one immutable publication link, rather than a copy of every prefix.
+      let cursor:StateCheckpoint|undefined
+      const seenPlans=new Set<string>(),seenAttempts=new Map<string,string>(),publicationRows:Record<string,unknown>[]=[]
+      function advance(previous:StateCheckpoint,publication:Publication):StateCheckpoint {
+        if(cursor!==previous) {
+          seenPlans.clear();seenAttempts.clear();publicationRows.length=0
+          for(const link of publicationLinks(previous)) {
+            seenPlans.add(link.planKey);seenAttempts.set(link.attemptKey,link.planKey)
+            publicationRows.push(link.publication)
+          }
+          cursor=previous
+        }
+        let state=restoreState(previous,publicationRows)
         const read=reads.get(publication)!,evidence=publication.snapshot.payload.timed
-        if(seenPlans.has(read.planKey))continue
+        if(seenPlans.has(read.planKey))return previous
         seenPlans.add(read.planKey)
         const prior=seenAttempts.get(read.attemptKey)
         if(prior&&prior!==read.planKey)fail('INPUT_MATERIAL_TIMED_ATTEMPT_PLAN_CONFLICT')
@@ -255,10 +328,10 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
             ||!same(evidence.policy,timedPolicyV2))fail('INPUT_MATERIAL_TIMED_EVIDENCE_SCHEMA_INVALID')
           state=migrate(state)
           const {timedReadSha256,...body}=evidence,
-            clock=verifyTavernCanonicalChatClockV1(evidence.clock,owner,publication.event,events,deps.projections)
+            clock=verifyTavernCanonicalChatClockV1(evidence.clock,owner,publication.event,events,deps.projections,deps)
           if(recordSha256(body)!==timedReadSha256||!same(evidence.sourceEpoch,epoch)
-            ||!same(evidence.baseline,baseline)||!same(evidence.clockTransition,state.clockTransition)
-            ||!same(evidence.ownPublications,published)||evidence.ownRevision!==state.revision
+            ||!same(evidence.baseline,state.baseline)||!same(evidence.clockTransition,state.clockTransition)
+            ||!same(evidence.ownPublications,state.publications)||evidence.ownRevision!==state.revision
             ||!same(evidence.coreRefs,coreRefsAt(owner,clock.nativeCut))
             ||evidence.timedSha256!==recordSha256(read.snapshot.timed)||clock.chatIndex!==read.snapshot.timed.chatIndex)
             fail('INPUT_MATERIAL_TIMED_EVIDENCE_CHANGED')
@@ -281,11 +354,34 @@ export function captureRoleplayTavernTimedHistoryV2(deps:Dependencies) {
           }else state.origins.delete(key)
         }
         state.revision++
-        published.push({seq:Number(publication.event.seq),materialSha256:nativeInputSha256(publication.event),
+        const published=frozen({seq:Number(publication.event.seq),materialSha256:nativeInputSha256(publication.event),
           snapshot:publication.event.data.snapshot,plan:publication.event.data.plan,attemptId:read.plan.attemptId,revision:state.revision})
-        state.publications=[...published]
+        publicationRows.push(published)
         state.clockTransition=null
+        cursor=checkpointState(state,Object.freeze({previous:previous.tail,planKey:read.planKey,
+          attemptKey:read.attemptKey,publication:published}))
+        return cursor
       }
+      const slot=(index:number)=>index<0?`baseline:${purpose}`:`state:${purpose}:${own[index]!.event.seq}`
+      let prepared:StateCheckpoint
+      const last=own.length-1,checkpoint=last<0?historical(slot(-1),[],initialize)
+        :historical(slot(last),[own[last]!],()=>{
+          const parent=historical(slot(last-1),[],()=>prepared)
+          return advance(parent,own[last]!)
+        },()=>{
+          let previous=historical(slot(-1),[],initialize)
+          for(let index=0;index<last;index++) {
+            const parent=previous,publication=own[index]!
+            previous=historical(slot(index),[publication],()=>{
+              // Preparation has already built this exact parent. Read it in
+              // the child capture so invalidation retains one real edge.
+              const actual=historical(slot(index-1),[],()=>parent)
+              return advance(actual,publication)
+            })
+          }
+          prepared=previous
+        })
+      const state=restoreState(checkpoint)
       memo.set(key,copyState(state))
       return state
     }finally {reading.delete(owner)}

@@ -21,7 +21,7 @@ export async function installMvuNativeDataTestDependencies() {
       generatedCore=new URL('../lib/core/',import.meta.url).href
     const result=await build({stdin:{contents:[
       `export {nativeInputSha256} from ${JSON.stringify(input)};`,
-      `export {reconstructNativeRequestMaterialV1} from ${JSON.stringify(material)};`,
+      `export {reconstructNativeRequestMaterialV1,verifyNativeRequestMaterialHistoryV1} from ${JSON.stringify(material)};`,
       `export {deriveEventMessage,foldSurface} from ${JSON.stringify(surface)};`,
       `export {validateNativeOpeningInvocationV1,validateNativeGeneratedOpeningReceiptV1,validateNativeOpeningClosingAckV1,validateNativeOpeningRequestAttemptV1}`+
         ` from ${JSON.stringify(opening)};`,
@@ -37,7 +37,8 @@ export async function installMvuNativeDataTestDependencies() {
     assert.equal(result.outputFiles.length,1)
     await writeFile(peer,result.outputFiles[0]!.contents,{flag:'wx'})
     const hooks=registerHooks({resolve(specifier,context,next) {
-      if((specifier==='@deepseek-ai/dsh-agent-loop'||specifier==='@deepseek-ai/dsh-session/surface')
+      if((specifier==='@deepseek-ai/dsh-agent-loop'||specifier==='@deepseek-ai/dsh-session'
+        ||specifier==='@deepseek-ai/dsh-session/surface')
         &&context.parentURL?.startsWith(generatedCore)) {
         return {url:pathToFileURL(peer).href,shortCircuit:true}
       }

@@ -267,15 +267,29 @@ export function createRoleplayStatus(deps: StatusDependencies) {
                 };
         }
         let prior: StatusPanel | null = null, priorSource: PriorStatusSource | null = null, priorIndex = -1;
+        const assistantIndexBySeq = new Map<number, number>();
+        for (const [index, entry] of selected.entries()) {
+            if (entry.role === 'assistant' && !assistantIndexBySeq.has(entry.seq))
+                assistantIndexBySeq.set(entry.seq, index);
+        }
+        let eventBySeq: Map<number, StatusEvent> | undefined;
         for (const [key, stored] of T.status.entries()) {
             if (!key.startsWith(`${session.id}__`))
                 continue;
             const candidate = stored?.state === 'completed' ? stored.result : stored;
             if (!candidate?.panel || !candidate.provenance || candidate.stale || candidate.sessionId !== session.id)
                 continue;
-            const index = selected.findIndex(entry => entry.seq === candidate.atSeq && entry.role === 'assistant');
+            const index = candidate.atSeq === undefined ? -1 : assistantIndexBySeq.get(candidate.atSeq) ?? -1;
             if (index <= priorIndex || index >= end)
                 continue;
+            if (!eventBySeq) {
+                eventBySeq = new Map();
+                for (const item of eventsOf(session)) {
+                    if (!eventBySeq.has(item.seq))
+                        eventBySeq.set(item.seq, item);
+                }
+            }
+            const sourceEventBySeq = eventBySeq;
             const prefix = selected.slice(0, index + 1);
             const prefixHash = recordSha256(prefix);
             const hasHistoryHash = typeof candidate.provenance.historyHash === 'string';
@@ -285,10 +299,10 @@ export function createRoleplayStatus(deps: StatusDependencies) {
             const originalPrefix = !hasHistoryHash
                 && prefix.every(entry => entry.seq <= candidate.atSeq!
                     &&
-                        eventsOf(session).find(item => item.seq === entry.seq)?.surfaceOp === 'append');
+                        sourceEventBySeq.get(entry.seq)?.surfaceOp === 'append');
             if (hasHistoryHash ? candidate.provenance.historyHash !== prefixHash : !originalPrefix)
                 continue;
-            const candidateEvent = eventsOf(session).find(item => item.seq === candidate.atSeq);
+            const candidateEvent = candidate.atSeq === undefined ? undefined : sourceEventBySeq.get(candidate.atSeq);
             const source = statusSource(session, candidateEvent);
             if (!source || source.sourceHash !== candidate.provenance.sourceHash
                 ||

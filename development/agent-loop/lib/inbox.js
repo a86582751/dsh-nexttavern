@@ -4,9 +4,10 @@
  *
  * @module @deepseek-ai/dsh-agent-loop/inbox
  */
+import { SessionLogOffset } from '@deepseek-ai/dsh-session';
 import { z } from 'zod';
 import { deepFreeze } from '@deepseek-ai/dsh-util-values';
-import { inspectNativeInboxHistory, nativeInputLink, nativeInputSha256 } from './input-admission.js';
+import { createNativeInboxHistoryOwner, nativeInputLink, nativeInputSha256 } from './input-admission.js';
 /** Wire validation for pending agent input reconstructed from durable inbox splices. */
 export const inboxProjectionSchema = z.object({
     'next-turn': z.array(z.custom()).readonly(),
@@ -69,10 +70,26 @@ export class ReactLoopInbox {
     proposals = new WeakSet();
     resumeProofs = new WeakSet();
     claims = new WeakSet();
-    constructor(projections, session, dispatch) {
+    historyOwner;
+    historyOffset = 0;
+    constructor(projections, session, dispatch, observeAppends) {
         this.projections = projections;
         this.session = session;
         this.dispatch = dispatch;
+        observeAppends?.(event => {
+            // A preceding synchronous observer may already have read this exact tail.
+            if (!this.historyOwner || Number(event.seq) !== this.historyOffset)
+                return;
+            try {
+                this.historyOwner.append(event);
+                this.historyOffset++;
+            }
+            catch {
+                // A partially interpreted malformed event cannot become cached proof.
+                this.historyOwner = undefined;
+                this.historyOffset = 0;
+            }
+        });
     }
     /** Prompts awaiting individual turns. */
     get nextTurn() {
@@ -156,6 +173,16 @@ export class ReactLoopInbox {
         return this.claims.has(claim) && this.history().ownsClaim(claim);
     }
     lookupOwnership(ref) { return this.history().ownership(ref); }
+    pendingOwnership() {
+        const history = this.history(), refs = [];
+        let unknown = false;
+        for (const entry of [...history.pending['next-step'], ...history.pending['next-turn']]) {
+            if (history.ownership(entry.ref).status !== 'pending')
+                unknown = true;
+            refs.push(Object.freeze({ ...entry.ref }));
+        }
+        return { refs: Object.freeze(refs), unknown };
+    }
     lookupDurableWork(selector) {
         return deepFreeze(structuredClone(this.history().durableWork(selector)));
     }
@@ -176,14 +203,14 @@ export class ReactLoopInbox {
         if (!work)
             return undefined;
         const proof = deepFreeze({ proposal, refs: structuredClone(refs), messages: work.messages,
-            observedSeq: this.session.snapshotEvents().at(-1)?.seq ?? -1, ...(durable ? { durable: structuredClone(durable) } : {}) });
+            observedSeq: Number(this.session.seq) - 1, ...(durable ? { durable: structuredClone(durable) } : {}) });
         this.resumeProofs.add(proof);
         return proof;
     }
     resumeClaim(proof, turn) {
         if (!this.resumeProofs.has(proof) || !this.matches(proof.proposal))
             return undefined;
-        const later = this.session.snapshotEvents().filter(event => event.seq > proof.observedSeq);
+        const later = this.session.snapshotEvents(SessionLogOffset(proof.observedSeq + 1));
         const boundary = later[0];
         if (later.length !== 1 || !boundary || boundary.type !== 'turn/start' || boundary.data.turn !== turn)
             return undefined;
@@ -205,10 +232,31 @@ export class ReactLoopInbox {
     history() {
         // Session exposes the actual inherited seed length. Parent input never
         // acquires child ownership merely by folding it under the current id.
-        const boundary = this.session.inheritedEventCount;
-        const inheritedBoundary = Number.isSafeInteger(boundary) && boundary >= 0 ? boundary
-            : this.session.header.parentSession !== undefined ? Number.NaN : 0;
-        return inspectNativeInboxHistory(this.session.id, this.session.snapshotEvents(), inheritedBoundary);
+        if (!this.historyOwner) {
+            const boundary = this.session.inheritedEventCount;
+            const inheritedBoundary = Number.isSafeInteger(boundary) && boundary >= 0 ? boundary
+                : this.session.header.parentSession !== undefined ? Number.NaN : 0;
+            const events = this.session.snapshotEvents();
+            this.historyOwner = createNativeInboxHistoryOwner(this.session.id, events, inheritedBoundary);
+            this.historyOffset = events.length;
+        }
+        else if (this.historyOffset < Number(this.session.seq)) {
+            // The actual Session cannot edit accepted events or shrink its private log.
+            // Catch up before serving an observer that runs ahead of our append feed.
+            const tail = this.session.snapshotEvents(SessionLogOffset(this.historyOffset));
+            try {
+                for (const event of tail) {
+                    this.historyOwner.append(event);
+                    this.historyOffset++;
+                }
+            }
+            catch (error) {
+                this.historyOwner = undefined;
+                this.historyOffset = 0;
+                throw error;
+            }
+        }
+        return this.historyOwner.history;
     }
     /**
      * Append one message to a pending list.

@@ -7,7 +7,7 @@ import {selectedCanonicalChatHistory} from '../memory/memory-history.js'
 import type {StorySession} from '../memory/memory-history.js'
 import {cloneSchemaData} from './tavern-mvu-schema-data.js'
 import {compileSchemaMvuInitData} from './tavern-mvu-initvar.js'
-import {validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
+import {createMvuScopeReadFrameV1,validateMvuScopeReadFrameV1} from './tavern-mvu-scope-read.js'
 import type {MvuJsonObject} from './tavern-mvu-initvar.js'
 import type {MvuSchemaOpeningPreparation} from './roleplay-mvu-schema-opening-types.js'
 import type {MvuSchemaAuthorSource} from './roleplay-mvu-source.js'
@@ -147,12 +147,12 @@ export function buildSchemaScopeReadFrame(source:MvuScopeSourceIdentityV1,cutSha
       global:schemaScopeEmpty(schemaScopeOwner(source,'global'))},
     scripts:scripts.map(script=>({scriptId:script.identity,pointer:script.pointer,sourceSha256:script.sourceSha256,
       variables:schemaScopeEmpty(schemaScopeOwner(source,'script',script.identity))})),messages}
-  return validateMvuScopeReadFrameV1({...body,frameSha256:recordSha256(body)})
+  return createMvuScopeReadFrameV1(body)
 }
 export function rebindSchemaScopeReadFrame(input:MvuScopeReadFrameV1,cutSha256:string):MvuScopeReadFrameV1 {
   const {frameSha256:_old,...body}=validateMvuScopeReadFrameV1(input)
   const next={...body,sourceNativeCutSha256:cutSha256}
-  return validateMvuScopeReadFrameV1({...next,frameSha256:recordSha256(next)})
+  return createMvuScopeReadFrameV1(next)
 }
 export function schemaScopeReadFactsEqual(left:MvuScopeReadFrameV1,right:MvuScopeReadFrameV1):boolean {
   const {frameSha256:_left,sourceNativeCutSha256:_leftCut,...a}=validateMvuScopeReadFrameV1(left)

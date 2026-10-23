@@ -195,7 +195,7 @@
       {
         "artifact": "tavern-mvu-scope-read-typescript",
         "path": "src/core/tavern-mvu-scope-read.ts",
-        "sha256": "50c9cc4c002292a2423c5dc938bd75fa354d082789445de9191da461584a5248"
+        "sha256": "9d1a9ce0db5f91890bbef1459cc6d23a673aa4d9f2f1b7dfdaa8ae8ab700e22d"
       },
       {
         "artifact": "tavern-mvu-state-loader-policy-v4-typescript",

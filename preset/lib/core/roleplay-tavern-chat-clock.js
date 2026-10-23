@@ -6,6 +6,7 @@ import { nativeInputSha256 } from '@deepseek-ai/dsh-agent-loop';
 import { selectedCanonicalChatHistory } from '../memory/memory-history.js';
 import { recordSha256, sha256, textOf } from './roleplay-data.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
+import { tavernMaterialNativePrefixSha256V1 } from './roleplay-tavern-material-history.js';
 function fail(code = 'INPUT_MATERIAL_CHAT_CLOCK_UNPROVEN') { throw Error(code); }
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const hash = (v) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
@@ -48,7 +49,8 @@ export function captureReadonlyAuthorDialogChatClockV1(input) {
     const events = input.session.snapshotEvents(), surface = foldSurface(events, input.projections), messageAt = (event) => deriveEventMessage(event, surface.projectedMessages), view = { id: input.session.id, events, surface, deriveEventMessage: messageAt }, rows = selectedRows(view, events, messageAt), refs = rows.map(row => row.ref);
     const body = { schemaVersion: 2, encoding: 'native-readonly-author-dialog-chat-clock-v1',
         authority: 'consumer-data-only', policy: 'actual-completed-canonical-prose-without-request-selection-v1',
-        sessionId: input.session.id, nativeCut: events.length, nativePrefixSha256: nativeInputSha256(events),
+        sessionId: input.session.id, nativeCut: events.length,
+        nativePrefixSha256: tavernMaterialNativePrefixSha256V1({ sessionId: input.session.id, inputState: input.inputState }, events),
         rows: refs, pendingRows: [], chatIndex: rows.length, membershipSha256: recordSha256(refs) };
     const data = freeze({ ...body, clockSha256: recordSha256(body) }), messages = cloneRoleplayTavernLoreDataV1(rows.map(({ ref, message }) => ({ origin: 'surface', eventSeq: ref.seq, id: ref.id,
         role: ref.role, messageSha256: ref.messageSha256, message })), 8_388_608), cut = { schemaVersion: 1, encoding: 'native-author-dialog-readonly-message-cut-v1', authority: 'consumer-data-only',
@@ -76,7 +78,9 @@ export function captureTavernCanonicalChatClockV1(input) {
         }
     const body = { schemaVersion: 1, encoding: 'native-canonical-story-chat-clock-v1',
         authority: 'consumer-data-only', policy: 'canonical-completed-prose-and-selected-real-player-inputs-v1',
-        sessionId: session.id, nativeCut: events.length, nativePrefixSha256: nativeInputSha256(events), selectedSha256: selected.sha256,
+        sessionId: session.id, nativeCut: events.length,
+        nativePrefixSha256: tavernMaterialNativePrefixSha256V1({ sessionId: session.id, inputState: input.inputState }, events),
+        selectedSha256: selected.sha256,
         rows: rows.map(row => row.ref), pendingRows: pending.map(row => row.ref), chatIndex: rows.length + pending.length,
         membershipSha256: recordSha256([...rows.map(row => row.ref), ...pending.map(row => row.ref)]) };
     const data = freeze(cloneRoleplayTavernLoreDataV1({ ...body, clockSha256: recordSha256(body) }, 8_388_608)), scanRows = freeze([...rows, ...pending].map(({ ref, text }) => ({ id: ref.id, role: ref.role, messageSha256: ref.messageSha256, text })));
@@ -105,10 +109,9 @@ export function captureTavernCanonicalChatClockV1(input) {
         // Not-yet-admitted pending rows remain in the captured logical count.
         // Native's actual selected-lineage check separately owns their admission.
     };
-    assertCurrent();
     return { data, scanRows, assertCurrent };
 }
-export function verifyTavernCanonicalChatClockV1(raw, sessionId, material, events, projections) {
+export function verifyTavernCanonicalChatClockV1(raw, sessionId, material, events, projections, historyFacts) {
     const value = cloneRoleplayTavernLoreDataV1(raw, 8_388_608);
     const expected = ['schemaVersion', 'encoding', 'authority', 'policy', 'sessionId', 'nativeCut', 'nativePrefixSha256', 'selectedSha256',
         'rows', 'pendingRows', 'chatIndex', 'membershipSha256', 'clockSha256'];
@@ -116,7 +119,8 @@ export function verifyTavernCanonicalChatClockV1(raw, sessionId, material, event
         || value.encoding !== 'native-canonical-story-chat-clock-v1' || value.authority !== 'consumer-data-only'
         || value.policy !== 'canonical-completed-prose-and-selected-real-player-inputs-v1' || value.sessionId !== sessionId
         || !Number.isSafeInteger(value.nativeCut) || value.nativeCut < 0 || value.nativeCut > material.seq
-        || value.nativePrefixSha256 !== nativeInputSha256(events.slice(0, value.nativeCut)) || !hash(value.selectedSha256)
+        || value.nativePrefixSha256 !== (historyFacts ? tavernMaterialNativePrefixSha256V1(historyFacts, events.slice(0, value.nativeCut)) :
+            nativeInputSha256(events.slice(0, value.nativeCut))) || !hash(value.selectedSha256)
         || !Array.isArray(value.rows) || !Array.isArray(value.pendingRows) || value.rows.length + value.pendingRows.length > 16_384
         || value.chatIndex !== value.rows.length + value.pendingRows.length
         || value.membershipSha256 !== recordSha256([...value.rows, ...value.pendingRows]))

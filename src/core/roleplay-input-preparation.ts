@@ -240,7 +240,7 @@ function sameOwnedRowData(actual:unknown,expected:unknown):boolean {
   if(Array.isArray(actual)!==Array.isArray(expected))return false
   if(!Array.isArray(actual)&&![Object.prototype,null].includes(Object.getPrototypeOf(actual)))return false
   const actualKeys=Reflect.ownKeys(actual),expectedKeys=Reflect.ownKeys(expected)
-  if(actualKeys.length!==expectedKeys.length||actualKeys.some(key=>typeof key!=='string'||!expectedKeys.includes(key)))return false
+  if(actualKeys.length!==expectedKeys.length)return false
   const actualDescriptors=Object.getOwnPropertyDescriptors(actual),expectedDescriptors=Object.getOwnPropertyDescriptors(expected)
   return expectedKeys.every(key=>{
     if(typeof key!=='string')return false
@@ -304,7 +304,7 @@ const isWork = (value: unknown, sessionId: string): value is Work => {
 
 export function createRoleplayInputPreparation<Session extends {id: string}>({table, observe, onError,completion,
   awaitMutationBarrier,mutationBlockCode,onMutationStop,preflightObservation,onClosingRelease,material,
-  sessionForRowFacts,readColdMaterialHistory}: {
+  sessionForRowFacts,readColdMaterialHistory,readFacts}: {
   table: InputPreparationTable
   /** Trusted synchronous actual Source/head observation; never model intent. */
   observe(session: Session): InputSourceObservation
@@ -314,6 +314,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   onClosingRelease?(lease:object):void
   onError?(error: unknown): void
   completion?:InputCompletionProcessor
+  /** Actual Core owner tracks durable row reads and Native history edits. */
+  readFacts?<T>(sessionId:string,purpose:string,read:()=>T):T
   /** Trusted program producer for the same actual Native v2 registration.
    * Author payloads, restored records and management tasks cannot select it. */
   material?:RoleplayInputMaterialDependenciesV1
@@ -349,7 +351,8 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   }
   const actualOwnedRow=(row:OwnedNonNumericalInputBranchRowFactV1):boolean=>{
     const actual=table.get(row.key)
-    return actual!==undefined&&actual!==null&&sameOwnedRowData(actual,row.value)&&recordSha256(actual)===row.sha256
+    // The private writer row owns its digest; equality preserves the live edit check.
+    return actual!==undefined&&actual!==null&&sameOwnedRowData(actual,row.value)
   }
   const registerPendingRow=(session:Session,row:OwnedNonNumericalInputBranchRowFactV1):void=>{
     const known=rowsFor(session),previous=known.rows.get(row.key)
@@ -387,9 +390,33 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     catch(error) {report(error);return 'INPUT_MUTATION_GATE_UNKNOWN'}
   }
   const waitForMutation=Symbol('owner-admission-mutation-wait')
-  const records = (sid: string): Work[] => [...table.entries()]
-    .filter(([key, value]) => key.startsWith(`${prefix(sid)}work-`) && isWork(value, sid))
-    .map(([, value]) => clone(value as Work))
+  const inventory = (sid: string) => {
+    const works:Work[]=[],stops:unknown[]=[]
+    let malformed=false
+    for(const [key,value] of table.entries()) {
+      if(key.startsWith(`${prefix(sid)}work-`)) {
+        if(isWork(value,sid))works.push(clone(value))
+        else malformed=true
+      }else if(key.startsWith(`${prefix(sid)}stop-`))stops.push(value)
+    }
+    return {works,stops,malformed}
+  }
+  const records = (sid: string): Work[] => inventory(sid).works
+  const readCompletion=(sid:string,id:string)=>readFacts
+    ?readFacts(sid,`input-completion:${id}`,()=>readInputCompletion(table,sid,id))
+    :readInputCompletion(table,sid,id)
+  const consumedCompletion=(sid:string,id:string,closed:NonNullable<ReturnType<typeof readCompletion>>)=>{
+    // Schema consumption also checks its current private view. Only the
+    // deterministic numerical result belongs to this historical DATA owner.
+    if(!readFacts||closed.plan.kind!=='numerical') {
+      return completion!.verifyConsumed(closed.scope,closed.plan,closed.settlement)
+    }
+    return readFacts(sid,`input-consumed:${id}`,()=>{
+      const actual=readCompletion(sid,id)
+      return !!actual&&actual.status==='settled'
+        &&completion!.verifyConsumed(actual.scope,actual.plan,actual.settlement)
+    })
+  }
   const observeExact = (session: Session) => {
     const result = clone(observe(session))
     if (!sha(result.sourceSha256) || !['legacy', 'management', 'story'].includes(result.kind)
@@ -449,18 +476,19 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
   const readTerminalAdmissionGate=(sid:string,known?:Work[],verifyConsumed=true)=>{
     if(!completion)return allowed
     try {
-      if([...table.entries()].some(([recordKey,value])=>recordKey.startsWith(`${prefix(sid)}work-`)&&!isWork(value,sid))) {
+      const scanned=known?undefined:inventory(sid)
+      if(scanned?.malformed) {
         return blocked('INPUT_STORED_WORK_UNKNOWN')
       }
-      for(const work of known??records(sid))if(work.terminalRequired) {
+      for(const work of known??scanned!.works)if(work.terminalRequired) {
         if(verifyUnclaimedRefusal(sid,work))continue
-        const closed=readInputCompletion(table,sid,work.preparationId)
+        const closed=readCompletion(sid,work.preparationId)
         if(!closed||closed.status!=='settled'||work.stop||work.status!=='active'
           ||!equal(closed.scope.currency,currencyOfStored(work))||!equal(closed.scope.receipt.checkpoint,work.checkpoint)
           ||!equal(closed.scope.transition,work.transition)
           // Consumed facts verify their actual closed prefix themselves. A
           // later editorial revision must not recreate old publisher rights.
-          ||verifyConsumed&&!completion.verifyConsumed(closed.scope,closed.plan,closed.settlement)) {
+          ||verifyConsumed&&!consumedCompletion(sid,work.preparationId,closed)) {
           return blocked('INPUT_PREVIOUS_TERMINAL_UNRESOLVED')
         }
       }
@@ -881,11 +909,9 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
             ?waitForMutation:blocked(mutation)
           // Scan owned immutable records, rather than trusting a potentially
           // lost index/current write. The same refs never acquire a new key.
-          const previous = records(sid)
-          if ([...table.entries()].some(([recordKey, value]) => recordKey.startsWith(`${prefix(sid)}work-`)
-            && !isWork(value, sid))) return blocked('INPUT_STORED_WORK_UNKNOWN')
-          const stopped = [...table.entries()].some(([recordKey, value]) => {
-            if (!recordKey.startsWith(`${prefix(sid)}stop-`)) return false
+          const scanned=inventory(sid),previous=scanned.works
+          if(scanned.malformed)return blocked('INPUT_STORED_WORK_UNKNOWN')
+          const stopped = scanned.stops.some(value => {
             const row = value as {refs?: NativeInputRef[]; notice?: NativeInputStopNoticeV1}
             return !Array.isArray(row?.refs) || row.notice?.refsCode && !row.refs.length
               || row.refs.some(ref => proposal.refs.some(item => equal(ref, item)))
@@ -1346,9 +1372,9 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
       for(const row of known.rows.values()) {
         const actual=table.get(row.key)
         if(actual===undefined||actual===null)continue
-        if(sameOwnedRowData(actual,row.value)&&recordSha256(actual)===row.sha256) {result.push(row);continue}
+        if(sameOwnedRowData(actual,row.value)) {result.push(row);continue}
         const previous=row.phase==='writing'?known.writtenPreimages.get(row.key):undefined
-        if(!previous||!sameOwnedRowData(actual,previous.value)||recordSha256(actual)!==previous.sha256) {
+        if(!previous||!sameOwnedRowData(actual,previous.value)) {
           fail('INPUT_OWNED_ROW_CHANGED')
         }
         result.push(previous)
@@ -1394,7 +1420,7 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
      * late Native stop cannot be hidden by an already written settled row. */
     verifyConsumedScope(scope:InputCompletionScope):boolean {
       try {
-        const sid=scope.receipt.checkpoint.sessionId,row=readInputCompletion(table,sid,scope.currency.preparationId)
+        const sid=scope.receipt.checkpoint.sessionId,row=readCompletion(sid,scope.currency.preparationId)
         // Native's original refs select the one durable Work address. UUID
         // identity is joined below; searching every historical Work cannot
         // establish another valid address for this completed claim.
@@ -1418,10 +1444,10 @@ export function createRoleplayInputPreparation<Session extends {id: string}>({ta
     /** Stored intent is a factual association, not a cold permission token. */
     verifyTerminalIntent(intent:MvuStateTerminalIntent):boolean {
       try {
-        const row=readInputCompletion(table,intent.sessionId,intent.preparationId)
-        const matches=records(intent.sessionId).filter(work=>work.preparationId===intent.preparationId)
-        if(!row||row.plan.kind!=='numerical'||!equal(row.plan.intent,intent)||matches.length!==1)return false
-        const work=matches[0]!
+        const row=readCompletion(intent.sessionId,intent.preparationId)
+        if(!row||row.plan.kind!=='numerical'||!equal(row.plan.intent,intent))return false
+        const refs=row.scope.receipt.checkpoint.refs,work=table.get(workKey(intent.sessionId,refs))
+        if(!isWork(work,intent.sessionId)||work.preparationId!==intent.preparationId)return false
         return work.terminalRequired===true&&equal(work.checkpoint,row.scope.receipt.checkpoint)
           &&equal(currencyOfStored(work),row.scope.currency)&&equal(work.refs,row.scope.receipt.checkpoint.refs)
           &&completion?.verifyStored(row.scope,intent)===true

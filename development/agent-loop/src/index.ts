@@ -268,7 +268,8 @@ export type {NativeRequestMaterialOwnerV1,NativeRequestMaterialInputV1,NativeReq
   NativeMaterialSelectionEventV1} from './request-material-owner.js'
 export {nativeInputSha256,inspectNativeInboxHistory} from './input-admission.js'
 export type {NativeInboxHistory} from './input-admission.js'
-export {reconstructNativeRequestMaterialV1,NativeRequestMaterialFailure,projectNativeMessageTextV2} from './request-material.js'
+export {reconstructNativeRequestMaterialV1,verifyNativeRequestMaterialHistoryV1,
+  NativeRequestMaterialFailure,projectNativeMessageTextV2} from './request-material.js'
 export type {NativeRequestMaterialRecordV1,NativeRequestMaterialRecordV2,NativeRequestMaterialRecord,
   NativeRequestMaterialEventV1} from './request-material.js'
 export type {NativeStoryRequestPolicyV1,NativeStoryMaterialHooksV1,NativeStoryTextTransformV1} from './story-request.js'

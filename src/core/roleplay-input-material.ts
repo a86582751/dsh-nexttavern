@@ -114,7 +114,8 @@ interface Ready {
   readonly captureSha256:string
   readonly records:{readonly snapshot:unknown;readonly plan:unknown}
   routeSha256?:string
-  transformed?:{decisionSha256:string;materialRef?:{seq:number;sha256:string}}
+  transformed?:{decisionSha256:string;decision?:NativeRequestMaterialTransformV1|NativeRequestMaterialTransformV2;
+    materialRef?:{seq:number;sha256:string}}
 }
 interface MaterialCandidate {
   readonly kind:'material-candidate'
@@ -406,8 +407,13 @@ export function createRoleplayInputMaterialOwnerV1(deps:RoleplayInputMaterialDep
     check(input) {
       try {
         const scope=owner.scope(input),row=ready
-        if(!row||row.token!==scope.stepToken||!row.transformed
-          ||nativeInputSha256(input.decision)!==row.transformed.decisionSha256)fail('INPUT_MATERIAL_PLAN_CHANGED')
+        if(!row||row.token!==scope.stepToken||!row.transformed)fail('INPUT_MATERIAL_PLAN_CHANGED')
+        // Native's decoder owns this deeply frozen plan. Later observer checks
+        // still test Source currency, without rehashing the same decoded DATA.
+        if(row.transformed.decision!==input.decision) {
+          if(nativeInputSha256(input.decision)!==row.transformed.decisionSha256)fail('INPUT_MATERIAL_PLAN_CHANGED')
+          row.transformed.decision=input.decision
+        }
         current(row)
         if(!input.selected)fail('INPUT_MATERIAL_NATIVE_SELECTED_MISSING')
         row.checks.assertSelected(input.selected,input.selected.messages.some(message=>message.origin==='pending-decision'))

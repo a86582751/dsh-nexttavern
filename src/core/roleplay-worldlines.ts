@@ -1056,10 +1056,10 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
     }
   }
 
-  async function nativeBranchGroupsFor(session: ReadBranchSession, lookup: ForkLookup | null = null) {
+  async function nativeBranchGroupsFor(session: ReadBranchSession, _legacyLookup: ForkLookup | null = null) {
     await reconcileNativeFork(session)
     // A recovered pending member can change navigation; rebuild its lookup.
-    lookup = buildForkLookupIndex(session)
+    const lookup = buildForkLookupIndex(session)
     const result: Record<string, BranchProjection> = {}
     for (const event of surfaceEvents(session)) {
       if (event?.type !== 'assistant/message') continue
@@ -1092,6 +1092,7 @@ export function createRoleplayWorldlines(deps: WorldlineDependencies) {
   }
 
   function deletedBranchMessageIdsFor(session: ReadBranchSession, lookup: ForkLookup | null = null) {
+    lookup ??= buildForkLookupIndex(session)
     const deleted = []
     for (const event of surfaceEvents(session)) {
       if (event?.type !== 'assistant/message') continue

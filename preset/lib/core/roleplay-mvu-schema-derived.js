@@ -217,16 +217,9 @@ export function createRoleplayMvuSchemaDerived(deps) {
             return;
         let closedSource;
         if (basis.source.schemaVersion !== 1) {
-            // The former boolean Source check discarded the same verified prepared
-            // DATA that numerical recovery needs immediately afterward.
-            try {
-                closedSource = frozenLineage?.readHistorical(basis.source, sid).prepared;
-            }
-            catch {
+            if (!frozenLineage)
                 return;
-            }
-            if (!closedSource)
-                return;
+            closedSource = frozenLineage.readHistorical(basis.source, sid).prepared;
         }
         else if (!sourceCurrent(basis.source, false, sid))
             return;
@@ -250,7 +243,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
     function readPrefix(subjectSessionId, nativeCut, revision = false) {
         const parent = deps.session(subjectSessionId);
         if (parent && nativeCut <= parent.inheritedEventCount) {
-            const events = prefix(parent, nativeCut);
+            let events = prefix(parent, nativeCut);
             let sid = parent.id, container, historyBasis;
             // Each hop selects the generation that actually owned the target range;
             // a descendant's future snapshot/ordinal never initializes that range.
@@ -263,6 +256,14 @@ export function createRoleplayMvuSchemaDerived(deps) {
             const selected = container.prepared.prefix, prepared = container.prepared;
             if (prepared.schemaVersion === 1)
                 fail('SCHEMA_DERIVED_FROZEN_HISTORY_UNAVAILABLE');
+            // A revision's numerical frontier can precede the opening's visible
+            // publication. Its selected frozen generation owns that readable floor;
+            // ordinary fork/copy captures retain their exact requested cut.
+            if (revision && selected.seed.kind === 'opening') {
+                const publicationCut = selected.seed.event.native.turnEndSeq + 1;
+                if (publicationCut > events.length)
+                    events = prefix(parent, publicationCut);
+            }
             const initial = selected.seed.kind === 'derived' ? readAncestorGenesis(selected.sessionId, events, new Set(), parent.id) : undefined;
             const closure = deps.branch.get(prepared.prefixClosureRef.key);
             if (!closure || recordSha256(closure) !== prepared.prefixClosureRef.sha256
@@ -398,8 +399,8 @@ export function createRoleplayMvuSchemaDerived(deps) {
                 ready = deps.history.recoverForkPrefix(frozen, events, initial);
                 if (!ready)
                     fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
-                prepared = validateMvuSchemaDerivedPrepared(sealMvuSchemaInheritanceFact({ schemaVersion: 1,
-                    encoding: 'native-mvu-schema-derived-prepared-v1', ...fields }, 'preparedSha256'));
+                prepared = sealMvuSchemaInheritanceFact({ schemaVersion: 1,
+                    encoding: 'native-mvu-schema-derived-prepared-v1', ...fields }, 'preparedSha256');
             }
             if (!operationCurrent(prepared, 'preparing'))
                 fail('SCHEMA_DERIVED_OPERATION_CHANGED');

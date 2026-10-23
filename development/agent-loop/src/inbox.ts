@@ -7,7 +7,8 @@
 import type { MessageId } from '@deepseek-ai/dsh-llm'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import type { Session, SessionEventMap, UserMessage } from '@deepseek-ai/dsh-session'
+import {SessionLogOffset} from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionEventMap, UserMessage } from '@deepseek-ai/dsh-session'
 import type {
   AgentEventDispatch,
   Inbox as InboxContract,
@@ -17,7 +18,7 @@ import type {
 } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
 import {deepFreeze} from '@deepseek-ai/dsh-util-values'
-import {inspectNativeInboxHistory, nativeInputLink, nativeInputSha256} from './input-admission.js'
+import {createNativeInboxHistoryOwner, nativeInputLink, nativeInputSha256} from './input-admission.js'
 import type {NativeDurableInputWorkLookup, NativeDurableInputWorkReceiptV1, NativeDurableInputWorkSelector,
   NativeInputClaim, NativeInputOwnership, NativeInputProposal, NativeInputRef} from './input-admission.js'
 
@@ -88,11 +89,27 @@ export class ReactLoopInbox implements InboxContract {
   private readonly proposals = new WeakSet<NativeInputProposal>()
   private readonly resumeProofs = new WeakSet<NativeInputResumeProof>()
   private readonly claims = new WeakSet<NativeInputClaim>()
+  private historyOwner?: ReturnType<typeof createNativeInboxHistoryOwner>
+  private historyOffset = 0
   constructor(
     private readonly projections: SessionProjectionRegistry,
     private readonly session: Session,
     private readonly dispatch: AgentEventDispatch,
-  ) {}
+    observeAppends?: (observe: (event: SessionEvent) => void) => void,
+  ) {
+    observeAppends?.(event => {
+      // A preceding synchronous observer may already have read this exact tail.
+      if (!this.historyOwner || Number(event.seq) !== this.historyOffset) return
+      try {
+        this.historyOwner.append(event)
+        this.historyOffset++
+      } catch {
+        // A partially interpreted malformed event cannot become cached proof.
+        this.historyOwner = undefined
+        this.historyOffset = 0
+      }
+    })
+  }
 
   /** Prompts awaiting individual turns. */
   get nextTurn(): readonly UserMessage[] {
@@ -182,6 +199,15 @@ export class ReactLoopInbox implements InboxContract {
   }
 
   lookupOwnership(ref: NativeInputRef): NativeInputOwnership {return this.history().ownership(ref)}
+  pendingOwnership(): {refs: readonly NativeInputRef[]; unknown: boolean} {
+    const history = this.history(), refs: NativeInputRef[] = []
+    let unknown = false
+    for (const entry of [...history.pending['next-step'], ...history.pending['next-turn']]) {
+      if (history.ownership(entry.ref).status !== 'pending') unknown = true
+      refs.push(Object.freeze({...entry.ref}))
+    }
+    return {refs: Object.freeze(refs), unknown}
+  }
   lookupDurableWork(selector: NativeDurableInputWorkSelector): NativeDurableInputWorkLookup {
     return deepFreeze(structuredClone(this.history().durableWork(selector)))
   }
@@ -201,14 +227,14 @@ export class ReactLoopInbox implements InboxContract {
     const work = durable ? this.history().resumeLinked(durable) : this.history().resume(refs)
     if (!work) return undefined
     const proof = deepFreeze({proposal, refs: structuredClone(refs), messages: work.messages,
-      observedSeq: this.session.snapshotEvents().at(-1)?.seq ?? -1, ...(durable ? {durable: structuredClone(durable)} : {})})
+      observedSeq: Number(this.session.seq) - 1, ...(durable ? {durable: structuredClone(durable)} : {})})
     this.resumeProofs.add(proof)
     return proof
   }
 
   resumeClaim(proof: NativeInputResumeProof, turn: number): NativeInputClaim | undefined {
     if (!this.resumeProofs.has(proof) || !this.matches(proof.proposal)) return undefined
-    const later = this.session.snapshotEvents().filter(event => event.seq > proof.observedSeq)
+    const later = this.session.snapshotEvents(SessionLogOffset(proof.observedSeq + 1))
     const boundary = later[0]
     if (later.length !== 1 || !boundary || boundary.type !== 'turn/start' || boundary.data.turn !== turn) return undefined
     if (proof.durable) {
@@ -230,10 +256,29 @@ export class ReactLoopInbox implements InboxContract {
   private history() {
     // Session exposes the actual inherited seed length. Parent input never
     // acquires child ownership merely by folding it under the current id.
-    const boundary = this.session.inheritedEventCount
-    const inheritedBoundary = Number.isSafeInteger(boundary) && boundary >= 0 ? boundary
-      : this.session.header.parentSession !== undefined ? Number.NaN : 0
-    return inspectNativeInboxHistory(this.session.id, this.session.snapshotEvents(), inheritedBoundary)
+    if (!this.historyOwner) {
+      const boundary = this.session.inheritedEventCount
+      const inheritedBoundary = Number.isSafeInteger(boundary) && boundary >= 0 ? boundary
+        : this.session.header.parentSession !== undefined ? Number.NaN : 0
+      const events = this.session.snapshotEvents()
+      this.historyOwner = createNativeInboxHistoryOwner(this.session.id, events, inheritedBoundary)
+      this.historyOffset = events.length
+    } else if (this.historyOffset < Number(this.session.seq)) {
+      // The actual Session cannot edit accepted events or shrink its private log.
+      // Catch up before serving an observer that runs ahead of our append feed.
+      const tail = this.session.snapshotEvents(SessionLogOffset(this.historyOffset))
+      try {
+        for (const event of tail) {
+          this.historyOwner.append(event)
+          this.historyOffset++
+        }
+      } catch (error) {
+        this.historyOwner = undefined
+        this.historyOffset = 0
+        throw error
+      }
+    }
+    return this.historyOwner.history
   }
 
   /**

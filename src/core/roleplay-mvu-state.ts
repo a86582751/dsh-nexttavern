@@ -179,6 +179,9 @@ export interface MvuStateTable {
 export type MvuStatePermissionPhase = 'before-write' | 'before-head' | 'after-head' | 'after-settlement'
 export interface MvuStateDeps {
   table: MvuStateTable
+  /** The existing Core input-state owner tracks every read inside this
+   * synchronous proof. Standalone cold readers perform the complete fold. */
+  readFacts?<T>(sessionId:string,purpose:string,read:()=>T):T
   /** Sole producer verifies actual historical opening/derived/program genesis.
    * Pure program validation below does not recreate its owner. */
   readGenesis(sessionId: string): StateGenesis | undefined
@@ -444,6 +447,9 @@ function settlementFor(intent: MvuStateTerminalIntent, candidate: MvuStateCandid
 }
 
 export function createRoleplayMvuState(deps: MvuStateDeps) {
+  function facts<T>(sid:string,purpose:string,read:()=>T):T {
+    return deps.readFacts?deps.readFacts(sid,purpose,read):read()
+  }
   function unedited(sid:string):void {
     if(!deps.readEditInvalidation)return
     const gate=deps.readEditInvalidation(sid)
@@ -451,10 +457,16 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     if(gate.kind!=='clear')fail(typeof gate.code==='string'?gate.code:'NUMERICAL_EDIT_UNKNOWN')
   }
   function verified(intent: MvuStateTerminalIntent): void {
-    if (!deps.verifyStoredIntent(cloneJson(intent))) fail('STORED_INTENT_UNPROVEN')
+    facts(intent.sessionId,`mvu-intent:${intent.intentSha256}`,()=>{
+      if (!deps.verifyStoredIntent(cloneJson(intent))) fail('STORED_INTENT_UNPROVEN')
+      return true
+    })
   }
   function verifiedManual(intent:MvuPlayerStateIntent):void {
-    if(!deps.verifyStoredManualIntent?.(cloneJson(intent)))fail('MANUAL_STORED_INTENT_UNPROVEN')
+    facts(intent.sessionId,`mvu-player-intent:${intent.intentSha256}`,()=>{
+      if(!deps.verifyStoredManualIntent?.(cloneJson(intent)))fail('MANUAL_STORED_INTENT_UNPROVEN')
+      return true
+    })
   }
   function manualGate(sid:string,allowedIntent?:MvuPlayerStateIntent):void {
     const code=deps.manualGate?.(sid,allowedIntent&&cloneJson(allowedIntent))
@@ -526,22 +538,41 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     for (const [key, value] of deps.table.entries()) if (key.startsWith(prefix)) {
       if (rows.size >= MAX_RECORDS || rows.has(key)) fail('RECORD_LIMIT')
       if (value === undefined) fail('RECORD_INVALID')
-      const actual = deps.table.get(key)
-      if (actual === undefined || !same(cloneJson(value), cloneJson(actual))) fail('READ_UNCERTAIN')
-      rows.set(key, cloneJson(actual))
+      rows.set(key, cloneJson(value))
     }
     // Require enumerated ownership: a missing enumeration cannot hide a pointer.
     const current = deps.table.get(mvuStateCurrentHeadKey(sid))
     if ((current !== undefined) !== rows.has(mvuStateCurrentHeadKey(sid))) fail('READ_UNCERTAIN')
     return rows
   }
-  function inspect(sid: string,allowedIntent?:MvuPlayerStateIntent): {state: MvuNumericalSnapshot;
+  function readEventFacts(sid:string,key:string,rows:ReadonlyMap<string,unknown>) {
+    return facts(sid,`mvu-event:${key}`,()=>{
+      // A retained proof enrolls its exact durable row in the owner footprint.
+      // A standalone cold fold already owns the decoded inventory value.
+      const raw=deps.readFacts?deps.table.get(key):rows.get(key)
+      if(!raw)fail('EVENT_MISSING')
+      const event=(deps.readFacts?cloneJson(raw):raw) as MvuStateUpdateEvent|MvuPlayerStateUpdateEvent
+      if(event.encoding==='native-mvu-player-state-update-event-v1') {
+        manualIntentValid(event.intent);verifiedManual(event.intent)
+        if(!same(event,mvuPlayerEventFor(event.intent)))fail('EVENT_INVALID')
+        return {event,head:mvuPlayerHeadFor(event)}
+      }
+      if(event.encoding!=='native-mvu-state-update-event-v1')fail('EVENT_INVALID')
+      intentValid(event.intent);verified(event.intent)
+      if(!same(event,eventFor(event.intent,event.proposal)))fail('EVENT_INVALID')
+      return {event,head:headFor(event)}
+    })
+  }
+  function inspect(sid:string,allowedIntent?:MvuPlayerStateIntent) {
+    unedited(sid)
+    manualGate(sid,allowedIntent)
+    return facts(sid,'mvu-state-inspection',()=>inspectHistory(sid))
+  }
+  function inspectHistory(sid: string): {state: MvuNumericalSnapshot;
     settlements:Map<string,MvuStatePublisherSettlement|MvuPlayerStatePublisherSettlement>;
     settlementSnapshots:Map<string,{base:MvuNumericalSnapshot;result:MvuNumericalSnapshot}>;
     genesis:StateGenesis;genesisSnapshot:MvuNumericalSnapshot;
     states:Map<string,MvuNumericalSnapshot>;rows:Map<string,unknown>} {
-    unedited(sid)
-    manualGate(sid,allowedIntent)
     const capturedGenesis=genesis(sid)
     const initial = capturedGenesis.state, rows = scan(sid), consumed = new Set<string>()
     const settlements = new Map<string,MvuStatePublisherSettlement|MvuPlayerStatePublisherSettlement>()
@@ -558,16 +589,8 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
         || seen.has(head.eventId)) fail('CHAIN_INVALID')
       seen.add(head.eventId)
       const eventKey = mvuStateEventKey(sid, head.eventId)
-      const event=rows.get(eventKey) as MvuStateUpdateEvent|MvuPlayerStateUpdateEvent|undefined
-      if (!event) fail('EVENT_MISSING')
-      if(event.encoding==='native-mvu-player-state-update-event-v1') {
-        manualIntentValid(event.intent);verifiedManual(event.intent)
-        if(!same(event,mvuPlayerEventFor(event.intent))||!same(head,mvuPlayerHeadFor(event)))fail('EVENT_INVALID')
-      } else {
-        if(event.encoding!=='native-mvu-state-update-event-v1')fail('EVENT_INVALID')
-        intentValid(event.intent);verified(event.intent)
-        if(!same(event,eventFor(event.intent,event.proposal))||!same(head,headFor(event)))fail('EVENT_INVALID')
-      }
+      const proof=readEventFacts(sid,eventKey,rows),event=proof.event
+      if(!same(head,proof.head))fail('EVENT_INVALID')
       if (event.intent.sessionId !== sid || !same(event.root, initial.root)) fail('EVENT_INVALID')
       consumed.add(eventKey)
       chain.push(event)
@@ -584,19 +607,24 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
       const base=state.sourceSha256===event.intent.sourceSha256?state
         :snapshot(state.currentHead,state.values,sid,event.intent.sourceSha256,initial.root)
       if (!same(event.intent.base, baseOf(base))) fail('BASE_INVALID')
-      let expected:MvuStatePublisherSettlement|MvuPlayerStatePublisherSettlement,next:MvuNumericalSnapshot
-      if(event.encoding==='native-mvu-player-state-update-event-v1') {
-        if(same(event.replacement.values,base.values))fail('MANUAL_EVENT_NO_CHANGE')
-        const head=mvuPlayerHeadFor(event)
-        expected=mvuPlayerSettlementFor(event.intent,head,{key:mvuStateEventKey(sid,event.eventId),sha256:event.eventSha256})
-        next=snapshot(head,event.replacement.values,sid,event.intent.sourceSha256,initial.root)
-      } else {
-        candidateValid(event.proposal,base,event.intent)
-        expected=settlementFor(event.intent,event.proposal,headFor(event),event)
-        next=snapshot(headFor(event),event.proposal.values,sid,event.intent.sourceSha256,initial.root)
-      }
-      const key = mvuStateSettlementKey(sid, event.eventId), actual = rows.get(key)
-      if (!actual || !same(actual, expected)) fail('SETTLEMENT_MISSING_OR_INVALID')
+      const key = mvuStateSettlementKey(sid, event.eventId)
+      const {expected,next}=facts(sid,`mvu-replay:${event.eventId}`,()=>{
+        const proof=readEventFacts(sid,mvuStateEventKey(sid,event.eventId),rows),actualEvent=proof.event
+        let expected:MvuStatePublisherSettlement|MvuPlayerStatePublisherSettlement,next:MvuNumericalSnapshot
+        if(actualEvent.encoding==='native-mvu-player-state-update-event-v1') {
+          if(same(actualEvent.replacement.values,base.values))fail('MANUAL_EVENT_NO_CHANGE')
+          expected=mvuPlayerSettlementFor(actualEvent.intent,proof.head,
+            {key:mvuStateEventKey(sid,actualEvent.eventId),sha256:actualEvent.eventSha256})
+          next=snapshot(proof.head,actualEvent.replacement.values,sid,actualEvent.intent.sourceSha256,initial.root)
+        } else {
+          candidateValid(actualEvent.proposal,base,actualEvent.intent)
+          expected=settlementFor(actualEvent.intent,actualEvent.proposal,proof.head,actualEvent)
+          next=snapshot(proof.head,actualEvent.proposal.values,sid,actualEvent.intent.sourceSha256,initial.root)
+        }
+        const actual=deps.readFacts?deps.table.get(key):rows.get(key)
+        if(!actual||!same(actual,expected))fail('SETTLEMENT_MISSING_OR_INVALID')
+        return {expected,next}
+      })
       consumed.add(key)
       settlements.set(event.eventId, expected)
       settlementSnapshots.set(event.eventId,{base,result:next})
@@ -691,18 +719,21 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     }catch { /* Optional display data must not change numerical readiness. */ }
     return {kind:'ready',snapshot:state,displayUpdates:formatMvuDisplayUpdates(updates)}
   }
+  function settlementFacts(intent:MvuStateTerminalIntent,
+    {state,settlements}:ReturnType<typeof inspect>):MvuStateFacts {
+    if (!same(state.root, intent.base.root)) fail('SOURCE_CHANGED')
+    const settlement = settlements.get(intent.intentSha256)
+    if (!settlement) return {kind: 'absent', code: 'SETTLEMENT_ABSENT'}
+    if (settlement.encoding!=='native-mvu-state-publisher-settlement-v1'||!same(settlement.intent, intent)) fail('INTENT_CONFLICT')
+    return {kind: 'committed', settlement: cloneJson(settlement)}
+  }
   function reconcileFacts(input: MvuStateTerminalIntent): MvuStateFacts {
     try {
       const intent = cloneJson(input)
       intentValid(intent)
       unedited(intent.sessionId)
       verified(intent)
-      const {state, settlements} = inspect(intent.sessionId)
-      if (!same(state.root, intent.base.root)) fail('SOURCE_CHANGED')
-      const settlement = settlements.get(intent.intentSha256)
-      if (!settlement) return {kind: 'absent', code: 'SETTLEMENT_ABSENT'}
-      if (settlement.encoding!=='native-mvu-state-publisher-settlement-v1'||!same(settlement.intent, intent)) fail('INTENT_CONFLICT')
-      return {kind: 'committed', settlement: cloneJson(settlement)}
+      return settlementFacts(intent,inspect(intent.sessionId))
     } catch (error) {return {kind: 'unknown', code: codeOf(error)}}
   }
   function permitted(token: object, intent: MvuStateTerminalIntent, phase: MvuStatePermissionPhase): void {
@@ -819,7 +850,11 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
     try {
       return await deps.withSourceLock(intent.sessionId, async (): Promise<MvuStatePublication> => {
         permitted(token, intent, 'before-write')
-        const facts = reconcileFacts(intent)
+        let inspected:ReturnType<typeof inspect>,facts:MvuStateFacts
+        try {
+          inspected = inspect(intent.sessionId)
+          facts = settlementFacts(intent,inspected)
+        } catch(error) {return {kind:'unknown',code:codeOf(error)}}
         if (facts.kind === 'committed') {
           if (!same(facts.settlement.candidate, candidate)) fail('CANDIDATE_INVALID')
           permitted(token, intent, 'after-settlement')
@@ -827,14 +862,13 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
         }
         // A partial event/head cannot be promoted by hot retry or cold readback.
         if (facts.kind === 'unknown') return {kind: 'unknown', code: facts.code}
-        const actual = inspect(intent.sessionId).state
+        const actual = inspected.state
         if (!same(actual, base)) fail('BASE_CHANGED')
         candidateValid(candidate, actual, intent)
         const event = candidate.kind === 'prepared' ? eventFor(intent, candidate) : undefined
         const head = event ? headFor(event) : actual.currentHead
         const settlement = settlementFor(intent, candidate, head, event)
         if (event) {
-          permitted(token, intent, 'before-write')
           wrote = true
           await putExact(mvuStateEventKey(intent.sessionId, event.eventId), event)
           permitted(token, intent, 'before-head')
@@ -843,7 +877,6 @@ export function createRoleplayMvuState(deps: MvuStateDeps) {
           const pointer = deps.table.get(mvuStateCurrentHeadKey(intent.sessionId))
           if (!same(pointer ?? genesis(intent.sessionId).state.currentHead, actual.currentHead)) fail('BASE_CHANGED')
           await putExact(mvuStateCurrentHeadKey(intent.sessionId), head as MvuStateCurrentHead)
-          permitted(token, intent, 'after-head')
         }
         permitted(token, intent, 'after-head')
         wrote = true

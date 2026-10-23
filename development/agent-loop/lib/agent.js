@@ -15,13 +15,13 @@ import { canonicalHeader, headerEquals, SessionLogOffset } from '@deepseek-ai/ds
 import { joinContextSections, renderContextSections, renderPrompt } from '@deepseek-ai/dsh-system-prompt';
 import { ReactLoopInbox } from './inbox.js';
 import { randomUUID } from 'node:crypto';
-import { INPUT_ADMISSION_ABORT_REASON, nativeInputLink, nativeInputSha256, nativeInputWorkSha256, nativePreparationReceipt, inspectNativeInboxHistory, nativeInputStopAcknowledgement } from './input-admission.js';
+import { INPUT_ADMISSION_ABORT_REASON, nativeInputLink, nativeInputSha256, nativeInputWorkSha256, nativePreparationReceipt, nativeInputStopAcknowledgement } from './input-admission.js';
 import { nativeCompletedInputReceipt, nativeCompletedInputAcknowledgement } from './input-completion.js';
 import { RuntimeContextProjection } from './runtime-context.js';
 import { AssistantStreamAttempt } from './assistant-stream.js';
 import { SystemPromptProjection, renderAttributedSystemPrompt } from './runtime-context.js';
 import { executeToolCalls } from './tool-calls.js';
-import { nativeRequestMaterialDecisionV1, nativeRequestMaterialOwnerRegistrationV1, nativeRequestMaterialOwnerCheckV1, nativeRequestMaterialPrepareDecisionV1, applyNativeOwnedSectionsV1, resolveNativeOwnedMaterialAnchorsV1, nativeOpeningMaterialOwnerRegistrationV1, nativeOpeningClosingAcknowledgementV1 } from './request-material-owner.js';
+import { nativeRequestMaterialDecisionV1, nativeRequestMaterialOwnerRegistrationV1, nativeRequestMaterialOwnerCheckV1, nativeRequestMaterialPrepareDecisionV1, applyNativeOwnedSectionsV1, captureNativeMaterialAssemblyV1, resolveNativeOwnedMaterialAnchorsV1, nativeOpeningMaterialOwnerRegistrationV1, nativeOpeningClosingAcknowledgementV1 } from './request-material-owner.js';
 import { sealNativeOpeningRecordV1, nativeOpeningInstructionSha256V1, validateNativeOpeningInvocationV1, validateNativeOpeningRequestAttemptV1, validateNativeOpeningClosingAckV1 } from './opening-record-hashes.js';
 import { inspectNativeOpeningGenerationV1, openingEventRefV1, hasUnclosedNativeOpeningV1 } from './opening-generation.js';
 import { planNativeRequestEnvelope } from './request-envelope.js';
@@ -166,7 +166,10 @@ export class ReactLoopAgent {
         this.dispatch = agentEvents(loopCtx, this);
         this.scope = createScope(loopCtx, this);
         this.ctx = this.scope.ctx;
-        this.inbox = new ReactLoopInbox(this.ctx.sessionProjections, session, this.dispatch);
+        this.inbox = new ReactLoopInbox(this.ctx.sessionProjections, session, this.dispatch, observe => {
+            this.ctx.on('session/event', (actual, event) => { if (actual === session)
+                observe(event); }, { global: true });
+        });
         /* v8 ignore next -- the loop registers its own turnBoundary unit, so the key is always present */
         const lastTurn = this.loopCtx.sessionProjections.stateOf(session, 'turnBoundary')?.lastTurn ?? 0;
         this.phase = { kind: 'idle', lastTurn };
@@ -337,12 +340,11 @@ export class ReactLoopAgent {
             for (const entry of registration.nominations?.values() ?? [])
                 refs.set(nativeInputSha256(entry.ref), entry.ref);
             let refsCode;
-            const history = inspectNativeInboxHistory(this.session.id, this.session.snapshotEvents(), this.session.inheritedEventCount);
-            for (const entry of [...history.pending['next-step'], ...history.pending['next-turn']]) {
-                if (history.ownership(entry.ref).status !== 'pending')
-                    refsCode = 'INPUT_OWNERSHIP_UNKNOWN';
-                refs.set(nativeInputSha256(entry.ref), entry.ref);
-            }
+            const pending = this.inbox.pendingOwnership();
+            if (pending.unknown)
+                refsCode = 'INPUT_OWNERSHIP_UNKNOWN';
+            for (const ref of pending.refs)
+                refs.set(nativeInputSha256(ref), ref);
             notice = deepFreeze({ schemaVersion: 1, sessionId: this.session.id, stopSequence, stopNonce: randomUUID(),
                 cause: { kind: cause.kind, ...(cause.kind === 'hook' ? { hookReasonSha256: nativeInputSha256(cause.reason) } : {}) },
                 keepInbox: options.keepInbox === true, phase: this.phase.kind, refs: [...refs.values()],
@@ -1657,7 +1659,7 @@ export class ReactLoopAgent {
             if (admission.registration !== lineage.registration || admission.identity !== lineage.identity
                 || admission.registration.requestMaterial !== lineage.owner
                 || !lineage.registration.active || this.inputAdmission !== lineage.registration
-                || admission.claim !== lineage.claim || nativeInputSha256(admission.claim) !== lineage.claimSha256)
+                || admission.claim !== lineage.claim)
                 this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_LINEAGE_REVOKED');
         }
         else {
@@ -1673,6 +1675,13 @@ export class ReactLoopAgent {
         if (!lineage)
             return;
         this.#assertSelectionOwner(lineage);
+        // This lineage owns an exact cut of the actual append-only Session. Its
+        // accepted event/message objects are immutable; no new tail can change it.
+        // Read the live surface generation even on reuse so removed projection
+        // definitions still invalidate their derived messages at this boundary.
+        if (Number(this.session.seq) === Number(lineage.expected.boundary.boundarySeq) + 1
+            && this.session.surface.contentGeneration === lineage.expected.boundary.contentGeneration)
+            return;
         if (!this.#acceptSelectionTitleTail(lineage, this.#selectionCut())) {
             this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_BOUNDARY_CHANGED');
         }
@@ -1717,15 +1726,18 @@ export class ReactLoopAgent {
         if (firstAttempt !== undefined && firstAttempt === lineage.attemptStarted) {
             this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_ATTEMPT_CHANGED');
         }
+        const cached = lineage.selected;
+        if (cached?.revision === lineage.revision && cached.pendingCursor === lineage.pendingCursor)
+            return cached.value;
         const pending = lineage.pending.slice(lineage.pendingCursor).map(row => {
             if (row.message.role !== 'user')
                 return this.#failSelection(lineage, 'REQUEST_MATERIAL_SELECTION_PENDING_INVALID');
             return row.message;
         });
-        const selected = this.#materialSelected(pending, true);
-        this.#assertSelectionCurrent(lineage);
+        const selected = this.#materialSelected(pending, true, lineage.expected.boundary);
         nativeMaterialSelections.set(selected, { lineage, revision: lineage.revision,
             pendingCursor: lineage.pendingCursor, boundarySha256: lineage.expected.sha256 });
+        lineage.selected = { revision: lineage.revision, pendingCursor: lineage.pendingCursor, value: selected };
         return selected;
     }
     #recordSelectionAppend(append, pendingMessage) {
@@ -1910,8 +1922,7 @@ export class ReactLoopAgent {
             return;
         this.assertMaterialRequestOwner(requestOwner, decision.messages);
         let selected = this.#materialSelected(decision.messages, true);
-        const finalAssembly = deepFreeze(structuredClone(decision.assembly));
-        const assemblySha256 = nativeInputSha256(finalAssembly);
+        const { assembly: finalAssembly, sha256: assemblySha256 } = captureNativeMaterialAssemblyV1(decision.assembly);
         const common = { schemaVersion: 1, ...position, signal, finalAssembly, assemblySha256, selected };
         let candidate, candidateMessages;
         let active = true, previews = 0;
@@ -1951,7 +1962,7 @@ export class ReactLoopAgent {
                             const proposed = { ...decision, messages: pending };
                             const planning = { ...prepared, ...position, signal, firstAttempt: true };
                             candidate = transform.kind === 'unchanged' ? this.planRequest(proposed, planning, decision.startsRequestSeries === true, true)
-                                : this.planMaterialRequest(proposed, planning, transform, basis, true);
+                                : this.planMaterialRequest(proposed, planning, transform, basis, true, finalAssembly);
                             candidateMessages = pending;
                             const prices = new Map(candidate.projection?.options.messages.map((message, index) => [String(message.id), candidate.measurement?.estimate.messageTokens[index]]));
                             const allocations = new Map();
@@ -2037,8 +2048,7 @@ export class ReactLoopAgent {
             assertCurrent: () => this.#assertSelectionCurrent(lineage) };
         const lineage = requestOwner.kind === 'player-input'
             ? { ...shared, kind: 'player-input', admission: requestOwner.admission, registration: requestOwner.admission.registration,
-                identity: requestOwner.admission.identity, owner: requestOwner.owner, claim: requestOwner.admission.claim,
-                claimSha256: nativeInputSha256(requestOwner.admission.claim) }
+                identity: requestOwner.admission.identity, owner: requestOwner.owner, claim: requestOwner.admission.claim }
             : { ...shared, kind: 'programmatic-opening', opening: requestOwner.opening,
                 registration: requestOwner.opening.registration, owner: requestOwner.owner };
         this.#materialSelection = lineage;
@@ -2465,8 +2475,7 @@ export class ReactLoopAgent {
     }
     /** The selected data precedes planned system/header/tool operations. It
      * distinguishes actual surface nodes from not-yet-appended decision input. */
-    #materialSelected(messages, firstAttempt) {
-        const boundary = this.session.currentRequestBoundary();
+    #materialSelected(messages, firstAttempt, boundary = this.session.currentRequestBoundary()) {
         const selected = [...boundary.messageNodes.map(({ seq, message }) => Object.freeze({ origin: 'surface',
                 eventSeq: Number(seq), id: String(message.id), role: message.role, messageSha256: nativeInputSha256(message), message })),
             ...firstAttempt ? messages.map(original => {
@@ -2518,13 +2527,13 @@ export class ReactLoopAgent {
         let preparedCall = input.preparedCall;
         signal.throwIfAborted();
         const selected = this.#captureSelection(admission, decision.messages, firstAttempt);
-        const finalAssembly = deepFreeze(structuredClone(decision.assembly));
+        const { assembly: finalAssembly, sha256: assemblySha256 } = captureNativeMaterialAssemblyV1(decision.assembly);
         const common = { schemaVersion: 1, turn, step, firstAttempt, signal,
             preparedRoute: Object.freeze({ configSha256: nativeInputSha256(config),
                 ...preparedCall?.requestMaterialText ? { requestMaterialText: preparedCall.requestMaterialText } : {},
                 ...preparedCall?.systemPromptUpdate ? { systemPromptUpdate: preparedCall.systemPromptUpdate } : {},
                 ...preparedCall?.toolUpdate ? { toolUpdate: preparedCall.toolUpdate } : {} }),
-            finalAssembly, assemblySha256: nativeInputSha256(finalAssembly), selected };
+            finalAssembly, assemblySha256, selected };
         let materialDecision;
         try {
             if (requestOwner.kind === 'player-input') {
@@ -2560,19 +2569,23 @@ export class ReactLoopAgent {
         if (plan.expectedAssemblySha256 !== common.assemblySha256 || plan.expectedSelectedBaseSha256 !== selected.sha256) {
             this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_PRECONDITION_CHANGED');
         }
-        return this.commitMaterialRequest(decision, this.planMaterialRequest(decision, input, plan, selected, false));
+        // transform is an external synchronous callback and may change its mutable
+        // assembly source. The captured plan remains immutable, but must still match.
+        if (nativeInputSha256(decision.assembly) !== assemblySha256) {
+            this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_SECTION_SUPPRESSED_OR_CHANGED');
+        }
+        return this.commitMaterialRequest(decision, this.planMaterialRequest(decision, input, plan, selected, false, finalAssembly));
     }
     /** The same canonical envelope/material planner serves hot candidates and
      * committed attempts. A candidate includes its future step/start so no
      * sequence, generated message ID or tool catalog is repaired afterwards. */
-    planMaterialRequest(decision, input, plan, selected, includeStepStart) {
+    planMaterialRequest(decision, input, plan, selected, includeStepStart, finalAssembly) {
         const requestOwner = this.materialRequestOwner(decision);
         const owner = requestOwner.owner;
         if (plan.story && !owner.story)
             this.abortMaterialRequestOwner(requestOwner, 'STORY_MATERIAL_OWNER_REQUIRED');
         const { config, turn, step, firstAttempt, signal } = input;
         let preparedCall = input.preparedCall;
-        const finalAssembly = deepFreeze(structuredClone(decision.assembly));
         // A route's system replacement bit is not additive system-at-depth support.
         // Missing exact-route capability refuses each required insertion before writes.
         const capability = preparedCall?.requestMaterialText;
@@ -2682,12 +2695,15 @@ export class ReactLoopAgent {
             && this.#materialSelected(decision.messages, planned.firstAttempt).sha256 !== selected.sha256) {
             this.abortMaterialRequestOwner(requestOwner, 'REQUEST_MATERIAL_SELECTED_BASE_CHANGED');
         }
+        let firstAppend = true;
         for (const planned of preview.events) {
             // The hot candidate's first event was already committed before the
             // original input checkpoint. The remaining preview is unchanged.
             if (planned.type === 'step/start')
                 continue;
-            this.checkMaterialOwner(requestOwner, decision.messages, plan, 'planned-precommit');
+            if (!firstAppend)
+                this.checkMaterialOwner(requestOwner, decision.messages, plan, 'planned-precommit');
+            firstAppend = false;
             const event = this.#recordSelectionAppend(() => {
                 const committed = this.session.appendRequestPreviewEvent(preview);
                 if (committed !== planned)

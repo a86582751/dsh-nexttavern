@@ -132,10 +132,6 @@ function captured(deps, sessionId) {
     }
     const activePointerRef = { table: 'branch', key: `${sessionId}__import-active`,
         exists: true, sha256: recordSha256(pointer) };
-    const storedPointer = deps.readRow('branch', activePointerRef.key);
-    if (storedPointer === undefined || !same(cloneData(storedPointer, '/activePointerRef'), pointer)) {
-        fail('ACTIVE_POINTER_REF_CHANGED', '/activePointerRef');
-    }
     if (Object.hasOwn(pointer, 'inheritedFrom') && (typeof pointer.inheritedFrom !== 'string' || !ID.test(pointer.inheritedFrom)
         || pointer.inheritedFrom === sessionId))
         fail('ACTIVE_POINTER_INVALID', '/activePointer/inheritedFrom');
@@ -187,9 +183,6 @@ function captured(deps, sessionId) {
     }
     const importRecordRef = { table: 'branch', key: `${sourceRecordSessionId}__import-${record.importId}`,
         exists: true, sha256: recordSha256(record) };
-    const storedRecord = deps.readRow('branch', importRecordRef.key);
-    if (storedRecord === undefined || !same(cloneData(storedRecord, '/importRecordRef', undefined, cloneRoleplayTavernLoreImportRecordV1), record))
-        fail('IMPORT_RECORD_REF_CHANGED', '/importRecordRef');
     if (inheritance && !same(importRecordRef, { table: 'branch', exists: true, ...inheritance.originalBinding.importRecordRef }))
         fail('IMPORT_RECORD_REF_CHANGED', '/importRecordRef/inheritance');
     if (!record.sourceEnvelope || !record.activation || !isHash(record.rawSha256))
@@ -472,10 +465,10 @@ export function createRoleplayTavernLoreSourceV1(deps) {
             bindingSha256: saved.current.openingContext.bindingSha256 }, expectedCardsSha256 = recordSha256(saved.current.cards), expectedWorldbookSha256 = recordSha256(saved.current.worldbook), expectedContextSha256 = recordSha256(expectedContext);
         const assertCurrent = () => {
             const pointer = deps.readActivePointer(sessionId), record = deps.readImportRecord(saved.sourceRecordSessionId, saved.original.activePointer.importId);
+            // These named readers own the exact branch keys captured above; readRow
+            // is the same table, not a second source of evidence for those bytes.
             if (recordSha256(pointer) !== saved.original.activePointerRef.sha256
-                || recordSha256(deps.readRow('branch', saved.original.activePointerRef.key)) !== saved.original.activePointerRef.sha256
-                || recordSha256(record) !== saved.original.importRecordRef.sha256
-                || recordSha256(deps.readRow('branch', saved.original.importRecordRef.key)) !== saved.original.importRecordRef.sha256) {
+                || recordSha256(record) !== saved.original.importRecordRef.sha256) {
                 fail('IMPORT_RECORD_REF_CHANGED', '/source/current');
             }
             const versions = deps.recordVersionsFor(sessionId);

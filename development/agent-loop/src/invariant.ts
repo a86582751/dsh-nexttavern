@@ -39,7 +39,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       return fail('a loop-built request with no request/header event in its session log')
     }
     const expected = nativeRequestMaterialInvariant(options,session,events) ?? session.deriveMessages()
-    if (JSON.stringify(options.messages) !== JSON.stringify(expected)) {
+    if (options.messages !== expected && JSON.stringify(options.messages) !== JSON.stringify(expected)) {
       fail(`llm request for session "${String(session.id)}" diverges from the dispatch-time durable derivation (log-reconstruction desync)`)
     }
 

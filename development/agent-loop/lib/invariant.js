@@ -37,7 +37,7 @@ const install = Object.assign((ctx, fail) => {
             return fail('a loop-built request with no request/header event in its session log');
         }
         const expected = nativeRequestMaterialInvariant(options, session, events) ?? session.deriveMessages();
-        if (JSON.stringify(options.messages) !== JSON.stringify(expected)) {
+        if (options.messages !== expected && JSON.stringify(options.messages) !== JSON.stringify(expected)) {
             fail(`llm request for session "${String(session.id)}" diverges from the dispatch-time durable derivation (log-reconstruction desync)`);
         }
         // The system prompt travels inside `messages` as surface node 0, never as `system`.

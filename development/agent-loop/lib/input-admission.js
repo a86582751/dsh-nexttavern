@@ -124,19 +124,27 @@ const validRef = (ref) => ref != null && typeof ref.sessionId === 'string'
  * its refs remain unknown even when their ids/bodies match a Core credential.
  * Callers must supply the actual boundary, including explicit zero for a root. */
 export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary = Number.NaN) {
+    return createNativeInboxHistoryOwner(sessionId, events, inheritedBoundary).history;
+}
+/** Inbox owns this fold over one actual Session's immutable append-only log.
+ * The standalone inspector above still creates an independent cold view. */
+export function createNativeInboxHistoryOwner(sessionId, events, inheritedBoundary) {
     const queues = { 'next-turn': [], 'next-step': [] };
     const entries = new Map(), turns = new Map();
+    const entriesByMessageId = new Map();
     const turnStarts = new Map(), turnsWithUsers = new Set();
     const linkedTurns = new Map();
-    let openTurn, revision = -1;
+    let openTurn, lastStartSeq, lastTurn, revision = -1;
     let invalid = !Number.isSafeInteger(inheritedBoundary) || inheritedBoundary < 0 || inheritedBoundary > events.length;
-    for (const event of events) {
+    const append = (event) => {
         if (event.type === 'turn/start') {
             if (openTurn !== undefined || turns.has(event.data.turn))
                 invalid = true;
             openTurn = event.data.turn;
-            const previousActualStartSeq = [...turnStarts.values()].at(-1);
+            const previousActualStartSeq = lastStartSeq;
             turnStarts.set(event.data.turn, event.seq);
+            lastStartSeq = event.seq;
+            lastTurn = event.data.turn;
             const marker = nativeInputLink(event.data.nativeInputLink, sessionId);
             const target = marker?.mode === 'claim' ? marker.proposal.target : 'next-turn';
             const offered = [...queues['next-step'], ...(target === 'next-turn' ? queues['next-turn'].slice(0, 1) : [])];
@@ -191,7 +199,7 @@ export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary =
             if (!queue || !Number.isSafeInteger(splice.start) || splice.start < 0 || splice.start > queue.length
                 || !Number.isSafeInteger(count) || count < 0 || splice.start + count > queue.length) {
                 invalid = true;
-                continue;
+                return;
             }
             for (const [index, entry] of queue.slice(splice.start, splice.start + count).entries()) {
                 if (splice.outcome === 'canceled')
@@ -208,6 +216,11 @@ export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary =
                 if (entries.has(refKey(ref)))
                     invalid = true;
                 entries.set(refKey(ref), entry);
+                const sameId = entriesByMessageId.get(ref.messageId);
+                if (sameId)
+                    sameId.push(entry);
+                else
+                    entriesByMessageId.set(ref.messageId, [entry]);
                 return entry;
             });
             queue.splice(splice.start, count, ...inserted);
@@ -218,7 +231,7 @@ export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary =
         else if (event.type === 'user/message') {
             if (openTurn !== undefined)
                 turnsWithUsers.add(openTurn);
-            const sameId = [...entries.values()].filter(entry => entry.ref.messageId === event.data.id);
+            const sameId = entriesByMessageId.get(event.data.id) ?? [];
             const fingerprint = nativeInputSha256(event.data);
             for (const entry of sameId)
                 if (entry.ref.messageSha256 !== fingerprint)
@@ -231,7 +244,7 @@ export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary =
                 const entry = matching[0];
                 if (!entry) {
                     invalid = true;
-                    continue;
+                    return;
                 }
                 if (entry.userSeq !== undefined || entry.cancelledSeq !== undefined || entry.claimSeq === undefined)
                     entry.conflict = true;
@@ -239,7 +252,9 @@ export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary =
                 entry.userTurn = openTurn;
             }
         }
-    }
+    };
+    for (const event of events)
+        append(event);
     const sameRefs = (left, right) => nativeInputSha256(left) === nativeInputSha256(right);
     const proofAt = (startSeq, requireStep = true) => {
         const linked = linkedTurns.get(startSeq), marker = linked?.marker;
@@ -293,7 +308,7 @@ export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary =
         if (!preparation || !refs)
             return { status: 'unknown', code: 'INPUT_LINK_SELECTOR_INVALID' };
         const workSha256 = nativeInputWorkSha256(sessionId, preparation, refs);
-        const latest = [...turnStarts.values()].at(-1), proof = latest === undefined ? undefined : proofAt(latest);
+        const proof = lastStartSeq === undefined ? undefined : proofAt(lastStartSeq);
         if (!proof || proof.receipt.workSha256 !== workSha256 || !sameRefs(proof.receipt.refs, refs)) {
             return { status: 'unknown', code: 'INPUT_LINK_HISTORY_UNKNOWN' };
         }
@@ -355,8 +370,8 @@ export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary =
         }
         return { status: 'unknown', ref, code: 'INPUT_CLOSED_WITHOUT_ADMISSION_PROOF', closedReason };
     };
-    return { revision, pending: queues, ownership, durableWork, linkReceipt(startSeq) {
-            if ([...turnStarts.values()].at(-1) !== startSeq)
+    const history = { get revision() { return revision; }, pending: queues, ownership, durableWork, linkReceipt(startSeq) {
+            if (lastStartSeq !== startSeq)
                 return undefined;
             return proofAt(startSeq)?.receipt;
         }, resumeLinked(receipt) {
@@ -367,7 +382,7 @@ export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary =
             return proof && { turn: receipt.actualTurn, messages: proof.entries.map(entry => structuredClone(entry.message)) };
         }, ownsClaim(claim) {
             if (invalid || !claim.refs.length || claim.refs.length !== claim.messages.length
-                || [...turnStarts.keys()].at(-1) !== claim.turn)
+                || lastTurn !== claim.turn)
                 return false;
             if (claim.resumed && claim.linkStartSeq !== undefined) {
                 const proof = proofAt(claim.linkStartSeq, false);
@@ -404,4 +419,5 @@ export function inspectNativeInboxHistory(sessionId, events, inheritedBoundary =
                 return undefined;
             return { turn, messages: original.map(entry => structuredClone(entry.message)) };
         } };
+    return Object.freeze({ history, append });
 }

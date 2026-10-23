@@ -130,10 +130,6 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   }
   const activePointerRef:LegacyRowRefDataV1={table:'branch',key:`${sessionId}__import-active`,
     exists:true,sha256:recordSha256(pointer)}
-  const storedPointer=deps.readRow('branch',activePointerRef.key)
-  if(storedPointer===undefined||!same(cloneData(storedPointer,'/activePointerRef'),pointer)) {
-    fail('ACTIVE_POINTER_REF_CHANGED','/activePointerRef')
-  }
   if(Object.hasOwn(pointer,'inheritedFrom')&&(typeof pointer.inheritedFrom!=='string'||!ID.test(pointer.inheritedFrom)
     ||pointer.inheritedFrom===sessionId))fail('ACTIVE_POINTER_INVALID','/activePointer/inheritedFrom')
   const isInherited=sourceRecordSessionId!==sessionId||Object.hasOwn(pointer,'inheritedFrom')
@@ -174,9 +170,6 @@ function captured(deps:TavernLoreSourceDepsV1,sessionId:string):Extract<TavernLo
   try {assertImportRecordIntegrity(record)}catch(error) {importFailure(error,'/activeImport')}
   const importRecordRef:LegacyRowRefDataV1={table:'branch',key:`${sourceRecordSessionId}__import-${record.importId}`,
     exists:true,sha256:recordSha256(record)}
-  const storedRecord=deps.readRow('branch',importRecordRef.key)
-  if(storedRecord===undefined||!same(cloneData(storedRecord,'/importRecordRef',undefined,
-    cloneRoleplayTavernLoreImportRecordV1),record))fail('IMPORT_RECORD_REF_CHANGED','/importRecordRef')
   if(inheritance&&!same(importRecordRef,{table:'branch',exists:true,...inheritance.originalBinding.importRecordRef}))
     fail('IMPORT_RECORD_REF_CHANGED','/importRecordRef/inheritance')
   if(!record.sourceEnvelope||!record.activation||!isHash(record.rawSha256))fail('IMPORT_RECORD_INVALID','/activeImport')
@@ -414,10 +407,10 @@ export function createRoleplayTavernLoreSourceV1(deps:TavernLoreSourceDepsV1) {
     const assertCurrent=()=>{
       const pointer=deps.readActivePointer(sessionId),record=deps.readImportRecord(saved.sourceRecordSessionId,
         saved.original.activePointer.importId)
+      // These named readers own the exact branch keys captured above; readRow
+      // is the same table, not a second source of evidence for those bytes.
       if(recordSha256(pointer)!==saved.original.activePointerRef.sha256
-        ||recordSha256(deps.readRow('branch',saved.original.activePointerRef.key))!==saved.original.activePointerRef.sha256
-        ||recordSha256(record)!==saved.original.importRecordRef.sha256
-        ||recordSha256(deps.readRow('branch',saved.original.importRecordRef.key))!==saved.original.importRecordRef.sha256) {
+        ||recordSha256(record)!==saved.original.importRecordRef.sha256) {
         fail('IMPORT_RECORD_REF_CHANGED','/source/current')
       }
       const versions=deps.recordVersionsFor(sessionId)

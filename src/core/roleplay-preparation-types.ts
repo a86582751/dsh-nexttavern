@@ -51,6 +51,7 @@ export interface WindowProof extends MemoryPreparation {
 }
 export interface PreparationCompaction {
   storyEvidence?(session:PreparationSession):import('./novel-export-projection.js').StoryEntry[]
+  storyEvidenceSnapshot?(session:PreparationSession):readonly import('./novel-export-projection.js').StoryEntry[]
   memoryProjection?(session: PreparationSession): PreparationMemory | null
   settingsDefaults?(): Record<string, unknown>
   prepareForTurn?(agent: TaskAgent, signal?: AbortSignal): Promise<MemoryPreparation | null>

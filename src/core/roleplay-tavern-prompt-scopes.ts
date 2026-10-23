@@ -411,6 +411,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     programAbsence?TAVERN_PROGRAM_ABSENCE_SCOPE_ADAPTER_POLICY_V1:
     numerical?.inherited?.schemaVersion===2?TAVERN_PROGRAM_INHERITED_SCOPE_ADAPTER_POLICY_V1:
     opening||numerical?.local.schemaVersion===2?TAVERN_PROGRAM_SCOPE_ADAPTER_POLICY_V1:TAVERN_NATIVE_SCOPE_ADAPTER_POLICY_V1,
+    policySha256=recordSha256(policy),
     absenceJoins=programAbsence?programAbsenceMessageJoins(programAbsence,selected)
       :programInheritedAbsence?programAbsenceMessageJoins(programInheritedAbsence,selected,true):undefined,
     inheritedProgramJoins=numerical?.inherited?.schemaVersion===2
@@ -425,7 +426,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       sourceProofSha256:domain.sourceProofSha256,sourceBindingSha256:domain.sourceBindingSha256,
       basisSha256:domain.basisSha256,nativeFactsSha256:domain.nativeFacts.factsSha256,
       seedRef:domain.seedRef,inputRef:domain.inputRef,numericalSourceSha256:programAbsence.numericalSourceSha256,
-      factsSha256:programAbsence.factsSha256,policySha256:recordSha256(policy),selectedBaseSha256:selected.sha256,
+      factsSha256:programAbsence.factsSha256,policySha256:policySha256,selectedBaseSha256:selected.sha256,
       ...(messageRef?{messageRef}:{}),...(nativeMessageJoin?{nativeMessageJoin}:{})})
   }
   const inheritedAbsenceRef=(scope:string,messageRef?:TavernPromptVariableRefV1,nativeMessageJoin?:unknown)=>{
@@ -443,7 +444,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       basisSha256:domain.basisSha256,numericalSourceSha256:data.numericalSourceSha256,
       originalNumericalSourceSha256:data.input.numericalSourceSha256,
       inventoryAuditSha256:data.inventory.inventorySha256,factsSha256:data.factsSha256,
-      policySha256:recordSha256(policy),selectedBaseSha256:selected.sha256,
+      policySha256:policySha256,selectedBaseSha256:selected.sha256,
       ...(messageRef?{messageRef}:{}),...(nativeMessageJoin?{nativeMessageJoin}:{})})
   }
   const pendingRef=(scope:string,messageRef?:TavernPromptVariableRefV1)=>{
@@ -453,7 +454,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       sourceProofSha256:opening.sourceProofSha256,basisSha256:opening.basisSha256,
       numericalSourceSha256:opening.numericalSourceSha256,seedRef:opening.seedRef,inputRef:opening.inputRef,
       inputBindingSha256:opening.inputBindingSha256,initializationKind:opening.initialization.kind,
-      policySha256:recordSha256(policy),selectedBaseSha256:opening.selectedBaseSha256,
+      policySha256:policySha256,selectedBaseSha256:opening.selectedBaseSha256,
       nativeOwner:{kind:opening.nativeOwner.kind,ownerSha256:recordSha256(opening.nativeOwner),
         sessionId:opening.nativeOwner.identity.sessionId,operationId:opening.nativeOwner.identity.operationId,
         messageId:opening.nativeOwner.identity.messageId,instructionSha256:opening.nativeOwner.identity.instructionSha256,
@@ -506,7 +507,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       recordSha256({policy,source:source.sourceSha256}),{
         schemaVersion:1,encoding:'native-numerical-readonly-empty-global-namespace-ref-v1',
         scope:'global',namespace:{sessionId:source.sessionId,importId:source.original.activePointer.importId},
-        policySha256:recordSha256(policy),
+        policySha256:policySha256,
         numericalFactsSha256:numerical.local.factsSha256,inventorySha256:numerical.local.inventory.membershipSha256})}})
     missing('card','no actual initialized character-scope supplier for the Native JSON numerical protocol')
     missing('script','no actual executing script-scope supplier for the Native JSON numerical protocol')
@@ -525,7 +526,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     for(const scope of ['global','chat','card'] as const) {
       scopes.push({scope,fact:{kind:'absent',provenance:ref(`${owner}:${scope}`,stateSnapshotSha256,
         {schemaVersion:1,encoding:'native-plain-empty-prompt-namespace-ref-v1',scope,
-          policySha256:recordSha256(policy),
+          policySha256:policySha256,
           sourceIdentity:{sessionId:source.sessionId,importId:source.original.activePointer.importId,
             rawSha256:source.original.rawSha256},absenceScopeRef})}})
     }
@@ -546,7 +547,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       ??numerical!.local.currentSnapshot.values},1_048_576),origin=currentManualChat?.provenance??latestManual,
       provenance=ref(`${owner}:cache-manual-overlay`,recordSha256({origin,stateSnapshotSha256}),{
         schemaVersion:1,encoding:'native-prompt-cache-manual-current-overlay-ref-v1',sessionId:source.sessionId,
-        sourceSha256:source.sourceSha256,policySha256:recordSha256(policy),
+        sourceSha256:source.sourceSha256,policySha256:policySha256,
         snapshotSha256:stateSnapshotSha256,origin,valuesSha256:recordSha256(values)})
     scopes.push({scope:'cache',fact:{kind:'values',values,valuesSha256:recordSha256(values),provenance}})
   }
@@ -557,14 +558,41 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     const prior=scopes.findIndex(row=>row.scope==='cache'),cache={scope:'cache' as const,fact:chat.fact}
     if(prior<0)scopes.push(cache);else scopes[prior]=cache
   }
+  // Retain all exact matches: duplicate publications remain ambiguous.
+  const frameMessagesByVersion=new Map<string,Map<string,MvuScopeReadFrameV1['messages'][number][]>>()
+  for(const item of frame?.messages??[]) {
+    let versions=frameMessagesByVersion.get(item.messageId)
+    if(!versions){versions=new Map();frameMessagesByVersion.set(item.messageId,versions)}
+    const matches=versions.get(item.messageVersionSha256)
+    if(matches)matches.push(item);else versions.set(item.messageVersionSha256,[item])
+  }
+  const numericalStoriesByVersion=new Map<string,Map<string,(typeof numericalStories)[number][]>>()
+  for(const item of numericalStories) {
+    const key=JSON.stringify([item.canonical.messageId,item.canonical.seq])
+    let versions=numericalStoriesByVersion.get(key)
+    if(!versions){versions=new Map();numericalStoriesByVersion.set(key,versions)}
+    const matches=versions.get(item.canonical.versionSha256)
+    if(matches)matches.push(item);else versions.set(item.canonical.versionSha256,[item])
+  }
+  const numericalOpenings=numerical?.inherited?.openingPublications??[],
+    numericalOpeningsByVersion=new Map<string,Map<string,(typeof numericalOpenings)[number][]>>()
+  for(const item of numericalOpenings) {
+    const key=JSON.stringify([item.canonical.messageId,item.canonical.seq])
+    let versions=numericalOpeningsByVersion.get(key)
+    if(!versions){versions=new Map();numericalOpeningsByVersion.set(key,versions)}
+    const matches=versions.get(item.canonical.versionSha256)
+    if(matches)matches.push(item);else versions.set(item.canonical.versionSha256,[item])
+  }
   const messages:TavernPromptMessageVariablesFactV1[]=storyRows.map((row,index)=>{
     if(nativeInputSha256(row.message)!==row.messageSha256)fail('INPUT_MATERIAL_SCOPE_MESSAGE_HASH_CHANGED')
     const messageRef=ref(`${owner}:message:${row.id}`,row.messageSha256,{schemaVersion:1,
       encoding:'actual-native-prompt-selected-message-ref-v1',id:row.id,role:row.role,
       origin:row.origin,eventSeq:row.eventSeq,messageSha256:row.messageSha256,
       selectedBaseSha256:selected.sha256})
-    const matches=frame?.messages.filter(item=>item.messageId===row.id
-      &&item.messageVersionSha256===recordSha256(row.message))??[]
+    const frameVersions=frameMessagesByVersion.get(row.id),numericalKey=JSON.stringify([row.id,row.eventSeq]),
+      storyVersions=numericalStoriesByVersion.get(numericalKey),openingVersions=numericalOpeningsByVersion.get(numericalKey),
+      messageVersionSha256=frameVersions||storyVersions||openingVersions?recordSha256(row.message):'',
+      matches=frameVersions?.get(messageVersionSha256)??[]
     if(matches.length>1)fail('INPUT_MATERIAL_SCOPE_MESSAGE_AMBIGUOUS')
     const variables=matches[0]?.variables
     let active:TavernPromptVariableObjectFactV1,initialized:boolean|null=null,initializedRef:TavernPromptVariableRefV1|null=null
@@ -598,10 +626,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       const provenance=settledAbsenceRef(`message-vars:${row.id}`,messageRef,absenceJoins!.get(row))
       active={kind:'absent',provenance};initializedRef=provenance
     }else if(numerical) {
-      const matches=numericalStories.filter(item=>item.canonical.messageId===row.id
-        &&item.canonical.seq===row.eventSeq&&item.canonical.versionSha256===recordSha256(row.message)),
-        openings=(numerical.inherited?.openingPublications??[]).filter(item=>item.canonical.messageId===row.id
-          &&item.canonical.seq===row.eventSeq&&item.canonical.versionSha256===recordSha256(row.message)),
+      const matches=storyVersions?.get(messageVersionSha256)??[],openings=openingVersions?.get(messageVersionSha256)??[],
         programOpening=inheritedProgramJoins?.get(row),localOpening=numerical.local.genesisMessageRef,
         isLocalOpening=localOpening?.messageId===row.id&&localOpening.seq===row.eventSeq
           &&localOpening.renderedTextSha256===sha256(textOf(row.message.content))
@@ -627,7 +652,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
         initialized=false
         const provenance=ref(`${owner}:message-vars:${row.id}`,numerical.local.factsSha256,{
           schemaVersion:1,encoding:'native-numerical-unpublished-message-scope-ref-v1',messageRef,
-          policySha256:recordSha256(policy),
+          policySha256:policySha256,
           localInventorySha256:numerical.local.inventory.membershipSha256,
           inheritedInventorySha256:numerical.inherited?.inventory.membershipSha256??null})
         active={kind:'absent',provenance};initializedRef=provenance
@@ -645,7 +670,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
       initialized=false
       const provenance=ref(`${owner}:message-vars:${row.id}`,stateSnapshotSha256,
         {schemaVersion:1,encoding:'native-prompt-unpublished-message-variable-ref-v1',messageRef,
-          policySha256:recordSha256(policy),
+          policySha256:policySha256,
           scopeBasisSha256:frame?.frameSha256??recordSha256(plain),
           sourceIdentity:{sessionId:source.sessionId,importId:source.original.activePointer.importId,
             rawSha256:source.original.rawSha256}})
@@ -659,7 +684,7 @@ export function captureRoleplayTavernPromptScopesV1(input:{source:TavernLoreSour
     selectedIndex:messages.length?messages.length-1:null,selectedSwipe:messages.length?0:null,messages,
     membershipRef:ref(`${owner}:selected-history`,selected.sha256,{schemaVersion:1,
       encoding:'actual-native-selected-story-variable-membership-v1',selectedBaseSha256:selected.sha256,
-      policySha256:recordSha256(policy),
+      policySha256:policySha256,
       messages:storyRows.map(row=>({id:row.id,messageSha256:row.messageSha256,origin:row.origin,eventSeq:row.eventSeq}))})}
   const selectedFact=messages.at(-1)?.selected
   if(selectedFact)scopes.push({scope:'message',fact:selectedFact})

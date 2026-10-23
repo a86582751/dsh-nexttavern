@@ -88,15 +88,17 @@ export function createRoleplayAuthorDialogContentV1(deps:Dependencies) {
       // head subscription includes an absent head and survives the model wait.
       const authorChat='schemaVersion' in binding?deps.captureAuthorChat(binding):schema.authorBrowser?.authorChat
       if(!authorChat)fail('AUTHOR_DIALOG_SOURCE_CHANGED')
-      const clock=captureReadonlyAuthorDialogChatClockV1({session,projections:deps.projections(),assertOwnerCurrent:assertOwner}),
+      const clock=captureReadonlyAuthorDialogChatClockV1({session,inputState:deps.inputState,
+        projections:deps.projections(),assertOwnerCurrent:assertOwner}),
         scopeData=captureRoleplayTavernPromptScopesV1({source:captured.source,
           currentIdentitySha256:captured.currentIdentitySha256,schema,selected:clock.selected,
           isStoryMessage:()=>true,scriptId:target.scriptIdentity,authorChat,
           ...'schemaVersion' in binding?{authorDialogScopes:browser.scopes}:{},assertOwnerCurrent:assertOwner}),
-        history=captureRoleplayTavernMaterialHistoryV1({sessionId:sid,table:deps.branch,
+        history=captureRoleplayTavernMaterialHistoryV1({sessionId:sid,table:deps.branch,inputState:deps.inputState,session,
           events:()=>session.snapshotEvents(),projections:deps.projections,assertOwnerCurrent:assertOwner}),
         inherited=deps.inheritedTiming(sid,captured.source,assertOwner),
         timed=captureRoleplayTavernTimedHistoryV2({sessionId:sid,source:captured.source,compilation:captured.compilation,
+          inputState:deps.inputState,table:deps.branch,
           ownHistory:history,clock,projections:deps.projections(),sourceLineage:inherited?.sourceLineage,
           inheritedHistory:inherited?.inheritedHistory,assertOwnerCurrent:assertOwner,
           assertSourceLineageCurrent:()=>inherited?.assertCurrent()})

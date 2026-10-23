@@ -480,6 +480,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       const selected=ctx.get('tavernConversations')?.selectionOf(session.id)
       return `${sourceReadOwnerClosed}:${(session as CoreSession).header?.cwd}:${selected?.root}:${selected?.activeSessionId}:${selected?.revision}`
     },
+    assertHistoryAvailable:session=>{void(session as NativeSession).surface.contentGeneration},
   })
   // Subscribe before the first captured read. Domain mutates its immutable
   // in-memory records and emits this event before resolving the writer.
@@ -631,7 +632,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       if(sourceReadOwnerClosed||live&&ctx.sessions.get(id)!==live
         ||!mvuAncestry.readNativeObservation(id))throw Error('SOURCE_INHERITANCE_NATIVE_CHANGED')
     }
-    return {sessionId:id,table:T.branch,projections:()=>ctx.sessions.messageProjections,
+    return {sessionId:id,table:T.branch,...(live?{inputState,session:live as unknown as NativeSession}:{}),
+      projections:()=>ctx.sessions.messageProjections,
       events:()=>actual.snapshotEvents().slice(0,count) as unknown as readonly import('@deepseek-ai/dsh-session').SessionEvent[],
       assertOwnerCurrent:assertCurrent,inheritedEventCount:actual.inheritedEventCount}
   }
@@ -884,7 +886,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     },
     assertMaterialPublications:(id,publications)=>{
       const scope=materialReadScope(id)
-      captureRoleplayTavernInheritedMaterialHistoryV1({...scope,publications}).assertCurrent()
+      // Capture reads and joins this complete inherited catalog synchronously.
+      captureRoleplayTavernInheritedMaterialHistoryV1({...scope,publications})
     },
     ensureParentBranch:async id=>{
       const actual=ctx.sessions.get(id)
@@ -900,17 +903,17 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   const taskAgents = new Map<string, CoreAgent>()
   const priceCatalog = createPriceCatalog({ table: T.branch })
   const exchangeRates = createExchangeRates({ table: T.branch })
+  const telemetryJobPrefixes=['tavern_job__','tavern_cardjob__','tavern_novel__']
+  const readTelemetryJobs=()=>[...T.branch.entries(telemetryJobPrefixes)]
+    .filter(([key])=>telemetryJobPrefixes.some(prefix=>key.startsWith(prefix))).map(([,value])=>value)
   const telemetry = createTelemetry({
     table: T.branch,
     sessions: ctx.sessions,
     query: ctx.sessionQuery,
-    jobs: () => [...T.branch.entries()]
-      .filter(([key]) =>
-        key.startsWith('tavern_job__')
-        || key.startsWith('tavern_cardjob__')
-        || key.startsWith('tavern_novel__'),
-      )
-      .map(([, value]) => value),
+    jobs:id=>id&&ctx.sessions.get(id)
+      ?inputState.captureHistoricalFacts(id,'telemetry-job-inventory',readTelemetryJobs).data:readTelemetryJobs(),
+    streamRows:(id,read)=>ctx.sessions.get(id)
+      ?inputState.captureHistoricalFacts(id,'telemetry-stream-inventory',read).data:read(),
   })
   // Observe every supported native LLM entry, including retries, regeneration,
   // auxiliary calls and child sessions. Never filter by current story surface.
@@ -1095,10 +1098,10 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     table: T.branch,
     history: session => {
       const engine = ctx.get('compaction')
-      if (typeof engine?.storyEvidence !== 'function') {
+      if (typeof engine?.storyEvidenceSnapshot !== 'function') {
         throw new Error('完整剧情历史服务尚未就绪，请稍后重试导出')
       }
-      return engine.storyEvidence(session)
+      return engine.storyEvidenceSnapshot(session)
     },
     request: spec => nativeTask({
       ...spec,
@@ -2531,6 +2534,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       } catch {return 'unknown'}
     }),withSourceLock:(id,work)=>withImportLock(id,'mvu-edit-invalidation',work)})
   const mvuState:ReturnType<typeof createRoleplayMvuState>=createRoleplayMvuState({table:T.status,
+    readFacts:(id,purpose,read)=>ctx.sessions.get(id)
+      ?inputState.captureHistoricalFacts(id,purpose,read).data:read(),
     readGenesis:id=>mvuDerived.required(id)?mvuDerived.readGenesis(id):readOwnNumericalGenesis(id),
     readSourceSha256:mvuOpening.readSourceSha256,
     captureInheritedDisplayUpdates:(id,genesis)=>{
@@ -2721,7 +2726,7 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
       // Main reuses the Source owner's closed DATA from this InputState capture.
       // AuthorDialog retains its independent read; Native history is per input.
       const lineage=sourceLineage??tavernSourceInheritance.readCommittedSourceLineage(sid),current=lineage.current,
-        inheritedHistory=captureRoleplayTavernInheritedMaterialHistoryV1({sessionId:sid,table:T.branch,
+        inheritedHistory=captureRoleplayTavernInheritedMaterialHistoryV1({sessionId:sid,table:T.branch,inputState,session,
           events:()=>session.snapshotEvents(),projections:()=>ctx.sessions.messageProjections,
           inheritedEventCount:current.prepared.nativeCut.seedLength,
           publications:current.materialBaseline.publications,assertOwnerCurrent:assertOwnerFactsCurrent}),
@@ -2900,6 +2905,8 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
   }
   ctx.effect(()=>()=>programOpening?.dispose(),'roleplay: program opening owner lifetime')
   inputOwner = createRoleplayInputPreparation({table:T.branch,completion,
+    readFacts:(id,purpose,read)=>ctx.sessions.get(id)
+      ?inputState.captureHistoricalFacts(id,purpose,read).data:read(),
     sessionForRowFacts:id=>ctx.sessions.get(id) as unknown as NativeSession|undefined,
     readColdMaterialHistory:session=>programAbsenceMaterialFacts.capture(session),
     material:tavernMaterial,

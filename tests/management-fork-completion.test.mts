@@ -2,25 +2,61 @@ import {installSchemaTestDependencies} from './mvu-schema-test-dependencies-fixt
 import {installMvuNativeDataTestDependencies} from './mvu-native-data-test-dependencies-fixture.mts'
 import type {SettingToolDependencies,SettingArguments} from '../lib/core/roleplay-panel-routes-types.js'
 import assert from 'node:assert/strict'
+import test from 'node:test'
+import {createRequire,registerHooks} from 'node:module'
+import {pathToFileURL} from 'node:url'
 import type { WorldlineDependencies } from '../lib/core/roleplay-worldline-types.js'
 import type { CompletionDependencies, CompletionState } from '../lib/core/roleplay-completion-types.js'
 import type { ContextEvent, ContextSession } from '../lib/core/roleplay-context.js'
+import type { BranchRoutesDependencies } from '../lib/core/roleplay-branch-routes-types.js'
 
 const removeNativeDependencies=await installMvuNativeDataTestDependencies(),
   removeDependencies=installSchemaTestDependencies()
+const testRequire=createRequire(new URL('../build-tools/package.json',import.meta.url))
+const taskLlmDependency=registerHooks({resolve(specifier,context,next) {
+  if(specifier==='@deepseek-ai/dsh-llm'&&context.parentURL===new URL('../lib/core/roleplay-task-tools.js',import.meta.url).href)
+    return {url:pathToFileURL(testRequire.resolve(specifier)).href,shortCircuit:true}
+  return next(specifier,context)
+}})
 try {
 const [{registerSettingTool,savePanelSetting},{createTavernTasks},{createRoleplayService},
   {recordSha256,sha256,textOf},{importActiveKey},{isSettingManagementCall},{createConversationCatalog},
   {createRoleplayCompletion},{canonicalAssistantForTurn,surfaceEntries,surfaceEvents,eventsOf,isCompletedTurnEnd},
-  {createRoleplayWorldlines}]=await Promise.all([
+  {createRoleplayWorldlines},{registerBranchRoutes}]=await Promise.all([
   import('../lib/core/roleplay-panel-routes.js'),import('../lib/core/tavern-tasks.js'),
   import('../lib/core/roleplay-service.js'),import('../lib/core/roleplay-data.js'),
   import('../lib/core/roleplay-import.js'),import('../lib/core/tavern-task-context.js'),
   import('../lib/core/tavern-conversations.js'),import('../lib/core/roleplay-completion.js'),
   import('../lib/core/roleplay-context.js'),import('../lib/core/roleplay-worldlines.js'),
+  import('../lib/core/roleplay-branch-routes.js'),
 ])
 
 const flush=()=>new Promise(resolve=>setImmediate(resolve))
+test('branch activity preserves recovered anchors, descendant tombstones and ordinary messages',()=>{
+  const events:ContextEvent[]=Array.from({length:64},(_,seq)=>({seq,type:'assistant/message',
+    data:{turn:seq+1,message:{id:`story-${seq}`,content:[{type:'text',text:'Story reply'}]}}}))
+  const root:ContextSession={id:'activity-root',events,surface:{nodes:events.map(event=>event.seq)}}
+  const child:ContextSession={...root,id:'activity-child',header:{parentSession:root.id}}
+  const sessions=new Map([[root.id,root],[child.id,child]]),records=new Map<string,any>()
+  const branch={get:(key:string)=>records.get(key),entries:()=>records.entries()}
+  const api=createRoleplayWorldlines({ctx:{sessions},T:{branch},safeId:String,
+    keyOf:(id:string,key:string)=>`${id}__${key}`,sha256,eventsOf,
+    surfaceEvents:(session:ContextSession)=>session.events,cloneBranchRecord:structuredClone} as unknown as WorldlineDependencies)
+  assert.equal(api.storyBranchIsActive(child),true)
+  const group={groupId:'activity',rootSessionId:root.id,anchor:{sourceSessionId:root.id},members:[
+    {sessionId:root.id,assistantMessageId:'story-7',ordinal:1,deleted:false},
+    {sessionId:child.id,assistantMessageId:'story-7',ordinal:2,deleted:false},
+  ]}
+  records.set(api.forkGroupKey(group.groupId),group)
+  assert.equal(api.storyBranchIsActive(child),true,'an interrupted missing child pointer still recovers its group')
+  group.members[1]!.deleted=true
+  assert.deepEqual(api.deletedBranchMessageIdsFor(child),['story-7'],'a recovered ancestor pointer retains the child tombstone')
+  assert.equal(api.storyBranchIsActive(child),false)
+  records.set(`${root.id}__fork-anchor-${sha256('story-7').slice(0,24)}`,{groupId:group.groupId})
+  group.members[0]!.deleted=true
+  assert.equal(api.storyBranchIsActive(root),false,'durable direct anchors retain deletion even after all members are tombstoned')
+})
+
 function fixture({via='event',tool='rp_source_search',invalid='',retry=false}={}) {
   const events:ContextEvent[]=[
     {seq:0,type:'turn/start',data:{turn:1}},
@@ -220,6 +256,60 @@ for(const failedTail of ['anchor','delete'] as const)for(const conflict of ['non
   assert.equal(h.member().assistantSeq,conflict==='seq'?3:h.proof.seq)
   if(conflict==='none')assert.equal(h.anchors()[0].groupId,h.records.get(h.groupKey).groupId)
 }
+await test('worldline terminal transitions release prepared inheritance resources',async()=>{
+  for(const transition of ['abort','operation-status','create-worldline','expired-create','expired-register'] as const) {
+    const expired=transition.startsWith('expired-')
+    const action=transition==='expired-create'?'create-worldline':transition==='expired-register'?'register':transition
+    const parentId='release-parent',childId='release-child',operationId=`release-${transition}`
+    const resources=new Map<string,unknown>([[childId,{prepared:'owned DATA'}],['another-child',{prepared:'other DATA'}]])
+    const parent={id:parentId,events:[{seq:0,type:'turn/end',data:{turn:1}}]}
+    const parentBefore=JSON.stringify(parent)
+    const operation={schemaVersion:1,operationId,kind:'player-edit',promptText:'A different choice',
+      anchor:{sourceSessionId:parentId,sourceTurn:2,previousTurnEndSeq:0,expectedSeedLength:1},
+      state:action==='operation-status'?'failed':'prepared',createdAt:Date.now(),expiresAt:expired?1:Date.now()+60_000,
+      ...(transition==='create-worldline'?{}:{reservedChildSessionId:childId})}
+    const records=new Map<string,unknown>([[`fork-op-${operationId}`,operation]])
+    const branch={get:(key:string)=>records.get(key),
+      put:async(key:string,value:unknown)=>{records.set(key,structuredClone(value))},
+      update:async(key:string,work:(value:unknown)=>unknown)=>{
+        const next=work(records.get(key));records.set(key,structuredClone(next));return structuredClone(next)
+      },delete:async(key:string)=>{records.delete(key)}}
+    const catalog=createConversationCatalog({read:()=>null,write:async()=>{}})
+    if(transition!=='create-worldline')await catalog.reserve({sourceSessionId:parentId,childSessionId:childId,
+      operationId,kind:'player-edit',sourceHash:'f'.repeat(64)})
+    let route!:{fetch(request:Request):Promise<Response>}
+    registerBranchRoutes({T:{branch},cloneBranchRecord:structuredClone,
+      forkOperationKey:(id:string)=>`fork-op-${id}`,
+      withForkMutationLock:async(_key:string,work:()=>Promise<unknown>)=>work(),
+      resolveRoleplaySession:async(id:string)=>id===parentId?parent:id===childId?{id:childId}:null,
+      assertStoryBranchActive:()=>{},
+      prepareWorldlineInheritance:async()=>{resources.set(childId,{prepared:'reserved DATA'})},
+      releaseWorldlineInheritance:(id:string)=>{resources.delete(id)},
+      ctx:{effect:(work:()=>unknown)=>work(),get:()=>catalog,
+        sessions:{get:(id:string)=>id===parentId?parent:undefined},
+        connection:{fetch:{register:(registered:typeof route)=>{route=registered}}},
+        sessionController:{resolveAgent:async(id:string)=>id===parentId
+          ?{agent:{session:parent,status:'idle'}}:{error:{code:'session/not-found'}},
+          forkPrepared:async(_input:unknown,reserve:(value:unknown)=>Promise<void>)=>{
+            await reserve({sourceSessionId:parentId,childSessionId:childId,seedLength:1})
+            throw Error('Native fork publication failed')
+          }}},
+    } as unknown as BranchRoutesDependencies)
+    const response=await route.fetch(new Request('https://fixture.test/api/roleplay/branch',{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,operationId,
+        childSessionId:childId,requestId:'release-request',promptText:'A different choice'}),
+    }))
+    const body=await response.json()
+    if(expired)assert.match(body.error,/过期|失效/)
+    else if(action==='create-worldline')assert.match(body.error,/Native fork publication failed/)
+    else assert.equal(response.status,200)
+    assert.equal((records.get(`fork-op-${operationId}`) as typeof operation).state,expired?'prepared':action==='abort'?'aborted':'failed')
+    assert.equal(resources.has(childId),false,`${transition} releases its prepared inheritance DATA`)
+    assert.equal(resources.has('another-child'),true,'another live reservation remains owned')
+    assert.equal(catalog.snapshot().worldlines[childId]?.status,expired?'reserved':'failed')
+    assert.equal(JSON.stringify(parent),parentBefore,'terminal cleanup leaves the parent Native history intact')
+  }
+})
 console.log('management-fork-completion=ok (event/idle, story isolation, invalid replies, retry, opening closure and tail recovery)')
 
 // Bounded author-setting edits and their background job lifecycle.
@@ -376,4 +466,4 @@ assert.ok((await call({action:'jobs'})).jobs.some((j:any)=>j.id===first.jobId))
 console.log('setting-repair=ok (shared panel CAS; single target patch; branch isolation; background admission; actual child evidence; player race; schema/restart receipts; no story blocking)')
 
 }
-}finally {removeDependencies();removeNativeDependencies()}
+}finally {taskLlmDependency.deregister();removeDependencies();removeNativeDependencies()}

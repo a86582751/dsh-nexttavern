@@ -19,7 +19,7 @@ function sourceMetadataSha256(value:unknown):string {
     ?roleplaySourceMetadataValue(value as Record<string,unknown>):value)
 }
 
-type Slot='schema'|'source'|'author-identity'|'observation'|'control'|'input'|'closing'
+type Slot='schema'|'source'|'author-identity'|'observation'|'history'|'control'|'input'|'closing'
 export type RoleplaySourceRead='legacy-author'|'tavern-author'|'input-source'|'program-origin'|'card-export'|'reader-display-author'
   |'author-worldbook'
   |'source-images'
@@ -49,7 +49,7 @@ export interface RoleplayInputStateScope {
 }
 interface ReadTable {
   get(key:string):unknown
-  entries?(exactPrefix?:string):Iterable<[string,unknown]>
+  entries?(exactPrefix?:string|readonly string[]):Iterable<[string,unknown]>
 }
 type PendingVariantFact=boolean|'unknown'
 interface PendingVariantRead {
@@ -149,6 +149,9 @@ export function createRoleplayInputStateOwner(deps:{
   active(session:RoleplayInputStateSession):boolean
   /** Cheap current worldline selection/cwd stamp, with no history projection. */
   scopeIdentity?(session:RoleplayInputStateSession):string
+  /** Native checks the continued availability of its projection definitions.
+   * Ordinary system/window replacement cannot change a closed historical cut. */
+  assertHistoryAvailable?(session:RoleplayInputStateSession):void
 }) {
   let disposed=false
   let capturing:Frame|undefined
@@ -210,7 +213,7 @@ export function createRoleplayInputStateOwner(deps:{
       sha256:schemaJournalFullStepSha256(completion,dispatch)}
     return retained.fullStep.sha256
   }}
-  const metrics={schemaCaptures:0,sourceCaptures:0,observationCaptures:0,controlCaptures:0,inputCaptures:0,closingCaptures:0,
+  const metrics={schemaCaptures:0,sourceCaptures:0,observationCaptures:0,historicalCaptures:0,controlCaptures:0,inputCaptures:0,closingCaptures:0,
     reusedReads:0,checkpoints:0,recordReads:0,inventoryRows:0,invalidations:0}
 
   function subscribe<T>(index:Map<string,Set<T>>,key:string,frame:T):void {
@@ -251,9 +254,13 @@ export function createRoleplayInputStateOwner(deps:{
     }
   }
   function markDirty(frame:Frame):void {
-    if(frame.dirty)return
-    frame.dirty=true;metrics.invalidations++
-    for(const parent of frame.parents)markDirty(parent)
+    const pending=[frame]
+    while(pending.length) {
+      const next=pending.pop()!
+      if(next.dirty)continue
+      next.dirty=true;metrics.invalidations++
+      for(const parent of next.parents)pending.push(parent)
+    }
   }
   function forgetPendingVariant(read:PendingVariantRead):void {
     for(const row of read.rows) {
@@ -420,27 +427,38 @@ export function createRoleplayInputStateOwner(deps:{
     for(const parent of frame.parents)parent.children.delete(frame)
   }
   function nominalCurrent(frame:Frame):boolean {
-    return !disposed&&!frame.dirty&&deps.session(frame.session.id)===frame.session
+    const valid=!disposed&&!frame.dirty&&deps.session(frame.session.id)===frame.session
       &&deps.agent(frame.session)===frame.agent&&deps.scopeIdentity?.(frame.session)===frame.scopeIdentity
+    if(valid&&frame.slot==='history')deps.assertHistoryAvailable?.(frame.session)
+    return valid
   }
   function programFactOwnerCurrent(read:ProgramFactRead):boolean {
     return read.active&&deps.session(read.session.id)===read.session
       &&deps.agent(read.session)===read.agent&&deps.scopeIdentity?.(read.session)===read.scopeIdentity
   }
-  function current(frame:Frame,visiting=new Set<Frame>()):boolean {
+  function current(frame:Frame):boolean {
     // Completed independent reads may supply DATA to an audit. Its own Frame
     // cannot prove itself current, including through a dependency cycle.
-    if(frame===readingProgramFact?.frame) {markDirty(frame);return false}
-    if(!nominalCurrent(frame)) {markDirty(frame);return false}
-    if(visiting.has(frame)) {markDirty(frame);return false}
-    visiting.add(frame)
-    try {
-      for(const child of frame.children)if(!current(child,visiting)) {markDirty(frame);return false}
-      for(const read of frame.programFacts) {
-        if(!programFactOwnerCurrent(read)) {markDirty(frame);return false}
+    const visiting=new Set<Frame>(),completed=new Set<Frame>(),
+      pending:{frame:Frame;exit:boolean}[]=[{frame,exit:false}]
+    while(pending.length) {
+      const next=pending.pop()!,candidate=next.frame
+      if(next.exit) {
+        for(const read of candidate.programFacts) {
+          if(!programFactOwnerCurrent(read)) {markDirty(candidate);return false}
+        }
+        // Entry already checked identity; these dependency reads are synchronous.
+        visiting.delete(candidate);completed.add(candidate)
+      }else {
+        if(completed.has(candidate))continue
+        if(candidate===readingProgramFact?.frame||!nominalCurrent(candidate)||visiting.has(candidate)) {
+          markDirty(candidate);return false
+        }
+        visiting.add(candidate);pending.push({frame:candidate,exit:true})
+        for(const child of [...candidate.children].reverse())pending.push({frame:child,exit:false})
       }
-      return nominalCurrent(frame)
-    }finally {visiting.delete(frame)}
+    }
+    return true
   }
   function check(frame:Frame):void {
     metrics.checkpoints++
@@ -462,7 +480,7 @@ export function createRoleplayInputStateOwner(deps:{
     return result
   }
   function read<T>(slot:Slot,id:string,key:string,compute:()=>T,cache:boolean,identity?:string,
-    sourceOutputs?:RoleplayInputStateScope['outputRows'])
+    sourceOutputs?:RoleplayInputStateScope['outputRows'],prepare?:()=>void)
     :RoleplayInputStateRead<T> {
     if(disposed)throw Error('INPUT_STATE_OWNER_DISPOSED')
     const session=deps.session(id)
@@ -483,6 +501,13 @@ export function createRoleplayInputStateOwner(deps:{
       throw programFactError(readingProgramFact?.kind??'absence','REENTRANT_AUDIT')
     }
     if(previous){markDirty(previous);forget(previous);slots.delete(slotKey)}
+    if(prepare) {
+      // Populate prerequisite slots on a miss without enrolling every prefix
+      // into the caller. compute must read its actual direct dependencies.
+      const outer=capturing
+      capturing=undefined
+      try {prepare()}finally {capturing=outer}
+    }
     const frame:Frame={slot,session,agent:deps.agent(session),dirty:false,rows:new Set(),activeRows:new Set(),
       sourceMetadataRows:new Map(),pendingVariants:new Set(),programFacts:new Set(),namespaces:new Set(),
       prefixes:new Set(),sessions:new Set(),children:new Set(),parents:new Set(),identity,
@@ -494,19 +519,23 @@ export function createRoleplayInputStateOwner(deps:{
     try {
       // This is the sole projection of active/deleted branch facts for a read
       // baseline. Its Domain dependencies are collected with the data below.
-      readingActive=true
-      try {if(!deps.active(session))throw Error('INPUT_STATE_SESSION_INACTIVE')}
-      finally {readingActive=false}
+      if(slot!=='history') {
+        readingActive=true
+        try {if(!deps.active(session))throw Error('INPUT_STATE_SESSION_INACTIVE')}
+        finally {readingActive=false}
+      }
       const data=compute()
       if(data&&typeof data==='object'&&'then' in data)throw Error('INPUT_STATE_ASYNC_CAPTURE')
       frame.data=data;check(frame)
       if(cache)slots.set(slotKey,frame)
       metrics[slot==='schema'?'schemaCaptures':slot==='source'?'sourceCaptures':
-        slot==='observation'?'observationCaptures':slot==='control'?'controlCaptures':
+        slot==='observation'?'observationCaptures':slot==='history'?'historicalCaptures':slot==='control'?'controlCaptures':
         slot==='closing'?'closingCaptures':'inputCaptures']++
-      return handle(frame,data)
+      const result=handle(frame,data)
+      capturing=outer;connect(frame)
+      return result
     }catch(error){markDirty(frame);forget(frame);throw error}
-    finally {capturing=outer;if(current(frame))connect(frame)}
+    finally {capturing=outer}
   }
 
   /** Reuse only the Domain footprint of the completed Source capture. The
@@ -580,7 +609,9 @@ export function createRoleplayInputStateOwner(deps:{
         }
         if(property==='entries'&&target.entries) {
           if(methods.has(property))return methods.get(property)
-          const trackedEntries=function*(exactPrefix?:string) {
+          const trackedEntries=function*(exactPrefix?:string|readonly string[]) {
+            const prefixes=typeof exactPrefix==='string'?[exactPrefix]:exactPrefix
+            const matches=(key:string)=>prefixes?.some(prefix=>key.startsWith(prefix))===true
             const frame=capturing,activeProjection=readingActive,
               variant=name==='branch'?readingPendingVariant:undefined,audit=readingProgramFact
             if(audit) {
@@ -590,7 +621,7 @@ export function createRoleplayInputStateOwner(deps:{
               if(name==='branch'||name==='status') {
                 programFactDependency('namespaces',namespace(name,audit.session.id))
               }
-              if(exactPrefix!==undefined)programFactDependency('prefixes',address(name,exactPrefix))
+              for(const prefix of prefixes??[])programFactDependency('prefixes',address(name,prefix))
             }else if(variant) {
               // Pointer recovery and ancestor lookup can discover a new group
               // before an anchor exists. Watch the complete navigation namespace.
@@ -602,8 +633,10 @@ export function createRoleplayInputStateOwner(deps:{
               if(exactPrefix!==undefined) {
                 // Identity-addressed journals declare their complete namespace,
                 // including an absent head and newly appended pending intents.
-                const ref=address(name,exactPrefix)
-                frame.prefixes.add(ref);subscribe(prefixReaders,ref,frame)
+                for(const prefix of prefixes!) {
+                  const ref=address(name,prefix)
+                  frame.prefixes.add(ref);subscribe(prefixReaders,ref,frame)
+                }
               }else {
                 const ref=namespace(activeProjection?'active-'+name:name,frame.session.id)
                 frame.namespaces.add(ref);subscribe(namespaceReaders,ref,frame)
@@ -618,11 +651,17 @@ export function createRoleplayInputStateOwner(deps:{
               // namespaces. Consumers of a group's data use its exact get.
               const suffix=frame?key.slice(frame.session.id.length+2):''
               if(audit) {
-                if(sessionOf(key)===audit.session.id||exactPrefix!==undefined&&key.startsWith(exactPrefix)) {
+                if(sessionOf(key)===audit.session.id||matches(key)) {
                   programFactDependency('rows',address(name,key))
                 }
               }else if(variant&&key.startsWith('fork-group-'))pendingVariantRow(variant,name,key)
-              else if(!variant&&frame&&exactPrefix!==undefined&&key.startsWith(exactPrefix))dependRow(frame,name,key,value)
+              else if(!variant&&frame&&matches(key)) {
+                // The subscribed prefix already owns every put/delete in this
+                // range. Retain foreign Session lifetime without a second
+                // row subscription for each entry in every inventory reader.
+                const sid=sessionOf(key)
+                if(sid)dependSession(frame,sid)
+              }
               else if(!variant&&frame&&exactPrefix===undefined&&!activeProjection&&sessionOf(key)===frame.session.id
                 &&!(name==='branch'&&explanatorySuffix(suffix))
                 &&!(name==='status'&&(suffix==='panel'||/^turn-[0-9]+-[0-9]+$/.test(suffix)))) {
@@ -812,6 +851,10 @@ export function createRoleplayInputStateOwner(deps:{
     captureSourceFrame,
     captureObservation:<T>(id:string,compute:()=>T,purpose='input-observation')=>
       read('observation',id,purpose,compute,true),
+    /** Reusable historical DATA has no admission or active-branch authority.
+     * Exact reads inside compute register the dependencies of this proof. */
+    captureHistoricalFacts:<T>(id:string,purpose:string,compute:()=>T,prepare?:()=>void)=>
+      read('history',id,purpose,compute,true,undefined,undefined,prepare),
     capturePlayerLedger:<T>(id:string,compute:()=>T)=>read('control',id,'schema-player-ledger',compute,true),
     currentSession:(id:string)=>[...(sessionReaders.get(id)??[])].some(frame=>frame.session.id===id&&current(frame)),
     diagnostics:()=>({...metrics}),

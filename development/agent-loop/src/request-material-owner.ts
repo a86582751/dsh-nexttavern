@@ -508,15 +508,41 @@ export function resolveNativeOwnedMaterialAnchorsV1(plan:NativeRequestMaterialTr
   return {insertions,resolutions}
 }
 
+const assemblyFacts=new WeakMap<PromptAssembly,{
+  sha256:string
+  sections:Map<string,PromptAssembly['sections'][number][]>
+  sectionSha256:WeakMap<PromptAssembly['sections'][number],string>
+}>()
+
+/** Native captures the mutable assembled input once for one planning attempt.
+ * Only this private producer association can reuse its immutable preimages. */
+export function captureNativeMaterialAssemblyV1(source:PromptAssembly):{
+  readonly assembly:PromptAssembly;readonly sha256:string
+} {
+  const assembly=deepFreeze(structuredClone(source)),sha256=nativeInputSha256(assembly)
+  const sections=new Map<string,PromptAssembly['sections'][number][]>()
+  for(const section of assembly.sections){
+    const matches=sections.get(section.name)
+    if(matches)matches.push(section)
+    else sections.set(section.name,[section])
+  }
+  assemblyFacts.set(assembly,{sha256,sections,sectionSha256:new WeakMap()})
+  return Object.freeze({assembly,sha256})
+}
+
 /** Replacing a whole surviving owned section preserves its full preimage;
  * prose substrings and marker text cannot grant a lost slot permission. */
 export function applyNativeOwnedSectionsV1(assembly:PromptAssembly,decision:NativeRequestMaterialTransform,
   sectionNames:readonly string[]):PromptAssembly {
-  if(nativeInputSha256(assembly)!==decision.expectedAssemblySha256)throw Error('REQUEST_MATERIAL_ASSEMBLY_CHANGED')
+  const facts=assemblyFacts.get(assembly)
+  if((facts?.sha256??nativeInputSha256(assembly))!==decision.expectedAssemblySha256)throw Error('REQUEST_MATERIAL_ASSEMBLY_CHANGED')
   const required=new Map(decision.requiredSections.map(item=>[item.name,item.sha256]))
   for(const [name,expected] of required){
-    const matches=assembly.sections.filter(section=>section.name===name)
-    if(!sectionNames.includes(name)||matches.length!==1||nativeInputSha256(matches[0])!==expected){
+    const matches=facts?.sections.get(name)??assembly.sections.filter(section=>section.name===name)
+    const section=matches[0]
+    let sha256=section&&facts?.sectionSha256.get(section)
+    if(section&&!sha256){sha256=nativeInputSha256(section);facts?.sectionSha256.set(section,sha256)}
+    if(!sectionNames.includes(name)||matches.length!==1||sha256!==expected){
       throw Error('REQUEST_MATERIAL_SECTION_SUPPRESSED_OR_CHANGED')
     }
   }

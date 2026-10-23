@@ -1,5 +1,5 @@
 import { keyOf, recordSha256 } from './roleplay-data.js'
-import { eventsOf, canonicalAssistantForTurn, readRoleplayActivity, surfaceEntries } from './roleplay-context.js'
+import { eventsOf, canonicalAssistantByTurn, readRoleplayActivity, surfaceEntries } from './roleplay-context.js'
 import { internalTaskSeqs } from './tavern-tasks.js'
 import { importActiveKey, activeOpeningSource } from './roleplay-import.js'
 import { provenImportPreludeAssistants } from './tavern-task-retirement.js'
@@ -78,7 +78,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       statusRecoveredSessions.add(session.id)
       recoverStatusObligations(session, 'session-resume')
     }
-    const branchGroupsByMessageId = await nativeBranchGroupsFor(session, forkLookup)
+    const branchGroupsByMessageId = await nativeBranchGroupsFor(session)
     // nativeBranchGroupsFor deliberately rebuilds its own lookup after repair;
     // use a fresh index for the related player/deletion projections too.
     forkLookup = buildForkLookupIndex(session)
@@ -87,6 +87,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
     const internalMessages = internalTaskSeqs(session)
     const internalAssistantMessageIds: string[] = []
     const endedTurns = new Set<number>()
+    let canonicalByTurn: ReturnType<typeof canonicalAssistantByTurn> | undefined = canonicalAssistantByTurn(session)
     for (const event of eventsOf(session)) {
       if (event.type === 'assistant/message' && internalMessages.has(event.seq)) {
         const id = assistantMessageId(event as StoryEvent)
@@ -95,7 +96,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       if (event.type === 'turn/end') endedTurns.add(Number(event.data?.turn))
     }
     for (const turn of endedTurns) {
-      const canonical = canonicalAssistantForTurn(session, turn)
+      const canonical = canonicalByTurn.get(turn)
       const messageId = canonical && assistantMessageId(canonical as StoryEvent)
       if (messageId) assistantActionAnchorsByTurn[String(turn)] = { seq:Number(canonical.seq), messageId }
     }
@@ -152,7 +153,7 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
       if (event?.type === 'user/message' && event.data?.source?.kind === 'user' && Number.isSafeInteger(activeTurn)) {
         playerTurns.add(activeTurn!)
         try {
-          if (endedTurns.has(activeTurn!) && !canonicalAssistantForTurn(session, activeTurn)) {
+          if (endedTurns.has(activeTurn!) && !(canonicalByTurn ??= canonicalAssistantByTurn(session)).has(activeTurn!)) {
             const context = userForkContext(session, Number(event.seq))
             const recovery = locatePlayerRecoveryTarget(session, Number(context.event.seq))
             if (!recovery) continue
@@ -165,9 +166,13 @@ export function createRoleplayState({ctx,T,awaitImportBarrier,ensureBranch,carry
               ? membership!.group.anchor
               : recovery
             const hasOrigin=membership?.group?.members.some(member=>isRecoverySourceMember(member,repairAnchor))
-            if (repairAnchor && !hasOrigin && await backfillRecoverySourceMember(repairAnchor)) {
-              forkLookup = buildForkLookupIndex(session)
-              membership = failedForkMembership(session, context.event, forkLookup)
+            if (repairAnchor && !hasOrigin) {
+              // Backfill awaits storage; a later user iteration must observe any intervening story edit.
+              canonicalByTurn = undefined
+              if (await backfillRecoverySourceMember(repairAnchor)) {
+                forkLookup = buildForkLookupIndex(session)
+                membership = failedForkMembership(session, context.event, forkLookup)
+              }
             }
             const group = membership?.group
             if (group) {

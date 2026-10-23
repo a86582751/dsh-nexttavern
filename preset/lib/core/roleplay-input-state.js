@@ -137,7 +137,7 @@ export function createRoleplayInputStateOwner(deps) {
                     sha256: schemaJournalFullStepSha256(completion, dispatch) };
             return retained.fullStep.sha256;
         } };
-    const metrics = { schemaCaptures: 0, sourceCaptures: 0, observationCaptures: 0, controlCaptures: 0, inputCaptures: 0, closingCaptures: 0,
+    const metrics = { schemaCaptures: 0, sourceCaptures: 0, observationCaptures: 0, historicalCaptures: 0, controlCaptures: 0, inputCaptures: 0, closingCaptures: 0,
         reusedReads: 0, checkpoints: 0, recordReads: 0, inventoryRows: 0, invalidations: 0 };
     function subscribe(index, key, frame) {
         let readers = index.get(key);
@@ -186,12 +186,16 @@ export function createRoleplayInputStateOwner(deps) {
         }
     }
     function markDirty(frame) {
-        if (frame.dirty)
-            return;
-        frame.dirty = true;
-        metrics.invalidations++;
-        for (const parent of frame.parents)
-            markDirty(parent);
+        const pending = [frame];
+        while (pending.length) {
+            const next = pending.pop();
+            if (next.dirty)
+                continue;
+            next.dirty = true;
+            metrics.invalidations++;
+            for (const parent of next.parents)
+                pending.push(parent);
+        }
     }
     function forgetPendingVariant(read) {
         for (const row of read.rows) {
@@ -399,46 +403,47 @@ export function createRoleplayInputStateOwner(deps) {
             parent.children.delete(frame);
     }
     function nominalCurrent(frame) {
-        return !disposed && !frame.dirty && deps.session(frame.session.id) === frame.session
+        const valid = !disposed && !frame.dirty && deps.session(frame.session.id) === frame.session
             && deps.agent(frame.session) === frame.agent && deps.scopeIdentity?.(frame.session) === frame.scopeIdentity;
+        if (valid && frame.slot === 'history')
+            deps.assertHistoryAvailable?.(frame.session);
+        return valid;
     }
     function programFactOwnerCurrent(read) {
         return read.active && deps.session(read.session.id) === read.session
             && deps.agent(read.session) === read.agent && deps.scopeIdentity?.(read.session) === read.scopeIdentity;
     }
-    function current(frame, visiting = new Set()) {
+    function current(frame) {
         // Completed independent reads may supply DATA to an audit. Its own Frame
         // cannot prove itself current, including through a dependency cycle.
-        if (frame === readingProgramFact?.frame) {
-            markDirty(frame);
-            return false;
-        }
-        if (!nominalCurrent(frame)) {
-            markDirty(frame);
-            return false;
-        }
-        if (visiting.has(frame)) {
-            markDirty(frame);
-            return false;
-        }
-        visiting.add(frame);
-        try {
-            for (const child of frame.children)
-                if (!current(child, visiting)) {
-                    markDirty(frame);
-                    return false;
+        const visiting = new Set(), completed = new Set(), pending = [{ frame, exit: false }];
+        while (pending.length) {
+            const next = pending.pop(), candidate = next.frame;
+            if (next.exit) {
+                for (const read of candidate.programFacts) {
+                    if (!programFactOwnerCurrent(read)) {
+                        markDirty(candidate);
+                        return false;
+                    }
                 }
-            for (const read of frame.programFacts) {
-                if (!programFactOwnerCurrent(read)) {
-                    markDirty(frame);
-                    return false;
-                }
+                // Entry already checked identity; these dependency reads are synchronous.
+                visiting.delete(candidate);
+                completed.add(candidate);
             }
-            return nominalCurrent(frame);
+            else {
+                if (completed.has(candidate))
+                    continue;
+                if (candidate === readingProgramFact?.frame || !nominalCurrent(candidate) || visiting.has(candidate)) {
+                    markDirty(candidate);
+                    return false;
+                }
+                visiting.add(candidate);
+                pending.push({ frame: candidate, exit: true });
+                for (const child of [...candidate.children].reverse())
+                    pending.push({ frame: child, exit: false });
+            }
         }
-        finally {
-            visiting.delete(frame);
-        }
+        return true;
     }
     function check(frame) {
         metrics.checkpoints++;
@@ -462,7 +467,7 @@ export function createRoleplayInputStateOwner(deps) {
         handles.set(result, frame);
         return result;
     }
-    function read(slot, id, key, compute, cache, identity, sourceOutputs) {
+    function read(slot, id, key, compute, cache, identity, sourceOutputs, prepare) {
         if (disposed)
             throw Error('INPUT_STATE_OWNER_DISPOSED');
         const session = deps.session(id);
@@ -490,6 +495,18 @@ export function createRoleplayInputStateOwner(deps) {
             forget(previous);
             slots.delete(slotKey);
         }
+        if (prepare) {
+            // Populate prerequisite slots on a miss without enrolling every prefix
+            // into the caller. compute must read its actual direct dependencies.
+            const outer = capturing;
+            capturing = undefined;
+            try {
+                prepare();
+            }
+            finally {
+                capturing = outer;
+            }
+        }
         const frame = { slot, session, agent: deps.agent(session), dirty: false, rows: new Set(), activeRows: new Set(),
             sourceMetadataRows: new Map(), pendingVariants: new Set(), programFacts: new Set(), namespaces: new Set(),
             prefixes: new Set(), sessions: new Set(), children: new Set(), parents: new Set(), identity,
@@ -502,13 +519,15 @@ export function createRoleplayInputStateOwner(deps) {
         try {
             // This is the sole projection of active/deleted branch facts for a read
             // baseline. Its Domain dependencies are collected with the data below.
-            readingActive = true;
-            try {
-                if (!deps.active(session))
-                    throw Error('INPUT_STATE_SESSION_INACTIVE');
-            }
-            finally {
-                readingActive = false;
+            if (slot !== 'history') {
+                readingActive = true;
+                try {
+                    if (!deps.active(session))
+                        throw Error('INPUT_STATE_SESSION_INACTIVE');
+                }
+                finally {
+                    readingActive = false;
+                }
             }
             const data = compute();
             if (data && typeof data === 'object' && 'then' in data)
@@ -518,9 +537,12 @@ export function createRoleplayInputStateOwner(deps) {
             if (cache)
                 slots.set(slotKey, frame);
             metrics[slot === 'schema' ? 'schemaCaptures' : slot === 'source' ? 'sourceCaptures' :
-                slot === 'observation' ? 'observationCaptures' : slot === 'control' ? 'controlCaptures' :
+                slot === 'observation' ? 'observationCaptures' : slot === 'history' ? 'historicalCaptures' : slot === 'control' ? 'controlCaptures' :
                     slot === 'closing' ? 'closingCaptures' : 'inputCaptures']++;
-            return handle(frame, data);
+            const result = handle(frame, data);
+            capturing = outer;
+            connect(frame);
+            return result;
         }
         catch (error) {
             markDirty(frame);
@@ -529,8 +551,6 @@ export function createRoleplayInputStateOwner(deps) {
         }
         finally {
             capturing = outer;
-            if (current(frame))
-                connect(frame);
         }
     }
     /** Reuse only the Domain footprint of the completed Source capture. The
@@ -623,6 +643,8 @@ export function createRoleplayInputStateOwner(deps) {
                     if (methods.has(property))
                         return methods.get(property);
                     const trackedEntries = function* (exactPrefix) {
+                        const prefixes = typeof exactPrefix === 'string' ? [exactPrefix] : exactPrefix;
+                        const matches = (key) => prefixes?.some(prefix => key.startsWith(prefix)) === true;
                         const frame = capturing, activeProjection = readingActive, variant = name === 'branch' ? readingPendingVariant : undefined, audit = readingProgramFact;
                         if (audit) {
                             // Full subject membership has no explanatory-row exemption.
@@ -631,8 +653,8 @@ export function createRoleplayInputStateOwner(deps) {
                             if (name === 'branch' || name === 'status') {
                                 programFactDependency('namespaces', namespace(name, audit.session.id));
                             }
-                            if (exactPrefix !== undefined)
-                                programFactDependency('prefixes', address(name, exactPrefix));
+                            for (const prefix of prefixes ?? [])
+                                programFactDependency('prefixes', address(name, prefix));
                         }
                         else if (variant) {
                             // Pointer recovery and ancestor lookup can discover a new group
@@ -646,9 +668,11 @@ export function createRoleplayInputStateOwner(deps) {
                             if (exactPrefix !== undefined) {
                                 // Identity-addressed journals declare their complete namespace,
                                 // including an absent head and newly appended pending intents.
-                                const ref = address(name, exactPrefix);
-                                frame.prefixes.add(ref);
-                                subscribe(prefixReaders, ref, frame);
+                                for (const prefix of prefixes) {
+                                    const ref = address(name, prefix);
+                                    frame.prefixes.add(ref);
+                                    subscribe(prefixReaders, ref, frame);
+                                }
                             }
                             else {
                                 const ref = namespace(activeProjection ? 'active-' + name : name, frame.session.id);
@@ -665,14 +689,20 @@ export function createRoleplayInputStateOwner(deps) {
                             // namespaces. Consumers of a group's data use its exact get.
                             const suffix = frame ? key.slice(frame.session.id.length + 2) : '';
                             if (audit) {
-                                if (sessionOf(key) === audit.session.id || exactPrefix !== undefined && key.startsWith(exactPrefix)) {
+                                if (sessionOf(key) === audit.session.id || matches(key)) {
                                     programFactDependency('rows', address(name, key));
                                 }
                             }
                             else if (variant && key.startsWith('fork-group-'))
                                 pendingVariantRow(variant, name, key);
-                            else if (!variant && frame && exactPrefix !== undefined && key.startsWith(exactPrefix))
-                                dependRow(frame, name, key, value);
+                            else if (!variant && frame && matches(key)) {
+                                // The subscribed prefix already owns every put/delete in this
+                                // range. Retain foreign Session lifetime without a second
+                                // row subscription for each entry in every inventory reader.
+                                const sid = sessionOf(key);
+                                if (sid)
+                                    dependSession(frame, sid);
+                            }
                             else if (!variant && frame && exactPrefix === undefined && !activeProjection && sessionOf(key) === frame.session.id
                                 && !(name === 'branch' && explanatorySuffix(suffix))
                                 && !(name === 'status' && (suffix === 'panel' || /^turn-[0-9]+-[0-9]+$/.test(suffix)))) {
@@ -936,6 +966,9 @@ export function createRoleplayInputStateOwner(deps) {
         captureOriginal: (id, identity, compute) => read('source', id, `schema-original:${identity}`, compute, true),
         captureSourceFrame,
         captureObservation: (id, compute, purpose = 'input-observation') => read('observation', id, purpose, compute, true),
+        /** Reusable historical DATA has no admission or active-branch authority.
+         * Exact reads inside compute register the dependencies of this proof. */
+        captureHistoricalFacts: (id, purpose, compute, prepare) => read('history', id, purpose, compute, true, undefined, undefined, prepare),
         capturePlayerLedger: (id, compute) => read('control', id, 'schema-player-ledger', compute, true),
         currentSession: (id) => [...(sessionReaders.get(id) ?? [])].some(frame => frame.session.id === id && current(frame)),
         diagnostics: () => ({ ...metrics }),

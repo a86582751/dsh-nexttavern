@@ -145,9 +145,11 @@ export function createRoleplayTavernPromptMaterialV1(deps) {
                     isStoryMessage: row => storyIds.has(row.id), assertOwnerCurrent: assertSignal });
                 const authorPromptFacts = domain.schema?.authorPrompt, authorBrowserFacts = domain.schema?.authorBrowserV3 ?? domain.schema?.authorBrowser;
                 const materialHistory = captureRoleplayTavernMaterialHistoryV1({ sessionId: scope.session.id, table: deps.branch,
+                    inputState: deps.inputState, session: scope.session,
                     events: () => scope.session.snapshotEvents(), projections: deps.projections, assertOwnerCurrent: assertSignal });
-                const chatClock = captureTavernCanonicalChatClockV1({ session: scope.session, selected: native.selected,
+                const chatClock = captureTavernCanonicalChatClockV1({ session: scope.session, selected: native.selected, inputState: deps.inputState,
                     assertOwnerCurrent: assertSignal }), inheritedTiming = deps.inheritedTiming(scope, source, assertSignal, author.captured.sourceLineage), timed = captureRoleplayTavernTimedHistoryV2({ sessionId: scope.session.id, source, compilation, ownHistory: materialHistory,
+                    inputState: deps.inputState, table: deps.branch,
                     inheritedHistory: inheritedTiming?.inheritedHistory, sourceLineage: inheritedTiming?.sourceLineage,
                     clock: chatClock, projections: deps.projections(), assertOwnerCurrent: assertSignal,
                     assertSourceLineageCurrent: () => inheritedTiming?.assertCurrent() });

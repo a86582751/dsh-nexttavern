@@ -307,9 +307,15 @@ export function createRoleplayInputMaterialOwnerV1(deps, owner) {
         check(input) {
             try {
                 const scope = owner.scope(input), row = ready;
-                if (!row || row.token !== scope.stepToken || !row.transformed
-                    || nativeInputSha256(input.decision) !== row.transformed.decisionSha256)
+                if (!row || row.token !== scope.stepToken || !row.transformed)
                     fail('INPUT_MATERIAL_PLAN_CHANGED');
+                // Native's decoder owns this deeply frozen plan. Later observer checks
+                // still test Source currency, without rehashing the same decoded DATA.
+                if (row.transformed.decision !== input.decision) {
+                    if (nativeInputSha256(input.decision) !== row.transformed.decisionSha256)
+                        fail('INPUT_MATERIAL_PLAN_CHANGED');
+                    row.transformed.decision = input.decision;
+                }
                 current(row);
                 if (!input.selected)
                     fail('INPUT_MATERIAL_NATIVE_SELECTED_MISSING');

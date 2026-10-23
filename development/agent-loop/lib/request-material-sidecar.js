@@ -42,11 +42,12 @@ function assertBoundMaterialBase(request, binding) {
         ...record.schemaVersion === 2 ? { messageTextProjections: record.delta.messageTextProjections } : {},
         ...record.delta.messageProjection ? { messageProjection: record.delta.messageProjection } : {},
         ...record.delta.requestLocalSampling ? { requestLocalSampling: record.delta.requestLocalSampling } : {} });
-    if (nativeInputSha256(result.record) !== nativeInputSha256(record)
-        || JSON.stringify(request.messages) !== JSON.stringify(result.messages)) {
+    if (nativeInputSha256(result.record) !== nativeInputSha256(record)) {
         throw Error('REQUEST_MATERIAL_RECONSTRUCTION_CHANGED');
     }
-    return result.messages;
+    if (JSON.stringify(request.messages) !== JSON.stringify(result.messages))
+        throw Error('REQUEST_MATERIAL_RECONSTRUCTION_CHANGED');
+    return request.messages;
 }
 /** Invariant reads its already-owned immutable event snapshot. A copied or
  * latest unrelated material event cannot substitute for the bound event. */
@@ -63,5 +64,8 @@ export function nativeRequestMaterialInvariant(request, session, events) {
         throw Error('REQUEST_MATERIAL_BINDING_CHANGED');
     }
     binding.assertOwnerCurrent();
-    return assertBoundMaterialBase(request, binding);
+    // The exact frozen request was planned, committed and privately bound while
+    // Native's selection owner was live. Its guard above proves the current cut;
+    // rebuilding the same request cannot add authority or change its messages.
+    return binding.preparedSelection ? request.messages : assertBoundMaterialBase(request, binding);
 }

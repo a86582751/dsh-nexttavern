@@ -326,14 +326,15 @@ export function completedAssistantReceiptForTurn(session: ContextSession, turn: 
   }
   return completed?candidate:null
 }
-export function canonicalAssistantForTurn(session: ContextSession, turn: unknown) {
+/** Canonical story replies for one synchronous read. Retained maps do not track edits. */
+export function canonicalAssistantByTurn(session: ContextSession): ReadonlyMap<number, ContextEvent> {
   const raw=eventsOf(session),nodes=Array.from(session?.surface?.nodes??[]),surfaceKey=nodes.join(',')
   const generation = messageViewGeneration(session)
   const prior = canonicalAssistantCache.get(session)
   const cached = generation !== null && prior?.generation === generation ? prior : undefined
-  if(cached?.raw===raw&&cached.rawLength===raw.length&&cached.rawLast===raw.at(-1)&&cached.surfaceKey===surfaceKey)return cached.byTurn.get(Number(turn))??null
+  if(cached?.raw===raw&&cached.rawLength===raw.length&&cached.rawLast===raw.at(-1)&&cached.surfaceKey===surfaceKey)return cached.byTurn
   const events=taskProjectionEvents(session)
-  if(cached?.events===events&&cached.length===events.length&&cached.last===events.at(-1)&&cached.surfaceKey===surfaceKey)return cached.byTurn.get(Number(turn))??null
+  if(cached?.events===events&&cached.length===events.length&&cached.last===events.at(-1)&&cached.surfaceKey===surfaceKey)return cached.byTurn
   const completed = new Set(events.filter(isCompletedTurnEnd).map(e=>Number(e.data?.turn)))
   const internal = internalTaskSeqs(session)
   const committedStory = taskStorySeqs(session)
@@ -350,7 +351,10 @@ export function canonicalAssistantForTurn(session: ContextSession, turn: unknown
     events, length: events.length, last: events.at(-1), raw, rawLength: raw.length,
     rawLast: raw.at(-1), surfaceKey, generation, byTurn,
   })
-  return byTurn.get(Number(turn))??null
+  return byTurn
+}
+export function canonicalAssistantForTurn(session: ContextSession, turn: unknown) {
+  return canonicalAssistantByTurn(session).get(Number(turn))??null
 }
 
 export function visibleCompactionCheckpoint(session: ContextSession) {

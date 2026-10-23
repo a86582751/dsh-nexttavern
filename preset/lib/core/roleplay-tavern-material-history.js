@@ -1,7 +1,7 @@
 // Generated from runtime/alpha3/src/core/roleplay-tavern-material-history.ts; edit the TypeScript source.
 /** Read the exact Core records bound by real Native material events once.
  * These historical facts grant no new step, claim, Source or dispatch rights. */
-import { nativeInputSha256, reconstructNativeRequestMaterialV1, validateNativeOpeningInvocationV1, validateNativeOpeningRequestAttemptV1 } from '@deepseek-ai/dsh-agent-loop';
+import { nativeInputSha256, verifyNativeRequestMaterialHistoryV1, validateNativeOpeningInvocationV1, validateNativeOpeningRequestAttemptV1 } from '@deepseek-ai/dsh-agent-loop';
 import { recordSha256 } from './roleplay-data.js';
 import { cloneRoleplayTavernLoreDataV1 } from './roleplay-tavern-lore-data.js';
 import { roleplayOpeningMaterialKeysV1 } from './roleplay-opening-material.js';
@@ -16,7 +16,29 @@ function freeze(value) {
     }
     return value;
 }
-const budgetV1 = () => ({ bytes: 0, rows: new Map(), inputs: new Map(), invocations: new Map(), openingInputs: new Map() });
+const budgetV1 = (shared) => ({ bytes: 0, rows: new Map(), inputs: new Map(),
+    ...(shared ? { decodedInputs: shared.inputs } : {}), invocations: shared?.invocations ?? new Map(),
+    openingInputs: shared?.openingInputs ?? new Map() });
+const projectionIdentities = new WeakMap();
+let nextProjectionIdentity = 0;
+/** Purpose identity only: definition replacement cannot reuse an older
+ * interpretation even when this cut has no model-visible projection yet. */
+export function tavernMaterialProjectionIdentityV1(projections) {
+    return projections.map(projection => {
+        let id = projectionIdentities.get(projection);
+        if (id === undefined) {
+            id = ++nextProjectionIdentity;
+            projectionIdentities.set(projection, id);
+        }
+        return id;
+    }).join(',');
+}
+/** Exact canonical array digest at one actual Native cut. This retains the
+ * existing SHA encoding; append creates a new cut rather than a hash chain. */
+export function tavernMaterialNativePrefixSha256V1(deps, events) {
+    const compute = () => nativeInputSha256(events);
+    return deps.inputState?.captureHistoricalFacts(deps.sessionId, `tavern-native-prefix:${events.length}`, compute).data ?? compute();
+}
 const sameNative = (left, right) => nativeInputSha256(left) === nativeInputSha256(right);
 const positive = (value) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -36,9 +58,11 @@ function rememberReference(references, ref) {
     references.set(ref.key, ref.sha256);
 }
 function charge(budget, value) {
-    budget.bytes += Buffer.byteLength(JSON.stringify(value), 'utf8');
+    const bytes = Buffer.byteLength(JSON.stringify(value), 'utf8');
+    budget.bytes += bytes;
     if (budget.bytes > 67_108_864)
         fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET');
+    return bytes;
 }
 function readOpeningInput(deps, ref, budget) {
     const raw = deps.table.get(ref.key);
@@ -52,9 +76,19 @@ function readOpeningInput(deps, ref, budget) {
     }
     if (budget.inputs.size >= 8192)
         fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET');
+    const decoded = budget.decodedInputs?.get(ref.key);
+    if (decoded) {
+        if (decoded.sha256 !== ref.sha256)
+            fail('INPUT_MATERIAL_HISTORY_CORE_REF_CONFLICT');
+        budget.bytes += decoded.bytes;
+        if (budget.bytes > 67_108_864)
+            fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET');
+        budget.inputs.set(ref.key, decoded);
+        return decoded.value;
+    }
     const value = freeze(cloneRoleplayTavernLoreDataV1(raw, 16_777_216, { nodes: 131072, depth: 66 }));
-    charge(budget, value);
-    budget.inputs.set(ref.key, { sha256: ref.sha256, value });
+    const bytes = charge(budget, value);
+    budget.inputs.set(ref.key, { sha256: ref.sha256, value, bytes });
     return value;
 }
 function assertOpeningInputsCurrent(deps, budget) {
@@ -64,7 +98,11 @@ function assertOpeningInputsCurrent(deps, budget) {
         if (recordSha256(deps.table.get(key)) !== ref.sha256)
             fail('INPUT_MATERIAL_HISTORY_OPENING_INPUT_CHANGED');
 }
-function openingInvocation(row, events, event, budget) {
+function decodeOpeningInvocation(deps, event) {
+    const compute = () => validateNativeOpeningInvocationV1(event.data);
+    return deps.inputState?.captureHistoricalFacts(deps.sessionId, `tavern-opening-invocation:${event.seq}`, compute).data ?? compute();
+}
+function openingInvocation(deps, row, events, event, budget) {
     exact(row.nativeOwner, ['kind', 'identity', 'invocationRef']);
     exact(row.nativeOwner.invocationRef, ['seq', 'sha256']);
     const ref = row.nativeOwner.invocationRef, seq = ref.seq, actual = events[seq];
@@ -73,18 +111,11 @@ function openingInvocation(row, events, event, budget) {
         fail('INPUT_MATERIAL_HISTORY_OPENING_INVOCATION_UNPROVEN');
     let invocation = budget.invocations.get(seq);
     if (!invocation) {
-        invocation = validateNativeOpeningInvocationV1(actual.data);
-        if (invocation.prefix.eventCount !== seq || nativeInputSha256(events.slice(0, seq)) !== invocation.prefix.sha256)
+        invocation = decodeOpeningInvocation(deps, actual);
+        if (invocation.prefix.eventCount !== seq || tavernMaterialNativePrefixSha256V1(deps, events.slice(0, seq)) !== invocation.prefix.sha256)
             fail('INPUT_MATERIAL_HISTORY_OPENING_INVOCATION_PREFIX_CHANGED');
-        // A historical cut may end before opening completion. It proves only the
-        // publication prefix, never a generated receipt or cold dispatch right.
-        for (const candidate of events)
-            if (candidate.type === 'opening/invocation') {
-                const other = validateNativeOpeningInvocationV1(candidate.data);
-                if (candidate !== actual && (other.identity.operationId === invocation.identity.operationId
-                    || other.identity.messageId === invocation.identity.messageId))
-                    fail('INPUT_MATERIAL_HISTORY_OPENING_INVOCATION_AMBIGUOUS');
-            }
+        // A historical cut may end before completion. The complete capture's
+        // invocation catalog checks later ambiguity separately from this prefix.
         budget.invocations.set(seq, invocation);
     }
     if (row.nativeOwner.kind !== 'programmatic-opening' || !sameNative(row.identity, invocation.identity)
@@ -93,8 +124,8 @@ function openingInvocation(row, events, event, budget) {
         fail('INPUT_MATERIAL_HISTORY_OPENING_IDENTITY_CHANGED');
     return { invocation, seq };
 }
-function openingPublicationPrefix(row, events, event, budget) {
-    const { seq } = openingInvocation(row, events, event, budget), prefix = events.slice(seq + 1, Number(event.seq) + 1), starts = prefix.filter(value => value.type === 'turn/start'), stepStarts = prefix.filter(value => value.type === 'step/start'), stepEnds = prefix.filter(value => value.type === 'step/end');
+function openingPublicationPrefix(deps, row, events, event, budget) {
+    const { seq } = openingInvocation(deps, row, events, event, budget), prefix = events.slice(seq + 1, Number(event.seq) + 1), starts = prefix.filter(value => value.type === 'turn/start'), stepStarts = prefix.filter(value => value.type === 'step/start'), stepEnds = prefix.filter(value => value.type === 'step/end');
     if (starts.length !== 1 || starts[0].data.turn !== row.turn || Object.keys(starts[0].data).length !== 1
         || prefix.some(value => value.type === 'turn/end' || value.type === 'user/message' || value.type === 'opening/invocation'
             || value.type === 'opening/generated-receipt' || value.type === 'opening/closing-ack')
@@ -160,7 +191,7 @@ function verifyOpeningRows(deps, event, snapshot, plan, events, budget) {
     if (!object(plan.payload.promptPlan) || !object(plan.payload.nativeTransform)
         || nativeInputSha256(plan.payload.nativeTransform) !== plan.payload.nativeTransformSha256)
         fail('INPUT_MATERIAL_HISTORY_OPENING_TRANSFORM_CHANGED');
-    openingPublicationPrefix(snapshot, events, event, budget);
+    openingPublicationPrefix(deps, snapshot, events, event, budget);
 }
 function readPublication(deps, event, ownerSessionId, references, budget, events) {
     const opening = event.data.snapshot.key.startsWith(`${ownerSessionId}__program-opening-material-`), prefix = opening ? `${ownerSessionId}__program-opening-material-` : `${ownerSessionId}__tavern-prompt-v1-`;
@@ -172,7 +203,7 @@ function readPublication(deps, event, ownerSessionId, references, budget, events
             fail('INPUT_MATERIAL_HISTORY_CORE_ROW_CHANGED');
         // Native binds this published derived record by its full digest. Source
         // budgets belong to its producer, not to the repeated explanatory layout.
-        const priorRow = budget.rows.get(ref.key), row = priorRow ?? raw;
+        const priorRow = budget.rows.get(ref.key), row = priorRow?.row ?? raw;
         if (!object(row) || row.schemaVersion !== 1 || row.authority !== 'consumer-data-only' || row.sessionId !== ownerSessionId
             || row.kind !== kind || row.turn !== event.data.turn || row.step !== event.data.step
             || !object(row.payload))
@@ -190,10 +221,10 @@ function readPublication(deps, event, ownerSessionId, references, budget, events
         rememberReference(references, ref);
         const result = row;
         if (!priorRow) {
-            budget.bytes += Buffer.byteLength(JSON.stringify(result), 'utf8');
-            if (budget.bytes > 67_108_864 || budget.rows.size >= 8192)
+            const bytes = charge(budget, result);
+            if (budget.rows.size >= 8192)
                 fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET');
-            budget.rows.set(ref.key, result);
+            budget.rows.set(ref.key, { row: result, bytes });
         }
         return result;
     };
@@ -210,9 +241,82 @@ function readPublication(deps, event, ownerSessionId, references, budget, events
 const coreOwner = (key) => /^([a-zA-Z0-9_-]{1,128})__(?:tavern-prompt-v1-|program-opening-material-)/.exec(key)?.[1];
 const ownsCoreKey = (key, sid) => key.startsWith(`${sid}__tavern-prompt-v1-`)
     || key.startsWith(`${sid}__program-opening-material-`);
+function capturePublication(deps, event, owner, references, budget, events, projections, reads) {
+    if (!deps.inputState)
+        return readPublication(deps, event, owner, references, budget, events);
+    const read = deps.inputState.captureHistoricalFacts(deps.sessionId, `tavern-material-publication:${tavernMaterialProjectionIdentityV1(projections)}:${owner}:${event.seq}`, () => {
+        verifyNativeRequestMaterialHistoryV1({ events, projections, session: deps.session, materials: [{
+                    materialEvent: event, expectedHeaderSha256: event.data.header.sha256
+                }] });
+        // Publication facts retain only their used inputs, while pure decoding
+        // stays shared across the same complete catalog as before segmentation.
+        const local = budgetV1(budget), refs = new Map(), publication = readPublication(deps, event, owner, refs, local, events);
+        return Object.freeze({ publication: Object.freeze(publication), references: Object.freeze([...refs]),
+            rows: Object.freeze([...local.rows].map(([key, { row, bytes }]) => Object.freeze({ key, value: row, bytes }))),
+            inputs: Object.freeze([...local.inputs].map(([key, input]) => Object.freeze({ key, ...input }))) });
+    });
+    reads.push(read);
+    const facts = read.data;
+    for (const [key, sha256] of facts.references)
+        rememberReference(references, { key, sha256 });
+    // The original budget is for the complete catalog's unique rows and input
+    // bodies. Cached publications contribute the same bytes once per exact key.
+    for (const row of facts.rows)
+        if (!budget.rows.has(row.key)) {
+            budget.rows.set(row.key, { row: row.value, bytes: row.bytes });
+            budget.bytes += row.bytes;
+        }
+    for (const input of facts.inputs) {
+        const previous = budget.inputs.get(input.key);
+        if (previous && previous.sha256 !== input.sha256)
+            fail('INPUT_MATERIAL_HISTORY_CORE_REF_CONFLICT');
+        if (!previous) {
+            budget.inputs.set(input.key, { sha256: input.sha256, value: input.value, bytes: input.bytes });
+            budget.bytes += input.bytes;
+        }
+    }
+    if (budget.bytes > 67_108_864 || budget.rows.size > 8192 || budget.inputs.size > 8192)
+        fail('INPUT_MATERIAL_HISTORY_CORE_BUDGET');
+    return facts.publication;
+}
+function assertOpeningCatalog(deps, publications, events) {
+    const openings = publications.filter(({ snapshot }) => snapshot.encoding === 'core-program-opening-material-record-v1');
+    if (!openings.length)
+        return;
+    const invocations = new Map(), operations = new Map(), messages = new Map();
+    for (const event of events)
+        if (event.type === 'opening/invocation') {
+            const invocation = decodeOpeningInvocation(deps, event);
+            invocations.set(Number(event.seq), invocation);
+            const { operationId, messageId } = invocation.identity;
+            operations.set(operationId, (operations.get(operationId) ?? 0) + 1);
+            messages.set(messageId, (messages.get(messageId) ?? 0) + 1);
+        }
+    // A later invocation may make an old publication ambiguous. That is a new
+    // catalog fact, so a cached old publication never silences this comparison.
+    for (const { snapshot } of openings) {
+        const row = snapshot, invocation = invocations.get(row.nativeOwner.invocationRef.seq);
+        if (!invocation || operations.get(invocation.identity.operationId) !== 1 || messages.get(invocation.identity.messageId) !== 1)
+            fail('INPUT_MATERIAL_HISTORY_OPENING_INVOCATION_AMBIGUOUS');
+    }
+}
+function assertPrefixCurrent(deps, events, sha256, code) {
+    if (deps.inputState && deps.session) {
+        // The actual Session owns this immutable contiguous prefix. Its current
+        // surface getter keeps used projection definitions live across reuse.
+        deps.session.surface.contentGeneration;
+        if (Number(deps.session.seq) < events.length || events.length > 0
+            && deps.session.eventAt((events.length - 1)) !== events.at(-1))
+            fail(code);
+        return;
+    }
+    const current = deps.events();
+    if (current.length < events.length || nativeInputSha256(current.slice(0, events.length)) !== sha256)
+        fail(code);
+}
 function captureMaterialHistory(deps, completePrefix) {
     deps.assertOwnerCurrent();
-    const events = deps.events(), prefixLength = events.length, prefixSha256 = nativeInputSha256(events), projections = [...deps.projections()], references = new Map(), budget = budgetV1(), publications = [];
+    const events = deps.events(), prefixLength = events.length, prefixSha256 = tavernMaterialNativePrefixSha256V1(deps, events), projections = [...deps.projections()], references = new Map(), budget = budgetV1(), publications = [], selected = [], reads = [];
     for (const raw of events) {
         if (raw.type !== 'request/material')
             continue;
@@ -223,27 +327,36 @@ function captureMaterialHistory(deps, completePrefix) {
             continue;
         if (owner !== planOwner)
             fail('INPUT_MATERIAL_HISTORY_CORE_OWNER_UNPROVEN');
-        if (publications.length >= 4096)
+        if (selected.length >= 4096)
             fail('INPUT_MATERIAL_HISTORY_LIMIT');
-        reconstructNativeRequestMaterialV1({ materialEvent: event, events, projections,
-            expectedHeaderSha256: event.data.header.sha256 });
-        publications.push(readPublication(deps, event, owner, references, budget, events));
+        selected.push({ event, owner: owner });
     }
+    if (!deps.inputState)
+        verifyNativeRequestMaterialHistoryV1({ events, projections, session: deps.session,
+            materials: selected.map(({ event }) => ({ materialEvent: event, expectedHeaderSha256: event.data.header.sha256 })) });
+    for (const { event, owner } of selected)
+        publications.push(capturePublication(deps, event, owner, references, budget, events, projections, reads));
+    assertOpeningCatalog(deps, publications, events);
     const assertCurrent = () => {
         deps.assertOwnerCurrent();
-        const actual = deps.events(), actualProjections = deps.projections();
+        const actualProjections = deps.projections();
         // Own Native appends may extend this prefix during retry. Native's real
         // selected capability checks those additions; old bytes stay immutable.
-        if (actual.length < prefixLength || nativeInputSha256(actual.slice(0, prefixLength)) !== prefixSha256
-            || actualProjections.length !== projections.length || actualProjections.some((item, index) => item !== projections[index]))
+        assertPrefixCurrent(deps, events, prefixSha256, 'INPUT_MATERIAL_HISTORY_CHANGED');
+        if (actualProjections.length !== projections.length || actualProjections.some((item, index) => item !== projections[index]))
             fail('INPUT_MATERIAL_HISTORY_CHANGED');
-        for (const [key, sha256] of references)
-            if (recordSha256(deps.table.get(key)) !== sha256)
-                fail('INPUT_MATERIAL_HISTORY_CORE_ROW_CHANGED');
-        assertOpeningInputsCurrent(deps, budget);
+        if (deps.inputState)
+            for (const read of reads)
+                read.assertCurrent();
+        else {
+            for (const [key, sha256] of references)
+                if (recordSha256(deps.table.get(key)) !== sha256)
+                    fail('INPUT_MATERIAL_HISTORY_CORE_ROW_CHANGED');
+            assertOpeningInputsCurrent(deps, budget);
+        }
     };
-    assertCurrent();
-    return { events: freeze([...events]), publications: Object.freeze(publications.map(row => Object.freeze(row))), assertCurrent, evidence: freeze({ schemaVersion: 1,
+    return { events: deps.inputState && deps.session ? Object.freeze([...events]) : freeze([...events]),
+        publications: Object.freeze(publications.map(row => Object.freeze(row))), assertCurrent, evidence: freeze({ schemaVersion: 1,
             encoding: 'native-bound-Core-material-history-v1', authority: 'consumer-data-only', sessionId: deps.sessionId,
             prefixLength, prefixSha256, coreRefs: [...references].map(([key, sha256]) => ({ key, sha256 })) }) };
 }
@@ -254,17 +367,16 @@ export const captureRoleplayTavernMaterialPrefixV1 = (deps) => captureMaterialHi
 /** Data rows at a Native cut, still over the actual Session's retained bytes.
  * Child inheritance does not restore a parent's live injection registry. */
 export function tavernMaterialPublicationRefsV1(history) {
-    history.assertCurrent();
     return freeze(history.publications.map(({ event, snapshot }) => ({ ownerSessionId: snapshot.sessionId,
         nativeSeq: Number(event.seq), nativeEventSha256: nativeInputSha256(event),
         snapshotRef: event.data.snapshot, planRef: event.data.plan, nativeRecordSha256: nativeInputSha256(event.data) })));
 }
 export function captureRoleplayTavernInheritedMaterialHistoryV1(deps) {
     deps.assertOwnerCurrent();
-    const actualEvents = deps.events(), cut = deps.inheritedEventCount, projections = [...deps.projections()], references = new Map(), budget = budgetV1(), publications = [], seen = new Set();
+    const actualEvents = deps.events(), cut = deps.inheritedEventCount, projections = [...deps.projections()], references = new Map(), budget = budgetV1(), publications = [], seen = new Set(), selected = [], reads = [];
     if (!Number.isSafeInteger(cut) || cut < 0 || cut > actualEvents.length || deps.publications.length > 4096)
         fail('INPUT_MATERIAL_HISTORY_INHERITED_CUT_INVALID');
-    const events = actualEvents.slice(0, cut), prefixSha256 = nativeInputSha256(events);
+    const events = actualEvents.slice(0, cut), prefixSha256 = tavernMaterialNativePrefixSha256V1(deps, events);
     let previousNativeSeq = -1;
     for (const original of deps.publications) {
         const ref = cloneRoleplayTavernLoreDataV1(original, 8192);
@@ -280,10 +392,14 @@ export function captureRoleplayTavernInheritedMaterialHistoryV1(deps) {
             || recordSha256(event.data.snapshot) !== recordSha256(ref.snapshotRef)
             || recordSha256(event.data.plan) !== recordSha256(ref.planRef))
             fail('INPUT_MATERIAL_HISTORY_INHERITED_REF_CHANGED');
-        reconstructNativeRequestMaterialV1({ materialEvent: event, events, projections,
-            expectedHeaderSha256: event.data.header.sha256 });
-        publications.push(readPublication(deps, event, ref.ownerSessionId, references, budget, events));
+        selected.push({ event, owner: ref.ownerSessionId });
     }
+    if (!deps.inputState)
+        verifyNativeRequestMaterialHistoryV1({ events, projections, session: deps.session,
+            materials: selected.map(({ event }) => ({ materialEvent: event, expectedHeaderSha256: event.data.header.sha256 })) });
+    for (const { event, owner } of selected)
+        publications.push(capturePublication(deps, event, owner, references, budget, events, projections, reads));
+    assertOpeningCatalog(deps, publications, events);
     for (const event of events)
         if (event.type === 'request/material') {
             const sourceOwner = coreOwner(event.data.snapshot.key), planOwner = coreOwner(event.data.plan.key);
@@ -292,16 +408,22 @@ export function captureRoleplayTavernInheritedMaterialHistoryV1(deps) {
         }
     const assertCurrent = () => {
         deps.assertOwnerCurrent();
-        const current = deps.events(), currentProjections = deps.projections();
-        if (current.length < cut || nativeInputSha256(current.slice(0, cut)) !== prefixSha256
-            || currentProjections.length !== projections.length || currentProjections.some((value, index) => value !== projections[index]))
+        const currentProjections = deps.projections();
+        assertPrefixCurrent(deps, events, prefixSha256, 'INPUT_MATERIAL_HISTORY_INHERITED_CHANGED');
+        if (currentProjections.length !== projections.length || currentProjections.some((value, index) => value !== projections[index]))
             fail('INPUT_MATERIAL_HISTORY_INHERITED_CHANGED');
-        for (const [key, sha256] of references)
-            if (recordSha256(deps.table.get(key)) !== sha256)
-                fail('INPUT_MATERIAL_HISTORY_CORE_ROW_CHANGED');
-        assertOpeningInputsCurrent(deps, budget);
+        if (deps.inputState)
+            for (const read of reads)
+                read.assertCurrent();
+        else {
+            for (const [key, sha256] of references)
+                if (recordSha256(deps.table.get(key)) !== sha256)
+                    fail('INPUT_MATERIAL_HISTORY_CORE_ROW_CHANGED');
+            assertOpeningInputsCurrent(deps, budget);
+        }
     };
-    return { events: freeze(events), publications: freeze(publications), assertCurrent, evidence: freeze({ schemaVersion: 1,
+    return { events: deps.inputState && deps.session ? Object.freeze(events) : freeze(events),
+        publications: Object.freeze(publications.map(row => Object.freeze(row))), assertCurrent, evidence: freeze({ schemaVersion: 1,
             encoding: 'native-inherited-Core-material-history-v1', authority: 'consumer-data-only', sessionId: deps.sessionId,
             prefixLength: cut, prefixSha256, coreRefs: [...references].map(([key, sha256]) => ({ key, sha256 })) }) };
 }

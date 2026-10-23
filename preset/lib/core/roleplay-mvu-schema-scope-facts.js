@@ -7,7 +7,7 @@ import { surfaceEntries } from './roleplay-context.js';
 import { selectedCanonicalChatHistory } from '../memory/memory-history.js';
 import { cloneSchemaData } from './tavern-mvu-schema-data.js';
 import { compileSchemaMvuInitData } from './tavern-mvu-initvar.js';
-import { validateMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
+import { createMvuScopeReadFrameV1, validateMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
 const scopePolicy = { schemaVersion: 1, id: 'native-mvu-published-scope-policy-v1',
     initializationChat: 'configured-book-baseline', storyChat: 'configured-message-publication', manualScope: 'chat',
     newMessage: 'empty-until-publication', otherScopes: 'session-source-owned-empty' };
@@ -145,12 +145,12 @@ export function buildSchemaScopeReadFrame(source, cutSha256, scripts, chat, mess
             global: schemaScopeEmpty(schemaScopeOwner(source, 'global')) },
         scripts: scripts.map(script => ({ scriptId: script.identity, pointer: script.pointer, sourceSha256: script.sourceSha256,
             variables: schemaScopeEmpty(schemaScopeOwner(source, 'script', script.identity)) })), messages };
-    return validateMvuScopeReadFrameV1({ ...body, frameSha256: recordSha256(body) });
+    return createMvuScopeReadFrameV1(body);
 }
 export function rebindSchemaScopeReadFrame(input, cutSha256) {
     const { frameSha256: _old, ...body } = validateMvuScopeReadFrameV1(input);
     const next = { ...body, sourceNativeCutSha256: cutSha256 };
-    return validateMvuScopeReadFrameV1({ ...next, frameSha256: recordSha256(next) });
+    return createMvuScopeReadFrameV1(next);
 }
 export function schemaScopeReadFactsEqual(left, right) {
     const { frameSha256: _left, sourceNativeCutSha256: _leftCut, ...a } = validateMvuScopeReadFrameV1(left);

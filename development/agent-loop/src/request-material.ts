@@ -8,7 +8,7 @@ import {deepFreeze} from '@deepseek-ai/dsh-util-values'
 import {nativeInputSha256} from './input-admission.js'
 import {deriveEventMessage, foldSurface} from '@deepseek-ai/dsh-session/surface'
 import type {SessionMessageProjection} from '@deepseek-ai/dsh-session/surface'
-import type {SessionEvent, SessionSeq,NativeLoreRoleV1,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,
+import type {Session,SessionEvent, SessionSeq,NativeLoreRoleV1,NativeMaterialDataRefV1,NativeMaterialMessageRefV1,
   NativeMaterialInsertionV1,NativeMaterialPlacementV1,
   NativeRequestMaterialRecord,NativeRequestMaterialRecordV1,NativeMessageProjectionV1,
   NativeMaterialMessageTextEditV2,NativeMaterialMessageTextProjectionV2} from '@deepseek-ai/dsh-session'
@@ -530,9 +530,54 @@ export interface NativeRequestMaterialReconstructionInputV1 {
   /** Actual header digest associated with the inspected request, not latest tail. */
   readonly expectedHeaderSha256: string
 }
+interface MaterialHistoryRead {
+  readonly records: Map<number, NativeRequestMaterialRecord | undefined>
+  readonly verified: Set<number>
+}
+const sessionMaterialHistory=new WeakMap<Session,{
+  readonly events:NativeRequestMaterialReconstructionInputV1['events']
+  readonly projections:readonly SessionMessageProjection[]
+  readonly read:MaterialHistoryRead
+}>()
+/** A standalone read owns its complete frozen prefix. An actual Session may
+ * retain the same verified historical DATA across append-only captures; a
+ * changed projection definition starts a new interpretation of that history. */
+export function verifyNativeRequestMaterialHistoryV1(input: {
+  readonly events: NativeRequestMaterialReconstructionInputV1['events']
+  readonly projections: NativeRequestMaterialReconstructionInputV1['projections']
+  readonly materials: readonly Pick<NativeRequestMaterialReconstructionInputV1,
+    'materialEvent' | 'expectedHeaderSha256'>[]
+  readonly session?:Session
+}): void {
+  const events = [...input.events], projections = [...input.projections]
+  const owner=input.session,previous=owner&&sessionMaterialHistory.get(owner)
+  if(owner&&(events.length>Number(owner.seq)||events.some((event,index)=>event!==owner.eventAt(index as SessionSeq))))
+    fail('BOUNDARY_MISMATCH','history.session')
+  const reusable=previous&&previous.projections.length===projections.length
+    &&previous.projections.every((projection,index)=>projection===projections[index])
+    &&(previous.events.length<=events.length?previous.events.every((event,index)=>event===events[index]):
+      events.every((event,index)=>event===previous.events[index]))
+  const read: MaterialHistoryRead = reusable?{records:new Map(previous.read.records),verified:new Set(previous.read.verified)}
+    :{records:new Map(),verified:new Set()}
+  for (const material of input.materials) {
+    // Membership in the actual Session snapshot supplies the trusted index;
+    // an arbitrary descriptor must still enter the standalone decoder first.
+    const seq=owner?events.indexOf(material.materialEvent):-1,record=read.records.get(seq)
+    if(seq>=0&&read.verified.has(seq)
+      &&record?.header.sha256===material.expectedHeaderSha256)continue
+    reconstructMaterial({materialEvent:material.materialEvent,expectedHeaderSha256:material.expectedHeaderSha256,
+      events,projections},read)
+  }
+  if(owner)sessionMaterialHistory.set(owner,{events:reusable&&previous.events.length>events.length?previous.events:events,
+    projections,read})
+}
 /** Historical reconstruction uses only this record's own exact prefix. It does
  * not query Source/Core or interpret any prior material as a surface overlay. */
 export function reconstructNativeRequestMaterialV1(input: NativeRequestMaterialReconstructionInputV1): NativeRequestMaterialResultV1 {
+  return reconstructMaterial(input)!
+}
+function reconstructMaterial(input: NativeRequestMaterialReconstructionInputV1,
+  read?: MaterialHistoryRead): NativeRequestMaterialResultV1 | undefined {
   if (input === null || typeof input !== 'object' || utilTypes.isProxy(input)) fail('DATA_UNSAFE', 'reconstruction')
   const desc = Object.getOwnPropertyDescriptors(input)
   const names = ['materialEvent', 'events', 'projections', 'expectedHeaderSha256']
@@ -569,6 +614,12 @@ export function reconstructNativeRequestMaterialV1(input: NativeRequestMaterialR
   }
   const priorMaterials: {seq: number; record: NativeRequestMaterialRecord}[] = []
   for (const [seq, item] of prefix.entries()) {
+    if (read?.records.has(seq)) {
+      const priorRecord = read.records.get(seq)
+      if (priorRecord) priorMaterials.push({seq, record: priorRecord})
+      if (priorMaterials.length > limits.insertions) fail('DATA_LIMIT', 'events.priorMaterials')
+      continue
+    }
     ownedData(item, `events[${seq}]`, false, true)
     if (item.seq !== seq) fail('BOUNDARY_MISMATCH', `events[${seq}].seq`)
     if (item.type === 'request/material') {
@@ -579,8 +630,9 @@ export function reconstructNativeRequestMaterialV1(input: NativeRequestMaterialR
       // malformed prior material cannot be quietly skipped as ordinary history.
       validateStoredShape(priorRecord)
       priorMaterials.push({seq, record: priorRecord})
+      read?.records.set(seq, priorRecord)
       if (priorMaterials.length > limits.insertions) fail('DATA_LIMIT', 'events.priorMaterials')
-    }
+    } else read?.records.set(seq, undefined)
   }
   const projections = projectionDefinitions(desc['projections']?.value)
   let foldedEvents = prefix.length
@@ -589,9 +641,20 @@ export function reconstructNativeRequestMaterialV1(input: NativeRequestMaterialR
     if (foldedEvents > limits.reconstructionFoldEvents) fail('DATA_LIMIT', 'events.reconstructionFoldEvents')
     // Verify each required prior material against its own base, but never apply
     // that overlay to another base. Bounded shallow prefixes share frozen data.
-    reconstructAgainstPrefix(prior.record, prefix.slice(0, prior.seq), projections)
+    if (!read?.verified.has(prior.seq)) {
+      reconstructAgainstPrefix(prior.record, prefix.slice(0, prior.seq), projections)
+      read?.verified.add(prior.seq)
+    }
   }
-  return reconstructAgainstPrefix(record, prefix, projections)
+  // Reuse only an already-appended log identity. An unappended candidate at
+  // the cut must still be reconstructed, even after another candidate there.
+  if (eventLength > prefixLength && read?.verified.has(event['seq'])) return
+  const result = reconstructAgainstPrefix(record, prefix, projections)
+  if (eventLength > prefixLength&&read) {
+    read.records.set(event['seq'],record)
+    read.verified.add(event['seq'])
+  }
+  return result
 }
 function reconstructAgainstPrefix(record: NativeRequestMaterialRecord,
   prefix: readonly (SessionEvent | NativeRequestMaterialEventV1)[],

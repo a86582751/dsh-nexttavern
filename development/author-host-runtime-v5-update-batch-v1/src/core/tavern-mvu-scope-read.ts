@@ -84,7 +84,8 @@ function variables(value:MvuScopeVariablesV1,source:MvuScopeSourceIdentityV1,
   } else fail(MVU_SCOPE_READ_ERRORS.state)
 }
 
-export function validateMvuScopeReadFrameV1(input:unknown):MvuScopeReadFrameV1 {
+const ownedFrames=new WeakSet<object>()
+function readFrame(input:unknown,seal:boolean):MvuScopeReadFrameV1 {
   const frame=clone(input) as MvuScopeReadFrameV1
   exact(frame,['schemaVersion','encoding','source','sourceNativeCutSha256','viewKind','scopes','scripts','messages','frameSha256'])
   if(frame.schemaVersion!==1||frame.encoding!=='native-mvu-scope-read-frame-v1'||frame.viewKind!=='script'
@@ -118,8 +119,22 @@ export function validateMvuScopeReadFrameV1(input:unknown):MvuScopeReadFrameV1 {
     variables(message.variables,source,'message',message.messageId,message.ownerSessionId,message.ownerSessionId)
   }
   const {frameSha256,...body}=frame
-  if(recordSha256(body)!==frameSha256)fail(MVU_SCOPE_READ_ERRORS.hash)
-  return freeze(frame)
+  const computed=recordSha256(body)
+  if(seal)frame.frameSha256=computed
+  else if(computed!==frameSha256)fail(MVU_SCOPE_READ_ERRORS.hash)
+  freeze(frame);ownedFrames.add(frame)
+  return frame
+}
+/** External/cold DATA is fully decoded. This decoder's own frozen result
+ * needs no second copy or digest when consumed by another scope reader. */
+export function validateMvuScopeReadFrameV1(input:unknown):MvuScopeReadFrameV1 {
+  if(input&&typeof input==='object'&&ownedFrames.has(input))return input as MvuScopeReadFrameV1
+  return readFrame(input,false)
+}
+/** Construction still checks caller-owned children and detaches references;
+ * the complete digest is created once, after those checks. */
+export function createMvuScopeReadFrameV1(body:Omit<MvuScopeReadFrameV1,'frameSha256'>):MvuScopeReadFrameV1 {
+  return readFrame({...body,frameSha256:'0'.repeat(64)},true)
 }
 
 /** Validate requests without evaluating accessors or invoking Proxy traps.

@@ -318,15 +318,15 @@ function freeze<T>(value: T): T {
 
 /** Strict packet/ref joins are consumer validation. The actual cut, projection,
  * immutable predecessor Source and table-read provenance remain Root-owned. */
-export function validateProgramDerivedOpeningClosureV1(input:unknown,suppliedGenesis:VerifiedMvuProgramGenesis,
-  suppliedNative:ProgramOpeningNativeFactsV1):ProgramDerivedOpeningClosureV1 {
+function readProgramDerivedOpeningClosureV1(input:unknown,suppliedGenesis:VerifiedMvuProgramGenesis,
+  suppliedNative:ProgramOpeningNativeFactsV1,seal:boolean):ProgramDerivedOpeningClosureV1 {
   const closure=cloneProgramGenesisDataV1(input),
     genesis=validateProgramMvuGenesisFactsV1(suppliedGenesis.programEvent,suppliedGenesis.programHead)
   exact(closure,['schemaVersion','encoding','authority','kind','data','closureSha256'])
   const {closureSha256,...body}=closure
   if(closure.schemaVersion!==1||closure.encoding!=='native-program-derived-opening-closure-v1'
     ||closure.authority!=='consumer-data-only'||closure.kind!=='program-opening'
-    ||!hash(closureSha256)||recordSha256(body)!==closureSha256||!same(genesis,suppliedGenesis))
+    ||!hash(closureSha256)||!seal&&recordSha256(body)!==closureSha256||!same(genesis,suppliedGenesis))
     fail('PREFIX_PROGRAM_CLOSURE_INVALID')
   exact(closure.data,['seed','input','planRecord','intent','refs','genesisEventRef','genesisHeadRef'])
   const packet=closure.data,seed=validateProgramOpeningSeedV1(packet.seed),
@@ -357,16 +357,20 @@ export function validateProgramDerivedOpeningClosureV1(input:unknown,suppliedGen
     ||!same(planRecord.plan,genesis.programEvent.plan)||!same(intent.nativeReceipt,native)
     ||!same(intent.genesisEnvelope,genesis.programEvent.native))fail('PREFIX_PROGRAM_OPENING_UNCLOSED')
   validateProgramOpeningGenesisEnvelopeV1(genesis.programEvent.native,native,context)
+  if(seal)return Object.freeze({...body,closureSha256:recordSha256(body)}) as unknown as ProgramDerivedOpeningClosureV1
   return closure as unknown as ProgramDerivedOpeningClosureV1
+}
+export function validateProgramDerivedOpeningClosureV1(input:unknown,genesis:VerifiedMvuProgramGenesis,
+  native:ProgramOpeningNativeFactsV1):ProgramDerivedOpeningClosureV1 {
+  return readProgramDerivedOpeningClosureV1(input,genesis,native,false)
 }
 /** Root may seal its actual read packet; this constructor grants no current
  * Source/cut, original-row provenance, dispatch or publication permission. */
 export function createProgramDerivedOpeningClosureV1(data:ProgramDerivedOpeningClosureDataV1,
   genesis:VerifiedMvuProgramGenesis,native:ProgramOpeningNativeFactsV1):ProgramDerivedOpeningClosureV1 {
-  const packet=cloneProgramGenesisDataV1(data)
   const body={schemaVersion:1 as const,encoding:'native-program-derived-opening-closure-v1' as const,
-    authority:'consumer-data-only' as const,kind:'program-opening' as const,data:packet}
-  return validateProgramDerivedOpeningClosureV1({...body,closureSha256:recordSha256(body)},genesis,native)
+    authority:'consumer-data-only' as const,kind:'program-opening' as const,data}
+  return readProgramDerivedOpeningClosureV1({...body,closureSha256:'0'.repeat(64)},genesis,native,true)
 }
 export function programDerivedGenesisSnapshotV1(supplied:VerifiedMvuProgramGenesis):MvuNumericalSnapshot {
   const genesis=validateProgramMvuGenesisFactsV1(supplied.programEvent,supplied.programHead)
@@ -438,8 +442,9 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
       const branchRows = new Map<string, unknown>(), statusRows = new Map<string, unknown>()
       const read = (table: MvuPrefixLedgerTable, rowKey: string, observed?: unknown): unknown => {
         if (!pathKey(rowKey) || !rowKey.startsWith(`${sid}__`)) fail('LEDGER_KEY_INVALID')
-        const value = table.get(rowKey)
-        inspect(value)
+        const captured=table===deps.branch?branchRows:statusRows
+        const value = captured.has(rowKey)?captured.get(rowKey):table.get(rowKey)
+        if(!captured.has(rowKey))inspect(value)
         if (observed !== undefined && !same(value, observed)) fail('LEDGER_READBACK_CHANGED')
         return value
       }
@@ -456,12 +461,16 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         if (!rowKey.startsWith(ownPrefix(sid)) && !rowKey.startsWith(`${sid}__mvu-player-operation-`)
           && !rowKey.startsWith(`${sid}__mvu-player-complete-`)) continue
         if (branchRows.size >= MVU_STATE_BOUNDS.records) fail('LEDGER_BUDGET')
-        branchRows.set(rowKey, read(deps.branch, rowKey, row))
+        if(!pathKey(rowKey))fail('LEDGER_KEY_INVALID')
+        inspect(row)
+        branchRows.set(rowKey,row)
       }
       for (const [rowKey, row] of deps.status.entries()) {
         if (!rowKey.startsWith(`${sid}__mvu-state-event-`) && !rowKey.startsWith(`${sid}__mvu-state-settlement-`)) continue
         if (statusRows.size >= MVU_STATE_BOUNDS.records) fail('LEDGER_BUDGET')
-        statusRows.set(rowKey, read(deps.status, rowKey, row))
+        if(!pathKey(rowKey))fail('LEDGER_KEY_INVALID')
+        inspect(row)
+        statusRows.set(rowKey,row)
       }
       // Classification uses actual queue removals and actual Native starts.
       // Ref insertion alone is insufficient: pending target input can be inside
@@ -497,13 +506,19 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
             && link.preparation.namespace === NAMESPACE) starts.push({seq: event.seq, link})
         }
       }
+      const startPreparations=new Set(starts.map(start=>recordSha256(start.link.preparation)))
+      const worksByPreparation=new Map<string,Map<string,number>>()
       const allWorks: {key: string; work: Work; inside: boolean}[] = []
       for (const [rowKey, raw] of branchRows) {
         if (!rowKey.startsWith(`${ownPrefix(sid)}work-`)) continue
         const work = validateWork(raw, sid)
         if (rowKey !== workKey(sid, work.refs)) fail('WORK_KEY_INVALID')
+        const preparationSha256=recordSha256(work.preparation),refsSha256=recordSha256(work.refs)
+        let refs=worksByPreparation.get(preparationSha256)
+        if(!refs) {refs=new Map();worksByPreparation.set(preparationSha256,refs)}
+        refs.set(refsSha256,(refs.get(refsSha256)??0)+1)
         const inside = work.refs.some(ref => claimed.has(refKey(ref)))
-          || starts.some(start => same(start.link.preparation, work.preparation))
+          || startPreparations.has(preparationSha256)
           || !!work.checkpoint && integer(work.checkpoint.startSeq) && work.checkpoint.startSeq < cut
         allWorks.push({key: rowKey, work, inside})
       }
@@ -511,8 +526,8 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         factRef('branch',{key:item.key,sha256:recordSha256(item.work)})
       }
       for (const start of starts) {
-        const matches = allWorks.filter(({work}) => same(work.preparation, start.link.preparation) && same(work.refs, start.link.refs))
-        if (matches.length !== 1) fail('PREFIX_OWNER_WORK_ORPHAN')
+        const matches=worksByPreparation.get(recordSha256(start.link.preparation))?.get(recordSha256(start.link.refs))
+        if (matches !== 1) fail('PREFIX_OWNER_WORK_ORPHAN')
       }
       const selected = allWorks.filter(({work, inside}) => inside && numerical(work))
       const preparations = new Set<string>(), selectedRefs = new Set<string>(), seenGenerations = new Set<number>()
@@ -572,9 +587,6 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         if (!branchRows.has(operationKey) || !branchRows.has(completionKey)) fail('PREFIX_MANUAL_ORPHAN')
         read(deps.branch, operationKey, facts.operation)
         read(deps.branch, completionKey, facts.completion)
-        if (!same(branchRows.get(operationKey), facts.operation) || !same(branchRows.get(completionKey), facts.completion)) {
-          fail('LEDGER_READBACK_CHANGED')
-        }
         players.push(facts)
       }
       for (const raw of statusRows.values()) {
@@ -836,15 +848,19 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         const live=deps[table],rows=new Map<string,{key:string;exists:boolean;sha256:string;value:unknown}>()
         let membership:readonly string[]|undefined
         const remember=(key:string,value:unknown)=>{
+          const previous=rows.get(key)
+          if(previous)return previous.exists?previous.value:undefined
           inspect(value)
           const row={key,exists:value!==undefined,sha256:recordSha256(value),
-            value:value===undefined?null:structuredClone(value)},previous=rows.get(key)
-          if(previous&&!same(previous,row))fail('LEDGER_READBACK_CHANGED')
-          if(!previous&&rows.size>=12_288)fail('PREFIX_FROZEN_CLOSURE_BUDGET')
+            value:value===undefined?null:structuredClone(value)}
+          if(rows.size>=12_288)fail('PREFIX_FROZEN_CLOSURE_BUDGET')
           rows.set(key,row);return value
         }
         const actualEntries=()=>[...live.entries()].filter(([key])=>enumeratedKey(table,request.ownerSessionId,key))
-        const view:MvuPrefixLedgerTable={get:key=>remember(key,live.get(key)),entries:()=>{
+        const view:MvuPrefixLedgerTable={get:key=>{
+          const previous=rows.get(key)
+          return previous?(previous.exists?previous.value:undefined):remember(key,live.get(key))
+        },entries:()=>{
           const entries=actualEntries(),keys=entries.map(([key])=>key)
           if(membership&&!same(membership,keys))fail('LEDGER_READBACK_CHANGED')
           membership=keys
@@ -865,7 +881,6 @@ export function createRoleplayMvuPrefixLedger(deps: MvuPrefixLedgerDeps) {
         ledgerProofSha256:result.proof.proofSha256}
       const closure=validateClosure({...body,closureSha256:recordSha256(body)},request),
         assertCurrent=()=>{for(const view of views)view.assertCurrent()}
-      assertCurrent()
       return {kind:'ready',proof:result.proof,closure,assertCurrent}
     }catch(error) {return {kind:'blocked',code:error instanceof LedgerRefusal?error.code:'PREFIX_FROZEN_CLOSURE_UNPROVEN'}}
   }

@@ -260,11 +260,8 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
     if(basis.prepared.childSessionId!==sid||session.inheritedEventCount!==basis.prepared.seedLength)return
     let closedSource:FrozenPrepared|undefined
     if(basis.source.schemaVersion!==1) {
-      // The former boolean Source check discarded the same verified prepared
-      // DATA that numerical recovery needs immediately afterward.
-      try {closedSource=frozenLineage?.readHistorical(basis.source,sid).prepared}
-      catch {return}
-      if(!closedSource)return
+      if(!frozenLineage)return
+      closedSource=frozenLineage.readHistorical(basis.source,sid).prepared
     }else if(!sourceCurrent(basis.source,false,sid))return
     const checked=verifyPrepared(basis.prepared,prefix(session,basis.prepared.seedLength),basis.source,new Set([sid]),sid,closedSource)
     return Object.freeze({basis,genesis:closedRows(basis,checked.ready)})
@@ -282,7 +279,7 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
   function readPrefix(subjectSessionId:string,nativeCut:number,revision=false):MvuSchemaForkCapture {
     const parent=deps.session(subjectSessionId)
     if(parent&&nativeCut<=parent.inheritedEventCount) {
-      const events=prefix(parent,nativeCut)
+      let events=prefix(parent,nativeCut)
       let sid:string=parent.id,container:MvuSchemaDerivedBasis,historyBasis:MvuSchemaHistoryBasisRef
       // Each hop selects the generation that actually owned the target range;
       // a descendant's future snapshot/ordinal never initializes that range.
@@ -294,6 +291,13 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       }while(events.length<=container.prepared.prefix.inheritedEventCount)
       const selected=container.prepared.prefix,prepared=container.prepared
       if(prepared.schemaVersion===1)fail('SCHEMA_DERIVED_FROZEN_HISTORY_UNAVAILABLE')
+      // A revision's numerical frontier can precede the opening's visible
+      // publication. Its selected frozen generation owns that readable floor;
+      // ordinary fork/copy captures retain their exact requested cut.
+      if(revision&&selected.seed.kind==='opening') {
+        const publicationCut=selected.seed.event.native.turnEndSeq+1
+        if(publicationCut>events.length)events=prefix(parent,publicationCut)
+      }
       const initial=selected.seed.kind==='derived'?readAncestorGenesis(selected.sessionId,events,new Set(),parent.id):undefined
       const closure=deps.branch.get(prepared.prefixClosureRef.key) as MvuSchemaPrefixInputClosureV1|undefined
       if(!closure||recordSha256(closure)!==prepared.prefixClosureRef.sha256
@@ -415,8 +419,8 @@ export function createRoleplayMvuSchemaDerived(deps:MvuSchemaDerivedDeps) {
       }else {
         ready=deps.history.recoverForkPrefix(frozen,events,initial)
         if(!ready)fail('SCHEMA_DERIVED_HISTORY_UNPROVEN')
-        prepared=validateMvuSchemaDerivedPrepared(sealMvuSchemaInheritanceFact({schemaVersion:1 as const,
-          encoding:'native-mvu-schema-derived-prepared-v1' as const,...fields},'preparedSha256'))
+        prepared=sealMvuSchemaInheritanceFact({schemaVersion:1 as const,
+          encoding:'native-mvu-schema-derived-prepared-v1' as const,...fields},'preparedSha256')
       }
       if(!operationCurrent(prepared,'preparing'))fail('SCHEMA_DERIVED_OPERATION_CHANGED')
       await putExact(deps.branch,mvuSchemaDerivedPreparedKey(reservation.childSessionId),prepared)
