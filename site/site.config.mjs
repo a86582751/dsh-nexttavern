@@ -201,11 +201,11 @@ export const site = {
         },
         {
             id: 'v03-topics',
-            label: '0.3 开发专题',
+            label: '0.3 作者文档',
             pages: [
-                { id: 'community-cards', title: '社区角色卡兼容与转换', nav: '社区角色卡', file: 'COMMUNITY-CARDS.md' },
-                { id: 'native-card-format', title: '原生角色卡格式参考', nav: '原生卡格式', file: 'NATIVE-CARD-FORMAT.md' },
-                { id: 'native-state', title: '数值状态、MVU 与 Ruby', nav: '数值与分析', file: 'NATIVE-STATE.md' },
+                { id: 'community-cards', title: '社区卡兼容与世界书', nav: '社区卡与世界书', file: 'COMMUNITY-CARDS.md' },
+                { id: 'native-card-format', title: '原生卡创作与 EJS 模板', nav: '原生卡与 EJS', file: 'NATIVE-CARD-FORMAT.md' },
+                { id: 'native-state', title: '原生状态系统、MVU 与 Ruby', nav: '原生状态与分析', file: 'NATIVE-STATE.md' },
                 { id: 'community-presets', title: '社区预设与正则', nav: '社区预设与正则', file: 'COMMUNITY-PRESETS.md' }
             ]
         },

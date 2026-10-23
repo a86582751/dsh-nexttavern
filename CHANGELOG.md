@@ -1,11 +1,25 @@
 # Changelog
 
+## 文档 — 0.3 作者手册与官网同步 — 2026-10-24
+
+- 将[社区卡与世界书](COMMUNITY-CARDS.md)、[原生卡创作](NATIVE-CARD-FORMAT.md)、[原生状态与分析](NATIVE-STATE.md)、[社区预设与正则](COMMUNITY-PRESETS.md)扩展为技术手册，加入完整卡片示例、字段参考、执行顺序、排错与源码入口。
+- 说明 NextTavern 原生状态和分析任务如何兼容 MVU／RUBY；补充 EJS 模板、变量与世界书 API，以及世界书的条件、递归、定时、预算和插入位置。官网同步更新四篇正文、阅读路线与导航。
+- 内容仍对应尚未正式发布的 0.3 开发线；文档示例的定点检查不替代完整卡玩法验收。本次更新仅发布文档站。
+
+English: Expand the four 0.3 author guides with complete card examples, EJS APIs, worldbook controls, native state and analysis behavior, preset/regex references, troubleshooting and source links. Update the website's content and navigation. 0.3 remains in development; targeted example checks do not establish full gameplay compatibility.
+
 ## 文档 — Native 原生卡与高级人物功能边界 — 2026-10-21
 
 - 更新 [0.3 开发日志](DEVELOPMENT-0.3.md)，说明显式转换、原生作者卡、原件／当前设定两种导出、DOCX 来源和高级人物资料的开发进展。
 - 明确部分动态规则的角色协作限制及受控验证范围；普通剧情继续读取原卡。完整玩法与分类质量仍在验证，不发布 0.3、npm 包或更新运行服务。
 
 English: Document development progress for explicit Native conversion, authoring, original-file exports, DOCX provenance and advanced character material. Disclose partial dynamic-rule limitations and scoped validation; this documentation update does not release 0.3 or deploy a service.
+
+## 公开文档站视觉更新 — 2026-10-20
+
+- GitHub Pages 文档站更新日夜主题、独立轮播插画、皮肤问候语和主题章节配图，并调整首页功能卡片。减少动态效果与按需加载继续生效；本次仅更新文档站，不发布 0.3 产品版本或 npm 包。
+
+English: Refresh the GitHub Pages documentation site with day/night themes, separate illustration carousels, skin-sourced greetings, theme-specific chapter art and an updated home-page feature grid. Reduced motion and on-demand loading remain supported. This is a site update, not a 0.3 product or npm release.
 
 ## 0.2.9-rc.4 — Issue #17 上下文容量与恢复修复 — 2026-10-19
 
