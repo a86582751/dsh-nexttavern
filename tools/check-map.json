@@ -32381,6 +32381,18 @@
     {
       "id": "quality-public-build-map",
       "source": "tools/build-map.json"
+    },
+    {
+      "id": "roleplay-reference-dragon-empress-native",
+      "source": "preset/reference/dragon-empress.native.json"
+    },
+    {
+      "id": "roleplay-reference-steam-tide-native",
+      "source": "preset/reference/steam-tide.native.json"
+    },
+    {
+      "id": "roleplay-reference-native-readme",
+      "source": "preset/reference/README.md"
     }
   ],
   "builds": [

@@ -79,7 +79,11 @@
         "roleplay-native-card-export*",
         "native-card-conversion*",
         "native-card-advanced*",
-        "native-card-authoring*"
+        "native-card-authoring*",
+        "native-reference*",
+        "preset/reference/dragon-empress.native.json",
+        "preset/reference/steam-tide.native.json",
+        "preset/reference/README.md"
       ]
     },
     {
