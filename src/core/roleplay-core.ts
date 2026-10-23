@@ -3155,10 +3155,11 @@ export async function apply(ctx: CoreContext, config: Partial<typeof DEFAULT_CON
     checkLegacyWorldbookWriteTargets,
     commitNativeDocument:async(session,document,_atSeq,exec)=>{
       assertWorkspaceSession(session)
-      const resource=await libraryFor(session).archive({name:resourceName(document.data.name,'.json'),
+      const library=libraryFor(session)
+      const resource=await library.archive({name:resourceName(document.data.name,'.json'),
         type:'application/json',bytes:Buffer.from(JSON.stringify(document,null,2)+'\n','utf8'),
         source:{sessionId:session.id,kind:'native-card-authoring'}})
-      const job=await beginCardWorkflow(session,'card-import',resource.path,exec.agent,undefined,undefined,'original',
+      const job=await beginCardWorkflow(session,'card-import',library.metadata(resource.id).path,exec.agent,undefined,undefined,'original',
         {schemaVersion:1,kind:'native-authoring'})
       await resumeCardWorkflows(session,exec.agent,exec.signal)
       const completed=T.branch.get(cardWorkflowKey(job.id)) as import('./roleplay-card-workflow-types.js').CardWorkflowJob
