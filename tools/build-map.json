@@ -47145,6 +47145,126 @@
         "id": "author-host-runtime-v5-update-batch-v1-build-lock",
         "source": "development/history/author-host-runtime-v5-update-batch-v1-build/package-lock.json",
         "canonicalSource": "runtime/alpha3/history/author-host-runtime-v5-update-batch-v1-build/package-lock.json"
+      },
+      {
+        "id": "schema-edit-predecessor-v5-dialog-host-c693279643b8cd5d2481",
+        "source": "development/history/schema-edit-predecessor-v5-dialog/host/LICENSE",
+        "canonicalSource": "runtime/alpha3/history/schema-edit-predecessor-v5-dialog/host/LICENSE"
+      },
+      {
+        "id": "schema-edit-predecessor-v5-dialog-host-53337bf7ea91d782c573",
+        "source": "development/history/schema-edit-predecessor-v5-dialog/host/NOTICE.md",
+        "canonicalSource": "runtime/alpha3/history/schema-edit-predecessor-v5-dialog/host/NOTICE.md"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-8304f28009f74edb89c3",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/assets/runtime.json",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/assets/runtime.json"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-1fa27a11644a040f25b6",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/dist/browser-execution-worker.js",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/dist/browser-execution-worker.js"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-2eac44951531147c8ee2",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/lib/tavern-author-browser-provider.mjs",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/lib/tavern-author-browser-provider.mjs"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-2c318b8fdf0d8bfc6723",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-ast-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-ast-v3.mts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-960bd99f88316f394804",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-attachment-worker-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-attachment-worker-v3.ts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-40976504302c29c1e8ec",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-compiler-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-compiler-v3.mts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-ddb2512c8eeb332be928",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-descriptor-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-descriptor-v3.mts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-c0d5d2403a57cabaf5ee",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-execution-worker-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-execution-worker-v3.ts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-70d476f1f951cb3c5456",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-page-guest-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-page-guest-v3.ts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-2663d519bd1a962908e4",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-page-worker-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-page-worker-v3.ts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-be4b6bab4721cad0b819",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-profile-v3.mts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-profile-v3.mts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-45a3ff23cd8303257603",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-renderer-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-renderer-v3.ts"
+      },
+      {
+        "id": "author-dialog-v1-r18-predecessor-browser-9d58c905d8f3fac010ac",
+        "source": "development/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-source-guest-v3.ts",
+        "canonicalSource": "runtime/alpha3/history/author-dialog-v1-r18-predecessor/browser/src/core/tavern-author-browser-source-guest-v3.ts"
+      },
+      {
+        "id": "reader-regex-document-before-20261018-browser-72c99bac2affdebd3753",
+        "source": "development/history/reader-regex-document-before-20261018/browser/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/browser/assets/source-inputs.json"
+      },
+      {
+        "id": "reader-regex-document-before-20261018-browser-ba0eac1713ce8c465b47",
+        "source": "development/history/reader-regex-document-before-20261018/browser/dist/browser-ast-worker.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/browser/dist/browser-ast-worker.mjs"
+      },
+      {
+        "id": "reader-regex-document-before-20261018-browser-666eb6dc068ec0778594",
+        "source": "development/history/reader-regex-document-before-20261018/browser/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/browser/dist/index.mjs"
+      },
+      {
+        "id": "reader-regex-document-before-20261018-browser-package-json",
+        "source": "development/history/reader-regex-document-before-20261018/browser/package.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/browser/package.json"
+      },
+      {
+        "id": "reader-regex-document-before-20261018-host-01878dc32ac0f39b6fda",
+        "source": "development/history/reader-regex-document-before-20261018/host/assets/source-inputs.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/host/assets/source-inputs.json"
+      },
+      {
+        "id": "reader-regex-document-before-20261018-host-fc39697578a312e3d5bd",
+        "source": "development/history/reader-regex-document-before-20261018/host/dist/index.mjs",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/host/dist/index.mjs"
+      },
+      {
+        "id": "reader-regex-document-before-20261018-host-package-json",
+        "source": "development/history/reader-regex-document-before-20261018/host/package.json",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/host/package.json"
+      },
+      {
+        "id": "reader-regex-document-before-20261018-host-979c632242184ce843a1",
+        "source": "development/history/reader-regex-document-before-20261018/host/src/core/tavern-author-host-provider.mts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/host/src/core/tavern-author-host-provider.mts"
+      },
+      {
+        "id": "reader-regex-document-before-20261018-host-73768a710d18eee443bb",
+        "source": "development/history/reader-regex-document-before-20261018/host/src/core/tavern-mvu-schema-runner-v4.ts",
+        "canonicalSource": "runtime/alpha3/history/reader-regex-document-before-20261018/host/src/core/tavern-mvu-schema-runner-v4.ts"
       }
     ],
     "publicRelease": {
