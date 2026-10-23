@@ -244,6 +244,7 @@ function entryBindings(input:LegacyContributionDataRequestV1, decoded:DecodedTav
   const trailingArchive=native?record.schemaVersion!==6:record.normalizer==='tavern-fields-v1'
   let projectionOrdinal = prefix.assignments.length - (trailingArchive ? 1 : 0)
   const bindings:EntryBinding[] = []
+  let bookSha256:string|undefined
   for (const [entryOrdinal,[entryKey,raw]] of Object.entries(entries).entries()) {
     const projected = projection.worldbook[entryOrdinal]
     if (!object(raw) || typeof raw.content !== 'string' || !projected || projected.sourceIndex !== entryOrdinal) {
@@ -260,11 +261,12 @@ function entryBindings(input:LegacyContributionDataRequestV1, decoded:DecodedTav
       }
       span = first
     }
+    bookSha256??=recordSha256(book)
     bindings.push({projectedId:projected.id,constant:projected.constant,enabled:projected.enabled,span,
       ref:{sessionId:input.sessionId,sourceRecordSessionId:input.sourceRecordSessionId,importId:record.importId,
         activePointerSha256:input.activePointerRef.sha256,importRecordSha256:input.importRecordRef.sha256,
         rawSha256:record.rawSha256,normalizedSha256:record.normalizedSha256,coverageSha256:input.activePointer.coverageSha256!,
-        transactionId:record.activation!.transactionId,normalizer:input.normalizer,bookPointer,bookSha256:recordSha256(book),
+        transactionId:record.activation!.transactionId,normalizer:input.normalizer,bookPointer,bookSha256,
         entryPointer:`${bookPointer}/entries/${pointerPart(entryKey)}`,entryOrdinal,entrySha256:recordSha256(raw)}})
   }
   const expectedEnd = projection.assignments.length - (trailingArchive ? 1 : 0)
