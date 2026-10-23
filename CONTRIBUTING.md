@@ -1,12 +1,12 @@
 # Contributing
 
-The released 0.2.9 package targets Harness `0.1.7-rc.2` / web with Session V4.
+The current 0.2.9-rc.4 release targets Harness `0.1.7-rc.2` / web with Session V4.
 It includes the unified plugin, maintained TypeScript sources and generated
 modules. The GitHub `main` branch may also carry unfinished 0.3 SillyTavern
-compatibility work; use tag `v0.2.9` to reproduce this release and read
+compatibility work; use tag `v0.2.9-rc.4` to reproduce this release and read
 [CHANGELOG](CHANGELOG.md) for its validation boundaries.
 
-0.2.9 fixes installation and distribution on the 0.2.8 release line. Use the
+The 0.2.9 release line fixes installation and distribution; rc.4 also repairs request-pressure recovery and first-response timeout handling. Use the
 official npm package `dsh-nexttavern` or its Release archive for installation;
 source rebuilding is a contributor workflow. The third-party market catalog
 needs a separate update and is not a declaration of supported hosts.

@@ -6,7 +6,7 @@
 
 > **最新版本：0.2.9-rc.4。** 修复 [Issue #17](https://github.com/a86582751/dsh-nexttavern/issues/17)：长会话请求超限后的压缩恢复，以及持续推理被误判超时。保留 rc.3 的安装改进和慢模型首响应等待设置。GitHub 与 [npm latest](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9-rc.4) 均为 0.2.9-rc.4。
 
-> **0.2.9 — Distribution & Installation Fix。** 这是基于 0.2.8 的安装分发补丁：预置第三方 SDK 依赖，修复首次安装及私有组件重新链接时的构建脚本许可问题。正式来源为 [npm `dsh-nexttavern`](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9) 和 [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9)，支持 Harness `0.1.7-rc.2`／web／Session V4。开发请读[重建指南](CONTRIBUTING.md)。
+> **安装与宿主范围。** 0.2.9 发行线已预置第三方 SDK 依赖，修复首次安装和私有组件重新链接的问题。正式来源为 [npm dsh-nexttavern](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9-rc.4) 和 [v0.2.9-rc.4 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.4)，支持 Harness 0.1.7-rc.2／web／Session V4。开发请读[重建指南](CONTRIBUTING.md)。
 
 > **从 0.2.5 等旧宿主版本迁移，请使用新目录。** 先在旧环境导出角色卡或小说，再安装 0.2.9；旧会话不兼容，小说稿不保存完整会话状态。0.2.8 → 0.2.9 延续同一宿主与会话线，更新步骤见[更新、卸载与回滚](#更新卸载与回滚)。
 
@@ -20,7 +20,7 @@
 
 [在线文档](https://a86582751.github.io/dsh-nexttavern/) · [一键安装](#一键安装) · [开始体验](#开始体验) · [Windows](INSTALL-WINDOWS.md) · [Linux](INSTALL-LINUX.md) · [核心能力](#核心能力) · [记忆系统](#记忆系统) · [架构设计](#架构设计) · [手机电脑公网访问指南](PUBLIC-ACCESS.md) · [全部截图](SCREENSHOTS.md) · [反馈问题](https://github.com/a86582751/dsh-nexttavern/issues/new/choose) · [0.3开发日志](DEVELOPMENT-0.3.md)
 
-**角色卡作者与社区开发者：** 下面四篇介绍运行机制、格式字段和创作示例。内容对应 **0.3 开发线，尚未随正式 0.3 发布**；Native 1.0／1.1 是卡文件格式版本。随包 Native 参考卡也属于 0.3 开发线，当前正式版 **0.2.9 不含本批卡片**。
+**角色卡作者与社区开发者：** 下面四篇介绍运行机制、格式字段和创作示例。内容对应 **0.3 开发线，尚未随正式 0.3 发布**；Native 1.0／1.1 是卡文件格式版本。随包 Native 参考卡也属于 0.3 开发线，当前正式版 **0.2.9-rc.4 不含本批卡片**。
 
 | 从哪里开始 | 能学到什么 |
 | --- | --- |
@@ -35,7 +35,7 @@
 
 Roleplay workspace for DeepSeek Harness: interactive character creation, on-demand worldbook reading, long-form memory, multi-model collaboration, character agents, branching stories, novel exports and one-click installers.
 
-**0.2.9** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · 自有代码 **GPL-3.0**
+**0.2.9-rc.4** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · 自有代码 **GPL-3.0-only**
 
 先装宿主，再用[一键安装](#一键安装)的官方插件命令。需要自己指定目录、端口或使用归档时，见[安装](#安装)。
 

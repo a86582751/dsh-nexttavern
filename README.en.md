@@ -4,13 +4,15 @@
 
 [简体中文](README.md) · **English**
 
-> **Latest release: 0.2.9-rc.4.** It fixes [Issue #17](https://github.com/a86582751/dsh-nexttavern/issues/17): compaction can recover after long-session requests exceed context limits, and ongoing reasoning is no longer mistaken for a timeout. It retains rc.3's installation improvements and configurable first-response wait. GitHub and [npm latest](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9-rc.4) are both 0.2.9-rc.4.
+> **Latest release: 0.2.9-rc.4.** [Issue #17](https://github.com/a86582751/dsh-nexttavern/issues/17) fixes recoverable compaction after oversized requests and false first-response timeouts while reasoning is still streaming. It retains the rc.3 installation fixes and configurable first-response wait. GitHub and [npm latest](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9-rc.4) both use rc.4.
 
-> **0.2.9 — Distribution & Installation Fix.** This installation patch builds on 0.2.8: bundled third-party SDK dependencies fix build-script permission failures during first installation and private-component relinking. Official sources are [npm `dsh-nexttavern`](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9) and the [v0.2.9 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9). The supported host remains Harness `0.1.7-rc.2` / web / Session V4. See the [contributor guide](CONTRIBUTING.md) for development.
+> **Installation and host support.** The 0.2.9 release line bundles pinned SDK dependencies for first installation and component relinking. Use [npm dsh-nexttavern](https://www.npmjs.com/package/dsh-nexttavern/v/0.2.9-rc.4) or the [v0.2.9-rc.4 Release](https://github.com/a86582751/dsh-nexttavern/releases/tag/v0.2.9-rc.4). The supported host is Harness 0.1.7-rc.2 / web / Session V4. See [Contributing](CONTRIBUTING.md) for source rebuilding.
 
 > **Migrating from 0.2.5 or another old host requires fresh directories.** Export character cards or novels before installing 0.2.9; old sessions are incompatible and novels lack full session state. 0.2.8 → 0.2.9 keeps the same host and session line; see [update, uninstall and rollback](#update-uninstall-and-rollback).
 
-Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, structured events and recovery mechanisms has proved harder than expected, and work is accelerating. 0.2.9-rc.4 continues the distribution, installation and dependency fixes with a targeted repair for Issue #17; broader community-card compatibility remains in development. Thank you for helping us improve it with your feedback.
+Sorry for the long wait. The 0.3 goal is broader SillyTavern community-card compatibility, including MVU variables, EJS, RUBY and frontend styling. Connecting them to our own state, structured events and recovery mechanisms has proved harder than expected, and work is accelerating. The rc.4 release retains the distribution and installation fixes and addresses Issue #17; broader 0.3 compatibility remains in development. Thank you for helping us improve it with your feedback.
+
+For 0.3 development progress, read the [development log](DEVELOPMENT-0.3.md). Card authors can follow the [community-card guide](COMMUNITY-CARDS.md), [Native format and complete examples](NATIVE-CARD-FORMAT.md), [state/MVU/Ruby guide](NATIVE-STATE.md), and [preset/regex guide](COMMUNITY-PRESETS.md). These Chinese guides describe unreleased development capabilities; Native 1.0/1.1 are file-format versions, not a 0.3 product release.
 
 **Let your characters think for themselves, and let the world unfold from your choices.**
 
@@ -22,7 +24,7 @@ NextTavern is a long-form roleplay / Tavern plugin for DeepSeek Harness (DSH), w
 
 ![Play](screenshots/play.png)
 
-**0.2.9** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · project-owned code **GPL-3.0**
+**0.2.9-rc.4** · Harness **0.1.7-rc.2** · pi-ai **0.85.1** · project-owned code **GPL-3.0**
 
 Install the host, then use the official [one-command plugin installation](#one-click-install). For a fresh home, fixed port or local archive, see [manual install](#manual-install).
 
