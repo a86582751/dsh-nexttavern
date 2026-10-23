@@ -1329,6 +1329,7 @@ export async function apply(ctx, config = {}) {
             if (result.kind === 'unknown')
                 throw Error(result.code);
         },
+        reconcileNumericalEdit: async (id, editSeq) => { await mvuOpening.reconcileSchemaStoryEdit(id, editSeq); },
         confirmUnchangedNumericalEdit: id => mvuEdits.confirmNoEdit(id),
         flushEdits: async (session) => {
             if (!await ctx.sessions.flush(session))
@@ -2183,6 +2184,8 @@ export async function apply(ctx, config = {}) {
         // Derived shares the frozen inherited DATA. Today's Source authority is
         // collected by the current waiter outside that historical footprint.
         readSchemaDerivedGenesis: id => schemaDerived?.readGenesis(id),
+        captureSchemaRevisionPrefix: (id, cut) => schemaDerived.captureRevisionPrefix(id, cut),
+        recoverSchemaRevisionPrefix: input => schemaDerived.recoverRevisionPrefix(input),
         readSchemaEditInvalidation: id => mvuEdits.readInvalidation(id),
         branchReady: id => ensureState(id).branchReady, importActiveKey, importRecordKey,
         withSourceLock: (id, work) => withImportLock(id, 'mvu-initialization', work),
@@ -2476,6 +2479,8 @@ export async function apply(ctx, config = {}) {
         return { ...basis, observedNativeSeq: currentNativeSeq, kind: 'schema-ready', values: structuredClone(snapshot.values),
             valuesSha256: snapshot.valuesSha256, sourceSha256: snapshot.sourceSha256, eventId: snapshot.currentHead.eventId,
             snapshot, displayUpdates: observation.displayUpdates,
+            ...observation.unavailableExternalAddons
+                ? { unavailableExternalAddons: observation.unavailableExternalAddons } : {},
             ...observation.commandDiagnostics ? { commandDiagnostics: observation.commandDiagnostics } : {},
             canEdit: !editBlockCode, ...(editBlockCode ? { editBlockCode } : {}) };
     }

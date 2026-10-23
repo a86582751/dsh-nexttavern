@@ -9,7 +9,7 @@ import { validateSchemaEvaluationInputV3 } from './tavern-mvu-schema-runner-v3.j
 import { validateSchemaEvaluationInputV4 } from './tavern-mvu-schema-runner-v4.js';
 import { validateMvuScopeReadFrameV1 } from './tavern-mvu-scope-read.js';
 import { schemaScopeReadFactsEqual } from './roleplay-mvu-schema-scope-facts.js';
-import { freezeMvuSchemaStoryData, sealMvuSchemaStoryFact, validateMvuSchemaStoryPlan, validateMvuSchemaNumericalSnapshot, validateMvuSchemaStoryEvent, validateMvuSchemaStorySettlement, deriveMvuSchemaStorySelectors, mvuSchemaStoryPhaseInput, mvuSchemaStoryReducerBridge, mvuSchemaStoryEvent, mvuSchemaStoryHead, mvuSchemaStorySettlement, mvuSchemaStoryEventKey, mvuSchemaStorySettlementKey, MVU_SCHEMA_STORY_PHASES, schemaStoryCode, isMvuSchemaGenesisHead } from './roleplay-mvu-schema-story-types.js';
+import { freezeMvuSchemaStoryData, sealMvuSchemaStoryFact, validateMvuSchemaStoryPlan, parseMvuSchemaStoryCandidateV2, validateMvuSchemaNumericalSnapshot, validateMvuSchemaStoryEvent, validateMvuSchemaStorySettlement, deriveMvuSchemaStorySelectors, mvuSchemaStoryPhaseInput, mvuSchemaStoryReducerBridge, mvuSchemaStoryEvent, mvuSchemaStoryHead, mvuSchemaStorySettlement, mvuSchemaStoryEventKey, mvuSchemaStorySettlementKey, MVU_SCHEMA_STORY_PHASES, schemaStoryCode, isMvuSchemaGenesisHead } from './roleplay-mvu-schema-story-types.js';
 const same = (a, b) => recordSha256(a) === recordSha256(b);
 const codeOf = (error) => schemaStoryCode(error instanceof Error ? error.message : undefined);
 function fail(code) { throw Error(code); }
@@ -43,10 +43,12 @@ export function createRoleplayMvuSchemaStory(deps) {
             freezeMvuSchemaStoryData({
                 ...(hostEpoch ? { schemaVersion: 6, encoding: 'native-mvu-schema-story-plan-v6',
                     epoch: hostEpoch.epoch, serverProgramSha256: hostEpoch.serverProgramSha256,
+                    parserPolicy: 'analysis-alias-v1',
                     ...(hostEpoch.errorPolicy ? { errorPolicy: hostEpoch.errorPolicy } : {}) } :
                     { schemaVersion: 5, encoding: 'native-mvu-schema-story-plan-v5' }),
                 executorVersion: 4, scope, canonical, base: validateMvuSchemaNumericalSnapshot(base),
-                candidate: parseMvuUpdateV2(canonical.narrative), scopeReadFrame: validateMvuScopeReadFrameV1(scopeReadFrame), ...suffix
+                candidate: parseMvuSchemaStoryCandidateV2(canonical.narrative, hostEpoch ? 'analysis-alias-v1' : undefined),
+                scopeReadFrame: validateMvuScopeReadFrameV1(scopeReadFrame), ...suffix
             }) :
             freezeMvuSchemaStoryData({ schemaVersion: 4, encoding: 'native-mvu-schema-story-plan-v4',
                 executorVersion: 3, scope, canonical, base: validateMvuSchemaNumericalSnapshot(base),

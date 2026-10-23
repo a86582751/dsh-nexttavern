@@ -62,14 +62,14 @@ export function createRoleplayMvuSchemaDerived(deps) {
     function historicalSource(prior, next, subjectSessionId, closedSources) {
         if (next.encoding === 'native-tavern-source-inheritance-frozen-ref-v1')
             return frozenLineage?.historicalPrepared(prior, next, subjectSessionId, closedSources) === true;
-        if (next.schemaVersion === 2)
+        if (next.schemaVersion !== 1)
             return frozenLineage?.historical(prior, next, subjectSessionId) === true;
         return prior.schemaVersion === 1 && lineage.historical(prior, next);
     }
-    function sourceCurrent(source, current) {
-        if (source.schemaVersion === 2)
+    function sourceCurrent(source, current, subjectSessionId) {
+        if (source.schemaVersion !== 1)
             return frozenLineage
-                ? current ? frozenLineage.current(source) : frozenLineage.verifyDenialBindingFacts(source) : false;
+                ? current ? frozenLineage.current(source) : frozenLineage.verifyDenialBindingFacts(source, subjectSessionId) : false;
         return current ? lineage.current(source) : lineage.verifyDenialBindingFacts(source);
     }
     function verifyPrepared(input, events, source, seen, subjectSessionId, closedSource) {
@@ -78,7 +78,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
             || prepared.schemaVersion === 1 && !operationCurrent(prepared) || !nativeBasisCurrent(prepared))
             fail('SCHEMA_DERIVED_BASIS_UNPROVEN');
         let actualSource = closedSource;
-        if (prepared.schemaVersion === 2) {
+        if (prepared.schemaVersion !== 1) {
             actualSource ??= frozenLineage?.prepared(prepared.childSessionId);
             if (!actualSource || !same(actualSource.ref, prepared.sourcePreparedRef)
                 || actualSource.parentSourceSha256 !== prepared.parentSourceSha256
@@ -86,19 +86,29 @@ export function createRoleplayMvuSchemaDerived(deps) {
                 fail('SCHEMA_DERIVED_FROZEN_SOURCE_CHANGED');
         }
         const seed = prepared.prefix.seed;
-        const successor = prepared.schemaVersion === 2 ? prepared.sourcePreparedRef : source;
-        const initial = seed.kind === 'derived'
-            ? readHistorical(prepared.parentSessionId, events, successor, seen, subjectSessionId, actualSource) : undefined;
+        const successor = prepared.schemaVersion !== 1 ? prepared.sourcePreparedRef : source;
+        let initial;
+        if (prepared.schemaVersion === 3) {
+            const container = historyContainer(prepared.historyBasis, events, subjectSessionId), prior = container.prepared.prefix, selected = prepared.prefix;
+            if (selected.sessionId !== prior.sessionId || selected.inheritedEventCount !== prior.inheritedEventCount
+                || selected.sourceSha256 !== prior.sourceSha256 || !same(selected.original, prior.original)
+                || !same(selected.seed, prior.seed) || !same(selected.initial, prior.initial))
+                fail('SCHEMA_DERIVED_PARENT_UNPROVEN');
+            if (seed.kind === 'derived')
+                initial = readAncestorGenesis(selected.sessionId, events, seen, subjectSessionId);
+        }
+        else if (seed.kind === 'derived')
+            initial = readHistorical(prepared.parentSessionId, events, successor, seen, subjectSessionId, actualSource);
         if (seed.kind === 'derived' && (!initial || initial.basisKey !== seed.basisKey || initial.basisSha256 !== seed.basisSha256)) {
             fail('SCHEMA_DERIVED_PARENT_UNPROVEN');
         }
         let ready;
-        if (prepared.schemaVersion === 2) {
+        if (prepared.schemaVersion !== 1) {
             const closure = deps.branch.get(prepared.prefixClosureRef.key);
             if (!closure || recordSha256(closure) !== prepared.prefixClosureRef.sha256
                 || closure.closureSha256 !== prepared.prefixClosureRef.closureSha256)
                 fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
-            ready = deps.history.recoverFrozenForkPrefix?.(prepared.prefix, events, initial, closure);
+            ready = deps.history.recoverFrozenForkPrefix?.(prepared.prefix, events, initial, closure, subjectSessionId);
         }
         else
             ready = deps.history.recoverForkPrefix(prepared.prefix, events, initial);
@@ -111,7 +121,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
         if (events.length !== prepared.seedLength || prepared.prefix.journal.nativePrefixSha256 !== recordSha256(events)
             || !nativeBasisCurrent(prepared))
             fail('SCHEMA_DERIVED_BASIS_UNPROVEN');
-        if (prepared.schemaVersion === 2) {
+        if (prepared.schemaVersion !== 1) {
             const actual = frozenLineage?.prepared(prepared.childSessionId);
             if (!actual || !same(actual.ref, prepared.sourcePreparedRef)
                 || actual.parentSourceSha256 !== prepared.parentSourceSha256
@@ -142,7 +152,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
             return;
         const owner = reservations.get(childId), prepared = owner?.prepared
             ?? validateMvuSchemaDerivedPrepared(raw);
-        if (prepared.schemaVersion !== 2)
+        if (prepared.schemaVersion === 1)
             return;
         const ref = prepared.sourcePreparedRef.preparedRef, child = deps.session(childId);
         if (prepared.childSessionId !== childId || ref.key !== sourcePreparedRef.key || ref.sha256 !== sourcePreparedRef.sha256)
@@ -179,6 +189,25 @@ export function createRoleplayMvuSchemaDerived(deps) {
             return undefined;
         }
     }
+    /** Source proves that the container belongs to this real descendant. Its
+     * later prefix is only frozen DATA and is never checked against a shorter log. */
+    function historyContainer(ref, events, subjectSessionId) {
+        const basis = validateMvuSchemaDerivedBasis(deps.branch.get(ref.basisKey));
+        if (ref.basisKey !== mvuSchemaDerivedBasisKey(basis.prepared.childSessionId) || basis.basisSha256 !== ref.basisSha256
+            || basis.source.schemaVersion === 1 || !frozenLineage || basis.prepared.prefix.journal.nativeCut < events.length)
+            fail('SCHEMA_DERIVED_PARENT_UNPROVEN');
+        frozenLineage.readHistorical(basis.source, subjectSessionId);
+        return basis;
+    }
+    function readAncestorGenesis(sid, events, seen, subjectSessionId) {
+        const basis = validateMvuSchemaDerivedBasis(deps.branch.get(mvuSchemaDerivedBasisKey(sid)));
+        if (basis.prepared.childSessionId !== sid || basis.prepared.seedLength > events.length
+            || basis.source.schemaVersion === 1 || !frozenLineage)
+            return;
+        const source = frozenLineage.readHistorical(basis.source, subjectSessionId);
+        const checked = verifyPrepared(basis.prepared, events.slice(0, basis.prepared.seedLength), basis.source, seen, subjectSessionId, source.prepared);
+        return closedRows(basis, checked.ready);
+    }
     function captureGenesis(sid) {
         const session = deps.session(sid);
         if (!session)
@@ -187,7 +216,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
         if (basis.prepared.childSessionId !== sid || session.inheritedEventCount !== basis.prepared.seedLength)
             return;
         let closedSource;
-        if (basis.source.schemaVersion === 2) {
+        if (basis.source.schemaVersion !== 1) {
             // The former boolean Source check discarded the same verified prepared
             // DATA that numerical recovery needs immediately afterward.
             try {
@@ -199,7 +228,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
             if (!closedSource)
                 return;
         }
-        else if (!sourceCurrent(basis.source, false))
+        else if (!sourceCurrent(basis.source, false, sid))
             return;
         const checked = verifyPrepared(basis.prepared, prefix(session, basis.prepared.seedLength), basis.source, new Set([sid]), sid, closedSource);
         return Object.freeze({ basis, genesis: closedRows(basis, checked.ready) });
@@ -218,6 +247,42 @@ export function createRoleplayMvuSchemaDerived(deps) {
             return undefined;
         }
     }
+    function readPrefix(subjectSessionId, nativeCut, revision = false) {
+        const parent = deps.session(subjectSessionId);
+        if (parent && nativeCut <= parent.inheritedEventCount) {
+            const events = prefix(parent, nativeCut);
+            let sid = parent.id, container, historyBasis;
+            // Each hop selects the generation that actually owned the target range;
+            // a descendant's future snapshot/ordinal never initializes that range.
+            do {
+                const candidate = validateMvuSchemaDerivedBasis(deps.branch.get(mvuSchemaDerivedBasisKey(sid)));
+                historyBasis = { basisKey: mvuSchemaDerivedBasisKey(sid), basisSha256: candidate.basisSha256 };
+                container = historyContainer(historyBasis, events, parent.id);
+                sid = container.prepared.prefix.sessionId;
+            } while (events.length <= container.prepared.prefix.inheritedEventCount);
+            const selected = container.prepared.prefix, prepared = container.prepared;
+            if (prepared.schemaVersion === 1)
+                fail('SCHEMA_DERIVED_FROZEN_HISTORY_UNAVAILABLE');
+            const initial = selected.seed.kind === 'derived' ? readAncestorGenesis(selected.sessionId, events, new Set(), parent.id) : undefined;
+            const closure = deps.branch.get(prepared.prefixClosureRef.key);
+            if (!closure || recordSha256(closure) !== prepared.prefixClosureRef.sha256
+                || closure.closureSha256 !== prepared.prefixClosureRef.closureSha256)
+                fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
+            const captured = deps.history.captureAncestorForkPrefix?.(selected, events, initial, closure, subjectSessionId);
+            if (!captured)
+                fail('SCHEMA_DERIVED_FROZEN_HISTORY_UNAVAILABLE');
+            return { prefix: captured.prefix, ready: captured.ready, closure: captured.closure,
+                browserProgram: captured.browserProgram, historical: { historyBasis,
+                    parentSourceSha256: deps.readSourceSha256(parent.id), closure: captured.closure, assertCurrent: captured.assertCurrent } };
+        }
+        if (revision) {
+            const captured = deps.history.captureRevisionForkPrefix?.(subjectSessionId, nativeCut);
+            if (!captured)
+                fail('SCHEMA_DERIVED_FROZEN_HISTORY_UNAVAILABLE');
+            return captured;
+        }
+        return deps.history.captureForkPrefix(subjectSessionId, nativeCut);
+    }
     async function capture(operation, reservation) {
         if (disposed)
             fail('SCHEMA_DERIVED_OWNER_DISPOSED');
@@ -227,7 +292,42 @@ export function createRoleplayMvuSchemaDerived(deps) {
             return;
         // One historical replay supplies both Source declarations and numerical
         // inheritance. The reservation coordinator captures before Source locking.
-        return deps.history.captureForkPrefix(reservation.sourceSessionId, reservation.seedLength);
+        return readPrefix(reservation.sourceSessionId, reservation.seedLength);
+    }
+    /** Read baseline DATA for a same-branch revision. Its Source/Native owner
+     * supplies publication authority; this read creates no fork reservation. */
+    function captureRevisionPrefix(sid, nativeCut) {
+        if (disposed)
+            fail('SCHEMA_DERIVED_OWNER_DISPOSED');
+        return readPrefix(sid, nativeCut, true);
+    }
+    /** The Native owner supplies this subject's actual prefix at the saved cut.
+     * Core closes any prior revision; frozen recovery restores the existing
+     * ready-to-scope association without granting publication authority. */
+    function recoverRevisionPrefix(input) {
+        if (disposed)
+            fail('SCHEMA_DERIVED_OWNER_DISPOSED');
+        const { subjectSessionId, events, prefix: capturedPrefix, closure, historyBasis } = input;
+        if (historyBasis !== null) {
+            const container = historyContainer(historyBasis, events, subjectSessionId), prior = container.prepared.prefix;
+            if (capturedPrefix.sessionId !== prior.sessionId || capturedPrefix.inheritedEventCount !== prior.inheritedEventCount
+                || capturedPrefix.sourceSha256 !== prior.sourceSha256 || !same(capturedPrefix.original, prior.original)
+                || !same(capturedPrefix.seed, prior.seed) || !same(capturedPrefix.initial, prior.initial)) {
+                fail('SCHEMA_DERIVED_PARENT_UNPROVEN');
+            }
+        }
+        // This subject's genesis already belongs to its InputState read. Preserve
+        // that result and its recovered-prefix association across revision bases;
+        // foreign owners still consume their own historical Source and Native cut.
+        let initial;
+        if (capturedPrefix.seed.kind === 'derived') {
+            initial = capturedPrefix.sessionId === subjectSessionId ? readGenesis(subjectSessionId)
+                : readAncestorGenesis(capturedPrefix.sessionId, events, new Set(), subjectSessionId);
+        }
+        const ready = deps.history.recoverFrozenForkPrefix?.(capturedPrefix, events, initial, closure, subjectSessionId);
+        if (!ready)
+            fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
+        return { prefix: capturedPrefix, ready };
     }
     async function prepare(operation, reservation, capture) {
         if (disposed)
@@ -240,14 +340,14 @@ export function createRoleplayMvuSchemaDerived(deps) {
             // recreate publication authority after teardown or partial publication.
             await deps.withSourceLock(reservation.sourceSessionId, async () => {
                 const owner = reservations.get(reservation.childSessionId), parent = deps.session(reservation.sourceSessionId);
-                if (disposed || !owner || !parent || owner.prepared.schemaVersion !== 2
+                if (disposed || !owner || !parent || owner.prepared.schemaVersion === 1
                     || owner.prepared.operationId !== operation.operationId || !operationCurrent(owner.prepared, 'preparing'))
                     fail('SCHEMA_DERIVED_PUBLICATION_UNKNOWN');
                 verifyReservation(owner, prefix(parent, owner.prepared.seedLength));
             });
             return;
         }
-        const frozen = capture.prefix;
+        const frozen = capture.prefix, historical = capture.historical;
         await deps.withSourceLock(reservation.sourceSessionId, async () => {
             if (disposed)
                 fail('SCHEMA_DERIVED_OWNER_DISPOSED');
@@ -256,36 +356,42 @@ export function createRoleplayMvuSchemaDerived(deps) {
                 || reservation.seedLength !== operation.anchor.expectedSeedLength)
                 fail('SCHEMA_DERIVED_RESERVATION_INVALID');
             const events = prefix(parent, reservation.seedLength);
+            const parentSourceSha256 = historical?.parentSourceSha256 ?? frozen.sourceSha256;
             if (frozen.journal.nativePrefixSha256 !== recordSha256(events)
-                || frozen.sourceSha256 !== deps.readSourceSha256(parent.id))
+                || parentSourceSha256 !== deps.readSourceSha256(parent.id))
                 fail('SCHEMA_DERIVED_SOURCE_CHANGED');
-            const initial = frozen.seed.kind === 'derived' ? readGenesis(parent.id) : undefined;
+            const initial = !historical && frozen.seed.kind === 'derived' ? readGenesis(parent.id) : undefined;
             const fields = { operationId: operation.operationId,
                 anchorSha256: recordSha256(operation.anchor), parentSessionId: parent.id, childSessionId: reservation.childSessionId,
                 seedLength: reservation.seedLength, parentInheritedEventCount: parent.inheritedEventCount,
-                parentSourceSha256: frozen.sourceSha256, prefix: frozen };
+                parentSourceSha256, prefix: frozen };
             let prepared, ready;
             if (frozenLineage) {
                 const source = frozenLineage.prepared(reservation.childSessionId);
-                if (source.parentSourceSha256 !== frozen.sourceSha256
+                if (source.parentSourceSha256 !== parentSourceSha256
                     || recordSha256(deps.readSourceDescriptor(parent.id)) !== source.parentSourceSha256
                     || source.frozen.operationId !== operation.operationId || source.frozen.anchorSha256 !== fields.anchorSha256
                     || source.frozen.parentSessionId !== parent.id || source.frozen.nativeCut.seedLength !== reservation.seedLength
                     || source.frozen.nativeCut.parentInheritedEventCount !== parent.inheritedEventCount
                     || source.frozen.nativeCut.prefixSha256 !== recordSha256(events))
                     fail('SCHEMA_DERIVED_SOURCE_CHANGED');
-                const captured = deps.history.captureFrozenForkPrefix?.(frozen, events, initial);
+                const captured = historical ?? deps.history.captureFrozenForkPrefix?.(frozen, events, initial);
                 if (!captured)
                     fail('SCHEMA_DERIVED_FROZEN_HISTORY_UNAVAILABLE');
-                ready = captured.ready;
+                ready = historical ? capture.ready : ('ready' in captured ? captured.ready : undefined);
+                if (!ready)
+                    fail('SCHEMA_DERIVED_HISTORY_UNPROVEN');
                 const closure = captured.closure, closureKey = mvuSchemaPrefixClosureKey(reservation.childSessionId, closure.closureSha256);
                 await putExact(deps.branch, closureKey, closure);
                 captured.assertCurrent();
                 const bindingBody = { operationId: operation.operationId,
-                    anchor: Object.freeze({ ...operation.anchor }), reservation: Object.freeze({ ...reservation }) }, body = { schemaVersion: 2, encoding: 'native-mvu-schema-derived-prepared-v2', ...fields,
+                    anchor: Object.freeze({ ...operation.anchor }), reservation: Object.freeze({ ...reservation }) }, common = { ...fields,
                     sourcePreparedRef: source.ref, parentNumericDescriptorSha256: source.parentSourceSha256,
                     prefixClosureRef: Object.freeze({ key: closureKey, sha256: recordSha256(closure), closureSha256: closure.closureSha256 }),
                     forkReservationBinding: Object.freeze({ ...bindingBody, bindingSha256: recordSha256(bindingBody) }) };
+                const body = historical ? { schemaVersion: 3, encoding: 'native-mvu-schema-derived-prepared-v3',
+                    ...common, historyBasis: historical.historyBasis }
+                    : { schemaVersion: 2, encoding: 'native-mvu-schema-derived-prepared-v2', ...common };
                 prepared = Object.freeze({ ...body, preparedSha256: recordSha256(body) });
             }
             else {
@@ -321,8 +427,9 @@ export function createRoleplayMvuSchemaDerived(deps) {
                 || deps.status.get(mvuSchemaDerivedHeadKey(child.id)) !== undefined)
                 fail('SCHEMA_DERIVED_PUBLICATION_UNKNOWN');
             const candidate = owner.prepared;
-            const source = candidate.schemaVersion === 2 ? frozenLineage?.capture(child.id, candidate.sourcePreparedRef)
-                : lineage.capture(candidate.parentSessionId, child.id, child.inheritedEventCount);
+            const source = candidate.schemaVersion === 3 ? frozenLineage?.capture(child.id, candidate.sourcePreparedRef, 3)
+                : candidate.schemaVersion === 2 ? frozenLineage?.capture(child.id, candidate.sourcePreparedRef)
+                    : lineage.capture(candidate.parentSessionId, child.id, child.inheritedEventCount);
             if (!source)
                 fail('SCHEMA_DERIVED_FROZEN_SOURCE_UNAVAILABLE');
             const { prepared, ready } = verifyReservation(owner, prefix(child, child.inheritedEventCount));
@@ -332,7 +439,12 @@ export function createRoleplayMvuSchemaDerived(deps) {
             if (!operationCurrent(prepared))
                 fail('SCHEMA_DERIVED_OPERATION_CHANGED');
             let basis;
-            if (prepared.schemaVersion === 2) {
+            if (prepared.schemaVersion === 3) {
+                if (source.schemaVersion !== 3)
+                    fail('SCHEMA_DERIVED_FROZEN_SOURCE_UNAVAILABLE');
+                basis = createMvuSchemaDerivedBasis(prepared, source);
+            }
+            else if (prepared.schemaVersion === 2) {
                 if (source.schemaVersion !== 2)
                     fail('SCHEMA_DERIVED_FROZEN_SOURCE_UNAVAILABLE');
                 basis = createMvuSchemaDerivedBasis(prepared, source);
@@ -360,7 +472,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
             try {
                 const actualChild = deps.session(child.id);
                 if (!actualChild || prepared.childSessionId !== child.id || actualChild.inheritedEventCount !== prepared.seedLength
-                    || !nativeBasisCurrent(prepared) || !sourceCurrent(basis.source, true))
+                    || !nativeBasisCurrent(prepared) || !sourceCurrent(basis.source, true, child.id))
                     fail('SCHEMA_DERIVED_READY_UNCONFIRMED');
                 closedRows(basis, ready, genesis);
             }
@@ -369,7 +481,7 @@ export function createRoleplayMvuSchemaDerived(deps) {
             }
         });
     }
-    return { capture, prepare, commit, readGenesis, readPreparedInheritedBrowserProgram,
+    return { capture, captureRevisionPrefix, recoverRevisionPrefix, prepare, commit, readGenesis, readPreparedInheritedBrowserProgram,
         required: (sid) => deps.branch.get(mvuSchemaDerivedPreparedKey(sid)) !== undefined
             || deps.branch.get(mvuSchemaDerivedBasisKey(sid)) !== undefined,
         releaseReservation(childId) { reservations.delete(childId); },

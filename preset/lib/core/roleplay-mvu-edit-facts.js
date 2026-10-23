@@ -236,7 +236,8 @@ export function createRoleplayMvuEditFacts(deps) {
                     fail('NUMERICAL_EDIT_EFFECTS_MISSING');
                 fromSeq = Math.min(fromSeq ?? row.targetSeq, row.targetSeq);
             }
-            return fromSeq === undefined ? { kind: 'clear' } : { kind: 'invalidated', code: 'NUMERICAL_EDIT_INVALIDATED', fromSeq };
+            return fromSeq === undefined ? { kind: 'clear' } : { kind: 'invalidated', code: 'NUMERICAL_EDIT_INVALIDATED',
+                fromSeq, editFloorSeq: basis.editFloorSeq };
         }
         catch (error) {
             return { kind: 'unknown', code: codeOf(error) };

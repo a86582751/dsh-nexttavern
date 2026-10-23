@@ -16,10 +16,11 @@ function exact(value, fields) {
 function data(input) {
     return freezeMvuSchemaInheritanceData(input);
 }
-function enumerationKey(table, value) {
+function enumerationKey(table, value, journalInventory = false) {
     return table === 'branch'
         ? /^[A-Za-z0-9_-]+__(?:native-input-v2-(?:work|terminal)-|mvu-schema-player-plan-)/.test(value)
-        : /^[A-Za-z0-9_-]+__mvu-state-schema-(?:story|player)-event-/.test(value);
+        : /^[A-Za-z0-9_-]+__mvu-state-schema-(?:story|player|revision)-event-/.test(value)
+            || journalInventory && /^[A-Za-z0-9_-]+__mvu-schema-(?:epoch|dispatch|completion)-/.test(value);
 }
 export function validateMvuSchemaPrefixInputClosureV1(raw, expected) {
     const value = validateClosureDescriptor(raw);
@@ -58,7 +59,7 @@ function validateClosureUncached(raw) {
         const seen = new Set();
         for (const member of table.membership) {
             if (!key(member) || !member.startsWith(`${expected.sessionId}__`)
-                || !enumerationKey(name, member) || seen.has(member) || !rows.get(member)?.exists)
+                || !enumerationKey(name, member, true) || seen.has(member) || !rows.get(member)?.exists)
                 fail();
             seen.add(member);
         }
@@ -92,12 +93,12 @@ export function createRoleplayMvuSchemaPrefixInputs(tables) {
             active = undefined;
         }
     }
-    function capture(binding, action) {
+    function record(sessionId, inputs, action, bindingFor, journalInventory = false) {
         const recordings = ['branch', 'status'].map(name => {
-            const live = tables[name], rows = new Map();
+            const live = inputs[name], rows = new Map();
             let membership;
-            const entries = () => [...live.entries()].filter(([key]) => key.startsWith(`${binding.sessionId}__`)
-                && enumerationKey(name, key));
+            const entries = () => [...live.entries()].filter(([key]) => key.startsWith(`${sessionId}__`)
+                && enumerationKey(name, key, journalInventory));
             function remember(keyValue, value) {
                 const sha256 = value === undefined ? 'missing' : recordSha256(value), previous = rows.get(keyValue);
                 if (previous) {
@@ -129,17 +130,16 @@ export function createRoleplayMvuSchemaPrefixInputs(tables) {
                 } };
         });
         const result = scoped({ branch: recordings[0].view, status: recordings[1].view }, action);
+        const binding = bindingFor(result);
         const body = { schemaVersion: 1, encoding: 'native-mvu-schema-prefix-input-closure-v1',
             authority: 'consumer-data-only', binding, tables: recordings.map(recording => ({ table: recording.name,
                 membership: recording.membership(), rows: [...recording.rows.values()] })) };
         const closure = validateMvuSchemaPrefixInputClosureV1({ ...body, closureSha256: recordSha256(body) }, binding);
         const assertCurrent = () => { for (const recording of recordings)
             recording.assertCurrent(); };
-        assertCurrent();
         return { result, closure, assertCurrent };
     }
-    function verify(raw, binding, action) {
-        const closure = validateMvuSchemaPrefixInputClosureV1(raw, binding);
+    function closedTables(closure) {
         const closed = closure.tables.map(table => {
             const rows = new Map(table.rows.map(row => [row.key, row]));
             return { get: (key) => {
@@ -150,7 +150,31 @@ export function createRoleplayMvuSchemaPrefixInputs(tables) {
                 }, entries: () => table.membership.map(key => [key, rows.get(key).value]),
                 put: async () => fail('SCHEMA_FROZEN_INPUT_WRITE_REFUSED') };
         });
-        return scoped({ branch: closed[0], status: closed[1] }, action);
+        return { branch: closed[0], status: closed[1] };
     }
-    return { branch: views.branch, status: views.status, capture, verify };
+    function capture(binding, action) {
+        const captured = record(binding.sessionId, tables, action, () => binding);
+        captured.assertCurrent();
+        return captured;
+    }
+    function captureComputed(sessionId, action, bindingFor) {
+        return record(sessionId, tables, action, bindingFor, true);
+    }
+    function verify(raw, binding, action) {
+        return scoped(closedTables(validateMvuSchemaPrefixInputClosureV1(raw, binding)), action);
+    }
+    /** Resolve immutable dependency closures before entering this owner's view.
+     * A revision baseline may itself be a frozen prefix; scopes never nest. */
+    function prepareClosed(raw, binding) {
+        const inputs = closedTables(validateMvuSchemaPrefixInputClosureV1(raw, binding));
+        return { ...inputs, read: (action) => scoped(inputs, action) };
+    }
+    /** A historical recut records its reads from one immutable closed view.
+     * It never nests verify/capture scopes or falls through to live ancestors. */
+    function derive(raw, source, action, bindingFor) {
+        const inputs = closedTables(validateMvuSchemaPrefixInputClosureV1(raw, source));
+        const captured = record(source.sessionId, inputs, action, bindingFor);
+        return { ...captured, assertCurrent() { } };
+    }
+    return { branch: views.branch, status: views.status, capture, captureComputed, verify, prepareClosed, derive };
 }
