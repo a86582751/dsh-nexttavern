@@ -14,6 +14,12 @@
 
 English: Add complete Dragon Empress and Steam Tide Native reference cards, including four author scripts, 22 worldbook entries, briefing hooks, timed notices, and cumulative logs. Align authoring and novel adaptation, fix archived draft paths and Native script opening dispatch, and publish the card index. Scoped checks do not constitute full host acceptance; 0.3 remains unreleased with no runtime deployment.
 
+### 开发记录 — 角色扮演请求、Reader 与导出路径优化（未发布）
+
+- 性能工作已整合进 0.3 开发源码，旨在减少 Native 回合准备、Reader 展示及卡片导出／下载中的重复工作。合成 profile 只描述固定开发源码和输入；完整 Native 故事链与整体玩家体验仍待验收。0.3 尚未发布，运行服务未升级；本条不构成生产 SLA。进展见 [0.3 开发日志](DEVELOPMENT-0.3.md)。
+
+English: Performance work is integrated into the 0.3 development source to reduce repeated preparation across Native turns, Reader presentation, and card export/download. Synthetic profiling describes only its fixed development source and inputs; the complete Native story flow and overall player experience still need validation. 0.3 remains unreleased and the runtime service has not been upgraded; this is not a production SLA. See the [0.3 development log](DEVELOPMENT-0.3.md).
+
 ### 文档 — 0.3 作者手册与官网同步
 
 - 将[社区卡与世界书](COMMUNITY-CARDS.md)、[原生卡创作](NATIVE-CARD-FORMAT.md)、[原生状态与分析](NATIVE-STATE.md)、[社区预设与正则](COMMUNITY-PRESETS.md)扩展为技术手册，加入完整卡片示例、字段参考、执行顺序、排错与源码入口。
