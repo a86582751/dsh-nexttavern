@@ -9,7 +9,7 @@
 | [`模块化卡格式示例-暴躁龙女皇.md`](模块化卡格式示例-暴躁龙女皇.md) | 保留的龙女皇原文与历史参考 |
 | [`steam-tide-full-card.md`](steam-tide-full-card.md) | 保留的 Steam Tide 原文与历史参考 |
 
-两份旧 MD 继续留在原路径，本批不改写它们。直接创作流程与字段约定见[写卡技能入口](../card-authoring.SKILL.md)。示例遵循 Native 1.0；它们是作者参考，不表示 0.3 已通过整体验收或发行。
+两份旧 MD 继续留在原路径，本批不改写它们。直接创作流程与字段约定见[写卡技能入口](https://github.com/a86582751/dsh-nexttavern/blob/main/preset/skills/roleplay-card-authoring/SKILL.md)。示例遵循 Native 1.0；它们是作者参考，不表示 0.3 已通过整体验收或发行。
 
 ## 龙女皇：原文归档与字段映射
 
