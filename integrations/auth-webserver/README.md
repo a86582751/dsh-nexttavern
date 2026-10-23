@@ -7,8 +7,12 @@ installing NextTavern alone does not enable it.
 
 Read the [phone and computer public-access guide](https://github.com/a86582751/dsh-nexttavern/blob/main/PUBLIC-ACCESS.md)
 for installation, environment configuration, Cloudflare setup, verification
-and rollback. Only Harness `0.1.2-alpha.3` is supported. Distribution is through
-GitHub Release archives; `private: true` prevents accidental npm publication.
+and rollback. The maintained adapter currently pins
+`@deepseek-ai/dsh-host-webserver@0.1.7-rc.2` and Cordis `4.0.4` in
+`package.json`. Its package version and description retain historical alpha.3
+wording; they are not the current peer requirement. Select a matching, verified
+release combination rather than bypassing peer dependencies. Distribution is
+through GitHub Release archives; `private: true` prevents accidental npm publication.
 
 The host remains bound to `127.0.0.1`. Forward the original public Host and Origin
 through the tunnel. Configure all four variables in `access.env.example` with

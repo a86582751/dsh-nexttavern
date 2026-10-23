@@ -1,6 +1,9 @@
-# dsh-debug 1.7.0
+# dsh-debug 1.8.0
 
-Python 3.14 stdlib CLI for the installed DSH alpha3 REST + Connection RPC.
+Python 3.14 stdlib CLI for the current 0.3 development line, targeting the fixed
+DSH 0.1.7-rc.2 REST + Connection RPC contract. `alpha3` is this repository's
+source-tree label, not a Harness version; the credential adapter retains the
+documented legacy `.credentials.yaml` / `~/.dsh` fallback layout.
 Install with PowerShell `-File install.ps1` beside this file.
 This copies a durable command into `~/.local/bin`, adds it to the user PATH and
 keeps its worker in `~/.dsh-debug/lib`. Re-run after source changes.
@@ -116,7 +119,9 @@ dsh-debug request /api/roleplay/state?sessionId=session-ID
 
 `export` defaults to `--mode original`: `card-export` preserves the complete
 current card as NextTavern JSON, and `novel-export` preserves the selected
-worldline's prose as Markdown. Both add zero model requests. Use
+worldline's prose as Markdown. Novel export is deterministic; card export uses
+zero model requests when the current native structure and classification are
+valid, but may require semantic classification otherwise. Use
 `--mode organized` only when explicitly requesting semantic reorganization:
 it uses the existing model workflow to organize card Markdown or novel chapters.
 The selected mode is included in the jobs POST and in `--dry-run` output.
@@ -175,6 +180,261 @@ requests). Resource listing can migrate legacy resource metadata using the
 existing route. No CLI writes directly to stories, memories or worldline files.
 `--dry-run` connects nowhere and shows the plan; multi-step plans list stages.
 
+## 0.3 development commands (CLI 1.8.0)
+
+These commands operate on an exact `--session ID` and accept `--dry-run` to
+show the route and body without connecting. Revision conflicts are returned as
+errors; the CLI never fetches a newer revision and retries a write. Read the
+current policy first and pass the revision that it returned.
+
+All session commands accept `--no-wake` to skip the implicit pre-command wake.
+`history`, `cancel`, `clone`, `upload`, `wake`, `mvu-state`, `mvu-set`, and
+`model-select` already skip the implicit pre-command wake. The `wake` command
+still makes its one explicit wake request. The flag does not remove an explicit
+child wake in the built-in `regenerate` and `edit-send` workflows. A direct
+`send` remains one queued prompt; it does not start the worldline preparation
+chain. Use `--no-wake` when that direct send should not wake the named session.
+
+### Community presets and regex
+
+`community-presets` reads the policy and library. Add `--preset-id ID` to read
+one preset; `--action export|export-plans` exports that preset or its plan pack
+and requires an ID. `--action card-mapping` reads the current card mapping.
+`preset-import --file preset.json --expected-revision N` imports a JSON preset
+into the library without selecting it; `--name` can override its imported name.
+Select it separately with `preset-select --preset-id ID --expected-revision N`
+(default scope `conversation`, or explicitly `--scope global`). The CLI reads
+the current selection for that scope, then posts the complete selection using
+the caller's revision; it does not refresh a stale revision or retry. Changing
+the preset or using `--off` clears its `prompts`, `contents`, `regexes`, and
+`features` overrides, matching the UI; selecting the same preset retains them.
+Both behaviors retain other selection options such as sampling and regex order.
+`--off` sets `selection.presetId` to explicit `null`; that disables the preset for this scope and differs from
+`preset-inherit`, which removes the conversation override so it inherits global
+selection.
+
+```powershell
+dsh-debug community-presets --session SESSION_ID
+dsh-debug community-presets --session SESSION_ID --preset-id PRESET_ID --action export
+dsh-debug community-presets --session SESSION_ID --action card-mapping
+dsh-debug preset-import --session SESSION_ID --file preset.json --expected-revision 12 --dry-run
+dsh-debug preset-select --session SESSION_ID --preset-id PRESET_ID --expected-revision 13 --dry-run
+dsh-debug preset-select --session SESSION_ID --off --expected-revision 14 --dry-run
+dsh-debug preset-inherit --session SESSION_ID --expected-revision 15 --dry-run
+```
+
+For an explicit community action, `preset-set --body-file action.json` accepts
+`update`, `copy`, `delete`, `configure`, `select`, `control`, `import-plans`,
+`preview-plans`, `apply-plans`, or `save-plan`. Its JSON body carries the action
+and `expectedRevision` from the most recent `community-presets` read, except
+`preview-plans`, which is read-only and needs no revision. The default scope is
+`conversation`. `select` submits a complete native selection from the current
+read; `configure` remains a partial patch. Example `configure` body:
+
+```json
+{
+  "action": "configure",
+  "scope": "conversation",
+  "expectedRevision": 15,
+  "patch": { "presetId": "PRESET_ID" }
+}
+```
+
+Example complete `select` body:
+
+```json
+{
+  "action": "select",
+  "expectedRevision": 16,
+  "selection": {
+    "presetId": null,
+    "applySampling": false,
+    "prompts": {},
+    "contents": {},
+    "features": {},
+    "regexes": {},
+    "regexOrder": null
+  }
+}
+```
+
+`regexes` reads the regex policy/library. `regex-import` imports a JSON file at
+the explicit revision with a `conversation`, `global`, or `preset` binding;
+the preset binding requires `--preset-id`. The import's enabled/disabled flags
+are retained; enabled rules become part of that binding's matching policy.
+`regex-set` accepts only `update` and `delete`, with the exact revision from
+`regexes`. Example update body:
+
+```json
+{ "action": "update", "expectedRevision": 21, "id": "REGEX_ID", "name": "Example" }
+```
+
+`regex-preview` previews current regexes against supplied text without saving
+changes. Choose `--channel display|prompt`, `--placement 0..6`, `--depth N`, and
+optional `--is-edit`; text may come from `--text` or `--text-file`. Normal
+preview contacts the existing endpoint, while `--dry-run` remains offline.
+`regex-display --body-file messages.json` takes references to real stored
+messages, not caller-supplied message text:
+
+```json
+{ "messages": [{ "seq": 123, "messageId": "MESSAGE_ID" }] }
+```
+
+The server reads those messages from the selected session before producing the
+display projection.
+
+### Native card conversion and resources
+
+```powershell
+dsh-debug card-conversion --session SESSION_ID
+dsh-debug card-convert --session SESSION_ID --resource-id RESOURCE_ID --dry-run
+dsh-debug card-apply --session SESSION_ID --job-id JOB_ID --dry-run
+dsh-debug card-source --session SESSION_ID --out original-card.png --dry-run
+dsh-debug export --session SESSION_ID --kind card-export --mode original --dry-run
+dsh-debug resource --session SESSION_ID --resource-id RESOURCE_ID
+```
+
+`card-conversion` reads conversion capability and binding. `card-convert` starts
+the existing `card-convert` job and may invoke models; `--resource-id` optionally
+selects the uploaded resource to convert. Authorize it as a potentially paid
+operation. `card-apply` applies a completed conversion job.
+`card-source` downloads the original uploaded bytes to a new exclusive-created
+file and returns its byte count and SHA-256. This is distinct from
+`export --kind card-export --mode original`, which exports the current card
+state as NextTavern JSON. `resource` reads one resource's metadata and available
+text.
+
+### Usage and logs
+
+`usage`, `usage-requests`, and `logs` accept `--scope session|all`, optional
+`--target-session-id`, inclusive `--from` / exclusive `--to` epoch milliseconds,
+`--model`, and `--kind`. The default range is the last 24 hours; `--from 0`
+requests all available history. `usage` and `usage-requests` also accept
+`--provider` and `--currency USD|CNY`; `logs` accepts `--status`.
+`usage-requests` and `logs` use `--offset` (default 0) and `--limit` (default
+50, range 1–100). Continue from the response's `offset`, `limit`, and `total`;
+the caller controls pagination. Keep explicit `--from` and `--to` bounds fixed
+across every page so new activity cannot shift the result set between requests.
+
+```powershell
+dsh-debug usage --session SESSION_ID --scope all --from 0 --currency USD
+dsh-debug usage-requests --session SESSION_ID --scope session --from 0 --provider PROVIDER --offset 0 --limit 50
+dsh-debug logs --session SESSION_ID --scope all --kind KIND --status STATUS --from 0 --offset 0 --limit 50
+```
+
+On a timeout or transport uncertainty, preserve the original `requestId` and
+inspect `state`, `activity`, and `history`; do not start another request on the
+assumption that the first one failed. Only after `state.failedTurnRecoveryByTurn`
+confirms a failed turn should you use its `userSeq` with `regenerate`. For an
+uncertain branch step, inspect its existing operation with
+`worldline --action operation-status`. `activity` reports activity/job progress;
+it is not a lookup for the `send` `requestId`.
+
+### Numerical state and model selection
+
+`mvu-state` reads `/api/roleplay/mvu-state` without waking the session. Preserve
+the returned `numericalState.kind`, `values`, `observedNativeSeq`, `snapshot`,
+and blocked code. `mvu-set` submits one exact native compare-and-set body from a
+file. Its schema is version 1 with a new `operationId`, action
+`replace-values`, the complete `expected` object, and the requested `values`.
+Copy `sourceSha256`, the full `root` object including derived fields,
+`revision`, `headSha256`, `valuesSha256`, `stateSnapshotSha256`, and
+`observedNativeSeq` from the matching state read. The CLI adds only `sessionId`;
+it does not reread hashes, refresh the expected revision, or retry a conflict.
+The reply reports `operation.outcome` as `updated`, `no-update`, `refused`, or
+`unknown`. On an HTTP error, the business error code remains at top level and
+`details` retains `httpStatus` plus the complete `result`.
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "operationId": "NEW-UUID",
+  "action": "replace-values",
+  "expected": {
+    "sourceSha256": "COPY-FROM-MVU-STATE",
+    "root": { /* copy the complete root object, including derived fields */ },
+    "revision": 0,
+    "headSha256": "COPY-FROM-MVU-STATE",
+    "valuesSha256": "COPY-FROM-MVU-STATE",
+    "stateSnapshotSha256": "COPY-FROM-MVU-STATE",
+    "observedNativeSeq": 0
+  },
+  "values": { "field": "new value" }
+}
+```
+
+The comment, uppercase strings and sample revision/sequence above are
+placeholders, not literal values; `expected.root` must be the complete object
+returned by `mvu-state`. `model-select` calls native `session/selectModel` directly for the
+exact session and is also no-wake by default.
+
+```powershell
+dsh-debug mvu-state --session SESSION_ID
+dsh-debug mvu-set --session SESSION_ID --body-file mvu-set.json --no-wake
+dsh-debug model-select --session CHILD_SESSION_ID --provider PROVIDER --model MODEL --effort low
+```
+
+### Stepwise native worldline operations
+
+Use `worldline` to call the existing native `prepare`, `create-worldline`,
+`register`, and `operation-status` actions one at a time. `prepare` and
+`register` require a body file containing their exact native fields; the CLI
+supplies `sessionId` and `action`. A regenerate prepare body, for example, is
+`{ "kind": "regenerate", "userSeq": 123 }`; use the exact source anchor from
+the native session. `create-worldline` and `operation-status`
+require the existing `operationId`, supplied with `--operation-id` or in the
+body file. The `prepare` reply's `previousTurnEndSeq` is a logical turn anchor,
+not a physical seed length. `prefix.inheritedEventCount` on the parent reports
+how many events that parent inherited from its own parent; it is not the new
+child's physical seed length.
+
+```json
+{
+  "operationId": "OPERATION-ID-FROM-PREPARE",
+  "childSessionId": "CHILD-ID-FROM-CREATE-WORLDLINE",
+  "requestId": "ONE-STABLE-REQUEST-ID",
+  "promptText": "THE-EXACT-REGISTERED-PROMPT"
+}
+```
+
+Use this object as the `register` body, retaining the exact prepared prompt and
+the same request ID planned for the subsequent explicit `send`. Registration
+does not queue a prompt. The higher-level `regenerate` and `edit-send` commands
+still run their built-in prepare/create/register/queue workflow. For the manual
+flow, `send` is a separate step after successful registration. The CLI does not
+retry, recreate, or abort an uncertain step. A host restart between create and
+register can leave the native operation unknown
+(`SCHEMA_DERIVED_PUBLICATION_UNKNOWN`); the CLI preserves that result rather
+than repairing it. An HTTP 200 response with `ok: true` and `status: "failed"`
+from `operation-status` is still a business failure. Other branch HTTP errors
+retain the native error code at top level and `details.httpStatus` plus
+`details.result`.
+
+`--out` writes the complete original native JSON reply to a new file. The
+command data is `{ "reply": ..., "path": ..., "bytes": ..., "sha256": ... }`;
+an existing target is refused. If the server replied but writing the local
+receipt fails, the error uses code `receipt-save`, preserves `details.reply`,
+and sets `automaticRetry: false`. The write may leave a partial local file; use
+`details.reply` to restore the receipt locally and do not repeat the remote
+action.
+
+```powershell
+dsh-debug worldline --session SESSION_ID --action prepare --body-file prepare.json --no-wake --out prepared.json
+dsh-debug worldline --session SESSION_ID --action create-worldline --operation-id OPERATION_ID --no-wake --out created.json
+dsh-debug wake --session CHILD_SESSION_ID --no-wake
+dsh-debug model-select --session CHILD_SESSION_ID --provider PROVIDER --model MODEL --effort low --no-wake
+dsh-debug worldline --session SESSION_ID --action register --body-file register.json --no-wake --out registered.json
+dsh-debug send --session CHILD_SESSION_ID --text-file prompt.txt --request-id REQUEST_ID --no-wake
+dsh-debug worldline --session SESSION_ID --action operation-status --operation-id OPERATION_ID --no-wake
+```
+
+`edit-message` is a synchronous native replace-message call. Anchor an assistant
+message with `state.assistantActionAnchorsByTurn[turn].messageId` or a canonical
+`surfaceNodes` message ID; anchor a user message with its exact `seq`. Use
+`--text-file` to preserve the text file's line endings and trailing blank lines.
+The response contains the resulting `seq` and `messageId`; it has no operation
+to poll.
+
 ## JSON / boundaries
 
 Success: `{"schemaVersion":1,"ok":true,"data":...}`.
@@ -194,9 +454,14 @@ localStorage behavior; those still require browser verification.
 ## Sanitized source map
 
 - `core/host-index.js`: GET conversations, POST wake; Host lifetime.
-- `core/roleplay-core.js`: GET state/activity/models/jobs/resources/logs/usage;
+- `core/community-preset-routes.js`: GET/POST community preset and regex routes;
+  display regex reads referenced source messages from the selected session.
+- `core/roleplay-core.js`: GET state/activity/models/jobs/resources/logs/usage,
+  card-conversion and filtered usage-requests;
   POST models `{sessionId,scope,settings,expectedRevision}`, jobs
   `{sessionId,kind}` or `{sessionId,action,jobId}`, branch workflow actions.
+- `/api/roleplay/card-source` returns the original uploaded bytes; `card-source`
+  writes them to a new local file and reports SHA-256.
 - Native Connection `/api/session/{prompt,fork,cancel,selectModel,page,list}`:
   POST `{type:'client-request',rpcId,method,payload:{args:{request:...}}}`;
   list uses `_request`. Page requires a durable throughSeq boundary.
@@ -207,7 +472,13 @@ localStorage behavior; those still require browser verification.
 
 ### Harness 0.1.7-rc.2 contract
 
-The CLI was re-checked against Harness `0.1.7-rc.2`; every request shape it sends kept its meaning (`session/page`, `session/prompt`, `session/fork`, `session/selectModel`, `session/list`, `workspace/create` and `workspace/follow`), so no command, flag or payload changed. Four details are worth knowing while reading results:
+The CLI 1.8 source targets the fixed Harness `0.1.7-rc.2` contract. It adds
+REST-backed community preset/regex, card-conversion, resource, and filtered
+usage/log commands; the existing direct Connection RPC shapes (`session/page`,
+`session/prompt`, `session/fork`, `session/selectModel`, `session/list`,
+`workspace/create`, and `workspace/follow`) keep their documented meaning.
+This is the maintenance-source contract, not a live integration result for every
+installed host. The following host-side details remain relevant:
 
 - `workspace/initializeDefault` takes only a signal now and always creates `<Documents>/deepseek-harness/default-workspace`; the display name is localized by each client, so the stored title stays the directory name. `workspaces` therefore reads the registration, not a language-specific label.
 - `session/page` accepts an optional `turnWindow: {minMessages, minTurns}`. `history` keeps its explicit `--through-seq` plus `--limit` contract and does not send a window.
@@ -330,7 +601,7 @@ Null routes inherit; `{main:true}` follows the writer, optionally with
 `reasoningEffort`. Preference changes do not generate a story; future enabled
 stories may start paid children, even with the writer's model.
 
-See the maintainer notes `docs/character-cluster-20260910.md`, `docs/operations.md`
+See the maintainer notes `docs/archive/2026-09/character-cluster-20260910.md`, `docs/operations.md`
 and `project.md` for the cluster evidence, operations contract and current
 baseline. Admission, HTTP success, model completion and browser rendering remain
 separate observations.
@@ -365,4 +636,4 @@ Writes read the current revision and preserve all untouched fields and other cha
 
 ## Release archive
 
-The shared release manifest includes this tool in the main runtime `.tgz` under `tools/dsh-debug/`, and creates a standalone `dsh-debug.tgz`. Both contain only program/worker/installer/documentation. Connection config and credentials stay local. Run `python dsh_debug.py` directly on systems without PowerShell; Windows `install.ps1` installs the launcher. Codex is not required; `-InstallCodexSkill` is an optional installer flag. The current SSH and loopback credential adapter targets the documented alpha3 layout; configuring another host does not automatically adapt unsupported Harness authentication formats, which is why a non-loopback direct endpoint needs an operator-supplied cookie.
+The shared release manifest includes this tool in the main runtime `.tgz` under `tools/dsh-debug/`, and creates a standalone `dsh-debug.tgz`. Both contain only program/worker/installer/documentation. Connection config and credentials stay local. Run `python dsh_debug.py` directly on systems without PowerShell; Windows `install.ps1` installs the launcher. Codex is not required; `-InstallCodexSkill` is an optional installer flag. The current SSH and loopback credential adapter targets the documented legacy credential layout (`.credentials.yaml` with the `~/.dsh` fallback); `alpha3` is the repository source-tree label. Configuring another host does not automatically adapt unsupported Harness authentication formats, which is why a non-loopback direct endpoint needs an operator-supplied cookie.
