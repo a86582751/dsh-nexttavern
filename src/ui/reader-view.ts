@@ -34,6 +34,14 @@ interface ReaderPart {
     seq?: number;messageId?: string;turn?: number;failedTurn?: number;
     usage?: unknown;turnMeta?: TurnMeta | null;transient?: boolean;streamKey?: string;
 }
+interface ReaderActionProps extends Pick<ReaderPart,
+    'kind' | 'text' | 'time' | 'seq' | 'messageId' | 'turn' | 'failedTurn' | 'transient'> {
+    sessionId: string;
+    tokens: number | null;
+    runMs: number | null | undefined;
+    tokensPerSecond: number | undefined;
+}
+interface ReaderMessageProps extends ReaderActionProps {html: string;readerKey: string;}
 interface HistoryAnchor {
     sessionId: string | null;key: string | null;top: number;headKey: string | null | undefined;count: number;
     resetIfMissing?: boolean;
@@ -114,6 +122,55 @@ React,
      readerHandoff
 }: ReaderDependencies) {
     const noopSnapshotHook = () => null;
+    const actionProps = (part: ReaderPart, sessionId: string): ReaderActionProps => ({
+        sessionId, kind: part.kind, text: part.text, time: part.time,
+        seq: part.seq, messageId: part.messageId, turn: part.turn,
+        failedTurn: part.failedTurn, transient: part.transient,
+        tokens: usageTokens(part.turnMeta?.usage ?? part.usage),
+        runMs: part.turnMeta?.runMs, tokensPerSecond: part.turnMeta?.tokensPerSecond,
+    });
+    const copyReaderText = async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(String(text ?? ''));
+            toast('已复制');
+        } catch {toast('复制失败');}
+    };
+    const renderReaderActions = (part: ReaderActionProps) => {
+        if (part.transient) return null;
+        const {sessionId} = part;
+        // Reader is a first-class long-lived view. Instantiate controls directly:
+        // an empty-but-non-null host slot must not suppress edit/branch actions.
+        const extensionActions = part.kind === 'user'
+            ? Number.isSafeInteger(part.failedTurn)
+                ? React.createElement(AssistantActions,
+                    {sessionId, messageId: undefined, turn: part.failedTurn, text: part.text})
+                : React.createElement(UserActions, {sessionId, seq: part.seq, text: part.text})
+            : React.createElement(AssistantActions, {
+                sessionId, messageId: part.messageId, turn: part.turn, text: part.text,
+            });
+        const meta = [
+            part.tokens !== null ? `用量 ${part.tokens.toLocaleString()} tok` : '',
+            Number.isFinite(part.runMs) ? `用时 ${(part.runMs! / 1000).toFixed(1)} 秒` : '',
+            Number.isFinite(part.tokensPerSecond) ? `${part.tokensPerSecond!.toFixed(1)} tok/s` : '',
+            formatReaderTime(part.time),
+        ].filter(Boolean).join(' · ');
+        return React.createElement('div', {className: 'rp-reader-actions'},
+            actionIconButton('复制', ICONS.copy, () => copyReaderText(part.text)),
+            extensionActions,
+            meta ? React.createElement('span', {className: 'rp-reader-meta'}, meta) : null);
+    };
+    // The parent reads live mutable nodes on every update. Only the exact scalar
+    // presentation/action inputs are compared here, never a guessed history revision.
+    const ReaderMessage = React.memo(function ReaderMessage(part: ReaderMessageProps) {
+        return React.createElement('section', {
+            className: 'rp-reader-message',
+            'data-kind': part.kind === 'user' ? 'user' : 'assistant',
+            'data-reader-key': part.readerKey,
+        }, React.createElement('div', {
+            className: part.kind === 'user' ? 'rp-user-line' : 'rp-reader-narrative',
+            dangerouslySetInnerHTML: {__html: part.kind === 'user' ? '◈ 你：' + part.html : part.html},
+        }), renderReaderActions(part));
+    });
     function ReaderView(props: ReaderViewProps) {
         // Scoped provider identity is authoritative, including a secondary view.
         const sessionId = props.sessionId ?? props.scope?.sessionId ?? null;
@@ -309,44 +366,53 @@ React,
         // Sessions may be resident in the client cache; neither belongs in the
         // selected branch's reader or memory view.
         const parts: ReaderPart[] = [];
-        const nodes: ReaderNode[] = Array.isArray(chat?.order) && chat?.nodes && typeof chat.nodes.get === 'function'
-            ? chat.order.map((key) => chat.nodes!.get(key)).filter((node): node is ReaderNode => !!node && node.visibility !== 'hidden')
-            : (normalizeConversationNodes(snapshot) as ReaderNode[]).filter((node) => node && node.visibility !== 'hidden');
-        const surfaceNodesBySeq = new Map((state?.surfaceNodes ?? [])
-            .map(entry => [Number(entry?.seq), entry] as const)
-            .filter(([seq]) => Number.isSafeInteger(seq)));
-        const turnMetaByMessageId = new Map<string, TurnMeta>();
-        for (const node of nodes) {
-            if (node?.kind !== 'turn-tail') continue;
-            const messageId = String(node.data?.closing?.finalNode?.messageId ?? '');
-            if (!messageId) continue;
-            const startTime = Number(node.location?.turn?.start?.time);
-            const endTime = Number(node.location?.turn?.end?.time);
-            turnMetaByMessageId.set(
-            messageId,
-                {
-                    usage: node.data?.tokenUsage,
-
-                    runMs: Number.isFinite(startTime) && Number.isFinite(endTime) ? Math.max(0, endTime - startTime) : null,
-
-                    tokensPerSecond: Number(node.data?.tokensPerSecond),
-                }
-            );
+        const surfaceNodesBySeq = new Map<number, {turn: number | undefined; index: number}>();
+        for (const entry of state?.surfaceNodes ?? []) {
+            const seq = Number(entry?.seq);
+            if (!Number.isSafeInteger(seq)) continue;
+            // A duplicate seq keeps its first position and last metadata, as Map
+            // construction did. Depth is derived only for the visible page below.
+            const index = surfaceNodesBySeq.get(seq)?.index ?? surfaceNodesBySeq.size;
+            surfaceNodesBySeq.set(seq, {turn: entry.turn, index});
         }
-        const selectedNodeSeqs = new Set();
-        const selectedNodes = nodes.filter((node) => {
+        const nodes: ReaderNode[] = [];
+        const selectedNodes: ReaderNode[] = [];
+        const selectedNodeSeqs = new Set<number>();
+        const turnMetaByMessageId = new Map<string, TurnMeta>();
+        const collectNode = (node: ReaderNode | undefined) => {
+            if (!node || node.visibility === 'hidden') return;
+            nodes.push(node);
+            if (node.kind === 'turn-tail') {
+                const messageId = String(node.data?.closing?.finalNode?.messageId ?? '');
+                if (messageId) {
+                    const startTime = Number(node.location?.turn?.start?.time);
+                    const endTime = Number(node.location?.turn?.end?.time);
+                    turnMetaByMessageId.set(messageId, {
+                        usage: node.data?.tokenUsage,
+                        runMs: Number.isFinite(startTime) && Number.isFinite(endTime)
+                            ? Math.max(0, endTime - startTime) : null,
+                        tokensPerSecond: Number(node.data?.tokensPerSecond),
+                    });
+                }
+                return;
+            }
             const kind = String(node?.kind ?? '');
-            if (!['user', 'assistant-step', 'assistant', 'narrator'].includes(kind)) return false;
+            if (!['user', 'assistant-step', 'assistant', 'narrator'].includes(kind)) return;
             // A multi-step turn can project several assistant-step nodes whose
             // finalNode points at the same closing assistant message. Reader is a
             // prose surface, so keep only settled/final material and dedupe by the
             // server-authoritative surface sequence.
-            if (kind === 'assistant-step' && node?.data?.status && node.data.status !== 'settled') return false;
+            if (kind === 'assistant-step' && node?.data?.status && node.data.status !== 'settled') return;
             const seq = readerNodeSeq(node);
-            if (seq === null || !surfaceNodesBySeq.has(seq) || selectedNodeSeqs.has(seq)) return false;
+            if (seq === null || !surfaceNodesBySeq.has(seq) || selectedNodeSeqs.has(seq)) return;
             selectedNodeSeqs.add(seq);
-            return true;
-        });
+            selectedNodes.push(node);
+        };
+        if (Array.isArray(chat?.order) && chat.nodes && typeof chat.nodes.get === 'function') {
+            for (const key of chat.order) collectNode(chat.nodes.get(key));
+        } else {
+            for (const node of normalizeConversationNodes(snapshot) as ReaderNode[]) collectNode(node);
+        }
         // Source-backed display expands each Native row before rendering. Its
         // body, author documents and native actions share this small page.
         const nativePageRows = displayEnabled ? 16 : COMMUNITY_READER_WINDOW_MESSAGES;
@@ -469,13 +535,16 @@ React,
         };
         const communityCache=communityCacheRef.current;
         const communityScope=sessionId+'\0'+(state?.communityPresets?.fingerprint??'unselected');
-        const communityDepths=new Map([...surfaceNodesBySeq.keys()].map((seq,index,rows)=>[seq,rows.length-index-1]));
+        const communityDepth = (seq: number) => {
+            const selected = surfaceNodesBySeq.get(seq);
+            return selected ? surfaceNodesBySeq.size - selected.index - 1 : 0;
+        };
         communityCache?.selectScope(communityScope);
         // Source-backed assistants consume the effective community/card registry
         // once on the server, retaining document and mapped-output provenance.
         const communityTasks=visibleParts.filter(part=>!part.transient&&part.seq!==undefined&&!!part.messageId
             &&(!displayEnabled||part.kind==='user'))
-            .map(part=>({seq:part.seq!,messageId:part.messageId!,text:part.text,depth:communityDepths.get(part.seq!)??0}));
+            .map(part=>({seq:part.seq!,messageId:part.messageId!,text:part.text,depth:communityDepth(part.seq!)}));
         const communityInput=communityCache?.versionFor(communityTasks)??0;
         React.useEffect(()=>sessionId?communityCache?.run(communityScope,sessionId,communityTasks,()=>refreshBeauty(n=>n+1)):undefined,
             [communityScope,communityInput,communityReload]);
@@ -483,7 +552,7 @@ React,
             if(part.transient||part.seq===undefined||!part.messageId||!communityCache
                 ||displayEnabled&&part.kind==='narrator')return part;
             return {...part,text:communityCache.textFor({seq:part.seq,messageId:part.messageId,text:part.text,
-                depth:communityDepths.get(part.seq)??0})};
+                depth:communityDepth(part.seq)})};
         });
         const visibleTasks=projectedParts.map((part,index)=>{
             const task=taskFor(part);
@@ -837,50 +906,6 @@ React,
             );
         }
 
-        const copyReaderText = async (text: string) => {
-            try {
-                await navigator.clipboard.writeText(String(text ?? ''));
-                toast('已复制');
-            } catch {toast('复制失败');}
-        };
-        const renderReaderActions = (part: ReaderPart) => {
-            if (part.transient) return null;
-            // Reader is a first-class long-lived view, not a passive transcript.
-            // Instantiate the roleplay controls directly: some alpha.3 view hosts
-            // return an empty-but-non-null slot fragment, which used to suppress the
-            // fallback and leave Reader without edit/regenerate/branch controls.
-            const extensionActions = part.kind === 'user'
-                ? Number.isSafeInteger(part.failedTurn)
-                    ? React.createElement(
-                    AssistantActions,
-                        { sessionId, messageId: undefined, turn: part.failedTurn, text: part.text }
-                    )
-                    : React.createElement(UserActions, { sessionId, seq: part.seq, text: part.text })
-                : React.createElement(AssistantActions, {
-                    sessionId, messageId: part.messageId, turn: part.turn, text: part.text,
-                });
-            const usage = usageTokens(part.turnMeta?.usage ?? part.usage);
-            const meta = [
-                usage !== null ? `用量 ${usage.toLocaleString()} tok` : '',
-
-                Number.isFinite(part.turnMeta?.runMs) ? `用时 ${(part.turnMeta!.runMs! / 1000).toFixed(1)} 秒` : '',
-
-                Number.isFinite(part.turnMeta?.tokensPerSecond) ? `${part.turnMeta!.tokensPerSecond.toFixed(1)} tok/s` : '',
-
-                formatReaderTime(part.time),
-            ].filter(Boolean).join(' · ');
-            return React.createElement(
-            'div',
-                { className: 'rp-reader-actions' },
-
-                actionIconButton('复制', ICONS.copy, () => copyReaderText(part.text)),
-
-                extensionActions,
-
-                meta ? React.createElement('span', { className: 'rp-reader-meta' }, meta) : null
-
-            );
-        };
         const renderFramedPart = (part:typeof renderedParts[number],index:number) => {
             const key=readerPartKey(part),slot=activeReaderLayout?.rows[key];
             if(actualSharedFramed&&!slot)return null;
@@ -896,7 +921,7 @@ React,
                 React.createElement('p',null,'选择内容会追加到输入草稿'),
                 part.communityOptions.map(option=>React.createElement('button',{type:'button',className:'community-option',
                     key:option.id,onClick:()=>fillComposer(option.text,false)},option.label))):null,
-            renderReaderActions(part));
+            renderReaderActions(actionProps(part, sessionId)));
         };
 
         return React.createElement(
@@ -987,7 +1012,7 @@ React,
                             'data-reader-key': readerPartKey(part),
                             key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
                             style: {top: activeFrameLayout.rows[index] ?? 0},
-                        }, renderReaderActions(part)))) : null)
+                        }, renderReaderActions(actionProps(part, sessionId))))) : null)
                 : React.createElement('div', {
                     className: 'rp-reader', ref: readerRef,
                     onClick: (event: ReactAPI.MouseEvent<HTMLDivElement>) => {
@@ -999,15 +1024,11 @@ React,
                             fillComposer(f.dataset.communityOption??f.innerText??f.textContent??'');
                         }
                     },
-                }, renderedParts.map((part, index) => React.createElement('section', {
-                    className: 'rp-reader-message',
-                    'data-kind': part.kind === 'user' ? 'user' : 'assistant',
-                    'data-reader-key': readerPartKey(part),
+                }, renderedParts.map((part, index) => React.createElement(ReaderMessage, {
+                    ...actionProps(part, sessionId),
+                    html: part.html, readerKey: readerPartKey(part),
                     key: `${part.kind}:${part.seq ?? index}:${part.messageId ?? ''}`,
-                }, part.kind === 'user'
-                    ? React.createElement('div', { className: 'rp-user-line',dangerouslySetInnerHTML:{__html:'◈ 你：'+part.html} })
-                    : React.createElement('div', { className: 'rp-reader-narrative', dangerouslySetInnerHTML: { __html: part.html } }),
-                renderReaderActions(part)))),
+                }))),
 
             pendingPlayerBubble(activity, nodes),
 

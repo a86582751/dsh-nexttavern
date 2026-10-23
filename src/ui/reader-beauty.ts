@@ -62,6 +62,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
 }: BeautyRendering = {}) {
     const cache = new Map<string, {html: string;text: string;error?: string;fragments?: readonly AuthorFrameFragment[];
         readerFragments?: readonly ReaderRegexDocumentRenderFragmentV1[];}>();
+    const fallbackHtml = new Map<string, string>();
     let execution: ReaderRegexDocumentExecutionV1 | undefined;
     let executionWindowKey: string | undefined;
     let currentScope = '';
@@ -71,6 +72,7 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
         if (currentScope !== scope) {
             cancelActive?.();
             cache.clear();
+            fallbackHtml.clear();
             execution = undefined;
             executionWindowKey = undefined;
             currentScope = scope;
@@ -194,7 +196,21 @@ renderAsync = renderReaderNarrativeAsync, renderSync = renderReaderNarrative,
         return cancel;
     }
 
-    const htmlFor = (task: ReaderBeautyTask) => cache.get(taskKey(task))?.html ?? renderSync(rawText(task), []);
+    const htmlFor = (task: ReaderBeautyTask) => {
+        const rendered = cache.get(taskKey(task))?.html;
+        if (rendered !== undefined) return rendered;
+        const text = rawText(task);
+        // Raw HTML is keyed by its complete text, independently of Source/regex
+        // completion. A fallback must never suppress the pending display task.
+        // String tasks are the growing stream; retaining each prefix would evict history.
+        if (typeof task === 'string') return renderSync(text, []);
+        let html = fallbackHtml.get(text);
+        if (html === undefined) html = renderSync(text, []);
+        else fallbackHtml.delete(text);
+        fallbackHtml.set(text, html);
+        while (fallbackHtml.size > 500) fallbackHtml.delete(fallbackHtml.keys().next().value!);
+        return html;
+    };
     const textFor = (task: ReaderBeautyTask) => cache.get(taskKey(task))?.text ?? rawText(task);
     const failed = (tasks: readonly ReaderBeautyTask[]) => tasks.some(task => cache.get(taskKey(task))?.error);
     const fragmentsFor = (task: ReaderBeautyTask) => cache.get(taskKey(task))?.fragments;

@@ -8,6 +8,7 @@ import { normalizeDecision, normalizePanel, normalizeOption, normalizeField, ren
 
 import { sanitizeStatusHtml, scopeHtmlStyles } from './reader-rendering.js';
 import { statusFactsHtml, decodeStatusTemplate } from './status-rendering.js';
+import {runReaderRegex, type StatusTask} from './reader-regex.js';
 import {createMvuStatePanel} from './mvu-state-panel.js';
 import type {MvuStateObservation} from '../core/roleplay-mvu-player-types.js';
 interface Position {left: number;top: number;}
@@ -36,6 +37,7 @@ interface SurfaceDependencies {
     toast(text: string): void;
     jsonFetch?<T>(url:string,init?:RequestInit):Promise<T>
     onStateAccepted?(state: StatusSurfaceState): void;
+    runStatusRegex?(task: StatusTask, signal?: AbortSignal): Promise<string[]>;
 }
 
 export function createStatusSurface({
@@ -54,7 +56,8 @@ React,
      runMaintenance,
      toast,
      jsonFetch,
-     onStateAccepted
+     onStateAccepted,
+     runStatusRegex = runReaderRegex
 }: SurfaceDependencies) {
     const { DecisionCard, decisionSeat } = createDecisionSeat({ React, createRoot, resolveActiveSessionId, toast });
     const ChatOpeningCard = createChatOpeningCard({React,toast,invalidateState,
@@ -387,6 +390,40 @@ React,
             [activeSessionId, backgroundActivity?.storySeq, backgroundActivity?.stage, backgroundActivity?.running]
         );
         const currentState = state?.sessionId === activeSessionId && state?.preset === 'roleplay' ? state : null;
+        const panel = normalizePanel(currentState?.statusPanel);
+        // 状态栏模版由程序替换用户变量，作者正则在 Worker 中顺序执行。
+        const renderVars = (text: unknown) => renderUserVars(text, currentState);
+        const rawOptions = Array.isArray(panel?.options)
+            ? panel.options.map(normalizeOption).map(option => ({...option, label: renderVars(option.label)})) : [];
+        const rawFields = Array.isArray(panel?.fields)
+            ? panel.fields.map(normalizeField).map(field => ({...field, value: renderVars(field.value)})) : [];
+        const rawTitle = renderVars(panel?.title || '状态栏');
+        const statusAuthorRoots = [
+            '.dsh-rp-status-window .dsh-rp-status-author',
+            '.dsh-rp-status-dock .dsh-rp-status-author',
+        ];
+        const rawHtml = panel?.html
+            ? renderVars(scopeHtmlStyles(decodeStatusTemplate(panel.html), statusAuthorRoots)) : '';
+        const [authorText, setAuthorText] = React.useState<{state: StatusSurfaceState; texts: string[]} | null>(null);
+        React.useEffect(() => {
+            const rules = currentState?.statusSpec?.regexRules;
+            if (!currentState || !rules?.length) return;
+            const controller = new AbortController();
+            const task: StatusTask = {op: 'status',
+                texts: [rawHtml, rawTitle, ...rawOptions.map(option => option.label), ...rawFields.map(field => field.value)], rules};
+            void runStatusRegex(task, controller.signal).then(texts => {
+                if (!controller.signal.aborted) setAuthorText({state: currentState, texts});
+            }).catch(() => {});
+            // Cancellation retires a queued or running task. The state identity
+            // below also prevents an old result from rendering during a refresh.
+            return () => controller.abort();
+        }, [currentState]);
+        const texts = authorText?.state === currentState ? authorText.texts : null;
+        const title = texts?.[1] ?? rawTitle;
+        const options = rawOptions.map((option, index) => ({...option, label: texts?.[index + 2] ?? option.label}));
+        const fields = rawFields.map((field, index) => ({...field, value: texts?.[index + 2 + rawOptions.length] ?? field.value}));
+        // Worker failure keeps the current panel readable with its user variables.
+        const html = rawHtml ? sanitizeStatusHtml(statusFactsHtml(texts?.[0] ?? rawHtml, options)) : '';
         if (!activeSessionId || !isRoleplaySession(activeSessionId)
             || (!currentState && !loading && !initialSessionLoading)) return null;
         const renderLoadingBody = () => React.createElement(
@@ -449,34 +486,6 @@ React,
                     );
             return React.createElement(React.Fragment, null, loadingMain);
         }
-        const panel = normalizePanel(currentState.statusPanel);
-        // 状态栏渲染模版：确定性替换 {{user}} / {{user_gender}}（优先级：用户信息
-        // → 玩家角色卡 → 兜底「用户」），覆盖标题/字段名/字段值/html 渲染
-        // 路径——不依赖模型写出真实名字；模型只需保留占位符。
-        const renderVars = (text: unknown) => renderUserVars(text, state);
-
-        const rules = Array.isArray(currentState.statusSpec?.regexRules) ? currentState.statusSpec.regexRules : [];
-        const applyRules = (text: unknown) => {
-            let out = renderVars(text);
-            for (const r of rules) {
-                try {out = out.replace(new RegExp(r.match, 'g'), r.replace ?? '');} catch { }
-            }
-            return out;
-        };
-
-        // 面板 HTML：只改写 <style> 内的 CSS，绝不把整段 HTML 当 CSS 解析；
-        // 这样不会破坏标签，也不会把作用域选择器泄漏成可见文本。
-        const statusAuthorRoots = [
-            '.dsh-rp-status-window .dsh-rp-status-author',
-
-            '.dsh-rp-status-dock .dsh-rp-status-author',
-        ];
-        const options = Array.isArray(panel?.options) ? panel.options.map(normalizeOption).map(option => ({ ...option, label: applyRules(option.label) })) : [];
-        const html = panel?.html
-            ? sanitizeStatusHtml(statusFactsHtml(applyRules(scopeHtmlStyles(decodeStatusTemplate(panel.html), statusAuthorRoots)), options))
-            : '';
-
-        const fields = Array.isArray(panel?.fields) ? panel.fields.map(normalizeField) : [];
         // 面板正文只显示状态；建议统一由独立决策卡展示。
         const renderNarrativePanelBody = () => !panel
             ? React.createElement(
@@ -546,7 +555,7 @@ React,
                             React.createElement('span', { className: 'dsh-rp-status-emoji' }, f.emoji ?? ''),
                             ' ',
 
-                            React.createElement('span', null, f.label ? renderVars(f.label) + '：' : '', applyRules(f.value))
+                            React.createElement('span', null, f.label ? renderVars(f.label) + '：' : '', f.value)
                         ))
                         : null
 
@@ -572,7 +581,7 @@ React,
                 'div',
                     { className: 'dsh-rp-status-dock-head' },
 
-                    React.createElement('span', { className: 'dsh-rp-status-title' }, applyRules(panel?.title || '状态栏')),
+                    React.createElement('span', { className: 'dsh-rp-status-title' }, title),
 
                     React.createElement(
                     'button',
@@ -612,7 +621,7 @@ React,
 
             );
         } else if (minimized) {
-            const badgeLabel = applyRules(String(panel?.title || '状态栏')).slice(0, 12);
+            const badgeLabel = title.slice(0, 12);
             main = React.createElement(
             'div',
                 {
@@ -666,7 +675,7 @@ React,
                 'div',
                     { className: 'dsh-rp-status-head', onPointerDown: onHeaderPointerDown },
 
-                    React.createElement('span', { className: 'dsh-rp-status-title' }, applyRules(panel?.title || '状态栏')),
+                    React.createElement('span', { className: 'dsh-rp-status-title' }, title),
 
                     React.createElement(
                     'button',

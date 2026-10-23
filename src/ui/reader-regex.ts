@@ -3,11 +3,12 @@
 export interface ReaderRule { match: string; replace?: unknown; flags?: unknown }
 export interface SourceTask { op: 'source'; text: string; rules: ReaderRule[] }
 export interface FallbackTask { op: 'fallback'; html: string; rule: ReaderRule; nodes: string[] }
+export interface StatusTask { op: 'status'; texts: string[]; rules: ReaderRule[] }
 export interface SourceResult { output: string; deferred: number[]; matched: boolean }
 export type FallbackResult = {kind: 'html'; html: string} | {kind: 'none'; edits?: QuoteEdit[]} | {kind: 'quote'; edits: QuoteEdit[]}
 interface QuoteEdit {node: number; parts: Array<{text: string; html?: never} | {html: string; text?: never}>}
-type ReaderTask = SourceTask | FallbackTask
-type ReaderResult = SourceResult | FallbackResult
+type ReaderTask = SourceTask | FallbackTask | StatusTask
+type ReaderResult = SourceResult | FallbackResult | string[]
 
 export interface ReaderNarrativeRegexRunner {
   (task: SourceTask, signal?: AbortSignal): Promise<SourceResult>
@@ -17,15 +18,10 @@ export interface ReaderNarrativeRegexRunner {
 
 export function readerRegexTask(task: SourceTask): SourceResult
 export function readerRegexTask(task: FallbackTask): FallbackResult
+export function readerRegexTask(task: StatusTask): string[]
 export function readerRegexTask(task: ReaderTask): ReaderResult {
   const limit = (text: unknown): string => { if (typeof text !== 'string' || text.length > 2_000_000) throw new Error('size'); return text }
-  const replaceBounded = (text: string,re: RegExp,replacement: string) => {
-    let used=0, end=0, count=0, found
-    const output=[]
-    // Avoid RegExp@@replace's up-front collection of every global match and
-    // capture array. Account for each match before allocating the next one.
-    while((found=re.exec(text))!==null){
-      if(++count>100000)throw new Error('match-limit')
+  const expand = (found: RegExpExecArray, text: string, replacement: string) => {
       const groups=found.groups,original=text,offset=found.index,match=found[0],captures=found.slice(1)
       let expandedSize=0,tokenEnd=0
       const expanded=replacement.replace(/\$([$&`']|\d{1,2}|<[^>]*>)/g,(whole: string,token: string,index: number)=>{
@@ -44,6 +40,16 @@ export function readerRegexTask(task: ReaderTask): ReaderResult {
         if(expandedSize>2_000_000)throw new Error('size')
         return value
       })
+      return expanded
+  }
+  const replaceBounded = (text: string,re: RegExp,replacement: string) => {
+    let used=0, end=0, count=0, found
+    const output=[]
+    // Avoid RegExp@@replace's up-front collection of every global match and
+    // capture array. Account for each match before allocating the next one.
+    while((found=re.exec(text))!==null){
+      if(++count>100000)throw new Error('match-limit')
+      const expanded=expand(found,text,replacement), offset=found.index, match=found[0]
       used+=offset-end+expanded.length
       output.push(text.slice(end,offset),expanded);end=offset+match.length
       if(used+text.length-end>2_000_000)throw new Error('size')
@@ -52,6 +58,17 @@ export function readerRegexTask(task: ReaderTask): ReaderResult {
     }
     output.push(text.slice(end))
     return output.join('')
+  }
+  if (task.op === 'status') {
+    return task.texts.map(text => {
+      let output = limit(text)
+      for (const rule of task.rules) {
+        let re: RegExp
+        try { re = new RegExp(rule.match, 'g') } catch { continue }
+        output = limit(replaceBounded(output, re, String(rule.replace ?? '')))
+      }
+      return output
+    })
   }
   const regex = (rule: ReaderRule) => {
     if (typeof rule?.match !== 'string' || !rule.match || rule.match.length > 4096 || String(rule.replace ?? '').length > 65536) throw new Error('rule-limit')
@@ -80,16 +97,17 @@ export function readerRegexTask(task: ReaderTask): ReaderResult {
     const ranges=Array.from(original.matchAll(/(`+)(?!`)[\s\S]*?\1(?!`)/g),m=>[m.index,m.index+m[0].length] as const)
     const shadow=original.replace(/"([^"\n]+)"/g,(whole,content,index)=>ranges.some(([a,b])=>index<b&&index+whole.length>a)?whole:`“${content}”`)
     if(shadow===original)continue
-    const parts=[],sticky=new RegExp(rule.match,'y'+String(rule.flags??'').replace(/[gy]/g,''))
+    const parts=[]
     let cursor=0, matched=false
     re.lastIndex=0
     for(const match of shadow.matchAll(re)) {
       const i=match.index
       if(original.slice(i,i+match[0].length)===match[0])continue
       parts.push({text:original.slice(cursor,i)})
-      sticky.lastIndex=i
-      const replaced=limit(replaceBounded(shadow,sticky,String(rule.replace??''))), suffix=shadow.length-i-match[0].length
-      const replacement=replaced.slice(i,suffix?-suffix:undefined)
+      const replacement=expand(match,shadow,String(rule.replace??''))
+      // Preserve the replacement budget without constructing the untouched node.
+      limit(replacement)
+      if(shadow.length-match[0].length+replacement.length>2_000_000)throw new Error('size')
       size+=replacement.length
       if(size>2_000_000)throw new Error('size')
       parts.push({html:replacement});cursor=i+match[0].length;matched=true
@@ -103,6 +121,7 @@ let readerRegexQueue: Promise<unknown> = Promise.resolve(), readerRegexWorker: W
 
 export function runReaderRegex(task: SourceTask, signal?: AbortSignal): Promise<SourceResult>
 export function runReaderRegex(task: FallbackTask, signal?: AbortSignal): Promise<FallbackResult>
+export function runReaderRegex(task: StatusTask, signal?: AbortSignal): Promise<string[]>
 export function runReaderRegex(task: SourceTask | FallbackTask, signal?: AbortSignal): Promise<SourceResult | FallbackResult>
 export function runReaderRegex(task: ReaderTask, signal?: AbortSignal): Promise<ReaderResult>
 export function runReaderRegex(task: ReaderTask, signal?: AbortSignal): Promise<ReaderResult> {
